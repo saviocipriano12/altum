@@ -1,10 +1,11 @@
+// src/app/api/webhooks/whatsapp/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/firebaseConfig";
-import { collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc, doc, limit } from "firebase/firestore";
 
-// Token de verificação que você inventa e coloca lá no painel da Meta
-const VERIFY_TOKEN = "ALTUM_WA_2026"; 
+const VERIFY_TOKEN = process.env.NEXT_PUBLIC_META_VERIFY_TOKEN;
 
+// 1. VALIDAÇÃO (A Meta chama isso quando você clica em 'Verificar' no painel deles)
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const mode = searchParams.get("hub.mode");
@@ -17,28 +18,26 @@ export async function GET(req: Request) {
   return new Response("Forbidden", { status: 403 });
 }
 
+// 2. RECEBIMENTO (A Meta chama isso quando o cliente manda mensagem)
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const entry = body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
-    const message = value?.messages?.[0];
+    const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
     if (message) {
       const from = message.from; // Número do cliente
       const text = message.text?.body;
 
-      // 1. Lógica para encontrar ou criar o Chat no seu sistema baseado no número
+      // Busca o chat no Firebase pelo número
       const chatsRef = collection(db, "chats");
-      const q = query(chatsRef, where("contactPhone", "==", from));
+      const q = query(chatsRef, where("contactPhone", "==", from), limit(1));
       const snap = await getDocs(q);
 
       let chatId;
       if (snap.empty) {
-        // Cria chat novo se o cliente for novo
+        // Se o cliente é novo, cria o chat
         const newChat = await addDoc(chatsRef, {
-          contactName: value.contacts?.[0]?.profile?.name || from,
+          contactName: body.entry[0].changes[0].value.contacts?.[0]?.profile?.name || from,
           contactPhone: from,
           lastMessage: text,
           lastMessageTime: serverTimestamp(),
@@ -46,6 +45,7 @@ export async function POST(req: Request) {
         });
         chatId = newChat.id;
       } else {
+        // Se já existe, atualiza a última mensagem
         chatId = snap.docs[0].id;
         await updateDoc(doc(db, "chats", chatId), {
           lastMessage: text,
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
         });
       }
 
-      // 2. Salva a mensagem na coleção de mensagens
+      // Salva a mensagem na sub-coleção
       await addDoc(collection(db, "messages"), {
         chatId,
         text,
@@ -62,9 +62,8 @@ export async function POST(req: Request) {
         createdAt: serverTimestamp(),
       });
     }
-
     return NextResponse.json({ status: "ok" });
   } catch (err) {
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ error: "Error" }, { status: 500 });
   }
 }
