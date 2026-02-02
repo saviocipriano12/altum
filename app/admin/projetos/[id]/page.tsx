@@ -23,6 +23,7 @@ import {
   PauseCircle,
   Archive,
 } from "lucide-react";
+import { collection, writeBatch, serverTimestamp, deleteField } from "firebase/firestore";
 
 type ProjetoStatus = "Onboarding" | "Ativo" | "Pausado" | "Encerrado";
 
@@ -55,7 +56,7 @@ export default function ProjetoDetalhePage() {
 
   const [editing, setEditing] = useState(false);
   const [newStatus, setNewStatus] = useState<ProjetoStatus | null>(null);
-
+const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
   const [form, setForm] = useState({
     titulo: "",
     canalPrincipal: "",
@@ -96,6 +97,57 @@ export default function ProjetoDetalhePage() {
 
     fetchProjeto();
   }, [params.id]);
+
+  async function gerarCarneAnual() {
+    if (!projeto) return;
+    
+    const confirmacao = confirm(
+      `Isso irá gerar 12 lançamentos financeiros de R$ ${projeto.valorMensal} para os próximos 12 meses. Confirmar?`
+    );
+    if (!confirmacao) return;
+
+    if (!projeto.valorMensal || projeto.valorMensal <= 0) {
+      alert("Defina um valor mensal para o projeto antes de gerar o carnê.");
+      return;
+    }
+
+    setGeneratingRecurrence(true);
+
+    try {
+      const batch = writeBatch(db);
+      const hoje = new Date();
+
+      for (let i = 1; i <= 12; i++) {
+        // Calcula data: Hoje + i meses
+        const dataVencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i, 10); // Dia 10 padrão
+        // Formata para string YYYY-MM-DD (padrão do input date) ou DD/MM/YYYY
+        const vencimentoString = dataVencimento.toISOString().split("T")[0]; 
+
+        const refFin = doc(collection(db, "financeiro"));
+        batch.set(refFin, {
+          clientId: projeto.clientId,
+          clientName: projeto.clientName,
+          projectId: projeto.id,
+          projectTitle: projeto.titulo,
+          tipo: "Mensalidade",
+          status: "Pendente",
+          valor: projeto.valorMensal,
+          referencia: `Mensalidade ${i}/12 - ${projeto.titulo}`,
+          vencimento: vencimentoString,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+      alert("Sucesso! 12 faturas geradas no Financeiro.");
+      
+    } catch (err) {
+      console.error("Erro ao gerar recorrência:", err);
+      alert("Erro ao gerar recorrência.");
+    } finally {
+      setGeneratingRecurrence(false);
+    }
+  }
 
   const createdAtFormatted =
     projeto?.createdAt?.toDate &&
@@ -356,7 +408,18 @@ export default function ProjetoDetalhePage() {
               </button>
             )}
           </div>
-
+<button
+  onClick={gerarCarneAnual}
+  disabled={generatingRecurrence}
+  className=" mt-2 inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-250/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100 hover:bg-emerald-250/20 transition disabled:opacity-60"
+>
+  {generatingRecurrence ? (
+    <Loader2 size={14} className="animate-spin" />
+  ) : (
+    <Calendar size={14} />
+  )}
+  Gerar Carnê Anual (12x)
+</button>
           {/* Edição + atalhos */}
           <div className="flex flex-wrap gap-2 text-xs">
             <button

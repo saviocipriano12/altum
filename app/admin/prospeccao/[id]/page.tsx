@@ -16,6 +16,7 @@ import {
   query,
   serverTimestamp,
   updateDoc,
+  writeBatch,
   getDoc,
 } from "firebase/firestore";
 
@@ -902,33 +903,85 @@ Posso te mandar?`;
   }
 
   async function convertToClient() {
-    if (!lead) return;
-    setConvertingClient(true);
+  if (!lead || !leadId) return;
+  setConvertingClient(true);
 
-    try {
-      await addDoc(collection(db, "clientes"), {
-        name: lead.nome || "Cliente sem nome",
-        telefone: lead.telefone || "",
-        email: lead.email || "",
-        endereco: lead.endereco || "",
-        origem: lead.origem || "",
+  try {
+    const batch = writeBatch(db);
+
+    // 1. Referências
+    const newClientRef = doc(collection(db, "clientes")); // ID automático
+    const leadRef = doc(db, "leads", leadId);
+    
+    // 2. Dados do Cliente (Herdados do Lead)
+    batch.set(newClientRef, {
+      name: lead.nome || "Novo Cliente",
+      telefone: lead.telefone || "",
+      email: lead.email || "",
+      endereco: lead.endereco || "",
+      origem: lead.origem || "crm_conversion",
+      status: "ativo",
+      notes: lead.notes || "", // Leva as notas do CRM
+      createdAt: serverTimestamp(),
+      leadIdOriginal: leadId, // Rastreabilidade
+    });
+
+    // 3. Criar Projeto Inicial (Onboarding)
+    const newProjectRef = doc(collection(db, "projetos"));
+    batch.set(newProjectRef, {
+      titulo: `Projeto: ${lead.nome}`,
+      clientId: newClientRef.id,
+      clientName: lead.nome || "Novo Cliente",
+      status: "Onboarding",
+      canalPrincipal: "A definir",
+      servicos: lead.offer?.deliverables || [], // Já puxa o escopo da oferta!
+      valorMensal: lead.offer?.priceFrom || 0, // Já puxa o valor!
+      createdAt: serverTimestamp(),
+    });
+
+    // 4. Criar Lançamento Financeiro (Setup / 1ª Parcela)
+    if (lead.offer?.priceFrom) {
+      const finRef = doc(collection(db, "financeiro"));
+      batch.set(finRef, {
+        clientId: newClientRef.id,
+        clientName: lead.nome || "Novo Cliente",
+        projectId: newProjectRef.id,
+        projectTitle: `Projeto: ${lead.nome}`,
+        tipo: "Setup",
+        status: "Pendente",
+        valor: lead.offer.priceFrom,
+        referencia: "Setup Inicial (Conversão CRM)",
         createdAt: serverTimestamp(),
       });
-
-      await updateLead(
-        { status: "qualificado" },
-        { type: "convert", title: "Convertido em cliente", detail: "Lead virou cliente (coleção clientes)." }
-      );
-
-      showToast("ok", "Cliente criado com sucesso.");
-      router.push("/admin/clientes");
-    } catch (err) {
-      console.error("Erro ao converter lead em cliente:", err);
-      showToast("err", "Erro ao criar cliente.");
-    } finally {
-      setConvertingClient(false);
     }
+
+    // 5. Atualizar o Lead (Arquivar como ganho)
+    batch.update(leadRef, {
+      status: "qualificado",
+      pipelineStage: "fechado", // Move pro final do Kanban
+      convertedClientId: newClientRef.id,
+      updatedAt: serverTimestamp()
+    });
+
+    // Executa tudo junto (Atômico)
+    await batch.commit();
+
+    // 6. Migrar Eventos (Isso tem que ser separado pois Batch tem limite de operações e leitura)
+    // Opcional: Se tiver muitos eventos, fazemos em background. 
+    // Por enquanto, para simplificar, vamos deixar os eventos no Lead e criar um link no Cliente.
+
+    showToast("ok", "Sucesso! Cliente, Projeto e Financeiro criados.");
+    
+    // Redireciona para o Projeto para começar o Onboarding
+    router.push(`/admin/projetos/${newProjectRef.id}`);
+
+  } catch (err) {
+    console.error("Erro na conversão:", err);
+    showToast("err", "Falha crítica ao converter cliente.");
+  } finally {
+    setConvertingClient(false);
   }
+}
 
   async function convertToProject() {
     if (!lead) return;

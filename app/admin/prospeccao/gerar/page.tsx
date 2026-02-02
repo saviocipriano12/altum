@@ -612,34 +612,46 @@ export default function GerarLeadsPremiumPage() {
       // docId = placeId => idempotente
       for (const l of list) {
         try {
-          const ref = doc(db, "leads", l.placeId);
-          await setDoc(
-            ref,
-            {
-              placeId: l.placeId,
-              nome: l.nome || "Lead sem nome",
-              telefone: l.telefone || "",
-              endereco: l.endereco || "",
-              email: "",
-              website: l.website || "",
-              categoria: l.categoria || "",
-              origem: l.origem || "google_places",
-              status: "novo" as LeadStatus,
+          // ... dentro do loop for (const l of list) ...
 
-              // extras pro CRM ficar mais rico
-              rating: typeof l.rating === "number" ? l.rating : null,
-              userRatingsTotal: typeof l.userRatingsTotal === "number" ? l.userRatingsTotal : null,
+const ref = doc(db, "leads", l.placeId);
 
-              // Qualificação (pra filtrar no CRM)
-              score: l._score,
-              heat: l._heat,
-              qualificadoEm: serverTimestamp(),
+// Lógica de limpeza de telefone (mantém apenas números)
+const rawPhone = (l.telefone || "").replace(/\D/g, "");
+// Se tiver 10 ou 11 digitos e não tiver 55, adiciona
+const cleanPhone = rawPhone.length >= 10 && rawPhone.length <= 11 
+  ? `55${rawPhone}` 
+  : rawPhone; 
 
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
+await setDoc(
+  ref,
+  {
+    placeId: l.placeId,
+    nome: l.nome || "Lead sem nome",
+    telefone: cleanPhone, // Telefone limpo para o link do WhatsApp funcionar
+    endereco: l.endereco || "",
+    email: "",
+    website: l.website || "",
+    categoria: l.categoria || "",
+    origem: l.origem || "google_places",
+    
+    // CORREÇÃO CRÍTICA AQUI:
+    status: "novo", 
+    pipelineStage: "captado", // Isso faz aparecer na primeira coluna do Kanban!
+    kanbanIndex: 0, // Joga pro topo da lista
+
+    // Extras de qualificação
+    rating: typeof l.rating === "number" ? l.rating : null,
+    userRatingsTotal: typeof l.userRatingsTotal === "number" ? l.userRatingsTotal : null,
+    score: l._score,
+    heat: l._heat,
+    
+    qualificadoEm: serverTimestamp(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  },
+  { merge: true }
+);
           ok++;
         } catch (err) {
           console.error("Erro salvando lead:", l, err);

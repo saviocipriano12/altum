@@ -16,7 +16,7 @@ import {
   Loader2,
   AlertTriangle,
 } from "lucide-react";
-
+import { serverTimestamp, deleteField } from "firebase/firestore";
 type LancamentoStatus = "Em dia" | "Pendente" | "Atrasado" | "Cancelado";
 
 interface Lancamento {
@@ -71,33 +71,49 @@ export default function FinanceiroDetalhePage() {
   }, [params.id]);
 
   async function applyStatusUpdate() {
-    if (!lanc || !newStatus) return;
+  if (!lanc || !newStatus) return;
 
-    try {
-      setUpdating(true);
+  try {
+    setUpdating(true);
 
-      const ref = doc(db, "financeiro", lanc.id);
-      const payload: any = { status: newStatus };
+    const ref = doc(db, "financeiro", lanc.id);
+    const payload: any = { status: newStatus };
 
-      // Se marcar como "Em dia" e o toggle estiver ativo, seta dataPagamento
-      if (newStatus === "Em dia" && marcarPago) {
-        payload.dataPagamento = new Date();
+    // LÓGICA DE CAIXA REAL:
+    if (newStatus === "Em dia") {
+      // Se marcou como pago, grava a data de agora (ou mantém a antiga se já tinha)
+      // Se quiser forçar a data de hoje, use serverTimestamp() direto.
+      if (!lanc.dataPagamento) {
+        payload.dataPagamento = serverTimestamp();
       }
-
-      await updateDoc(ref, payload);
-
-      setLanc((prev) =>
-        prev ? { ...prev, status: newStatus, dataPagamento: payload.dataPagamento || prev.dataPagamento } : prev
-      );
-
-      setNewStatus(null);
-      setMarcarPago(false);
-    } catch (err) {
-      console.error("Erro ao atualizar lançamento financeiro:", err);
-    } finally {
-      setUpdating(false);
+    } else {
+      // Se voltou para Pendente ou Atrasado, remove a data de pagamento
+      // (caso tenha sido um erro de clique)
+      payload.dataPagamento = deleteField();
     }
+
+    await updateDoc(ref, payload);
+
+    // Atualiza estado local para refletir na hora
+    setLanc((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: newStatus,
+            dataPagamento: newStatus === "Em dia" ? new Date() : null, // Mock visual
+          }
+        : prev
+    );
+
+    setNewStatus(null);
+    setMarcarPago(false);
+  } catch (err) {
+    console.error("Erro ao atualizar lançamento financeiro:", err);
+    alert("Erro ao atualizar status.");
+  } finally {
+    setUpdating(false);
   }
+}
 
   const createdAtFormatted =
     lanc?.createdAt?.toDate &&

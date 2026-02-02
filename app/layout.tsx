@@ -1,7 +1,7 @@
 import "./globals.css";
 import { Inter } from "next/font/google";
 import type { Metadata } from "next";
-
+import { AuthProvider } from "@/context/AuthContext"; // 1. Adicione este import
 /* ---------------- Font ---------------- */
 const inter = Inter({
   subsets: ["latin"],
@@ -58,9 +58,12 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="scroll-smooth">
       <body
-        className={`${inter.className} bg-[#FBFBFB] text-[#151419] antialiased selection:bg-[#F56E0F] selection:text-white`}
+        className={`${inter.className} bg-[#0B0B0B] text-white antialiased selection:bg-[#F56E0F] selection:text-white`}
       >
-        {children}
+        {/* 2. Envolva o children com o AuthProvider */}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );
