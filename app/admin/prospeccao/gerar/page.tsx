@@ -30,13 +30,15 @@ import {
   ExternalLink,
   ToggleLeft,
   ToggleRight,
+  Unlock, // Ícone do Resgate
+  DollarSign, // Ícone de Preço
+  Clock, // Ícone de Horário
+  Camera // Ícone de Fotos
 } from "lucide-react";
 
 /* ======================================================
-   TIPOS
+   TIPOS (FUSÃO DO ANTIGO + NOVO)
 ====================================================== */
-
-type LeadStatus = "novo" | "contatado" | "respondido" | "qualificado" | "descartado";
 
 type LeadFromAPI = {
   placeId: string;
@@ -49,9 +51,12 @@ type LeadFromAPI = {
   userRatingsTotal?: number;
   origem?: string;
 
-  // extras se sua API já devolver (opcional)
+  // NOVOS DADOS DA API TURBINADA
   lat?: number;
   lng?: number;
+  priceLevel?: number; // 0 a 4
+  isOpenNow?: boolean;
+  photos?: string[];
 };
 
 type Heat = "quente" | "morno" | "frio";
@@ -65,6 +70,7 @@ type LeadQualified = LeadFromAPI & {
   _hasWebsite: boolean;
   _rating: number | null;
   _ratingsTotal: number | null;
+  _isRescued?: boolean; // Controle de Resgate Manual
 };
 
 /* ======================================================
@@ -82,7 +88,6 @@ function onlyDigits(s: string) {
 function formatPhoneBR(phone?: string) {
   if (!phone) return "";
   const d = onlyDigits(phone);
-  // tenta formatar 11 dígitos
   if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
   if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return phone;
@@ -132,10 +137,7 @@ function normalizeCategory(c?: string) {
 }
 
 /**
- * Score “CEO Mode”
- * - Phone obrigatório (sem isso: bloqueia)
- * - Rating e qtd avaliações influenciam (autoridade)
- * - Website influencia (maturidade digital)
+ * Lógica de Pontuação "CEO Mode" Expandida
  */
 function computeQualification(
   l: LeadFromAPI,
@@ -178,29 +180,23 @@ function computeQualification(
     if (hay.includes(ww)) blocked.push(`Contém palavra proibida: "${ww}"`);
   }
 
-  // Score
+  // Score Calculation
   let score = 0;
+  score += 10; // Base
 
-  // Base
-  score += 10;
-
-  // Phone is king
   if (hasPhone) {
     score += 40;
     reasons.push("Tem telefone");
   }
 
-  // Website
   if (hasWebsite) {
     score += 10;
     reasons.push("Tem site");
   } else {
-    // sem site -> oportunidade (pode ser bom)
     score += 6;
     reasons.push("Sem site (oportunidade)");
   }
 
-  // Rating (0..5) -> 0..18
   if (rating !== null) {
     const r = clamp(rating, 0, 5);
     score += Math.round((r / 5) * 18);
@@ -209,7 +205,6 @@ function computeQualification(
     score += 4;
   }
 
-  // Reviews total -> 0..18 (satura em 300)
   if (ratingsTotal !== null) {
     const rt = clamp(ratingsTotal, 0, 300);
     score += Math.round((rt / 300) * 18);
@@ -218,7 +213,6 @@ function computeQualification(
     score += 2;
   }
 
-  // Preferred words boost (0..12)
   let boost = 0;
   for (const w of rules.preferredWords) {
     const ww = w.trim().toLowerCase();
@@ -228,13 +222,24 @@ function computeQualification(
   if (boost > 0) reasons.push("Match em palavras desejadas");
   score += clamp(boost, 0, 12);
 
-  // Penalty: name too short / generic
+  // === REGRAS NOVAS (Backend Turbinado) ===
+  if (l.priceLevel && l.priceLevel >= 3) {
+    score += 10;
+    reasons.push("Ticket Alto ($$$)");
+  }
+  if (l.isOpenNow) {
+    score += 2; // Bônus pequeno por estar aberto para atender agora
+  }
+  if (l.photos && l.photos.length >= 1) {
+    score += 3;
+    reasons.push("Tem fotos (ativos)");
+  }
+
   if (name.length < 6) score -= 6;
   if (name.toLowerCase().includes("ltda")) score += 2;
 
   score = clamp(score, 0, 100);
 
-  // Score min
   if (score < rules.scoreMin) blocked.push(`Score abaixo do mínimo (${rules.scoreMin})`);
 
   const heat = scoreToHeat(score);
@@ -253,7 +258,7 @@ function computeQualification(
 }
 
 /* ======================================================
-   UI COMPONENTS
+   UI COMPONENTS (VISUAL RICO DO CÓDIGO ANTIGO)
 ====================================================== */
 
 function SectionHeader({
@@ -368,7 +373,7 @@ function Divider() {
 }
 
 /* ======================================================
-   PAGE
+   PAGE COMPONENT
 ====================================================== */
 
 export default function GerarLeadsPremiumPage() {
@@ -378,11 +383,11 @@ export default function GerarLeadsPremiumPage() {
   const [cidade, setCidade] = useState("Belo Horizonte, MG");
 
   // Acquisition controls
-  const [limitValid, setLimitValid] = useState(15); // quantos válidos você quer
+  const [limitValid, setLimitValid] = useState(15);
   const [mode, setMode] = useState<"conservador" | "balanceado" | "agressivo">("balanceado");
 
   // Quality rules
-  const [requirePhone, setRequirePhone] = useState(true); // o que você pediu
+  const [requirePhone, setRequirePhone] = useState(true);
   const [minRating, setMinRating] = useState(4.0);
   const [minRatingsTotal, setMinRatingsTotal] = useState(15);
   const [requireWebsite, setRequireWebsite] = useState<"qualquer" | "sim" | "nao">("qualquer");
@@ -391,6 +396,9 @@ export default function GerarLeadsPremiumPage() {
   // Keyword controls
   const [bannedWords, setBannedWords] = useState("delivery, ifood, atacado, distribuidora");
   const [preferredWords, setPreferredWords] = useState("premium, boutique, clínica, estética, dermatologia");
+
+  // STATE: Resgate Manual (A chave para o controle)
+  const [manualOverrides, setManualOverrides] = useState<Record<string, boolean>>({});
 
   // Run state
   const [loadingBuscar, setLoadingBuscar] = useState(false);
@@ -423,7 +431,6 @@ export default function GerarLeadsPremiumPage() {
     return parts.join(" ").replace(/\s+/g, " ").trim();
   }, [servico, nicho, cidade]);
 
-  // mode affects defaults
   useEffect(() => {
     if (mode === "conservador") {
       setScoreMin(70);
@@ -440,7 +447,6 @@ export default function GerarLeadsPremiumPage() {
       setMinRating(3.8);
       setMinRatingsTotal(5);
     }
-    // requirePhone stays true (seu pedido)
   }, [mode]);
 
   const rules = useMemo(() => {
@@ -449,40 +455,45 @@ export default function GerarLeadsPremiumPage() {
       minRating,
       minRatingsTotal,
       requireWebsite,
-      bannedWords: bannedWords
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      preferredWords: preferredWords
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      bannedWords: bannedWords.split(",").map((s) => s.trim()).filter(Boolean),
+      preferredWords: preferredWords.split(",").map((s) => s.trim()).filter(Boolean),
       scoreMin,
     };
   }, [requirePhone, minRating, minRatingsTotal, requireWebsite, bannedWords, preferredWords, scoreMin]);
 
+  // LÓGICA COMPUTADA + RESGATE (FUSÃO)
   const computed = useMemo(() => {
-    const q = rawLeads.map((l) => computeQualification(l, rules));
+    const q = rawLeads.map((l) => {
+        const qual = computeQualification(l, rules);
+        // Lógica de Resgate: Se estiver na lista manual, limpa bloqueios
+        if (manualOverrides[l.placeId]) {
+            qual._blockedReasons = [];
+            qual._isRescued = true;
+            qual._reasons.push("Resgatado Manualmente");
+        }
+        return qual;
+    });
 
-    // aprovados = sem blockedReasons
+    // Aprovados = sem bloqueios
     const approved = q.filter((x) => x._blockedReasons.length === 0);
 
-    // descartados
+    // Descartados = com bloqueios
     const discarded = q.filter((x) => x._blockedReasons.length > 0);
 
-    // sort by score desc
-    approved.sort((a, b) => b._score - a._score);
+    // Ordenação: Resgatados ou Score Alto primeiro
+    approved.sort((a, b) => {
+        if (a._isRescued && !b._isRescued) return -1;
+        if (!a._isRescued && b._isRescued) return 1;
+        return b._score - a._score;
+    });
 
-    // cortar nos válidos desejados
     const topApproved = approved.slice(0, clamp(limitValid, 1, 100));
 
     return { all: q, approved: topApproved, discarded, approvedAll: approved };
-  }, [rawLeads, rules, limitValid]);
+  }, [rawLeads, rules, limitValid, manualOverrides]);
 
-  // keep qualified in sync
   useEffect(() => {
     setQualified(computed.approved);
-    // auto select all approved (default)
     const map: Record<string, boolean> = {};
     for (const l of computed.approved) map[l.placeId] = true;
     setSelected(map);
@@ -493,29 +504,14 @@ export default function GerarLeadsPremiumPage() {
     const approved = computed.approved.length;
     const approvedAll = computed.approvedAll.length;
     const discarded = computed.discarded.length;
-
     const quentes = computed.approved.filter((x) => x._heat === "quente").length;
     const mornos = computed.approved.filter((x) => x._heat === "morno").length;
     const frios = computed.approved.filter((x) => x._heat === "frio").length;
-
     const withSite = computed.approved.filter((x) => x._hasWebsite).length;
-
     const selectedCount = Object.values(selected).filter(Boolean).length;
-
     const ratio = total > 0 ? approvedAll / total : 0;
 
-    return {
-      total,
-      approved,
-      approvedAll,
-      discarded,
-      quentes,
-      mornos,
-      frios,
-      withSite,
-      selectedCount,
-      ratio,
-    };
+    return { total, approved, approvedAll, discarded, quentes, mornos, frios, withSite, selectedCount, ratio };
   }, [computed, selected]);
 
   const selectedLeadsList = useMemo(() => {
@@ -527,9 +523,9 @@ export default function GerarLeadsPremiumPage() {
     setLogs([]);
     setRawLeads([]);
     setQualified([]);
+    setManualOverrides({}); // Limpa resgates anteriores
     setSelected({});
 
-    // validações
     if (!servico.trim() || !cidade.trim()) {
       setError("Preencha serviço e cidade.");
       return;
@@ -539,8 +535,6 @@ export default function GerarLeadsPremiumPage() {
     pushLog("Iniciando prospecção no Google Places...");
 
     try {
-      // 🔥 IMPORTANTE: Forçamos includePhone porque você quer telefone obrigatório
-      // E passamos requirePhone para a API, se você aplicar o patch.
       const res = await fetch("/api/prospeccao/gerar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -548,14 +542,7 @@ export default function GerarLeadsPremiumPage() {
           nicho: nicho.trim(),
           cidade: cidade.trim(),
           servico: servico.trim(),
-
-          // O seu "limit" aqui deve ser interpretado pela API como:
-          // "quantos resultados vou tentar buscar" OU (melhor) "quantos válidos quero"
-          // No patch eu explico como deixar isso perfeito.
           limit: clamp(limitValid, 1, 40),
-
-          includePhone: true, // sempre true
-          requirePhone: true, // para API otimizar (precisa patch)
         }),
       });
 
@@ -563,29 +550,17 @@ export default function GerarLeadsPremiumPage() {
 
       if (!res.ok) {
         setError(data?.error || "Erro ao buscar leads.");
-        pushLog(`Erro: ${data?.error || "Falha desconhecida"}`);
+        pushLog(`Erro: ${data?.error}`);
         return;
       }
 
       const items: LeadFromAPI[] = data?.leads || [];
       setRawLeads(items);
-
-      pushLog(`Busca finalizada. ${items.length} leads recebidos da API.`);
-      pushLog(`Aplicando regras de qualidade (telefone obrigatório + score mínimo)...`);
-
-      // Só pra deixar explícito:
-      const noPhoneCount = items.filter((x) => !onlyDigits(x.telefone || "")).length;
-      if (noPhoneCount > 0) {
-        pushLog(`Aviso: ${noPhoneCount} leads vieram sem telefone. Eles serão descartados aqui.`);
-        pushLog(`(Para NÃO gastar token nisso, aplique o patch na API.)`);
-      }
-
-      showToast("ok", "Prospecção concluída. Leads qualificados prontos.");
+      pushLog(`Busca finalizada. ${items.length} leads com dados ricos recebidos.`);
+      showToast("ok", "Prospecção concluída.");
     } catch (e: any) {
       console.error(e);
       setError("Falha ao conectar na API de prospecção.");
-      pushLog("Falha de rede ao chamar /api/prospeccao/gerar.");
-      showToast("err", "Falha de rede na prospecção.");
     } finally {
       setLoadingBuscar(false);
     }
@@ -593,80 +568,56 @@ export default function GerarLeadsPremiumPage() {
 
   async function salvarNoCRM() {
     setError(null);
-
     const list = selectedLeadsList;
 
     if (!list.length) {
-      setError("Nenhum lead selecionado para salvar.");
+      setError("Nenhum lead selecionado.");
       showToast("warn", "Selecione pelo menos 1 lead.");
       return;
     }
 
     setLoadingSalvar(true);
-    pushLog("Salvando leads selecionados no Firestore (coleção leads)...");
+    pushLog("Salvando leads no CRM...");
 
     try {
       let ok = 0;
       let fail = 0;
 
-      // docId = placeId => idempotente
       for (const l of list) {
         try {
-          // ... dentro do loop for (const l of list) ...
+          const ref = doc(db, "leads", l.placeId);
+          const rawPhone = (l.telefone || "").replace(/\D/g, "");
+          const cleanPhone = rawPhone.length >= 10 ? (rawPhone.startsWith("55") ? rawPhone : `55${rawPhone}`) : l.telefone || "";
 
-const ref = doc(db, "leads", l.placeId);
-
-// Lógica de limpeza de telefone (mantém apenas números)
-const rawPhone = (l.telefone || "").replace(/\D/g, "");
-// Se tiver 10 ou 11 digitos e não tiver 55, adiciona
-const cleanPhone = rawPhone.length >= 10 && rawPhone.length <= 11 
-  ? `55${rawPhone}` 
-  : rawPhone; 
-
-await setDoc(
-  ref,
-  {
-    placeId: l.placeId,
-    nome: l.nome || "Lead sem nome",
-    telefone: cleanPhone, // Telefone limpo para o link do WhatsApp funcionar
-    endereco: l.endereco || "",
-    email: "",
-    website: l.website || "",
-    categoria: l.categoria || "",
-    origem: l.origem || "google_places",
-    
-    // CORREÇÃO CRÍTICA AQUI:
-    status: "novo", 
-    pipelineStage: "captado", // Isso faz aparecer na primeira coluna do Kanban!
-    kanbanIndex: 0, // Joga pro topo da lista
-
-    // Extras de qualificação
-    rating: typeof l.rating === "number" ? l.rating : null,
-    userRatingsTotal: typeof l.userRatingsTotal === "number" ? l.userRatingsTotal : null,
-    score: l._score,
-    heat: l._heat,
-    
-    qualificadoEm: serverTimestamp(),
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  },
-  { merge: true }
-);
+          // SPREAD OPERATOR PARA SALVAR TUDO (LAT, LNG, PHOTOS, PRICELEVEL)
+          await setDoc(
+            ref,
+            {
+              ...l, // Salva tudo da API
+              telefone: cleanPhone,
+              status: "novo",
+              pipelineStage: "captado",
+              kanbanIndex: 0,
+              score: l._score,
+              heat: l._heat,
+              reasons: l._reasons,
+              foiResgatado: !!l._isRescued,
+              qualificadoEm: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
           ok++;
         } catch (err) {
-          console.error("Erro salvando lead:", l, err);
+          console.error(err);
           fail++;
         }
       }
 
-      pushLog(`Salvamento concluído. OK: ${ok} | Falhas: ${fail}`);
+      pushLog(`Salvos: ${ok} | Falhas: ${fail}`);
       if (ok > 0) showToast("ok", `Salvos no CRM: ${ok}`);
-      if (fail > 0) showToast("warn", `Falhas: ${fail}`);
     } catch (e: any) {
-      console.error(e);
       setError("Falha ao salvar no Firestore.");
-      pushLog("Falha geral ao salvar no Firestore.");
-      showToast("err", "Falha ao salvar no CRM.");
     } finally {
       setLoadingSalvar(false);
     }
@@ -693,12 +644,7 @@ await setDoc(
   }
 
   async function copy(text: string, okMsg = "Copiado!") {
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast("ok", okMsg);
-    } catch {
-      showToast("err", "Não consegui copiar.");
-    }
+    try { await navigator.clipboard.writeText(text); showToast("ok", okMsg); } catch { showToast("err", "Erro ao copiar"); }
   }
 
   const busy = loadingBuscar || loadingSalvar;
@@ -707,18 +653,9 @@ await setDoc(
     <div className="space-y-6">
       {/* TOAST */}
       {toast && (
-        <div
-          className={cx(
-            "fixed right-5 top-5 z-50 rounded-2xl border px-4 py-3 text-sm shadow-lg backdrop-blur",
-            toast.type === "ok" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
-            toast.type === "warn" && "border-amber-500/30 bg-amber-500/10 text-amber-100",
-            toast.type === "err" && "border-red-500/30 bg-red-500/10 text-red-100"
-          )}
-        >
+        <div className={cx("fixed right-5 top-5 z-50 rounded-2xl border px-4 py-3 text-sm shadow-lg backdrop-blur", toast.type === "ok" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100" : "border-red-500/30 bg-red-500/10 text-red-100")}>
           <div className="flex items-center gap-2">
-            {toast.type === "ok" ? <CheckCircle2 className="h-4 w-4" /> : null}
-            {toast.type === "warn" ? <AlertTriangle className="h-4 w-4" /> : null}
-            {toast.type === "err" ? <X className="h-4 w-4" /> : null}
+            {toast.type === "ok" ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
             <span>{toast.msg}</span>
           </div>
         </div>
@@ -728,599 +665,173 @@ await setDoc(
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Link
-              href="/admin/prospeccao"
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] hover:bg-white/10 transition"
-            >
-              <ArrowLeft size={14} />
-              Voltar ao CRM
+            <Link href="/admin/prospeccao" className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] hover:bg-white/10 transition">
+              <ArrowLeft size={14} /> Voltar ao CRM
             </Link>
-
             <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-100">
-              <ShieldCheck className="h-4 w-4" />
-              Telefone obrigatório
-            </span>
-
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/70">
-              <Sparkles className="h-4 w-4" />
-              Aquisição premium
+              <ShieldCheck className="h-4 w-4" /> Dados Ricos + Resgate
             </span>
           </div>
-
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Gerador de Leads Qualificados</h1>
-            <p className="mt-1 text-sm text-white/55">
-              Controle total da aquisição: regras de qualidade, score, seleção e envio ao CRM.
-              <span className="ml-2 text-white/35">
-                (Aprovados entram; descartados ficam com motivo.)
-              </span>
-            </p>
+            <p className="mt-1 text-sm text-white/55">Controle total da aquisição: regras de qualidade, score, seleção e envio ao CRM.</p>
           </div>
         </div>
 
-        {/* ACTIONS */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => {
-              setRawLeads([]);
-              setQualified([]);
-              setSelected({});
-              setLogs([]);
-              setError(null);
-              showToast("ok", "Painel limpo.");
-            }}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 disabled:opacity-50"
-          >
-            <Trash2 size={16} />
-            Limpar
+          <button onClick={() => { setRawLeads([]); setQualified([]); setSelected({}); setLogs([]); setError(null); showToast("ok", "Limpo."); }} disabled={busy} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 disabled:opacity-50">
+            <Trash2 size={16} /> Limpar
           </button>
-
-          <button
-            onClick={buscarLeads}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loadingBuscar ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
-            Iniciar prospecção
+          <button onClick={buscarLeads} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+            {loadingBuscar ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />} Iniciar prospecção
           </button>
-
-          <button
-            onClick={salvarNoCRM}
-            disabled={busy || selectedLeadsList.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {loadingSalvar ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-            Enviar ao CRM ({selectedLeadsList.length})
+          <button onClick={salvarNoCRM} disabled={busy || selectedLeadsList.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+            {loadingSalvar ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Enviar ao CRM ({selectedLeadsList.length})
           </button>
         </div>
       </div>
 
       {/* STATS */}
       <div className="grid gap-3 lg:grid-cols-4">
-        <StatCard label="Recebidos da API" value={stats.total} hint="Resultado bruto do endpoint" icon={<RefreshCcw className="h-5 w-5" />} />
+        <StatCard label="Recebidos da API" value={stats.total} hint="Resultado bruto com dados ricos" icon={<RefreshCcw className="h-5 w-5" />} />
         <StatCard label="Aprovados (geral)" value={stats.approvedAll} hint={`Taxa: ${pct(stats.ratio)}`} icon={<BadgeCheck className="h-5 w-5" />} accent="blue" />
-        <StatCard label="Aprovados (top)" value={stats.approved} hint={`Limitado em ${limitValid} válidos`} icon={<Sparkles className="h-5 w-5" />} accent="green" />
-        <StatCard label="Descartados" value={stats.discarded} hint="Motivo disponível no painel" icon={<AlertTriangle className="h-5 w-5" />} accent="amber" />
+        <StatCard label="Aprovados (top)" value={stats.approved} hint={`Limitado em ${limitValid}`} icon={<Sparkles className="h-5 w-5" />} accent="green" />
+        <StatCard label="Descartados" value={stats.discarded} hint="Disponíveis para resgate" icon={<AlertTriangle className="h-5 w-5" />} accent="amber" />
       </div>
 
       {/* CONFIG */}
       <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-4">
-        <SectionHeader
-          title="Configuração de aquisição"
-          subtitle="Defina alvo + regras de qualidade. O sistema filtra e pontua automaticamente."
-          icon={<Filter className="h-4 w-4" />}
-          right={
-            <button
-              onClick={() => copy(queryPreview, "Query copiada!")}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition"
-            >
-              <Copy className="h-4 w-4" />
-              Copiar query
-            </button>
-          }
-        />
-
+        <SectionHeader title="Configuração de aquisição" subtitle="Defina alvo + regras de qualidade." icon={<Filter className="h-4 w-4" />} right={<button onClick={() => copy(queryPreview)} className="text-[11px] text-white/50 hover:text-white"><Copy className="h-3 w-3 inline mr-1"/> Copiar Query</button>} />
         <Divider />
-
-        {/* Inputs */}
+        
         <div className="grid gap-3 md:grid-cols-3">
-          <div className="space-y-1">
-            <label className="text-[11px] text-white/55">Serviço / Palavra-chave</label>
-            <input
-              className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none placeholder:text-white/25"
-              value={servico}
-              onChange={(e) => setServico(e.target.value)}
-              placeholder="Ex: clínica estética"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[11px] text-white/55">Nicho (refinamento)</label>
-            <input
-              className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none placeholder:text-white/25"
-              value={nicho}
-              onChange={(e) => setNicho(e.target.value)}
-              placeholder="Ex: dermatologia"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[11px] text-white/55">Cidade / Estado</label>
-            <input
-              className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none placeholder:text-white/25"
-              value={cidade}
-              onChange={(e) => setCidade(e.target.value)}
-              placeholder="Ex: Belo Horizonte, MG"
-            />
-          </div>
+          <div className="space-y-1"><label className="text-[11px] text-white/55">Serviço</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={servico} onChange={(e) => setServico(e.target.value)} placeholder="Ex: clínica estética" /></div>
+          <div className="space-y-1"><label className="text-[11px] text-white/55">Nicho</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={nicho} onChange={(e) => setNicho(e.target.value)} placeholder="Ex: dermatologia" /></div>
+          <div className="space-y-1"><label className="text-[11px] text-white/55">Cidade</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Ex: Belo Horizonte, MG" /></div>
         </div>
 
-        {/* Query preview */}
-        <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
-          <span className="text-white/45">Query:</span> {queryPreview}
-        </div>
-
-        {/* Strategy + rules */}
         <div className="grid gap-3 lg:grid-cols-3">
-          {/* Strategy */}
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
-            <SectionHeader
-              title="Estratégia"
-              subtitle="Defina agressividade e volume de válidos."
-              icon={<Zap className="h-4 w-4" />}
-            />
+            <SectionHeader title="Estratégia" icon={<Zap className="h-4 w-4" />} />
             <div className="flex flex-wrap gap-2">
               <Chip label="Conservador" active={mode === "conservador"} onClick={() => setMode("conservador")} tone="blue" />
               <Chip label="Balanceado" active={mode === "balanceado"} onClick={() => setMode("balanceado")} tone="neutral" />
               <Chip label="Agressivo" active={mode === "agressivo"} onClick={() => setMode("agressivo")} tone="amber" />
             </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-white/55">Limite (leads válidos)</label>
-              <input
-                type="number"
-                min={1}
-                max={40}
-                value={limitValid}
-                onChange={(e) => setLimitValid(clamp(Number(e.target.value) || 10, 1, 40))}
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
-              />
-              <p className="text-[10px] text-white/35">Recomendado: 10–20 por rodada.</p>
-            </div>
+            <input type="number" min={1} max={40} value={limitValid} onChange={(e) => setLimitValid(clamp(Number(e.target.value) || 10, 1, 40))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" />
           </div>
 
-          {/* Quality rules */}
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
-            <SectionHeader
-              title="Qualidade mínima"
-              subtitle="Hard rules. Se não bater, é descartado."
-              icon={<ShieldCheck className="h-4 w-4" />}
-              right={
-                <span className="text-[10px] text-white/40">
-                  Score mínimo: <b className="text-white/70">{scoreMin}</b>
-                </span>
-              }
-            />
-
-            {/* Phone mandatory */}
-            <button
-              type="button"
-              onClick={() => setRequirePhone(true)}
-              className={cx(
-                "w-full flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition",
-                "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-              )}
-              title="Telefone obrigatório (bloqueia sem telefone)"
-            >
-              <span className="flex items-center gap-2">
-                {requirePhone ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
-                Telefone obrigatório (ativo)
-              </span>
-              <span className="text-[11px] text-emerald-100/80">HARD RULE</span>
+            <SectionHeader title="Qualidade mínima" icon={<ShieldCheck className="h-4 w-4" />} right={<span className="text-[10px] text-white/40">Score min: {scoreMin}</span>} />
+            <button type="button" onClick={() => setRequirePhone(!requirePhone)} className={cx("w-full flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition", requirePhone ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-white/10 bg-white/5")}>
+              <span className="flex items-center gap-2">{requirePhone ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />} Telefone obrigatório</span>
             </button>
-
             <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-[11px] text-white/55">Rating mínimo</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min={0}
-                  max={5}
-                  value={minRating}
-                  onChange={(e) => setMinRating(clamp(Number(e.target.value) || 0, 0, 5))}
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] text-white/55">Avaliações mínimas</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={999}
-                  value={minRatingsTotal}
-                  onChange={(e) => setMinRatingsTotal(clamp(Number(e.target.value) || 0, 0, 999))}
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-white/55">Website</label>
-              <select
-                value={requireWebsite}
-                onChange={(e) => setRequireWebsite(e.target.value as any)}
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
-              >
-                <option value="qualquer">Tanto faz</option>
-                <option value="sim">Exigir que tenha site</option>
-                <option value="nao">Exigir que NÃO tenha site</option>
-              </select>
-              <p className="text-[10px] text-white/35">
-                “Não ter site” pode ser oportunidade (Site Express / Pack Digital).
-              </p>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-white/55">Score mínimo</label>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={scoreMin}
-                onChange={(e) => setScoreMin(clamp(Number(e.target.value) || 0, 0, 100))}
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
-              />
+              <input type="number" step="0.1" min={0} max={5} value={minRating} onChange={(e) => setMinRating(clamp(Number(e.target.value), 0, 5))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Rating" />
+              <input type="number" min={0} max={100} value={scoreMin} onChange={(e) => setScoreMin(clamp(Number(e.target.value), 0, 100))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Score" />
             </div>
           </div>
 
-          {/* Keywords */}
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
-            <SectionHeader
-              title="Palavras & Refinamento"
-              subtitle="Corte lixo, favoreça perfil desejado."
-              icon={<Sparkles className="h-4 w-4" />}
-            />
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-white/55">Proibidas (descarta)</label>
-              <input
-                value={bannedWords}
-                onChange={(e) => setBannedWords(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none placeholder:text-white/25"
-                placeholder="ex: atacado, distribuidora, ifood"
-              />
-              <p className="text-[10px] text-white/35">Separar por vírgula.</p>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-white/55">Desejadas (boost de score)</label>
-              <input
-                value={preferredWords}
-                onChange={(e) => setPreferredWords(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none placeholder:text-white/25"
-                placeholder="ex: premium, clínica, estética"
-              />
-              <p className="text-[10px] text-white/35">Separar por vírgula.</p>
-            </div>
-
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 mt-0.5" />
-                <div className="leading-relaxed">
-                  <b>Importante:</b> esta tela descarta sem telefone.  
-                  Para <b>não gastar token</b> com isso, aplique o patch na API (abaixo).
-                </div>
-              </div>
-            </div>
+            <SectionHeader title="Palavras & Refinamento" icon={<Sparkles className="h-4 w-4" />} />
+            <input value={bannedWords} onChange={(e) => setBannedWords(e.target.value)} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Proibidas" />
+            <input value={preferredWords} onChange={(e) => setPreferredWords(e.target.value)} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Desejadas" />
           </div>
         </div>
-
-        {error && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              {error}
-            </div>
-          </div>
-        )}
       </div>
+
+      {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> {error}</div>}
 
       {/* RESULTS + CONTROLS */}
       <div className="grid gap-4 lg:grid-cols-4">
-        {/* Left: controls */}
+        {/* LEFT: CONTROLS */}
         <div className="lg:col-span-1 space-y-4">
           <div className="rounded-2xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <SectionHeader
-              title="Seleção inteligente"
-              subtitle="Escolha só os melhores para salvar."
-              icon={<BadgeCheck className="h-4 w-4" />}
-            />
+            <SectionHeader title="Seleção" icon={<BadgeCheck className="h-4 w-4" />} />
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => toggleSelectAll(true)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-[11px] text-white hover:bg-white/15 transition disabled:opacity-50"><CheckCircle2 className="h-4 w-4" /> Todos</button>
+              <button onClick={() => toggleSelectAll(false)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition disabled:opacity-50"><X className="h-4 w-4" /> Nada</button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => selectOnlyHeat("quente")} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] text-white hover:bg-emerald-500 transition disabled:opacity-50"><Flame className="h-4 w-4" /> Quentes</button>
+              <button onClick={() => selectTop(10)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-100 hover:bg-blue-500/15 transition disabled:opacity-50"><Sparkles className="h-4 w-4" /> Top 10</button>
+            </div>
             <Divider />
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={qualified.length === 0}
-                onClick={() => toggleSelectAll(true)}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-[11px] text-white hover:bg-white/15 transition disabled:opacity-50"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Selecionar todos
-              </button>
-
-              <button
-                type="button"
-                disabled={qualified.length === 0}
-                onClick={() => toggleSelectAll(false)}
-                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition disabled:opacity-50"
-              >
-                <X className="h-4 w-4" />
-                Limpar
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={qualified.length === 0}
-                onClick={() => selectOnlyHeat("quente")}
-                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] text-white hover:bg-emerald-500 transition disabled:opacity-50"
-              >
-                <Flame className="h-4 w-4" />
-                Só quentes
-              </button>
-
-              <button
-                type="button"
-                disabled={qualified.length === 0}
-                onClick={() => selectOnlyHeat("morno")}
-                className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-[11px] text-white hover:bg-amber-500 transition disabled:opacity-50"
-              >
-                <TrendingUp className="h-4 w-4" />
-                Só mornos
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={qualified.length === 0}
-                onClick={() => selectTop(5)}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-100 hover:bg-blue-500/15 transition disabled:opacity-50"
-              >
-                <Sparkles className="h-4 w-4" />
-                Top 5
-              </button>
-
-              <button
-                type="button"
-                disabled={qualified.length === 0}
-                onClick={() => selectTop(10)}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-100 hover:bg-blue-500/15 transition disabled:opacity-50"
-              >
-                <Sparkles className="h-4 w-4" />
-                Top 10
-              </button>
-            </div>
-
-            <Divider />
-
-            <button
-              type="button"
-              onClick={() => setShowDiscarded((v) => !v)}
-              disabled={computed.all.length === 0}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition disabled:opacity-50"
-            >
-              {showDiscarded ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
-              {showDiscarded ? "Ocultar descartados" : "Mostrar descartados"}
+            <button onClick={() => setShowDiscarded(v => !v)} disabled={computed.all.length===0} className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition disabled:opacity-50">
+              {showDiscarded ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />} {showDiscarded ? "Ocultar descartados" : "Mostrar descartados"}
             </button>
-
-            <p className="text-[11px] text-white/40 leading-relaxed">
-              Dica: comece salvando só os <b>quentes</b>. Depois rode outra rodada no mesmo nicho.
-            </p>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <SectionHeader
-              title="Resumo desta rodada"
-              subtitle="O que você tem pronto agora."
-              icon={<TrendingUp className="h-4 w-4" />}
-            />
-            <Divider />
-
+            <SectionHeader title="Resumo" icon={<TrendingUp className="h-4 w-4" />} />
             <div className="grid gap-2">
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <p className="text-[10px] uppercase tracking-wide text-white/45">Selecionados</p>
-                <p className="mt-1 text-xl font-semibold text-white/90">{stats.selectedCount}</p>
-              </div>
-
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3">
-                <p className="text-[10px] uppercase tracking-wide text-emerald-100/80">Quentes (top)</p>
-                <p className="mt-1 text-xl font-semibold text-emerald-100">{stats.quentes}</p>
-              </div>
-
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3">
-                <p className="text-[10px] uppercase tracking-wide text-amber-100/80">Mornos (top)</p>
-                <p className="mt-1 text-xl font-semibold text-amber-100">{stats.mornos}</p>
-              </div>
-
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <p className="text-[10px] uppercase tracking-wide text-white/45">Com site (top)</p>
-                <p className="mt-1 text-xl font-semibold text-white/90">{stats.withSite}</p>
-              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3"><p className="text-[10px] uppercase text-white/45">Selecionados</p><p className="mt-1 text-xl font-semibold text-white/90">{stats.selectedCount}</p></div>
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3"><p className="text-[10px] uppercase text-emerald-100/80">Quentes</p><p className="mt-1 text-xl font-semibold text-emerald-100">{stats.quentes}</p></div>
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
+            <SectionHeader title="Logs" icon={<RefreshCcw className="h-4 w-4" />} right={<button onClick={() => setLogs([])}><Trash2 className="h-4 w-4 text-white/50" /></button>} />
+            <div className="space-y-2 max-h-40 overflow-y-auto">{logs.map((l, i) => <div key={i} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">{l}</div>)}</div>
           </div>
         </div>
 
-        {/* Right: results */}
+        {/* RIGHT: RESULTS */}
         <div className="lg:col-span-3 space-y-4">
           <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
-            <SectionHeader
-              title="Leads aprovados"
-              subtitle="Grid premium pronto para salvar no CRM."
-              icon={<BadgeCheck className="h-4 w-4" />}
-              right={
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-white/45">
-                    Top: <b className="text-white/70">{qualified.length}</b>
-                  </span>
-                </div>
-              }
-            />
+            <SectionHeader title="Leads aprovados" subtitle="Grid premium pronto para salvar no CRM." icon={<BadgeCheck className="h-4 w-4" />} right={<span className="text-xs text-white/45">Top: <b className="text-white/70">{qualified.length}</b></span>} />
             <Divider />
 
             {loadingBuscar ? (
-              <div className="flex items-center gap-2 text-sm text-white/60">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Prospeccionando e qualificando...
-              </div>
+              <div className="flex items-center gap-2 text-sm text-white/60"><Loader2 className="h-4 w-4 animate-spin" /> Prospeccionando e qualificando...</div>
             ) : qualified.length === 0 ? (
-              <div className="text-sm text-white/50">
-                Nenhum lead qualificado ainda. Configure e clique em <b>Iniciar prospecção</b>.
-              </div>
+              <div className="text-sm text-white/50">Nenhum lead qualificado ainda.</div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {qualified.map((l) => {
                   const heat = heatBadge(l._heat);
                   const sb = scoreBadge(l._score);
                   const isSelected = !!selected[l.placeId];
-
                   return (
-                    <div
-                      key={l.placeId}
-                      className={cx(
-                        "group rounded-2xl border bg-black/20 p-4 transition",
-                        isSelected ? "border-blue-500/30 ring-1 ring-blue-500/20" : "border-white/10 hover:border-white/20"
-                      )}
-                    >
-                      {/* top row */}
+                    <div key={l.placeId} className={cx("group rounded-2xl border bg-black/20 p-4 transition", isSelected ? "border-blue-500/30 ring-1 ring-blue-500/20" : "border-white/10 hover:border-white/20")}>
+                      {/* Top Row: Name + Badges */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-white/90">{l.nome}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]", heat.cls)}>
-                              {heat.icon}
-                              {heat.label}
-                            </span>
-
-                            <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]", sb.cls)}>
-                              <Sparkles className="h-3.5 w-3.5" />
-                              Score {l._score} • {sb.label}
-                            </span>
+                            <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]", heat.cls)}>{heat.icon} {heat.label}</span>
+                            <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]", sb.cls)}><Sparkles className="h-3.5 w-3.5" /> {sb.label} {l._score}</span>
+                            {/* Novos Badges Ricos */}
+                            {l.priceLevel && l.priceLevel >= 3 && <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200"><DollarSign className="h-3 w-3" /> $$$</span>}
+                            {l.isOpenNow !== undefined && <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]", l.isOpenNow ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200")}><Clock className="h-3 w-3" /> {l.isOpenNow ? "Aberto" : "Fechado"}</span>}
+                            {l._isRescued && <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-200"><Unlock className="h-3 w-3" /> Resgatado</span>}
                           </div>
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={() => setSelected((prev) => ({ ...prev, [l.placeId]: !prev[l.placeId] }))}
-                          className={cx(
-                            "rounded-xl border px-3 py-2 text-[11px] transition",
-                            isSelected
-                              ? "border-blue-500/30 bg-blue-500/10 text-blue-100 hover:bg-blue-500/15"
-                              : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
-                          )}
-                        >
+                        <button onClick={() => setSelected(prev => ({ ...prev, [l.placeId]: !prev[l.placeId] }))} className={cx("rounded-xl border px-3 py-2 text-[11px] transition", isSelected ? "border-blue-500/30 bg-blue-500/10 text-blue-100 hover:bg-blue-500/15" : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10")}>
                           {isSelected ? "Selecionado" : "Selecionar"}
                         </button>
                       </div>
 
-                      {/* info */}
+                      {/* Info Row */}
                       <div className="mt-3 space-y-2 text-xs text-white/70">
-                        {l.endereco ? (
-                          <div className="flex items-start gap-2">
-                            <MapPin className="h-4 w-4 text-white/35 mt-0.5" />
-                            <p className="line-clamp-2">{l.endereco}</p>
-                          </div>
-                        ) : null}
-
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-white/35" />
-                          <p className="font-medium text-white/80">{formatPhoneBR(l.telefone)}</p>
-                        </div>
-
-                        {l.website ? (
-                          <div className="flex items-center gap-2">
-                            <Globe className="h-4 w-4 text-white/35" />
-                            <a
-                              href={safeUrl(l.website)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="truncate text-white/75 hover:text-white underline decoration-white/20"
-                              title={l.website}
-                            >
-                              {l.website}
-                            </a>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <Globe className="h-4 w-4 text-white/25" />
-                            <span className="text-white/45">Sem site</span>
-                          </div>
-                        )}
+                        {l.endereco && <div className="flex items-start gap-2"><MapPin className="h-4 w-4 text-white/35 mt-0.5" /><p className="line-clamp-2">{l.endereco}</p></div>}
+                        <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-white/35" /><p className="font-medium text-white/80">{formatPhoneBR(l.telefone) || "Sem telefone"}</p></div>
+                        {l.website ? <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-white/35" /><a href={safeUrl(l.website)} target="_blank" className="truncate text-white/75 hover:text-white underline decoration-white/20">{l.website}</a></div> : <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-white/25" /><span className="text-white/45">Sem site</span></div>}
                       </div>
 
-                      {/* badges */}
-                      <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-                        {typeof l.rating === "number" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200">
-                            <Star size={14} />
-                            {l.rating.toFixed(1)}
-                          </span>
-                        ) : null}
-
-                        {typeof l.userRatingsTotal === "number" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-blue-200">
-                            <Users size={14} />
-                            {l.userRatingsTotal}
-                          </span>
-                        ) : null}
-
-                        <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/70">
-                          {l.categoria || "categoria"}
-                        </span>
-                      </div>
-
-                      {/* reasons */}
+                      {/* Reasons */}
                       <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
                         <p className="text-[10px] uppercase tracking-wide text-white/45">Por que foi aprovado</p>
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {(l._reasons.length ? l._reasons : ["Qualificado por regras + score"]).slice(0, 4).map((r) => (
-                            <span
-                              key={r}
-                              className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] text-white/70"
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300/80" />
-                              {r}
-                            </span>
-                          ))}
+                          {l._reasons.slice(0, 4).map((r) => <span key={r} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] text-white/70"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-300/80" /> {r}</span>)}
                         </div>
                       </div>
 
-                      {/* actions */}
+                      {/* Actions */}
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => copy(l.telefone || "", "Telefone copiado!")}
-                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition"
-                        >
-                          <Copy className="h-4 w-4" />
-                          Copiar telefone
-                        </button>
-
-                        <Link
-                          href={`/admin/prospeccao/${l.placeId}`}
-                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-[11px] text-white hover:bg-emerald-500 transition"
-                        >
-                          Abrir no CRM <ExternalLink className="h-4 w-4 opacity-90" />
-                        </Link>
+                        <button onClick={() => copy(l.telefone || "")} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition"><Copy className="h-4 w-4" /> Copiar</button>
+                        <Link href={`/admin/prospeccao/${l.placeId}`} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-[11px] text-white hover:bg-emerald-500 transition">Abrir no CRM <ExternalLink className="h-4 w-4 opacity-90" /></Link>
                       </div>
-
-                      <p className="mt-3 text-[10px] text-white/35">
-                        placeId: <span className="font-mono">{l.placeId}</span>
-                      </p>
                     </div>
                   );
                 })}
@@ -1328,109 +839,36 @@ await setDoc(
             )}
           </div>
 
-          {/* DISCARDED */}
-          {showDiscarded ? (
+          {/* Descartados (Zona de Resgate) */}
+          {showDiscarded && (
             <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
-              <SectionHeader
-                title="Descartados (com motivo)"
-                subtitle="Transparência total. Você vê exatamente por que caiu."
-                icon={<AlertTriangle className="h-4 w-4" />}
-                right={<span className="text-xs text-white/45">{computed.discarded.length} itens</span>}
-              />
+              <SectionHeader title="Descartados (com motivo)" subtitle="Transparência total." icon={<AlertTriangle className="h-4 w-4" />} right={<span className="text-xs text-white/45">{computed.discarded.length} itens</span>} />
               <Divider />
-
-              {computed.discarded.length === 0 ? (
-                <p className="text-sm text-white/50">Nenhum descartado nesta rodada.</p>
-              ) : (
+              {computed.discarded.length === 0 ? <p className="text-sm text-white/50">Nenhum descartado.</p> : (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {computed.discarded.slice(0, 30).map((l) => (
                     <div key={l.placeId} className="rounded-2xl border border-white/10 bg-black/20 p-4">
                       <p className="text-sm font-semibold text-white/85">{l.nome}</p>
-
                       <div className="mt-2 space-y-2 text-xs text-white/65">
-                        {l.endereco ? (
-                          <div className="flex items-start gap-2">
-                            <MapPin className="h-4 w-4 text-white/35 mt-0.5" />
-                            <p className="line-clamp-2">{l.endereco}</p>
-                          </div>
-                        ) : null}
-
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-white/25" />
-                          <span className="text-white/45">{l.telefone ? formatPhoneBR(l.telefone) : "Sem telefone"}</span>
-                        </div>
+                        <p>{formatPhoneBR(l.telefone)}</p>
+                        <p className="line-clamp-1">{l.endereco}</p>
                       </div>
-
                       <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 p-3">
-                        <p className="text-[10px] uppercase tracking-wide text-red-200/80">Motivos</p>
-                        <ul className="mt-2 space-y-1 text-xs text-red-100/80">
-                          {l._blockedReasons.slice(0, 5).map((r) => (
-                            <li key={r} className="flex items-start gap-2">
-                              <X className="h-4 w-4 mt-0.5 opacity-90" />
-                              <span>{r}</span>
-                            </li>
-                          ))}
+                        <ul className="space-y-1 text-xs text-red-100/80">
+                          {l._blockedReasons.slice(0, 5).map((r) => <li key={r} className="flex items-start gap-2"><X className="h-4 w-4 mt-0.5 opacity-90" /><span>{r}</span></li>)}
                         </ul>
                       </div>
-
-                      <p className="mt-3 text-[10px] text-white/35 font-mono">placeId: {l.placeId}</p>
+                      <button onClick={() => { setManualOverrides(prev => ({ ...prev, [l.placeId]: !prev[l.placeId] })); showToast("ok", "Lead resgatado!"); }} className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-medium text-white hover:bg-white/10 transition">
+                        <Unlock className="h-3 w-3 text-emerald-400" /> Resgatar Manualmente
+                      </button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-          ) : null}
-
-          {/* LOGS */}
-          <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
-            <SectionHeader
-              title="Logs de operação"
-              subtitle="Auditoria da rodada (debug rápido estilo SaaS)."
-              icon={<RefreshCcw className="h-4 w-4" />}
-              right={
-                <button
-                  onClick={() => setLogs([])}
-                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Limpar logs
-                </button>
-              }
-            />
-            <Divider />
-
-            {logs.length === 0 ? (
-              <p className="text-sm text-white/45">Nenhum log ainda.</p>
-            ) : (
-              <div className="space-y-2">
-                {logs.map((l, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70"
-                  >
-                    {l}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* FOOTER NOTE */}
-          <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-5 text-sm text-blue-100">
-            <div className="flex items-start gap-3">
-              <Sparkles className="h-5 w-5 mt-0.5" />
-              <div className="leading-relaxed">
-                <b>Operação recomendada:</b> rode 10–20 válidos por cidade, salve só os <b>quentes</b>, faça diagnóstico e mande as mensagens manualmente.
-                <div className="mt-1 text-blue-100/80">
-                  Depois nós plugamos o n8n para disparos automáticos usando os campos <b>score</b> e <b>heat</b>.
-                </div>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
-
-      {/* bottom spacing */}
       <div className="h-6" />
     </div>
   );

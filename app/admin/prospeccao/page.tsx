@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext"; // <--- IMPORTAMOS O CONTEXTO AQUI
 import {
   collection,
   deleteDoc,
@@ -9,6 +10,10 @@ import {
   onSnapshot,
   orderBy,
   query,
+  where,
+  writeBatch, // <--- NOVO: Para distribuição em massa
+  getDocs,    // <--- NOVO: Para buscar vendedores
+  serverTimestamp // <--- NOVO: Para marcar data da distribuição
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
 import {
@@ -24,20 +29,21 @@ import {
   User,
   Tags,
   CheckCircle2,
-  Sparkles,
-  Filter,
-  X,
-  RefreshCcw,
-  Calendar,
   BadgeCheck,
   ShieldCheck,
   Phone,
   Layers,
   BarChart3,
+  Sparkles,
+  Filter,
+  X,
+  RefreshCcw,
+  Calendar,
+  Lock // <--- Ícone novo para indicar segurança
 } from "lucide-react";
 
 /* ======================================================
-   TIPOS (compatível com /admin/prospeccao/[id])
+   TIPOS
 ====================================================== */
 
 type LeadStatus =
@@ -71,9 +77,10 @@ interface Lead {
   status?: LeadStatus;
 
   // CRM do /[id]
-  stage?: string; // salva StageKey como string no seu código
+  stage?: string;
   stageTags?: string[];
-  owner?: string;
+  owner?: string; // Nome visual (ex: "João")
+  ownerId?: string; // <--- O CAMPO CHAVE PARA O FILTRO FUNCIONAR
   priority?: Priority;
 
   notes?: string;
@@ -323,6 +330,9 @@ type SortKey =
   | "contact_desc";
 
 export default function ProspeccaoCRMPage() {
+  // --- AUTH & SEGURANÇA ---
+  const { user, profile, isAdmin, loading: authLoading } = useAuth();
+
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -348,11 +358,91 @@ export default function ProspeccaoCRMPage() {
   const [deleting, setDeleting] = useState(false);
 
   /* ======================================================
-     FETCH
+      FETCH (A GRANDE MUDANÇA ESTÁ AQUI)
   ====================================================== */
+// --- NOVOS ESTADOS PARA O SAAS ---
+  const [distributing, setDistributing] = useState(false);
+  const [sellers, setSellers] = useState<{id: string, name: string}[]>([]);
 
+  // Buscar vendedores ativos (Somente se for Admin)
   useEffect(() => {
-    const q = query(collection(db, "leads"), orderBy("createdAt", "desc"));
+    if (isAdmin) {
+      const q = query(collection(db, "users"), where("status", "==", "active"));
+      getDocs(q).then((snap) => {
+        const s = snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as any))
+          .filter(u => u.role !== 'admin'); // Tira o admin da roleta
+        setSellers(s);
+      });
+    }
+  }, [isAdmin]);
+
+  // FUNÇÃO: Roleta de Distribuição (Round-Robin)
+  const handleAutoDistribute = async () => {
+    // 1. Identificar leads sem dono
+    const orphans = leads.filter(l => !l.ownerId);
+    if (orphans.length === 0) return alert("Não há leads sem dono para distribuir!");
+    if (sellers.length === 0) return alert("Não há vendedores ativos na equipe!");
+
+    if (!confirm(`Distribuir ${orphans.length} leads entre ${sellers.length} vendedores?`)) return;
+
+    setDistributing(true);
+    try {
+      const batch = writeBatch(db);
+      let sellerIndex = 0;
+
+      orphans.forEach((lead) => {
+        const seller = sellers[sellerIndex];
+        const ref = doc(db, "leads", lead.id);
+        
+        batch.update(ref, {
+          ownerId: seller.id,
+          owner: seller.name, // Nome visual
+          updatedAt: serverTimestamp(),
+          // Opcional: Adicionar nota de sistema
+          notes: lead.notes ? lead.notes + `\n[Sistema] Atribuído para ${seller.name}` : `[Sistema] Atribuído para ${seller.name}`
+        });
+
+        // Gira a roleta
+        sellerIndex = (sellerIndex + 1) % sellers.length;
+      });
+
+      await batch.commit();
+      alert("Distribuição concluída com sucesso!");
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao distribuir leads.");
+    } finally {
+      setDistributing(false);
+    }
+  };
+  useEffect(() => {
+    // 1. Espera o Auth carregar para saber quem é o usuário
+    if (authLoading) return;
+
+    if (!user) {
+        setLoading(false);
+        return;
+    }
+
+    // 2. Define a Query baseada no Cargo
+    let q;
+    const leadsRef = collection(db, "leads");
+
+    if (isAdmin) {
+        // ADMIN (Savio): Vê tudo
+        q = query(leadsRef, orderBy("createdAt", "desc"));
+    } else {
+        // VENDEDOR: Vê apenas os leads DELE (pelo ID)
+        // OBS: Se der erro de índice no console, clique no link que o Firebase fornece.
+        // O Firebase exige índice composto para where(ownerId) + orderBy(createdAt)
+        q = query(
+            leadsRef, 
+            where("ownerId", "==", user.uid), 
+            orderBy("createdAt", "desc")
+        );
+    }
+
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -363,14 +453,18 @@ export default function ProspeccaoCRMPage() {
         setLeads(docs);
         setLoading(false);
       },
-      () => setLoading(false)
+      (error) => {
+        console.error("Erro ao buscar leads:", error);
+        // Fallback simples se der erro de permissão ou índice
+        setLoading(false);
+      }
     );
 
     return () => unsub();
-  }, []);
+  }, [user, isAdmin, authLoading]);
 
   /* ======================================================
-     MÉTRICAS (TOPO)
+      MÉTRICAS (TOPO)
   ====================================================== */
 
   const metrics = useMemo(() => {
@@ -402,7 +496,7 @@ export default function ProspeccaoCRMPage() {
   }, [leads, showDiscarded]);
 
   /* ======================================================
-     FILTRAGEM + ORDENAR
+      FILTRAGEM + ORDENAR
   ====================================================== */
 
   const filtered = useMemo(() => {
@@ -525,7 +619,7 @@ export default function ProspeccaoCRMPage() {
   ]);
 
   /* ======================================================
-     HELPERS (ações)
+      HELPERS (ações)
   ====================================================== */
 
   function openWhatsApp(phone?: string) {
@@ -587,7 +681,7 @@ export default function ProspeccaoCRMPage() {
   ]);
 
   /* ======================================================
-     UI
+      UI
   ====================================================== */
 
   return (
@@ -597,18 +691,31 @@ export default function ProspeccaoCRMPage() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-white/60">
-              <ShieldCheck className="h-4 w-4" />
-              ALTUM • Painel Operacional
+              <ShieldCheck className="h-4 w-4 text-emerald-500" />
+              {isAdmin ? "MODO DEUS (ADMIN)" : `MODO ${profile?.role?.toUpperCase() || "VENDEDOR"}`}
             </div>
             <h1 className="mt-3 text-3xl font-semibold tracking-wide">
               Prospecção / CRM
             </h1>
             <p className="mt-1 text-sm text-white/50">
-              Controle total do funil: priorize, ataque, qualifique, converta.
+                {isAdmin 
+                    ? "Visão global de todos os leads da Altum." 
+                    : "Estes são os leads atribuídos a você. Foque neles."}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* BOTÃO DE ADMIN: DISTRIBUIR LEADS */}
+            {isAdmin && leads.some(l => !l.ownerId) && (
+               <button
+                 onClick={handleAutoDistribute}
+                 disabled={distributing}
+                 className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] text-emerald-400 hover:bg-emerald-500/20 transition animate-pulse"
+               >
+                 {distributing ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4" />}
+                 Distribuir {leads.filter(l => !l.ownerId).length} Pendentes
+               </button>
+            )}
             <Pill
               tone="warning"
               active={queueMode === "atacar_agora"}
@@ -673,7 +780,7 @@ export default function ProspeccaoCRMPage() {
 
         {/* KPIs */}
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard icon={<BarChart3 className="h-5 w-5" />} label="Total" value={`${metrics.total}`} sub="Leads ativos no painel" />
+          <StatCard icon={<BarChart3 className="h-5 w-5" />} label="Total Visível" value={`${metrics.total}`} sub={isAdmin ? "Todos os leads" : "Seus leads"} />
           <StatCard icon={<Sparkles className="h-5 w-5" />} label="Novos" value={`${metrics.novos}`} sub="Ainda não trabalhados" />
           <StatCard icon={<Phone className="h-5 w-5" />} label="Nunca contatados" value={`${metrics.nuncaContatado}`} sub="Sem lastContactAt" />
           <StatCard icon={<Layers className="h-5 w-5" />} label="Sem estágio" value={`${metrics.semStage}`} sub="Precisa de diagnóstico" />
@@ -854,16 +961,20 @@ export default function ProspeccaoCRMPage() {
       {loading ? (
         <div className="flex items-center gap-2 text-white/60">
           <Loader2 className="h-5 w-5 animate-spin" />
-          Carregando leads...
+          Carregando leads com segurança...
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 text-center">
           <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/70">
             <Search className="h-5 w-5" />
           </div>
-          <h3 className="mt-3 text-lg font-semibold text-white/85">Nenhum lead encontrado</h3>
+          <h3 className="mt-3 text-lg font-semibold text-white/85">
+              {isAdmin ? "Nenhum lead encontrado" : "Você não tem leads atribuídos ainda"}
+          </h3>
           <p className="mt-1 text-sm text-white/50">
-            Ajuste os filtros ou limpe a busca para ver os leads novamente.
+            {isAdmin 
+                ? "Ajuste os filtros ou limpe a busca." 
+                : "Peça ao administrador para distribuir leads para sua conta."}
           </p>
           <div className="mt-4 flex justify-center">
             <button
@@ -881,6 +992,7 @@ export default function ProspeccaoCRMPage() {
             <LeadCard
               key={l.id}
               lead={l}
+              isAdmin={isAdmin} // Passamos se é admin para controlar o botão de delete
               onOpenWhatsApp={() => openWhatsApp(l.telefone)}
               onDelete={() => setDeleteTarget(l)}
             />
@@ -946,10 +1058,12 @@ export default function ProspeccaoCRMPage() {
 
 function LeadCard({
   lead,
+  isAdmin,
   onOpenWhatsApp,
   onDelete,
 }: {
   lead: Lead;
+  isAdmin: boolean;
   onOpenWhatsApp: () => void;
   onDelete: () => void;
 }) {
@@ -1000,13 +1114,16 @@ function LeadCard({
           </div>
         </div>
 
-        <button
-          onClick={onDelete}
-          className="rounded-2xl border border-red-500/20 bg-red-500/10 p-2 text-red-100 opacity-90 hover:opacity-100 hover:bg-red-500/15 transition"
-          title="Excluir lead"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        {/* SÓ ADMIN PODE DELETAR */}
+        {isAdmin && (
+            <button
+            onClick={onDelete}
+            className="rounded-2xl border border-red-500/20 bg-red-500/10 p-2 text-red-100 opacity-90 hover:opacity-100 hover:bg-red-500/15 transition"
+            title="Excluir lead"
+            >
+            <Trash2 className="h-4 w-4" />
+            </button>
+        )}
       </div>
 
       {/* BODY */}

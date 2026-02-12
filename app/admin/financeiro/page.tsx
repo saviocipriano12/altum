@@ -1,565 +1,440 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  collection,
-  addDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  serverTimestamp,
-} from "firebase/firestore";
+import { useAuth } from "@/context/AuthContext";
 import { db } from "@/firebaseConfig";
 import {
-  Plus,
-  Search,
-  Loader2,
-  ArrowRight,
-  DollarSign,
-  Calendar,
-  CreditCard,
-  AlertTriangle,
-  UserCircle2,
-  Target,
-  TrendingUp,
+  collection, addDoc, onSnapshot, query, orderBy, 
+  serverTimestamp, where, doc, updateDoc, deleteDoc, getDocs
+} from "firebase/firestore";
+import {
+  TrendingUp, ArrowDownRight, Loader2, ShieldCheck, PieChart, 
+  Zap, Plus, X, Calculator, Users, HandCoins, Search, Trash2, 
+  Briefcase, Receipt, Eye, EyeOff, Calendar, CheckCircle2, History
 } from "lucide-react";
-import Link from "next/link";
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, 
+  Tooltip, ResponsiveContainer 
+} from 'recharts';
 
-type LancamentoStatus = "Em dia" | "Pendente" | "Atrasado" | "Cancelado";
-type LancamentoTipo = "Mensalidade" | "Projeto único" | "Setup" | "Outro";
+/* ======================================================
+   CONFIGURAÇÕES E TIPAGENS
+====================================================== */
+type FinStatus = "pago" | "pendente" | "atrasado" | "cancelado";
+type FinTipo = "Receita" | "Despesa";
+type Categoria = "Mensalidade" | "Projeto" | "Setup" | "Infra/API" | "Imposto" | "Marketing" | "Outros";
 
-interface ClienteOption {
+interface Transaction {
   id: string;
-  name: string;
-}
-
-interface ProjetoOption {
-  id: string;
-  titulo: string;
-  clientName: string;
-}
-
-interface Lancamento {
-  id: string;
-  clientId: string;
-  clientName: string;
-  projectId?: string | null;
-  projectTitle?: string | null;
-  tipo: LancamentoTipo;
-  status: LancamentoStatus;
+  descricao: string;
   valor: number;
-  referencia?: string; // ex: "Jan/2026", "Setup Site", etc
-  vencimento?: string; // string livre por enquanto
-  meioPagamento?: string;
-  createdAt?: any;
-  dataPagamento?: any | null;
+  valorComissao: number;
+  vendedorId: string;
+  vendedorNome: string;
+  status: FinStatus;
+  payoutStatus?: "pendente" | "liquidado";
+  tipo: FinTipo;
+  categoria: Categoria;
+  referencia: string;
+  vencimento: string;
+  createdAt: any;
 }
 
-const STATUS_OPTIONS: LancamentoStatus[] = [
-  "Em dia",
-  "Pendente",
-  "Atrasado",
-  "Cancelado",
-];
+const money = (v: number) => (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const cx = (...classes: any[]) => classes.filter(Boolean).join(" ");
 
-const TIPO_OPTIONS: LancamentoTipo[] = [
-  "Mensalidade",
-  "Projeto único",
-  "Setup",
-  "Outro",
-];
-
-export default function FinanceiroPage() {
-  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
-  const [clientes, setClientes] = useState<ClienteOption[]>([]);
-  const [projetos, setProjetos] = useState<ProjetoOption[]>([]);
+export default function FinanceiroMasterPage() {
+  const { user, isAdmin } = useAuth();
+  
+  const [data, setData] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const [activeTab, setActiveTab] = useState<"resumo" | "vendas" | "contas" | "equipe">("resumo");
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [sellers, setSellers] = useState<{id: string, name: string}[]>([]);
   const [search, setSearch] = useState("");
+  const [hideValues, setHideValues] = useState(false);
 
   const [form, setForm] = useState({
-    clientId: "",
-    projectId: "",
-    tipo: "Mensalidade" as LancamentoTipo,
-    status: "Pendente" as LancamentoStatus,
+    descricao: "",
     valor: "",
-    referencia: "",
-    vencimento: "",
-    meioPagamento: "",
+    comissaoPercent: "10",
+    vendedorId: "",
+    tipo: "Receita" as FinTipo,
+    categoria: "Mensalidade" as Categoria,
+    status: "pendente" as FinStatus,
+    vencimento: new Date().toISOString().split('T')[0],
+    referencia: ""
   });
 
-  // Carrega clientes
+  // 1. CARREGAMENTO COM REGRA DE NEGÓCIO
   useEffect(() => {
-    const q = query(collection(db, "clientes"), orderBy("name", "asc"));
+    if (!user) return;
+    const ref = collection(db, "financeiro");
+    
+    // Admin vê o macro / Vendedor vê apenas seu micro
+    const q = isAdmin 
+      ? query(ref, orderBy("createdAt", "desc"))
+      : query(ref, where("vendedorId", "==", user.uid), orderBy("createdAt", "desc"));
 
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs: ClienteOption[] = snap.docs.map((d) => ({
-          id: d.id,
-          name: (d.data() as any).name || "Cliente sem nome",
-        }));
-        setClientes(docs);
-      },
-      (err) => {
-        console.error("Erro ao carregar clientes para financeiro:", err);
-      }
-    );
-
-    return () => unsub();
-  }, []);
-
-  // Carrega projetos
-  useEffect(() => {
-    const q = query(collection(db, "projetos"), orderBy("createdAt", "desc"));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs: ProjetoOption[] = snap.docs.map((d) => {
-          const data = d.data() as any;
-          return {
-            id: d.id,
-            titulo: data.titulo || "Projeto",
-            clientName: data.clientName || "Cliente",
-          };
-        });
-        setProjetos(docs);
-      },
-      (err) => {
-        console.error("Erro ao carregar projetos para financeiro:", err);
-      }
-    );
-
-    return () => unsub();
-  }, []);
-
-  // Carrega lançamentos financeiros
-  useEffect(() => {
-    const q = query(collection(db, "financeiro"), orderBy("createdAt", "desc"));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs: Lancamento[] = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<Lancamento, "id">),
-        }));
-        setLancamentos(docs);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Erro ao carregar financeiro:", err);
-        setLoading(false);
-      }
-    );
-
-    return () => unsub();
-  }, []);
-
-  const filteredLancamentos = useMemo(() => {
-    if (!search.trim()) return lancamentos;
-    const term = search.toLowerCase();
-    return lancamentos.filter((l) => {
-      return (
-        l.clientName.toLowerCase().includes(term) ||
-        (l.projectTitle || "").toLowerCase().includes(term) ||
-        (l.referencia || "").toLowerCase().includes(term)
-      );
+    const unsub = onSnapshot(q, (snap) => {
+      setData(snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction)));
+      setLoading(false);
     });
-  }, [lancamentos, search]);
 
-  // KPIs
-  const totalPendente = lancamentos
-    .filter((l) => l.status === "Pendente" || l.status === "Atrasado")
-    .reduce((sum, l) => sum + (l.valor || 0), 0);
+    if (isAdmin) {
+      getDocs(collection(db, "users")).then(snap => {
+        setSellers(snap.docs.map(d => ({ id: d.id, name: d.data().name || "Sem Nome" })));
+      });
+    }
+    return () => unsub();
+  }, [user, isAdmin]);
 
-  const totalEmDia = lancamentos
-    .filter((l) => l.status === "Em dia")
-    .reduce((sum, l) => sum + (l.valor || 0), 0);
+  // 2. MOTOR DE CÁLCULO SaaS
+  const stats = useMemo(() => {
+    const receitas = data.filter(t => t.tipo === "Receita" && t.status === "pago");
+    const despesas = data.filter(t => t.tipo === "Despesa" && t.status === "pago");
+    
+    const faturamentoBruto = receitas.reduce((acc, t) => acc + t.valor, 0);
+    const custoFixo = despesas.reduce((acc, t) => acc + t.valor, 0);
+    const comissoesTotais = receitas.reduce((acc, t) => acc + (t.valorComissao || 0), 0);
 
-  const atrasados = lancamentos.filter((l) => l.status === "Atrasado").length;
+    const mrr = data
+      .filter(t => t.categoria === "Mensalidade" && t.status === "pago")
+      .reduce((acc, t) => acc + t.valor, 0);
 
-  async function handleCreateLancamento(e: React.FormEvent) {
+    const pendentePayout = data
+      .filter(t => t.tipo === "Receita" && t.status === "pago" && t.payoutStatus !== "liquidado")
+      .reduce((acc, t) => acc + (t.valorComissao || 0), 0);
+
+    return {
+      principal: isAdmin ? faturamentoBruto : comissoesTotais,
+      custoFixo,
+      mrr,
+      lucroLiquido: faturamentoBruto - custoFixo - comissoesTotais,
+      pendentePayout
+    };
+  }, [data, isAdmin]);
+
+  // 3. HANDLERS (AÇÕES)
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.clientId) return;
-    if (!form.valor.trim()) return;
-
+    setSaving(true);
     try {
-      setCreating(true);
-
-      const clienteSelecionado = clientes.find(
-        (c) => c.id === form.clientId
-      );
-
-      const projetoSelecionado = form.projectId
-        ? projetos.find((p) => p.id === form.projectId)
-        : undefined;
-
-      const valorNumber = Number(form.valor.replace(",", "."));
+      const v = parseFloat(form.valor);
+      const c = form.tipo === "Receita" ? (v * parseFloat(form.comissaoPercent)) / 100 : 0;
+      const vend = sellers.find(s => s.id === form.vendedorId);
 
       await addDoc(collection(db, "financeiro"), {
-        clientId: form.clientId,
-        clientName: clienteSelecionado?.name || "Cliente",
-        projectId: form.projectId || null,
-        projectTitle: projetoSelecionado ? projetoSelecionado.titulo : null,
-        tipo: form.tipo,
-        status: form.status,
-        valor: valorNumber,
-        referencia: form.referencia.trim() || null,
-        vencimento: form.vencimento.trim() || null,
-        meioPagamento: form.meioPagamento.trim() || null,
-        createdAt: serverTimestamp(),
-        dataPagamento: null,
+        ...form,
+        valor: v,
+        valorComissao: c,
+        vendedorNome: vend?.name || (isAdmin ? "Agência" : user?.displayName),
+        vendedorId: form.vendedorId || user?.uid,
+        payoutStatus: "pendente",
+        createdAt: serverTimestamp()
       });
+      setIsModalOpen(false);
+      setForm({ ...form, descricao: "", valor: "", referencia: "" });
+    } catch (e) { console.error(e); } finally { setSaving(false); }
+  };
 
-      setForm({
-        clientId: "",
-        projectId: "",
-        tipo: "Mensalidade",
-        status: "Pendente",
-        valor: "",
-        referencia: "",
-        vencimento: "",
-        meioPagamento: "",
-      });
-    } catch (err) {
-      console.error("Erro ao criar lançamento financeiro:", err);
-    } finally {
-      setCreating(false);
+  const handleUpdateStatus = async (id: string, s: FinStatus) => {
+    await updateDoc(doc(db, "financeiro", id), { status: s });
+  };
+
+  const handleTogglePayout = async (id: string, current: string) => {
+    await updateDoc(doc(db, "financeiro", id), { 
+      payoutStatus: current === "liquidado" ? "pendente" : "liquidado" 
+    });
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm("Deseja remover este registro permanentemente?")) {
+        await deleteDoc(doc(db, "financeiro", id));
     }
-  }
+  };
+
+  if (loading) return <div className="h-screen flex items-center justify-center bg-black"><Loader2 className="animate-spin text-white/20" size={50}/></div>;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-wide">Financeiro</h1>
-          <p className="text-sm text-white/60">
-            Visão financeira da ALTUM: mensalidades, projetos únicos, setups e status das cobranças.
-          </p>
+    <div className="min-h-screen bg-[#050505] text-white p-6 lg:p-12 font-sans selection:bg-blue-500/20">
+      
+      {/* HEADER */}
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+             <div className={cx("px-4 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border", 
+                isAdmin ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20")}>
+                {isAdmin ? "Authority System" : "Consultor Altum"}
+             </div>
+             <button onClick={() => setHideValues(!hideValues)} className="text-white/10 hover:text-white transition">
+                {hideValues ? <EyeOff size={18}/> : <Eye size={18}/>}
+             </button>
+          </div>
+          <h1 className="text-7xl lg:text-8xl font-black tracking-tighter uppercase italic leading-none">
+            Cofre <span className="text-white/10">Altum</span>
+          </h1>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-wide text-emerald-200">
-                Recebido
-              </span>
-              <TrendingUp className="h-3 w-3 text-emerald-300" />
-            </div>
-            <p className="mt-1 text-sm font-semibold text-emerald-100">
-              {totalEmDia.toLocaleString("pt-BR", {
-                style: "currency",
-                currency: "BRL",
-                maximumFractionDigits: 0,
-              })}
-            </p>
-          </div>
-          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-wide text-amber-100">
-                Em aberto
-              </span>
-              <DollarSign className="h-3 w-3 text-amber-200" />
-            </div>
-            <p className="mt-1 text-sm font-semibold text-amber-50">
-              {totalPendente.toLocaleString("pt-BR", {
-                style: "currency",
-                currency: "BRL",
-                maximumFractionDigits: 0,
-              })}
-            </p>
-          </div>
-          <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-wide text-red-100">
-                Atrasados
-              </span>
-              <AlertTriangle className="h-3 w-3 text-red-200" />
-            </div>
-            <p className="mt-1 text-sm font-semibold text-red-50">
-              {atrasados}
-            </p>
-          </div>
-        </div>
+        {isAdmin && (
+           <button onClick={() => setIsModalOpen(true)} className="bg-white text-black font-black px-10 py-5 rounded-full transition hover:bg-zinc-200 flex items-center gap-3 shadow-2xl active:scale-95 text-xs uppercase tracking-widest">
+             <Plus size={20} strokeWidth={4}/> Novo Lançamento
+           </button>
+        )}
       </div>
 
-      {/* Filtro + criação */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Busca */}
-        <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/60">
-            Buscar lançamento
-          </p>
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-sm text-white/80">
-            <Search size={16} className="text-white/40" />
-            <input
-              placeholder="Cliente, projeto ou referência"
-              className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+      {/* MÉTRICAS DE IMPACTO */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatBox label={isAdmin ? "Faturamento Bruto" : "Comissões Confirmadas"} valor={hideValues ? "****" : money(stats.principal)} sub="Vendas Pagas" cor="text-white" icone={<TrendingUp size={16}/>}/>
+          {isAdmin ? (
+            <StatBox label="Despesas Fixas" valor={hideValues ? "****" : `-${money(stats.custoFixo)}`} sub="Infra + APIs" cor="text-white/40" icone={<ArrowDownRight size={16}/>}/>
+          ) : (
+            <StatBox label="Recorrência" valor={hideValues ? "****" : money(stats.mrr)} sub="Carteira SaaS" cor="text-white" icone={<Zap size={16}/>}/>
+          )}
+          <StatBox label="MRR Ativo" valor={hideValues ? "****" : money(stats.mrr)} sub="Recorrência Mensal" cor="text-white" icone={<History size={16}/>}/>
+          <StatBox label={isAdmin ? "Lucro Líquido" : "Saldo Disponível"} valor={hideValues ? "****" : (isAdmin ? money(stats.lucroLiquido) : money(stats.principal))} sub="Líquido Real" cor="text-white" icone={<Calculator size={16}/>} destaque />
+      </div>
+
+      {/* NAVEGAÇÃO SaaS */}
+      <div className="max-w-7xl mx-auto mt-20">
+        <div className="flex gap-10 border-b border-white/5 pb-4 overflow-x-auto scrollbar-hide">
+            <NavTab active={activeTab === "resumo"} click={() => setActiveTab("resumo")} label="Estatísticas BI"/>
+            <NavTab active={activeTab === "vendas"} click={() => setActiveTab("vendas")} label="Receitas / Vendas"/>
+            {isAdmin && <NavTab active={activeTab === "contas"} click={() => setActiveTab("contas")} label="Saídas / Despesas"/>}
+            {isAdmin && <NavTab active={activeTab === "equipe"} click={() => setActiveTab("equipe")} label="Gestão de Time"/>}
         </div>
 
-        {/* Novo lançamento */}
-        <form
-          onSubmit={handleCreateLancamento}
-          className="rounded-xl border border-white/10 bg-[#111111] p-4"
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">
-              Novo lançamento financeiro
-            </p>
-            <span className="text-[11px] text-white/40">
-              MVP • depois conectamos automações
-            </span>
-          </div>
-
-          <div className="grid gap-2 md:grid-cols-2">
-            {/* Cliente */}
-            <select
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
-              value={form.clientId}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, clientId: e.target.value }))
-              }
-            >
-              <option value="">Selecione um cliente *</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-
-            {/* Projeto opcional */}
-            <select
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
-              value={form.projectId}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, projectId: e.target.value }))
-              }
-            >
-              <option value="">Vincular a um projeto (opcional)</option>
-              {projetos.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.titulo} • {p.clientName}
-                </option>
-              ))}
-            </select>
-
-            {/* Tipo */}
-            <select
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
-              value={form.tipo}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  tipo: e.target.value as LancamentoTipo,
-                }))
-              }
-            >
-              {TIPO_OPTIONS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-
-            {/* Status */}
-            <select
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
-              value={form.status}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  status: e.target.value as LancamentoStatus,
-                }))
-              }
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-
-            {/* Valor */}
-            <div className="flex items-center gap-2 rounded-lg bg-black/50 px-3 py-2 border border-white/10">
-              <DollarSign size={14} className="text-white/40" />
-              <input
-                className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
-                placeholder="Valor (ex: 1500)"
-                value={form.valor}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, valor: e.target.value }))
-                }
-              />
-            </div>
-
-            {/* Referência */}
-            <input
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
-              placeholder="Referência (ex: Jan/2026, Setup Site)"
-              value={form.referencia}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, referencia: e.target.value }))
-              }
-            />
-
-            {/* Vencimento */}
-            <div className="flex items-center gap-2 rounded-lg bg-black/50 px-3 py-2 border border-white/10">
-              <Calendar size={14} className="text-white/40" />
-              <input
-                className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
-                placeholder="Vencimento (ex: 10/01/2026)"
-                value={form.vencimento}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, vencimento: e.target.value }))
-                }
-              />
-            </div>
-
-            {/* Meio de pagamento */}
-            <div className="flex items-center gap-2 rounded-lg bg-black/50 px-3 py-2 border border-white/10 md:col-span-2">
-              <CreditCard size={14} className="text-white/40" />
-              <input
-                className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
-                placeholder="Meio de pagamento (ex: Pix, Cartão, Boleto)"
-                value={form.meioPagamento}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, meioPagamento: e.target.value }))
-                }
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={creating}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium hover:bg-blue-500 transition disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {creating ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                Salvando...
-              </>
-            ) : (
-              <>
-                <Plus size={14} />
-                Salvar lançamento
-              </>
+        {/* CONTEÚDO DINÂMICO */}
+        <div className="mt-12">
+            {activeTab === "resumo" && <ResumoVisual transactions={data} />}
+            
+            {(activeTab === "vendas" || activeTab === "contas") && (
+                <div className="space-y-8 animate-in fade-in duration-500">
+                    <div className="relative max-w-sm">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={18}/>
+                        <input placeholder="Filtrar lançamentos..." className="w-full bg-transparent border border-white/10 rounded-full py-3 pl-12 pr-4 text-xs focus:border-white/30 transition outline-none" value={search} onChange={e => setSearch(e.target.value)}/>
+                    </div>
+                    <TabelaFinanceira 
+                        lista={data.filter(t => {
+                            const match = (t.descricao || "").toLowerCase().includes(search.toLowerCase());
+                            const tipo = activeTab === "vendas" ? t.tipo === "Receita" : t.tipo === "Despesa";
+                            return match && tipo;
+                        })}
+                        isAdmin={isAdmin!}
+                        esconderValores={hideValues}
+                        onUpdateStatus={handleUpdateStatus}
+                        onDelete={handleDelete}
+                    />
+                </div>
             )}
-          </button>
-        </form>
+
+            {activeTab === "equipe" && isAdmin && (
+                <ModuloEquipe lista={data} pendente={stats.pendentePayout} onTogglePayout={handleTogglePayout}/>
+            )}
+        </div>
       </div>
 
-      {/* Lista de lançamentos */}
-      <div className="space-y-3">
-        {loading && (
-          <div className="flex items-center gap-2 text-sm text-white/60">
-            <Loader2 size={16} className="animate-spin" />
-            Carregando financeiro...
-          </div>
-        )}
-
-        {!loading && filteredLancamentos.length === 0 && (
-          <p className="text-sm text-white/50">
-            Nenhum lançamento encontrado. Crie o primeiro usando o formulário acima.
-          </p>
-        )}
-
-        {filteredLancamentos.map((l) => {
-          const statusStyles =
-            l.status === "Em dia"
-              ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/40"
-              : l.status === "Pendente"
-              ? "bg-amber-500/10 text-amber-300 border border-amber-500/40"
-              : l.status === "Atrasado"
-              ? "bg-red-500/10 text-red-300 border border-red-500/40"
-              : "bg-white/5 text-white/60 border border-white/20";
-
-          return (
-            <div
-              key={l.id}
-              className="rounded-xl border border-white/10 bg-[#101010] p-4 hover:border-blue-500/60 transition"
-            >
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                {/* Esquerda */}
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-base font-semibold text-white/90">
-                      {l.referencia || l.tipo}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${statusStyles}`}
-                    >
-                      {l.status}
-                    </span>
-                    <span className="rounded-full px-2 py-0.5 text-[10px] border border-white/10 bg-white/5 text-white/70">
-                      {l.tipo}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-white/70">
-                    <span className="inline-flex items-center gap-1">
-                      <UserCircle2 size={14} className="text-white/40" />
-                      {l.clientName}
-                    </span>
-                    {l.projectTitle && (
-                      <span className="inline-flex items-center gap-1">
-                        <Target size={14} className="text-white/40" />
-                        {l.projectTitle}
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-1">
-                      <DollarSign size={14} className="text-white/40" />
-                      {l.valor.toLocaleString("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                        maximumFractionDigits: 0,
-                      })}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60 mt-1">
-                    {l.vencimento && (
-                      <span className="inline-flex items-center gap-1">
-                        <Calendar size={13} className="text-white/40" />
-                        Vencimento: {l.vencimento}
-                      </span>
-                    )}
-                    {l.meioPagamento && (
-                      <span className="inline-flex items-center gap-1">
-                        <CreditCard size={13} className="text-white/40" />
-                        {l.meioPagamento}
-                      </span>
-                    )}
-                  </div>
+      {/* MODAL DE LANÇAMENTO (ROBUSTO) */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/98 backdrop-blur-3xl p-6">
+            <form onSubmit={handleSave} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-12 max-w-xl w-full shadow-4xl animate-in zoom-in">
+                <div className="flex justify-between items-center mb-10 text-white">
+                    <h3 className="text-3xl font-black uppercase italic tracking-tighter">Novo Registro</h3>
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="p-3 hover:bg-white/5 rounded-full transition"><X/></button>
                 </div>
-
-                {/* Direita */}
-                <div className="flex flex-col items-start gap-2 text-xs text-white/70 md:items-end">
-                  <span className="inline-flex items-center gap-1 text-[11px] text-white/50">
-                    ID: {l.id.slice(0, 6)}…
-                  </span>
-
-                  <Link
-                    href={`/admin/financeiro/${l.id}`}
-                    className="mt-2 inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] hover:bg-white/10 transition"
-                  >
-                    <span>Ver detalhes</span>
-                    <ArrowRight size={14} />
-                  </Link>
+                <div className="grid grid-cols-2 gap-6 text-white text-xs font-bold uppercase tracking-widest">
+                    <div className="col-span-full">
+                        <label className="text-white/20 mb-2 block">Descrição / Cliente</label>
+                        <input required value={form.descricao} onChange={e => setForm({...form, descricao: e.target.value})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none focus:border-white/20 transition"/>
+                    </div>
+                    <div>
+                        <label className="text-white/20 mb-2 block">Valor Bruto</label>
+                        <input required type="number" step="0.01" value={form.valor} onChange={e => setForm({...form, valor: e.target.value})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none focus:border-white/20 transition"/>
+                    </div>
+                    <div>
+                        <label className="text-white/20 mb-2 block">Tipo</label>
+                        <select value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value as any, categoria: e.target.value === "Receita" ? "Mensalidade" : "Infra/API"})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none appearance-none">
+                            <option value="Receita">Receita (Entrada)</option>
+                            <option value="Despesa">Despesa (Gasto)</option>
+                        </select>
+                    </div>
+                    {form.tipo === "Receita" && (
+                        <>
+                            <div>
+                                <label className="text-white/20 mb-2 block">Vendedor</label>
+                                <select value={form.vendedorId} onChange={e => setForm({...form, vendedorId: e.target.value})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none">
+                                    <option value="">Direto / Admin</option>
+                                    {sellers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-white/20 mb-2 block">Comissão (%)</label>
+                                <input type="number" value={form.comissaoPercent} onChange={e => setForm({...form, comissaoPercent: e.target.value})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none"/>
+                            </div>
+                        </>
+                    )}
+                    <div className="col-span-full pt-6">
+                        <button disabled={saving} className="w-full py-6 bg-white text-black font-black rounded-full hover:bg-zinc-200 transition-all flex items-center justify-center gap-3 shadow-2xl">
+                            {saving ? <Loader2 className="animate-spin" size={16}/> : <CheckCircle2 size={16}/>} Efetivar Operação
+                        </button>
+                    </div>
                 </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            </form>
+        </div>
+      )}
     </div>
   );
+}
+
+/* ======================================================
+   SUB-COMPONENTES (VISUAL PREMIUM)
+====================================================== */
+
+function StatBox({ label, valor, sub, icone, destaque }: any) {
+    return (
+        <div className={cx("p-10 border border-white/5 rounded-3xl relative overflow-hidden transition-all", 
+            destaque ? "bg-white text-black shadow-2xl scale-[1.02]" : "bg-[#0A0A0A]")}>
+            <div className={cx("absolute top-6 right-6 opacity-10", destaque ? "text-black" : "text-white")}>{icone}</div>
+            <p className={cx("text-[10px] font-black uppercase tracking-[0.3em] mb-6", destaque ? "text-black/30" : "text-white/20")}>{label}</p>
+            <h3 className="text-4xl font-black tracking-tighter leading-none">{valor}</h3>
+            <p className={cx("text-[10px] mt-4 font-bold uppercase tracking-widest", destaque ? "text-black/30" : "text-white/5")}>{sub}</p>
+        </div>
+    );
+}
+
+function NavTab({ active, click, label }: any) {
+    return (
+        <button onClick={click} className={cx("text-[11px] font-black uppercase tracking-[0.4em] pb-3 border-b-2 transition-all shrink-0", 
+            active ? "text-white border-white" : "text-white/5 border-transparent hover:text-white/20")}>
+            {label}
+        </button>
+    );
+}
+
+function TabelaFinanceira({ lista, isAdmin, esconderValores, onUpdateStatus, onDelete }: any) {
+    return (
+        <div className="overflow-x-auto border-t border-white/5">
+            <table className="w-full text-left">
+                <thead className="text-[10px] font-black uppercase text-white/10 tracking-[0.2em]">
+                    <tr>
+                        <th className="py-8 pr-4">Timeline</th>
+                        <th className="py-8 pr-4">Identificação</th>
+                        <th className="py-8 pr-4">Montante</th>
+                        <th className="py-8 text-right">Status / Ações</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                    {lista.map((t: Transaction) => (
+                        <tr key={t.id} className="group transition-colors hover:bg-white/[0.01]">
+                            <td className="py-8 pr-4 text-[10px] font-mono text-white/10 italic">{t.vencimento}</td>
+                            <td className="py-8 pr-4">
+                                <p className="text-sm font-black text-white/70 uppercase tracking-tighter group-hover:text-white transition-colors">{t.descricao}</p>
+                                <p className="text-[10px] text-white/10 font-bold uppercase mt-1 tracking-widest">{t.categoria}</p>
+                            </td>
+                            <td className="py-8 pr-4 text-xs font-black">
+                                <span className={t.tipo === "Despesa" ? "text-white/20" : "text-white/80"}>
+                                    {t.tipo === "Despesa" ? "-" : ""}{esconderValores ? "****" : money(t.valor)}
+                                </span>
+                            </td>
+                            <td className="py-8 text-right">
+                                <div className="flex items-center justify-end gap-6">
+                                    {isAdmin ? (
+                                        <select 
+                                            value={t.status} 
+                                            onChange={(e) => onUpdateStatus(t.id, e.target.value as any)}
+                                            className="bg-transparent text-[10px] font-black uppercase outline-none text-white/30 hover:text-white transition cursor-pointer"
+                                        >
+                                            <option value="pago">Finalizado</option>
+                                            <option value="pendente">Aguardando</option>
+                                            <option value="atrasado">Em Atraso</option>
+                                            <option value="cancelado">Cancelado</option>
+                                        </select>
+                                    ) : (
+                                        <span className="text-[10px] font-black uppercase text-white/20">{t.status}</span>
+                                    )}
+                                    {isAdmin && <button onClick={() => onDelete(t.id)} className="opacity-0 group-hover:opacity-100 text-white/10 hover:text-red-500 transition"><Trash2 size={16}/></button>}
+                                </div>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function ModuloEquipe({ lista, pendente, onTogglePayout }: any) {
+    return (
+        <div className="space-y-6 animate-in zoom-in duration-500">
+            <div className="p-12 border border-white/5 bg-[#080808] rounded-[3rem] flex justify-between items-center">
+                <div>
+                    <p className="text-[10px] font-black uppercase text-white/20 tracking-[0.3em]">Payout Acumulado</p>
+                    <h3 className="text-6xl font-black mt-3 tracking-tighter">{money(pendente)}</h3>
+                </div>
+                <HandCoins size={48} className="text-white/5"/>
+            </div>
+
+            <div className="bg-[#0a0a0a] border border-white/5 rounded-[3rem] overflow-hidden">
+                <table className="w-full text-left">
+                    <thead className="bg-white/5 text-[10px] font-black uppercase text-white/20 tracking-widest">
+                        <tr>
+                            <th className="px-10 py-8">Consultor</th>
+                            <th className="px-10 py-8">Comissão</th>
+                            <th className="px-10 py-8 text-right">Liquidação</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                        {lista.filter((t: any) => t.tipo === "Receita" && t.status === "pago").map((t: any) => (
+                            <tr key={t.id}>
+                                <td className="px-10 py-8 font-bold text-white text-xs uppercase">{t.vendedorNome} <br/><span className="text-[9px] text-white/20 font-black tracking-widest">{t.descricao}</span></td>
+                                <td className="px-10 py-8 font-black text-white/80">{money(t.valorComissao)}</td>
+                                <td className="px-10 py-8 text-right">
+                                    <button 
+                                        onClick={() => onTogglePayout(t.id, t.payoutStatus || "pendente")}
+                                        className={cx("px-6 py-2 rounded-full text-[10px] font-black uppercase border transition-all",
+                                            t.payoutStatus === "liquidado" ? "bg-white text-black border-white" : "bg-white/5 text-white/30 border-white/10 hover:border-white/40")}
+                                    >
+                                        {t.payoutStatus === "liquidado" ? "PAGO ✓" : "DAR BAIXA"}
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+function ResumoVisual({ transactions }: any) {
+    const chartData = useMemo(() => {
+        const meses: Record<string, number> = {};
+        transactions.filter((t: any) => t.tipo === "Receita" && t.status === "pago").forEach((t: any) => {
+            const m = new Date(t.vencimento).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+            meses[m] = (meses[m] || 0) + t.valor;
+        });
+        return Object.entries(meses).map(([name, total]) => ({ name, total }));
+    }, [transactions]);
+
+    return (
+        <div className="h-[450px] w-full animate-in fade-in duration-1000">
+            <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                    <defs>
+                        <linearGradient id="noir" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#fff" stopOpacity={0.05}/>
+                            <stop offset="95%" stopColor="#fff" stopOpacity={0}/>
+                        </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff03" vertical={false} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#ffffff10', fontSize: 10, fontWeight: 'bold'}} dy={15} />
+                    <YAxis hide domain={['auto', 'auto']} />
+                    <Tooltip cursor={{stroke: 'white', strokeWidth: 0.5}} contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #ffffff05', borderRadius: '12px' }} />
+                    <Area type="monotone" dataKey="total" stroke="#ffffff10" strokeWidth={1.5} fillOpacity={1} fill="url(#noir)" />
+                </AreaChart>
+            </ResponsiveContainer>
+        </div>
+    );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import ContractModal from "@/components/admin/ContractModal";
 import Link from "next/link";
 import { WhatsAppService } from "@/services/whatsapp";
 import {
@@ -16,7 +17,7 @@ import {
   doc,
   getDocs,
   getDoc,
-  limit, // Adicionado import que faltava
+  limit,
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
 import {
@@ -40,162 +41,115 @@ import {
   X,
   Smile,
   FileText,
-  Target // Adicionado import que faltava
+  Target,
+  Zap,
+  DollarSign,
+  Calendar,
+  Sparkles,
+  TrendingUp,
+  LayoutGrid
 } from "lucide-react";
 
-// --- TIPAGENS ROBUSTAS ---
-
+// --- TIPAGENS ---
 type ChatContact = {
   id: string;
   contactName: string;
-  contactPhone: string; // Ex: 553199999999
+  contactPhone: string;
   photoUrl?: string;
   lastMessage?: string;
   lastMessageTime?: any;
   unreadCount?: number;
-  status: "open" | "archived"; // Controle de inbox zero
-  leadId?: string; // Vínculo crucial com o CRM
-  tags?: string[]; // Ex: "Cliente", "Quente", "Suporte"
-  notes?: string; // Notas internas sobre o contato
+  status: "open" | "archived";
+  leadId?: string;
+  tags?: string[];
+  notes?: string;
 };
 
 type Message = {
   id: string;
   chatId: string;
   text: string;
-  sender: "agent" | "client" | "system"; // System para avisos automáticos
-  type: "text" | "image" | "file" | "template"; // Preparado para futuro
-  fileUrl?: string;
+  sender: "agent" | "client" | "system";
+  type: "text" | "image" | "file" | "template";
   createdAt: any;
   status?: "sent" | "delivered" | "read";
 };
 
-type LeadData = {
-  id: string;
-  nome: string;
-  status: string;
-  pipelineStage: string;
-};
-
 export default function ChatPage() {
-  // Hooks de navegação
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlChatId = searchParams.get("chatId");
-
-  // Estados principais
+  
+  const [isContractOpen, setIsContractOpen] = useState(false);
   const [contacts, setContacts] = useState<ChatContact[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedChat, setSelectedChat] = useState<ChatContact | null>(null);
   
-  // Estados de UI
   const [inputText, setInputText] = useState("");
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [sending, setSending] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [tabFilter, setTabFilter] = useState<"open" | "archived">("open");
-  const [showRightSidebar, setShowRightSidebar] = useState(true); // Painel de contexto
-
-  // Contexto inteligente do Lead
+  const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [leadContext, setLeadContext] = useState<any>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // ---------------------------------------------------------
   // 1. CARREGAMENTO DE DADOS
-  // ---------------------------------------------------------
-
-  // Carregar contatos (Sidebar Esquerda)
   useEffect(() => {
-    // DICA: Crie o índice composto no Firebase se der erro aqui
-    const q = query(
-      collection(db, "chats"), 
-      orderBy("lastMessageTime", "desc")
-    );
-
+    const q = query(collection(db, "chats"), orderBy("lastMessageTime", "desc"));
     const unsub = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      })) as ChatContact[];
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as ChatContact[];
       setContacts(list);
       setLoadingContacts(false);
     });
-
     return () => unsub();
   }, []);
 
-  // Lógica de URL: Se der F5, reabre o chat que estava na URL
   useEffect(() => {
     if (urlChatId && contacts.length > 0 && !selectedChat) {
       const found = contacts.find((c) => c.id === urlChatId);
-      if (found) {
-        handleSelectChat(found);
-      }
+      if (found) handleSelectChat(found);
     }
   }, [urlChatId, contacts]);
 
-  // Carregar mensagens (Centro)
   useEffect(() => {
     if (!selectedChat) return;
-
     const qMsg = query(
       collection(db, "messages"),
       where("chatId", "==", selectedChat.id),
       orderBy("createdAt", "asc")
     );
-
     const unsubMsg = onSnapshot(qMsg, (snapshot) => {
-      const list = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      })) as Message[];
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Message[];
       setMessages(list);
       scrollToBottom();
     });
-
     return () => unsubMsg();
   }, [selectedChat]);
 
-  // --- INTELIGÊNCIA: Buscar Lead Contextual (Lado Direito) ---
   useEffect(() => {
     async function fetchLeadContext() {
       if (!selectedChat?.contactPhone) {
         setLeadContext(null);
         return;
       }
-      
-      // Limpa o numero para buscar (apenas digitos)
       const rawPhone = selectedChat.contactPhone.replace(/\D/g, ""); 
-      
-      // Tenta buscar no banco de leads pelo telefone
-      const q = query(
-          collection(db, "leads"), 
-          where("telefone", "==", rawPhone), 
-          limit(1)
-      );
-      
+      const q = query(collection(db, "leads"), where("telefone", "==", rawPhone), limit(1));
       const snap = await getDocs(q);
       if (!snap.empty) {
-        const leadData = { id: snap.docs[0].id, ...snap.docs[0].data() };
-        setLeadContext(leadData);
+        setLeadContext({ id: snap.docs[0].id, ...snap.docs[0].data() });
       } else {
         setLeadContext(null);
       }
     }
-
     fetchLeadContext();
-  }, [selectedChat]); // Executa toda vez que troca o chat selecionado
+  }, [selectedChat]);
 
-  // ---------------------------------------------------------
-  // 2. AÇÕES E FUNÇÕES
-  // ---------------------------------------------------------
-
+  // 2. FUNÇÕES DE AÇÃO
   function scrollToBottom() {
     setTimeout(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }, 100);
   }
 
@@ -205,73 +159,45 @@ export default function ChatPage() {
   }
 
   async function handleSendMessage(e?: React.FormEvent) {
-  if (e) e.preventDefault();
-  // Validamos se há texto e se há um contato selecionado
-  if (!inputText.trim() || !selectedChat) return;
+    if (e) e.preventDefault();
+    if (!inputText.trim() || !selectedChat) return;
 
-  const text = inputText.trim();
-  const phone = selectedChat.contactPhone; // Pegamos o telefone do chat selecionado
-  
-  setInputText("");
-  setSending(true);
-
-  try {
-    // 2. DISPARO REAL PARA A META
-    // Isso vai enviar a mensagem para o celular do cliente
-    await WhatsAppService.sendMessage(phone, text);
-
-    // 3. SALVAMENTO NO FIREBASE (Histórico local)
-    // Só salvamos se o envio acima não der erro
-    await addDoc(collection(db, "messages"), {
-      chatId: selectedChat.id,
-      text: text,
-      sender: "agent", // Você como agente
-      type: "text",
-      createdAt: serverTimestamp(),
-      status: "sent",
-    });
-
-    // 4. ATUALIZA O STATUS DO CHAT
-    const chatRef = doc(db, "chats", selectedChat.id);
-    await updateDoc(chatRef, {
-      lastMessage: text,
-      lastMessageTime: serverTimestamp(),
-      status: "open",
-    });
-
-    scrollToBottom();
-  } catch (err: any) {
-    console.error("Erro ao enviar mensagem via Meta:", err);
-    alert("Erro no WhatsApp: " + err.message);
-  } finally {
-    setSending(false);
-  }
-}
-
-  async function handleArchiveChat() {
-    if (!selectedChat) return;
-    if (!confirm("Marcar conversa como resolvida/arquivada?")) return;
+    const text = inputText.trim();
+    const phone = selectedChat.contactPhone;
+    setInputText("");
+    setSending(true);
 
     try {
-      await updateDoc(doc(db, "chats", selectedChat.id), {
-        status: "archived"
+      await WhatsAppService.sendMessage(phone, text);
+      await addDoc(collection(db, "messages"), {
+        chatId: selectedChat.id,
+        text,
+        sender: "agent",
+        type: "text",
+        createdAt: serverTimestamp(),
+        status: "sent",
       });
-      alert("Conversa arquivada!");
-      setSelectedChat(null);
-      router.push("/admin/chat");
-    } catch (err) {
+      await updateDoc(doc(db, "chats", selectedChat.id), {
+        lastMessage: text,
+        lastMessageTime: serverTimestamp(),
+        status: "open",
+      });
+      scrollToBottom();
+    } catch (err: any) {
       console.error(err);
+      alert("Erro no WhatsApp: " + err.message);
+    } finally {
+      setSending(false);
     }
   }
 
   async function createLeadFromChat() {
     if (!selectedChat) return;
-    const name = prompt("Nome do Lead:", selectedChat.contactName);
+    const name = prompt("Nome da Empresa/Lead:", selectedChat.contactName);
     if (!name) return;
 
     try {
       const cleanPhone = selectedChat.contactPhone.replace(/\D/g, "");
-      
       const leadRef = await addDoc(collection(db, "leads"), {
         nome: name,
         telefone: cleanPhone,
@@ -280,248 +206,97 @@ export default function ChatPage() {
         pipelineStage: "captado",
         createdAt: serverTimestamp()
       });
-
-      await updateDoc(doc(db, "chats", selectedChat.id), {
-        leadId: leadRef.id,
-        contactName: name
-      });
-
-      alert("Lead criado e vinculado! 🚀");
-      // Atualiza o contexto localmente para aparecer na hora
+      await updateDoc(doc(db, "chats", selectedChat.id), { leadId: leadRef.id, contactName: name });
       setLeadContext({ id: leadRef.id, nome: name, status: "novo", pipelineStage: "captado" });
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  async function createTestChat() {
-    const phone = prompt("Número (ex: 5511999999999):");
-    if (!phone) return;
-    await addDoc(collection(db, "chats"), {
-      contactName: "Novo Contato",
-      contactPhone: phone,
-      lastMessage: "Iniciou conversa",
-      lastMessageTime: serverTimestamp(),
-      unreadCount: 0,
-      status: "open",
-    });
+    } catch (err) { console.error(err); }
   }
 
   const filteredContacts = contacts
     .filter(c => (c.status || "open") === tabFilter)
-    .filter(c => 
-      c.contactName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      c.contactPhone.includes(searchTerm)
-    );
-
-  // ---------------------------------------------------------
-  // 3. RENDERIZAÇÃO
-  // ---------------------------------------------------------
+    .filter(c => c.contactName.toLowerCase().includes(searchTerm.toLowerCase()) || c.contactPhone.includes(searchTerm));
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-[#0a0a0a]">
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-[#050505] font-sans">
       
-      {/* === COLUNA 1: LISTA DE CONTATOS === */}
-      <div className={`w-full md:w-[320px] lg:w-[360px] flex flex-col border-r border-white/10 bg-[#0E0E0E] shrink-0 ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
-        
-        {/* Header Lista */}
-        <div className="h-16 px-4 border-b border-white/10 flex items-center justify-between shrink-0">
-          <div className="flex gap-4 text-sm font-medium">
-            <button 
-              onClick={() => setTabFilter("open")}
-              className={`relative py-5 transition ${tabFilter === "open" ? "text-white" : "text-white/40 hover:text-white/70"}`}
-            >
-              Abertos
-              {tabFilter === "open" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-t-full"/>}
-            </button>
-            <button 
-              onClick={() => setTabFilter("archived")}
-              className={`relative py-5 transition ${tabFilter === "archived" ? "text-white" : "text-white/40 hover:text-white/70"}`}
-            >
-              Arquivados
-              {tabFilter === "archived" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-white/50 rounded-t-full"/>}
+      {/* === COLUNA 1: SIDEBAR DE CONTATOS === */}
+      <div className={`w-full md:w-[350px] flex flex-col border-r border-white/5 bg-[#0A0A0A] shrink-0 ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
+        <div className="p-4 border-b border-white/5 bg-[#0D0D0D]">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+              <Inbox className="text-blue-500" size={20}/> Inbox
+            </h1>
+            <button onClick={() => {}} className="p-2 rounded-full bg-white/5 hover:bg-blue-600/20 text-white transition">
+              <MessageSquarePlus size={20} />
             </button>
           </div>
-          <button onClick={createTestChat} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition">
-            <MessageSquarePlus size={18} className="text-white/80"/>
-          </button>
-        </div>
-
-        {/* Busca */}
-        <div className="p-3">
-          <div className="flex items-center gap-2 rounded-lg bg-[#1a1a1a] px-3 py-2 border border-white/5 focus-within:border-white/20 transition">
-            <Search size={14} className="text-white/40" />
+          <div className="relative group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-blue-500 transition-colors" size={16} />
             <input 
-              placeholder="Buscar conversa..." 
-              className="w-full bg-transparent text-xs text-white outline-none placeholder:text-white/30"
+              placeholder="Buscar clientes ou números..." 
+              className="w-full bg-[#151515] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white outline-none focus:border-blue-500/50 transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
         </div>
 
-        {/* Lista */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 hover:scrollbar-thumb-white/20">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           {loadingContacts ? (
-            <div className="flex flex-col items-center justify-center h-40 gap-2 text-white/40">
-              <Loader2 className="animate-spin h-5 w-5" />
-              <span className="text-xs">Sincronizando...</span>
-            </div>
-          ) : filteredContacts.length === 0 ? (
-            <div className="p-8 text-center flex flex-col items-center text-white/30">
-              <Inbox size={32} className="mb-2 opacity-50"/>
-              <p className="text-xs">Nenhuma conversa nesta caixa.</p>
-            </div>
-          ) : (
-            filteredContacts.map((chat) => (
-              <div
-                key={chat.id}
-                onClick={() => handleSelectChat(chat)}
-                className={`group flex items-center gap-3 border-b border-white/5 px-4 py-3 cursor-pointer transition
-                  ${selectedChat?.id === chat.id 
-                    ? "bg-blue-600/10 border-l-2 border-l-blue-500" 
-                    : "hover:bg-white/5 border-l-2 border-l-transparent"
-                  }
-                `}
-              >
-                <div className="relative shrink-0">
-                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center text-xs font-bold text-white border border-white/10">
-                    {chat.contactName.slice(0, 2).toUpperCase()}
-                  </div>
-                  {/* Indicador se tiver leadId (manual ou automático) */}
-                  {chat.leadId && (
-                    <div className="absolute -bottom-1 -right-1 bg-[#0E0E0E] rounded-full p-0.5">
-                      <div className="bg-emerald-500 h-3 w-3 rounded-full border border-black" title="Lead vinculado"/>
-                    </div>
-                  )}
+            <div className="p-10 text-center"><Loader2 className="animate-spin mx-auto text-blue-500"/></div>
+          ) : filteredContacts.map((chat) => (
+            <div
+              key={chat.id}
+              onClick={() => handleSelectChat(chat)}
+              className={`flex items-center gap-3 px-4 py-4 cursor-pointer transition-all border-l-4 ${selectedChat?.id === chat.id ? "bg-blue-600/10 border-blue-500" : "hover:bg-white/5 border-transparent opacity-70 hover:opacity-100"}`}
+            >
+              <div className="relative">
+                <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-600/20 to-purple-600/20 flex items-center justify-center text-sm font-black text-white border border-white/10 shadow-lg">
+                  {chat.contactName.slice(0, 2).toUpperCase()}
                 </div>
-                
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-baseline mb-0.5">
-                    <span className={`text-sm truncate ${selectedChat?.id === chat.id ? "font-semibold text-white" : "font-medium text-white/90"}`}>
-                      {chat.contactName}
-                    </span>
-                    {chat.lastMessageTime && (
-                      <span className="text-[10px] text-white/40">
-                        {new Date(chat.lastMessageTime?.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <p className="text-xs text-white/50 truncate max-w-[180px]">
-                      {chat.lastMessage || "Nova conversa"}
-                    </p>
-                    {chat.unreadCount ? (
-                      <div className="h-4 min-w-[16px] px-1 rounded-full bg-blue-500 text-[9px] font-bold text-white flex items-center justify-center">
-                        {chat.unreadCount}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
+                {chat.unreadCount ? <span className="absolute -top-1 -right-1 h-5 w-5 bg-blue-500 rounded-full border-2 border-[#0A0A0A] text-[10px] font-bold flex items-center justify-center text-white">{chat.unreadCount}</span> : null}
               </div>
-            ))
-          )}
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-center mb-1">
+                  <h3 className="text-sm font-bold text-white truncate">{chat.contactName}</h3>
+                  <span className="text-[10px] text-white/20 font-medium">{chat.lastMessageTime ? new Date(chat.lastMessageTime?.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ""}</span>
+                </div>
+                <p className="text-xs text-white/40 truncate italic">{chat.lastMessage || "Aguardando interação..."}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* === COLUNA 2: ÁREA DE CHAT === */}
-      <div className={`flex-1 flex flex-col bg-[#050505] relative min-w-0 ${!selectedChat ? 'hidden md:flex' : 'flex'}`}>
+      {/* === COLUNA 2: ÁREA DO CHAT === */}
+      <div className={`flex-1 flex flex-col bg-[#050505] relative shadow-2xl ${!selectedChat ? 'hidden md:flex' : 'flex'}`}>
         {selectedChat ? (
           <>
-            {/* Header Chat */}
-            <div className="h-16 px-4 border-b border-white/10 bg-[#0E0E0E] flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3 overflow-hidden">
-                <button 
-                  onClick={() => setSelectedChat(null)}
-                  className="md:hidden p-2 -ml-2 text-white/60"
-                >
-                  <ArrowRight className="rotate-180" size={20} />
-                </button>
-
-                <div className="h-9 w-9 shrink-0 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center text-xs font-bold text-white">
+            <div className="h-16 px-6 border-b border-white/5 bg-[#0D0D0D]/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-20">
+              <div className="flex items-center gap-4">
+                <button onClick={() => setSelectedChat(null)} className="md:hidden p-2 text-white/40"><X size={24} /></button>
+                <div className="h-10 w-10 rounded-xl bg-white/5 flex items-center justify-center text-xs font-black text-white border border-white/10">
                   {selectedChat.contactName.slice(0, 2).toUpperCase()}
                 </div>
-                <div className="flex flex-col overflow-hidden">
-                  <span className="text-sm font-semibold text-white/90 truncate cursor-pointer hover:underline" onClick={() => setShowRightSidebar(!showRightSidebar)}>
-                    {selectedChat.contactName}
-                  </span>
-                  <span className="text-[10px] text-white/50 flex items-center gap-1">
-                    {selectedChat.contactPhone}
-                    {leadContext && <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-medium">LEAD</span>}
-                  </span>
+                <div>
+                  <h2 className="text-sm font-black text-white tracking-tight">{selectedChat.contactName}</h2>
+                  <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1"><span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"/> Online na API</p>
                 </div>
               </div>
-
-              <div className="flex items-center gap-1 text-white/60">
-                <button 
-                  onClick={handleArchiveChat}
-                  title="Arquivar conversa"
-                  className="p-2 hover:bg-white/10 rounded-lg transition hover:text-emerald-400"
-                >
-                  <Check size={18} />
-                </button>
-                <button 
-                  onClick={() => setShowRightSidebar(!showRightSidebar)}
-                  className={`p-2 hover:bg-white/10 rounded-lg transition ${showRightSidebar ? "text-blue-400 bg-blue-400/10" : ""}`}
-                >
-                  <MoreVertical size={18} />
-                </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowRightSidebar(!showRightSidebar)} className={`p-2.5 rounded-xl transition ${showRightSidebar ? "bg-blue-600/20 text-blue-400" : "text-white/20 hover:bg-white/5"}`}><LayoutGrid size={20}/></button>
               </div>
             </div>
 
-            {/* Mensagens */}
-            <div 
-              ref={scrollRef}
-              className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#050505] bg-opacity-[0.03] bg-repeat"
-            >
-              {messages.length === 0 && (
-                <div className="flex h-full flex-col items-center justify-center gap-3 opacity-60">
-                  <div className="p-4 rounded-full bg-white/5">
-                    <MessageSquarePlus size={24} className="text-white/40"/>
-                  </div>
-                  <p className="text-xs text-white/40">
-                    Inicie a conversa com uma saudação.
-                  </p>
-                </div>
-              )}
-
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]">
               {messages.map((msg) => {
                 const isMe = msg.sender === "agent";
-                const isSystem = msg.sender === "system";
-
-                if (isSystem) {
-                  return (
-                    <div key={msg.id} className="flex justify-center my-4">
-                      <span className="bg-[#1f2225] text-white/50 text-[10px] px-3 py-1 rounded-full border border-white/5">
-                        {msg.text}
-                      </span>
-                    </div>
-                  );
-                }
-
                 return (
-                  <div 
-                    key={msg.id} 
-                    className={`flex ${isMe ? "justify-end" : "justify-start"}`}
-                  >
-                    <div 
-                      className={`max-w-[85%] sm:max-w-[65%] rounded-2xl px-4 py-2 text-sm relative shadow-sm border border-white/5
-                        ${isMe 
-                          ? "bg-[#005c4b] text-white rounded-tr-none" 
-                          : "bg-[#202c33] text-white/90 rounded-tl-none"
-                        }
-                      `}
-                    >
-                      <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                      <div className="flex items-center justify-end gap-1 mt-1 opacity-60">
-                        <span className="text-[9px]">
-                          {msg.createdAt?.toDate 
-                            ? new Date(msg.createdAt.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-                            : "..."}
-                        </span>
-                        {isMe && (
-                          <CheckCheck size={12} className={msg.status === "read" ? "text-blue-300" : ""} />
-                        )}
+                  <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"} animate-in fade-in slide-in-from-bottom-2`}>
+                    <div className={`max-w-[75%] rounded-3xl px-5 py-3 shadow-xl relative ${isMe ? "bg-blue-600 text-white rounded-tr-none" : "bg-[#1A1A1A] text-white/90 rounded-tl-none border border-white/5"}`}>
+                      <p className="text-sm leading-relaxed">{msg.text}</p>
+                      <div className="flex items-center justify-end gap-1 mt-2 opacity-40">
+                        <span className="text-[9px] font-bold">{msg.createdAt?.toDate ? new Date(msg.createdAt.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "..."}</span>
+                        {isMe && <CheckCheck size={12} className={msg.status === "read" ? "text-blue-200" : ""}/>}
                       </div>
                     </div>
                   </div>
@@ -529,143 +304,143 @@ export default function ChatPage() {
               })}
             </div>
 
-            {/* Input */}
-            <form 
-              onSubmit={handleSendMessage}
-              className="p-3 bg-[#0E0E0E] border-t border-white/10 flex items-end gap-2 shrink-0 z-10"
-            >
-              <div className="flex gap-1">
-                <button type="button" title="Anexar (Futuro)" className="p-2 text-white/40 hover:text-white/70 hover:bg-white/5 rounded-full transition">
-                  <Paperclip size={20} />
-                </button>
-                <button type="button" title="Templates (Futuro)" className="p-2 text-white/40 hover:text-white/70 hover:bg-white/5 rounded-full transition">
-                  <FileText size={20} />
-                </button>
-              </div>
-              
-              <div className="flex-1 bg-[#1f2225] rounded-xl min-h-[42px] flex items-center px-4 border border-white/5 focus-within:border-white/20 transition">
-                <input
-                  className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
-                  placeholder="Digite uma mensagem..."
+            <form onSubmit={handleSendMessage} className="p-4 bg-[#0D0D0D] border-t border-white/5 flex items-center gap-3">
+              <button type="button" className="p-3 text-white/20 hover:text-blue-500 transition"><Paperclip size={22}/></button>
+              <div className="flex-1 bg-[#151515] rounded-2xl flex items-center px-4 border border-white/5 focus-within:border-blue-500/30 transition-all shadow-inner">
+                <input 
+                  className="w-full bg-transparent py-4 text-sm text-white outline-none placeholder:text-white/20"
+                  placeholder="Escreva sua mensagem mestre..."
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                 />
-                <button type="button" className="text-white/30 hover:text-white/60 ml-2">
-                  <Smile size={18}/>
-                </button>
+                <Smile size={20} className="text-white/10" />
               </div>
-
               <button 
                 type="submit" 
                 disabled={!inputText.trim() || sending}
-                className="p-3 bg-emerald-600 rounded-full text-white hover:bg-emerald-500 transition shadow-lg disabled:opacity-50 disabled:bg-[#1f2225]"
+                className="p-4 bg-blue-600 rounded-2xl text-white hover:bg-blue-500 transition shadow-lg shadow-blue-900/40 disabled:opacity-30"
               >
-                {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} className="ml-0.5" />}
+                {sending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
               </button>
             </form>
           </>
         ) : (
-          /* Estado Vazio */
-          <div className="flex-1 flex flex-col items-center justify-center text-white/30 p-8 text-center bg-[#050505]">
-            <div className="h-24 w-24 bg-white/5 rounded-full flex items-center justify-center mb-6 border border-white/5 animate-pulse">
-              <MessageSquarePlus size={48} className="opacity-40" />
-            </div>
-            <h2 className="text-2xl font-light text-white/70 mb-3">ALTUM Inbox</h2>
-            <p className="text-sm max-w-md text-white/40 leading-relaxed">
-              Centralize seu atendimento do WhatsApp Oficial. <br/>
-              Selecione uma conversa ou aguarde novos leads.
-            </p>
-            <div className="mt-8 flex gap-4 text-[10px] text-white/20 uppercase tracking-widest">
-              <span className="flex items-center gap-1"><Check size={10}/> Criptografado</span>
-              <span className="flex items-center gap-1"><Check size={10}/> Meta API</span>
-            </div>
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+             <div className="h-32 w-32 bg-blue-600/5 rounded-[3rem] flex items-center justify-center mb-8 border border-blue-500/10 shadow-inner animate-pulse">
+                <Sparkles size={60} className="text-blue-500/30" />
+             </div>
+             <h2 className="text-3xl font-black text-white mb-4 tracking-tighter uppercase">Altum HQ Control</h2>
+             <p className="text-white/30 max-w-sm font-medium leading-relaxed uppercase text-[10px] tracking-[0.2em]">Selecione um terminal de conversa para iniciar a operação de escala.</p>
           </div>
         )}
       </div>
 
-      {/* === COLUNA 3: BARRA LATERAL DE CONTEXTO (DIREITA) === */}
+      {/* === COLUNA 3: BARRA DE INTELIGÊNCIA (DIREITA) === */}
       {selectedChat && showRightSidebar && (
-        <div className="w-[300px] hidden lg:flex flex-col border-l border-white/10 bg-[#0E0E0E] shrink-0 overflow-y-auto">
-          <div className="p-5 border-b border-white/10 flex flex-col items-center text-center">
-            <div className="h-20 w-20 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center text-2xl font-bold text-white mb-3 border-4 border-[#0a0a0a]">
-              {selectedChat.contactName.slice(0, 2).toUpperCase()}
-            </div>
-            <h3 className="font-semibold text-white text-lg">{selectedChat.contactName}</h3>
-            <p className="text-white/50 text-sm mt-1 select-all">{selectedChat.contactPhone}</p>
-            
-            <div className="flex gap-2 mt-4 w-full">
-              <button className="flex-1 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-medium text-white transition flex items-center justify-center gap-2">
-                <Phone size={14}/> Ligar
-              </button>
-              <button className="flex-1 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-medium text-white transition flex items-center justify-center gap-2">
-                <Archive size={14}/> Arquivar
-              </button>
-            </div>
-          </div>
-
-          {/* CRM INFO */}
-          <div className="p-5 border-b border-white/10 space-y-3">
-            <h4 className="text-xs font-bold text-white/40 uppercase tracking-wide flex items-center gap-2">
-              <UserCircle2 size={14}/> Dados do CRM
-            </h4>
-            
-            {leadContext ? (
-              <div className="rounded-xl bg-[#151515] border border-white/5 p-3 space-y-2">
-                <div>
-                  <p className="text-[10px] text-white/40 uppercase">Lead Detectado</p>
-                  <p className="text-sm font-medium text-white">{leadContext.nome}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-white/40 uppercase">Estágio</p>
-                  <p className="text-sm font-medium text-emerald-400">{leadContext.pipelineStage || "Novo"}</p>
-                </div>
-                <Link 
-                  href={`/admin/prospeccao/${leadContext.id}`}
-                  target="_blank"
-                  className="block w-full py-2 text-center text-xs bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 rounded-lg transition mt-2 flex items-center justify-center gap-1"
-                >
-                  Ver Perfil Completo <ExternalLink size={12}/>
-                </Link>
+        <div className="w-[340px] hidden xl:flex flex-col bg-[#0A0A0A] border-l border-white/5 overflow-y-auto custom-scrollbar">
+          
+          {/* PERFIL EXPANDIDO */}
+          <div className="p-8 flex flex-col items-center text-center border-b border-white/5 bg-gradient-to-b from-white/[0.02] to-transparent">
+            <div className="relative mb-6">
+              <div className="h-24 w-24 rounded-[2.5rem] bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-3xl font-black text-white shadow-2xl border-4 border-[#0A0A0A] transform rotate-3">
+                {selectedChat.contactName.slice(0, 2).toUpperCase()}
               </div>
-            ) : (
-              <div className="text-center py-4 space-y-3">
-                <p className="text-xs text-white/40">Este contato não está no CRM.</p>
-                <button 
-                  onClick={createLeadFromChat}
-                  className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-500 transition flex items-center justify-center gap-2"
-                >
-                  <UserPlus size={14}/> Cadastrar Lead
-                </button>
+              <div className="absolute -bottom-2 -right-2 p-2 bg-emerald-500 rounded-2xl border-4 border-[#0A0A0A]">
+                <Zap size={16} fill="white" className="text-white"/>
               </div>
-            )}
-          </div>
-
-          {/* TAGS (Mock) */}
-          <div className="p-5 border-b border-white/10 space-y-3">
-            <h4 className="text-xs font-bold text-white/40 uppercase tracking-wide flex items-center gap-2">
-              <Tag size={14}/> Etiquetas
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-300 text-[10px] border border-amber-500/20">Quente</span>
-              <span className="px-2 py-1 rounded bg-purple-500/10 text-purple-300 text-[10px] border border-purple-500/20">Agência</span>
-              <button className="px-2 py-1 rounded border border-dashed border-white/20 text-white/40 text-[10px] hover:text-white hover:border-white/40 transition">
-                + Adicionar
-              </button>
             </div>
+            <h3 className="text-xl font-black text-white tracking-tight leading-none mb-2">{selectedChat.contactName}</h3>
+            <p className="px-3 py-1 rounded-full bg-white/5 text-white/40 font-mono text-[10px] border border-white/5">{selectedChat.contactPhone}</p>
           </div>
 
-          {/* NOTAS (Mock) */}
-          <div className="p-5 space-y-3 flex-1">
-            <h4 className="text-xs font-bold text-white/40 uppercase tracking-wide flex items-center gap-2">
-              <StickyNote size={14}/> Notas Internas
-            </h4>
-            <textarea 
-              className="w-full h-32 bg-[#151515] border border-white/5 rounded-lg p-3 text-xs text-white/80 outline-none focus:border-white/20 transition resize-none placeholder:text-white/20"
-              placeholder="Digite observações sobre este contato (não será enviado)..."
-            />
+          {/* DASHBOARD DE CONTEXTO CRM */}
+          <div className="p-6 space-y-6">
+            <div className="space-y-4">
+              <h4 className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] flex items-center gap-2">
+                <TrendingUp size={14} className="text-blue-500"/> Performance Lead
+              </h4>
+              
+              {leadContext ? (
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="bg-[#111] border border-white/5 rounded-2xl p-4 group hover:border-blue-500/30 transition-all">
+                    <p className="text-[10px] text-white/20 uppercase font-black mb-1">Pipeline</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-black text-blue-400 uppercase tracking-tight">{leadContext.pipelineStage || "Início"}</p>
+                      <Target size={18} className="text-white/10"/>
+                    </div>
+                    <div className="w-full bg-white/5 h-1.5 rounded-full mt-3 overflow-hidden">
+                       <div className="bg-blue-500 h-full w-[45%]" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                     <button className="p-3 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black text-white/50 border border-white/5 transition uppercase">Agendar</button>
+                     <button className="p-3 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black text-white/50 border border-white/5 transition uppercase">Mudar Etapa</button>
+                  </div>
+
+                  <Link 
+                    href={`/admin/prospeccao/${leadContext.id}`}
+                    target="_blank"
+                    className="flex items-center justify-center gap-2 w-full py-4 bg-[#111] border border-white/5 hover:bg-white/10 rounded-2xl text-xs font-black text-white transition uppercase tracking-widest shadow-lg"
+                  >
+                    Abrir CRM <ArrowRight size={14}/>
+                  </Link>
+                </div>
+              ) : (
+                <div className="bg-blue-600/5 border border-blue-500/10 rounded-[2rem] p-6 text-center">
+                  <p className="text-xs text-white/30 mb-4 font-medium italic">Contato não registrado na base de dados Altum.</p>
+                  <button 
+                    onClick={createLeadFromChat}
+                    className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-500 transition shadow-xl shadow-blue-900/20"
+                  >
+                    <UserPlus size={16} className="inline mr-2"/> Iniciar Lead
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* AÇÕES DE FECHAMENTO */}
+            <div className="space-y-4">
+               <h4 className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] flex items-center gap-2">
+                 <DollarSign size={14} className="text-emerald-500"/> Conversão High-Ticket
+               </h4>
+               <button 
+                 onClick={() => setIsContractOpen(true)}
+                 className="w-full py-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-3xl text-xs font-black uppercase tracking-[0.15em] transition shadow-2xl shadow-emerald-900/40 flex items-center justify-center gap-3 border-t border-white/20"
+               >
+                 <FileText size={18}/> Gerar Contrato Oficial
+               </button>
+            </div>
+
+            {/* NOTAS E TAGS */}
+            <div className="space-y-4">
+               <h4 className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] flex items-center gap-2">
+                 <StickyNote size={14} className="text-amber-500"/> Inteligência Interna
+               </h4>
+               <textarea 
+                 className="w-full h-32 bg-[#111] border border-white/5 rounded-3xl p-5 text-xs text-white/60 outline-none focus:border-white/10 transition-all resize-none font-medium placeholder:text-white/10 shadow-inner"
+                 placeholder="O que aprendemos sobre este cliente hoje?"
+               />
+               <div className="flex flex-wrap gap-2">
+                  <span className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-400 text-[9px] font-black uppercase border border-amber-500/20">Lead Quente</span>
+                  <span className="px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 text-[9px] font-black uppercase border border-blue-500/20">Agência</span>
+                  <button className="px-3 py-1.5 rounded-xl border border-dashed border-white/10 text-white/20 text-[9px] font-black uppercase hover:text-white transition">+</button>
+               </div>
+            </div>
+
           </div>
         </div>
       )}
+
+      {/* MODAL DE CONTRATO INTEGRADO */}
+      <ContractModal 
+        isOpen={isContractOpen} 
+        onClose={() => setIsContractOpen(false)} 
+        clientData={{
+          nome: selectedChat?.contactName || "",
+          telefone: selectedChat?.contactPhone || ""
+        }}
+      />
     </div>
   );
 }

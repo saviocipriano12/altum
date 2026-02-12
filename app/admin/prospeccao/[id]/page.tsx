@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-
 import { db } from "@/firebaseConfig";
 import {
   addDoc,
@@ -21,74 +20,36 @@ import {
 } from "firebase/firestore";
 
 import {
-  ArrowLeft,
-  Phone,
-  Mail,
-  MapPin,
-  Target,
-  Timer,
-  Sparkles,
-  CheckCircle2,
-  Loader2,
-  UserPlus,
-  Rocket,
-  NotebookPen,
-  Trash2,
-  MessageCircle,
-  Bot,
-  ShieldCheck,
-  Zap,
-  Wand2,
-  Tags,
-  Info,
-  Star,
-  Flag,
-  ClipboardCopy,
-  ExternalLink,
-  ChevronRight,
-  PencilLine,
-  Save,
-  RefreshCcw,
-  AlertTriangle,
-  Check,
-  X,
-  MessagesSquare,
-  Link2,
+  ArrowLeft, Phone, Mail, MapPin, Target, Timer, Sparkles, CheckCircle2,
+  Loader2, UserPlus, Rocket, NotebookPen, Trash2, MessageCircle, Bot,
+  ShieldCheck, Zap, Wand2, Tags, Info, Star, Flag, ClipboardCopy,
+  ExternalLink, ChevronRight, PencilLine, Save, RefreshCcw, AlertTriangle,
+  X, MessagesSquare, Link2, DollarSign, Clock, Camera, Globe, Lock, Unlock, CreditCard, QrCode, Wallet,
+  Calculator, User, Building2, Map, LayoutDashboard, BrainCircuit, Grip,
+  FileText, Linkedin, Instagram, Plus, Link as LinkIcon
 } from "lucide-react";
 
 /**
  * ======================================================================
- * ALTUM — CRM Lead Detail (Prospecção)
- * Página robusta: qualificação + oferta + WhatsApp + timeline + conversão
+ * ALTUM CRM — LEAD DETAIL (ULTIMATE EDITION v5.0 - "THE WAR ROOM")
  * ======================================================================
- *
- * Modelo de dados (sugestão — funciona mesmo se não existir tudo):
- * leads/{leadId}:
- *  - nome, telefone, email, endereco, origem, categoria
- *  - status: novo|contatado|respondido|qualificado|descartado
- *  - stage: (string) estágio do digital
- *  - stageTags: string[]
- *  - offer: { id, title, priceFrom, priceTo, pitch, deliverables[] }
- *  - owner: string (responsável)
- *  - priority: low|medium|high
- *  - notes: string
- *  - nextStep: string
- *  - lastContactAt: timestamp
- *  - updatedAt: timestamp
- *  - createdAt: timestamp
- *
- * leads/{leadId}/events/{eventId}:
- *  - type: string
- *  - title: string
- *  - detail: string
- *  - createdAt: timestamp
- *  - meta: any
+ * Features:
+ * 1. Edição Inline Completa (Tel, Site, CNPJ, Social).
+ * 2. Módulo de Links Úteis Dinâmicos.
+ * 3. Dados Ricos & Inteligência V4.
+ * 4. Conversão Atômica e Gestão de Ofertas.
  */
 
-// ----------------------------- Types -----------------------------
+// ----------------------------- TYPES & INTERFACES -----------------------------
 
 type LeadStatus = "novo" | "contatado" | "respondido" | "qualificado" | "descartado";
 type Priority = "low" | "medium" | "high";
+type PersonaType = "dono" | "gerente" | "atendente";
+
+interface UsefulLink {
+  title: string;
+  url: string;
+}
 
 interface Lead {
   id: string;
@@ -98,1835 +59,819 @@ interface Lead {
   endereco?: string;
   origem?: string;
   categoria?: string;
+  website?: string;
+  
+  // DADOS CORPORATIVOS EXTRAS (NOVO)
+  cnpj?: string;
+  instagram?: string;
+  linkedin?: string;
+  usefulLinks?: UsefulLink[]; // Array de links extras
 
+  // DADOS RICOS (INTELLIGENZ API)
+  priceLevel?: number; // 0-4 ($$$$)
+  isOpenNow?: boolean;
+  photos?: string[];
+  rating?: number;
+  userRatingsTotal?: number;
+  lat?: number;
+  lng?: number;
+  
+  // Intelligence Meta
+  foiResgatado?: boolean;
+  score?: number;
+  heat?: string;
+  
   status?: LeadStatus;
-
-  // CRM fields
-  stage?: string;
+  
+  // CRM Core
+  stage?: StageKey;
   stageTags?: string[];
   owner?: string;
   priority?: Priority;
-
   notes?: string;
   nextStep?: string;
+  
+  // Snapshot da Oferta
+  offer?: {
+    id: string; title: string; priceFrom: number; priceTo: number; pitch: string; deliverables: string[];
+  };
 
   lastContactAt?: any;
   updatedAt?: any;
   createdAt?: any;
-
-  // Oferta sugerida (snapshot no lead)
-  offer?: {
-    id: string;
-    title: string;
-    priceFrom: number;
-    priceTo: number;
-    pitch: string;
-    deliverables: string[];
-  };
 }
 
 interface LeadEvent {
-  id: string;
-  type: string;
-  title: string;
-  detail?: string;
-  createdAt?: any;
-  meta?: any;
+  id: string; type: string; title: string; detail?: string; createdAt?: any; meta?: any;
 }
 
-// ----------------------------- UI Constants -----------------------------
+// ----------------------------- CONSTANTS & STYLES -----------------------------
 
 const STATUS_LABELS: Record<LeadStatus, string> = {
-  novo: "Novo",
-  contatado: "Contatado",
-  respondido: "Respondido",
-  qualificado: "Qualificado",
-  descartado: "Descartado",
+  novo: "Novo", contatado: "Contatado", respondido: "Respondido", qualificado: "Qualificado", descartado: "Descartado",
 };
 
 const STATUS_STYLE: Record<LeadStatus, string> = {
-  novo: "bg-blue-500/10 text-blue-200 border border-blue-500/40",
-  contatado: "bg-amber-500/10 text-amber-200 border border-amber-500/40",
-  respondido: "bg-emerald-500/10 text-emerald-200 border border-emerald-500/40",
-  qualificado: "bg-purple-500/10 text-purple-200 border border-purple-500/40",
-  descartado: "bg-red-500/10 text-red-200 border border-red-500/40",
+  novo: "bg-blue-500/10 text-blue-200 border border-blue-500/30",
+  contatado: "bg-amber-500/10 text-amber-200 border border-amber-500/30",
+  respondido: "bg-emerald-500/10 text-emerald-200 border border-emerald-500/30",
+  qualificado: "bg-purple-500/10 text-purple-200 border border-purple-500/30",
+  descartado: "bg-red-500/10 text-red-200 border border-red-500/30",
 };
 
-const PRIORITY_LABELS: Record<Priority, string> = {
-  low: "Baixa",
-  medium: "Média",
-  high: "Alta",
-};
+// ----------------------------- MATRIZ DE OFERTAS -----------------------------
 
-const PRIORITY_STYLE: Record<Priority, string> = {
-  low: "bg-white/5 text-white/70 border border-white/10",
-  medium: "bg-amber-500/10 text-amber-200 border border-amber-500/30",
-  high: "bg-red-500/10 text-red-200 border border-red-500/30",
-};
+type OfferId = "SITE_EXPRESS" | "SITE_PREMIUM" | "GMB_SETUP" | "GMB_OTIMIZACAO" | "TRAFEGO_INICIAL" | "TRAFEGO_SCALE" | "LP_CONVERSAO" | "PACK_DIGITAL" | "DIAGNOSTICO" | "AUTOMACAO_CRM" | "FOLLOWUP_WHATS";
 
-// ----------------------------- Offers Matrix -----------------------------
-/**
- * Aqui está o “cérebro prático” do funil:
- * Você qualifica o lead (estágio) → a tela te sugere oferta + faixa de preço + pitch.
- * Isso te dá clareza amanhã sem pensar demais.
- */
-
-type OfferId =
-  | "SITE_EXPRESS"
-  | "SITE_PREMIUM"
-  | "GMB_SETUP"
-  | "GMB_OTIMIZACAO"
-  | "TRAFEGO_INICIAL"
-  | "TRAFEGO_SCALE"
-  | "LP_CONVERSAO"
-  | "PACK_DIGITAL"
-  | "DIAGNOSTICO"
-  | "AUTOMACAO_CRM"
-  | "FOLLOWUP_WHATS";
-
-type OfferDef = {
-  id: OfferId;
-  title: string;
-  priceFrom: number;
-  priceTo: number;
-  pitch: string;
-  deliverables: string[];
-  bestFor: string[];
-};
+type OfferDef = { id: OfferId; title: string; priceFrom: number; priceTo: number; pitch: string; deliverables: string[]; bestFor: string[]; };
 
 const OFFERS: OfferDef[] = [
-  {
-    id: "DIAGNOSTICO",
-    title: "Diagnóstico Premium (rápido e matador)",
-    priceFrom: 97,
-    priceTo: 297,
-    pitch:
-      "Eu te entrego um diagnóstico objetivo do seu digital (Google + site + presença), com um plano de ação claro pra gerar mais demanda.",
-    deliverables: [
-      "Checklist do Google/Presença Local",
-      "Análise rápida do site e pontos de melhoria",
-      "Plano de ação em 7 dias",
-      "Recomendação de oferta ideal",
-    ],
-    bestFor: ["Entrada barata", "Quebra de objeção", "Abrir conversa"],
-  },
-  {
-    id: "GMB_SETUP",
-    title: "Google Meu Negócio (Setup Completo)",
-    priceFrom: 397,
-    priceTo: 997,
-    pitch:
-      "Organizo seu Google Meu Negócio do jeito certo pra você aparecer mais, receber ligações e rotas no mapa.",
-    deliverables: [
-      "Categorias e descrição otimizadas",
-      "Serviços e áreas atendidas",
-      "Padronização de dados (NAP)",
-      "Checklist de fotos e posts",
-      "Estrutura de avaliações e respostas",
-    ],
-    bestFor: ["Não aparece no Google", "Ficha desorganizada", "Negócio local"],
-  },
-  {
-    id: "GMB_OTIMIZACAO",
-    title: "Google Meu Negócio (Otimização + Ranking)",
-    priceFrom: 597,
-    priceTo: 1497,
-    pitch:
-      "Ajusto e otimizo seu perfil pra aumentar impressões, cliques e conversões no mapa — com rotina e padrão.",
-    deliverables: [
-      "Revisão completa do perfil",
-      "Otimização de categorias/serviços",
-      "Plano de conteúdo (posts semanais)",
-      "Estratégia de avaliações",
-      "Métricas e melhorias contínuas",
-    ],
-    bestFor: ["Já tem ficha", "Quer subir ranking", "Concorrência forte"],
-  },
-  {
-    id: "SITE_EXPRESS",
-    title: "Site Express (rápido e direto pra vender)",
-    priceFrom: 997,
-    priceTo: 2497,
-    pitch:
-      "Um site enxuto e bonito que passa confiança e converte: WhatsApp, prova social, serviços e mapas — pronto pra rodar tráfego.",
-    deliverables: [
-      "Site 1 a 3 páginas (one-page ou institucional)",
-      "Botão WhatsApp e seções de conversão",
-      "SEO básico + performance",
-      "Integrações (Mapa / Redes / Form)",
-      "Entrega rápida",
-    ],
-    bestFor: ["Não tem site", "Site amador", "Precisa de presença"],
-  },
-  {
-    id: "SITE_PREMIUM",
-    title: "Site Premium (autoridade + conversão)",
-    priceFrom: 2497,
-    priceTo: 6997,
-    pitch:
-      "Site premium com estrutura de copy, SEO forte e design que dá autoridade. Feito pra escalar com tráfego.",
-    deliverables: [
-      "Arquitetura de páginas e copy",
-      "Design premium + responsivo",
-      "SEO e páginas estratégicas",
-      "Performance e rastreamento (Meta/GA)",
-      "Base pronta pra funil e automações",
-    ],
-    bestFor: ["Tem orçamento", "Quer autoridade", "Quer escalar tráfego"],
-  },
-  {
-    id: "LP_CONVERSAO",
-    title: "Landing Page de Conversão",
-    priceFrom: 997,
-    priceTo: 2997,
-    pitch:
-      "Uma LP focada em gerar conversas e pedidos: headline forte, prova social, oferta e CTA agressivo.",
-    deliverables: [
-      "Copy e estrutura de conversão",
-      "Design responsivo",
-      "Integração WhatsApp/Form",
-      "Rastreamento de eventos",
-      "Teste A/B (opcional)",
-    ],
-    bestFor: ["Já tem site", "Precisa de funil", "Campanhas"],
-  },
-  {
-    id: "TRAFEGO_INICIAL",
-    title: "Tráfego Inicial (primeiros resultados)",
-    priceFrom: 600,
-    priceTo: 1500,
-    pitch:
-      "Campanha inicial com o básico bem feito: captação de leads com WhatsApp e otimização semanal.",
-    deliverables: [
-      "Configuração Meta Ads / Google (se aplicável)",
-      "Campanha de mensagens ou leads",
-      "Criativos iniciais",
-      "Otimização semanal",
-      "Relatório simples",
-    ],
-    bestFor: ["Começando", "Precisa rodar rápido", "Pequeno negócio"],
-  },
-  {
-    id: "TRAFEGO_SCALE",
-    title: "Tráfego Scale (crescer com controle)",
-    priceFrom: 1500,
-    priceTo: 4500,
-    pitch:
-      "Estrutura pra escalar: campanhas + criativos + funil. O objetivo é consistência e aumento de volume.",
-    deliverables: [
-      "Estrutura de funil e campanhas",
-      "Rotina de testes e criativos",
-      "Otimização avançada",
-      "Relatório e metas",
-      "Plano mensal",
-    ],
-    bestFor: ["Já anuncia", "Quer escala", "Tem produto/serviço validado"],
-  },
-  {
-    id: "PACK_DIGITAL",
-    title: "Pacote Digital Completo (site + GMB + tráfego inicial)",
-    priceFrom: 2497,
-    priceTo: 5997,
-    pitch:
-      "A solução completa pra colocar seu digital de pé e começar a gerar demanda: site + Google + campanha inicial.",
-    deliverables: [
-      "Site express ou LP",
-      "Setup/otimização do Google Meu Negócio",
-      "Campanha inicial de aquisição",
-      "Rastreamento e ajustes",
-      "Plano de evolução",
-    ],
-    bestFor: ["Quer tudo pronto", "Quer velocidade", "Precisa de demanda"],
-  },
-  {
-    id: "AUTOMACAO_CRM",
-    title: "Automação de Atendimento + CRM (nível agência)",
-    priceFrom: 1997,
-    priceTo: 9997,
-    pitch:
-      "Automação de funil (mensagens, follow-up, rotinas) + CRM organizado pra transformar atendimento em venda.",
-    deliverables: [
-      "Estrutura de pipeline e tags",
-      "Rotinas de follow-up",
-      "Integração WhatsApp Cloud API / n8n",
-      "Registro de eventos no CRM",
-      "Treino de operação",
-    ],
-    bestFor: ["Time crescendo", "Quer automação", "Precisa de previsibilidade"],
-  },
-  {
-    id: "FOLLOWUP_WHATS",
-    title: "Follow-up Automático no WhatsApp (n8n)",
-    priceFrom: 497,
-    priceTo: 1997,
-    pitch:
-      "Mensagens automáticas de follow-up e reativação: você para de perder venda por falta de retorno.",
-    deliverables: [
-      "Sequência 3 a 7 mensagens",
-      "Regras por estágio",
-      "Logs no CRM",
-      "Bloqueios/limites (segurança)",
-      "Modo manual + automático",
-    ],
-    bestFor: ["Não responde rápido", "Perde leads", "Quer organizar rotina"],
-  },
+  { id: "DIAGNOSTICO", title: "Diagnóstico Premium", priceFrom: 97, priceTo: 297, pitch: "Eu te entrego um diagnóstico objetivo do seu digital.", deliverables: ["Checklist Google", "Análise site", "Plano de ação"], bestFor: ["Entrada"] },
+  { id: "GMB_SETUP", title: "Google Meu Negócio (Setup)", priceFrom: 397, priceTo: 997, pitch: "Organizo seu Google Meu Negócio do jeito certo.", deliverables: ["Categorias otimizadas", "Serviços", "Padronização"], bestFor: ["Sem Google"] },
+  { id: "GMB_OTIMIZACAO", title: "Google Meu Negócio (Ranking)", priceFrom: 597, priceTo: 1497, pitch: "Ajusto e otimizo seu perfil pra aumentar impressões.", deliverables: ["Revisão completa", "Otimização", "Plano posts"], bestFor: ["Já tem ficha"] },
+  { id: "SITE_EXPRESS", title: "Site Express", priceFrom: 997, priceTo: 2497, pitch: "Um site enxuto e bonito que converte.", deliverables: ["Site One-Page", "Botão WhatsApp", "SEO Básico"], bestFor: ["Sem site"] },
+  { id: "SITE_PREMIUM", title: "Site Premium", priceFrom: 2497, priceTo: 6997, pitch: "Site robusto com estrutura de copy e design high-end.", deliverables: ["Design Exclusivo", "Copywriting", "SEO Técnico"], bestFor: ["High Ticket"] },
+  { id: "LP_CONVERSAO", title: "LP de Conversão", priceFrom: 997, priceTo: 2997, pitch: "Uma LP focada em gerar conversas e pedidos.", deliverables: ["Copy conversão", "Design responsivo", "Integração"], bestFor: ["Campanhas"] },
+  { id: "TRAFEGO_INICIAL", title: "Tráfego Inicial", priceFrom: 600, priceTo: 1500, pitch: "Campanha inicial focada em trazer mensagens.", deliverables: ["Setup Meta Ads", "Criativos básicos", "Otimização"], bestFor: ["Começando"] },
+  { id: "TRAFEGO_SCALE", title: "Tráfego Scale", priceFrom: 1500, priceTo: 4500, pitch: "Estrutura pra escalar: campanhas + criativos + funil.", deliverables: ["Estrutura de funil", "Rotina de testes", "Relatórios"], bestFor: ["Escala"] },
+  { id: "PACK_DIGITAL", title: "Pacote Digital", priceFrom: 2497, priceTo: 5997, pitch: "A solução completa: site + Google + Ads.", deliverables: ["Site Express", "GMB", "Tráfego (1 mês)"], bestFor: ["Tudo pronto"] },
+  { id: "AUTOMACAO_CRM", title: "Automação + CRM", priceFrom: 1997, priceTo: 9997, pitch: "Automação de atendimento e organização comercial.", deliverables: ["Implantação CRM", "Bot WhatsApp", "Régua Follow-up"], bestFor: ["Volume alto"] },
+  { id: "FOLLOWUP_WHATS", title: "Follow-up Automático", priceFrom: 497, priceTo: 1997, pitch: "Mensagens automáticas de reativação.", deliverables: ["Sequência msgs", "Regras estágio", "Logs CRM"], bestFor: ["Perde leads"] },
 ];
 
-type StageKey =
-  | "INVISIVEL"
-  | "PRESENTE_FRACO"
-  | "SITE_RUIM"
-  | "SITE_OK"
-  | "TRAFEGO_ZERO"
-  | "TRAFEGO_FRACO"
-  | "TRAFEGO_OK"
-  | "OPERACAO_ATIVA";
+type StageKey = "INVISIVEL" | "PRESENTE_FRACO" | "SITE_RUIM" | "SITE_OK" | "TRAFEGO_ZERO" | "TRAFEGO_FRACO" | "TRAFEGO_OK" | "OPERACAO_ATIVA";
 
 const STAGES: { key: StageKey; label: string; hint: string }[] = [
-  { key: "INVISIVEL", label: "Invisível Digital", hint: "Quase não aparece / ficha ruim / sem presença" },
-  { key: "PRESENTE_FRACO", label: "Presença Fraca", hint: "Existe, mas não gera confiança nem demanda" },
-  { key: "SITE_RUIM", label: "Site Ruim/Amador", hint: "Site existe, mas passa pouca autoridade/conversão" },
-  { key: "SITE_OK", label: "Site OK", hint: "Site aceitável, dá pra melhorar e criar funil" },
-  { key: "TRAFEGO_ZERO", label: "Sem Tráfego", hint: "Não anuncia, depende de orgânico" },
-  { key: "TRAFEGO_FRACO", label: "Tráfego Fraco", hint: "Anuncia pouco/sem consistência" },
-  { key: "TRAFEGO_OK", label: "Tráfego OK", hint: "Anúncios rodando, precisa otimização/escala" },
-  { key: "OPERACAO_ATIVA", label: "Operação Ativa", hint: "Já vende e tem rotina comercial" },
+  { key: "INVISIVEL", label: "Invisível Digital", hint: "Não existe no Google ou Maps." },
+  { key: "PRESENTE_FRACO", label: "Presença Fraca", hint: "Existe mas não passa confiança." },
+  { key: "SITE_RUIM", label: "Site Ruim/Amador", hint: "Site lento, feio ou não converte." },
+  { key: "SITE_OK", label: "Site OK", hint: "Tem base, falta tráfego." },
+  { key: "TRAFEGO_ZERO", label: "Sem Tráfego", hint: "Depende só do orgânico." },
+  { key: "TRAFEGO_FRACO", label: "Tráfego Fraco", hint: "Anuncia sem estratégia." },
+  { key: "TRAFEGO_OK", label: "Tráfego OK", hint: "Já anuncia bem, quer escalar." },
+  { key: "OPERACAO_ATIVA", label: "Operação Ativa", hint: "Máquina rodando, foco em CRM." },
 ];
 
-function recommendOffer(stage: StageKey | null): OfferDef {
-  // Regra “CEO”: oferecer o que dá resultado mais rápido e fácil de vender.
-  // Você pode ajustar depois, mas isso já funciona muito bem como padrão.
+function recommendOffer(stage: StageKey | null | undefined): OfferDef {
   if (!stage) return OFFERS.find((o) => o.id === "DIAGNOSTICO")!;
   switch (stage) {
-    case "INVISIVEL":
-      return OFFERS.find((o) => o.id === "PACK_DIGITAL")!;
-    case "PRESENTE_FRACO":
-      return OFFERS.find((o) => o.id === "SITE_EXPRESS")!;
-    case "SITE_RUIM":
-      return OFFERS.find((o) => o.id === "SITE_EXPRESS")!;
-    case "SITE_OK":
-      return OFFERS.find((o) => o.id === "LP_CONVERSAO")!;
-    case "TRAFEGO_ZERO":
-      return OFFERS.find((o) => o.id === "TRAFEGO_INICIAL")!;
-    case "TRAFEGO_FRACO":
-      return OFFERS.find((o) => o.id === "TRAFEGO_INICIAL")!;
-    case "TRAFEGO_OK":
-      return OFFERS.find((o) => o.id === "TRAFEGO_SCALE")!;
-    case "OPERACAO_ATIVA":
-      return OFFERS.find((o) => o.id === "AUTOMACAO_CRM")!;
-    default:
-      return OFFERS.find((o) => o.id === "DIAGNOSTICO")!;
+    case "INVISIVEL": return OFFERS.find((o) => o.id === "PACK_DIGITAL")!;
+    case "PRESENTE_FRACO": return OFFERS.find((o) => o.id === "GMB_SETUP")!;
+    case "SITE_RUIM": return OFFERS.find((o) => o.id === "SITE_EXPRESS")!;
+    case "SITE_OK": return OFFERS.find((o) => o.id === "LP_CONVERSAO")!;
+    case "TRAFEGO_ZERO": return OFFERS.find((o) => o.id === "TRAFEGO_INICIAL")!;
+    case "TRAFEGO_FRACO": return OFFERS.find((o) => o.id === "TRAFEGO_INICIAL")!;
+    case "TRAFEGO_OK": return OFFERS.find((o) => o.id === "TRAFEGO_SCALE")!;
+    case "OPERACAO_ATIVA": return OFFERS.find((o) => o.id === "AUTOMACAO_CRM")!;
+    default: return OFFERS.find((o) => o.id === "DIAGNOSTICO")!;
   }
 }
 
-// ----------------------------- Helpers -----------------------------
+// --- HELPERS ---
 
-function safeToDate(ts: any): Date | null {
-  try {
-    if (!ts) return null;
-    if (ts?.toDate) return ts.toDate();
-    if (typeof ts === "number") return new Date(ts);
-    return null;
-  } catch {
-    return null;
-  }
+function safeUrl(u?: string) {
+  if (!u) return "";
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  return `https://${u}`;
 }
 
-function formatBRDateTime(ts: any): string {
-  const d = safeToDate(ts);
-  if (!d) return "—";
-  return d.toLocaleString("pt-BR");
+function moneyBR(v?: number) {
+  if (typeof v !== "number") return "—";
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function onlyDigits(s: string) {
-  return (s || "").replace(/\D/g, "");
-}
-
-function normalizePhoneToE164BR(raw: string): string | null {
-  // Espera BR: +55DDDNÚMERO (celular normalmente 11 dígitos com 9)
-  const digits = onlyDigits(raw);
-  if (!digits) return null;
-
-  // Se já vier com 55 na frente
-  if (digits.startsWith("55") && digits.length >= 12) {
-    return `+${digits}`;
-  }
-
-  // Se vier com DDD + número (10/11 dígitos)
-  if (digits.length === 10 || digits.length === 11) {
-    return `+55${digits}`;
-  }
-
-  // Caso venha gigante/estranho
-  if (digits.length > 11 && !digits.startsWith("55")) {
-    return `+55${digits.slice(-11)}`;
-  }
-
-  return null;
-}
+function onlyDigits(s: string) { return (s || "").replace(/\D/g, ""); }
 
 function buildWhatsAppLink(phoneRaw: string, text: string) {
-  const e164 = normalizePhoneToE164BR(phoneRaw);
-  if (!e164) return null;
-
-  // wa.me pede sem "+"
-  const waNumber = e164.replace("+", "");
-  const encoded = encodeURIComponent(text || "");
-  return `https://wa.me/${waNumber}?text=${encoded}`;
+  const digits = onlyDigits(phoneRaw);
+  if (!digits) return null;
+  let finalNum = digits;
+  if (digits.length <= 11) finalNum = `55${digits}`; 
+  return `https://wa.me/${finalNum}?text=${encodeURIComponent(text)}`;
 }
 
-function moneyBR(v: number) {
-  try {
-    return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  } catch {
-    return `R$ ${v}`;
-  }
+function googleMapsLink(query: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
+function cx(...classes: any[]) { return classes.filter(Boolean).join(" "); }
 
-function short(s: string, max = 80) {
-  if (!s) return "";
-  if (s.length <= max) return s;
-  return s.slice(0, max - 1) + "…";
-}
+// --- COMPONENTES VISUAIS ---
 
-// ----------------------------- Small UI Components -----------------------------
-
-function SectionTitle({
-  title,
-  icon,
-  right,
-  subtitle,
-}: {
-  title: string;
-  icon?: React.ReactNode;
-  right?: React.ReactNode;
-  subtitle?: string;
-}) {
+function SectionTitle({ title, icon, right }: any) {
   return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="flex items-start gap-2">
-        <div className="mt-0.5 text-white/60">{icon}</div>
-        <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">{title}</h2>
-          {subtitle ? <p className="mt-1 text-xs text-white/50">{subtitle}</p> : null}
-        </div>
+    <div className="flex items-center justify-between pb-3 border-b border-white/5 mb-4">
+      <div className="flex items-center gap-2 text-white/90 font-bold tracking-wide text-sm uppercase">
+        <span className="text-blue-500">{icon}</span> {title}
       </div>
-      {right ? <div className="shrink-0">{right}</div> : null}
+      {right}
     </div>
   );
 }
 
-function Pill({
-  children,
-  className,
-  onClick,
-  active,
-  title,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  onClick?: () => void;
-  active?: boolean;
-  title?: string;
-}) {
+// ============================================================================
+// COMPONENTES DE INTELIGÊNCIA
+// ============================================================================
+
+// 1. CALCULADORA DE PERDA
+function RevenueLossCard({ lead }: { lead: Lead }) {
+  const ticketMedio = lead.priceLevel ? lead.priceLevel * 200 : 150; 
+  const perdaVisitas = lead.website ? 50 : 300; 
+  const conversao = 0.05; 
+  const perdaReais = perdaVisitas * conversao * ticketMedio;
+  const isGood = lead.website && (lead.rating || 0) > 4.2;
+
   return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className={cx(
-        "rounded-full px-3 py-1 text-[11px] border transition",
-        active ? "bg-blue-600 text-white border-blue-400/60" : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10",
-        className
-      )}
-    >
-      {children}
-    </button>
+    <div className={cx("rounded-xl border p-5 relative overflow-hidden group transition-all duration-500", isGood ? "bg-gradient-to-br from-emerald-900/30 to-emerald-600/10 border-emerald-500/30" : "bg-gradient-to-br from-red-900/30 to-red-600/10 border-red-500/30")}>
+      <div className={cx("absolute -right-12 -top-12 w-40 h-40 rounded-full blur-3xl transition", isGood ? "bg-emerald-500/20" : "bg-red-500/20")}></div>
+      <div className="flex items-start gap-4 relative z-10">
+        <div className={cx("p-3 rounded-xl shadow-lg", isGood ? "bg-emerald-500/20 text-emerald-200" : "bg-red-500/20 text-red-200")}><Calculator size={24} /></div>
+        <div>
+          <h4 className={cx("font-black text-sm uppercase tracking-widest", isGood ? "text-emerald-200" : "text-red-200")}>{isGood ? "Potencial de Escala" : "Dinheiro na Mesa"}</h4>
+          <p className={cx("text-xs mt-1 font-medium opacity-80", isGood ? "text-emerald-100" : "text-red-100")}>
+            {isGood ? "Com tráfego pago, este lead pode gerar:" : "Sem estrutura digital, estima-se que perca:"}
+          </p>
+          <div className="flex items-baseline gap-2 mt-2">
+             <p className="text-3xl font-black text-white">{moneyBR(perdaReais)}</p>
+             <span className="text-xs font-normal text-white/50">/mês</span>
+          </div>
+          <p className="text-[10px] text-white/30 mt-2 italic">*Estimativa baseada em Ticket Médio de {moneyBR(ticketMedio)} e volume local.</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function Badge({
-  label,
-  className,
-}: {
-  label: string;
-  className: string;
-}) {
+// 2. GERADOR DE SCRIPT INTELIGENTE
+function SmartScriptGenerator({ lead, onSend }: { lead: Lead, onSend: (msg: string) => void }) {
+  const [persona, setPersona] = useState<PersonaType>("dono");
+
+  const script = useMemo(() => {
+    const nome = lead.nome || "Tudo bem?";
+    const saudacao = `Olá ${nome}, aqui é o Sávio da Altum.`;
+    
+    let dor = "";
+    if (!lead.website) dor = "Vi que vocês têm uma reputação excelente na região, mas não encontrei o site oficial para facilitar o agendamento/compra.";
+    else if ((lead.rating || 0) < 4.0) dor = `Notei que a nota de vocês no Google está ${lead.rating}, e infelizmente isso pode estar entregando clientes para a concorrência.`;
+    else if (lead.priceLevel && lead.priceLevel >= 3) dor = "Percebi que vocês têm um posicionamento premium, mas o digital ainda não reflete essa autoridade de High Ticket.";
+    else dor = `Estou selecionando as melhores empresas de ${lead.categoria || "sua área"} para um projeto de Growth.`;
+
+    let cta = "";
+    if (persona === "dono") cta = "Como dono, você sabe que está deixando dinheiro na mesa sem esse canal. Posso te mandar uma estimativa de quanto?";
+    if (persona === "gerente") cta = "Temos uma solução que organiza o atendimento e facilita sua gestão comercial. Posso te enviar um vídeo curto?";
+    if (persona === "atendente") cta = "Poderia me passar o contato do responsável pelo marketing ou o proprietário? Tenho um material importante sobre a presença online de vocês.";
+
+    return `${saudacao}\n\n${dor}\n\n${cta}`;
+  }, [lead, persona]);
+
   return (
-    <span className={cx("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide", className)}>
-      {label}
-    </span>
+    <div className="rounded-xl border border-white/10 bg-[#151515] p-5 space-y-4 shadow-xl">
+      <div className="flex justify-between items-center border-b border-white/5 pb-3">
+        <div className="flex items-center gap-2 text-xs font-black tracking-widest text-emerald-400 uppercase">
+          <BrainCircuit size={16} /> Gerador de Ataque
+        </div>
+        <div className="flex bg-black/40 rounded-lg p-1 border border-white/5">
+          {["dono", "gerente", "atendente"].map((p) => (
+            <button key={p} onClick={() => setPersona(p as any)} className={cx("px-3 py-1 text-[10px] uppercase rounded-md transition font-bold", persona === p ? "bg-white/20 text-white" : "text-white/30 hover:text-white/60")}>
+              {p}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      <div className="relative">
+        <textarea 
+            readOnly 
+            value={script} 
+            className="w-full h-36 bg-black/30 border border-white/10 rounded-xl p-4 text-sm text-white/80 resize-none focus:outline-none focus:border-emerald-500/50 leading-relaxed font-sans shadow-inner"
+        />
+        <button onClick={() => navigator.clipboard.writeText(script)} className="absolute top-2 right-2 p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition" title="Copiar"><ClipboardCopy size={14}/></button>
+      </div>
+
+      <button onClick={() => onSend(script)} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-900/30 hover:shadow-emerald-900/50 transform hover:-translate-y-0.5">
+          <Zap size={16} fill="currentColor" /> ENVIAR NO WHATSAPP (API)
+      </button>
+    </div>
   );
 }
 
-function Divider() {
-  return <div className="h-px w-full bg-white/10" />;
-}
+// ----------------------------- MÓDULO FINANCEIRO (POS MULTIMEIOS) -----------------------------
 
-// ----------------------------- Page -----------------------------
+function FinanceCheckoutModule({ lead, onSendMessage, onPaymentSuccess }: { lead: Lead, onSendMessage: (msg: string) => void, onPaymentSuccess: () => void }) {
+  const [amount, setAmount] = useState(lead.offer?.priceFrom || 1000);
+  const [method, setMethod] = useState<"PIX" | "BOLETO" | "CREDIT_CARD">("PIX");
+  const [result, setResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-export default function LeadDetalhePage() {
-  const params = useParams<{ id: string }>();
-  const router = useRouter();
+  // Puxa comissão do dono do lead (Integrado com o sistema de equipe)
+  const splitUser = lead.owner ? { name: lead.owner, commissionRate: 10 } : null;
 
-  const leadId = params?.id;
-
-  const [lead, setLead] = useState<Lead | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
-
-  const [events, setEvents] = useState<LeadEvent[]>([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
-
-  // CRM local edits
-  const [statusDraft, setStatusDraft] = useState<LeadStatus | null>(null);
-  const [savingStatus, setSavingStatus] = useState(false);
-
-  const [ownerDraft, setOwnerDraft] = useState("");
-  const [priorityDraft, setPriorityDraft] = useState<Priority>("medium");
-  const [notesDraft, setNotesDraft] = useState("");
-  const [nextStepDraft, setNextStepDraft] = useState("");
-
-  const [stageDraft, setStageDraft] = useState<StageKey | null>(null);
-
-  const [savingCRM, setSavingCRM] = useState(false);
-
-  const [convertingClient, setConvertingClient] = useState(false);
-  const [creatingProject, setCreatingProject] = useState(false);
-
-  const [dangerOpen, setDangerOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const [toast, setToast] = useState<{ type: "ok" | "warn" | "err"; msg: string } | null>(null);
-  const toastTimerRef = useRef<any>(null);
-
-  function showToast(type: "ok" | "warn" | "err", msg: string) {
-    setToast({ type, msg });
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), 3200);
-  }
-
-  // ----------------------------- Firestore subscriptions -----------------------------
-
-  useEffect(() => {
-    if (!leadId) return;
-
+  const handleGenerate = async () => {
     setLoading(true);
-    setNotFound(false);
-
-    const ref = doc(db, "leads", leadId);
-
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          setLead(null);
-          setNotFound(true);
-          setLoading(false);
-          return;
-        }
-
-        // MUITO IMPORTANTE: evitar bug "id duplicado"
-        const data = snap.data() as any;
-        const { id: possibleIdInData, ...rest } = data || {};
-
-        const nextLead: Lead = {
-          id: snap.id,
-          ...rest,
-        };
-
-        setLead(nextLead);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Erro ao carregar lead:", err);
-        setLoading(false);
-        showToast("err", "Erro ao carregar lead.");
-      }
-    );
-
-    return () => unsub();
-  }, [leadId]);
-
-  useEffect(() => {
-    if (!leadId) return;
-
-    setEventsLoading(true);
-
-    const q = query(
-      collection(db, "leads", leadId, "events"),
-      orderBy("createdAt", "desc"),
-      limit(25)
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<LeadEvent, "id">),
-        }));
-        setEvents(docs);
-        setEventsLoading(false);
-      },
-      (err) => {
-        console.error("Erro ao carregar eventos:", err);
-        setEventsLoading(false);
-      }
-    );
-
-    return () => unsub();
-  }, [leadId]);
-
-  // ----------------------------- Sync drafts when lead changes -----------------------------
-
-  useEffect(() => {
-    if (!lead) return;
-
-    setOwnerDraft(lead.owner || "");
-    setPriorityDraft((lead.priority as Priority) || "medium");
-    setNotesDraft(lead.notes || "");
-    setNextStepDraft(lead.nextStep || "");
-
-    setStageDraft((lead.stage as StageKey) || null);
-    setStatusDraft(null);
-  }, [lead?.id]); // apenas quando trocar de lead
-
-  // ----------------------------- Computed values -----------------------------
-
-  const createdAtFormatted = useMemo(() => formatBRDateTime(lead?.createdAt), [lead?.createdAt]);
-  const updatedAtFormatted = useMemo(() => formatBRDateTime(lead?.updatedAt), [lead?.updatedAt]);
-  const lastContactFormatted = useMemo(() => formatBRDateTime(lead?.lastContactAt), [lead?.lastContactAt]);
-
-  const stageInfo = useMemo(() => STAGES.find((s) => s.key === stageDraft) || null, [stageDraft]);
-  const recommended = useMemo(() => recommendOffer(stageDraft), [stageDraft]);
-
-  const effectiveStatus: LeadStatus = (lead?.status || "novo") as LeadStatus;
-
-  const waMessage = useMemo(() => {
-  const empresa = lead?.nome || "tudo bem";
-  const cidade = lead?.endereco ? short(lead.endereco, 50) : null;
-
-  // 1. Introdução
-  const intro = `Olá, ${empresa}! Tudo bem?\n\nMe chamo Sávio, sou fundador da ALTUM.`;
-
-  // 2. O que é a ALTUM (autoridade leve)
-  const about = `A ALTUM ajuda empresas a organizarem e melhorarem sua presença digital (Google, site e canais online).`;
-
-  // 3. Observações PERSONALIZADAS (sem julgamento)
-  const observations: string[] = [];
-
-  if (stageDraft === "INVISIVEL") {
-    observations.push("Percebi que hoje a empresa quase não aparece nas buscas do Google.");
-  }
-
-  if (stageDraft === "SITE_RUIM") {
-    observations.push("Vi que vocês têm site, mas ele ainda não está ajudando tanto na geração de contatos.");
-  }
-
-  if (stageDraft === "SITE_OK") {
-    observations.push("O site de vocês é bom, mas ainda dá pra extrair mais resultados dele.");
-  }
-
-  if (stageDraft === "TRAFEGO_ZERO") {
-    observations.push("Também não identifiquei campanhas ativas trazendo demanda de forma previsível.");
-  }
-
-  if (stageDraft === "TRAFEGO_FRACO") {
-    observations.push("As campanhas parecem existir, mas ainda sem constância.");
-  }
-
-  const observationBlock =
-    observations.length > 0
-      ? `\n\nDei uma olhada rápida e notei alguns pontos:\n• ${observations.join("\n• ")}`
-      : "";
-
-  // 4. Convite SEM VENDA
-  const invite = `\n\nSe fizer sentido pra você, posso te enviar um diagnóstico gratuito mostrando:
-• onde a empresa aparece hoje  
-• o que está limitando mais resultados  
-• e caminhos simples de melhoria  
-
-Sem compromisso, só informação.
-Posso te mandar?`;
-
-  // 5. Localização (humaniza)
-  const location = cidade ? `\n\nEncontrei vocês em ${cidade}.` : "";
-
-  return `${intro}\n${about}${location}${observationBlock}${invite}`;
-}, [lead?.nome, lead?.endereco, stageDraft]);
-
-  const waLink = useMemo(() => {
-    if (!lead?.telefone) return null;
-    return buildWhatsAppLink(lead.telefone, waMessage);
-  }, [lead?.telefone, waMessage]);
-
-  // ----------------------------- Firestore actions -----------------------------
-
-  async function addEvent(e: Omit<LeadEvent, "id">) {
-    if (!leadId) return;
+    setResult(null);
     try {
-      await addDoc(collection(db, "leads", leadId, "events"), {
-        ...e,
-        createdAt: serverTimestamp(),
-      });
-    } catch (err) {
-      console.error("Erro ao criar evento:", err);
-    }
-  }
-
-  async function updateLead(patch: Partial<Lead>, event?: { type: string; title: string; detail?: string; meta?: any }) {
-    if (!leadId) return;
-    try {
-      await updateDoc(doc(db, "leads", leadId), {
-        ...patch,
-        updatedAt: serverTimestamp(),
+      const res = await fetch('/api/finance/create-charge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          billingType: method,
+          customerInfo: {
+            name: lead.nome || "Cliente",
+            email: lead.email || "financeiro@cliente.com",
+            phone: lead.telefone || "",
+            cpfCnpj: lead.cnpj || ""
+          },
+          split: splitUser ? { walletId: "ID_DA_WALLET_DO_VENDEDOR", commissionRate: splitUser.commissionRate } : null
+        })
       });
 
-      if (event) {
-        await addEvent({
-          type: event.type,
-          title: event.title,
-          detail: event.detail || "",
-          meta: event.meta || {},
-        });
-      }
-    } catch (err) {
-      console.error("Erro ao atualizar lead:", err);
-      showToast("err", "Falha ao salvar alterações.");
-    }
-  }
-
-  async function applyStatus(newStatus: LeadStatus) {
-    if (!leadId) return;
-    setSavingStatus(true);
-    try {
-      await updateLead(
-        { status: newStatus },
-        { type: "status", title: "Status atualizado", detail: `Status definido para: ${STATUS_LABELS[newStatus]}` }
-      );
-      setStatusDraft(null);
-      showToast("ok", "Status atualizado.");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setResult(data);
+    } catch (e: any) {
+      alert("Erro Asaas: " + e.message);
     } finally {
-      setSavingStatus(false);
+      setLoading(false);
     }
-  }
+  };
 
-  async function saveCRM() {
-    if (!leadId) return;
-    setSavingCRM(true);
+  const copyToClip = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-    try {
-      const offerSnapshot = {
-        id: recommended.id,
-        title: recommended.title,
-        priceFrom: recommended.priceFrom,
-        priceTo: recommended.priceTo,
-        pitch: recommended.pitch,
-        deliverables: recommended.deliverables,
-      };
+  // SINTONIA TOTAL: Formata e dispara no Chat
+  const sendToWhatsApp = () => {
+    if (!result) return;
+    let msg = `*ALTUM DIGITAL - PAGAMENTO*\n\n`;
+    msg += `Olá ${lead.nome}! Para seguirmos com o seu projeto, aqui estão os detalhes para pagamento de *${moneyBR(amount)}*:\n\n`;
 
-      await updateLead(
-        {
-          owner: ownerDraft.trim(),
-          priority: priorityDraft,
-          notes: notesDraft,
-          nextStep: nextStepDraft,
-          stage: stageDraft || "",
-          stageTags: stageDraft ? [stageDraft] : [],
-          offer: offerSnapshot,
-        },
-        {
-          type: "crm",
-          title: "CRM atualizado",
-          detail: `Stage: ${stageDraft || "—"} • Oferta: ${recommended.title}`,
-          meta: { stage: stageDraft, offerId: recommended.id },
-        }
-      );
-
-      showToast("ok", "CRM salvo com sucesso.");
-    } finally {
-      setSavingCRM(false);
+    if (method === "PIX") {
+      msg += `🔹 *PIX COPIA E COLA:*\n\`${result.pix.payload}\`\n\n`;
+    } else if (method === "BOLETO") {
+      msg += `🔹 *LINK DO BOLETO:*\n${result.bankSlipUrl}\n\n`;
+    } else {
+      msg += `🔹 *LINK CARTÃO (Até 12x):*\n${result.invoiceUrl}\n\n`;
     }
-  }
-
-  async function markContacted() {
-    if (!leadId) return;
-
-    await updateLead(
-      {
-        status: "contatado",
-        lastContactAt: serverTimestamp(),
-      },
-      {
-        type: "contact",
-        title: "Contato iniciado",
-        detail: "Lead marcado como contatado e lastContactAt atualizado.",
-      }
-    );
-    showToast("ok", "Lead marcado como contatado.");
-  }
-
-  async function openWhatsApp() {
-    if (!waLink) {
-      showToast("warn", "Telefone inválido ou ausente.");
-      return;
-    }
-
-    // Evento antes de abrir (pra registrar)
-    await addEvent({
-      type: "whatsapp",
-      title: "WhatsApp aberto",
-      detail: `Mensagem preparada: "${short(waMessage, 140)}"`,
-      meta: { url: waLink },
-    });
-
-    // Marcar como contatado automaticamente (melhor prática)
-    if (effectiveStatus === "novo") {
-      await markContacted();
-    }
-
-    window.open(waLink, "_blank", "noopener,noreferrer");
-  }
-
-  async function copyToClipboard(text: string, okMsg = "Copiado!") {
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast("ok", okMsg);
-    } catch {
-      showToast("err", "Não consegui copiar.");
-    }
-  }
-
-  async function convertToClient() {
-  if (!lead || !leadId) return;
-  setConvertingClient(true);
-
-  try {
-    const batch = writeBatch(db);
-
-    // 1. Referências
-    const newClientRef = doc(collection(db, "clientes")); // ID automático
-    const leadRef = doc(db, "leads", leadId);
     
-    // 2. Dados do Cliente (Herdados do Lead)
-    batch.set(newClientRef, {
-      name: lead.nome || "Novo Cliente",
-      telefone: lead.telefone || "",
-      email: lead.email || "",
-      endereco: lead.endereco || "",
-      origem: lead.origem || "crm_conversion",
-      status: "ativo",
-      notes: lead.notes || "", // Leva as notas do CRM
-      createdAt: serverTimestamp(),
-      leadIdOriginal: leadId, // Rastreabilidade
-    });
-
-    // 3. Criar Projeto Inicial (Onboarding)
-    const newProjectRef = doc(collection(db, "projetos"));
-    batch.set(newProjectRef, {
-      titulo: `Projeto: ${lead.nome}`,
-      clientId: newClientRef.id,
-      clientName: lead.nome || "Novo Cliente",
-      status: "Onboarding",
-      canalPrincipal: "A definir",
-      servicos: lead.offer?.deliverables || [], // Já puxa o escopo da oferta!
-      valorMensal: lead.offer?.priceFrom || 0, // Já puxa o valor!
-      createdAt: serverTimestamp(),
-    });
-
-    // 4. Criar Lançamento Financeiro (Setup / 1ª Parcela)
-    if (lead.offer?.priceFrom) {
-      const finRef = doc(collection(db, "financeiro"));
-      batch.set(finRef, {
-        clientId: newClientRef.id,
-        clientName: lead.nome || "Novo Cliente",
-        projectId: newProjectRef.id,
-        projectTitle: `Projeto: ${lead.nome}`,
-        tipo: "Setup",
-        status: "Pendente",
-        valor: lead.offer.priceFrom,
-        referencia: "Setup Inicial (Conversão CRM)",
-        createdAt: serverTimestamp(),
-      });
-    }
-
-    // 5. Atualizar o Lead (Arquivar como ganho)
-    batch.update(leadRef, {
-      status: "qualificado",
-      pipelineStage: "fechado", // Move pro final do Kanban
-      convertedClientId: newClientRef.id,
-      updatedAt: serverTimestamp()
-    });
-
-    // Executa tudo junto (Atômico)
-    await batch.commit();
-
-    // 6. Migrar Eventos (Isso tem que ser separado pois Batch tem limite de operações e leitura)
-    // Opcional: Se tiver muitos eventos, fazemos em background. 
-    // Por enquanto, para simplificar, vamos deixar os eventos no Lead e criar um link no Cliente.
-
-    showToast("ok", "Sucesso! Cliente, Projeto e Financeiro criados.");
-    
-    // Redireciona para o Projeto para começar o Onboarding
-    router.push(`/admin/projetos/${newProjectRef.id}`);
-
-  } catch (err) {
-    console.error("Erro na conversão:", err);
-    showToast("err", "Falha crítica ao converter cliente.");
-  } finally {
-    setConvertingClient(false);
-  }
-}
-
-  async function convertToProject() {
-    if (!lead) return;
-    setCreatingProject(true);
-
-    try {
-      const projetoRef = await addDoc(collection(db, "projetos"), {
-        titulo: `Projeto - ${lead.nome || "Lead"}`,
-        status: "Onboarding",
-        clientName: lead.nome || "Cliente",
-        canalPrincipal: lead.origem || "Indefinido",
-        servicos: [],
-        createdAt: serverTimestamp(),
-      });
-
-      await updateLead(
-        { status: "qualificado" },
-        { type: "convert", title: "Projeto criado", detail: `Projeto criado a partir do lead: ${projetoRef.id}` }
-      );
-
-      showToast("ok", "Projeto criado com sucesso.");
-      router.push(`/admin/projetos/${projetoRef.id}`);
-    } catch (err) {
-      console.error("Erro ao criar projeto a partir do lead:", err);
-      showToast("err", "Erro ao criar projeto.");
-    } finally {
-      setCreatingProject(false);
-    }
-  }
-
-  async function refreshSnapshot() {
-    // Em alguns casos você quer forçar recomputar oferta e salvar no lead
-    if (!leadId) return;
-
-    setSavingCRM(true);
-    try {
-      const offerSnapshot = {
-        id: recommended.id,
-        title: recommended.title,
-        priceFrom: recommended.priceFrom,
-        priceTo: recommended.priceTo,
-        pitch: recommended.pitch,
-        deliverables: recommended.deliverables,
-      };
-
-      await updateLead(
-        {
-          offer: offerSnapshot,
-          stage: stageDraft || "",
-          stageTags: stageDraft ? [stageDraft] : [],
-        },
-        {
-          type: "offer",
-          title: "Oferta recalculada",
-          detail: `Oferta atual: ${recommended.title} (${moneyBR(recommended.priceFrom)}–${moneyBR(recommended.priceTo)})`,
-        }
-      );
-
-      showToast("ok", "Oferta recalculada e salva.");
-    } finally {
-      setSavingCRM(false);
-    }
-  }
-
-  async function deleteLead() {
-    if (!leadId) return;
-    setDeleting(true);
-
-    try {
-      // Deleta doc principal (subcoleções não são deletadas automaticamente).
-      // CEO mode: por enquanto ok (não polui seu CRM principal).
-      await deleteDoc(doc(db, "leads", leadId));
-
-      showToast("ok", "Lead removido.");
-      router.push("/admin/prospeccao");
-    } catch (err) {
-      console.error("Erro ao deletar lead:", err);
-      showToast("err", "Erro ao deletar lead.");
-    } finally {
-      setDeleting(false);
-      setDangerOpen(false);
-    }
-  }
-
-  // ----------------------------- UI States -----------------------------
-
-  if (loading) {
-    return (
-      <div className="flex h-[70vh] items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-white/60">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          Carregando lead...
-        </div>
-      </div>
-    );
-  }
-
-  if (notFound || !lead) {
-    return (
-      <div className="space-y-4">
-        <button
-          onClick={() => router.push("/admin/prospeccao")}
-          className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Voltar para prospecção
-        </button>
-
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">
-          Lead não encontrado.
-        </div>
-      </div>
-    );
-  }
-
-  // ----------------------------- Render -----------------------------
+    msg += `_Assim que o pagamento for confirmado, nosso sistema liberará o Onboarding automaticamente._`;
+    onSendMessage(msg);
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Toast */}
-      {toast && (
-        <div
-          className={cx(
-            "fixed right-5 top-5 z-50 rounded-xl border px-4 py-3 text-sm shadow-lg backdrop-blur",
-            toast.type === "ok" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
-            toast.type === "warn" && "border-amber-500/30 bg-amber-500/10 text-amber-100",
-            toast.type === "err" && "border-red-500/30 bg-red-500/10 text-red-100"
-          )}
-        >
-          <div className="flex items-center gap-2">
-            {toast.type === "ok" ? <CheckCircle2 className="h-4 w-4" /> : null}
-            {toast.type === "warn" ? <AlertTriangle className="h-4 w-4" /> : null}
-            {toast.type === "err" ? <XCircleIcon /> : null}
-            <span>{toast.msg}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-3">
-          <button
-            onClick={() => router.push("/admin/prospeccao")}
-            className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition"
-          >
-            <ArrowLeft size={14} /> Voltar
-          </button>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setDangerOpen(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[11px] text-red-200 hover:bg-red-500/15 transition"
-            >
-              <Trash2 className="h-4 w-4" />
-              Remover lead
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-wide">{lead.nome || "Lead sem nome"}</h1>
-
-            <Badge
-              label={STATUS_LABELS[effectiveStatus]}
-              className={STATUS_STYLE[effectiveStatus]}
-            />
-
-            <Badge
-              label={PRIORITY_LABELS[priorityDraft]}
-              className={PRIORITY_STYLE[priorityDraft]}
-            />
-
-            {stageDraft ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-blue-400/30 bg-blue-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-blue-200">
-                <Tags className="h-3.5 w-3.5" />
-                {STAGES.find((s) => s.key === stageDraft)?.label || stageDraft}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/60">
-                <Info className="h-3.5 w-3.5" />
-                Sem estágio definido
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => copyToClipboard(waMessage, "Mensagem copiada!")}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:bg-white/10 transition"
-            >
-              <ClipboardCopy className="h-4 w-4" />
-              Copiar mensagem
-            </button>
-
-            <button
-              onClick={openWhatsApp}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] text-white hover:bg-emerald-500 transition"
-            >
-              <MessageCircle className="h-4 w-4" />
-              Abrir WhatsApp
-              <ExternalLink className="h-3.5 w-3.5 opacity-80" />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 text-xs text-white/50">
-          <span className="inline-flex items-center gap-1">
-            <Timer className="h-4 w-4 text-white/30" />
-            Captado em: {createdAtFormatted}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <RefreshCcw className="h-4 w-4 text-white/30" />
-            Atualizado: {updatedAtFormatted}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Phone className="h-4 w-4 text-white/30" />
-            Último contato: {lastContactFormatted}
-          </span>
-        </div>
+    <div className="bg-[#0f0f0f] border border-white/10 rounded-[2rem] p-6 mb-6 shadow-2xl relative overflow-hidden group">
+      <div className="absolute top-0 right-0 p-8 opacity-[0.02] group-hover:opacity-[0.05] transition-opacity"><DollarSign size={40}/></div>
+      
+      <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
+        <h3 className="text-xs font-black text-white/50 uppercase tracking-widest flex items-center gap-2">
+            <ShieldCheck size={14} className="text-emerald-500"/> Checkout Master Altum
+        </h3>
+        <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-lg border border-emerald-500/20 font-bold tracking-tighter">API V3 ATIVA</span>
       </div>
 
-      {/* Main grid */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* LEFT (2 cols): Lead + CRM + Status + Timeline */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Lead Data */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <SectionTitle
-              title="Dados do lead"
-              icon={<ShieldCheck className="h-4 w-4" />}
-              subtitle="Informações captadas (Google Places / base)."
-              right={
-                <div className="flex items-center gap-2">
-                  {lead.telefone ? (
-                    <button
-                      onClick={() => copyToClipboard(lead.telefone || "", "Telefone copiado!")}
-                      className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] text-white/70 hover:bg-white/10 transition"
-                    >
-                      <ClipboardCopy className="h-3.5 w-3.5" />
-                      Copiar telefone
-                    </button>
-                  ) : null}
-                </div>
-              }
-            />
-
-            <Divider />
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2 text-xs text-white/75">
-                <Row icon={<Phone className="h-4 w-4 text-white/40" />} label="Telefone" value={lead.telefone || "—"} />
-                <Row icon={<Mail className="h-4 w-4 text-white/40" />} label="E-mail" value={lead.email || "—"} />
-                <Row icon={<MapPin className="h-4 w-4 text-white/40" />} label="Endereço" value={lead.endereco || "—"} />
-              </div>
-
-              <div className="space-y-2 text-xs text-white/75">
-                <Row icon={<Target className="h-4 w-4 text-white/40" />} label="Origem" value={lead.origem || "—"} />
-                <Row icon={<Sparkles className="h-4 w-4 text-white/40" />} label="Categoria" value={lead.categoria || "—"} />
-                <Row icon={<Star className="h-4 w-4 text-white/40" />} label="Lead ID" value={lead.id} mono />
-              </div>
-            </div>
+      <div className="space-y-4">
+        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 transition-all focus-within:border-blue-500/30">
+          <p className="text-[10px] uppercase font-black text-white/20 mb-1 tracking-widest">Valor da Venda</p>
+          <div className="flex items-center gap-2">
+             <span className="text-emerald-500 font-black text-xl">R$</span>
+             <input 
+                type="number" value={amount} onChange={e => setAmount(Number(e.target.value))} 
+                className="bg-transparent text-white font-mono text-2xl font-black w-full outline-none"
+             />
           </div>
+        </div>
 
-          {/* Diagnóstico + Oferta */}
-          <div className="rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 via-[#111111] to-[#111111] p-4 space-y-4">
-            <SectionTitle
-              title="Diagnóstico & Oferta"
-              icon={<Wand2 className="h-4 w-4" />}
-              subtitle="Você define o estágio → o sistema sugere a oferta e o pitch (pra você não travar no WhatsApp)."
-              right={
-                <button
-                  onClick={refreshSnapshot}
-                  disabled={savingCRM}
-                  className="inline-flex items-center gap-2 rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-1.5 text-[11px] text-blue-100 hover:bg-blue-500/15 transition disabled:opacity-60"
-                >
-                  {savingCRM ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                  Recalcular oferta
-                </button>
-              }
-            />
-
-            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs text-white/70">
-                  <span className="font-semibold text-white/80">Estágio</span>
-                  <span className="ml-2 text-white/50">(clique para selecionar)</span>
-                </div>
-                {stageInfo ? <span className="text-[11px] text-white/50">{stageInfo.hint}</span> : null}
-              </div>
-
-              <div className="mt-2 flex flex-wrap gap-2">
-                {STAGES.map((s) => (
-                  <Pill
-                    key={s.key}
-                    active={stageDraft === s.key}
-                    onClick={() => setStageDraft(s.key)}
-                    title={s.hint}
-                  >
-                    {s.label}
-                  </Pill>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-3 lg:grid-cols-2">
-              {/* Offer card */}
-              <div className="rounded-xl border border-white/10 bg-[#0f0f0f] p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-white/50">Oferta recomendada</p>
-                    <h3 className="mt-1 text-lg font-semibold text-white/90">{recommended.title}</h3>
-                    <p className="mt-1 text-xs text-white/60">
-                      Faixa: <span className="text-white/80 font-medium">{moneyBR(recommended.priceFrom)}</span> –{" "}
-                      <span className="text-white/80 font-medium">{moneyBR(recommended.priceTo)}</span>
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-white/5 p-2 text-white/70">
-                    <Zap className="h-4 w-4" />
-                  </div>
-                </div>
-
-                <Divider />
-
-                <p className="mt-3 text-xs text-white/70 leading-relaxed">{recommended.pitch}</p>
-
-                <div className="mt-3">
-                  <p className="text-[10px] uppercase tracking-wide text-white/50">Entregáveis</p>
-                  <ul className="mt-2 space-y-1 text-xs text-white/70">
-                    {recommended.deliverables.map((d) => (
-                      <li key={d} className="flex items-start gap-2">
-                        <ChevronRight className="h-4 w-4 text-white/30 mt-[-1px]" />
-                        <span>{d}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    onClick={() =>
-                      copyToClipboard(
-                        `${recommended.title}\nFaixa: ${moneyBR(recommended.priceFrom)}–${moneyBR(recommended.priceTo)}\n\nPitch:\n${recommended.pitch}\n\nEntregáveis:\n- ${recommended.deliverables.join("\n- ")}`,
-                        "Oferta copiada!"
-                      )
-                    }
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:bg-white/10 transition"
-                  >
-                    <ClipboardCopy className="h-4 w-4" />
-                    Copiar oferta
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      // “Aplicar recomendação” = salva CRM completo
-                      saveCRM();
-                    }}
-                    disabled={savingCRM}
-                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-[11px] text-white hover:bg-blue-500 transition disabled:opacity-60"
-                  >
-                    {savingCRM ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Salvar CRM + oferta
-                  </button>
-                </div>
-              </div>
-
-              {/* WhatsApp composer */}
-              <div className="rounded-xl border border-white/10 bg-[#0f0f0f] p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-white/50">Mensagem WhatsApp</p>
-                    <h3 className="mt-1 text-sm font-semibold text-white/85">Pronta pra enviar (personalizada)</h3>
-                    <p className="mt-1 text-xs text-white/60">
-                      Você abre no WhatsApp com 1 clique. Se o status estiver “Novo”, marca como “Contatado”.
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-100">
-                    <MessagesSquare className="h-4 w-4" />
-                  </div>
-                </div>
-
-                <Divider />
-
-                <textarea
-                  value={waMessage}
-                  readOnly
-                  className="mt-3 h-44 w-full resize-none rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-white/80 outline-none"
-                />
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    onClick={() => copyToClipboard(waMessage, "Mensagem copiada!")}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:bg-white/10 transition"
-                  >
-                    <ClipboardCopy className="h-4 w-4" />
-                    Copiar
-                  </button>
-
-                  <button
-                    onClick={openWhatsApp}
-                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] text-white hover:bg-emerald-500 transition"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    Enviar no WhatsApp
-                    <ExternalLink className="h-3.5 w-3.5 opacity-80" />
-                  </button>
-
-                  <button
-                    onClick={markContacted}
-                    className="inline-flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100 hover:bg-amber-500/15 transition"
-                  >
-                    <Flag className="h-4 w-4" />
-                    Marcar contatado
-                  </button>
-                </div>
-
-                {!lead.telefone ? (
-                  <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4" />
-                      Este lead não tem telefone — sem WhatsApp.
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          {/* CRM Controls */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-4">
-            <SectionTitle
-              title="CRM do lead"
-              icon={<NotebookPen className="h-4 w-4" />}
-              subtitle="Responsável, prioridade, observações e próximo passo. Isso te dá controle amanhã."
-              right={
-                <button
-                  onClick={saveCRM}
-                  disabled={savingCRM}
-                  className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-[11px] text-white hover:bg-white/15 transition disabled:opacity-60"
-                >
-                  {savingCRM ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Salvar CRM
-                </button>
-              }
-            />
-
-            <Divider />
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-wide text-white/50">Responsável</label>
-                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <PencilLine className="h-4 w-4 text-white/30" />
-                  <input
-                    value={ownerDraft}
-                    onChange={(e) => setOwnerDraft(e.target.value)}
-                    placeholder="ex: Sávio"
-                    className="w-full bg-transparent text-xs text-white/80 outline-none placeholder:text-white/30"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-wide text-white/50">Prioridade</label>
-                <div className="flex flex-wrap gap-2">
-                  {(["low", "medium", "high"] as Priority[]).map((p) => (
-                    <Pill key={p} active={priorityDraft === p} onClick={() => setPriorityDraft(p)}>
-                      {PRIORITY_LABELS[p]}
-                    </Pill>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-wide text-white/50">Atalhos</label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => {
-                      setNextStepDraft("Enviar mensagem no WhatsApp e coletar 2 informações (site + objetivo).");
-                      showToast("ok", "Próximo passo sugerido aplicado.");
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:bg-white/10 transition"
-                  >
-                    <Zap className="h-4 w-4" />
-                    Próximo passo sugerido
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setNotesDraft(
-                        `Diagnóstico rápido:\n- Presença no Google: \n- Site: \n- Tráfego: \n- Oferta ideal: ${recommended.title}\n- Faixa: ${moneyBR(recommended.priceFrom)}–${moneyBR(recommended.priceTo)}`
-                      );
-                      showToast("ok", "Modelo de observação aplicado.");
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:bg-white/10 transition"
-                  >
-                    <NotebookPen className="h-4 w-4" />
-                    Modelo de observação
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-wide text-white/50">Observações</label>
-                <textarea
-                  value={notesDraft}
-                  onChange={(e) => setNotesDraft(e.target.value)}
-                  placeholder="Ex: ligou hoje, pediu orçamento, disse que não tem site..."
-                  className="h-40 w-full resize-none rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/80 outline-none placeholder:text-white/30"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-wide text-white/50">Próximo passo</label>
-                <textarea
-                  value={nextStepDraft}
-                  onChange={(e) => setNextStepDraft(e.target.value)}
-                  placeholder="Ex: mandar proposta do pacote digital completo amanhã às 10h."
-                  className="h-40 w-full resize-none rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/80 outline-none placeholder:text-white/30"
-                />
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={async () => {
-                      await addEvent({
-                        type: "note",
-                        title: "Observação registrada (manual)",
-                        detail: short(notesDraft || "", 200),
-                      });
-                      showToast("ok", "Evento criado no histórico.");
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:bg-white/10 transition"
-                  >
-                    <NotebookPen className="h-4 w-4" />
-                    Registrar no histórico
-                  </button>
-
-                  <button
-                    onClick={async () => {
-                      await updateLead(
-                        { lastContactAt: serverTimestamp() },
-                        { type: "contact", title: "Contato atualizado", detail: "lastContactAt atualizado manualmente." }
-                      );
-                      showToast("ok", "Último contato atualizado.");
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-100 hover:bg-emerald-500/15 transition"
-                  >
-                    <Phone className="h-4 w-4" />
-                    Atualizar último contato
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Status */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <SectionTitle
-              title="Atualizar status"
-              icon={<CheckCircle2 className="h-4 w-4" />}
-              subtitle="Organize seu funil. Isso guia follow-ups no n8n depois."
-            />
-
-            <Divider />
-
-            <div className="flex flex-wrap gap-2 text-xs">
-              {(["novo", "contatado", "respondido", "qualificado", "descartado"] as LeadStatus[]).map((s) => (
-                <button
-                  key={s}
-                  disabled={savingStatus}
-                  onClick={() => setStatusDraft(s)}
-                  className={cx(
-                    "px-3 py-1.5 rounded-lg border transition",
-                    statusDraft === s
-                      ? "bg-blue-600 text-white border-blue-400/50"
-                      : "bg-white/5 border-white/10 text-white/70 hover:bg-white/10",
-                    savingStatus && "opacity-60"
-                  )}
-                >
-                  {STATUS_LABELS[s]}
+        {!result ? (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: "PIX", icon: <QrCode size={18}/>, label: "PIX" },
+                { id: "BOLETO", icon: <FileText size={18}/>, label: "Boleto" },
+                { id: "CREDIT_CARD", icon: <CreditCard size={18}/>, label: "Cartão" }
+              ].map((m) => (
+                <button key={m.id} onClick={() => setMethod(m.id as any)} className={cx("flex flex-col items-center gap-2 py-4 rounded-2xl border transition-all font-black text-[10px] uppercase tracking-tighter", method === m.id ? "bg-blue-600/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.1)]" : "bg-white/5 border-white/5 text-white/30 hover:bg-white/10")}>
+                  {m.icon} {m.label}
                 </button>
               ))}
             </div>
 
-            {statusDraft && statusDraft !== effectiveStatus && (
-              <button
-                disabled={savingStatus}
-                onClick={() => applyStatus(statusDraft)}
-                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] hover:bg-emerald-500 transition disabled:opacity-60"
-              >
-                {savingStatus ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="h-4 w-4" />
-                    Aplicar status
-                  </>
-                )}
-              </button>
+            <button onClick={handleGenerate} disabled={loading} className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-2xl flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-900/20 uppercase tracking-widest">
+              {loading ? <Loader2 className="animate-spin" size={16}/> : <Zap size={16} fill="white"/>} GERAR COBRANÇA {method}
+            </button>
+          </>
+        ) : (
+          <div className="space-y-3 animate-in zoom-in duration-300">
+            {method === "PIX" && (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
+                    <img src={`data:image/png;base64,${result.pix.encodedImage}`} className="w-40 h-40 mx-auto rounded-xl mb-4 border-4 border-white shadow-2xl"/>
+                    <button onClick={() => copyToClip(result.pix.payload)} className="w-full py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black text-white/60 flex items-center justify-center gap-2 border border-white/5 transition">
+                        {copied ? <Check size={14} className="text-emerald-500"/> : <Copy size={14}/>} {copied ? "COPIADO!" : "COPIAR PIX COPIA E COLA"}
+                    </button>
+                </div>
             )}
 
-            <p className="text-[11px] text-white/40">
-              Regra prática: <b>Novo</b> → <b>Contatado</b> (abriu WhatsApp) → <b>Respondido</b> (respondeu algo) →{" "}
-              <b>Qualificado</b> (pedido de proposta / interesse real) → <b>Descartado</b> (sem perfil).
-            </p>
-          </div>
-
-          {/* Timeline */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <SectionTitle
-              title="Histórico do lead (Timeline)"
-              icon={<Link2 className="h-4 w-4" />}
-              subtitle="Tudo que você faz vira evento. No futuro o n8n/IA alimenta isso automaticamente."
-              right={
-                <button
-                  onClick={async () => {
-                    await addEvent({
-                      type: "manual",
-                      title: "Checkpoint manual",
-                      detail: "Você marcou um checkpoint na timeline.",
-                    });
-                    showToast("ok", "Checkpoint criado.");
-                  }}
-                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] text-white/70 hover:bg-white/10 transition"
-                >
-                  <PlusIcon />
-                  Checkpoint
-                </button>
-              }
-            />
-
-            <Divider />
-
-            {eventsLoading ? (
-              <div className="flex items-center gap-2 text-sm text-white/60">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Carregando eventos...
-              </div>
-            ) : events.length === 0 ? (
-              <p className="text-sm text-white/50">Nenhum evento ainda. Quando você salvar/contatar, isso aparece aqui.</p>
-            ) : (
-              <div className="space-y-2">
-                {events.map((e) => (
-                  <div key={e.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/60">
-                            {e.type}
-                          </span>
-                          <p className="text-xs font-semibold text-white/80">{e.title}</p>
-                        </div>
-                        {e.detail ? <p className="text-xs text-white/60 leading-relaxed">{e.detail}</p> : null}
-                      </div>
-                      <p className="text-[11px] text-white/40">{formatBRDateTime(e.createdAt)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Logs / automação (pronto pra n8n depois) */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <SectionTitle
-              title="Logs da automação (preparado para n8n)"
-              icon={<Bot className="h-4 w-4" />}
-              subtitle="Hoje: você opera manual. Amanhã: o n8n registra eventos aqui."
-              right={
-                <button
-                  onClick={async () => {
-                    await addEvent({
-                      type: "n8n",
-                      title: "Simulação de log n8n",
-                      detail: "Este evento simula um log de automação. Serve pra validar o painel.",
-                      meta: { simulated: true },
-                    });
-                    showToast("ok", "Log simulado criado.");
-                  }}
-                  className="inline-flex items-center gap-2 rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-1.5 text-[11px] text-blue-100 hover:bg-blue-500/15 transition"
-                >
-                  <Bot className="h-4 w-4" />
-                  Simular log
-                </button>
-              }
-            />
-
-            <Divider />
-
-            <p className="text-xs text-white/60 leading-relaxed">
-              Quando você plugar o n8n, cada mensagem enviada, falha, follow-up e resposta automática vai virar um evento
-              aqui. Isso te dá auditoria total.
-            </p>
-          </div>
-        </div>
-
-        {/* RIGHT: Actions */}
-        <div className="space-y-4">
-          {/* Converter */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <SectionTitle
-              title="Converter lead"
-              icon={<UserPlus className="h-4 w-4" />}
-              subtitle="Quando ele demonstrar interesse real."
-            />
-
-            <Divider />
-
-            <button
-              disabled={convertingClient}
-              onClick={convertToClient}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm hover:bg-blue-500 transition disabled:opacity-60"
-            >
-              {convertingClient ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Criando cliente...
-                </>
-              ) : (
-                <>
-                  <UserPlus size={16} />
-                  Criar cliente
-                </>
-              )}
+            <button onClick={sendToWhatsApp} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs rounded-2xl flex items-center justify-center gap-2 transition shadow-xl shadow-blue-900/40 uppercase tracking-widest">
+              <MessageCircle size={18} fill="white"/> ENVIAR PARA O CLIENTE
             </button>
 
-            <button
-              disabled={creatingProject}
-              onClick={convertToProject}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm hover:bg-purple-500 transition disabled:opacity-60"
-            >
-              {creatingProject ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Criando projeto...
-                </>
-              ) : (
-                <>
-                  <Rocket size={16} />
-                  Criar projeto
-                </>
-              )}
-            </button>
-
-            <p className="text-[11px] text-white/40">
-              Hoje é manual. Depois o n8n/IA pode qualificar e converter sozinho (com regras).
-            </p>
-          </div>
-
-          {/* Ações rápidas */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <SectionTitle
-              title="Ações rápidas"
-              icon={<Zap className="h-4 w-4" />}
-              subtitle="Atalhos pra operar rápido amanhã."
-            />
-
-            <Divider />
-
-            <div className="space-y-2 text-xs">
-              <button
-                onClick={openWhatsApp}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 hover:bg-emerald-500 transition"
-              >
-                <MessageCircle size={14} /> Iniciar conversa (WhatsApp)
-              </button>
-
-              <button
-                onClick={async () => {
-                  await addEvent({
-                    type: "sdr",
-                    title: "IA SDR (modo manual)",
-                    detail:
-                      "Você marcou a execução da SDR. Por enquanto, isso só registra evento e organiza o lead. Depois plugamos IA/n8n.",
-                    meta: { mode: "manual" },
-                  });
-                  showToast("ok", "Executado (modo manual).");
-                }}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2 hover:bg-white/20 transition"
-              >
-                <Bot size={14} /> Rodar IA SDR (modo manual)
-              </button>
-
-              <button
-                onClick={async () => {
-                  await updateLead(
-                    { status: "descartado" },
-                    { type: "discard", title: "Lead descartado", detail: "Status alterado para descartado (manual)." }
-                  );
-                  showToast("ok", "Lead descartado.");
-                }}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-200 hover:bg-red-500/15 transition"
-              >
-                <Trash2 size={14} /> Descartar lead
-              </button>
-            </div>
-
-            <p className="text-[11px] text-white/40">
-              Sua rotina: qualifica estágio → oferta aparece → manda WhatsApp → registra observações → converte.
-            </p>
-          </div>
-
-          {/* Oferta em “1 tela” */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <SectionTitle
-              title="Oferta na cara"
-              icon={<Target className="h-4 w-4" />}
-              subtitle="Pra você não travar no pitch."
-              right={
-                <button
-                  onClick={() => copyToClipboard(`${recommended.title} — ${moneyBR(recommended.priceFrom)}–${moneyBR(recommended.priceTo)}`, "Resumo copiado!")}
-                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] text-white/70 hover:bg-white/10 transition"
-                >
-                  <ClipboardCopy className="h-3.5 w-3.5" />
-                  Copiar
-                </button>
-              }
-            />
-
-            <Divider />
-
-            <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-3">
-              <p className="text-xs font-semibold text-blue-100">{recommended.title}</p>
-              <p className="mt-1 text-xs text-white/70">
-                Faixa: <span className="text-white/90 font-medium">{moneyBR(recommended.priceFrom)}</span> –{" "}
-                <span className="text-white/90 font-medium">{moneyBR(recommended.priceTo)}</span>
-              </p>
-              <p className="mt-2 text-xs text-white/70 leading-relaxed">{recommended.pitch}</p>
+            <div className="flex gap-2">
+                <button onClick={() => setResult(null)} className="flex-1 py-2 text-white/20 hover:text-white transition text-[10px] font-black uppercase border border-white/5 rounded-xl">Cancelar</button>
+                <button onClick={onPaymentSuccess} className="flex-1 py-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl text-[10px] font-black uppercase">Forçar Aprovação</button>
             </div>
           </div>
-        </div>
+        )}
       </div>
+    </div>
+  );
+}
+// ----------------------------- PÁGINA PRINCIPAL -----------------------------
 
-      {/* Danger modal */}
-      {dangerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0d0d0d] p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-white/90">Remover lead</h3>
-                <p className="mt-1 text-xs text-white/60">
-                  Isso remove o documento do lead. Subcoleções (events) podem permanecer no Firestore se você não limpar manualmente.
-                </p>
-              </div>
-              <button
-                onClick={() => setDangerOpen(false)}
-                className="rounded-lg border border-white/10 bg-white/5 p-2 text-white/70 hover:bg-white/10 transition"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
 
-            <Divider />
+export default function LeadDetalhePage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const leadId = params?.id;
 
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button
-                onClick={() => setDangerOpen(false)}
-                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/70 hover:bg-white/10 transition"
-              >
-                Cancelar
-              </button>
+  const [lead, setLead] = useState<Lead | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<any>(null);
+  const [events, setEvents] = useState<LeadEvent[]>([]);
 
-              <button
-                disabled={deleting}
-                onClick={deleteLead}
-                className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-200 hover:bg-red-500/15 transition disabled:opacity-60"
-              >
-                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Remover
-              </button>
-            </div>
-          </div>
+  // Estados de Edição CRM
+  const [owner, setOwner] = useState("");
+  const [notes, setNotes] = useState("");
+  const [stageDraft, setStageDraft] = useState<StageKey | undefined>(undefined);
+  const [saving, setSaving] = useState(false);
+  const [converting, setConverting] = useState(false);
+
+  // Estados de Edição de Dados (Perfil)
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [editForm, setEditForm] = useState({
+      nome: "", telefone: "", website: "", cnpj: "", instagram: "", linkedin: ""
+  });
+  const [newLinkTitle, setNewLinkTitle] = useState("");
+  const [newLinkUrl, setNewLinkUrl] = useState("");
+
+  // Firestore Sub
+  useEffect(() => {
+    if (!leadId) return;
+    const unsub = onSnapshot(doc(db, "leads", leadId), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data() as Lead;
+        setLead({ ...d, id: snap.id });
+        setOwner(d.owner || "");
+        setNotes(d.notes || "");
+        // @ts-ignore
+        setStageDraft(d.stage || undefined);
+        
+        // Populate edit form
+        setEditForm({
+            nome: d.nome || "",
+            telefone: d.telefone || "",
+            website: d.website || "",
+            cnpj: d.cnpj || "",
+            instagram: d.instagram || "",
+            linkedin: d.linkedin || ""
+        });
+      }
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [leadId]);
+
+  // Events Sub
+  useEffect(() => {
+    if (!leadId) return;
+    const q = query(collection(db, "leads", leadId, "events"), orderBy("createdAt", "desc"), limit(20));
+    const unsub = onSnapshot(q, (snap) => {
+       setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as LeadEvent)));
+    });
+    return () => unsub();
+  }, [leadId]);
+
+  function showToast(type: string, msg: string) {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 3000);
+  }
+
+  // --- ACTIONS ---
+
+  async function saveCRM() {
+    if (!leadId || !lead) return;
+    setSaving(true);
+    
+    const recOffer = recommendOffer(stageDraft);
+    const offerSnapshot = {
+        id: recOffer.id, title: recOffer.title, priceFrom: recOffer.priceFrom, priceTo: recOffer.priceTo,
+        pitch: recOffer.pitch, deliverables: recOffer.deliverables
+    };
+
+    try {
+        await updateDoc(doc(db, "leads", leadId), {
+          owner, notes, stage: stageDraft, stageTags: stageDraft ? [stageDraft] : [], offer: offerSnapshot, updatedAt: serverTimestamp()
+        });
+        showToast("ok", "CRM Atualizado!");
+    } catch(e) { showToast("err", "Erro ao salvar"); }
+    finally { setSaving(false); }
+  }
+
+  async function saveProfile() {
+      if (!leadId) return;
+      try {
+          await updateDoc(doc(db, "leads", leadId), {
+              ...editForm, updatedAt: serverTimestamp()
+          });
+          setEditingProfile(false);
+          showToast("ok", "Dados do lead atualizados!");
+      } catch(e) { showToast("err", "Erro ao salvar perfil"); }
+  }
+
+  async function addUsefulLink() {
+      if (!leadId || !newLinkTitle || !newLinkUrl) return;
+      try {
+          const currentLinks = lead?.usefulLinks || [];
+          const updatedLinks = [...currentLinks, { title: newLinkTitle, url: newLinkUrl }];
+          await updateDoc(doc(db, "leads", leadId), { usefulLinks: updatedLinks });
+          setNewLinkTitle(""); setNewLinkUrl("");
+          showToast("ok", "Link adicionado!");
+      } catch(e) { showToast("err", "Erro ao add link"); }
+  }
+
+  async function removeUsefulLink(idx: number) {
+      if (!leadId || !lead?.usefulLinks) return;
+      const updated = lead.usefulLinks.filter((_, i) => i !== idx);
+      await updateDoc(doc(db, "leads", leadId), { usefulLinks: updated });
+  }
+
+  // Lógica do WhatsApp API (Placeholder para sua integração)
+  async function handleWhatsApp(msg: string) {
+    if (!lead?.telefone) return showToast("err", "Sem telefone!");
+    
+    // 1. Log no CRM
+    await addDoc(collection(db, "leads", leadId!, "events"), {
+      type: "whatsapp", title: "Ataque Enviado", detail: msg, createdAt: serverTimestamp()
+    });
+
+    // 2. Atualizar Status
+    if (lead.status === "novo") {
+      updateDoc(doc(db, "leads", leadId!), { status: "contatado", lastContactAt: serverTimestamp() });
+    }
+
+    // 3. Integração (Aqui seria o fetch para sua API)
+    // Como ainda não temos o endpoint, usamos o link direto como fallback,
+    // MAS a UX já está preparada para ser "Disparo de API".
+    console.log("Enviando para API do WhatsApp:", { phone: lead.telefone, msg });
+    
+    const link = buildWhatsAppLink(lead.telefone, msg);
+    if (link) window.open(link, "_blank");
+  }
+
+  async function convertToClient() {
+    if (!lead || !leadId) return;
+    setConverting(true);
+    try {
+        const batch = writeBatch(db);
+        const clientRef = doc(collection(db, "clientes"));
+        const leadRef = doc(db, "leads", leadId);
+        
+        batch.set(clientRef, {
+            name: lead.nome, telefone: lead.telefone, email: lead.email, endereco: lead.endereco,
+            origem: lead.origem || "crm", status: "ativo", notes: lead.notes, createdAt: serverTimestamp(), leadIdOriginal: leadId,
+            cnpj: lead.cnpj, instagram: lead.instagram, linkedin: lead.linkedin // Leva os dados novos
+        });
+
+        const projectRef = doc(collection(db, "projetos"));
+        batch.set(projectRef, {
+            titulo: `Projeto: ${lead.nome}`, clientId: clientRef.id, clientName: lead.nome,
+            status: "Onboarding", servicos: lead.offer?.deliverables || [], valorMensal: lead.offer?.priceFrom || 0, createdAt: serverTimestamp()
+        });
+
+        if (lead.offer?.priceFrom) {
+            const finRef = doc(collection(db, "financeiro"));
+            batch.set(finRef, {
+                clientId: clientRef.id, clientName: lead.nome, projectId: projectRef.id,
+                tipo: "Setup", status: "Pendente", valor: lead.offer.priceFrom, referencia: "Setup (CRM)", createdAt: serverTimestamp()
+            });
+        }
+
+        batch.update(leadRef, { status: "qualificado", convertedClientId: clientRef.id, updatedAt: serverTimestamp() });
+        await batch.commit();
+        showToast("ok", "Cliente Convertido com Sucesso!");
+        router.push(`/admin/projetos/${projectRef.id}`);
+    } catch(e) { console.error(e); showToast("err", "Erro ao converter"); }
+    finally { setConverting(false); }
+  }
+
+  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
+  if (!lead) return <div className="p-10 text-white">Lead não encontrado.</div>;
+
+  const hasPhotos = lead.photos && lead.photos.length > 0;
+  const isHighTicket = (lead.priceLevel && lead.priceLevel >= 3);
+  const recommended = recommendOffer(stageDraft);
+
+  return (
+    <div className="min-h-screen pb-24 space-y-8 bg-[#050505]">
+      {/* TOAST */}
+      {toast && (
+        <div className={cx("fixed top-5 right-5 px-6 py-4 rounded-2xl border backdrop-blur-xl z-[100] text-sm font-bold flex items-center gap-3 animate-in slide-in-from-right shadow-2xl", toast.type === "ok" ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-100" : "border-red-500/50 bg-red-500/20 text-red-100")}>
+          {toast.type === "ok" ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />} {toast.msg}
         </div>
       )}
+
+      {/* --- HEADER HERO --- */}
+      <div className="relative border-b border-white/10 bg-[#0f0f0f] shadow-2xl pb-10 pt-6 px-6 lg:px-12">
+        <div className="absolute inset-0 z-0 opacity-20 pointer-events-none overflow-hidden">
+             <div className="absolute inset-0 bg-gradient-to-b from-blue-900/40 via-[#0f0f0f] to-[#0f0f0f]" />
+             <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)', backgroundSize: '30px 30px', opacity: 0.05 }}></div>
+        </div>
+        
+        <div className="relative z-10 max-w-[1600px] mx-auto">
+          <button onClick={() => router.push("/admin/prospeccao")} className="flex items-center gap-2 text-[10px] uppercase font-bold text-white/40 hover:text-white transition bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg mb-6 w-fit backdrop-blur-md">
+            <ArrowLeft size={12} /> Voltar ao CRM
+          </button>
+
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-8">
+            <div className="space-y-4 flex-1">
+              {editingProfile ? (
+                 <div className="space-y-2">
+                    <input value={editForm.nome} onChange={e => setEditForm({...editForm, nome: e.target.value})} className="text-4xl font-black bg-white/10 border-b border-white/20 text-white w-full outline-none px-2" />
+                    <input value={editForm.endereco} onChange={e => setEditForm({...editForm, endereco: e.target.value})} className="text-sm bg-white/10 border-b border-white/20 text-white/70 w-full outline-none px-2" placeholder="Endereço"/>
+                 </div>
+              ) : (
+                <div className="flex items-center gap-4 group">
+                    <h1 className="text-5xl font-black text-white tracking-tight drop-shadow-2xl">{lead.nome}</h1>
+                    <button onClick={() => setEditingProfile(true)} className="opacity-0 group-hover:opacity-100 transition p-2 hover:bg-white/10 rounded-full"><PencilLine size={16}/></button>
+                    {isHighTicket && <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1 shadow-[0_0_15px_rgba(245,158,11,0.3)] animate-pulse"><DollarSign size={14} /> HIGH TICKET</span>}
+                    {lead.foiResgatado && <span className="bg-blue-500/20 text-blue-300 border border-blue-500/40 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1 shadow-[0_0_15px_rgba(59,130,246,0.3)]"><Unlock size={14} /> MANUAL</span>}
+                </div>
+              )}
+              
+              <div className="flex flex-wrap items-center gap-6 text-sm font-medium text-white/70">
+                <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5"><Target size={16} className="text-blue-400"/> {lead.categoria || "Geral"}</span>
+                <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5"><MapPin size={16} className="text-red-400"/> {lead.endereco}</span>
+                {lead.rating && <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 text-amber-200"><Star size={16} fill="currentColor" className="text-amber-400"/> {lead.rating} <span className="opacity-50">({lead.userRatingsTotal})</span></span>}
+                {lead.isOpenNow !== undefined && <span className={cx("flex items-center gap-2 px-3 py-1.5 rounded-lg border font-bold", lead.isOpenNow ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-red-500/10 border-red-500/20 text-red-400")}><Clock size={16}/> {lead.isOpenNow ? "Aberto Agora" : "Fechado"}</span>}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+               <Link href={googleMapsLink(lead.nome + " " + lead.endereco)} target="_blank" className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 text-white/70 transition hover:scale-105 active:scale-95 shadow-xl" title="Ver no Maps">
+                 <Map size={24} />
+               </Link>
+               {lead.website && (
+                 <Link href={safeUrl(lead.website)} target="_blank" className="p-4 bg-blue-600/10 border border-blue-500/30 text-blue-400 rounded-2xl hover:bg-blue-600/20 transition hover:scale-105 active:scale-95 shadow-xl shadow-blue-500/10" title="Ver Site">
+                   <Globe size={24} />
+                 </Link>
+               )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* --- GRID PRINCIPAL --- */}
+      <div className="max-w-[1600px] mx-auto px-6 lg:px-12 grid grid-cols-1 xl:grid-cols-12 gap-8">
+        
+        {/* COLUNA ESQUERDA: PERFIL COMPLETO (30%) */}
+        <div className="xl:col-span-4 space-y-6">
+           <div className="bg-[#111] border border-white/10 rounded-3xl p-6 shadow-xl">
+              <div className="flex justify-between items-center mb-4">
+                 <SectionTitle title="Perfil Corporativo" icon={<Building2 size={18}/>} />
+                 <button onClick={() => { if(editingProfile) saveProfile(); else setEditingProfile(true); }} className="text-xs font-bold text-blue-400 hover:text-blue-300">
+                    {editingProfile ? "SALVAR" : "EDITAR"}
+                 </button>
+              </div>
+
+              <div className="space-y-4">
+                 {/* WhatsApp */}
+                 <div className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5 hover:border-emerald-500/30 transition group">
+                    <div className="flex items-center gap-4 flex-1">
+                       <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl"><Phone size={18}/></div>
+                       <div className="w-full">
+                          <p className="text-[10px] text-white/40 uppercase font-black tracking-widest">WhatsApp / Tel</p>
+                          {editingProfile ? (
+                              <input value={editForm.telefone} onChange={e => setEditForm({...editForm, telefone: e.target.value})} className="bg-white/10 text-white w-full rounded p-1 text-sm outline-none border border-white/20"/>
+                          ) : (
+                              <p className="text-base font-mono text-white/90">{lead.telefone || "Sem número"}</p>
+                          )}
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Website */}
+                 <div className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5 hover:border-blue-500/30 transition group">
+                    <div className="flex items-center gap-4 flex-1">
+                       <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl"><Globe size={18}/></div>
+                       <div className="w-full">
+                          <p className="text-[10px] text-white/40 uppercase font-black tracking-widest">Site Oficial</p>
+                          {editingProfile ? (
+                              <input value={editForm.website} onChange={e => setEditForm({...editForm, website: e.target.value})} className="bg-white/10 text-white w-full rounded p-1 text-sm outline-none border border-white/20"/>
+                          ) : (
+                              <p className="text-sm text-white/90 max-w-[200px] truncate">{lead.website || "Não possui"}</p>
+                          )}
+                       </div>
+                    </div>
+                    {!editingProfile && lead.website && <Link href={safeUrl(lead.website)} target="_blank" className="text-white/20 hover:text-white transition p-2 hover:bg-white/10 rounded-lg"><ExternalLink size={16}/></Link>}
+                 </div>
+
+                 {/* Dados Extras (CNPJ/Social) */}
+                 <div className="pt-4 border-t border-white/5 space-y-3">
+                     <div className="grid grid-cols-1 gap-2">
+                        <label className="text-[10px] uppercase font-bold text-white/30">CNPJ</label>
+                        {editingProfile ? (
+                           <input value={editForm.cnpj} onChange={e => setEditForm({...editForm, cnpj: e.target.value})} className="bg-white/5 border border-white/10 rounded p-2 text-sm text-white w-full outline-none" placeholder="00.000.000/0001-00"/>
+                        ) : (
+                           <p className="text-sm font-mono text-white/70">{lead.cnpj || "—"}</p>
+                        )}
+                     </div>
+                     
+                     <div className="grid grid-cols-2 gap-2">
+                        <div>
+                           <label className="text-[10px] uppercase font-bold text-white/30 flex items-center gap-1"><Instagram size={10}/> Instagram</label>
+                           {editingProfile ? (
+                               <input value={editForm.instagram} onChange={e => setEditForm({...editForm, instagram: e.target.value})} className="bg-white/5 border border-white/10 rounded p-2 text-sm text-white w-full outline-none mt-1" placeholder="@usuario"/>
+                           ) : (
+                               <p className="text-xs text-white/70 mt-1">{lead.instagram || "—"}</p>
+                           )}
+                        </div>
+                        <div>
+                           <label className="text-[10px] uppercase font-bold text-white/30 flex items-center gap-1"><Linkedin size={10}/> LinkedIn</label>
+                           {editingProfile ? (
+                               <input value={editForm.linkedin} onChange={e => setEditForm({...editForm, linkedin: e.target.value})} className="bg-white/5 border border-white/10 rounded p-2 text-sm text-white w-full outline-none mt-1" placeholder="in/usuario"/>
+                           ) : (
+                               <p className="text-xs text-white/70 mt-1">{lead.linkedin || "—"}</p>
+                           )}
+                        </div>
+                     </div>
+                 </div>
+
+                 {/* Links Úteis */}
+                 <div className="pt-4 border-t border-white/5">
+                     <p className="text-[10px] uppercase font-bold text-white/30 mb-2 flex items-center gap-1"><LinkIcon size={12}/> Links Úteis (Drive, Docs)</p>
+                     <div className="space-y-2">
+                         {lead.usefulLinks?.map((link, idx) => (
+                             <div key={idx} className="flex justify-between items-center bg-white/5 px-3 py-2 rounded-lg border border-white/5">
+                                 <a href={safeUrl(link.url)} target="_blank" className="text-xs text-blue-400 hover:underline truncate max-w-[200px]">{link.title}</a>
+                                 <button onClick={() => removeUsefulLink(idx)} className="text-red-400/50 hover:text-red-400"><X size={12}/></button>
+                             </div>
+                         ))}
+                         <div className="flex gap-2 mt-2">
+                             <input value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} className="bg-black/30 text-xs text-white p-2 rounded-lg border border-white/10 flex-1 outline-none" placeholder="Título (ex: Drive)"/>
+                             <input value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} className="bg-black/30 text-xs text-white p-2 rounded-lg border border-white/10 flex-1 outline-none" placeholder="URL"/>
+                             <button onClick={addUsefulLink} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white"><Plus size={14}/></button>
+                         </div>
+                     </div>
+                 </div>
+              </div>
+           </div>
+
+           <RevenueLossCard lead={lead} />
+        </div>
+
+        {/* COLUNA CENTRAL: CÉREBRO & FUNIL (40%) */}
+<div className="xl:col-span-5 space-y-6">
+  <SmartScriptGenerator lead={lead} onSend={handleWhatsApp} />
+
+  <div className="bg-[#111] border border-white/10 rounded-3xl p-6 shadow-xl">
+    <SectionTitle title="Funil & Conversão" icon={<RefreshCcw size={18}/>}  />
+    
+    <div className="grid grid-cols-4 gap-2 mb-6 bg-black/30 p-2 rounded-xl border border-white/5">
+        {["novo", "contatado", "respondido", "qualificado"].map((s) => (
+          <button key={s} onClick={() => updateDoc(doc(db, "leads", leadId!), { status: s })} className={cx("py-2 rounded-lg text-[10px] font-black uppercase transition tracking-wide text-center", lead.status === s ? STATUS_STYLE[s as LeadStatus] : "text-white/20 hover:text-white hover:bg-white/5")}>
+            {STATUS_LABELS[s as LeadStatus]}
+          </button>
+        ))}
     </div>
-  );
-}
 
-// ----------------------------- Small internal components (icons/rows) -----------------------------
+    {/* --- SINTONIA FINANCEIRA --- */}
+    <FinanceCheckoutModule 
+      lead={lead} 
+      onSendMessage={handleWhatsApp} // Envia a mensagem formatada para o seu disparador de WhatsApp
+      onPaymentSuccess={() => {
+        showToast("ok", "Pagamento aprovado!");
+        updateDoc(doc(db, "leads", leadId!), { status: "qualificado" });
+      }} 
+    />
+    {/* --------------------------- */}
 
-function Row({
-  icon,
-  label,
-  value,
-  mono,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex items-start gap-2">
-      {icon}
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wide text-white/40">{label}</p>
-        <p className={cx("text-xs text-white/80", mono && "font-mono text-[11px] text-white/70 break-all")}>{value}</p>
+    <button onClick={convertToClient} disabled={converting} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-3 transition shadow-xl shadow-blue-900/20 mb-3 disabled:opacity-50 hover:scale-[1.02] active:scale-95">
+      {converting ? <Loader2 className="animate-spin" size={18}/> : <UserPlus size={18} />} CONVERTER EM CLIENTE
+    </button>
+    
+    <button onClick={() => updateDoc(doc(db, "leads", leadId!), { status: "descartado" })} className="w-full py-2 text-red-400/40 hover:text-red-400 text-[10px] font-black uppercase transition hover:bg-red-500/5 rounded-lg">DESCARTAR LEAD</button>
+  </div>
+</div>
+
+        {/* COLUNA DIREITA: DIAGNÓSTICO (30%) */}
+        <div className="xl:col-span-3 space-y-6">
+           <div className="bg-[#111] border border-white/10 rounded-3xl p-6 shadow-xl h-fit">
+              <SectionTitle title="Diagnóstico Comercial" icon={<LayoutDashboard size={18}/>} />
+              
+              <div className="space-y-6">
+                 <div className="bg-black/30 p-4 rounded-xl border border-white/5">
+                    <label className="text-[10px] text-white/40 uppercase font-black block mb-3 tracking-widest">Estágio de Maturidade</label>
+                    <div className="flex flex-wrap gap-2">
+                       {STAGES.map(s => (
+                          <button key={s.key} onClick={() => setStageDraft(s.key)} className={cx("px-3 py-1.5 rounded-lg text-[10px] uppercase font-bold border transition", stageDraft === s.key ? "bg-white/20 border-white/40 text-white shadow-inner" : "border-white/5 text-white/30 hover:border-white/20 hover:text-white")}>
+                            {s.label}
+                          </button>
+                       ))}
+                    </div>
+                 </div>
+
+                 {/* OFERTA SUGERIDA */}
+                 <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-b from-blue-900/10 to-blue-900/5 p-5 relative overflow-hidden">
+                    <div className="absolute top-3 right-3 text-blue-500 opacity-20"><Zap size={48}/></div>
+                    <p className="text-[9px] uppercase font-black text-blue-400 tracking-widest mb-2 flex items-center gap-1"><Sparkles size={10}/> Oferta Recomendada</p>
+                    <h3 className="text-xl font-bold text-white mb-2 leading-tight">{recommended.title}</h3>
+                    <p className="text-xs text-white/60 mb-4 italic leading-relaxed">"{recommended.pitch}"</p>
+                    <div className="space-y-2 mb-4">
+                       {recommended.deliverables.slice(0,3).map(d => (<div key={d} className="flex items-start gap-2 text-[10px] text-blue-200/80 font-medium"><CheckCircle2 size={12} className="mt-0.5 text-blue-500 shrink-0"/> {d}</div>))}
+                    </div>
+                    <div className="flex justify-between items-end border-t border-blue-500/10 pt-3">
+                       <div><p className="text-[9px] text-white/40 uppercase font-bold">Investimento</p><p className="font-mono text-base text-blue-300 font-bold tracking-tight">{moneyBR(recommended.priceFrom)} - {moneyBR(recommended.priceTo)}</p></div>
+                    </div>
+                 </div>
+
+                 {/* Notas & Responsável */}
+                 <div className="grid grid-cols-2 gap-3">
+                    <div>
+                       <label className="text-[10px] text-white/40 uppercase font-black block mb-1 tracking-widest">Dono</label>
+                       <div className="flex items-center gap-2 bg-black/30 border border-white/5 rounded-xl p-2.5">
+                          <User size={14} className="text-white/30"/>
+                          <input value={owner} onChange={e => setOwner(e.target.value)} className="bg-transparent w-full text-xs outline-none text-white placeholder:text-white/20 font-medium" placeholder="Responsável"/>
+                       </div>
+                    </div>
+                    <button onClick={saveCRM} disabled={saving} className="bg-white/5 hover:bg-white/10 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition border border-white/10 mt-auto h-[38px] hover:border-white/20">
+                      {saving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} SALVAR
+                    </button>
+                 </div>
+                 <div>
+                    <label className="text-[10px] text-white/40 uppercase font-black block mb-1 tracking-widest">Notas de Negociação</label>
+                    <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full h-32 bg-black/30 border border-white/5 rounded-xl p-3 text-xs text-white/80 resize-none outline-none focus:border-blue-500/30 transition" placeholder="Resumo da call, dores citadas..."/>
+                 </div>
+              </div>
+           </div>
+
+           {/* Timeline (Mini) */}
+           <div className="mt-6 pt-6 border-t border-white/5 pl-2">
+              <p className="text-[10px] text-white/30 uppercase font-black mb-4 flex items-center gap-2 tracking-widest"><Grip size={12}/> Últimos Eventos</p>
+              <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                 {events.length === 0 && <p className="text-xs text-white/20 italic">Nenhum evento registrado.</p>}
+                 {events.map(e => (
+                    <div key={e.id} className="text-[10px] text-white/50 border-l-2 border-white/10 pl-3 py-1 hover:border-blue-500/50 transition duration-300">
+                       <span className="text-white/80 font-bold block">{e.title}</span> 
+                       <span className="block mt-0.5 opacity-70 leading-relaxed">{e.detail}</span>
+                       <span className="opacity-30 text-[9px] mt-1 block font-mono">{new Date(e.createdAt?.seconds * 1000).toLocaleString()}</span>
+                    </div>
+                 ))}
+              </div>
+           </div>
+        </div>
+
       </div>
     </div>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M12 5v14M5 12h14"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function XCircleIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        opacity="0.9"
-      />
-      <path
-        d="M15 9l-6 6M9 9l6 6"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }
