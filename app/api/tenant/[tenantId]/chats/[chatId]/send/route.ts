@@ -4,10 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhone } from "@/app/lib/server/phone";
 import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
-
-const META_TOKEN = process.env.META_WA_TOKEN;
-const PHONE_NUMBER_ID = process.env.META_PHONE_ID;
-const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
+import { getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
 
 type Body = {
   text?: string;
@@ -22,10 +19,11 @@ export async function POST(
     const { tenantId, chatId } = await context.params;
     await assertTenantAccess(user.uid, tenantId);
 
-    if (!META_TOKEN || !PHONE_NUMBER_ID) {
+    const channel = await getWhatsAppChannelForTenant(tenantId, { allowAgencyFallback: false });
+    if (!channel) {
       return NextResponse.json(
-        { error: "Configuracao Meta WhatsApp ausente no servidor." },
-        { status: 500 }
+        { error: "Canal WhatsApp ativo nao configurado para este tenant." },
+        { status: 400 }
       );
     }
 
@@ -44,9 +42,6 @@ export async function POST(
     const chat = chatSnap.data() as {
       tenantId?: string;
       contactPhone?: string;
-      contactName?: string;
-      ownerId?: string;
-      assignedTo?: string;
     };
 
     if ((chat.tenantId || "") !== tenantId) {
@@ -58,32 +53,7 @@ export async function POST(
       return NextResponse.json({ error: "Chat sem telefone valido." }, { status: 400 });
     }
 
-    const response = await fetch(
-      `https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${META_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: phone,
-          type: "text",
-          text: { body: text },
-        }),
-      }
-    );
-
-    const payload = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: payload?.error?.message || "Erro na API da Meta." },
-        { status: 400 }
-      );
-    }
+    const payload = await sendMetaTextMessage({ channel, to: phone, text });
 
     await Promise.all([
       chatRef.set(
@@ -92,6 +62,7 @@ export async function POST(
           lastMessageTime: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
           status: "open",
+          channelPhoneNumberId: channel.phoneNumberId,
         },
         { merge: true }
       ),
@@ -104,6 +75,7 @@ export async function POST(
         senderName: user.name,
         type: "text",
         status: "sent",
+        channelPhoneNumberId: channel.phoneNumberId,
         createdAt: FieldValue.serverTimestamp(),
       }),
     ]);
@@ -112,6 +84,7 @@ export async function POST(
       ok: true,
       tenantId,
       chatId,
+      phoneNumberId: channel.phoneNumberId,
       metaMessageId: payload?.messages?.[0]?.id || null,
     });
   } catch (error) {
@@ -122,6 +95,9 @@ export async function POST(
       return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
     }
     console.error("Erro ao enviar mensagem manual do tenant:", error);
-    return NextResponse.json({ error: "Falha ao enviar mensagem." }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Falha ao enviar mensagem." },
+      { status: 500 }
+    );
   }
 }

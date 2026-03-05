@@ -148,10 +148,10 @@ export default function ClienteInboxPage() {
 
     try {
       const message = text.trim();
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send`, {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/whatsapp/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: message }),
+        body: JSON.stringify({ chatId: selectedChatId, text: message }),
       });
 
       const payload = (await res.json()) as { error?: string };

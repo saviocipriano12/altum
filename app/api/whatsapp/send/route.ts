@@ -4,10 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhone } from "@/app/lib/server/phone";
 import { getTenantForCurrentUser } from "@/lib/server/tenant";
-
-const META_TOKEN = process.env.META_WA_TOKEN;
-const PHONE_NUMBER_ID = process.env.META_PHONE_ID;
-const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
+import { AGENCY_TENANT_ID, getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
 
 type Body = {
   chatId?: string;
@@ -156,50 +153,34 @@ async function resolveDestination(
 export async function POST(req: Request) {
   try {
     const user = await requireRequestUser(req);
-
-    if (!META_TOKEN || !PHONE_NUMBER_ID) {
-      return NextResponse.json(
-        { error: "Configuracao da Meta nao encontrada no servidor." },
-        { status: 500 }
-      );
-    }
-
     const body = (await req.json()) as Body;
     const destination = await resolveDestination(user, body);
 
-    const response = await fetch(
-      `https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${META_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: destination.phone,
-          type: "text",
-          text: { body: destination.text },
-        }),
-      }
-    );
+    const channelTenantId = destination.tenantId || AGENCY_TENANT_ID;
+    const channel = await getWhatsAppChannelForTenant(channelTenantId, {
+      allowAgencyFallback: channelTenantId === AGENCY_TENANT_ID,
+    });
 
-    const data = await response.json();
-
-    if (!response.ok) {
+    if (!channel) {
       return NextResponse.json(
-        { error: data?.error?.message || "Erro na API da Meta." },
+        { error: `Canal WhatsApp ativo nao encontrado para tenant ${channelTenantId}.` },
         { status: 400 }
       );
     }
+
+    const data = await sendMetaTextMessage({
+      channel,
+      to: destination.phone,
+      text: destination.text,
+    });
 
     if (destination.chatId && destination.chatRef) {
       await Promise.all([
         destination.chatRef.update({
           ownerId: destination.ownerId,
           ownerName: user.name,
-          tenantId: destination.tenantId,
+          tenantId: destination.tenantId || channel.tenantId,
+          channelPhoneNumberId: channel.phoneNumberId,
           lastMessage: destination.text,
           lastMessageTime: FieldValue.serverTimestamp(),
           status: "open",
@@ -212,7 +193,8 @@ export async function POST(req: Request) {
           senderId: user.uid,
           type: "text",
           status: "sent",
-          tenantId: destination.tenantId,
+          tenantId: destination.tenantId || channel.tenantId,
+          channelPhoneNumberId: channel.phoneNumberId,
           createdAt: FieldValue.serverTimestamp(),
         }),
       ]);
@@ -222,7 +204,8 @@ export async function POST(req: Request) {
       success: true,
       data,
       chatId: destination.chatId,
-      tenantId: destination.tenantId,
+      tenantId: destination.tenantId || channel.tenantId,
+      phoneNumberId: channel.phoneNumberId,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {
@@ -234,7 +217,7 @@ export async function POST(req: Request) {
 
     console.error("Erro interno no envio WhatsApp:", error);
     return NextResponse.json(
-      { error: "Erro interno no envio WhatsApp." },
+      { error: error instanceof Error ? error.message : "Erro interno no envio WhatsApp." },
       { status: 500 }
     );
   }

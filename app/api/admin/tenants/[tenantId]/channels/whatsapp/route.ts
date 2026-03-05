@@ -8,6 +8,9 @@ type Body = {
   provider?: string;
   phoneNumber?: string;
   phoneNumberId?: string;
+  accessToken?: string;
+  verifyToken?: string;
+  appSecret?: string;
   businessAccountId?: string;
   status?: "active" | "inactive";
   metadata?: Record<string, unknown>;
@@ -44,6 +47,17 @@ export async function POST(
     const channelId = channelRef.id;
     const provider = clean(body.provider, 40) || "meta_whatsapp";
     const displayName = clean(body.displayName, 140) || "WhatsApp";
+    const phoneNumberId = clean(body.phoneNumberId, 120);
+    const accessToken = clean(body.accessToken, 4000);
+    const verifyToken = clean(body.verifyToken, 400);
+    const appSecret = clean(body.appSecret, 400);
+
+    if (!phoneNumberId || !accessToken || !verifyToken || !appSecret) {
+      return NextResponse.json(
+        { error: "Campos obrigatorios: phoneNumberId, accessToken, verifyToken, appSecret." },
+        { status: 400 }
+      );
+    }
 
     await Promise.all([
       channelRef.set(
@@ -53,7 +67,10 @@ export async function POST(
           provider,
           displayName,
           phoneNumber: clean(body.phoneNumber, 60),
-          phoneNumberId: clean(body.phoneNumberId, 120),
+          phoneNumberId,
+          accessToken,
+          verifyToken,
+          appSecret,
           businessAccountId: clean(body.businessAccountId, 120),
           status: body.status === "inactive" ? "inactive" : "active",
           metadata: body.metadata || {},
