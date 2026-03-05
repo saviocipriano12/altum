@@ -1,40 +1,47 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '@/firebaseConfig';
-import { useRouter } from 'next/navigation';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { onAuthStateChanged, User, signOut } from "firebase/auth";
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { auth, db } from "@/firebaseConfig";
+import { getMissingFirebaseClientEnvs } from "@/app/lib/firebase-client-env";
+import { useRouter } from "next/navigation";
 
-// --- TIPOS ---
-
-// Definindo o que é um usuário da Altum (além do login do Google)
 export interface UserProfile {
   id: string;
+  uid: string;
   name: string;
   email: string;
-  role: "admin" | "closer" | "sdr";
+  role: "admin" | "closer" | "sdr" | "client";
   status: "active" | "blocked";
   commissionRate: number;
+  asaasWalletId?: string | null;
 }
 
 interface AuthContextType {
-  user: User | null;      // Usuário técnico (Google)
-  profile: UserProfile | null; // Perfil de Negócio (Cargo, Comissão)
+  user: User | null;
+  profile: UserProfile | null;
   loading: boolean;
-  isAdmin: boolean;       // Atalho útil: É o Savio?
+  isAdmin: boolean;
+  signOutUser: () => Promise<void>;
 }
 
-// --- CONTEXTO ---
-
-const AuthContext = createContext<AuthContextType>({ 
-  user: null, 
-  profile: null, 
-  loading: true, 
-  isAdmin: false 
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  profile: null,
+  loading: true,
+  isAdmin: false,
+  signOutUser: async () => {},
 });
 
-// --- PROVIDER ---
+function normalizeRole(value: unknown): UserProfile["role"] {
+  if (value === "admin" || value === "closer" || value === "sdr" || value === "client") return value;
+  return "sdr";
+}
+
+function normalizeStatus(value: unknown): UserProfile["status"] {
+  return value === "blocked" ? "blocked" : "active";
+}
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -42,68 +49,142 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  async function ensureCanonicalProfile(firebaseUser: User) {
+    const canonicalRef = doc(db, "users", firebaseUser.uid);
+    const canonicalSnap = await getDoc(canonicalRef);
+    if (canonicalSnap.exists()) {
+      return canonicalSnap;
+    }
+
+    const email = (firebaseUser.email || "").trim().toLowerCase();
+    if (!email) return canonicalSnap;
+
+    const legacySnap = await getDocs(
+      query(collection(db, "users"), where("email", "==", email))
+    );
+
+    if (legacySnap.empty) return canonicalSnap;
+
+    const legacyDoc = legacySnap.docs[0];
+    await setDoc(
+      canonicalRef,
+      {
+        ...legacyDoc.data(),
+        uid: firebaseUser.uid,
+        email,
+        migratedFromLegacyId: legacyDoc.id,
+        updatedAt: Date.now(),
+      },
+      { merge: true }
+    );
+
+    return getDoc(canonicalRef);
+  }
+
   useEffect(() => {
+    const missingEnvs = getMissingFirebaseClientEnvs();
+    if (missingEnvs.length) {
+      console.error(
+        "Firebase client env ausente. Ajuste o .env.local:",
+        missingEnvs.join(", ")
+      );
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+
+    let authResolved = false;
+    const watchdog = window.setTimeout(() => {
+      if (authResolved) return;
+      console.error(
+        "Timeout ao inicializar autenticacao Firebase no cliente."
+      );
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+    }, 12000);
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // 1. Usuário logou no Google/Email
-        setUser(firebaseUser);
+      authResolved = true;
+      window.clearTimeout(watchdog);
+      setLoading(true);
 
-        try {
-          // 2. Agora vamos descobrir QUEM ele é no banco da Altum
-          // Buscamos na coleção 'users' onde o email é igual ao do login
-          const q = query(
-            collection(db, "users"), 
-            where("email", "==", firebaseUser.email)
-          );
-          
-          const querySnapshot = await getDocs(q);
-
-          if (!querySnapshot.empty) {
-            // ACHAMOS O PERFIL!
-            const userDoc = querySnapshot.docs[0];
-            const userData = userDoc.data() as UserProfile;
-
-            // Segurança: Se estiver bloqueado, desloga na hora
-            if (userData.status === "blocked") {
-              alert("Acesso negado. Sua conta está bloqueada.");
-              await signOut(auth);
-              setUser(null);
-              setProfile(null);
-              router.push("/login");
-              return;
-            }
-
-            // Tudo certo: Salva o perfil
-            setProfile({ ...userData, id: userDoc.id });
-          } else {
-            // Logou, mas não tem cadastro na equipe (Pode ser um erro ou invasor)
-            // Opcional: Se for você (admin supremo), pode querer tratar diferente.
-            console.warn("Usuário logado sem perfil de equipe cadastrado.");
-            setProfile(null); 
-          }
-        } catch (error) {
-          console.error("Erro ao buscar perfil do usuário:", error);
-        }
-
-      } else {
-        // Usuário saiu
+      if (!firebaseUser) {
         setUser(null);
         setProfile(null);
+        setLoading(false);
+        return;
       }
-      
-      setLoading(false);
+
+      setUser(firebaseUser);
+
+      try {
+        const profileSnap = await ensureCanonicalProfile(firebaseUser);
+
+        if (!profileSnap.exists()) {
+          console.warn("Usuario autenticado sem documento users/{uid}. Encerrando sessao.");
+          await signOut(auth);
+          setUser(null);
+          setProfile(null);
+          router.push("/login");
+          setLoading(false);
+          return;
+        }
+
+        const data = profileSnap.data() as Partial<UserProfile>;
+        const normalizedProfile: UserProfile = {
+          id: profileSnap.id,
+          uid: firebaseUser.uid,
+          name: data.name || firebaseUser.displayName || "Colaborador",
+          email: data.email || firebaseUser.email || "",
+          role: normalizeRole(data.role),
+          status: normalizeStatus(data.status),
+          commissionRate: Number(data.commissionRate || 0),
+          asaasWalletId: data.asaasWalletId || null,
+        };
+
+        if (normalizedProfile.status !== "active") {
+          alert("Acesso negado. Sua conta esta bloqueada.");
+          await signOut(auth);
+          setUser(null);
+          setProfile(null);
+          router.push("/login");
+          setLoading(false);
+          return;
+        }
+
+        setProfile(normalizedProfile);
+      } catch (error) {
+        console.error("Erro ao carregar perfil do usuario:", error);
+        await signOut(auth);
+        setUser(null);
+        setProfile(null);
+        router.push("/login");
+      } finally {
+        setLoading(false);
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      window.clearTimeout(watchdog);
+      unsubscribe();
+    };
   }, [router]);
 
+  async function signOutUser() {
+    await signOut(auth);
+    router.push("/login");
+  }
+
   return (
-    <AuthContext.Provider 
-      value={{ 
-        user, 
-        profile, 
-        loading, 
-        isAdmin: profile?.role === "admin" // Atalho mágico
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        loading,
+        isAdmin: profile?.role === "admin",
+        signOutUser,
       }}
     >
       {!loading && children}

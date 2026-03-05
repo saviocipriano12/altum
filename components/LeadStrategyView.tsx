@@ -1,104 +1,93 @@
 import React, { useMemo } from "react";
-import { 
-  Lightbulb, 
-  Target, 
-  MessageSquare, 
-  AlertTriangle, 
-  CheckCircle2, 
-  TrendingUp, 
-  DollarSign, 
-  Globe 
-} from "lucide-react";
+import { Lightbulb, MessageSquare } from "lucide-react";
 
-// Tipos baseados no seu sistema
 interface LeadData {
   nome: string;
   categoria?: string;
   rating?: number;
   userRatingsTotal?: number;
   website?: string;
-  priceLevel?: number; // 0 a 4
+  priceLevel?: number;
   photos?: string[];
   telefone?: string;
 }
 
+type StrategyColor = "amber" | "red" | "purple" | "blue";
+
 export function LeadStrategyView({ lead }: { lead: LeadData }) {
-  
-  // O CÉREBRO: Analisa os dados e gera a estratégia
   const strategy = useMemo(() => {
-    const s = {
-      profile: "Genérico",
+    const base = {
+      profile: "Generico",
       pain: "Baixa visibilidade",
-      product: "Tráfego Local",
+      product: "Trafego Local",
       script: "",
       tags: [] as string[],
-      color: "blue"
+      color: "blue" as StrategyColor,
     };
 
     const hasSite = !!(lead.website && lead.website.length > 5);
-    const isHighTicket = (lead.priceLevel && lead.priceLevel >= 3);
+    const isHighTicket = !!(lead.priceLevel && lead.priceLevel >= 3);
     const hasGoodReputation = (lead.rating || 0) >= 4.4;
     const hasVolume = (lead.userRatingsTotal || 0) > 50;
     const isPoorlyRated = (lead.rating || 0) > 0 && (lead.rating || 0) < 4.0;
 
-    // 1. Cenário: High Ticket (A mina de ouro)
     if (isHighTicket) {
-      s.profile = "High Ticket ($$$)";
-      s.color = "amber";
-      s.tags.push("Cliente Rico", "Margem Alta");
-      
+      base.profile = "High Ticket";
+      base.color = "amber";
+      base.tags.push("Cliente Rico", "Margem Alta");
       if (!hasSite) {
-        s.pain = "Vende um produto caro mas não tem um canal digital à altura. Perde credibilidade.";
-        s.product = "Site Premium + Posicionamento";
-        s.script = `Olá ${lead.nome}, notei que vocês são referência em ${lead.categoria}, mas vi que ainda não possuem um site oficial que transmita essa exclusividade. Para o público de vocês, isso é crucial...`;
+        base.pain =
+          "Vende produto caro mas nao tem canal digital no mesmo nivel. Perde credibilidade.";
+        base.product = "Site Premium + Posicionamento";
+        base.script = `Ola ${lead.nome}, vi potencial forte em ${lead.categoria}. Podemos elevar o posicionamento digital para refletir o nivel da sua operacao.`;
       } else {
-        s.pain = "Já tem estrutura, precisa dominar o mercado para não perder clientes para concorrentes inferiores.";
-        s.product = "Tráfego Pago (Google Ads - Fundo de Funil)";
-        s.script = `Olá ${lead.nome}, parabéns pelo posicionamento. Fiz uma análise e vi que podemos colocar vocês em 1º lugar para quem busca ${lead.categoria} de alto padrão na região...`;
+        base.pain =
+          "Ja tem estrutura, precisa dominar o mercado para nao perder demanda para concorrentes.";
+        base.product = "Google Ads de Fundo de Funil";
+        base.script = `Ola ${lead.nome}, com a estrutura atual de voces, da para ganhar busca qualificada de ${lead.categoria} com previsibilidade.`;
       }
-      return s;
+      return base;
     }
 
-    // 2. Cenário: Reputação Ruim (A urgência)
     if (isPoorlyRated) {
-      s.profile = "Crise de Reputação";
-      s.color = "red";
-      s.pain = "A nota baixa no Google está espantando clientes novos todos os dias.";
-      s.product = "Gestão de Reputação (GMN)";
-      s.tags.push("Urgente", "Recuperação");
-      s.script = `Olá ${lead.nome}, estava vendo as avaliações da região e notei que a nota de vocês no Google está abaixo do potencial da casa. Temos um método para incentivar os clientes felizes a avaliarem e subir essa nota rápido...`;
-      return s;
+      base.profile = "Crise de Reputacao";
+      base.color = "red";
+      base.pain = "Nota baixa no Google afasta clientes novos todos os dias.";
+      base.product = "Gestao de Reputacao";
+      base.tags.push("Urgente", "Recuperacao");
+      base.script = `Ola ${lead.nome}, identifiquei oportunidade direta de subir reputacao e recuperar vendas locais em poucas semanas.`;
+      return base;
     }
 
-    // 3. Cenário: Gigante Invisível (O clássico)
     if (hasGoodReputation && hasVolume && !hasSite) {
-      s.profile = "Gigante Invisível";
-      s.color = "purple";
-      s.pain = "Muita autoridade boca-a-boca, mas digitalmente dependente do Google Maps.";
-      s.product = "Site de Conversão + CRM";
-      s.tags.push("Fácil de Vender", "Autoridade");
-      s.script = `Oi ${lead.nome}! Impressionante a quantidade de avaliações boas que vocês têm (${lead.userRatingsTotal}). Mas vi que vocês ainda não têm um site para capturar esses interessados e criar um banco de clientes próprio...`;
-      return s;
+      base.profile = "Gigante Invisivel";
+      base.color = "purple";
+      base.pain =
+        "Alta autoridade local, mas dependencia total de canais de terceiros.";
+      base.product = "Site de Conversao + CRM";
+      base.tags.push("Facil de vender", "Autoridade");
+      base.script = `Oi ${lead.nome}, voces ja tem confianca no mercado e podemos transformar isso em captacao previsivel com site e CRM.`;
+      return base;
     }
 
-    // 4. Cenário: Iniciante / Sem Dados
-    s.profile = "Negócio Local Padrão";
-    s.color = "blue";
-    s.pain = "Precisa de mais clientes na porta.";
-    s.product = "Pack Google Meu Negócio + Tráfego";
-    s.script = `Olá ${lead.nome}, tudo bem? Sou especialista em alavancar negócios de ${lead.categoria} aqui na região. Vi que vocês estão no Google, mas dava para destacar muito mais...`;
-
-    return s;
+    base.profile = "Negocio Local Padrao";
+    base.color = "blue";
+    base.pain = "Precisa gerar mais demanda qualificada.";
+    base.product = "Google Meu Negocio + Trafego";
+    base.script = `Ola ${lead.nome}, analisando ${lead.categoria}, temos um plano simples para aumentar fluxo de novos clientes na regiao.`;
+    return base;
   }, [lead]);
 
-  // Função para abrir o Zap
   const openZap = () => {
     if (!lead.telefone) return;
     const num = lead.telefone.replace(/\D/g, "");
-    window.open(`https://wa.me/55${num}?text=${encodeURIComponent(strategy.script)}`, "_blank");
+    window.open(
+      `https://wa.me/55${num}?text=${encodeURIComponent(strategy.script)}`,
+      "_blank"
+    );
   };
 
-  const colorClasses: any = {
+  const colorClasses: Record<StrategyColor, string> = {
     amber: "bg-amber-500/10 border-amber-500/20 text-amber-100",
     red: "bg-red-500/10 border-red-500/20 text-red-100",
     purple: "bg-purple-500/10 border-purple-500/20 text-purple-100",
@@ -106,50 +95,59 @@ export function LeadStrategyView({ lead }: { lead: LeadData }) {
   };
 
   return (
-    <div className={`rounded-2xl border p-5 ${colorClasses[strategy.color] || colorClasses.blue} mb-6`}>
+    <div
+      className={`rounded-2xl border p-5 ${colorClasses[strategy.color]} mb-6`}
+    >
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Lightbulb className="h-5 w-5" />
-            <h3 className="text-lg font-bold">Estratégia Sugerida: {strategy.profile}</h3>
+            <h3 className="text-lg font-bold">
+              Estrategia sugerida: {strategy.profile}
+            </h3>
           </div>
           <p className="text-sm opacity-80 max-w-2xl">{strategy.pain}</p>
         </div>
         <div className="text-right">
-          <span className="text-[10px] uppercase font-bold tracking-widest opacity-60">Produto Ideal</span>
+          <span className="text-[10px] uppercase font-bold tracking-widest opacity-60">
+            Produto ideal
+          </span>
           <p className="font-bold text-lg">{strategy.product}</p>
         </div>
       </div>
 
-      {/* Tags */}
       <div className="flex gap-2 mt-4">
-        {strategy.tags.map(tag => (
-          <span key={tag} className="px-2 py-1 rounded bg-black/20 text-[10px] font-bold uppercase tracking-wide border border-white/10">
+        {strategy.tags.map((tag) => (
+          <span
+            key={tag}
+            className="px-2 py-1 rounded bg-black/20 text-[10px] font-bold uppercase tracking-wide border border-white/10"
+          >
             {tag}
           </span>
         ))}
       </div>
 
-      {/* Script Section */}
       <div className="mt-6 bg-black/20 rounded-xl p-4 border border-white/5">
         <div className="flex justify-between items-center mb-2">
           <p className="text-[10px] uppercase font-bold opacity-50 flex items-center gap-1">
-            <MessageSquare size={12} /> Script de Quebra-Gelo (IA)
+            <MessageSquare size={12} /> Script IA
           </p>
-          <button 
+          <button
             onClick={() => navigator.clipboard.writeText(strategy.script)}
             className="text-[10px] hover:text-white underline opacity-50 transition"
           >
-            Copiar Texto
+            Copiar texto
           </button>
         </div>
-        <p className="text-sm italic opacity-90 leading-relaxed">"{strategy.script}"</p>
-        
-        <button 
+        <p className="text-sm italic opacity-90 leading-relaxed">
+          &quot;{strategy.script}&quot;
+        </p>
+
+        <button
           onClick={openZap}
           className="mt-4 w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg"
         >
-          <MessageSquare size={16} /> Enviar no WhatsApp Agora
+          <MessageSquare size={16} /> Enviar no WhatsApp
         </button>
       </div>
     </div>

@@ -1,5 +1,5 @@
 // CAMINHO: /app/page.tsx
-// ALTUM — Homepage Oficial (v16 - CDN FIX)
+// ALTUM - Homepage Oficial (v16 - CDN FIX)
 // Solução Definitiva: Usa script global para evitar erros de exportação do Next.js
 
 "use client";
@@ -84,10 +84,10 @@ function Button({
 }: {
   href: string;
   children: React.ReactNode;
-  variant?: "primary" | "secondary" | "outline" | "ghost" | "dark";
-  className?: string;
-  icon?: any;
-  onClick?: (e: React.MouseEvent) => void;
+  variant: "primary" | "secondary" | "outline" | "ghost" | "dark";
+  className: string;
+  icon: React.ComponentType<{ className: string; size: number }>;
+  onClick: (e: React.MouseEvent) => void;
 }) {
   return (
     <a
@@ -116,7 +116,7 @@ function Button({
 }
 
 // Card Bento Grid com Spotlight
-function SpotlightCard({ children, className = "", noBorder = false }: { children: React.ReactNode; className?: string; noBorder?: boolean }) {
+function SpotlightCard({ children, className = "", noBorder = false }: { children: React.ReactNode; className: string; noBorder: boolean }) {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
@@ -168,8 +168,9 @@ function Header({ onOpenBot }: { onOpenBot: (e: React.MouseEvent) => void }) {
       <div className="mx-auto max-w-7xl px-4 md:px-6">
         <div className={cx(
           "flex items-center justify-between rounded-full px-6 py-3 transition-all duration-500 border",
-          isScrolled 
-            ? "bg-white/80 border-[#151419]/5 backdrop-blur-xl shadow-2xl shadow-black/5" 
+          isScrolled
+            ?
+             "bg-white/80 border-[#151419]/5 backdrop-blur-xl shadow-2xl shadow-black/5" 
             : "bg-transparent border-transparent"
         )}>
           {/* Logo com Imagem */}
@@ -264,7 +265,7 @@ function Hero({ onOpenBot }: { onOpenBot: (e: React.MouseEvent) => void }) {
             transition={{ delay: 0.1 }}
             className="text-5xl md:text-7xl font-extrabold tracking-tight text-[#151419] leading-[1.05]"
           >
-            Instalamos a máquina que <span className="text-[#F56E0F]">filtra curiosos</span> e agenda reuniões.
+            Vender muito não é sorte, é estrutura. <span className="text-[#F56E0F]">Nós fazemos você</span> Vender MAIS.
           </motion.h1>
 
           <motion.p 
@@ -273,7 +274,7 @@ function Hero({ onOpenBot }: { onOpenBot: (e: React.MouseEvent) => void }) {
             transition={{ delay: 0.2 }}
             className="text-xl text-[#151419]/70 leading-relaxed max-w-2xl"
           >
-            O <strong>Método ALTUM</strong> usa Inteligência Artificial para atrair, qualificar e agendar apenas quem tem orçamento aprovado. Pare de vender para quem não pode pagar.
+            O <strong>Método ALTUM</strong> usa Inteligência Artificial para atrair, qualificar e converter em venda. Pare de perder tempo tentando descobrir como atrair clientes. Nós montamos a máquina de vendas ideal para a sua empresa lucrar na internet.
           </motion.p>
 
           <motion.div 
@@ -283,7 +284,7 @@ function Hero({ onOpenBot }: { onOpenBot: (e: React.MouseEvent) => void }) {
             className="flex flex-wrap gap-4 pt-4"
           >
             <Button href="#" variant="primary" icon={Bot} onClick={onOpenBot}>
-              Verificar Viabilidade
+              Ver como funciona para o meu negócio
             </Button>
             <Button href="#como-funciona" variant="outline" icon={Layers}>
               Ver o Ecossistema
@@ -407,12 +408,11 @@ function Problem() {
         <div className="grid md:grid-cols-2 gap-20 items-center">
           <div>
             <h2 className="text-4xl md:text-6xl font-extrabold mb-8 leading-tight">
-              O "Jeito Antigo" de vender <span className="text-[#878787]">está queimando seu dinheiro.</span>
+              O &quot;Jeito Antigo&quot; de vender <span className="text-[#878787]">está queimando seu dinheiro.</span>
             </h2>
             <p className="text-[#878787] text-lg mb-10 leading-relaxed">
               Você contrata uma agência. Eles fazem posts bonitos e trazem cliques. 
-              Mas o seu WhatsApp enche de gente perguntando "preço" e sumindo. 
-              Sua equipe comercial perde 80% do dia falando com curiosos.
+              Mas o seu WhatsApp enche de gente perguntando &quot;preço&quot; e sumindo. Sua equipe comercial perde 80% do dia falando com curiosos.
             </p>
             
             <div className="space-y-6">
@@ -622,7 +622,7 @@ function Ecosystem() {
                    </div>
                    <h3 className="text-2xl font-bold mb-4 text-white">ALTUM-Data</h3>
                    <p className="text-[#878787] leading-relaxed mb-6">
-                      Você não quer saber de "cliques". Você quer saber de lucro. Nosso dashboard mostra o custo real por reunião agendada e o ROI do seu investimento.
+                      Você não quer saber de &quot;cliques&quot;. Você quer saber de lucro. Nosso dashboard mostra o custo real por reunião agendada e o ROI do seu investimento.
                    </p>
                 </div>
                 <div className="flex-1 w-full bg-black/30 rounded-2xl p-6 aspect-video relative overflow-hidden shadow-inner group border border-white/5">
@@ -717,11 +717,11 @@ function Founder() {
                  <ShieldCheck size={14} /> Diretor da Altum
               </div>
               <h2 className="text-4xl md:text-6xl font-extrabold text-[#151419] mb-8 leading-[1.1]">
-                 "Eu não vendo sites. <br/> Eu vendo <span className="text-[#F56E0F]">dinheiro no caixa</span>."
+                 &quot;Eu não vendo sites. <br/> Eu vendo <span className="text-[#F56E0F]">dinheiro no caixa</span>.&quot;
               </h2>
               <div className="space-y-6 text-lg text-[#262626] leading-relaxed">
                  <p>
-                    O mercado está cheio de agências que focam em "vaidade": likes, seguidores e sites bonitos que não convertem.
+                    O mercado está cheio de agências que focam em &quot;vaidade&quot;: likes, seguidores e sites bonitos que não convertem.
                  </p>
                  <p>
                     Criei a <strong>ALTUM</strong> para ser a resposta exata para empresas de Alto Ticket. 
@@ -813,20 +813,20 @@ function Footer() {
 
 /* ========================= PAGE ROOT ========================= */
 export default function Page() {
-  // FUNÇÃO CORRIGIDA PARA ABRIR O CHAT
+  // FUNCAO CORRIGIDA PARA ABRIR O CHAT
   const handleOpenBot = (e: React.MouseEvent) => {
     e.preventDefault();
     
     // Verifica se o Typebot já carregou
-    // @ts-ignore
+    // @ts-expect-error Typebot script injeta esse objeto global em runtime.
     if (window.Typebot) {
-      // @ts-ignore
+      // @ts-expect-error Typebot script injeta esse objeto global em runtime.
       window.Typebot.open(); // <--- O comando correto é esse (sem .Bubble)
     } else {
       console.log("O chat ainda está carregando...");
       // Opcional: Tenta abrir novamente em 1 segundo se a internet estiver lenta
       setTimeout(() => {
-        // @ts-ignore
+        // @ts-expect-error Typebot script injeta esse objeto global em runtime.
         if (window.Typebot) window.Typebot.open();
       }, 1000);
     }

@@ -1,12 +1,12 @@
-
-
 "use client";
 
 import { useState, useEffect } from "react";
-import { auth } from "@/firebaseConfig"; // Usando @ para garantir o caminho
 import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck, Lock, Mail, ArrowRight } from "lucide-react";
+import { auth, db } from "@/firebaseConfig";
+import { getMissingFirebaseClientEnvs } from "@/app/lib/firebase-client-env";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -14,17 +14,50 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [bootError, setBootError] = useState("");
   const router = useRouter();
 
-  // Se o usuário já estiver logado, manda direto para o dashboard
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        router.push("/admin/dashboard");
-      }
+    const missingEnvs = getMissingFirebaseClientEnvs();
+    if (missingEnvs.length) {
+      setBootError(`Firebase nao configurado no cliente. Variaveis ausentes: ${missingEnvs.join(", ")}`);
       setCheckingAuth(false);
+      return;
+    }
+
+    let resolved = false;
+    const watchdog = window.setTimeout(() => {
+      if (resolved) return;
+      setBootError("Timeout ao validar sessao. Verifique conexao local e configuracao Firebase.");
+      setCheckingAuth(false);
+    }, 12000);
+
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      resolved = true;
+      window.clearTimeout(watchdog);
+
+      if (!user) {
+        setCheckingAuth(false);
+        return;
+      }
+
+      try {
+        const profileSnap = await getDoc(doc(db, "users", user.uid));
+        const role = (profileSnap.data() as { role?: string } | undefined)?.role;
+        if (role === "client") {
+          router.push("/cliente/painel");
+          return;
+        }
+        router.push("/admin/dashboard");
+      } finally {
+        setCheckingAuth(false);
+      }
     });
-    return () => unsub();
+
+    return () => {
+      window.clearTimeout(watchdog);
+      unsub();
+    };
   }, [router]);
 
   async function handleLogin(e: React.FormEvent) {
@@ -34,10 +67,30 @@ export default function LoginPage() {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
+
+      const current = auth.currentUser;
+      if (current) {
+        const profileSnap = await getDoc(doc(db, "users", current.uid));
+        const role = (profileSnap.data() as { role?: string } | undefined)?.role;
+        if (role === "client") {
+          router.push("/cliente/painel");
+          return;
+        }
+      }
+
       router.push("/admin/dashboard");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+      const code =
+        typeof err === "object" && err && "code" in err
+          ? String((err as { code?: string }).code)
+          : "";
+
+      if (
+        code === "auth/user-not-found" ||
+        code === "auth/wrong-password" ||
+        code === "auth/invalid-credential"
+      ) {
         setError("E-mail ou senha incorretos.");
       } else {
         setError("Erro ao conectar com o servidor.");
@@ -57,7 +110,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0B0B0B] p-4 text-white font-sans">
-      {/* Detalhes de fundo para estética Premium */}
       <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-20">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 blur-[120px] rounded-full" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 blur-[120px] rounded-full" />
@@ -67,15 +119,21 @@ export default function LoginPage() {
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-[11px] text-white/60 mb-6 uppercase tracking-widest font-semibold">
             <ShieldCheck size={14} className="text-blue-400" />
-            Altum OS • Acesso Restrito
+            Altum OS - Acesso Restrito
           </div>
           <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-b from-white to-white/60 bg-clip-text text-transparent">
             Bem-vindo
           </h1>
-          <p className="text-sm text-white/40 mt-3 font-medium">Insira suas credenciais para gerenciar a agência</p>
+          <p className="text-sm text-white/40 mt-3 font-medium">Insira suas credenciais para gerenciar a agencia</p>
         </div>
 
         <div className="bg-[#111111] border border-white/5 rounded-3xl p-8 shadow-2xl backdrop-blur-sm">
+          {bootError && (
+            <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
+              {bootError}
+            </div>
+          )}
+
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-2">
               <label className="text-[11px] uppercase tracking-wider text-white/40 ml-1 font-bold">E-mail Corporativo</label>
@@ -86,6 +144,7 @@ export default function LoginPage() {
                 <input
                   type="email"
                   required
+                  disabled={Boolean(bootError)}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@altum.com"
@@ -103,9 +162,10 @@ export default function LoginPage() {
                 <input
                   type="password"
                   required
+                  disabled={Boolean(bootError)}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="********"
                   className="w-full bg-black/40 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/5 transition-all placeholder:text-white/20"
                 />
               </div>
@@ -119,7 +179,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || Boolean(bootError)}
               className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-3 shadow-xl shadow-blue-600/20 active:scale-[0.98]"
             >
               {loading ? (

@@ -2,17 +2,16 @@
 
 import { useEffect, useState } from "react";
 import {
-  addDoc,
   collection,
-  doc,
   onSnapshot,
   orderBy,
   query,
-  updateDoc,
-  deleteDoc,
-  serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
+import type { AgencyActivity } from "@/app/types/domain";
+import { useAuth } from "@/context/AuthContext";
 import {
   Activity,
   Calendar,
@@ -25,17 +24,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-type Atividade = {
+type Atividade = AgencyActivity & {
   id: string;
-  descricao: string;
   data?: string; // ISO string
   status: "pendente" | "concluida";
-  tipo?: string;
-  leadId?: string;
-  clienteNome?: string;
 };
 
 export default function AtividadesPage() {
+  const { user, isAdmin } = useAuth();
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -47,21 +43,27 @@ export default function AtividadesPage() {
   const [clienteNome, setClienteNome] = useState("");
 
   useEffect(() => {
-    const q = query(
-      collection(db, "atividades"),
-      orderBy("data", "asc")
-    );
+    if (!user) {
+      setAtividades([]);
+      setLoading(false);
+      return;
+    }
+
+    const activitiesRef = collection(db, "atividades");
+    const q = isAdmin
+      ? query(activitiesRef, orderBy("data", "asc"))
+      : query(activitiesRef, where("ownerId", "==", user.uid));
 
     const unsub = onSnapshot(
       q,
       (snap) => {
         const list: Atividade[] = snap.docs.map((d) => {
-          const data = d.data() as any;
+          const data = d.data() as Omit<Atividade, "id">;
           return {
             id: d.id,
             descricao: data.descricao ?? "",
             data: data.data ?? "",
-            status: (data.status as any) ?? "pendente",
+            status: data.status === "concluida" ? "concluida" : "pendente",
             tipo: data.tipo ?? "",
             leadId: data.leadId ?? "",
             clienteNome: data.clienteNome ?? "",
@@ -77,7 +79,7 @@ export default function AtividadesPage() {
     );
 
     return () => unsub();
-  }, []);
+  }, [user, isAdmin]);
 
   async function criarAtividade(e: React.FormEvent) {
     e.preventDefault();
@@ -85,15 +87,20 @@ export default function AtividadesPage() {
 
     try {
       setSaving(true);
-      await addDoc(collection(db, "atividades"), {
-        descricao: descricao.trim(),
-        data: data || null,
-        status: "pendente",
-        tipo: tipo || null,
-        leadId: leadId || null,
-        clienteNome: clienteNome || null,
-        createdAt: serverTimestamp(),
+      const res = await authedFetch("/api/atividades/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          descricao: descricao.trim(),
+          data: data || null,
+          status: "pendente",
+          tipo: tipo || null,
+          leadId: leadId || null,
+          clienteNome: clienteNome || null,
+        }),
       });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Falha ao criar atividade.");
 
       setDescricao("");
       setData("");
@@ -102,6 +109,7 @@ export default function AtividadesPage() {
       setClienteNome("");
     } catch (err) {
       console.error("Erro ao criar atividade:", err);
+      alert("Nao foi possivel criar atividade.");
     } finally {
       setSaving(false);
     }
@@ -109,22 +117,37 @@ export default function AtividadesPage() {
 
   async function alternarStatus(id: string, statusAtual: "pendente" | "concluida") {
     try {
-      const ref = doc(db, "atividades", id);
-      await updateDoc(ref, {
-        status: statusAtual === "pendente" ? "concluida" : "pendente",
+      const res = await authedFetch("/api/atividades/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          patch: {
+            status: statusAtual === "pendente" ? "concluida" : "pendente",
+          },
+        }),
       });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Falha ao atualizar atividade.");
     } catch (err) {
       console.error("Erro ao atualizar atividade:", err);
+      alert("Nao foi possivel atualizar atividade.");
     }
   }
 
   async function removerAtividade(id: string) {
     if (!confirm("Tem certeza que deseja apagar esta atividade?")) return;
     try {
-      const ref = doc(db, "atividades", id);
-      await deleteDoc(ref);
+      const res = await authedFetch("/api/atividades/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Falha ao remover atividade.");
     } catch (err) {
       console.error("Erro ao remover atividade:", err);
+      alert("Nao foi possivel remover atividade.");
     }
   }
 

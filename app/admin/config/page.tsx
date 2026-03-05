@@ -1,13 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
-import {
-  doc,
-  getDoc,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
 import {
   Loader2,
   Save,
@@ -21,13 +15,40 @@ import {
   Mail,
 } from "lucide-react";
 
+interface AltumConfigDoc {
+  agencyName?: string;
+  responsavel?: string;
+  cnpj?: string;
+  email?: string;
+  whatsapp?: string;
+  siteBase?: string;
+  corPrimaria?: string;
+  corSecundaria?: string;
+  corDestaque?: string;
+  mensagemBoasVindas?: string;
+  scriptPrimeiroContato?: string;
+  diasFollowUp?: number;
+  webhookProspeccao?: string;
+  hasMetaWabaToken?: boolean;
+}
+
+type IntegrationStatus = {
+  key: string;
+  label: string;
+  status: "ok" | "missing";
+  details: string;
+  requiredEnvs: string[];
+  missingEnvs: string[];
+};
+
 export default function ConfigPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
 
-  // ===== CAMPOS BÁSICOS =====
+  // ===== CAMPOS BASICOS =====
   const [agencyName, setAgencyName] = useState("ALTUM");
-  const [responsavel, setResponsavel] = useState("Sávio Cipriano");
+  const [responsavel, setResponsavel] = useState("Savio Cipriano");
   const [cnpj, setCnpj] = useState("");
   const [email, setEmail] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -38,16 +59,16 @@ export default function ConfigPage() {
   const [corSecundaria, setCorSecundaria] = useState("#f97316"); // laranja
   const [corDestaque, setCorDestaque] = useState("#22c55e"); // verde
 
-  // ===== PROSPECÇÃO / SDR =====
+  // ===== PROSPECCAO / SDR =====
   const [mensagemBoasVindas, setMensagemBoasVindas] = useState(
-    "Oi, tudo bem? Aqui é da ALTUM. Vi que sua empresa tem potencial pra crescer ainda mais com tráfego e estrutura profissional. Posso te mandar uma ideia rápida do que eu faria pra você?"
+    "Oi, tudo bem? Aqui e da ALTUM. Vi que sua empresa tem potencial pra crescer ainda mais com trafego e estrutura profissional. Posso te mandar uma ideia rapida do que eu faria pra voce?"
   );
   const [scriptPrimeiroContato, setScriptPrimeiroContato] = useState(
-    "1) Que tipo de negócio você atende?\n2) Hoje você já anuncia em algum canal (Google / Meta / outros)?\n3) Qual é o ticket médio do seu cliente?\n4) Qual resultado você gostaria de atingir nos próximos 3 meses?"
+    "1) Que tipo de negocio voce atende?\n2) Hoje voce ja anuncia em algum canal (Google / Meta / outros)?\n3) Qual e o ticket medio do seu cliente?\n4) Qual resultado voce gostaria de atingir nos proximos 3 meses?"
   );
   const [diasFollowUp, setDiasFollowUp] = useState(2);
 
-  // ===== INTEGRAÇÕES =====
+  // ===== INTEGRACOES =====
   const [webhookProspeccao, setWebhookProspeccao] = useState("");
   const [metaWabaTokenPlaceholder, setMetaWabaTokenPlaceholder] =
     useState("***************");
@@ -55,38 +76,37 @@ export default function ConfigPage() {
   useEffect(() => {
     async function carregarConfig() {
       try {
-        const ref = doc(db, "config", "altum");
-        const snap = await getDoc(ref);
+        const res = await authedFetch("/api/config/altum");
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.error || "Falha ao carregar configuracoes.");
+        }
 
-        if (snap.exists()) {
-          const data: any = snap.data();
+        const data = (await res.json()) as AltumConfigDoc;
+        setAgencyName(data.agencyName ?? "ALTUM");
+        setResponsavel(data.responsavel ?? "Sávio Cipriano");
+        setCnpj(data.cnpj ?? "");
+        setEmail(data.email ?? "");
+        setWhatsapp(data.whatsapp ?? "");
+        setSiteBase(data.siteBase ?? "https://altumia.com.br");
 
-          setAgencyName(data.agencyName ?? "ALTUM");
-          setResponsavel(data.responsavel ?? "Sávio Cipriano");
-          setCnpj(data.cnpj ?? "");
-          setEmail(data.email ?? "");
-          setWhatsapp(data.whatsapp ?? "");
-          setSiteBase(data.siteBase ?? "https://altumia.com.br");
+        setCorPrimaria(data.corPrimaria ?? "#2563eb");
+        setCorSecundaria(data.corSecundaria ?? "#f97316");
+        setCorDestaque(data.corDestaque ?? "#22c55e");
 
-          setCorPrimaria(data.corPrimaria ?? "#2563eb");
-          setCorSecundaria(data.corSecundaria ?? "#f97316");
-          setCorDestaque(data.corDestaque ?? "#22c55e");
+        setMensagemBoasVindas(
+          data.mensagemBoasVindas ??
+            "Oi, tudo bem? Aqui é da ALTUM. Vi que sua empresa tem potencial pra crescer ainda mais com tráfego e estrutura profissional. Posso te mandar uma ideia rápida do que eu faria pra você?"
+        );
+        setScriptPrimeiroContato(
+          data.scriptPrimeiroContato ??
+            "1) Que tipo de negócio você atende?\n2) Hoje você já anuncia em algum canal (Google / Meta / outros)?\n3) Qual é o ticket médio do seu cliente?\n4) Qual resultado você gostaria de atingir nos próximos 3 meses?"
+        );
+        setDiasFollowUp(data.diasFollowUp ?? 2);
 
-          setMensagemBoasVindas(
-            data.mensagemBoasVindas ??
-              "Oi, tudo bem? Aqui é da ALTUM. Vi que sua empresa tem potencial pra crescer ainda mais com tráfego e estrutura profissional. Posso te mandar uma ideia rápida do que eu faria pra você?"
-          );
-          setScriptPrimeiroContato(
-            data.scriptPrimeiroContato ??
-              "1) Que tipo de negócio você atende?\n2) Hoje você já anuncia em algum canal (Google / Meta / outros)?\n3) Qual é o ticket médio do seu cliente?\n4) Qual resultado você gostaria de atingir nos próximos 3 meses?"
-          );
-          setDiasFollowUp(data.diasFollowUp ?? 2);
-
-          setWebhookProspeccao(data.webhookProspeccao ?? "");
-          // nunca mostramos o token real se existir
-          if (data.metaWabaToken) {
-            setMetaWabaTokenPlaceholder("***************");
-          }
+        setWebhookProspeccao(data.webhookProspeccao ?? "");
+        if (data.hasMetaWabaToken) {
+          setMetaWabaTokenPlaceholder("***************");
         }
       } catch (err) {
         console.error("Erro ao carregar config ALTUM:", err);
@@ -95,19 +115,34 @@ export default function ConfigPage() {
       }
     }
 
-    carregarConfig();
+    void carregarConfig();
   }, []);
 
-  async function salvarConfig(e: React.FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    async function carregarIntegracoes() {
+      try {
+        const res = await authedFetch("/api/admin/integrations/status");
+        const data = (await res.json()) as {
+          ok?: boolean;
+          integrations?: IntegrationStatus[];
+        };
+        if (res.ok && Array.isArray(data.integrations)) {
+          setIntegrations(data.integrations);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar status de integracoes:", err);
+      }
+    }
+
+    void carregarIntegracoes();
+  }, []);
+  async function salvarConfig() {
     try {
       setSaving(true);
-
-      const ref = doc(db, "config", "altum");
-
-      await setDoc(
-        ref,
-        {
+      const res = await authedFetch("/api/config/altum", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           agencyName,
           responsavel,
           cnpj,
@@ -121,18 +156,18 @@ export default function ConfigPage() {
           scriptPrimeiroContato,
           diasFollowUp: Number(diasFollowUp) || 0,
           webhookProspeccao,
-          // metaWabaToken: aqui você preenche manualmente direto no Firestore se quiser,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "Falha ao salvar configuracoes.");
+      }
     } catch (err) {
       console.error("Erro ao salvar config ALTUM:", err);
     } finally {
       setSaving(false);
     }
   }
-
   return (
     <div className="space-y-6">
       {/* HEADER */}
@@ -140,16 +175,16 @@ export default function ConfigPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-wide flex items-center gap-2">
             <Settings className="h-5 w-5 text-blue-400" />
-            Configurações da ALTUM
+            Configuracoes da ALTUM
           </h1>
           <p className="text-sm text-white/60 max-w-xl">
-            Central onde você define identidade da agência, mensagens padrão da
-            SDR e integrações da Máquina de Prospecção.
+            Central onde voce define identidade da agencia, mensagens padrao da
+            SDR e integracoes da Maquina de Prospeccao.
           </p>
         </div>
 
         <button
-          onClick={salvarConfig}
+          onClick={() => void salvarConfig()}
           disabled={saving}
           className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 transition disabled:opacity-60"
         >
@@ -161,27 +196,74 @@ export default function ConfigPage() {
           ) : (
             <>
               <Save className="h-4 w-4" />
-              Salvar alterações
+              Salvar alteracoes
             </>
           )}
         </button>
       </div>
 
       {loading && (
-        <p className="text-xs text-white/40">Carregando configurações…</p>
+        <p className="text-xs text-white/40">Carregando configuracoes...</p>
       )}
 
       {!loading && (
-        <form onSubmit={salvarConfig} className="space-y-6">
-          {/* BLOCO: DADOS DA AGÊNCIA */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void salvarConfig();
+          }}
+          className="space-y-6"
+        >
+          <section className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Settings className="h-4 w-4 text-white/70" />
+              <div>
+                <h2 className="text-sm font-semibold">Saude das integracoes</h2>
+                <p className="text-xs text-white/60">
+                  Verificacao em tempo real dos segredos obrigatorios no servidor.
+                </p>
+              </div>
+            </div>
+
+            {integrations.length === 0 ? (
+              <p className="text-xs text-white/50">Sem dados de integracao no momento.</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {integrations.map((item) => (
+                  <div
+                    key={item.key}
+                    className={`rounded-xl border p-3 ${
+                      item.status === "ok"
+                        ? "border-emerald-500/30 bg-emerald-500/10"
+                        : "border-amber-500/30 bg-amber-500/10"
+                    }`}
+                  >
+                    <p className="text-sm font-medium text-white/90">{item.label}</p>
+                    <p className="text-[11px] text-white/65 mt-1">{item.details}</p>
+                    <p
+                      className={`text-[11px] mt-2 ${
+                        item.status === "ok" ? "text-emerald-200" : "text-amber-200"
+                      }`}
+                    >
+                      {item.status === "ok"
+                        ? "Pronto para uso"
+                        : `Faltando: ${item.missingEnvs.join(", ")}`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* BLOCO: DADOS DA AGENCIA */}
           <section className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-4">
             <div className="flex items-center gap-2">
               <Building2 className="h-4 w-4 text-white/70" />
               <div>
-                <h2 className="text-sm font-semibold">Dados da agência</h2>
+                <h2 className="text-sm font-semibold">Dados da agencia</h2>
                 <p className="text-xs text-white/60">
-                  Informações básicas da ALTUM, usadas em propostas, contratos
-                  e comunicações.
+                  Informacoes basicas da ALTUM, usadas em propostas, contratos
+                  e comunicacoes.
                 </p>
               </div>
             </div>
@@ -189,7 +271,7 @@ export default function ConfigPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1">
                 <label className="text-xs text-white/60">
-                  Nome da agência
+                  Nome da agencia
                 </label>
                 <input
                   className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
@@ -200,7 +282,7 @@ export default function ConfigPage() {
 
               <div className="space-y-1">
                 <label className="text-xs text-white/60">
-                  Responsável principal
+                  Responsavel principal
                 </label>
                 <input
                   className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
@@ -245,7 +327,7 @@ export default function ConfigPage() {
               <div className="space-y-1">
                 <label className="text-xs text-white/60 flex items-center gap-1">
                   <Globe2 className="h-3 w-3" />
-                  Site / domínio principal
+                  Site / dominio principal
                 </label>
                 <input
                   className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
@@ -262,10 +344,10 @@ export default function ConfigPage() {
               <Palette className="h-4 w-4 text-white/70" />
               <div>
                 <h2 className="text-sm font-semibold">
-                  Identidade visual básica
+                  Identidade visual basica
                 </h2>
                 <p className="text-xs text-white/60">
-                  Paleta que pode ser usada nos próximos módulos (sites, LPs,
+                  Paleta que pode ser usada nos proximos modulos (sites, LPs,
                   propostas).
                 </p>
               </div>
@@ -273,7 +355,7 @@ export default function ConfigPage() {
 
             <div className="grid gap-3 md:grid-cols-3">
               <div className="space-y-1">
-                <label className="text-xs text-white/60">Cor primária</label>
+                <label className="text-xs text-white/60">Cor primaria</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
@@ -290,7 +372,7 @@ export default function ConfigPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-white/60">Cor secundária</label>
+                <label className="text-xs text-white/60">Cor secundaria</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
@@ -327,16 +409,16 @@ export default function ConfigPage() {
             </div>
           </section>
 
-          {/* BLOCO: PROSPECÇÃO / SDR */}
+          {/* BLOCO: PROSPECCAO / SDR */}
           <section className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-4">
             <div className="flex items-center gap-2">
               <MessageCircle className="h-4 w-4 text-white/70" />
               <div>
                 <h2 className="text-sm font-semibold">
-                  Máquina de Prospecção & SDR
+                  Maquina de Prospeccao & SDR
                 </h2>
                 <p className="text-xs text-white/60">
-                  Mensagens padrão que a IA / SDR pode usar para abordar os
+                  Mensagens padrao que a IA / SDR pode usar para abordar os
                   leads.
                 </p>
               </div>
@@ -353,14 +435,14 @@ export default function ConfigPage() {
                   onChange={(e) => setMensagemBoasVindas(e.target.value)}
                 />
                 <p className="text-[11px] text-white/40">
-                  Essa é a mensagem base que o SDR (humano ou IA) usa no
+                  Essa e a mensagem base que o SDR (humano ou IA) usa no
                   primeiro contato.
                 </p>
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs text-white/60">
-                  Roteiro de perguntas (diagnóstico)
+                  Roteiro de perguntas (diagnostico)
                 </label>
                 <textarea
                   className="min-h-[120px] w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
@@ -368,7 +450,7 @@ export default function ConfigPage() {
                   onChange={(e) => setScriptPrimeiroContato(e.target.value)}
                 />
                 <p className="text-[11px] text-white/40">
-                  Perguntas que ajudam a entender o cenário do cliente antes de
+                  Perguntas que ajudam a entender o cenario do cliente antes de
                   montar proposta.
                 </p>
               </div>
@@ -376,7 +458,7 @@ export default function ConfigPage() {
 
             <div className="space-y-1 max-w-xs">
               <label className="text-xs text-white/60">
-                Dias padrão para primeiro follow-up
+                Dias padrao para primeiro follow-up
               </label>
               <input
                 type="number"
@@ -386,20 +468,20 @@ export default function ConfigPage() {
                 onChange={(e) => setDiasFollowUp(Number(e.target.value))}
               />
               <p className="text-[11px] text-white/40">
-                Esse valor pode ser usado nos fluxos automáticos de follow-up
+                Esse valor pode ser usado nos fluxos automaticos de follow-up
                 (n8n).
               </p>
             </div>
           </section>
 
-          {/* BLOCO: INTEGRAÇÕES */}
+          {/* BLOCO: INTEGRACOES */}
           <section className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-4">
             <div className="flex items-center gap-2">
               <Link2 className="h-4 w-4 text-white/70" />
               <div>
-                <h2 className="text-sm font-semibold">Integrações</h2>
+                <h2 className="text-sm font-semibold">Integracoes</h2>
                 <p className="text-xs text-white/60">
-                  Endpoints e tokens usados pela máquina de prospecção, n8n e
+                  Endpoints e tokens usados pela maquina de prospeccao, n8n e
                   WhatsApp Business.
                 </p>
               </div>
@@ -408,7 +490,7 @@ export default function ConfigPage() {
             <div className="space-y-3">
               <div className="space-y-1">
                 <label className="text-xs text-white/60">
-                  Webhook de entrada de leads (n8n / prospecção)
+                  Webhook de entrada de leads (n8n / prospeccao)
                 </label>
                 <input
                   className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
@@ -417,14 +499,14 @@ export default function ConfigPage() {
                   placeholder="https://seu-n8n.com/webhook/altum-leads"
                 />
                 <p className="text-[11px] text-white/40">
-                  URL que recebe os leads captados (Google Places, formulários,
+                  URL que recebe os leads captados (Google Places, formularios,
                   etc).
                 </p>
               </div>
 
               <div className="space-y-1 max-w-md">
                 <label className="text-xs text-white/60">
-                  Meta WhatsApp Business API – Token (armazenado apenas no
+                  Meta WhatsApp Business API - Token (armazenado apenas no
                   Firestore)
                 </label>
                 <input
@@ -436,15 +518,15 @@ export default function ConfigPage() {
                   }
                 />
                 <p className="text-[11px] text-white/40">
-                  Por segurança, o token real é melhor ser colado diretamente
-                  no Firestore ou em variável de ambiente. Aqui fica apenas o
+                  Por seguranca, o token real e melhor ser colado diretamente
+                  no Firestore ou em variavel de ambiente. Aqui fica apenas o
                   registro conceitual.
                 </p>
               </div>
             </div>
           </section>
 
-          {/* BOTÃO SALVAR NO FINAL TAMBÉM */}
+          {/* BOTAO SALVAR NO FINAL TAMBEM */}
           <div className="flex justify-end">
             <button
               type="submit"
@@ -459,7 +541,7 @@ export default function ConfigPage() {
               ) : (
                 <>
                   <Save className="h-4 w-4" />
-                  Salvar configurações
+                  Salvar configuracoes
                 </>
               )}
             </button>
@@ -469,3 +551,6 @@ export default function ConfigPage() {
     </div>
   );
 }
+
+
+

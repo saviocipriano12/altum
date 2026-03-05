@@ -1,27 +1,52 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
 import AdminHeader from "@/components/AdminHeader";
 import CommandPalette from "@/components/CommandPalette";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
+const ADMIN_ONLY_PREFIXES = [
+  "/admin/equipe",
+  "/admin/config",
+  "/admin/pipeline",
+  "/admin/prospeccao/gerar",
+  "/admin/campanhas",
+];
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, profile, loading, isAdmin } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // 1. Proteção de Rota
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
-    }
-  }, [user, loading, router]);
+  const needsAdmin = useMemo(
+    () => ADMIN_ONLY_PREFIXES.some((prefix) => pathname.startsWith(prefix)),
+    [pathname]
+  );
 
-  // 2. Persistência da Sidebar
+  useEffect(() => {
+    if (loading) return;
+
+    if (!user || !profile) {
+      router.push("/login");
+      return;
+    }
+
+    if (profile.role === "client") {
+      router.push("/cliente/painel");
+      return;
+    }
+
+    if (needsAdmin && !isAdmin) {
+      router.push("/admin/dashboard");
+    }
+  }, [loading, user, profile, needsAdmin, isAdmin, router]);
+
   useEffect(() => {
     const saved = localStorage.getItem("altum_sidebar_collapsed");
     if (saved === "1") setCollapsed(true);
@@ -31,7 +56,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     localStorage.setItem("altum_sidebar_collapsed", collapsed ? "1" : "0");
   }, [collapsed]);
 
-  // Tela de carregamento enquanto verifica o usuário
   if (loading) {
     return (
       <div className="h-screen w-screen bg-[#0B0B0B] flex items-center justify-center">
@@ -40,10 +64,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  // Se não estiver logado, não renderiza nada (o useEffect redirecionará)
-  if (!user) return null;
+  if (!user || !profile) return null;
+  if (profile.role === "client") return null;
+  if (needsAdmin && !isAdmin) return null;
 
-  // 3. Renderização do Layout Protegido
   return (
     <div className="flex h-screen w-screen bg-[#0B0B0B] text-white overflow-hidden">
       <AdminSidebar

@@ -52,12 +52,16 @@ const Pill: React.FC<React.PropsWithChildren<{ icon?: React.ReactNode; className
   </span>
 );
 
-const PrimaryButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({ className = "", children, ...rest }) => (
+type PrimaryButtonProps = {
+  className?: string;
+  children: React.ReactNode;
+};
+
+const PrimaryButton: React.FC<PrimaryButtonProps> = ({ className = "", children }) => (
   <motion.button
     whileHover={{ scale: 1.03 }}
     whileTap={{ scale: 0.98 }}
     className={`group relative inline-flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 font-medium text-white shadow-lg shadow-emerald-600/20 ${className}`}
-    {...rest}
   >
     {children}
     <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" />

@@ -1,7 +1,10 @@
 import "./globals.css";
 import { Inter } from "next/font/google";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { AuthProvider } from "@/context/AuthContext"; // 1. Adicione este import
+import { buildOrganizationSchema, getSiteUrl, getSocialLinksFromEnv, toJsonLdScript } from "@/lib/schema";
+import { TrackingScripts } from "@/components/analytics/TrackingScripts";
 /* ---------------- Font ---------------- */
 const inter = Inter({
   subsets: ["latin"],
@@ -12,6 +15,9 @@ const inter = Inter({
 /* ---------------- Metadata (SEO + OpenGraph + Twitter) ---------------- */
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  alternates: {
+    canonical: "/",
+  },
   title: {
     default: "ALTUM | Engenharia de Vendas High-Ticket",
     template: "%s • ALTUM",
@@ -45,8 +51,11 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
-  themeColor: "#151419", // Atualizado para Dark Void (Preto da marca)
   manifest: "/site.webmanifest",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#151419",
 };
 
 /* ---------------- Layout ---------------- */
@@ -55,11 +64,23 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const siteUrl = getSiteUrl();
+  const organizationSchema = buildOrganizationSchema({
+    siteUrl,
+    name: "ALTUM",
+    logoPath: process.env.NEXT_PUBLIC_SITE_LOGO_PATH ?? "/logo-a.png",
+    socialLinks: getSocialLinksFromEnv(),
+  });
+
   return (
     <html lang="pt-BR" className="scroll-smooth">
       <body
         className={`${inter.className} bg-[#0B0B0B] text-white antialiased selection:bg-[#F56E0F] selection:text-white`}
       >
+        <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(organizationSchema)} />
+        <Suspense fallback={null}>
+          <TrackingScripts />
+        </Suspense>
         {/* 2. Envolva o children com o AuthProvider */}
         <AuthProvider>
           {children}

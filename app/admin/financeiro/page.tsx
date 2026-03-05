@@ -3,14 +3,27 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
+import type {
+  FinanceCategory as Categoria,
+  FinanceStatus as FinStatus,
+  FinanceTransaction as Transaction,
+  FinanceType as FinTipo,
+  PayoutStatus,
+  TeamMemberDoc,
+} from "@/app/types/domain";
 import {
-  collection, addDoc, onSnapshot, query, orderBy, 
-  serverTimestamp, where, doc, updateDoc, deleteDoc, getDocs
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  where,
+  getDocs,
 } from "firebase/firestore";
 import {
-  TrendingUp, ArrowDownRight, Loader2, ShieldCheck, PieChart, 
-  Zap, Plus, X, Calculator, Users, HandCoins, Search, Trash2, 
-  Briefcase, Receipt, Eye, EyeOff, Calendar, CheckCircle2, History
+  TrendingUp, ArrowDownRight, Loader2,
+  Zap, Plus, X, Calculator, HandCoins, Search, Trash2,
+  Eye, EyeOff, CheckCircle2, History
 } from "lucide-react";
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, 
@@ -20,72 +33,118 @@ import {
 /* ======================================================
    CONFIGURAÇÕES E TIPAGENS
 ====================================================== */
-type FinStatus = "pago" | "pendente" | "atrasado" | "cancelado";
-type FinTipo = "Receita" | "Despesa";
-type Categoria = "Mensalidade" | "Projeto" | "Setup" | "Infra/API" | "Imposto" | "Marketing" | "Outros";
+type FinanceTab = "resumo" | "vendas" | "contas" | "equipe";
 
-interface Transaction {
+interface SellerOption {
   id: string;
+  name: string;
+  commissionRate?: number;
+}
+
+interface LaunchForm {
   descricao: string;
-  valor: number;
-  valorComissao: number;
+  valor: string;
+  comissaoPercent: string;
   vendedorId: string;
-  vendedorNome: string;
-  status: FinStatus;
-  payoutStatus?: "pendente" | "liquidado";
   tipo: FinTipo;
   categoria: Categoria;
-  referencia: string;
+  status: FinStatus;
   vencimento: string;
-  createdAt: any;
+  referencia: string;
 }
 
 const money = (v: number) => (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const cx = (...classes: any[]) => classes.filter(Boolean).join(" ");
+const cx = (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(" ");
+const toDate = (value?: string | number | null) => {
+  if (!value) return null;
+  if (typeof value === "number") return new Date(value);
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const initialForm: LaunchForm = {
+  descricao: "",
+  valor: "",
+  comissaoPercent: "10",
+  vendedorId: "",
+  tipo: "Receita",
+  categoria: "Mensalidade",
+  status: "pendente",
+  vencimento: new Date().toISOString().split("T")[0],
+  referencia: "",
+};
 
 export default function FinanceiroMasterPage() {
   const { user, isAdmin } = useAuth();
   
   const [data, setData] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"resumo" | "vendas" | "contas" | "equipe">("resumo");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<FinanceTab>("resumo");
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [sellers, setSellers] = useState<{id: string, name: string}[]>([]);
+  const [sellers, setSellers] = useState<SellerOption[]>([]);
   const [search, setSearch] = useState("");
   const [hideValues, setHideValues] = useState(false);
 
-  const [form, setForm] = useState({
-    descricao: "",
-    valor: "",
-    comissaoPercent: "10",
-    vendedorId: "",
-    tipo: "Receita" as FinTipo,
-    categoria: "Mensalidade" as Categoria,
-    status: "pendente" as FinStatus,
-    vencimento: new Date().toISOString().split('T')[0],
-    referencia: ""
-  });
+  const [form, setForm] = useState<LaunchForm>(initialForm);
 
   // 1. CARREGAMENTO COM REGRA DE NEGÓCIO
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     const ref = collection(db, "financeiro");
     
     // Admin vê o macro / Vendedor vê apenas seu micro
     const q = isAdmin 
       ? query(ref, orderBy("createdAt", "desc"))
-      : query(ref, where("vendedorId", "==", user.uid), orderBy("createdAt", "desc"));
+      : query(ref, where("vendedorId", "==", user.uid));
 
-    const unsub = onSnapshot(q, (snap) => {
-      setData(snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction)));
-      setLoading(false);
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Transaction));
+        const sorted = [...rows].sort((a, b) => {
+          const aTs =
+            typeof a.createdAt === "number"
+              ? a.createdAt
+              : typeof a.createdAt === "object" && a.createdAt && "toDate" in a.createdAt && typeof a.createdAt.toDate === "function"
+                ? a.createdAt.toDate().getTime()
+                : 0;
+          const bTs =
+            typeof b.createdAt === "number"
+              ? b.createdAt
+              : typeof b.createdAt === "object" && b.createdAt && "toDate" in b.createdAt && typeof b.createdAt.toDate === "function"
+                ? b.createdAt.toDate().getTime()
+                : 0;
+          return bTs - aTs;
+        });
+        setData(sorted);
+        setLoadError(null);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Erro ao carregar financeiro:", error);
+        setLoadError("Não foi possível carregar o financeiro agora.");
+        setLoading(false);
+      }
+    );
 
     if (isAdmin) {
       getDocs(collection(db, "users")).then(snap => {
-        setSellers(snap.docs.map(d => ({ id: d.id, name: d.data().name || "Sem Nome" })));
+        setSellers(
+          snap.docs.map((d) => {
+            const userData = d.data() as TeamMemberDoc;
+            return {
+              id: d.id,
+              name: userData.name || "Sem Nome",
+              commissionRate: Number((userData as { commissionRate?: number }).commissionRate || 0),
+            };
+          })
+        );
       });
     }
     return () => unsub();
@@ -108,55 +167,116 @@ export default function FinanceiroMasterPage() {
       .filter(t => t.tipo === "Receita" && t.status === "pago" && t.payoutStatus !== "liquidado")
       .reduce((acc, t) => acc + (t.valorComissao || 0), 0);
 
+    const previsaoComissao = data
+      .filter((t) => t.tipo === "Receita" && t.status !== "cancelado" && t.payoutStatus !== "liquidado")
+      .reduce((acc, t) => acc + (t.valorComissao || 0), 0);
+
+    const proximoRepasse = data
+      .filter((t) => t.tipo === "Receita" && t.status !== "cancelado" && t.payoutStatus !== "liquidado")
+      .sort((a, b) => {
+        const da = toDate(a.vencimento)?.getTime() || Number.MAX_SAFE_INTEGER;
+        const db = toDate(b.vencimento)?.getTime() || Number.MAX_SAFE_INTEGER;
+        return da - db;
+      })[0] || null;
+
     return {
       principal: isAdmin ? faturamentoBruto : comissoesTotais,
       custoFixo,
       mrr,
       lucroLiquido: faturamentoBruto - custoFixo - comissoesTotais,
-      pendentePayout
+      pendentePayout,
+      previsaoComissao,
+      proximoRepasseValor: proximoRepasse?.valorComissao || 0,
+      proximoRepasseData: proximoRepasse?.vencimento || null,
     };
   }, [data, isAdmin]);
 
-  // 3. HANDLERS (AÇÕES)
+    // 3. HANDLERS (ACOES)
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
       const v = parseFloat(form.valor);
-      const c = form.tipo === "Receita" ? (v * parseFloat(form.comissaoPercent)) / 100 : 0;
-      const vend = sellers.find(s => s.id === form.vendedorId);
+      const commissionPercent = Number(form.comissaoPercent || 0);
+      const c = form.tipo === "Receita" ? (v * commissionPercent) / 100 : 0;
+      const vend = sellers.find((s) => s.id === form.vendedorId);
 
-      await addDoc(collection(db, "financeiro"), {
-        ...form,
-        valor: v,
-        valorComissao: c,
-        vendedorNome: vend?.name || (isAdmin ? "Agência" : user?.displayName),
-        vendedorId: form.vendedorId || user?.uid,
-        payoutStatus: "pendente",
-        createdAt: serverTimestamp()
+      const res = await authedFetch("/api/finance/transactions/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          valor: v,
+          commissionRate: commissionPercent,
+          valorComissao: c,
+          vendedorNome: vend?.name || (isAdmin ? "Agencia" : user?.displayName),
+          vendedorId: form.vendedorId || user?.uid,
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao criar lancamento.");
+
       setIsModalOpen(false);
-      setForm({ ...form, descricao: "", valor: "", referencia: "" });
-    } catch (e) { console.error(e); } finally { setSaving(false); }
+      setForm((prev) => ({ ...prev, descricao: "", valor: "", referencia: "" }));
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao criar lancamento.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleUpdateStatus = async (id: string, s: FinStatus) => {
-    await updateDoc(doc(db, "financeiro", id), { status: s });
+    const res = await authedFetch("/api/finance/transactions/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status: s }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data?.error || "Falha ao atualizar status.");
+    }
   };
 
-  const handleTogglePayout = async (id: string, current: string) => {
-    await updateDoc(doc(db, "financeiro", id), { 
-      payoutStatus: current === "liquidado" ? "pendente" : "liquidado" 
+  const handleTogglePayout = async (id: string, current: PayoutStatus) => {
+    const res = await authedFetch("/api/finance/transactions/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id,
+        payoutStatus: current === "liquidado" ? "pendente" : "liquidado",
+      }),
     });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data?.error || "Falha ao atualizar payout.");
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (confirm("Deseja remover este registro permanentemente?")) {
-        await deleteDoc(doc(db, "financeiro", id));
+      const res = await authedFetch("/api/finance/transactions/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data?.error || "Falha ao remover registro.");
+      }
     }
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-black"><Loader2 className="animate-spin text-white/20" size={50}/></div>;
+  if (loadError) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-black text-white">
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm text-white/80">
+          {loadError}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-white p-6 lg:p-12 font-sans selection:bg-blue-500/20">
@@ -187,14 +307,14 @@ export default function FinanceiroMasterPage() {
 
       {/* MÉTRICAS DE IMPACTO */}
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatBox label={isAdmin ? "Faturamento Bruto" : "Comissões Confirmadas"} valor={hideValues ? "****" : money(stats.principal)} sub="Vendas Pagas" cor="text-white" icone={<TrendingUp size={16}/>}/>
+          <StatBox label={isAdmin ? "Faturamento Bruto" : "Comissões Confirmadas"} valor={hideValues ? "****" : money(stats.principal)} sub="Vendas Pagas" icone={<TrendingUp size={16}/>}/>
           {isAdmin ? (
-            <StatBox label="Despesas Fixas" valor={hideValues ? "****" : `-${money(stats.custoFixo)}`} sub="Infra + APIs" cor="text-white/40" icone={<ArrowDownRight size={16}/>}/>
+            <StatBox label="Despesas Fixas" valor={hideValues ? "****" : `-${money(stats.custoFixo)}`} sub="Infra + APIs" icone={<ArrowDownRight size={16}/>}/>
           ) : (
-            <StatBox label="Recorrência" valor={hideValues ? "****" : money(stats.mrr)} sub="Carteira SaaS" cor="text-white" icone={<Zap size={16}/>}/>
+            <StatBox label="Comissão Prevista" valor={hideValues ? "****" : money(stats.previsaoComissao)} sub="Pendente de repasse" icone={<Zap size={16}/>}/>
           )}
-          <StatBox label="MRR Ativo" valor={hideValues ? "****" : money(stats.mrr)} sub="Recorrência Mensal" cor="text-white" icone={<History size={16}/>}/>
-          <StatBox label={isAdmin ? "Lucro Líquido" : "Saldo Disponível"} valor={hideValues ? "****" : (isAdmin ? money(stats.lucroLiquido) : money(stats.principal))} sub="Líquido Real" cor="text-white" icone={<Calculator size={16}/>} destaque />
+          <StatBox label={isAdmin ? "MRR Ativo" : "Próximo Repasse"} valor={hideValues ? "****" : (isAdmin ? money(stats.mrr) : money(stats.proximoRepasseValor))} sub={isAdmin ? "Recorrência Mensal" : (stats.proximoRepasseData ? `Previsto: ${stats.proximoRepasseData}` : "Sem data prevista")} icone={<History size={16}/>}/>
+          <StatBox label={isAdmin ? "Lucro Líquido" : "Saldo Disponível"} valor={hideValues ? "****" : (isAdmin ? money(stats.lucroLiquido) : money(stats.pendentePayout))} sub="Líquido Real" icone={<Calculator size={16}/>} destaque />
       </div>
 
       {/* NAVEGAÇÃO SaaS */}
@@ -206,7 +326,7 @@ export default function FinanceiroMasterPage() {
             {isAdmin && <NavTab active={activeTab === "equipe"} click={() => setActiveTab("equipe")} label="Gestão de Time"/>}
         </div>
 
-        {/* CONTEÚDO DINÂMICO */}
+        {/* CONTEÚDO DINMICO */}
         <div className="mt-12">
             {activeTab === "resumo" && <ResumoVisual transactions={data} />}
             
@@ -255,7 +375,7 @@ export default function FinanceiroMasterPage() {
                     </div>
                     <div>
                         <label className="text-white/20 mb-2 block">Tipo</label>
-                        <select value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value as any, categoria: e.target.value === "Receita" ? "Mensalidade" : "Infra/API"})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none appearance-none">
+                        <select value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value as FinTipo, categoria: e.target.value === "Receita" ? "Mensalidade" : "Infra/API"})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none appearance-none">
                             <option value="Receita">Receita (Entrada)</option>
                             <option value="Despesa">Despesa (Gasto)</option>
                         </select>
@@ -264,7 +384,21 @@ export default function FinanceiroMasterPage() {
                         <>
                             <div>
                                 <label className="text-white/20 mb-2 block">Vendedor</label>
-                                <select value={form.vendedorId} onChange={e => setForm({...form, vendedorId: e.target.value})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none">
+                                <select
+                                  value={form.vendedorId}
+                                  onChange={e => {
+                                    const nextSellerId = e.target.value;
+                                    const selectedSeller = sellers.find((seller) => seller.id === nextSellerId);
+                                    setForm({
+                                      ...form,
+                                      vendedorId: nextSellerId,
+                                      comissaoPercent: selectedSeller
+                                        ? String(selectedSeller.commissionRate || 0)
+                                        : form.comissaoPercent,
+                                    });
+                                  }}
+                                  className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none"
+                                >
                                     <option value="">Direto / Admin</option>
                                     {sellers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
@@ -292,7 +426,19 @@ export default function FinanceiroMasterPage() {
    SUB-COMPONENTES (VISUAL PREMIUM)
 ====================================================== */
 
-function StatBox({ label, valor, sub, icone, destaque }: any) {
+function StatBox({
+  label,
+  valor,
+  sub,
+  icone,
+  destaque,
+}: {
+  label: string;
+  valor: string;
+  sub: string;
+  icone: React.ReactNode;
+  destaque?: boolean;
+}) {
     return (
         <div className={cx("p-10 border border-white/5 rounded-3xl relative overflow-hidden transition-all", 
             destaque ? "bg-white text-black shadow-2xl scale-[1.02]" : "bg-[#0A0A0A]")}>
@@ -304,7 +450,7 @@ function StatBox({ label, valor, sub, icone, destaque }: any) {
     );
 }
 
-function NavTab({ active, click, label }: any) {
+function NavTab({ active, click, label }: { active: boolean; click: () => void; label: string }) {
     return (
         <button onClick={click} className={cx("text-[11px] font-black uppercase tracking-[0.4em] pb-3 border-b-2 transition-all shrink-0", 
             active ? "text-white border-white" : "text-white/5 border-transparent hover:text-white/20")}>
@@ -313,7 +459,19 @@ function NavTab({ active, click, label }: any) {
     );
 }
 
-function TabelaFinanceira({ lista, isAdmin, esconderValores, onUpdateStatus, onDelete }: any) {
+function TabelaFinanceira({
+  lista,
+  isAdmin,
+  esconderValores,
+  onUpdateStatus,
+  onDelete,
+}: {
+  lista: Transaction[];
+  isAdmin: boolean;
+  esconderValores: boolean;
+  onUpdateStatus: (id: string, status: FinStatus) => void;
+  onDelete: (id: string) => void;
+}) {
     return (
         <div className="overflow-x-auto border-t border-white/5">
             <table className="w-full text-left">
@@ -334,16 +492,27 @@ function TabelaFinanceira({ lista, isAdmin, esconderValores, onUpdateStatus, onD
                                 <p className="text-[10px] text-white/10 font-bold uppercase mt-1 tracking-widest">{t.categoria}</p>
                             </td>
                             <td className="py-8 pr-4 text-xs font-black">
-                                <span className={t.tipo === "Despesa" ? "text-white/20" : "text-white/80"}>
-                                    {t.tipo === "Despesa" ? "-" : ""}{esconderValores ? "****" : money(t.valor)}
-                                </span>
+                                {isAdmin ? (
+                                  <span className={t.tipo === "Despesa" ? "text-white/20" : "text-white/80"}>
+                                      {t.tipo === "Despesa" ? "-" : ""}{esconderValores ? "****" : money(t.valor)}
+                                  </span>
+                                ) : (
+                                  <div className="space-y-1">
+                                    <span className={t.tipo === "Despesa" ? "text-white/20" : "text-emerald-300"}>
+                                      {esconderValores ? "****" : money(t.valorComissao ?? 0)}
+                                    </span>
+                                    <p className="text-[10px] uppercase tracking-widest text-white/25">
+                                      venda {esconderValores ? "****" : money(t.valor)}
+                                    </p>
+                                  </div>
+                                )}
                             </td>
                             <td className="py-8 text-right">
                                 <div className="flex items-center justify-end gap-6">
                                     {isAdmin ? (
                                         <select 
                                             value={t.status} 
-                                            onChange={(e) => onUpdateStatus(t.id, e.target.value as any)}
+                                            onChange={(e) => onUpdateStatus(t.id, e.target.value as FinStatus)}
                                             className="bg-transparent text-[10px] font-black uppercase outline-none text-white/30 hover:text-white transition cursor-pointer"
                                         >
                                             <option value="pago">Finalizado</option>
@@ -365,7 +534,15 @@ function TabelaFinanceira({ lista, isAdmin, esconderValores, onUpdateStatus, onD
     );
 }
 
-function ModuloEquipe({ lista, pendente, onTogglePayout }: any) {
+function ModuloEquipe({
+  lista,
+  pendente,
+  onTogglePayout,
+}: {
+  lista: Transaction[];
+  pendente: number;
+  onTogglePayout: (id: string, current: PayoutStatus) => void;
+}) {
     return (
         <div className="space-y-6 animate-in zoom-in duration-500">
             <div className="p-12 border border-white/5 bg-[#080808] rounded-[3rem] flex justify-between items-center">
@@ -386,10 +563,10 @@ function ModuloEquipe({ lista, pendente, onTogglePayout }: any) {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                        {lista.filter((t: any) => t.tipo === "Receita" && t.status === "pago").map((t: any) => (
+                        {lista.filter((t) => t.tipo === "Receita" && t.status === "pago").map((t) => (
                             <tr key={t.id}>
                                 <td className="px-10 py-8 font-bold text-white text-xs uppercase">{t.vendedorNome} <br/><span className="text-[9px] text-white/20 font-black tracking-widest">{t.descricao}</span></td>
-                                <td className="px-10 py-8 font-black text-white/80">{money(t.valorComissao)}</td>
+                                <td className="px-10 py-8 font-black text-white/80">{money(t.valorComissao ?? 0)}</td>
                                 <td className="px-10 py-8 text-right">
                                     <button 
                                         onClick={() => onTogglePayout(t.id, t.payoutStatus || "pendente")}
@@ -408,11 +585,11 @@ function ModuloEquipe({ lista, pendente, onTogglePayout }: any) {
     );
 }
 
-function ResumoVisual({ transactions }: any) {
+function ResumoVisual({ transactions }: { transactions: Transaction[] }) {
     const chartData = useMemo(() => {
         const meses: Record<string, number> = {};
-        transactions.filter((t: any) => t.tipo === "Receita" && t.status === "pago").forEach((t: any) => {
-            const m = new Date(t.vencimento).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+        transactions.filter((t) => t.tipo === "Receita" && t.status === "pago").forEach((t) => {
+            const m = new Date(t.vencimento || new Date().toISOString().split("T")[0]).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
             meses[m] = (meses[m] || 0) + t.valor;
         });
         return Object.entries(meses).map(([name, total]) => ({ name, total }));
@@ -438,3 +615,7 @@ function ResumoVisual({ transactions }: any) {
         </div>
     );
 }
+
+
+
+

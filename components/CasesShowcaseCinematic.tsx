@@ -107,7 +107,7 @@ function CasesCinematicCarousel({ items }: { items: CaseItem[] }) {
     const el = trackRef.current;
     if (!el) return;
 
-    let t: any;
+    let t: ReturnType<typeof setInterval> | undefined;
     const total = items.length;
 
     const start = () => {

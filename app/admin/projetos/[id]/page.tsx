@@ -1,10 +1,12 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/firebaseConfig";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { authedFetch } from "@/app/lib/authed-fetch";
+import type { TimestampLike } from "@/app/types/domain";
+import { doc, getDoc } from "firebase/firestore";
 import {
   ArrowLeft,
   Layers,
@@ -23,8 +25,6 @@ import {
   PauseCircle,
   Archive,
 } from "lucide-react";
-import { collection, writeBatch, serverTimestamp, deleteField } from "firebase/firestore";
-
 type ProjetoStatus = "Onboarding" | "Ativo" | "Pausado" | "Encerrado";
 
 interface Projeto {
@@ -36,7 +36,16 @@ interface Projeto {
   canalPrincipal: string;
   servicos: string[];
   valorMensal?: number;
-  createdAt?: any;
+  createdAt?: TimestampLike | number | null;
+}
+
+function toDate(value?: TimestampLike | number | null) {
+  if (!value) return null;
+  if (typeof value === "number") return new Date(value);
+  if (typeof value === "object" && typeof value.toDate === "function") {
+    return value.toDate();
+  }
+  return null;
 }
 
 const STATUS_OPTIONS: ProjetoStatus[] = [
@@ -102,62 +111,48 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
     if (!projeto) return;
     
     const confirmacao = confirm(
-      `Isso irá gerar 12 lançamentos financeiros de R$ ${projeto.valorMensal} para os próximos 12 meses. Confirmar?`
+      `Isso ira gerar 12 lancamentos financeiros de R$ ${projeto.valorMensal} para os proximos 12 meses. Confirmar?`
     );
     if (!confirmacao) return;
 
     if (!projeto.valorMensal || projeto.valorMensal <= 0) {
-      alert("Defina um valor mensal para o projeto antes de gerar o carnê.");
+      alert("Defina um valor mensal para o projeto antes de gerar o carne.");
       return;
     }
 
     setGeneratingRecurrence(true);
 
     try {
-      const batch = writeBatch(db);
-      const hoje = new Date();
-
-      for (let i = 1; i <= 12; i++) {
-        // Calcula data: Hoje + i meses
-        const dataVencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i, 10); // Dia 10 padrão
-        // Formata para string YYYY-MM-DD (padrão do input date) ou DD/MM/YYYY
-        const vencimentoString = dataVencimento.toISOString().split("T")[0]; 
-
-        const refFin = doc(collection(db, "financeiro"));
-        batch.set(refFin, {
-          clientId: projeto.clientId,
-          clientName: projeto.clientName,
+      const res = await authedFetch("/api/projetos/generate-recurrence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           projectId: projeto.id,
-          projectTitle: projeto.titulo,
-          tipo: "Mensalidade",
-          status: "Pendente",
-          valor: projeto.valorMensal,
-          referencia: `Mensalidade ${i}/12 - ${projeto.titulo}`,
-          vencimento: vencimentoString,
-          createdAt: serverTimestamp(),
-        });
+          months: 12,
+          dueDay: 10,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao gerar recorrencia.");
       }
-
-      await batch.commit();
       alert("Sucesso! 12 faturas geradas no Financeiro.");
       
     } catch (err) {
-      console.error("Erro ao gerar recorrência:", err);
-      alert("Erro ao gerar recorrência.");
+      console.error("Erro ao gerar recorrencia:", err);
+      alert("Erro ao gerar recorrencia.");
     } finally {
       setGeneratingRecurrence(false);
     }
   }
 
-  const createdAtFormatted =
-    projeto?.createdAt?.toDate &&
-    new Date(projeto.createdAt.toDate()).toLocaleString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const createdAtFormatted = toDate(projeto?.createdAt ?? null)?.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   const statusColor =
     projeto?.status === "Ativo"
@@ -177,8 +172,16 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
     if (!projeto || !newStatus) return;
     try {
       setSaving(true);
-      const ref = doc(db, "projetos", projeto.id);
-      await updateDoc(ref, { status: newStatus });
+      const res = await authedFetch("/api/projetos/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: projeto.id,
+          patch: { status: newStatus },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao atualizar status.");
 
       setProjeto((prev) => (prev ? { ...prev, status: newStatus } : prev));
       setNewStatus(null);
@@ -200,9 +203,9 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const payload: any = {
+      const payload: { titulo: string; canalPrincipal: string; servicos: string[]; valorMensal?: number | null } = {
         titulo: form.titulo.trim() || "Projeto",
-        canalPrincipal: form.canalPrincipal.trim() || "Não informado",
+        canalPrincipal: form.canalPrincipal.trim() || "Nao informado",
         servicos,
       };
 
@@ -212,8 +215,16 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
         payload.valorMensal = null; // remove
       }
 
-      const ref = doc(db, "projetos", projeto.id);
-      await updateDoc(ref, payload);
+      const res = await authedFetch("/api/projetos/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: projeto.id,
+          patch: payload,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao salvar alteracoes.");
 
       setProjeto((prev) =>
         prev
@@ -232,7 +243,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
 
       setEditing(false);
     } catch (err) {
-      console.error("Erro ao salvar alterações do projeto:", err);
+      console.error("Erro ao salvar alteracoes do projeto:", err);
     } finally {
       setSaving(false);
     }
@@ -272,7 +283,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
         </button>
 
         <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100">
-          Projeto não encontrado. Verifique se o link está correto ou volte para a
+          Projeto nao encontrado. Verifique se o link esta correto ou volte para a
           lista de projetos.
         </div>
       </div>
@@ -310,7 +321,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
             </span>
             <span className="inline-flex items-center gap-1">
               <Target className="h-4 w-4 text-white/40" />
-              Canal principal: {projeto.canalPrincipal || "Não informado"}
+              Canal principal: {projeto.canalPrincipal || "Nao informado"}
             </span>
           </p>
         </div>
@@ -326,7 +337,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                   currency: "BRL",
                   maximumFractionDigits: 0,
                 })}
-                /mês
+                /mes
               </span>
             </div>
           )}
@@ -334,7 +345,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
           {createdAtFormatted && (
             <div className="flex items-center gap-1 text-white/60">
               <Calendar className="h-4 w-4 text-white/40" />
-              <span>Início em {createdAtFormatted}</span>
+              <span>Inicio em {createdAtFormatted}</span>
             </div>
           )}
 
@@ -345,7 +356,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
         </div>
       </div>
 
-      {/* Ações (status + edição + atalhos) */}
+      {/* Acoes (status + edicao + atalhos) */}
       <div className="rounded-xl border border-white/10 bg-[#0f0f0f] p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           {/* Status */}
@@ -418,16 +429,16 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
   ) : (
     <Calendar size={14} />
   )}
-  Gerar Carnê Anual (12x)
+  Gerar Carne Anual (12x)
 </button>
-          {/* Edição + atalhos */}
+          {/* Edicao + atalhos */}
           <div className="flex flex-wrap gap-2 text-xs">
             <button
               onClick={() => setEditing((v) => !v)}
               className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] hover:bg-white/10 transition"
             >
               <PencilLine className="h-4 w-4 text-white/70" />
-              {editing ? "Sair da edição" : "Editar dados"}
+              {editing ? "Sair da edicao" : "Editar dados"}
             </button>
 
             <Link
@@ -443,7 +454,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
               className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] hover:bg-white/10 transition"
             >
               <Layers className="h-4 w-4 text-white/70" />
-              Orçamentos
+              Orcamentos
             </Link>
 
             {projeto.clientId && (
@@ -463,20 +474,20 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Coluna grande */}
         <div className="space-y-4 lg:col-span-2">
-          {/* Escopo / serviços + EDIÇÃO */}
+          {/* Escopo / servicos + EDICAO */}
           <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
-                Escopo e serviços
+                Escopo e servicos
               </h2>
               <ListTodo className="h-4 w-4 text-white/40" />
             </div>
 
-            {/* Campos editáveis */}
+            {/* Campos editaveis */}
             {editing ? (
               <div className="grid gap-2 md:grid-cols-2">
                 <div className="space-y-1 md:col-span-2">
-                  <p className="text-[11px] text-white/50">Título</p>
+                  <p className="text-[11px] text-white/50">Titulo</p>
                   <input
                     className="w-full rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
                     value={form.titulo}
@@ -514,11 +525,11 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
 
                 <div className="space-y-1 md:col-span-2">
                   <p className="text-[11px] text-white/50">
-                    Serviços (separados por vírgula)
+                    Servicos (separados por virgula)
                   </p>
                   <input
                     className="w-full rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
-                    placeholder="Ex: Landing Page, Tráfego Meta, CRM, Automações"
+                    placeholder="Ex: Landing Page, Trafego Meta, CRM, Automacoes"
                     value={form.servicosText}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, servicosText: e.target.value }))
@@ -540,7 +551,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                     ) : (
                       <>
                         <Save className="h-4 w-4" />
-                        Salvar alterações
+                        Salvar alteracoes
                       </>
                     )}
                   </button>
@@ -570,31 +581,30 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                   </div>
                 ) : (
                   <p className="text-xs text-white/60">
-                    Nenhum serviço especificado ainda. Depois podemos editar o projeto
-                    para detalhar escopo, entregáveis e SLA.
+                    Nenhum servico especificado ainda. Depois podemos editar o projeto
+                    para detalhar escopo, entregaveis e SLA.
                   </p>
                 )}
 
                 <p className="mt-2 text-[11px] text-white/40">
-                  Futuro: aqui podemos anexar documento de proposta, escopo detalhado e
-                  checklist de onboarding do cliente.
+                  Area de escopo e anexos do projeto para proposta, onboarding e documentos operacionais.
                 </p>
               </>
             )}
           </div>
 
-          {/* Máquina de Prospecção ligada a este projeto (placeholder) */}
+          {/* Maquina de Prospeccao ligada a este projeto */}
           <div className="rounded-xl border border-emerald-500/40 bg-gradient-to-br from-[#041610] via-[#050608] to-black p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-100">
-                Máquina de Prospecção • visão deste projeto
+                Maquina de Prospeccao - visao deste projeto
               </h2>
               <Zap className="h-4 w-4 text-emerald-300" />
             </div>
 
             <p className="text-xs text-emerald-100/80">
-              Aqui será a visão tática da máquina para este projeto específico:
-              leads, oportunidades, reuniões e pipeline conectado ao CRM.
+              Aqui sera a visao tatica da maquina para este projeto especifico:
+              leads, oportunidades, reunioes e pipeline conectado ao CRM.
             </p>
 
             <div className="grid gap-2 sm:grid-cols-3 text-[11px] text-emerald-100/80">
@@ -602,19 +612,19 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                 <p className="text-[10px] uppercase tracking-wide">
                   Leads gerados (30 dias)
                 </p>
-                <p className="mt-1 text-lg font-semibold">–</p>
+                <p className="mt-1 text-lg font-semibold">-</p>
               </div>
               <div className="rounded-lg border border-emerald-500/30 bg-black/40 p-2">
                 <p className="text-[10px] uppercase tracking-wide">
-                  Reuniões marcadas
+                  Reunioes marcadas
                 </p>
-                <p className="mt-1 text-lg font-semibold">–</p>
+                <p className="mt-1 text-lg font-semibold">-</p>
               </div>
               <div className="rounded-lg border border-emerald-500/30 bg-black/40 p-2">
                 <p className="text-[10px] uppercase tracking-wide">
-                  Última atividade
+                  Ultima atividade
                 </p>
-                <p className="mt-1 text-xs">Integração futura com n8n / Firestore</p>
+                <p className="mt-1 text-xs">Integracao operacional com automacoes e dados em tempo real</p>
               </div>
             </div>
           </div>
@@ -634,8 +644,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                 <div>
                   <p className="text-white/80">{projeto.clientName}</p>
                   <p className="text-white/50">
-                    Cliente vinculado a este projeto. Em breve: atalho direto para o
-                    painel do cliente.
+                    Cliente vinculado a este projeto com acesso direto ao painel do cliente.
                   </p>
                 </div>
               </div>
@@ -644,10 +653,10 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                 <Target className="h-4 w-4 text-white/40 mt-0.5" />
                 <div>
                   <p className="text-white/80">
-                    Canal: {projeto.canalPrincipal || "Não informado"}
+                    Canal: {projeto.canalPrincipal || "Nao informado"}
                   </p>
                   <p className="text-white/50">
-                    Podemos ligar isso ao módulo de mídia (Meta, Google, LP, etc).
+                    Podemos ligar isso ao modulo de midia (Meta, Google, LP, etc).
                   </p>
                 </div>
               </div>
@@ -662,10 +671,10 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                         currency: "BRL",
                         maximumFractionDigits: 0,
                       })}
-                      /mês
+                      /mes
                     </p>
                     <p className="text-white/50">
-                      Futuro: conectar isso ao módulo financeiro e recorrência.
+                      Conectado ao financeiro para recorrencia e previsao de receita.
                     </p>
                   </div>
                 </div>
@@ -673,21 +682,21 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
             </div>
           </div>
 
-          {/* Próximas ações / roadmap */}
+          {/* Proximas acoes / roadmap */}
           <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
-              Próximas ações (MVP)
+              Proximas acoes
             </h2>
 
             <ul className="space-y-1 text-xs text-white/70">
-              <li>• Criar checklist de onboarding específico deste projeto.</li>
-              <li>• Conectar cards deste projeto ao CRM / funil.</li>
-              <li>• Ligar a cobrança recorrente ao módulo financeiro.</li>
-              <li>• Integrar dados da Máquina de Prospecção (leads e reuniões).</li>
+              <li>- Criar checklist de onboarding especifico deste projeto.</li>
+              <li>- Conectar cards deste projeto ao CRM / funil.</li>
+              <li>- Ligar a cobranca recorrente ao modulo financeiro.</li>
+              <li>- Integrar dados da Maquina de Prospeccao (leads e reunioes).</li>
             </ul>
           </div>
 
-          {/* Atividade geral / placeholder */}
+          {/* Atividade geral */}
           <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
@@ -697,8 +706,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
             </div>
 
             <p className="text-xs text-white/60">
-              Em breve: linha do tempo com tudo que acontece neste projeto
-              (reuniões, disparos, alterações de escopo, entregas, etc.).
+              Linha do tempo operacional deste projeto (reunioes, disparos, alteracoes de escopo e entregas).
             </p>
           </div>
         </div>
@@ -706,3 +714,5 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
     </div>
   );
 }
+
+

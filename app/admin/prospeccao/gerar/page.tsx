@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { db } from "@/firebaseConfig";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { authedFetch } from "@/app/lib/authed-fetch";
+import { useAuth } from "@/context/AuthContext";
 import {
   ArrowLeft,
   Loader2,
@@ -13,8 +13,6 @@ import {
   MapPin,
   Phone,
   Globe,
-  Star,
-  Users,
   AlertTriangle,
   CheckCircle2,
   X,
@@ -30,14 +28,13 @@ import {
   ExternalLink,
   ToggleLeft,
   ToggleRight,
-  Unlock, // Ícone do Resgate
-  DollarSign, // Ícone de Preço
-  Clock, // Ícone de Horário
-  Camera // Ícone de Fotos
+  Unlock, // Icone do Resgate
+  DollarSign, // Icone de Preco
+  Clock // Icone de Horario
 } from "lucide-react";
 
 /* ======================================================
-   TIPOS (FUSÃO DO ANTIGO + NOVO)
+   TIPOS (FUSAO DO ANTIGO + NOVO)
 ====================================================== */
 
 type LeadFromAPI = {
@@ -72,6 +69,70 @@ type LeadQualified = LeadFromAPI & {
   _ratingsTotal: number | null;
   _isRescued?: boolean; // Controle de Resgate Manual
 };
+
+type ProspectPreset = {
+  id: string;
+  label: string;
+  servico: string;
+  nicho: string;
+  cidade: string;
+  bannedWords: string;
+  preferredWords: string;
+  minRating: number;
+  minRatingsTotal: number;
+  scoreMin: number;
+};
+
+const SEARCH_PRESETS: ProspectPreset[] = [
+  {
+    id: "custom",
+    label: "Customizado",
+    servico: "",
+    nicho: "",
+    cidade: "",
+    bannedWords: "delivery, ifood, atacado, distribuidora",
+    preferredWords: "premium, boutique, clinica, estetica, dermatologia",
+    minRating: 4.0,
+    minRatingsTotal: 15,
+    scoreMin: 55,
+  },
+  {
+    id: "clinica_estetica",
+    label: "Clinicas de Estetica",
+    servico: "marketing digital",
+    nicho: "clinica estetica",
+    cidade: "Belo Horizonte, MG",
+    bannedWords: "franquia, escola, atacado, distribuidora",
+    preferredWords: "harmonizacao, dermatologia, odontologia estetica, premium",
+    minRating: 4.1,
+    minRatingsTotal: 18,
+    scoreMin: 60,
+  },
+  {
+    id: "restaurante_local",
+    label: "Restaurantes Locais",
+    servico: "marketing para restaurante",
+    nicho: "restaurante",
+    cidade: "Belo Horizonte, MG",
+    bannedWords: "franquia, atacado, distribuidora, industria",
+    preferredWords: "bistro, pizzaria, hamburgueria, culinaria",
+    minRating: 4.0,
+    minRatingsTotal: 25,
+    scoreMin: 58,
+  },
+  {
+    id: "advocacia",
+    label: "Escritorios de Advocacia",
+    servico: "captação de clientes",
+    nicho: "advogado",
+    cidade: "Sao Paulo, SP",
+    bannedWords: "faculdade, curso, defensoria, orgao publico",
+    preferredWords: "tributario, empresarial, trabalhista, previdenciario",
+    minRating: 4.2,
+    minRatingsTotal: 12,
+    scoreMin: 62,
+  },
+];
 
 /* ======================================================
    HELPERS
@@ -137,7 +198,7 @@ function normalizeCategory(c?: string) {
 }
 
 /**
- * Lógica de Pontuação "CEO Mode" Expandida
+ * Logica de Pontuacao "CEO Mode" Expandida
  */
 function computeQualification(
   l: LeadFromAPI,
@@ -167,17 +228,17 @@ function computeQualification(
   // Hard rules
   if (rules.requirePhone && !hasPhone) blocked.push("Sem telefone (bloqueado)");
   if (rating !== null && rating < rules.minRating) blocked.push(`Rating < ${rules.minRating.toFixed(1)}`);
-  if (ratingsTotal !== null && ratingsTotal < rules.minRatingsTotal) blocked.push(`Poucas avaliações (< ${rules.minRatingsTotal})`);
+  if (ratingsTotal !== null && ratingsTotal < rules.minRatingsTotal) blocked.push(`Poucas avaliacoes (< ${rules.minRatingsTotal})`);
 
   if (rules.requireWebsite === "sim" && !hasWebsite) blocked.push("Sem site (exigido)");
-  if (rules.requireWebsite === "nao" && hasWebsite) blocked.push("Tem site (excluído)");
+  if (rules.requireWebsite === "nao" && hasWebsite) blocked.push("Tem site (excluido)");
 
   // Banned words
   const hay = `${name} ${category} ${address}`.toLowerCase();
   for (const w of rules.bannedWords) {
     const ww = w.trim().toLowerCase();
     if (!ww) continue;
-    if (hay.includes(ww)) blocked.push(`Contém palavra proibida: "${ww}"`);
+    if (hay.includes(ww)) blocked.push(`Contem palavra proibida: "${ww}"`);
   }
 
   // Score Calculation
@@ -208,7 +269,7 @@ function computeQualification(
   if (ratingsTotal !== null) {
     const rt = clamp(ratingsTotal, 0, 300);
     score += Math.round((rt / 300) * 18);
-    if (ratingsTotal >= 80) reasons.push("Muitas avaliações");
+    if (ratingsTotal >= 80) reasons.push("Muitas avaliacoes");
   } else {
     score += 2;
   }
@@ -228,7 +289,7 @@ function computeQualification(
     reasons.push("Ticket Alto ($$$)");
   }
   if (l.isOpenNow) {
-    score += 2; // Bônus pequeno por estar aberto para atender agora
+    score += 2; // Bonus pequeno por estar aberto para atender agora
   }
   if (l.photos && l.photos.length >= 1) {
     score += 3;
@@ -240,7 +301,7 @@ function computeQualification(
 
   score = clamp(score, 0, 100);
 
-  if (score < rules.scoreMin) blocked.push(`Score abaixo do mínimo (${rules.scoreMin})`);
+  if (score < rules.scoreMin) blocked.push(`Score abaixo do minimo (${rules.scoreMin})`);
 
   const heat = scoreToHeat(score);
 
@@ -258,7 +319,7 @@ function computeQualification(
 }
 
 /* ======================================================
-   UI COMPONENTS (VISUAL RICO DO CÓDIGO ANTIGO)
+   UI COMPONENTS (VISUAL RICO DO CODIGO ANTIGO)
 ====================================================== */
 
 function SectionHeader({
@@ -377,17 +438,21 @@ function Divider() {
 ====================================================== */
 
 export default function GerarLeadsPremiumPage() {
+  const { user, profile } = useAuth();
   // Core inputs
+  const [selectedPresetId, setSelectedPresetId] = useState("custom");
   const [servico, setServico] = useState("restaurante");
   const [nicho, setNicho] = useState("restaurante");
   const [cidade, setCidade] = useState("Belo Horizonte, MG");
+  const [searchHintsRaw, setSearchHintsRaw] = useState("");
 
   // Acquisition controls
   const [limitValid, setLimitValid] = useState(15);
+  const [maxPages, setMaxPages] = useState(2);
+  const [excludeExistingInCrm, setExcludeExistingInCrm] = useState(true);
   const [mode, setMode] = useState<"conservador" | "balanceado" | "agressivo">("balanceado");
 
   // Quality rules
-  const [requirePhone, setRequirePhone] = useState(true);
   const [minRating, setMinRating] = useState(4.0);
   const [minRatingsTotal, setMinRatingsTotal] = useState(15);
   const [requireWebsite, setRequireWebsite] = useState<"qualquer" | "sim" | "nao">("qualquer");
@@ -395,7 +460,7 @@ export default function GerarLeadsPremiumPage() {
 
   // Keyword controls
   const [bannedWords, setBannedWords] = useState("delivery, ifood, atacado, distribuidora");
-  const [preferredWords, setPreferredWords] = useState("premium, boutique, clínica, estética, dermatologia");
+  const [preferredWords, setPreferredWords] = useState("premium, boutique, clinica, estetica, dermatologia");
 
   // STATE: Resgate Manual (A chave para o controle)
   const [manualOverrides, setManualOverrides] = useState<Record<string, boolean>>({});
@@ -403,6 +468,7 @@ export default function GerarLeadsPremiumPage() {
   // Run state
   const [loadingBuscar, setLoadingBuscar] = useState(false);
   const [loadingSalvar, setLoadingSalvar] = useState(false);
+  const [autoIntelligence, setAutoIntelligence] = useState(true);
 
   // Results
   const [rawLeads, setRawLeads] = useState<LeadFromAPI[]>([]);
@@ -414,10 +480,10 @@ export default function GerarLeadsPremiumPage() {
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [toast, setToast] = useState<{ type: "ok" | "warn" | "err"; msg: string } | null>(null);
-  const toastRef = useRef<any>(null);
+  const toastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function pushLog(m: string) {
-    setLogs((prev) => [`${new Date().toLocaleTimeString("pt-BR")} — ${m}`, ...prev].slice(0, 30));
+    setLogs((prev) => [`${new Date().toLocaleTimeString("pt-BR")} - ${m}`, ...prev].slice(0, 30));
   }
 
   function showToast(type: "ok" | "warn" | "err", msg: string) {
@@ -430,6 +496,20 @@ export default function GerarLeadsPremiumPage() {
     const parts = [servico, nicho, cidade].filter(Boolean);
     return parts.join(" ").replace(/\s+/g, " ").trim();
   }, [servico, nicho, cidade]);
+
+  useEffect(() => {
+    const preset = SEARCH_PRESETS.find((item) => item.id === selectedPresetId);
+    if (!preset || preset.id === "custom") return;
+
+    setServico(preset.servico);
+    setNicho(preset.nicho);
+    setCidade(preset.cidade);
+    setBannedWords(preset.bannedWords);
+    setPreferredWords(preset.preferredWords);
+    setMinRating(preset.minRating);
+    setMinRatingsTotal(preset.minRatingsTotal);
+    setScoreMin(preset.scoreMin);
+  }, [selectedPresetId]);
 
   useEffect(() => {
     if (mode === "conservador") {
@@ -451,7 +531,7 @@ export default function GerarLeadsPremiumPage() {
 
   const rules = useMemo(() => {
     return {
-      requirePhone,
+      requirePhone: true,
       minRating,
       minRatingsTotal,
       requireWebsite,
@@ -459,13 +539,13 @@ export default function GerarLeadsPremiumPage() {
       preferredWords: preferredWords.split(",").map((s) => s.trim()).filter(Boolean),
       scoreMin,
     };
-  }, [requirePhone, minRating, minRatingsTotal, requireWebsite, bannedWords, preferredWords, scoreMin]);
+  }, [minRating, minRatingsTotal, requireWebsite, bannedWords, preferredWords, scoreMin]);
 
-  // LÓGICA COMPUTADA + RESGATE (FUSÃO)
+  // LOGICA COMPUTADA + RESGATE (FUSAO)
   const computed = useMemo(() => {
     const q = rawLeads.map((l) => {
         const qual = computeQualification(l, rules);
-        // Lógica de Resgate: Se estiver na lista manual, limpa bloqueios
+        // Logica de Resgate: Se estiver na lista manual, limpa bloqueios
         if (manualOverrides[l.placeId]) {
             qual._blockedReasons = [];
             qual._isRescued = true;
@@ -480,7 +560,7 @@ export default function GerarLeadsPremiumPage() {
     // Descartados = com bloqueios
     const discarded = q.filter((x) => x._blockedReasons.length > 0);
 
-    // Ordenação: Resgatados ou Score Alto primeiro
+    // Ordenacao: Resgatados ou Score Alto primeiro
     approved.sort((a, b) => {
         if (a._isRescued && !b._isRescued) return -1;
         if (!a._isRescued && b._isRescued) return 1;
@@ -527,22 +607,44 @@ export default function GerarLeadsPremiumPage() {
     setSelected({});
 
     if (!servico.trim() || !cidade.trim()) {
-      setError("Preencha serviço e cidade.");
+      setError("Preencha servico e cidade.");
       return;
     }
 
     setLoadingBuscar(true);
-    pushLog("Iniciando prospecção no Google Places...");
+    pushLog("Iniciando prospeccao no Google Places...");
 
     try {
-      const res = await fetch("/api/prospeccao/gerar", {
+      const hints = searchHintsRaw
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 8);
+
+      const res = await authedFetch("/api/prospeccao/gerar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nicho: nicho.trim(),
           cidade: cidade.trim(),
           servico: servico.trim(),
-          limit: clamp(limitValid, 1, 40),
+          limit: clamp(limitValid, 1, 80),
+          maxPages: clamp(maxPages, 1, 3),
+          searchHints: hints,
+          bannedWords: bannedWords
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .slice(0, 20),
+          preferredWords: preferredWords
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .slice(0, 20),
+          requirePhone: true,
+          minRating,
+          minRatingsTotal,
+          excludeExistingInCrm,
         }),
       });
 
@@ -556,11 +658,28 @@ export default function GerarLeadsPremiumPage() {
 
       const items: LeadFromAPI[] = data?.leads || [];
       setRawLeads(items);
-      pushLog(`Busca finalizada. ${items.length} leads com dados ricos recebidos.`);
-      showToast("ok", "Prospecção concluída.");
-    } catch (e: any) {
+      const meta = (data?.meta || {}) as {
+        uniquePlaces?: number;
+        inspectedDetails?: number;
+        removedNoPhone?: number;
+        removedByBannedWords?: number;
+        afterDedupe?: number;
+      };
+      pushLog(
+        `Busca finalizada. ${items.length} leads prontos (detalhes: ${
+          meta.inspectedDetails || 0
+        }, sem telefone removidos: ${meta.removedNoPhone || 0}).`
+      );
+      if (typeof meta.removedByBannedWords === "number" && meta.removedByBannedWords > 0) {
+        pushLog(`Filtro por palavras removeu ${meta.removedByBannedWords} resultado(s).`);
+      }
+      if (typeof meta.uniquePlaces === "number") {
+        pushLog(`Places unicos analisados: ${meta.uniquePlaces}.`);
+      }
+      showToast("ok", "Prospeccao concluida.");
+    } catch (e: unknown) {
       console.error(e);
-      setError("Falha ao conectar na API de prospecção.");
+      setError("Falha ao conectar na API de prospeccao.");
     } finally {
       setLoadingBuscar(false);
     }
@@ -582,19 +701,32 @@ export default function GerarLeadsPremiumPage() {
     try {
       let ok = 0;
       let fail = 0;
+      const intelligenceJobs: Promise<void>[] = [];
 
       for (const l of list) {
         try {
-          const ref = doc(db, "leads", l.placeId);
           const rawPhone = (l.telefone || "").replace(/\D/g, "");
+          if (!rawPhone) {
+            fail++;
+            continue;
+          }
           const cleanPhone = rawPhone.length >= 10 ? (rawPhone.startsWith("55") ? rawPhone : `55${rawPhone}`) : l.telefone || "";
 
-          // SPREAD OPERATOR PARA SALVAR TUDO (LAT, LNG, PHOTOS, PRICELEVEL)
-          await setDoc(
-            ref,
-            {
-              ...l, // Salva tudo da API
+          const res = await authedFetch("/api/leads/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              leadId: l.placeId,
+              sourceId: l.placeId,
+              sourceType: "google_places",
+              ownerId: profile?.role === "admin" ? null : user?.uid,
+              owner: profile?.role === "admin" ? null : (profile?.name || user?.displayName || "Time ALTUM"),
+              nome: l.nome,
+              endereco: l.endereco,
               telefone: cleanPhone,
+              website: l.website,
+              categoria: l.categoria,
+              origem: l.origem || "google_places",
               status: "novo",
               pipelineStage: "captado",
               kanbanIndex: 0,
@@ -602,11 +734,43 @@ export default function GerarLeadsPremiumPage() {
               heat: l._heat,
               reasons: l._reasons,
               foiResgatado: !!l._isRescued,
-              qualificadoEm: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
+              rating: l.rating,
+              userRatingsTotal: l.userRatingsTotal,
+              lat: l.lat,
+              lng: l.lng,
+              priceLevel: l.priceLevel,
+              isOpenNow: l.isOpenNow,
+              photos: l.photos || [],
+              autoIntelligence,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data?.error || "Falha ao salvar lead.");
+          }
+
+          const createdLeadId =
+            typeof data?.id === "string" && data.id.trim() ? data.id.trim() : l.placeId;
+
+          if (autoIntelligence && createdLeadId) {
+            intelligenceJobs.push(
+              (async () => {
+                const enrichmentRes = await authedFetch("/api/leads/intelligence/run", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    leadId: createdLeadId,
+                    trigger: "google_places_batch",
+                  }),
+                });
+                if (!enrichmentRes.ok) {
+                  const enrichmentData = await enrichmentRes.json().catch(() => ({}));
+                  throw new Error(enrichmentData?.error || "Falha na pesquisa de IA.");
+                }
+              })()
+            );
+          }
+
           ok++;
         } catch (err) {
           console.error(err);
@@ -614,9 +778,17 @@ export default function GerarLeadsPremiumPage() {
         }
       }
 
+      if (autoIntelligence && intelligenceJobs.length) {
+        pushLog(`Rodando pesquisa automatica em ${intelligenceJobs.length} lead(s)...`);
+        const settled = await Promise.allSettled(intelligenceJobs);
+        const intelligenceOk = settled.filter((item) => item.status === "fulfilled").length;
+        const intelligenceFail = settled.length - intelligenceOk;
+        pushLog(`Pesquisa IA: ${intelligenceOk} ok | ${intelligenceFail} falhas.`);
+      }
+
       pushLog(`Salvos: ${ok} | Falhas: ${fail}`);
       if (ok > 0) showToast("ok", `Salvos no CRM: ${ok}`);
-    } catch (e: any) {
+    } catch {
       setError("Falha ao salvar no Firestore.");
     } finally {
       setLoadingSalvar(false);
@@ -674,16 +846,29 @@ export default function GerarLeadsPremiumPage() {
           </div>
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Gerador de Leads Qualificados</h1>
-            <p className="mt-1 text-sm text-white/55">Controle total da aquisição: regras de qualidade, score, seleção e envio ao CRM.</p>
+            <p className="mt-1 text-sm text-white/55">Controle total da aquisicao: regras de qualidade, score, selecao e envio ao CRM.</p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setAutoIntelligence((value) => !value)}
+            disabled={busy}
+            className={cx(
+              "inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition disabled:opacity-50",
+              autoIntelligence
+                ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/20"
+                : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
+            )}
+          >
+            {autoIntelligence ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+            IA automatica
+          </button>
           <button onClick={() => { setRawLeads([]); setQualified([]); setSelected({}); setLogs([]); setError(null); showToast("ok", "Limpo."); }} disabled={busy} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 disabled:opacity-50">
             <Trash2 size={16} /> Limpar
           </button>
           <button onClick={buscarLeads} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-            {loadingBuscar ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />} Iniciar prospecção
+            {loadingBuscar ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />} Iniciar prospeccao
           </button>
           <button onClick={salvarNoCRM} disabled={busy || selectedLeadsList.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
             {loadingSalvar ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Enviar ao CRM ({selectedLeadsList.length})
@@ -696,36 +881,99 @@ export default function GerarLeadsPremiumPage() {
         <StatCard label="Recebidos da API" value={stats.total} hint="Resultado bruto com dados ricos" icon={<RefreshCcw className="h-5 w-5" />} />
         <StatCard label="Aprovados (geral)" value={stats.approvedAll} hint={`Taxa: ${pct(stats.ratio)}`} icon={<BadgeCheck className="h-5 w-5" />} accent="blue" />
         <StatCard label="Aprovados (top)" value={stats.approved} hint={`Limitado em ${limitValid}`} icon={<Sparkles className="h-5 w-5" />} accent="green" />
-        <StatCard label="Descartados" value={stats.discarded} hint="Disponíveis para resgate" icon={<AlertTriangle className="h-5 w-5" />} accent="amber" />
+        <StatCard label="Descartados" value={stats.discarded} hint="Disponiveis para resgate" icon={<AlertTriangle className="h-5 w-5" />} accent="amber" />
       </div>
 
       {/* CONFIG */}
       <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-4">
-        <SectionHeader title="Configuração de aquisição" subtitle="Defina alvo + regras de qualidade." icon={<Filter className="h-4 w-4" />} right={<button onClick={() => copy(queryPreview)} className="text-[11px] text-white/50 hover:text-white"><Copy className="h-3 w-3 inline mr-1"/> Copiar Query</button>} />
+        <SectionHeader title="Configuracao de aquisicao" subtitle="Defina alvo + regras de qualidade." icon={<Filter className="h-4 w-4" />} right={<button onClick={() => copy(queryPreview)} className="text-[11px] text-white/50 hover:text-white"><Copy className="h-3 w-3 inline mr-1"/> Copiar Query</button>} />
         <Divider />
         
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-1">
+            <label className="text-[11px] text-white/55">Preset ICP</label>
+            <select
+              value={selectedPresetId}
+              onChange={(e) => setSelectedPresetId(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
+            >
+              {SEARCH_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-white/55">Bairros / zonas (opcional)</label>
+            <input
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
+              value={searchHintsRaw}
+              onChange={(e) => setSearchHintsRaw(e.target.value)}
+              placeholder="Savassi, Lourdes, Funcionarios"
+            />
+          </div>
+        </div>
+
         <div className="grid gap-3 md:grid-cols-3">
-          <div className="space-y-1"><label className="text-[11px] text-white/55">Serviço</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={servico} onChange={(e) => setServico(e.target.value)} placeholder="Ex: clínica estética" /></div>
+          <div className="space-y-1"><label className="text-[11px] text-white/55">Servico</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={servico} onChange={(e) => setServico(e.target.value)} placeholder="Ex: clinica estetica" /></div>
           <div className="space-y-1"><label className="text-[11px] text-white/55">Nicho</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={nicho} onChange={(e) => setNicho(e.target.value)} placeholder="Ex: dermatologia" /></div>
           <div className="space-y-1"><label className="text-[11px] text-white/55">Cidade</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Ex: Belo Horizonte, MG" /></div>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
-            <SectionHeader title="Estratégia" icon={<Zap className="h-4 w-4" />} />
+            <SectionHeader title="Estrategia" icon={<Zap className="h-4 w-4" />} />
             <div className="flex flex-wrap gap-2">
               <Chip label="Conservador" active={mode === "conservador"} onClick={() => setMode("conservador")} tone="blue" />
               <Chip label="Balanceado" active={mode === "balanceado"} onClick={() => setMode("balanceado")} tone="neutral" />
               <Chip label="Agressivo" active={mode === "agressivo"} onClick={() => setMode("agressivo")} tone="amber" />
             </div>
-            <input type="number" min={1} max={40} value={limitValid} onChange={(e) => setLimitValid(clamp(Number(e.target.value) || 10, 1, 40))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" />
+            <input type="number" min={1} max={80} value={limitValid} onChange={(e) => setLimitValid(clamp(Number(e.target.value) || 10, 1, 80))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-[10px] text-white/45">Paginas Google</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={3}
+                  value={maxPages}
+                  onChange={(e) => setMaxPages(clamp(Number(e.target.value) || 2, 1, 3))}
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-white/45">Dedupe no CRM</label>
+                <button
+                  type="button"
+                  onClick={() => setExcludeExistingInCrm((value) => !value)}
+                  className={cx(
+                    "w-full rounded-xl border px-3 py-2 text-sm transition",
+                    excludeExistingInCrm
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                      : "border-white/10 bg-white/5 text-white/70"
+                  )}
+                >
+                  {excludeExistingInCrm ? "Ativo" : "Inativo"}
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
-            <SectionHeader title="Qualidade mínima" icon={<ShieldCheck className="h-4 w-4" />} right={<span className="text-[10px] text-white/40">Score min: {scoreMin}</span>} />
-            <button type="button" onClick={() => setRequirePhone(!requirePhone)} className={cx("w-full flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition", requirePhone ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-white/10 bg-white/5")}>
-              <span className="flex items-center gap-2">{requirePhone ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />} Telefone obrigatório</span>
-            </button>
+            <SectionHeader title="Qualidade minima" icon={<ShieldCheck className="h-4 w-4" />} right={<span className="text-[10px] text-white/40">Score min: {scoreMin}</span>} />
+            <div className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+              Telefone obrigatorio (travado para nao desperdicar custo com lead sem contato)
+            </div>
+            <select
+              value={requireWebsite}
+              onChange={(e) => setRequireWebsite(e.target.value as "qualquer" | "sim" | "nao")}
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
+            >
+              <option value="qualquer">Site: indiferente</option>
+              <option value="sim">Exigir site</option>
+              <option value="nao">Somente sem site</option>
+            </select>
             <div className="grid grid-cols-2 gap-2">
               <input type="number" step="0.1" min={0} max={5} value={minRating} onChange={(e) => setMinRating(clamp(Number(e.target.value), 0, 5))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Rating" />
               <input type="number" min={0} max={100} value={scoreMin} onChange={(e) => setScoreMin(clamp(Number(e.target.value), 0, 100))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Score" />
@@ -747,7 +995,7 @@ export default function GerarLeadsPremiumPage() {
         {/* LEFT: CONTROLS */}
         <div className="lg:col-span-1 space-y-4">
           <div className="rounded-2xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <SectionHeader title="Seleção" icon={<BadgeCheck className="h-4 w-4" />} />
+            <SectionHeader title="Selecao" icon={<BadgeCheck className="h-4 w-4" />} />
             <div className="flex flex-wrap gap-2">
               <button onClick={() => toggleSelectAll(true)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-[11px] text-white hover:bg-white/15 transition disabled:opacity-50"><CheckCircle2 className="h-4 w-4" /> Todos</button>
               <button onClick={() => toggleSelectAll(false)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition disabled:opacity-50"><X className="h-4 w-4" /> Nada</button>
@@ -842,7 +1090,7 @@ export default function GerarLeadsPremiumPage() {
           {/* Descartados (Zona de Resgate) */}
           {showDiscarded && (
             <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
-              <SectionHeader title="Descartados (com motivo)" subtitle="Transparência total." icon={<AlertTriangle className="h-4 w-4" />} right={<span className="text-xs text-white/45">{computed.discarded.length} itens</span>} />
+              <SectionHeader title="Descartados (com motivo)" subtitle="Transparencia total." icon={<AlertTriangle className="h-4 w-4" />} right={<span className="text-xs text-white/45">{computed.discarded.length} itens</span>} />
               <Divider />
               {computed.discarded.length === 0 ? <p className="text-sm text-white/50">Nenhum descartado.</p> : (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

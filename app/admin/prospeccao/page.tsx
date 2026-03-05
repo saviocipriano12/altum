@@ -2,20 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@/context/AuthContext"; // <--- IMPORTAMOS O CONTEXTO AQUI
+import { useAuth } from "@/context/AuthContext";
+import type {
+  AgencyLead,
+  LeadPriority,
+  LeadStageKey,
+  LeadStatus,
+  TeamMemberDoc,
+  TimestampLike,
+} from "@/app/types/domain";
 import {
   collection,
-  deleteDoc,
-  doc,
   onSnapshot,
-  orderBy,
   query,
   where,
-  writeBatch, // <--- NOVO: Para distribuição em massa
-  getDocs,    // <--- NOVO: Para buscar vendedores
-  serverTimestamp // <--- NOVO: Para marcar data da distribuição
+  getDocs,
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
 import {
   Search,
   Loader2,
@@ -39,66 +43,27 @@ import {
   X,
   RefreshCcw,
   Calendar,
-  Lock // <--- Ícone novo para indicar segurança
+  BrainCircuit
 } from "lucide-react";
 
 /* ======================================================
    TIPOS
 ====================================================== */
 
-type LeadStatus =
-  | "novo"
-  | "contatado"
-  | "respondido"
-  | "qualificado"
-  | "descartado";
-
-type Priority = "low" | "medium" | "high";
-
-type StageKey =
-  | "INVISIVEL"
-  | "PRESENTE_FRACO"
-  | "SITE_RUIM"
-  | "SITE_OK"
-  | "TRAFEGO_ZERO"
-  | "TRAFEGO_FRACO"
-  | "TRAFEGO_OK"
-  | "OPERACAO_ATIVA";
-
-interface Lead {
-  id: string;
-  nome?: string;
-  telefone?: string;
-  email?: string;
-  endereco?: string;
-  origem?: string;
-  categoria?: string;
-
-  status?: LeadStatus;
-
-  // CRM do /[id]
-  stage?: string;
-  stageTags?: string[];
-  owner?: string; // Nome visual (ex: "João")
-  ownerId?: string; // <--- O CAMPO CHAVE PARA O FILTRO FUNCIONAR
-  priority?: Priority;
-
-  notes?: string;
-  nextStep?: string;
-
-  offer?: {
-    id: string;
-    title: string;
-    priceFrom: number;
-    priceTo: number;
-    pitch: string;
-    deliverables: string[];
+type Priority = LeadPriority;
+type StageKey = LeadStageKey;
+type LeadHeat = "quente" | "morno" | "frio";
+type IntelligenceStatus = "ready" | "processing" | "pending" | "failed" | "disabled";
+type Lead = AgencyLead & {
+  score?: number;
+  heat?: LeadHeat | string;
+  reasons?: string[];
+  sourceType?: string;
+  intelligence?: {
+    status?: IntelligenceStatus | string;
+    confidence?: number;
   };
-
-  lastContactAt?: any;
-  updatedAt?: any;
-  createdAt?: any;
-}
+};
 
 /* ======================================================
    UI CONSTANTES
@@ -151,10 +116,12 @@ function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
 
-function safeToDate(ts: any): Date | null {
+function safeToDate(ts: TimestampLike | number | null | undefined): Date | null {
   try {
     if (!ts) return null;
-    if (ts?.toDate) return ts.toDate();
+    if (typeof ts === "object" && "toDate" in ts && typeof ts.toDate === "function") {
+      return ts.toDate();
+    }
     if (typeof ts === "number") return new Date(ts);
     return null;
   } catch {
@@ -162,13 +129,7 @@ function safeToDate(ts: any): Date | null {
   }
 }
 
-function formatBR(ts: any) {
-  const d = safeToDate(ts);
-  if (!d) return "—";
-  return d.toLocaleString("pt-BR");
-}
-
-function formatDateOnly(ts: any) {
+function formatDateOnly(ts: TimestampLike | number | null | undefined) {
   const d = safeToDate(ts);
   if (!d) return "—";
   return d.toLocaleDateString("pt-BR");
@@ -187,6 +148,40 @@ function stageLabel(stage?: string) {
   if (!stage) return null;
   const f = STAGES.find((s) => s.key === stage);
   return f?.label || stage;
+}
+
+function heatLabel(heat?: string) {
+  const normalized = (heat || "").toLowerCase();
+  if (normalized === "quente") return "Quente";
+  if (normalized === "morno") return "Morno";
+  if (normalized === "frio") return "Frio";
+  return "Sem heat";
+}
+
+function heatClass(heat?: string) {
+  const normalized = (heat || "").toLowerCase();
+  if (normalized === "quente") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
+  if (normalized === "morno") return "border-amber-500/30 bg-amber-500/10 text-amber-100";
+  if (normalized === "frio") return "border-blue-500/30 bg-blue-500/10 text-blue-100";
+  return "border-white/10 bg-white/5 text-white/60";
+}
+
+function intelligenceLabel(status?: string) {
+  const normalized = (status || "").toLowerCase();
+  if (normalized === "ready") return "IA pronta";
+  if (normalized === "processing") return "IA processando";
+  if (normalized === "failed") return "IA falhou";
+  if (normalized === "disabled") return "IA desativada";
+  return "IA pendente";
+}
+
+function intelligenceClass(status?: string) {
+  const normalized = (status || "").toLowerCase();
+  if (normalized === "ready") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-100";
+  if (normalized === "processing") return "border-blue-500/25 bg-blue-500/10 text-blue-100";
+  if (normalized === "failed") return "border-red-500/25 bg-red-500/10 text-red-100";
+  if (normalized === "disabled") return "border-white/10 bg-white/5 text-white/50";
+  return "border-amber-500/25 bg-amber-500/10 text-amber-100";
 }
 
 function daysBetween(a: Date, b: Date) {
@@ -341,6 +336,8 @@ export default function ProspeccaoCRMPage() {
   const [showDiscarded, setShowDiscarded] = useState(false);
   const [statusFilter, setStatusFilter] = useState<LeadStatus | "todos">("todos");
   const [priorityFilter, setPriorityFilter] = useState<Priority | "todas">("todas");
+  const [heatFilter, setHeatFilter] = useState<LeadHeat | "todas">("todas");
+  const [iaFilter, setIaFilter] = useState<IntelligenceStatus | "todos">("todos");
   const [stageFilter, setStageFilter] = useState<StageKey | "todos" | "sem">("todos");
   const [offerFilter, setOfferFilter] = useState<"todos" | "com" | "sem">("todos");
   const [contactFilter, setContactFilter] = useState<"todos" | "contatado" | "nunca">("todos");
@@ -350,12 +347,14 @@ export default function ProspeccaoCRMPage() {
 
   // fila inteligente (chips)
   const [queueMode, setQueueMode] = useState<
-    "none" | "atacar_agora" | "sem_estagio" | "alta_prioridade" | "nunca_contatado" | "com_oferta"
+    "none" | "atacar_agora" | "sem_estagio" | "alta_prioridade" | "nunca_contatado" | "com_oferta" | "ia_pendente"
   >("none");
 
   // delete
   const [deleteTarget, setDeleteTarget] = useState<Lead | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [intelRunning, setIntelRunning] = useState<Record<string, boolean>>({});
+  const [bulkIntelRunning, setBulkIntelRunning] = useState(false);
 
   /* ======================================================
       FETCH (A GRANDE MUDANÇA ESTÁ AQUI)
@@ -363,6 +362,16 @@ export default function ProspeccaoCRMPage() {
 // --- NOVOS ESTADOS PARA O SAAS ---
   const [distributing, setDistributing] = useState(false);
   const [sellers, setSellers] = useState<{id: string, name: string}[]>([]);
+  const dailyUnassignedLeads = useMemo(() => {
+    const now = new Date();
+    return leads.filter((lead) => {
+      if (lead.ownerId) return false;
+      const created = safeToDate(lead.createdAt);
+      if (!created) return false;
+      return created.toDateString() === now.toDateString();
+    });
+  }, [leads]);
+  const allUnassignedLeads = useMemo(() => leads.filter((lead) => !lead.ownerId), [leads]);
 
   // Buscar vendedores ativos (Somente se for Admin)
   useEffect(() => {
@@ -370,45 +379,54 @@ export default function ProspeccaoCRMPage() {
       const q = query(collection(db, "users"), where("status", "==", "active"));
       getDocs(q).then((snap) => {
         const s = snap.docs
-          .map(d => ({ id: d.id, ...d.data() } as any))
-          .filter(u => u.role !== 'admin'); // Tira o admin da roleta
+          .map((d) => {
+            const userData = d.data() as TeamMemberDoc;
+            return { id: d.id, name: userData.name || "Sem nome", role: userData.role };
+          })
+          .filter((u) => u.role !== "admin")
+          .map(({ id, name }) => ({ id, name })); // Tira o admin da roleta
         setSellers(s);
       });
     }
   }, [isAdmin]);
 
   // FUNÇÃO: Roleta de Distribuição (Round-Robin)
-  const handleAutoDistribute = async () => {
-    // 1. Identificar leads sem dono
-    const orphans = leads.filter(l => !l.ownerId);
-    if (orphans.length === 0) return alert("Não há leads sem dono para distribuir!");
-    if (sellers.length === 0) return alert("Não há vendedores ativos na equipe!");
+  const handleAutoDistribute = async (mode: "today" | "all" = "today") => {
+    const targetLeads = mode === "all" ? allUnassignedLeads : dailyUnassignedLeads;
+    if (targetLeads.length === 0) {
+      return alert(
+        mode === "all"
+          ? "Nao ha leads sem dono para distribuir."
+          : "Nao ha leads de hoje sem dono para distribuir."
+      );
+    }
+    if (sellers.length === 0) return alert("Nao ha vendedores ativos na equipe!");
 
-    if (!confirm(`Distribuir ${orphans.length} leads entre ${sellers.length} vendedores?`)) return;
+    if (
+      !confirm(
+        mode === "all"
+          ? `Distribuir ${targetLeads.length} lead(s) sem dono entre ${sellers.length} vendedores?`
+          : `Distribuir ${targetLeads.length} lead(s) de hoje entre ${sellers.length} vendedores?`
+      )
+    ) {
+      return;
+    }
 
     setDistributing(true);
     try {
-      const batch = writeBatch(db);
-      let sellerIndex = 0;
-
-      orphans.forEach((lead) => {
-        const seller = sellers[sellerIndex];
-        const ref = doc(db, "leads", lead.id);
-        
-        batch.update(ref, {
-          ownerId: seller.id,
-          owner: seller.name, // Nome visual
-          updatedAt: serverTimestamp(),
-          // Opcional: Adicionar nota de sistema
-          notes: lead.notes ? lead.notes + `\n[Sistema] Atribuído para ${seller.name}` : `[Sistema] Atribuído para ${seller.name}`
-        });
-
-        // Gira a roleta
-        sellerIndex = (sellerIndex + 1) % sellers.length;
+      const res = await authedFetch("/api/leads/distribute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadIds: targetLeads.map((lead) => lead.id),
+          sellerIds: sellers.map((seller) => seller.id),
+        }),
       });
 
-      await batch.commit();
-      alert("Distribuição concluída com sucesso!");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha na distribuicao.");
+
+      alert("Distribuicao concluida com sucesso!");
     } catch (error) {
       console.error(error);
       alert("Erro ao distribuir leads.");
@@ -417,51 +435,36 @@ export default function ProspeccaoCRMPage() {
     }
   };
   useEffect(() => {
-    // 1. Espera o Auth carregar para saber quem é o usuário
-    if (authLoading) return;
+  if (authLoading) return;
+  if (!user) {
+    setLoading(false);
+    return;
+  }
 
-    if (!user) {
-        setLoading(false);
-        return;
+  const leadsRef = collection(db, "leads");
+  const leadsQuery = isAdmin
+    ? query(leadsRef)
+    : query(leadsRef, where("ownerId", "==", user.uid));
+
+  const unsub = onSnapshot(
+    leadsQuery,
+    (snap) => {
+      const docs = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Lead, "id">),
+      })) as Lead[];
+
+      setLeads(docs);
+      setLoading(false);
+    },
+    (error) => {
+      console.error("ERRO REAL FIRESTORE:", error);
+      setLoading(false);
     }
+  );
 
-    // 2. Define a Query baseada no Cargo
-    let q;
-    const leadsRef = collection(db, "leads");
-
-    if (isAdmin) {
-        // ADMIN (Savio): Vê tudo
-        q = query(leadsRef, orderBy("createdAt", "desc"));
-    } else {
-        // VENDEDOR: Vê apenas os leads DELE (pelo ID)
-        // OBS: Se der erro de índice no console, clique no link que o Firebase fornece.
-        // O Firebase exige índice composto para where(ownerId) + orderBy(createdAt)
-        q = query(
-            leadsRef, 
-            where("ownerId", "==", user.uid), 
-            orderBy("createdAt", "desc")
-        );
-    }
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as any),
-        })) as Lead[];
-        setLeads(docs);
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Erro ao buscar leads:", error);
-        // Fallback simples se der erro de permissão ou índice
-        setLoading(false);
-      }
-    );
-
-    return () => unsub();
-  }, [user, isAdmin, authLoading]);
+  return () => unsub();
+}, [user, authLoading, isAdmin]);
 
   /* ======================================================
       MÉTRICAS (TOPO)
@@ -478,6 +481,12 @@ export default function ProspeccaoCRMPage() {
 
     const semStage = base.filter((l) => !l.stage).length;
     const high = base.filter((l) => l.priority === "high").length;
+    const quentes = base.filter((l) => (l.heat || "").toLowerCase() === "quente").length;
+    const iaReady = base.filter((l) => (l.intelligence?.status || "").toLowerCase() === "ready").length;
+    const iaPending = base.filter((l) => {
+      const status = (l.intelligence?.status || "pending").toLowerCase();
+      return status === "pending" || status === "processing";
+    }).length;
 
     const nuncaContatado = base.filter((l) => !l.lastContactAt).length;
     const comOferta = base.filter((l) => !!l.offer?.title).length;
@@ -490,6 +499,9 @@ export default function ProspeccaoCRMPage() {
       qualificados,
       semStage,
       high,
+      quentes,
+      iaReady,
+      iaPending,
       nuncaContatado,
       comOferta,
     };
@@ -511,6 +523,12 @@ export default function ProspeccaoCRMPage() {
       if (queueMode === "alta_prioridade") arr = arr.filter((l) => l.priority === "high");
       if (queueMode === "nunca_contatado") arr = arr.filter((l) => !l.lastContactAt);
       if (queueMode === "com_oferta") arr = arr.filter((l) => !!l.offer?.title);
+      if (queueMode === "ia_pendente") {
+        arr = arr.filter((l) => {
+          const status = (l.intelligence?.status || "pending").toLowerCase();
+          return status === "pending" || status === "processing" || status === "failed";
+        });
+      }
 
       if (queueMode === "atacar_agora") {
         arr = arr.filter((l) => {
@@ -544,6 +562,14 @@ export default function ProspeccaoCRMPage() {
     // priority
     if (priorityFilter !== "todas") {
       arr = arr.filter((l) => (l.priority || "medium") === priorityFilter);
+    }
+
+    if (heatFilter !== "todas") {
+      arr = arr.filter((l) => (l.heat || "").toLowerCase() === heatFilter);
+    }
+
+    if (iaFilter !== "todos") {
+      arr = arr.filter((l) => (l.intelligence?.status || "pending").toLowerCase() === iaFilter);
     }
 
     // stage
@@ -610,6 +636,8 @@ export default function ProspeccaoCRMPage() {
     search,
     statusFilter,
     priorityFilter,
+    heatFilter,
+    iaFilter,
     stageFilter,
     offerFilter,
     contactFilter,
@@ -626,17 +654,94 @@ export default function ProspeccaoCRMPage() {
     if (!phone) return;
     const digits = onlyDigits(phone);
     if (!digits) return;
-    window.open(`https://wa.me/55${digits}`, "_blank", "noopener,noreferrer");
+    const normalized = digits.startsWith("55") ? digits : `55${digits}`;
+    window.open(`https://wa.me/${normalized}`, "_blank", "noopener,noreferrer");
   }
 
   async function confirmDeleteLead() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await deleteDoc(doc(db, "leads", deleteTarget.id));
+      const res = await authedFetch("/api/leads/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: deleteTarget.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao remover lead.");
       setDeleteTarget(null);
+    } catch (error) {
+      console.error(error);
+      alert("Nao foi possivel remover o lead.");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function runLeadIntelligence(leadId: string) {
+    if (!leadId) return;
+    setIntelRunning((prev) => ({ ...prev, [leadId]: true }));
+    try {
+      const res = await authedFetch("/api/leads/intelligence/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId,
+          force: true,
+          trigger: "crm_list_manual",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Falha ao atualizar IA do lead.");
+    } catch (error) {
+      console.error(error);
+      alert("Nao foi possivel atualizar a IA deste lead.");
+    } finally {
+      setIntelRunning((prev) => ({ ...prev, [leadId]: false }));
+    }
+  }
+
+  async function runBulkIntelligence() {
+    const targets = filtered.slice(0, 80);
+    if (!targets.length) {
+      alert("Nao ha leads filtrados para atualizar IA.");
+      return;
+    }
+
+    const approved = confirm(`Rodar IA em ${targets.length} lead(s) filtrados?`);
+    if (!approved) return;
+
+    setBulkIntelRunning(true);
+    try {
+      const settled = await Promise.allSettled(
+        targets.map(async (lead) => {
+          setIntelRunning((prev) => ({ ...prev, [lead.id]: true }));
+          try {
+            const res = await authedFetch("/api/leads/intelligence/run", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                leadId: lead.id,
+                force: true,
+                trigger: "crm_list_bulk",
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.error || "Falha ao atualizar IA.");
+          } finally {
+            setIntelRunning((prev) => ({ ...prev, [lead.id]: false }));
+          }
+        })
+      );
+
+      const ok = settled.filter((item) => item.status === "fulfilled").length;
+      const fail = settled.length - ok;
+      alert(`IA atualizada. Sucesso: ${ok} | Falhas: ${fail}`);
+    } catch (error) {
+      console.error(error);
+      alert("Falha ao executar atualizacao em lote da IA.");
+    } finally {
+      setBulkIntelRunning(false);
     }
   }
 
@@ -644,6 +749,8 @@ export default function ProspeccaoCRMPage() {
     setSearch("");
     setStatusFilter("todos");
     setPriorityFilter("todas");
+    setHeatFilter("todas");
+    setIaFilter("todos");
     setStageFilter("todos");
     setOfferFilter("todos");
     setContactFilter("todos");
@@ -659,6 +766,8 @@ export default function ProspeccaoCRMPage() {
     if (search.trim()) c++;
     if (statusFilter !== "todos") c++;
     if (priorityFilter !== "todas") c++;
+    if (heatFilter !== "todas") c++;
+    if (iaFilter !== "todos") c++;
     if (stageFilter !== "todos") c++;
     if (offerFilter !== "todos") c++;
     if (contactFilter !== "todos") c++;
@@ -671,6 +780,38 @@ export default function ProspeccaoCRMPage() {
     search,
     statusFilter,
     priorityFilter,
+    heatFilter,
+    iaFilter,
+    stageFilter,
+    offerFilter,
+    contactFilter,
+    workedFilter,
+    datePreset,
+    queueMode,
+    showDiscarded,
+  ]);
+
+  const activeFilterLabels = useMemo(() => {
+    const labels: string[] = [];
+    if (search.trim()) labels.push("Busca");
+    if (statusFilter !== "todos") labels.push(`Status: ${statusFilter}`);
+    if (priorityFilter !== "todas") labels.push(`Prioridade: ${priorityFilter}`);
+    if (heatFilter !== "todas") labels.push(`Heat: ${heatFilter}`);
+    if (iaFilter !== "todos") labels.push(`IA: ${iaFilter}`);
+    if (stageFilter !== "todos") labels.push(stageFilter === "sem" ? "Sem estágio" : `Estágio: ${stageFilter}`);
+    if (offerFilter !== "todos") labels.push(offerFilter === "com" ? "Com oferta" : "Sem oferta");
+    if (contactFilter !== "todos") labels.push(contactFilter === "contatado" ? "Já contatado" : "Nunca contatado");
+    if (workedFilter !== "todos") labels.push(workedFilter === "trabalhado" ? "Trabalhados" : "Leads crus");
+    if (datePreset !== "all") labels.push(`Data: ${datePreset}`);
+    if (queueMode !== "none") labels.push(`Fila: ${queueMode}`);
+    if (showDiscarded) labels.push("Mostrando descartados");
+    return labels;
+  }, [
+    search,
+    statusFilter,
+    priorityFilter,
+    heatFilter,
+    iaFilter,
     stageFilter,
     offerFilter,
     contactFilter,
@@ -705,16 +846,39 @@ export default function ProspeccaoCRMPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* BOTÃO DE ADMIN: DISTRIBUIR LEADS */}
-            {isAdmin && leads.some(l => !l.ownerId) && (
-               <button
-                 onClick={handleAutoDistribute}
-                 disabled={distributing}
-                 className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] text-emerald-400 hover:bg-emerald-500/20 transition animate-pulse"
-               >
-                 {distributing ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4" />}
-                 Distribuir {leads.filter(l => !l.ownerId).length} Pendentes
-               </button>
+            {/* BOTÕES DE ADMIN: DISTRIBUIÇÃO */}
+            {isAdmin && (
+              <div className="inline-flex flex-wrap items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2 py-1">
+                <span className="px-1 text-[10px] uppercase tracking-wide text-emerald-200/80">
+                  Distribuição
+                </span>
+                <button
+                  onClick={() => void handleAutoDistribute("today")}
+                  disabled={distributing || dailyUnassignedLeads.length === 0}
+                  className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] text-emerald-300 hover:bg-emerald-500/20 transition disabled:opacity-50"
+                >
+                  {distributing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Hoje ({dailyUnassignedLeads.length})
+                </button>
+                <button
+                  onClick={() => void handleAutoDistribute("all")}
+                  disabled={distributing || allUnassignedLeads.length === 0}
+                  className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] text-blue-300 hover:bg-blue-500/20 transition disabled:opacity-50"
+                >
+                  {distributing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Todos sem dono ({allUnassignedLeads.length})
+                </button>
+              </div>
+            )}
+            {isAdmin && (
+              <button
+                onClick={() => void runBulkIntelligence()}
+                disabled={bulkIntelRunning || filtered.length === 0}
+                className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] text-blue-300 hover:bg-blue-500/20 transition disabled:opacity-60"
+              >
+                {bulkIntelRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
+                Atualizar IA ({Math.min(filtered.length, 80)})
+              </button>
             )}
             <Pill
               tone="warning"
@@ -762,6 +926,15 @@ export default function ProspeccaoCRMPage() {
               Com oferta
             </Pill>
 
+            <Pill
+              tone="info"
+              active={queueMode === "ia_pendente"}
+              onClick={() => setQueueMode((v) => (v === "ia_pendente" ? "none" : "ia_pendente"))}
+            >
+              <BrainCircuit className="h-4 w-4" />
+              IA pendente
+            </Pill>
+
             <button
               onClick={clearFilters}
               className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] text-white/70 hover:bg-white/10 transition"
@@ -779,11 +952,13 @@ export default function ProspeccaoCRMPage() {
         </div>
 
         {/* KPIs */}
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard icon={<BarChart3 className="h-5 w-5" />} label="Total Visível" value={`${metrics.total}`} sub={isAdmin ? "Todos os leads" : "Seus leads"} />
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <StatCard icon={<BarChart3 className="h-5 w-5" />} label="Total exibido" value={`${filtered.length}`} sub={`Base CRM: ${metrics.total}`} />
           <StatCard icon={<Sparkles className="h-5 w-5" />} label="Novos" value={`${metrics.novos}`} sub="Ainda não trabalhados" />
           <StatCard icon={<Phone className="h-5 w-5" />} label="Nunca contatados" value={`${metrics.nuncaContatado}`} sub="Sem lastContactAt" />
           <StatCard icon={<Layers className="h-5 w-5" />} label="Sem estágio" value={`${metrics.semStage}`} sub="Precisa de diagnóstico" />
+          <StatCard icon={<Flame className="h-5 w-5" />} label="Leads quentes" value={`${metrics.quentes}`} sub="Heat = quente" />
+          <StatCard icon={<BrainCircuit className="h-5 w-5" />} label="IA pronta" value={`${metrics.iaReady}`} sub={`Pendentes: ${metrics.iaPending}`} />
         </div>
       </div>
 
@@ -791,7 +966,7 @@ export default function ProspeccaoCRMPage() {
       <div className="rounded-3xl border border-white/10 bg-[#0f0f0f] p-5">
         <SectionHeader
           title="Filtros avançados"
-          subtitle="Filtre como um CRM de verdade: status, prioridade, estágio, oferta, contato e janela de tempo."
+          subtitle="Filtre por status, prioridade, heat, estágio, IA, oferta, contato e janela de tempo."
           icon={<Filter className="h-4 w-4" />}
           right={
             <div className="text-[11px] text-white/40">
@@ -829,7 +1004,7 @@ export default function ProspeccaoCRMPage() {
           <div className="lg:col-span-2">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
+              onChange={(e) => setStatusFilter(e.target.value as LeadStatus | "todos")}
               className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80 outline-none"
             >
               <option value="todos">Status (todos)</option>
@@ -845,7 +1020,7 @@ export default function ProspeccaoCRMPage() {
           <div className="lg:col-span-2">
             <select
               value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value as any)}
+              onChange={(e) => setPriorityFilter(e.target.value as Priority | "todas")}
               className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80 outline-none"
             >
               <option value="todas">Prioridade (todas)</option>
@@ -855,11 +1030,41 @@ export default function ProspeccaoCRMPage() {
             </select>
           </div>
 
+          {/* Heat */}
+          <div className="lg:col-span-2">
+            <select
+              value={heatFilter}
+              onChange={(e) => setHeatFilter(e.target.value as LeadHeat | "todas")}
+              className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80 outline-none"
+            >
+              <option value="todas">Heat (todas)</option>
+              <option value="quente">Quente</option>
+              <option value="morno">Morno</option>
+              <option value="frio">Frio</option>
+            </select>
+          </div>
+
+          {/* IA status */}
+          <div className="lg:col-span-2">
+            <select
+              value={iaFilter}
+              onChange={(e) => setIaFilter(e.target.value as IntelligenceStatus | "todos")}
+              className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80 outline-none"
+            >
+              <option value="todos">IA (todos)</option>
+              <option value="ready">IA pronta</option>
+              <option value="processing">IA processando</option>
+              <option value="pending">IA pendente</option>
+              <option value="failed">IA falhou</option>
+              <option value="disabled">IA desativada</option>
+            </select>
+          </div>
+
           {/* Stage */}
           <div className="lg:col-span-3">
             <select
               value={stageFilter}
-              onChange={(e) => setStageFilter(e.target.value as any)}
+              onChange={(e) => setStageFilter(e.target.value as StageKey | "todos" | "sem")}
               className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80 outline-none"
             >
               <option value="todos">Estágio (todos)</option>
@@ -876,7 +1081,7 @@ export default function ProspeccaoCRMPage() {
           <div className="lg:col-span-2">
             <select
               value={offerFilter}
-              onChange={(e) => setOfferFilter(e.target.value as any)}
+              onChange={(e) => setOfferFilter(e.target.value as "todos" | "com" | "sem")}
               className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80 outline-none"
             >
               <option value="todos">Oferta (todas)</option>
@@ -889,7 +1094,7 @@ export default function ProspeccaoCRMPage() {
           <div className="lg:col-span-2">
             <select
               value={contactFilter}
-              onChange={(e) => setContactFilter(e.target.value as any)}
+              onChange={(e) => setContactFilter(e.target.value as "todos" | "contatado" | "nunca")}
               className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80 outline-none"
             >
               <option value="todos">Contato (todos)</option>
@@ -902,7 +1107,7 @@ export default function ProspeccaoCRMPage() {
           <div className="lg:col-span-2">
             <select
               value={workedFilter}
-              onChange={(e) => setWorkedFilter(e.target.value as any)}
+              onChange={(e) => setWorkedFilter(e.target.value as "todos" | "trabalhado" | "cru")}
               className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80 outline-none"
             >
               <option value="todos">Trabalho (todos)</option>
@@ -915,7 +1120,7 @@ export default function ProspeccaoCRMPage() {
           <div className="lg:col-span-2">
             <select
               value={datePreset}
-              onChange={(e) => setDatePreset(e.target.value as any)}
+              onChange={(e) => setDatePreset(e.target.value as DatePreset)}
               className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80 outline-none"
             >
               <option value="all">Data (tudo)</option>
@@ -929,7 +1134,7 @@ export default function ProspeccaoCRMPage() {
           <div className="lg:col-span-2">
             <select
               value={sort}
-              onChange={(e) => setSort(e.target.value as any)}
+              onChange={(e) => setSort(e.target.value as SortKey)}
               className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80 outline-none"
             >
               <option value="created_desc">Ordenar: + recentes</option>
@@ -963,6 +1168,37 @@ export default function ProspeccaoCRMPage() {
           <Loader2 className="h-5 w-5 animate-spin" />
           Carregando leads com segurança...
         </div>
+      ) : filtered.length === 0 && leads.length > 0 && activeFiltersCount > 0 ? (
+        <div className="rounded-3xl border border-amber-500/25 bg-amber-500/10 p-6">
+          <div className="flex items-start gap-2 text-amber-100">
+            <AlertTriangle className="mt-0.5 h-5 w-5" />
+            <div>
+              <h3 className="text-base font-semibold">Nenhum lead apos filtros</h3>
+              <p className="mt-1 text-sm text-amber-100/80">
+                O CRM tem {metrics.total} lead(s), mas os filtros atuais estao escondendo a lista.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {activeFilterLabels.map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-full border border-amber-300/30 bg-black/20 px-2.5 py-1 text-[11px] text-amber-100/90"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-4">
+                <button
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-500/20 px-4 py-2 text-sm text-amber-50 hover:bg-amber-500/30 transition"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  Limpar filtros agora
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 text-center">
           <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/70">
@@ -995,6 +1231,8 @@ export default function ProspeccaoCRMPage() {
               isAdmin={isAdmin} // Passamos se é admin para controlar o botão de delete
               onOpenWhatsApp={() => openWhatsApp(l.telefone)}
               onDelete={() => setDeleteTarget(l)}
+              onRunIntelligence={() => void runLeadIntelligence(l.id)}
+              runningIntelligence={Boolean(intelRunning[l.id])}
             />
           ))}
         </div>
@@ -1061,11 +1299,15 @@ function LeadCard({
   isAdmin,
   onOpenWhatsApp,
   onDelete,
+  onRunIntelligence,
+  runningIntelligence,
 }: {
   lead: Lead;
   isAdmin: boolean;
   onOpenWhatsApp: () => void;
   onDelete: () => void;
+  onRunIntelligence: () => void;
+  runningIntelligence: boolean;
 }) {
   const status: LeadStatus = (lead.status || "novo") as LeadStatus;
   const priority: Priority = (lead.priority || "medium") as Priority;
@@ -1073,6 +1315,8 @@ function LeadCard({
   const hasStage = !!lead.stage;
   const hasOffer = !!lead.offer?.title;
   const contacted = !!lead.lastContactAt;
+  const heat = (lead.heat || "").toLowerCase();
+  const intelligenceStatus = (lead.intelligence?.status || "pending").toLowerCase();
 
   const stageText = stageLabel(lead.stage);
 
@@ -1098,6 +1342,14 @@ function LeadCard({
 
             <span className={cx("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide", PRIORITY_BADGE[priority])}>
               {PRIORITY_LABEL[priority]}
+            </span>
+
+            <span className={cx("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide", heatClass(heat))}>
+              {heatLabel(heat)}
+            </span>
+
+            <span className={cx("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide", intelligenceClass(intelligenceStatus))}>
+              {intelligenceLabel(intelligenceStatus)}
             </span>
 
             {!hasStage ? (
@@ -1146,6 +1398,21 @@ function LeadCard({
             <span>{lead.origem}</span>
           </div>
         ) : null}
+
+        {lead.sourceType ? (
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-white/35" />
+            <span>Canal: {lead.sourceType}</span>
+          </div>
+        ) : null}
+
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-white/35" />
+          <span>
+            Score: <b className="text-white/85">{typeof lead.score === "number" ? Math.round(lead.score) : 0}</b>
+            {lead.intelligence?.confidence ? ` | IA ${Math.round(lead.intelligence.confidence)}%` : ""}
+          </span>
+        </div>
 
         {lead.owner ? (
           <div className="flex items-center gap-2">
@@ -1209,6 +1476,19 @@ function LeadCard({
           </div>
         </div>
 
+        {!!lead.reasons?.length && (
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+            <p className="text-[10px] uppercase tracking-wide text-white/40">Motivos de qualificação</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {lead.reasons.slice(0, 3).map((reason) => (
+                <span key={reason} className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] text-white/70">
+                  {reason}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Status hints */}
         <div className="flex flex-wrap gap-2 pt-1">
           <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide",
@@ -1258,6 +1538,15 @@ function LeadCard({
         </Link>
       </div>
 
+      <button
+        onClick={onRunIntelligence}
+        disabled={runningIntelligence}
+        className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-sm text-blue-100 hover:bg-blue-500/15 transition disabled:opacity-60"
+      >
+        {runningIntelligence ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
+        Atualizar IA deste lead
+      </button>
+
       {/* subtle footer */}
       <div className="mt-3 text-[11px] text-white/35">
         ID: <span className="font-mono text-white/45">{lead.id}</span>
@@ -1265,3 +1554,8 @@ function LeadCard({
     </div>
   );
 }
+
+
+
+
+

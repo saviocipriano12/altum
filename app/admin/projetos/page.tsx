@@ -1,16 +1,17 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   collection,
-  addDoc,
   onSnapshot,
   query,
   orderBy,
-  serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
+import { useAuth } from "@/context/AuthContext";
 import {
   Plus,
   Search,
@@ -21,6 +22,7 @@ import {
   Target,
   DollarSign,
 } from "lucide-react";
+import type { TimestampLike } from "@/app/types/domain";
 
 type ProjetoStatus = "Onboarding" | "Ativo" | "Pausado" | "Encerrado";
 
@@ -38,7 +40,7 @@ interface Projeto {
   canalPrincipal: string;
   servicos: string[];
   valorMensal?: number;
-  createdAt?: any;
+  createdAt?: TimestampLike | number | null;
 }
 
 const STATUS_OPTIONS: ProjetoStatus[] = [
@@ -49,6 +51,7 @@ const STATUS_OPTIONS: ProjetoStatus[] = [
 ];
 
 export default function ProjetosPage() {
+  const { user, isAdmin } = useAuth();
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [clientes, setClientes] = useState<ClienteOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,14 +69,22 @@ export default function ProjetosPage() {
 
   // Carrega clientes pra popular o select
   useEffect(() => {
-    const q = query(collection(db, "clientes"), orderBy("name", "asc"));
+    if (!user) {
+      setClientes([]);
+      return;
+    }
+
+    const clientsRef = collection(db, "clientes");
+    const q = isAdmin
+      ? query(clientsRef, orderBy("name", "asc"))
+      : query(clientsRef, where("ownerId", "==", user.uid));
 
     const unsub = onSnapshot(
       q,
       (snap) => {
         const docs: ClienteOption[] = snap.docs.map((d) => ({
           id: d.id,
-          name: (d.data() as any).name || "Cliente sem nome",
+          name: ((d.data() as { name?: string }).name) || "Cliente sem nome",
         }));
         setClientes(docs);
       },
@@ -83,11 +94,20 @@ export default function ProjetosPage() {
     );
 
     return () => unsub();
-  }, []);
+  }, [user, isAdmin]);
 
   // Carrega projetos em tempo real
   useEffect(() => {
-    const q = query(collection(db, "projetos"), orderBy("createdAt", "desc"));
+    if (!user) {
+      setProjetos([]);
+      setLoading(false);
+      return;
+    }
+
+    const projectsRef = collection(db, "projetos");
+    const q = isAdmin
+      ? query(projectsRef, orderBy("createdAt", "desc"))
+      : query(projectsRef, where("ownerId", "==", user.uid));
 
     const unsub = onSnapshot(
       q,
@@ -106,7 +126,7 @@ export default function ProjetosPage() {
     );
 
     return () => unsub();
-  }, []);
+  }, [user, isAdmin]);
 
   const filteredProjetos = useMemo(() => {
     if (!search.trim()) return projetos;
@@ -143,16 +163,21 @@ export default function ProjetosPage() {
         ? Number(form.valorMensal.replace(",", "."))
         : undefined;
 
-      await addDoc(collection(db, "projetos"), {
-        titulo: form.titulo.trim(),
-        clientId: form.clientId,
-        clientName: clienteSelecionado?.name || "Cliente",
-        canalPrincipal: form.canalPrincipal.trim() || "Não informado",
-        servicos,
-        status: form.status,
-        valorMensal: valor,
-        createdAt: serverTimestamp(),
+      const res = await authedFetch("/api/projetos/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo: form.titulo.trim(),
+          clientId: form.clientId,
+          clientName: clienteSelecionado?.name || "Cliente",
+          canalPrincipal: form.canalPrincipal.trim() || "Nao informado",
+          servicos,
+          status: form.status,
+          valorMensal: valor,
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao criar projeto.");
 
       setForm({
         clientId: "",
@@ -164,6 +189,7 @@ export default function ProjetosPage() {
       });
     } catch (err) {
       console.error("Erro ao criar projeto:", err);
+      alert("Nao foi possivel criar o projeto.");
     } finally {
       setCreating(false);
     }
@@ -182,12 +208,12 @@ export default function ProjetosPage() {
 
         <div className="flex flex-wrap gap-2 text-xs text-white/60">
           <span className="px-3 py-1 rounded-full border border-emerald-500/50 bg-emerald-500/10">
-            {ativos} ativos • {projetos.length} no total
+            {ativos} ativos - {projetos.length} no total
           </span>
         </div>
       </div>
 
-      {/* Filtro + criação rápida */}
+      {/* Filtro + criacao rapida */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Busca */}
         <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
@@ -197,7 +223,7 @@ export default function ProjetosPage() {
           <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-sm text-white/80">
             <Search size={16} className="text-white/40" />
             <input
-              placeholder="Título do projeto, cliente ou canal"
+              placeholder="Titulo do projeto, cliente ou canal"
               className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -205,17 +231,17 @@ export default function ProjetosPage() {
           </div>
         </div>
 
-        {/* Novo projeto rápido */}
+        {/* Novo projeto rapido */}
         <form
           onSubmit={handleCreateProject}
           className="rounded-xl border border-white/10 bg-[#111111] p-4"
         >
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-white/60">
-              Novo projeto rápido
+              Novo projeto rapido
             </p>
             <span className="text-[11px] text-white/40">
-              MVP • depois criamos tela completa de gestão
+              Cadastro rapido para abrir o projeto e seguir para o detalhamento.
             </span>
           </div>
 
@@ -236,10 +262,10 @@ export default function ProjetosPage() {
               ))}
             </select>
 
-            {/* Título */}
+            {/* Titulo */}
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
-              placeholder="Título do projeto *"
+              placeholder="Titulo do projeto *"
               value={form.titulo}
               onChange={(e) =>
                 setForm((f) => ({ ...f, titulo: e.target.value }))
@@ -287,10 +313,10 @@ export default function ProjetosPage() {
               ))}
             </select>
 
-            {/* Serviços */}
+            {/* Servicos */}
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
-              placeholder="Serviços (separados por vírgula)"
+              placeholder="Servicos (separados por virgula)"
               value={form.servicosText}
               onChange={(e) =>
                 setForm((f) => ({ ...f, servicosText: e.target.value }))
@@ -329,7 +355,7 @@ export default function ProjetosPage() {
 
         {!loading && filteredProjetos.length === 0 && (
           <p className="text-sm text-white/50">
-            Nenhum projeto encontrado. Crie o primeiro usando o formulário acima.
+            Nenhum projeto encontrado. Crie o primeiro usando o formulario acima.
           </p>
         )}
 
@@ -379,7 +405,7 @@ export default function ProjetosPage() {
                           currency: "BRL",
                           maximumFractionDigits: 0,
                         })}
-                        /mês
+                        /mes
                       </span>
                     )}
                   </div>
@@ -402,7 +428,7 @@ export default function ProjetosPage() {
                 <div className="flex flex-col items-start gap-2 text-xs text-white/70 md:items-end">
                   <span className="inline-flex items-center gap-1 text-[11px] text-white/50">
                     <Layers size={14} className="text-white/40" />
-                    ID: {projeto.id.slice(0, 6)}…
+                    ID: {projeto.id.slice(0, 6)}...
                   </span>
 
                   <Link
@@ -421,3 +447,5 @@ export default function ProjetosPage() {
     </div>
   );
 }
+
+

@@ -47,7 +47,7 @@ export default function ConvertLeadModal({
     setLoading(true);
     try {
       let clientId = "";
-      let clientName = leadData.name;
+      const clientName = leadData.name;
 
       // 1. Criar Cliente (se marcado)
       if (createClient) {

@@ -1,4 +1,5 @@
 // CAMINHO: lib/war-room.ts
+import type { TimestampLike } from "@/app/types/domain";
 
 // 1. Definição dos Tipos (Acaba com os erros de TS)
 export interface DiagnosisData {
@@ -67,8 +68,8 @@ export interface Lead {
     strategyType: "cash_flow" | "high_ticket";
   };
 
-  createdAt?: any;
-  updatedAt?: any;
+  createdAt?: TimestampLike | number | null;
+  updatedAt?: TimestampLike | number | null;
 }
 
 export interface LeadEvent {
@@ -76,7 +77,7 @@ export interface LeadEvent {
   type: "note" | "call" | "whatsapp" | "system" | "roi_calc" | "proposal";
   title: string;
   detail?: string;
-  createdAt?: any;
+  createdAt?: TimestampLike | number | null;
 }
 
 // 2. Constantes e Dados

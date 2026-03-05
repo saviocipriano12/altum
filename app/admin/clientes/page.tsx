@@ -4,13 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   collection,
-  addDoc,
   onSnapshot,
   query,
   orderBy,
-  serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
+import { useAuth } from "@/context/AuthContext";
+import type { TimestampLike } from "@/app/types/domain";
 import {
   Plus,
   Search,
@@ -21,31 +23,42 @@ import {
   Loader2,
 } from "lucide-react";
 
-type ClientStatus = "Ativo" | "Em implantação" | "Prospecção";
+type ClientStatus = "Ativo" | "Em implantacao" | "Prospeccao";
 
 interface Client {
   id: string;
   name: string;
   niche: string;
   city: string;
-  status: ClientStatus;
   contactName: string;
   email: string;
   phone: string;
   site?: string;
+  status: ClientStatus | string;
   services: string[];
-  createdAt?: any;
+  createdAt?: TimestampLike | number | null;
 }
 
-const STATUS_OPTIONS: ClientStatus[] = ["Ativo", "Em implantação", "Prospecção"];
+const STATUS_OPTIONS: ClientStatus[] = ["Ativo", "Em implantacao", "Prospeccao"];
+
+function statusClass(status: string) {
+  const lowered = status.toLowerCase();
+  if (lowered.includes("ativo")) {
+    return "bg-emerald-500/10 text-emerald-300 border border-emerald-500/40";
+  }
+  if (lowered.includes("implanta")) {
+    return "bg-amber-500/10 text-amber-300 border border-amber-500/40";
+  }
+  return "bg-blue-500/10 text-blue-300 border border-blue-500/40";
+}
 
 export default function ClientesPage() {
+  const { user, isAdmin } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
 
-  // form novo cliente
   const [form, setForm] = useState({
     name: "",
     niche: "",
@@ -54,21 +67,42 @@ export default function ClientesPage() {
     email: "",
     phone: "",
     site: "",
-    status: "Prospecção" as ClientStatus,
+    status: "Prospeccao" as ClientStatus,
     servicesText: "",
   });
 
-  // Carregar clientes do Firestore em tempo real
   useEffect(() => {
-    const q = query(collection(db, "clientes"), orderBy("createdAt", "desc"));
+    if (!user) {
+      setClients([]);
+      setLoading(false);
+      return;
+    }
+
+    const clientsRef = collection(db, "clientes");
+    const clientsQuery = isAdmin
+      ? query(clientsRef, orderBy("createdAt", "desc"))
+      : query(clientsRef, where("ownerId", "==", user.uid));
 
     const unsubscribe = onSnapshot(
-      q,
+      clientsQuery,
       (snapshot) => {
-        const docs: Client[] = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...(doc.data() as Omit<Client, "id">),
-        }));
+        const docs: Client[] = snapshot.docs.map((item) => {
+          const data = item.data() as Partial<Client>;
+          return {
+            id: item.id,
+            name: data.name || "Cliente",
+            niche: data.niche || "Nao informado",
+            city: data.city || "Nao informado",
+            status: data.status || "Prospeccao",
+            contactName: data.contactName || "Nao informado",
+            email: data.email || "",
+            phone: data.phone || "",
+            site: data.site || "",
+            services: Array.isArray(data.services) ? data.services : [],
+            createdAt: data.createdAt ?? null,
+          };
+        });
+
         setClients(docs);
         setLoading(false);
       },
@@ -79,49 +113,51 @@ export default function ClientesPage() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [user, isAdmin]);
 
-  // filtro simples por busca
   const filteredClients = useMemo(() => {
     if (!search.trim()) return clients;
     const term = search.toLowerCase();
     return clients.filter((client) => {
       return (
         client.name.toLowerCase().includes(term) ||
-        client.niche.toLowerCase().includes(term) ||
-        client.city.toLowerCase().includes(term) ||
-        (client.contactName && client.contactName.toLowerCase().includes(term))
+        (client.niche || "").toLowerCase().includes(term) ||
+        (client.city || "").toLowerCase().includes(term) ||
+        (client.contactName || "").toLowerCase().includes(term)
       );
     });
   }, [clients, search]);
 
-  async function handleCreateClient(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.name.trim()) return;
-    if (!form.email.trim()) return;
+  async function handleCreateClient(event: React.FormEvent) {
+    event.preventDefault();
+    if (!form.name.trim() || !form.email.trim()) return;
 
     try {
       setCreating(true);
 
       const services = form.servicesText
         .split(",")
-        .map((s) => s.trim())
+        .map((item) => item.trim())
         .filter(Boolean);
 
-      await addDoc(collection(db, "clientes"), {
-        name: form.name.trim(),
-        niche: form.niche.trim() || "Não informado",
-        city: form.city.trim() || "Não informado",
-        contactName: form.contactName.trim() || "Não informado",
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        site: form.site.trim(),
-        status: form.status,
-        services,
-        createdAt: serverTimestamp(),
+      const res = await authedFetch("/api/clientes/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          niche: form.niche.trim() || "Nao informado",
+          city: form.city.trim() || "Nao informado",
+          contactName: form.contactName.trim() || "Nao informado",
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+          site: form.site.trim(),
+          status: form.status,
+          services,
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao criar cliente.");
 
-      // limpa form
       setForm({
         name: "",
         niche: "",
@@ -130,26 +166,28 @@ export default function ClientesPage() {
         email: "",
         phone: "",
         site: "",
-        status: "Prospecção",
+        status: "Prospeccao",
         servicesText: "",
       });
-    } catch (err) {
-      console.error("Erro ao criar cliente:", err);
+    } catch (error) {
+      console.error("Erro ao criar cliente:", error);
+      alert("Nao foi possivel criar o cliente.");
     } finally {
       setCreating(false);
     }
   }
 
-  const ativos = clients.filter((c) => c.status === "Ativo").length;
+  const ativos = clients.filter((client) =>
+    (client.status || "").toLowerCase().includes("ativo")
+  ).length;
 
   return (
     <div className="space-y-6">
-      {/* Header da página */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-wide">Clientes</h1>
           <p className="text-sm text-white/60">
-            Gerencie as empresas atendidas pela ALTUM, contratos e serviços ativos.
+            Gerencie as empresas atendidas pela ALTUM, contratos e servicos ativos.
           </p>
         </div>
 
@@ -160,9 +198,7 @@ export default function ClientesPage() {
         </div>
       </div>
 
-      {/* Filtro / busca + form rápido */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Busca */}
         <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/60">
             Buscar cliente
@@ -173,22 +209,21 @@ export default function ClientesPage() {
               placeholder="Nome, nicho, cidade ou contato"
               className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
             />
           </div>
         </div>
 
-        {/* Novo cliente rápido */}
         <form
           onSubmit={handleCreateClient}
           className="rounded-xl border border-white/10 bg-[#111111] p-4"
         >
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-white/60">
-              Novo cliente rápido
+              Novo cliente rapido
             </p>
             <span className="text-[11px] text-white/40">
-              MVP • depois criamos tela completa de cadastro
+              Fluxo conectado com Projetos, Orcamentos e Financeiro
             </span>
           </div>
 
@@ -197,51 +232,54 @@ export default function ClientesPage() {
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
               placeholder="Nome da empresa *"
               value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
             />
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
               placeholder="Nicho / segmento"
               value={form.niche}
-              onChange={(e) => setForm((f) => ({ ...f, niche: e.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, niche: event.target.value }))}
             />
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
               placeholder="Cidade / UF"
               value={form.city}
-              onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))}
             />
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
               placeholder="Contato principal"
               value={form.contactName}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, contactName: e.target.value }))
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, contactName: event.target.value }))
               }
             />
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
               placeholder="E-mail *"
               value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
             />
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
               placeholder="WhatsApp / telefone"
               value={form.phone}
-              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
             />
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
               placeholder="Site (opcional)"
               value={form.site}
-              onChange={(e) => setForm((f) => ({ ...f, site: e.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, site: event.target.value }))}
             />
             <select
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
               value={form.status}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, status: e.target.value as ClientStatus }))
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  status: event.target.value as ClientStatus,
+                }))
               }
             >
               {STATUS_OPTIONS.map((status) => (
@@ -255,10 +293,10 @@ export default function ClientesPage() {
           <textarea
             className="mt-2 w-full rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
             rows={2}
-            placeholder="Serviços (separados por vírgula) — ex: Tráfego, LP, Consultoria"
+            placeholder="Servicos (separados por virgula) - ex: Trafego, LP, Consultoria"
             value={form.servicesText}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, servicesText: e.target.value }))
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, servicesText: event.target.value }))
             }
           />
 
@@ -282,7 +320,6 @@ export default function ClientesPage() {
         </form>
       </div>
 
-      {/* Lista de clientes */}
       <div className="space-y-3">
         {loading && (
           <div className="flex items-center gap-2 text-sm text-white/60">
@@ -293,7 +330,7 @@ export default function ClientesPage() {
 
         {!loading && filteredClients.length === 0 && (
           <p className="text-sm text-white/50">
-            Nenhum cliente encontrado. Cadastre o primeiro usando o formulário acima.
+            Nenhum cliente encontrado. Cadastre o primeiro usando o formulario acima.
           </p>
         )}
 
@@ -303,31 +340,23 @@ export default function ClientesPage() {
             className="rounded-xl border border-white/10 bg-[#101010] p-4 hover:border-blue-500/60 transition"
           >
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              {/* Esquerda */}
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-base font-semibold text-white/90">
-                    {client.name}
-                  </h2>
+                  <h2 className="text-base font-semibold text-white/90">{client.name}</h2>
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-                      client.status === "Ativo"
-                        ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/40"
-                        : client.status === "Em implantação"
-                        ? "bg-amber-500/10 text-amber-300 border border-amber-500/40"
-                        : "bg-blue-500/10 text-blue-300 border border-blue-500/40"
-                    }`}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${statusClass(
+                      client.status || ""
+                    )}`}
                   >
-                    {client.status}
+                    {client.status || "Prospeccao"}
                   </span>
                 </div>
 
                 <p className="text-xs text-white/60">
-                  {client.niche} • {client.city}
+                  {(client.niche || "Nicho nao informado") + " • " + (client.city || "Cidade nao informada")}
                 </p>
                 <p className="text-[11px] text-white/50">
-                  Contato principal:{" "}
-                  <span className="text-white/80">{client.contactName}</span>
+                  Contato principal: <span className="text-white/80">{client.contactName || "Nao informado"}</span>
                 </p>
 
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -342,7 +371,6 @@ export default function ClientesPage() {
                 </div>
               </div>
 
-              {/* Direita */}
               <div className="flex flex-col items-start gap-2 text-xs text-white/70 md:items-end">
                 <div className="flex flex-wrap gap-2">
                   {client.email && (
@@ -360,18 +388,24 @@ export default function ClientesPage() {
                 </div>
 
                 {client.site && (
-                  <button className="flex items-center gap-1 text-[11px] text-blue-300 hover:text-blue-200">
+                  <a
+                    href={client.site.startsWith("http") ? client.site : `https://${client.site}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-[11px] text-blue-300 hover:text-blue-200"
+                  >
                     <Globe2 size={14} />
                     <span>{client.site}</span>
-                  </button>
+                  </a>
                 )}
-<Link
-  href={`/admin/clientes/${client.id}`}
-  className="mt-2 inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] hover:bg-white/10 transition"
->
-  <span>Ver detalhes do cliente</span>
-  <ArrowRight size={14} />
-</Link>
+
+                <Link
+                  href={`/admin/clientes/${client.id}`}
+                  className="mt-2 inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] hover:bg-white/10 transition"
+                >
+                  <span>Ver detalhes do cliente</span>
+                  <ArrowRight size={14} />
+                </Link>
               </div>
             </div>
           </div>

@@ -1,13 +1,15 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
+import type { TimestampLike } from "@/app/types/domain";
 
 import { Zap } from "lucide-react";
 
-import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import {
   ArrowLeft,
   Loader2,
@@ -27,7 +29,7 @@ import {
 } from "lucide-react";
 
 type OrcamentoStatus = "Rascunho" | "Enviado" | "Aprovado" | "Perdido";
-type OrcamentoTipo = "Projeto único" | "Recorrente";
+type OrcamentoTipo = "Projeto unico" | "Recorrente";
 
 interface Orcamento {
   id: string;
@@ -41,11 +43,11 @@ interface Orcamento {
   valorTotal?: number;
   validade?: string | null;
   resumo?: string | null;
-  createdAt?: any;
+  createdAt?: TimestampLike | number | null;
 }
 
 const STATUS_OPTIONS: OrcamentoStatus[] = ["Rascunho", "Enviado", "Aprovado", "Perdido"];
-const TIPO_OPTIONS: OrcamentoTipo[] = ["Projeto único", "Recorrente"];
+const TIPO_OPTIONS: OrcamentoTipo[] = ["Projeto unico", "Recorrente"];
 
 export default function OrcamentoDetalhePage() {
   const params = useParams<{ id: string }>();
@@ -62,7 +64,7 @@ export default function OrcamentoDetalhePage() {
 
   const [form, setForm] = useState({
     titulo: "",
-    tipo: "Projeto único" as OrcamentoTipo,
+    tipo: "Projeto unico" as OrcamentoTipo,
     status: "Rascunho" as OrcamentoStatus,
     valorTotal: "",
     validade: "",
@@ -84,7 +86,7 @@ export default function OrcamentoDetalhePage() {
           setOrc(data);
           setForm({
             titulo: data.titulo || "",
-            tipo: (data.tipo || "Projeto único") as OrcamentoTipo,
+            tipo: (data.tipo || "Projeto unico") as OrcamentoTipo,
             status: (data.status || "Rascunho") as OrcamentoStatus,
             valorTotal: typeof data.valorTotal === "number" ? String(data.valorTotal) : "",
             validade: data.validade || "",
@@ -94,7 +96,7 @@ export default function OrcamentoDetalhePage() {
           setOrc(null);
         }
       } catch (err) {
-        console.error("Erro ao carregar orçamento:", err);
+        console.error("Erro ao carregar orcamento:", err);
         setOrc(null);
       } finally {
         setLoading(false);
@@ -104,15 +106,22 @@ export default function OrcamentoDetalhePage() {
     fetchOrcamento();
   }, [params.id]);
 
-  const createdAtFormatted =
-    orc?.createdAt?.toDate &&
-    new Date(orc.createdAt.toDate()).toLocaleString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const createdAtDate =
+    orc?.createdAt &&
+    typeof orc.createdAt === "object" &&
+    typeof orc.createdAt.toDate === "function"
+      ? orc.createdAt.toDate()
+      : null;
+
+  const createdAtFormatted = createdAtDate
+    ? createdAtDate.toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
 
   const statusPill =
     orc?.status === "Aprovado"
@@ -128,13 +137,21 @@ export default function OrcamentoDetalhePage() {
 
     try {
       setSaving(true);
-      const ref = doc(db, "orcamentos", orc.id);
-      await updateDoc(ref, { status: newStatus });
+      const res = await authedFetch("/api/orcamentos/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          budgetId: orc.id,
+          patch: { status: newStatus },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao atualizar status.");
 
       setOrc((prev) => (prev ? { ...prev, status: newStatus } : prev));
       setNewStatus(null);
     } catch (err) {
-      console.error("Erro ao atualizar status do orçamento:", err);
+      console.error("Erro ao atualizar status do orcamento:", err);
     } finally {
       setSaving(false);
     }
@@ -146,22 +163,36 @@ export default function OrcamentoDetalhePage() {
     try {
       setSaving(true);
 
-      const payload: any = {
-        titulo: form.titulo.trim() || "Orçamento",
+      const parsedValor = form.valorTotal.trim()
+        ? Number(form.valorTotal.replace(",", "."))
+        : null;
+
+      const payload: {
+        titulo: string;
+        tipo: OrcamentoTipo;
+        status: OrcamentoStatus;
+        validade: string | null;
+        resumo: string | null;
+        valorTotal: number | null;
+      } = {
+        titulo: form.titulo.trim() || "Orcamento",
         tipo: form.tipo,
         status: form.status,
         validade: form.validade.trim() || null,
         resumo: form.resumo.trim() || null,
+        valorTotal: parsedValor,
       };
 
-      if (form.valorTotal.trim()) {
-        payload.valorTotal = Number(form.valorTotal.replace(",", "."));
-      } else {
-        payload.valorTotal = null;
-      }
-
-      const ref = doc(db, "orcamentos", orc.id);
-      await updateDoc(ref, payload);
+      const res = await authedFetch("/api/orcamentos/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          budgetId: orc.id,
+          patch: payload,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao salvar alteracoes.");
 
       setOrc((prev) =>
         prev
@@ -180,7 +211,7 @@ export default function OrcamentoDetalhePage() {
       setEditing(false);
       setNewStatus(null);
     } catch (err) {
-      console.error("Erro ao salvar alterações do orçamento:", err);
+      console.error("Erro ao salvar alteracoes do orcamento:", err);
     } finally {
       setSaving(false);
     }
@@ -190,7 +221,7 @@ export default function OrcamentoDetalhePage() {
     if (!orc) return;
     setForm({
       titulo: orc.titulo || "",
-      tipo: orc.tipo || "Projeto único",
+      tipo: orc.tipo || "Projeto unico",
       status: orc.status || "Rascunho",
       valorTotal: typeof orc.valorTotal === "number" ? String(orc.valorTotal) : "",
       validade: orc.validade || "",
@@ -207,29 +238,36 @@ export default function OrcamentoDetalhePage() {
 
       const valor = typeof orc.valorTotal === "number" ? orc.valorTotal : undefined;
       if (!valor) {
-        alert("Defina o valor total do orçamento antes de gerar o lançamento.");
+        alert("Defina o valor total do orcamento antes de gerar o lancamento.");
         return;
       }
 
-      await addDoc(collection(db, "financeiro"), {
-        clientId: orc.clientId,
-        clientName: orc.clientName || "Cliente",
-        projectId: orc.projectId || null,
-        projectTitle: orc.projectTitle || null,
-        tipo: orc.tipo === "Recorrente" ? "Mensalidade" : "Projeto único",
-        status: "Pendente",
-        valor,
-        referencia: orc.titulo || "Orçamento",
-        vencimento: null,
-        meioPagamento: null,
-        createdAt: serverTimestamp(),
-        dataPagamento: null,
+      const res = await authedFetch("/api/finance/transactions/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: orc.clientId,
+          clientName: orc.clientName || "Cliente",
+          projectId: orc.projectId || null,
+          projectTitle: orc.projectTitle || null,
+          tipo: "Receita",
+          categoria: orc.tipo === "Recorrente" ? "Mensalidade" : "Projeto",
+          status: "pendente",
+          descricao: "Orcamento aprovado - " + (orc.titulo || "Sem titulo"),
+          valor,
+          referencia: orc.titulo || "Orcamento",
+          vencimento: null,
+          meioPagamento: null,
+          dataPagamento: null,
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao criar lancamento.");
 
-      alert("Lançamento criado no Financeiro ✅");
+      alert("Lancamento criado no Financeiro.");
     } catch (err) {
-      console.error("Erro ao gerar lançamento no financeiro:", err);
-      alert("Falha ao criar lançamento no Financeiro.");
+      console.error("Erro ao gerar lancamento no financeiro:", err);
+      alert("Falha ao criar lancamento no Financeiro.");
     } finally {
       setCreatingFinanceiro(false);
     }
@@ -240,7 +278,7 @@ export default function OrcamentoDetalhePage() {
       <div className="flex h-full items-center justify-center">
         <div className="flex items-center gap-2 text-sm text-white/70">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Carregando orçamento...
+          Carregando orcamento...
         </div>
       </div>
     );
@@ -254,11 +292,11 @@ export default function OrcamentoDetalhePage() {
           className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition"
         >
           <ArrowLeft className="h-4 w-4" />
-          Voltar para orçamentos
+          Voltar para orcamentos
         </button>
 
         <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100">
-          Orçamento não encontrado.
+          Orcamento nao encontrado.
         </div>
       </div>
     );
@@ -274,7 +312,7 @@ export default function OrcamentoDetalhePage() {
             className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition"
           >
             <ArrowLeft className="h-4 w-4" />
-            Voltar para orçamentos
+            Voltar para orcamentos
           </button>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -305,14 +343,14 @@ export default function OrcamentoDetalhePage() {
           )}
         </div>
 
-        {/* Ações topo */}
+        {/* Acoes topo */}
         <div className="flex flex-wrap gap-2 text-xs">
           <button
             onClick={() => setEditing((v) => !v)}
             className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] hover:bg-white/10 transition"
           >
             <PencilLine className="h-4 w-4 text-white/70" />
-            {editing ? "Sair da edição" : "Editar orçamento"}
+            {editing ? "Sair da edicao" : "Editar orcamento"}
           </button>
 
           <button
@@ -328,7 +366,7 @@ export default function OrcamentoDetalhePage() {
             ) : (
               <>
                 <PlusCircle className="h-4 w-4" />
-                Gerar lançamento no Financeiro
+                Gerar lancamento no Financeiro
               </>
             )}
           </button>
@@ -363,7 +401,7 @@ export default function OrcamentoDetalhePage() {
         </div>
       </div>
 
-      {/* Barra de status (rápida) */}
+      {/* Barra de status (rapida) */}
       <div className="rounded-xl border border-white/10 bg-[#0f0f0f] p-4">
         <p className="text-[11px] uppercase tracking-wide text-white/50">Atualizar status</p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -421,14 +459,14 @@ export default function OrcamentoDetalhePage() {
         )}
       </div>
 
-      {/* Conteúdo (detalhes + edição) */}
+      {/* Conteudo (detalhes + edicao) */}
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Coluna principal */}
         <div className="space-y-4 lg:col-span-2">
           <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
-                Detalhes do orçamento
+                Detalhes do orcamento
               </h2>
               <FileText className="h-4 w-4 text-white/40" />
             </div>
@@ -436,7 +474,7 @@ export default function OrcamentoDetalhePage() {
             {editing ? (
               <div className="grid gap-2 md:grid-cols-2">
                 <div className="space-y-1 md:col-span-2">
-                  <p className="text-[11px] text-white/50">Título</p>
+                  <p className="text-[11px] text-white/50">Titulo</p>
                   <input
                     className="w-full rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
                     value={form.titulo}
@@ -493,7 +531,7 @@ export default function OrcamentoDetalhePage() {
                     <Calendar size={14} className="text-white/40" />
                     <input
                       className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
-                      placeholder="Ex: 7 dias, até 10/01"
+                      placeholder="Ex: 7 dias, ate 10/01"
                       value={form.validade}
                       onChange={(e) => setForm((f) => ({ ...f, validade: e.target.value }))}
                     />
@@ -504,7 +542,7 @@ export default function OrcamentoDetalhePage() {
                   <p className="text-[11px] text-white/50">Resumo</p>
                   <input
                     className="w-full rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
-                    placeholder="Ex: LP + Tráfego + CRM + Automações"
+                    placeholder="Ex: LP + Trafego + CRM + Automacoes"
                     value={form.resumo}
                     onChange={(e) => setForm((f) => ({ ...f, resumo: e.target.value }))}
                   />
@@ -524,7 +562,7 @@ export default function OrcamentoDetalhePage() {
                     ) : (
                       <>
                         <Save className="h-4 w-4" />
-                        Salvar alterações
+                        Salvar alteracoes
                       </>
                     )}
                   </button>
@@ -550,7 +588,7 @@ export default function OrcamentoDetalhePage() {
                           style: "currency",
                           currency: "BRL",
                         })
-                      : "—"}
+                      : "-"}
                   </span>
                 </div>
 
@@ -577,12 +615,12 @@ export default function OrcamentoDetalhePage() {
 
           <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70 mb-2">
-              Próximas evoluções (v10)
+              Proximas evolucoes (v10)
             </h2>
             <ul className="space-y-1 text-xs text-white/60">
-              <li>• Gerar PDF da proposta (template ALTUM) com 1 clique.</li>
-              <li>• Link público de proposta (cliente assina/aprova).</li>
-              <li>• Ao aprovar: criar projeto + recorrência + automações.</li>
+              <li>- Gerar PDF da proposta (template ALTUM) com 1 clique.</li>
+              <li>- Link publico de proposta (cliente assina/aprova).</li>
+              <li>- Ao aprovar: criar projeto + recorrencia + automacoes.</li>
             </ul>
           </div>
         </div>
@@ -591,7 +629,7 @@ export default function OrcamentoDetalhePage() {
         <div className="space-y-4">
           <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
-              Cliente & vínculo
+              Cliente & vinculo
             </h2>
 
             <p className="text-sm text-white/80">{orc.clientName}</p>
@@ -602,7 +640,7 @@ export default function OrcamentoDetalhePage() {
               </p>
             ) : (
               <p className="text-xs text-white/60">
-                Sem projeto vinculado (ok para orçamento inicial).
+                Sem projeto vinculado (ok para orcamento inicial).
               </p>
             )}
 
@@ -636,7 +674,7 @@ export default function OrcamentoDetalhePage() {
 
           <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
-              Ações rápidas
+              Acoes rapidas
             </h2>
 
             <button
@@ -658,26 +696,26 @@ export default function OrcamentoDetalhePage() {
                 </>
               ) : (
                 <>
-                  <PlusCircle size={14} /> Gerar lançamento no Financeiro
+                  <PlusCircle size={14} /> Gerar lancamento no Financeiro
                 </>
               )}
             </button>
 
             <p className="text-[11px] text-white/40 pt-1">
-              Dica: quando o orçamento for aprovado, você já cria o lançamento pendente e controla o caixa.
+              Dica: quando o orcamento for aprovado, voce ja cria o lancamento pendente e controla o caixa.
             </p>
           </div>
 
           <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/40 via-[#0b0b0b] to-black p-4 space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-100">
-                Pipeline (futuro)
+                Pipeline operacional
               </h2>
               <Zap className="h-4 w-4 text-emerald-300" />
             </div>
             <p className="text-xs text-emerald-100/80">
-              Em breve: ao marcar como <b>Aprovado</b>, o sistema cria automaticamente:
-              Projeto + Financeiro + Atividade de onboarding + automações.
+              Ao marcar como <b>Aprovado</b>, mantenha este fluxo operacional conectado a:
+              Projeto + Financeiro + Atividade de onboarding + automacoes.
             </p>
           </div>
         </div>
@@ -685,3 +723,5 @@ export default function OrcamentoDetalhePage() {
     </div>
   );
 }
+
+

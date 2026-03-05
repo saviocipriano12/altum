@@ -1,7 +1,8 @@
 // src/services/whatsapp.ts
+import "server-only";
 
-const META_TOKEN = process.env.NEXT_PUBLIC_META_WA_TOKEN;
-const PHONE_NUMBER_ID = process.env.NEXT_PUBLIC_META_PHONE_ID;
+const META_TOKEN = process.env.META_WA_TOKEN;
+const PHONE_NUMBER_ID = process.env.META_PHONE_ID;
 const VERSION = "v21.0"; // Versão estável da Graph API
 
 export const WhatsAppService = {

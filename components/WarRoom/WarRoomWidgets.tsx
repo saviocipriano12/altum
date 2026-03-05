@@ -4,7 +4,7 @@
 import { Calculator, CheckCircle2, X, Copy, Printer, MousePointerClick, FileText } from "lucide-react";
 // Importando do arquivo que acabamos de criar.
 // Se der erro aqui, mude para: "../../lib/war-room"
-import { FinancialScenario, ProposalItem, Lead, calculateROI } from "@/lib/war-room";
+import { FinancialScenario, ProposalItem, Lead, calculateROI } from "@/app/lib/war-room";
 
 // --- WIDGET 1: CALCULADORA ROI ---
 interface ROIProps {

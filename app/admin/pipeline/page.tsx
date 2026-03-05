@@ -6,12 +6,9 @@ import {
   onSnapshot,
   query,
   orderBy,
-  addDoc,
-  updateDoc,
-  doc,
-  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
 import {
   Loader2,
   ArrowRight,
@@ -21,9 +18,9 @@ import {
   MapPin,
   Plus,
   Sparkles,
-  ChevronRight,
   ChevronLeft,
 } from "lucide-react";
+import type { TimestampLike } from "@/app/types/domain";
 
 type PipelineStage =
   | "captado"
@@ -43,7 +40,7 @@ interface Lead {
   origem?: string;
   status?: string;
   pipelineStage?: PipelineStage;
-  createdAt?: any;
+  createdAt?: TimestampLike | number | null;
 }
 
 const STAGE_LABELS: Record<PipelineStage, string> = {
@@ -86,9 +83,17 @@ const PIPELINE_ORDER: PipelineStage[] = [
   "perdido",
 ];
 
+function toDate(value?: TimestampLike | number | null) {
+  if (!value) return null;
+  if (typeof value === "number") return new Date(value);
+  if (typeof value === "object" && typeof value.toDate === "function") {
+    return value.toDate();
+  }
+  return null;
+}
+
 export default function PipelinePage() {
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [movingId, setMovingId] = useState<string | null>(null);
 
@@ -108,11 +113,9 @@ export default function PipelinePage() {
           ...(d.data() as Omit<Lead, "id">),
         }));
         setLeads(docs);
-        setLoading(false);
       },
       (err) => {
         console.error("Erro ao carregar leads para pipeline:", err);
-        setLoading(false);
       }
     );
 
@@ -125,13 +128,20 @@ export default function PipelinePage() {
 
     try {
       setCreating(true);
-      await addDoc(collection(db, "leads"), {
-        nome: novoLead.nome.trim(),
-        origem: novoLead.origem.trim() || "Manual",
-        status: "novo",
-        pipelineStage: "captado" as PipelineStage,
-        createdAt: serverTimestamp(),
+      const res = await authedFetch("/api/leads/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: novoLead.nome.trim(),
+          origem: novoLead.origem.trim() || "manual",
+          status: "novo",
+          pipelineStage: "captado",
+        }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "Falha ao criar lead.");
+      }
 
       setNovoLead({ nome: "", origem: "" });
     } catch (err) {
@@ -176,8 +186,18 @@ export default function PipelinePage() {
   async function moveLead(id: string, toStage: PipelineStage) {
     try {
       setMovingId(id);
-      const ref = doc(db, "leads", id);
-      await updateDoc(ref, { pipelineStage: toStage });
+      const res = await authedFetch("/api/leads/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: id,
+          patch: { pipelineStage: toStage },
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "Falha ao mover lead.");
+      }
     } catch (err) {
       console.error("Erro ao mover lead no pipeline:", err);
     } finally {
@@ -226,7 +246,7 @@ export default function PipelinePage() {
             Criar oportunidade manual
           </h2>
           <span className="text-[11px] text-white/40">
-            Futuro: leads entram aqui automaticamente da Máquina de Prospecção
+            Leads adicionados aqui entram direto no funil comercial.
           </span>
         </div>
 
@@ -347,12 +367,10 @@ export default function PipelinePage() {
                             {lead.endereco}
                           </p>
                         )}
-                        {lead.createdAt?.toDate && (
+                        {toDate(lead.createdAt) && (
                           <p className="flex items-center gap-1 text-white/50">
                             <Target className="h-3 w-3 text-white/40" />
-                            {new Date(
-                              lead.createdAt.toDate()
-                            ).toLocaleDateString("pt-BR")}
+                            {toDate(lead.createdAt)?.toLocaleDateString("pt-BR")}
                           </p>
                         )}
                       </div>
@@ -403,3 +421,5 @@ export default function PipelinePage() {
     </div>
   );
 }
+
+

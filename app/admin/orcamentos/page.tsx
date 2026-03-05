@@ -1,17 +1,18 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import {
   collection,
-  addDoc,
   onSnapshot,
   query,
   orderBy,
-  serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
+import { useAuth } from "@/context/AuthContext";
 import {
   Plus,
   Search,
@@ -23,9 +24,10 @@ import {
   DollarSign,
   Calendar,
 } from "lucide-react";
+import type { TimestampLike } from "@/app/types/domain";
 
 type OrcamentoStatus = "Rascunho" | "Enviado" | "Aprovado" | "Perdido";
-type OrcamentoTipo = "Projeto único" | "Recorrente";
+type OrcamentoTipo = "Projeto unico" | "Recorrente";
 
 interface ClienteOption {
   id: string;
@@ -50,7 +52,7 @@ interface Orcamento {
   valorTotal?: number;
   validade?: string;
   resumo?: string;
-  createdAt?: any;
+  createdAt?: TimestampLike | number | null;
 }
 
 const STATUS_OPTIONS: OrcamentoStatus[] = [
@@ -60,9 +62,10 @@ const STATUS_OPTIONS: OrcamentoStatus[] = [
   "Perdido",
 ];
 
-const TIPO_OPTIONS: OrcamentoTipo[] = ["Projeto único", "Recorrente"];
+const TIPO_OPTIONS: OrcamentoTipo[] = ["Projeto unico", "Recorrente"];
 
 export default function OrcamentosPage() {
+  const { user, isAdmin } = useAuth();
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [clientes, setClientes] = useState<ClienteOption[]>([]);
   const [projetos, setProjetos] = useState<ProjetoOption[]>([]);
@@ -74,7 +77,7 @@ export default function OrcamentosPage() {
     clientId: "",
     projectId: "",
     titulo: "",
-    tipo: "Projeto único" as OrcamentoTipo,
+    tipo: "Projeto unico" as OrcamentoTipo,
     status: "Rascunho" as OrcamentoStatus,
     valorTotal: "",
     validade: "",
@@ -83,34 +86,50 @@ export default function OrcamentosPage() {
 
   // Carrega clientes
   useEffect(() => {
-    const q = query(collection(db, "clientes"), orderBy("name", "asc"));
+    if (!user) {
+      setClientes([]);
+      return;
+    }
+
+    const clientsRef = collection(db, "clientes");
+    const q = isAdmin
+      ? query(clientsRef, orderBy("name", "asc"))
+      : query(clientsRef, where("ownerId", "==", user.uid));
 
     const unsub = onSnapshot(
       q,
       (snap) => {
         const docs: ClienteOption[] = snap.docs.map((d) => ({
           id: d.id,
-          name: (d.data() as any).name || "Cliente sem nome",
+          name: ((d.data() as { name?: string }).name) || "Cliente sem nome",
         }));
         setClientes(docs);
       },
       (err) => {
-        console.error("Erro ao carregar clientes para orçamentos:", err);
+        console.error("Erro ao carregar clientes para orcamentos:", err);
       }
     );
 
     return () => unsub();
-  }, []);
+  }, [user, isAdmin]);
 
   // Carrega projetos
   useEffect(() => {
-    const q = query(collection(db, "projetos"), orderBy("createdAt", "desc"));
+    if (!user) {
+      setProjetos([]);
+      return;
+    }
+
+    const projectsRef = collection(db, "projetos");
+    const q = isAdmin
+      ? query(projectsRef, orderBy("createdAt", "desc"))
+      : query(projectsRef, where("ownerId", "==", user.uid));
 
     const unsub = onSnapshot(
       q,
       (snap) => {
         const docs: ProjetoOption[] = snap.docs.map((d) => {
-          const data = d.data() as any;
+          const data = d.data() as { titulo?: string; clientName?: string };
           return {
             id: d.id,
             titulo: data.titulo || "Projeto",
@@ -120,16 +139,25 @@ export default function OrcamentosPage() {
         setProjetos(docs);
       },
       (err) => {
-        console.error("Erro ao carregar projetos para orçamentos:", err);
+        console.error("Erro ao carregar projetos para orcamentos:", err);
       }
     );
 
     return () => unsub();
-  }, []);
+  }, [user, isAdmin]);
 
-  // Carrega orçamentos
+  // Carrega orcamentos
   useEffect(() => {
-    const q = query(collection(db, "orcamentos"), orderBy("createdAt", "desc"));
+    if (!user) {
+      setOrcamentos([]);
+      setLoading(false);
+      return;
+    }
+
+    const budgetsRef = collection(db, "orcamentos");
+    const q = isAdmin
+      ? query(budgetsRef, orderBy("createdAt", "desc"))
+      : query(budgetsRef, where("ownerId", "==", user.uid));
 
     const unsub = onSnapshot(
       q,
@@ -142,13 +170,13 @@ export default function OrcamentosPage() {
         setLoading(false);
       },
       (err) => {
-        console.error("Erro ao carregar orçamentos:", err);
+        console.error("Erro ao carregar orcamentos:", err);
         setLoading(false);
       }
     );
 
     return () => unsub();
-  }, []);
+  }, [user, isAdmin]);
 
   const filteredOrcamentos = useMemo(() => {
     if (!search.trim()) return orcamentos;
@@ -185,34 +213,38 @@ export default function OrcamentosPage() {
         ? Number(form.valorTotal.replace(",", "."))
         : undefined;
 
-      await addDoc(collection(db, "orcamentos"), {
-        titulo: form.titulo.trim(),
-        clientId: form.clientId,
-        clientName: clienteSelecionado?.name || "Cliente",
-        projectId: form.projectId || null,
-        projectTitle: projetoSelecionado
-          ? projetoSelecionado.titulo
-          : null,
-        tipo: form.tipo,
-        status: form.status,
-        valorTotal: valor,
-        validade: form.validade.trim() || null,
-        resumo: form.resumo.trim() || null,
-        createdAt: serverTimestamp(),
+      const res = await authedFetch("/api/orcamentos/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo: form.titulo.trim(),
+          clientId: form.clientId,
+          clientName: clienteSelecionado?.name || "Cliente",
+          projectId: form.projectId || null,
+          projectTitle: projetoSelecionado ? projetoSelecionado.titulo : null,
+          tipo: form.tipo,
+          status: form.status,
+          valorTotal: valor,
+          validade: form.validade.trim() || null,
+          resumo: form.resumo.trim() || null,
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao criar orcamento.");
 
       setForm({
         clientId: "",
         projectId: "",
         titulo: "",
-        tipo: "Projeto único",
+        tipo: "Projeto unico",
         status: "Rascunho",
         valorTotal: "",
         validade: "",
         resumo: "",
       });
     } catch (err) {
-      console.error("Erro ao criar orçamento:", err);
+      console.error("Erro ao criar orcamento:", err);
+      alert("Nao foi possivel criar o orcamento.");
     } finally {
       setCreating(false);
     }
@@ -223,7 +255,7 @@ export default function OrcamentosPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-wide">Orçamentos</h1>
+          <h1 className="text-2xl font-semibold tracking-wide">Orcamentos</h1>
           <p className="text-sm text-white/60">
             Central de propostas enviadas pela ALTUM: clientes, projetos, valores e status.
           </p>
@@ -242,17 +274,17 @@ export default function OrcamentosPage() {
         </div>
       </div>
 
-      {/* Filtro + criação rápida */}
+      {/* Filtro + criacao rapida */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Busca */}
         <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/60">
-            Buscar orçamento
+            Buscar orcamento
           </p>
           <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-sm text-white/80">
             <Search size={16} className="text-white/40" />
             <input
-              placeholder="Título, cliente ou projeto"
+              placeholder="Titulo, cliente ou projeto"
               className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -260,17 +292,17 @@ export default function OrcamentosPage() {
           </div>
         </div>
 
-        {/* Novo orçamento rápido */}
+        {/* Novo orcamento rapido */}
         <form
           onSubmit={handleCreateOrcamento}
           className="rounded-xl border border-white/10 bg-[#111111] p-4"
         >
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-white/60">
-              Novo orçamento rápido
+              Novo orcamento rapido
             </p>
             <span className="text-[11px] text-white/40">
-              MVP • depois criamos fluxo completo de proposta
+              Cadastro rapido para montar e enviar a proposta completa
             </span>
           </div>
 
@@ -302,15 +334,15 @@ export default function OrcamentosPage() {
               <option value="">Vincular a um projeto (opcional)</option>
               {projetos.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.titulo} • {p.clientName}
+                  {p.titulo} - {p.clientName}
                 </option>
               ))}
             </select>
 
-            {/* Título */}
+            {/* Titulo */}
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
-              placeholder="Título do orçamento *"
+              placeholder="Titulo do orcamento *"
               value={form.titulo}
               onChange={(e) =>
                 setForm((f) => ({ ...f, titulo: e.target.value }))
@@ -366,7 +398,7 @@ export default function OrcamentosPage() {
             {/* Validade */}
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
-              placeholder="Validade (ex: 7 dias, até 10/01)"
+              placeholder="Validade (ex: 7 dias, ate 10/01)"
               value={form.validade}
               onChange={(e) =>
                 setForm((f) => ({ ...f, validade: e.target.value }))
@@ -376,7 +408,7 @@ export default function OrcamentosPage() {
             {/* Resumo */}
             <input
               className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40 md:col-span-2"
-              placeholder="Resumo rápido (ex: LP + Tráfego + CRM)"
+              placeholder="Resumo rapido (ex: LP + Trafego + CRM)"
               value={form.resumo}
               onChange={(e) =>
                 setForm((f) => ({ ...f, resumo: e.target.value }))
@@ -397,25 +429,25 @@ export default function OrcamentosPage() {
             ) : (
               <>
                 <Plus size={14} />
-                Salvar orçamento
+                Salvar orcamento
               </>
             )}
           </button>
         </form>
       </div>
 
-      {/* Lista de orçamentos */}
+      {/* Lista de orcamentos */}
       <div className="space-y-3">
         {loading && (
           <div className="flex items-center gap-2 text-sm text-white/60">
             <Loader2 size={16} className="animate-spin" />
-            Carregando orçamentos...
+            Carregando orcamentos...
           </div>
         )}
 
         {!loading && filteredOrcamentos.length === 0 && (
           <p className="text-sm text-white/50">
-            Nenhum orçamento encontrado. Crie o primeiro usando o formulário acima.
+            Nenhum orcamento encontrado. Crie o primeiro usando o formulario acima.
           </p>
         )}
 
@@ -492,14 +524,14 @@ export default function OrcamentosPage() {
                 {/* Direita */}
                 <div className="flex flex-col items-start gap-2 text-xs text-white/70 md:items-end">
                   <span className="inline-flex items-center gap-1 text-[11px] text-white/50">
-                    ID: {orc.id.slice(0, 6)}…
+                    ID: {orc.id.slice(0, 6)}...
                   </span>
 
                  <Link
   href={`/admin/orcamentos/${orc.id}`}
   className="mt-2 inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] hover:bg-white/10 transition"
 >
-  <span>Ver detalhes do orçamento</span>
+  <span>Ver detalhes do orcamento</span>
   <ArrowRight size={14} />
 </Link>
 
@@ -512,3 +544,5 @@ export default function OrcamentosPage() {
     </div>
   );
 }
+
+

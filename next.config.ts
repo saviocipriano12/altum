@@ -1,15 +1,11 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  // ⛔ Não travar deploy por causa de ESLint
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-
-  // ⛔ Não travar deploy por causa de erro de TypeScript
+const nextConfig = {
+  // Do not block deploy while we finish full strict typing migration.
   typescript: {
     ignoreBuildErrors: true,
   },
-};
+  turbopack: {
+    root: process.cwd(),
+  },
+} as const;
 
 export default nextConfig;

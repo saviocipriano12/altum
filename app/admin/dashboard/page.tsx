@@ -6,10 +6,18 @@ import {
   onSnapshot,
   query,
   orderBy,
-  limit as fsLimit,
+  where,
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
+import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
+import type {
+  AgencyActivity,
+  AgencyBudget,
+  AgencyLead,
+  AgencyProject,
+  TimestampLike,
+} from "@/app/types/domain";
 import {
   Activity,
   ArrowRight,
@@ -23,6 +31,7 @@ import {
   Target,
   Timer,
   UserPlus,
+  LineChart,
 } from "lucide-react";
 
 type PipelineStage =
@@ -34,19 +43,81 @@ type PipelineStage =
   | "fechado"
   | "perdido";
 
+const PIPELINE_STAGES: PipelineStage[] = [
+  "captado",
+  "contato_enviado",
+  "respondido",
+  "em_negociacao",
+  "proposta_enviada",
+  "fechado",
+  "perdido",
+];
+
+function isPipelineStage(value?: string): value is PipelineStage {
+  return PIPELINE_STAGES.includes(value as PipelineStage);
+}
+
+function leadCreatedDate(createdAt?: TimestampLike | number | null) {
+  if (!createdAt) return null;
+  if (typeof createdAt === "number") return new Date(createdAt);
+  if (typeof createdAt === "object" && typeof createdAt.toDate === "function") {
+    return createdAt.toDate();
+  }
+  return null;
+}
+
+type DashboardLead = AgencyLead & {
+  pipelineStage?: PipelineStage | string;
+  createdAt?: TimestampLike | number | null;
+};
+
+type DashboardProject = AgencyProject;
+type DashboardBudget = AgencyBudget & { titulo?: string };
+type DashboardActivity = AgencyActivity & { data?: string | null };
+
 export default function DashboardReal() {
-  const [leads, setLeads] = useState<any[]>([]);
-  const [projetos, setProjetos] = useState<any[]>([]);
-  const [orcamentos, setOrcamentos] = useState<any[]>([]);
-  const [atividades, setAtividades] = useState<any[]>([]);
+  const { user, isAdmin } = useAuth();
+  const [leads, setLeads] = useState<DashboardLead[]>([]);
+  const [projetos, setProjetos] = useState<DashboardProject[]>([]);
+  const [orcamentos, setOrcamentos] = useState<DashboardBudget[]>([]);
+  const [atividades, setAtividades] = useState<DashboardActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // LEADS
+    if (!user) {
+      setLeads([]);
+      setProjetos([]);
+      setOrcamentos([]);
+      setAtividades([]);
+      setLoading(false);
+      return;
+    }
+
+    const leadsQuery = isAdmin
+      ? query(collection(db, "leads"), orderBy("createdAt", "desc"))
+      : query(collection(db, "leads"), where("ownerId", "==", user.uid));
+
+    const projectsQuery = isAdmin
+      ? query(collection(db, "projetos"), orderBy("createdAt", "desc"))
+      : query(collection(db, "projetos"), where("ownerId", "==", user.uid));
+
+    const budgetsQuery = isAdmin
+      ? query(collection(db, "orcamentos"), orderBy("createdAt", "desc"))
+      : query(collection(db, "orcamentos"), where("ownerId", "==", user.uid));
+
+    const activitiesQuery = isAdmin
+      ? query(collection(db, "atividades"), orderBy("data", "asc"))
+      : query(collection(db, "atividades"), where("ownerId", "==", user.uid));
+
     const unsubLeads = onSnapshot(
-      query(collection(db, "leads"), orderBy("createdAt", "desc")),
+      leadsQuery,
       (snap) => {
-        setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setLeads(
+          snap.docs.map((d) => {
+            const data = d.data() as Omit<DashboardLead, "id">;
+            return { id: d.id, ...data };
+          })
+        );
         setLoading(false);
       },
       () => setLoading(false)
@@ -54,25 +125,40 @@ export default function DashboardReal() {
 
     // PROJETOS
     const unsubProjetos = onSnapshot(
-      query(collection(db, "projetos"), orderBy("createdAt", "desc")),
+      projectsQuery,
       (snap) => {
-        setProjetos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setProjetos(
+          snap.docs.map((d) => {
+            const data = d.data() as Omit<DashboardProject, "id">;
+            return { id: d.id, ...data };
+          })
+        );
       }
     );
 
     // ORÇAMENTOS
     const unsubOrcamentos = onSnapshot(
-      query(collection(db, "orcamentos"), orderBy("createdAt", "desc")),
+      budgetsQuery,
       (snap) => {
-        setOrcamentos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setOrcamentos(
+          snap.docs.map((d) => {
+            const data = d.data() as Omit<DashboardBudget, "id">;
+            return { id: d.id, ...data };
+          })
+        );
       }
     );
 
     // ATIVIDADES
     const unsubAtividades = onSnapshot(
-      query(collection(db, "atividades"), orderBy("data", "asc")),
+      activitiesQuery,
       (snap) => {
-        setAtividades(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setAtividades(
+          snap.docs.map((d) => {
+            const data = d.data() as Omit<DashboardActivity, "id">;
+            return { id: d.id, ...data };
+          })
+        );
       }
     );
 
@@ -82,23 +168,26 @@ export default function DashboardReal() {
       unsubOrcamentos();
       unsubAtividades();
     };
-  }, []);
+  }, [user, isAdmin]);
 
   // ======== MÉTRICAS BÁSICAS ========
 
-  const hoje = new Date();
   const leadsHoje = useMemo(
-    () =>
-      leads.filter((l) => {
-        if (!l.createdAt?.toDate) return false;
+    () => {
+      const hoje = new Date();
+      return leads.filter((l) => {
+        if (!l.createdAt || typeof l.createdAt !== "object" || typeof l.createdAt.toDate !== "function") {
+          return false;
+        }
         const d = new Date(l.createdAt.toDate());
         return (
           d.getDate() === hoje.getDate() &&
           d.getMonth() === hoje.getMonth() &&
           d.getFullYear() === hoje.getFullYear()
         );
-      }),
-    [leads, hoje]
+      });
+    },
+    [leads]
   );
 
   const atividadesPendentes = atividades.filter((a) => a.status === "pendente");
@@ -117,7 +206,9 @@ export default function DashboardReal() {
     };
 
     for (const l of leads) {
-      const s: PipelineStage = l.pipelineStage || "captado";
+      const s: PipelineStage = isPipelineStage(l.pipelineStage)
+        ? l.pipelineStage
+        : "captado";
       base[s] = (base[s] || 0) + 1;
     }
 
@@ -133,7 +224,7 @@ export default function DashboardReal() {
   // próximas 5 atividades (pendentes primeiro)
   const proximasAtividades = useMemo(() => {
     const ordenadas = [...atividades].sort((a, b) =>
-      a.data && b.data ? a.data.localeCompare(b.data) : 0
+      (a.data || "").localeCompare(b.data || "")
     );
     return ordenadas.slice(0, 5);
   }, [atividades]);
@@ -407,12 +498,8 @@ export default function DashboardReal() {
                       {lead.pipelineStage || "captado"}
                     </span>
 
-                    {lead.createdAt?.toDate && (
-                      <span>
-                        {new Date(
-                          lead.createdAt.toDate()
-                        ).toLocaleDateString("pt-BR")}
-                      </span>
+                    {leadCreatedDate(lead.createdAt) && (
+                      <span>{leadCreatedDate(lead.createdAt)?.toLocaleDateString("pt-BR")}</span>
                     )}
                   </div>
                 </div>
@@ -513,6 +600,24 @@ export default function DashboardReal() {
                   </div>
                 </div>
                 <ArrowRight className="h-3 w-3 text-white/60" />
+              </Link>
+
+              <Link
+                href="/admin/campanhas"
+                className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-600/10 px-3 py-2 hover:bg-emerald-600/20 transition"
+              >
+                <div className="flex items-center gap-2">
+                  <LineChart className="h-4 w-4 text-emerald-200" />
+                  <div className="flex flex-col">
+                    <span className="font-medium text-emerald-100">
+                      Campanhas em tempo real
+                    </span>
+                    <span className="text-[11px] text-emerald-100/80">
+                      Integrar contas Meta/Google e analisar performance com IA.
+                    </span>
+                  </div>
+                </div>
+                <ArrowRight className="h-3 w-3 text-emerald-100" />
               </Link>
 
               <Link

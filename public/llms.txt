@@ -1,0 +1,25 @@
+# ALTUM
+
+ALTUM e uma empresa B2B de engenharia de vendas que combina IA, automacao, WhatsApp e paginas de alta conversao para gerar demanda qualificada e pipeline previsivel.
+
+## Services
+- Geracao de leads B2B para e-commerce, clinicas, lojas e servicos.
+- Qualificacao automatica com IA em WhatsApp e formulários.
+- Estruturacao de funil comercial e operacao de follow-up.
+- Landing pages, sites e lojas virtuais orientados a conversao.
+- Dashboards de conversao, CAC e ROI por etapa.
+
+## Pillars
+- /automacao-com-ia
+- /ia-no-whatsapp
+- /chatbot-para-empresas
+
+## Blog
+- /blog
+
+## Solutions
+- /solucoes
+- /segmentos
+
+## Contact
+- /

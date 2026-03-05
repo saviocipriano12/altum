@@ -6,11 +6,22 @@ import {
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
 
-export async function aprovarOrcamentoHub(orc: any) {
+interface OrcamentoHubInput {
+  id: string;
+  clientId: string;
+  clientName: string;
+  projectId?: string | null;
+  projectTitle?: string | null;
+  titulo: string;
+  tipo?: string | null;
+  resumo?: string | null;
+  valorTotal?: number | null;
+}
+
+export async function aprovarOrcamentoHub(orc: OrcamentoHubInput) {
   const batch = writeBatch(db);
 
   const orcRef = doc(db, "orcamentos", orc.id);
-
   const projetosRef = orc.projectId
     ? doc(db, "projetos", orc.projectId)
     : doc(collection(db, "projetos"));
@@ -18,37 +29,36 @@ export async function aprovarOrcamentoHub(orc: any) {
   const financeiroRef = doc(collection(db, "financeiro"));
   const atividadeRef = doc(collection(db, "atividades"));
 
-  // Projeto
   if (!orc.projectId) {
     batch.set(projetosRef, {
       titulo: orc.projectTitle || orc.titulo,
       clientId: orc.clientId,
       clientName: orc.clientName,
       status: "Onboarding",
-      canalPrincipal: "Não informado",
+      canalPrincipal: "Nao informado",
       servicos: orc.resumo
-        ? orc.resumo.split("+").map((s: string) => s.trim())
+        ? orc.resumo.split("+").map((value: string) => value.trim())
         : [],
-      valorMensal: orc.tipo === "Recorrente" ? orc.valorTotal : null,
+      valorMensal: orc.tipo === "Recorrente" ? orc.valorTotal || 0 : null,
       createdAt: serverTimestamp(),
     });
   }
 
-  // Financeiro
   batch.set(financeiroRef, {
     clientId: orc.clientId,
     clientName: orc.clientName,
     projectId: projetosRef.id,
     projectTitle: orc.titulo,
-    tipo: orc.tipo === "Recorrente" ? "Mensalidade" : "Projeto único",
-    status: "Pendente",
+    tipo: "Receita",
+    categoria: orc.tipo === "Recorrente" ? "Mensalidade" : "Projeto",
+    status: "pendente",
+    descricao: `Orcamento aprovado - ${orc.titulo}`,
     valor: orc.valorTotal || 0,
     referencia: orc.titulo,
     createdAt: serverTimestamp(),
     dataPagamento: null,
   });
 
-  // Atividade
   batch.set(atividadeRef, {
     descricao: `Onboarding do projeto ${orc.titulo}`,
     status: "pendente",
@@ -59,7 +69,6 @@ export async function aprovarOrcamentoHub(orc: any) {
     createdAt: serverTimestamp(),
   });
 
-  // Atualiza orçamento
   batch.update(orcRef, {
     status: "Aprovado",
     aprovadoEm: serverTimestamp(),

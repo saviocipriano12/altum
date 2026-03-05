@@ -1,173 +1,179 @@
 import { NextResponse } from "next/server";
-import { db } from "@/firebaseConfig";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  updateDoc,
-  doc,
-  serverTimestamp,
-} from "firebase/firestore";
+import { FieldValue } from "firebase-admin/firestore";
+import { adminDb } from "@/app/lib/server/firebase-admin";
+import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { normalizePhoneBR } from "@/app/lib/server/phone";
 
-// Função para limpar telefone e garantir formato brasileiro (55 + DDD + Numero)
-function cleanPhone(phone?: string) {
-  if (!phone) return "";
-  let digits = phone.replace(/\D/g, "");
-  
-  // Se começar com 0 (ex: 0319999...), remove o 0
-  if (digits.startsWith("0")) digits = digits.slice(1);
-
-  // Se tiver 10 ou 11 dígitos (DDD+Num) e não tiver 55, adiciona
-  if (digits.length >= 10 && digits.length <= 11) {
-    return `55${digits}`;
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
   }
-  return digits;
+  return "";
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const user = await requireRequestUser(req);
+    const body = (await req.json()) as Record<string, unknown>;
 
-    // 1. Extração Inteligente de Campos Padrão
-    const nome = body.nome || body.name || body.full_name || "Lead via Webhook";
-    const email = body.email || body.mail || "";
-    const telefoneRaw = body.telefone || body.phone || body.whatsapp || body.celular || "";
-    const origem = body.origem || body.source || "webhook_generico";
-    const mensagem = body.mensagem || body.message || "";
-    
-    // 2. Extração de UTMs (Rastreamento de Anúncios)
+    const nome = firstString(body.nome, body.name, body.full_name) || "Lead via Webhook";
+    const email = firstString(body.email, body.mail).toLowerCase();
+    const telefoneRaw = firstString(body.telefone, body.phone, body.whatsapp, body.celular);
+    const origem = firstString(body.origem, body.source) || "webhook_generico";
+    const mensagem = firstString(body.mensagem, body.message);
+
     const utms = {
-      utm_source: body.utm_source || "",
-      utm_medium: body.utm_medium || "",
-      utm_campaign: body.utm_campaign || "",
-      utm_content: body.utm_content || "",
-      utm_term: body.utm_term || "",
+      utm_source: firstString(body.utm_source),
+      utm_medium: firstString(body.utm_medium),
+      utm_campaign: firstString(body.utm_campaign),
+      utm_content: firstString(body.utm_content),
+      utm_term: firstString(body.utm_term),
     };
 
-    // 3. Extração de Dados de Qualificação (O Pulo do Gato)
-    // Removemos os campos padrão para sobrar apenas os "extras" (faturamento, cargo, nicho, etc)
-    const { 
-      nome: _n, name: _nm, 
-      email: _e, mail: _m, 
-      telefone: _t, phone: _p, whatsapp: _w, 
-      origem: _o, source: _s,
-      mensagem: _msg, 
-      ...dadosExtras 
-    } = body;
+    const { nome: _n, name: _nm, email: _e, mail: _m, telefone: _t, phone: _p, whatsapp: _w, origem: _o, source: _s, mensagem: _msg, ownerId: _owner, ...dadosExtras } = body;
 
-    // 4. Validação
     if (!telefoneRaw && !email) {
       return NextResponse.json(
-        { error: "É obrigatório enviar telefone ou email para criar um lead." },
+        { error: "E obrigatorio enviar telefone ou email para criar um lead." },
         { status: 400 }
       );
     }
 
-    const telefoneLimpo = cleanPhone(String(telefoneRaw));
+    const telefoneLimpo = normalizePhoneBR(telefoneRaw);
 
-    // 5. Deduplicação (Evitar Leads Duplicados)
-    let existingId = null;
-    let existingData: any = null;
-    const leadsRef = collection(db, "leads");
+    let targetOwnerId: string | null = isAdmin(user) ? null : user.uid;
+    if (isAdmin(user) && typeof body.ownerId === "string" && body.ownerId.trim()) {
+      targetOwnerId = body.ownerId.trim();
+    }
 
-    // Tenta achar por telefone
+    // dedupe by phone
+    let existingId: string | null = null;
+    let existingData: Record<string, unknown> | null = null;
+
     if (telefoneLimpo) {
-      const qPhone = query(leadsRef, where("telefone", "==", telefoneLimpo));
-      const snapPhone = await getDocs(qPhone);
-      if (!snapPhone.empty) {
-        existingId = snapPhone.docs[0].id;
-        existingData = snapPhone.docs[0].data();
+      const snap = await adminDb
+        .collection("leads")
+        .where("telefone", "==", telefoneLimpo)
+        .limit(1)
+        .get();
+      if (!snap.empty) {
+        existingId = snap.docs[0].id;
+        existingData = snap.docs[0].data();
       }
     }
 
-    // Tenta achar por email (se não achou por telefone)
     if (!existingId && email) {
-      const qEmail = query(leadsRef, where("email", "==", email));
-      const snapEmail = await getDocs(qEmail);
-      if (!snapEmail.empty) {
-        existingId = snapEmail.docs[0].id;
-        existingData = snapEmail.docs[0].data();
+      const snap = await adminDb
+        .collection("leads")
+        .where("email", "==", email)
+        .limit(1)
+        .get();
+      if (!snap.empty) {
+        existingId = snap.docs[0].id;
+        existingData = snap.docs[0].data();
       }
     }
 
-    // 6. Ação: Atualizar ou Criar
     if (existingId) {
-      // === ATUALIZAR LEAD EXISTENTE ===
-      console.log(`[Webhook] Atualizando lead existente: ${existingId}`);
-      const docRef = doc(db, "leads", existingId);
-      
-      await updateDoc(docRef, {
-        updatedAt: serverTimestamp(),
-        // Atualiza campos de contato se estiverem vazios no original
-        email: existingData.email || email,
-        nome: existingData.nome === "Lead via Webhook" ? nome : existingData.nome, // Prioriza nome real se o antigo for genérico
-        
-        // Salva os dados extras (faturamento, respostas do typebot) no perfil
-        ...dadosExtras,
-        ...utms, // Atualiza a origem do tráfego recente
+      const currentOwner = (existingData?.ownerId as string | undefined) || null;
+      if (!isAdmin(user) && currentOwner && currentOwner !== user.uid) {
+        return NextResponse.json(
+          { error: "Este lead ja pertence a outro usuario." },
+          { status: 403 }
+        );
+      }
 
-        lastConversion: {
-          origem: origem,
-          data: new Date().toISOString(),
-          mensagem: mensagem
-        }
-      });
+      const leadRef = adminDb.collection("leads").doc(existingId);
+      const resolvedOwnerId = currentOwner || targetOwnerId;
 
-      // Loga evento na timeline
-      await addDoc(collection(db, "leads", existingId, "events"), {
+      await leadRef.set(
+        {
+          updatedAt: FieldValue.serverTimestamp(),
+          ownerId: resolvedOwnerId,
+          owner: resolvedOwnerId
+            ? (resolvedOwnerId === user.uid ? user.name : (existingData?.owner as string | undefined) || "Time")
+            : null,
+          email: (existingData?.email as string | undefined) || email,
+          nome:
+            (existingData?.nome as string | undefined) === "Lead via Webhook"
+              ? nome
+              : (existingData?.nome as string | undefined) || nome,
+          ...dadosExtras,
+          ...utms,
+          lastConversion: {
+            origem,
+            data: new Date().toISOString(),
+            mensagem,
+          },
+          intelligence: {
+            status: "pending",
+            trigger: "webhook_reconversion",
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+
+      await leadRef.collection("events").add({
         type: "conversion",
-        title: "Reconversão via Site/Typebot",
+        title: "Reconversao via Site/Typebot",
         detail: `Lead converteu novamente em: ${origem}.`,
         metadata: { ...utms, mensagem },
-        createdAt: serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       });
 
-      return NextResponse.json({ success: true, action: "updated", id: existingId });
-
-    } else {
-      // === CRIAR NOVO LEAD ===
-      console.log(`[Webhook] Criando novo lead: ${nome}`);
-      
-      const newDoc = await addDoc(leadsRef, {
-        // Dados Padrão
-        nome,
-        email,
-        telefone: telefoneLimpo,
-        origem,
-        
-        // Dados de CRM
-        status: "novo",
-        pipelineStage: "captado",
-        kanbanIndex: 0,
-        
-        // Dados Ricos (UTMs + Respostas do Typebot)
-        ...dadosExtras, 
-        ...utms,
-
-        notes: mensagem ? `Msg Inicial: ${mensagem}` : "",
-        
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      // Loga evento inicial
-      await addDoc(collection(db, "leads", newDoc.id, "events"), {
-        type: "system",
-        title: "Lead Criado via Webhook",
-        detail: `Origem: ${origem}`,
-        metadata: utms,
-        createdAt: serverTimestamp(),
-      });
-
-      return NextResponse.json({ success: true, action: "created", id: newDoc.id }, { status: 201 });
+      return NextResponse.json({ success: true, action: "updated", id: existingId, ownerId: resolvedOwnerId });
     }
 
-  } catch (error: any) {
-    console.error("Erro Crítico no Webhook:", error);
+    const leadRef = adminDb.collection("leads").doc();
+    await leadRef.set({
+      nome,
+      email,
+      telefone: telefoneLimpo,
+      origem,
+      status: "novo",
+      pipelineStage: "captado",
+      kanbanIndex: 0,
+      ownerId: targetOwnerId,
+      owner: targetOwnerId ? user.name : null,
+      ...dadosExtras,
+      ...utms,
+      notes: mensagem ? `Msg Inicial: ${mensagem}` : "",
+      intelligence: {
+        status: "pending",
+        trigger: "webhook_create",
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    await leadRef.collection("events").add({
+      type: "system",
+      title: "Lead Criado via Webhook",
+      detail: `Origem: ${origem}`,
+      metadata: utms,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    return NextResponse.json({ success: true, action: "created", id: leadRef.id, ownerId: targetOwnerId || null }, { status: 201 });
+  } catch (error) {
+    if (error instanceof RouteAuthError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+
+    console.error("Erro critico no webhook interno de leads:", error);
     return NextResponse.json(
-      { error: "Erro interno", details: error.message },
+      {
+        error: "Erro interno",
+        details:
+          typeof error === "object" && error && "message" in error
+            ? String((error as { message?: string }).message)
+            : "erro desconhecido",
+      },
       { status: 500 }
     );
   }
