@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
+import { getTenantForCurrentUser } from "@/lib/server/tenant";
 
 function firstString(...values: unknown[]) {
   for (const value of values) {
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
     if (isAdmin(user) && typeof body.ownerId === "string" && body.ownerId.trim()) {
       targetOwnerId = body.ownerId.trim();
     }
+    let tenantId = await getTenantForCurrentUser(targetOwnerId || user.uid);
 
     // dedupe by phone
     let existingId: string | null = null;
@@ -76,6 +78,7 @@ export async function POST(req: Request) {
 
     if (existingId) {
       const currentOwner = (existingData?.ownerId as string | undefined) || null;
+      const currentTenant = (existingData?.tenantId as string | undefined) || null;
       if (!isAdmin(user) && currentOwner && currentOwner !== user.uid) {
         return NextResponse.json(
           { error: "Este lead ja pertence a outro usuario." },
@@ -85,11 +88,14 @@ export async function POST(req: Request) {
 
       const leadRef = adminDb.collection("leads").doc(existingId);
       const resolvedOwnerId = currentOwner || targetOwnerId;
+      const resolvedTenantId =
+        currentTenant || (await getTenantForCurrentUser(resolvedOwnerId || user.uid)) || tenantId || null;
 
       await leadRef.set(
         {
           updatedAt: FieldValue.serverTimestamp(),
           ownerId: resolvedOwnerId,
+          tenantId: resolvedTenantId,
           owner: resolvedOwnerId
             ? (resolvedOwnerId === user.uid ? user.name : (existingData?.owner as string | undefined) || "Time")
             : null,
@@ -125,6 +131,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, action: "updated", id: existingId, ownerId: resolvedOwnerId });
     }
 
+    if (!tenantId) {
+      tenantId = await getTenantForCurrentUser(targetOwnerId || user.uid);
+    }
+
     const leadRef = adminDb.collection("leads").doc();
     await leadRef.set({
       nome,
@@ -135,6 +145,7 @@ export async function POST(req: Request) {
       pipelineStage: "captado",
       kanbanIndex: 0,
       ownerId: targetOwnerId,
+      tenantId: tenantId || null,
       owner: targetOwnerId ? user.name : null,
       ...dadosExtras,
       ...utms,

@@ -21,6 +21,9 @@ type DashboardData = {
   portalUser?: {
     name?: string;
     email?: string;
+    tenantId?: string;
+    tenantName?: string;
+    tenantRole?: string;
     clientName?: string;
   };
   client?: {
@@ -153,6 +156,9 @@ export default function ClientePainelPage() {
             <p className="text-xs text-white/55">
               {(data.client?.niche || "Nicho não informado") + " • " + (data.client?.city || "Cidade não informada")}
             </p>
+            {data.portalUser?.tenantId && (
+              <p className="text-[11px] text-blue-300/90 mt-1">Tenant: {data.portalUser.tenantId}</p>
+            )}
           </div>
           <button
             onClick={() => void logout()}
@@ -191,8 +197,11 @@ export default function ClientePainelPage() {
                 <div key={account.id} className="rounded-lg border border-white/10 bg-black/40 p-3">
                   <p className="text-sm text-white/90">{account.accountLabel || "Conta"}</p>
                   <p className="text-xs text-white/55">
-                    {account.platform || "plataforma"} • status: {account.status || "ativo"}
-                  </p>
+              {(data.client?.niche || "Nicho não informado") + " • " + (data.client?.city || "Cidade não informada")}
+            </p>
+            {data.portalUser?.tenantId && (
+              <p className="text-[11px] text-blue-300/90 mt-1">Tenant: {data.portalUser.tenantId}</p>
+            )}
                 </div>
               ))}
               {(data.adAccounts || []).length === 0 && (
@@ -291,3 +300,4 @@ function Metric({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+

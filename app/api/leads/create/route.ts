@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
+import { getTenantForCurrentUser } from "@/lib/server/tenant";
 
 type Body = {
   leadId?: string;
@@ -38,6 +39,7 @@ type Body = {
   isOpenNow?: boolean;
   photos?: string[];
   autoIntelligence?: boolean;
+  tenantId?: string;
 };
 
 function clean(value: unknown, max = 240) {
@@ -101,6 +103,7 @@ export async function POST(req: Request) {
 
     let ownerId: string | null = isAdmin(user) ? null : user.uid;
     let ownerName: string | null = isAdmin(user) ? null : user.name;
+    let tenantId = clean(body.tenantId, 140) || null;
     if (isAdmin(user) && body.ownerId) {
       const targetOwnerId = clean(body.ownerId, 140);
       if (targetOwnerId) {
@@ -109,6 +112,7 @@ export async function POST(req: Request) {
           const ownerData = ownerSnap.data() as { name?: string };
           ownerId = targetOwnerId;
           ownerName = ownerData.name || ownerName;
+          tenantId = tenantId || (await getTenantForCurrentUser(targetOwnerId));
         }
       }
     }
@@ -120,7 +124,7 @@ export async function POST(req: Request) {
 
     const existingSnap = await leadRef.get();
     if (existingSnap.exists) {
-      const existing = existingSnap.data() as { ownerId?: string };
+      const existing = existingSnap.data() as { ownerId?: string; tenantId?: string };
       const currentOwnerId = clean(existing.ownerId, 140);
       if (!isAdmin(user) && currentOwnerId && currentOwnerId !== user.uid) {
         return NextResponse.json(
@@ -130,6 +134,12 @@ export async function POST(req: Request) {
       }
       ownerId = currentOwnerId || ownerId;
       ownerName = currentOwnerId ? (clean(body.owner, 140) || ownerName) : null;
+      tenantId = clean(existing.tenantId, 140) || tenantId;
+    }
+
+    if (!tenantId) {
+      const tenantOwner = ownerId || user.uid;
+      tenantId = (await getTenantForCurrentUser(tenantOwner)) || null;
     }
 
     const payload: Record<string, unknown> = {
@@ -168,6 +178,7 @@ export async function POST(req: Request) {
       photos: cleanStringArray(body.photos, 20, 600),
       ownerId,
       owner: ownerId ? ownerName : null,
+      tenantId,
       updatedAt: FieldValue.serverTimestamp(),
     };
 

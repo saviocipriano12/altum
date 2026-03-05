@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { getTenantForCurrentUser } from "@/lib/server/tenant";
 
 type UsefulLink = { title?: string; url?: string };
 type LeadOffer = {
@@ -120,7 +121,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Lead nao encontrado." }, { status: 404 });
     }
 
-    const leadData = leadSnap.data() as { ownerId?: string };
+    const leadData = leadSnap.data() as { ownerId?: string; tenantId?: string };
     const ownerId = leadData.ownerId || null;
     if (!isAdmin(user) && ownerId !== user.uid) {
       return NextResponse.json({ error: "Sem permissao neste lead." }, { status: 403 });
@@ -205,6 +206,13 @@ export async function POST(req: Request) {
 
     if (isAdmin(user) && typeof patch.ownerId !== "undefined") {
       payload.ownerId = patch.ownerId || null;
+      if (patch.ownerId) {
+        payload.tenantId = (await getTenantForCurrentUser(String(patch.ownerId))) || leadData.tenantId || null;
+      }
+    }
+
+    if (!leadData.tenantId && typeof payload.tenantId === "undefined") {
+      payload.tenantId = (await getTenantForCurrentUser(ownerId || user.uid)) || null;
     }
 
     payload.updatedAt = FieldValue.serverTimestamp();

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { getTenantForCurrentUser } from "@/lib/server/tenant";
 
 type LeadDoc = {
   nome?: string;
@@ -15,6 +16,7 @@ type LeadDoc = {
   linkedin?: string;
   owner?: string;
   ownerId?: string;
+  tenantId?: string;
   offer?: {
     deliverables?: string[];
     priceFrom?: number;
@@ -43,6 +45,7 @@ export async function POST(req: Request) {
 
     const lead = leadSnap.data() as LeadDoc;
     const ownerId = lead.ownerId || null;
+    const tenantId = lead.tenantId || (await getTenantForCurrentUser(ownerId || user.uid)) || null;
     if (!isAdmin(user) && ownerId !== user.uid) {
       return NextResponse.json({ error: "Sem permissao para converter este lead." }, { status: 403 });
     }
@@ -67,6 +70,7 @@ export async function POST(req: Request) {
       leadIdOriginal: leadId,
       ownerId,
       owner: lead.owner || null,
+      tenantId,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -79,6 +83,7 @@ export async function POST(req: Request) {
       servicos: lead.offer?.deliverables || [],
       valorMensal: Number(lead.offer?.priceFrom || 0),
       ownerId,
+      tenantId,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -96,6 +101,7 @@ export async function POST(req: Request) {
         ownerId,
         vendedorId: ownerId,
         payoutStatus: "pendente",
+        tenantId,
         createdAt: FieldValue.serverTimestamp(),
       });
     }
@@ -106,6 +112,7 @@ export async function POST(req: Request) {
         status: "qualificado",
         convertedClientId: clientRef.id,
         convertedProjectId: projectRef.id,
+        tenantId,
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }

@@ -18,9 +18,19 @@ export default function AdminHeader({
 
   const roleLabel = useMemo(() => {
     if (!profile) return "Operador";
-    if (profile.role === "admin") return "Administrador";
+    if (profile.role === "admin" || profile.role === "agency_owner") return "Agency Owner";
+    if (profile.role === "agency_admin") return "Agency Admin";
+    if (profile.role === "agency_agent") return "Agency Agent";
     if (profile.role === "closer") return "Closer";
-    if (profile.role === "client") return "Cliente";
+    if (
+      profile.role === "client" ||
+      profile.role === "client_owner" ||
+      profile.role === "client_admin" ||
+      profile.role === "client_agent" ||
+      profile.role === "client_viewer"
+    ) {
+      return "Cliente";
+    }
     return "SDR";
   }, [profile]);
 

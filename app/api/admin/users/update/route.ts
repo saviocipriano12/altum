@@ -12,8 +12,17 @@ type UpdateBody = {
 };
 
 function normalizeRole(role: unknown): UserRole {
-  if (role === "admin" || role === "closer" || role === "sdr") return role;
-  return "sdr";
+  if (
+    role === "admin" ||
+    role === "closer" ||
+    role === "sdr" ||
+    role === "agency_owner" ||
+    role === "agency_admin" ||
+    role === "agency_agent"
+  ) {
+    return role;
+  }
+  return "agency_agent";
 }
 
 export async function POST(req: Request) {

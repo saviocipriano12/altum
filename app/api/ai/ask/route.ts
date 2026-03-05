@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue, Query, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 
 type TimestampLike = {
   toDate?: () => Date;
@@ -183,7 +183,7 @@ async function executeCreateActivityAction(
   }
 
   let ownerId = user.uid;
-  if (user.role === "admin" && payload.ownerId) {
+  if (isAdmin(user) && payload.ownerId) {
     ownerId = payload.ownerId;
   }
 
@@ -196,13 +196,13 @@ async function executeCreateActivityAction(
       return NextResponse.json({ error: "Cliente informado nao existe." }, { status: 404 });
     }
     const clientData = clientSnap.data() as { ownerId?: string; name?: string };
-    if (user.role !== "admin" && clientData.ownerId && clientData.ownerId !== user.uid) {
+    if (!isAdmin(user) && clientData.ownerId && clientData.ownerId !== user.uid) {
       return NextResponse.json(
         { error: "Sem permissao para criar atividade neste cliente." },
         { status: 403 }
       );
     }
-    ownerId = user.role === "admin" ? ownerId : clientData.ownerId || user.uid;
+    ownerId = isAdmin(user) ? ownerId : clientData.ownerId || user.uid;
     clienteNome = clientData.name || clienteNome;
   }
 
@@ -264,29 +264,29 @@ export async function POST(req: Request) {
       );
     }
 
-    const isAdmin = user.role === "admin";
+    const hasAdminScope = isAdmin(user);
 
-    const clientsQuery = isAdmin
+    const clientsQuery = hasAdminScope
       ? adminDb.collection("clientes").limit(300)
       : adminDb.collection("clientes").where("ownerId", "==", user.uid).limit(300);
 
-    const projectsQuery = isAdmin
+    const projectsQuery = hasAdminScope
       ? adminDb.collection("projetos").limit(500)
       : adminDb.collection("projetos").where("ownerId", "==", user.uid).limit(500);
 
-    const budgetsQuery = isAdmin
+    const budgetsQuery = hasAdminScope
       ? adminDb.collection("orcamentos").limit(500)
       : adminDb.collection("orcamentos").where("ownerId", "==", user.uid).limit(500);
 
-    const financeQuery = isAdmin
+    const financeQuery = hasAdminScope
       ? adminDb.collection("financeiro").limit(800)
       : adminDb.collection("financeiro").where("vendedorId", "==", user.uid).limit(800);
 
-    const activitiesQuery = isAdmin
+    const activitiesQuery = hasAdminScope
       ? adminDb.collection("atividades").limit(800)
       : adminDb.collection("atividades").where("ownerId", "==", user.uid).limit(800);
 
-    const leadsQuery = isAdmin
+    const leadsQuery = hasAdminScope
       ? adminDb.collection("leads").limit(800)
       : adminDb.collection("leads").where("ownerId", "==", user.uid).limit(800);
 
@@ -402,7 +402,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         mode: "client",
-        scope: isAdmin ? "global" : "private",
+        scope: hasAdminScope ? "global" : "private",
         matchedClient: {
           id: matchedClient.id,
           name: matchedClient.name || "Cliente",
@@ -429,7 +429,7 @@ export async function POST(req: Request) {
               payload: {
                 descricao: proposedDescription,
                 clientId: matchedClient.id,
-                ownerId: isAdmin ? undefined : user.uid,
+                ownerId: hasAdminScope ? undefined : user.uid,
                 clienteNome: matchedClient.name || "Cliente",
               },
               preview: {
@@ -454,7 +454,7 @@ export async function POST(req: Request) {
     ).length;
 
     const responseText = [
-      isAdmin ? "Resumo geral da empresa:" : "Resumo da sua carteira:",
+      hasAdminScope ? "Resumo geral da empresa:" : "Resumo da sua carteira:",
       `Clientes: ${clients.length}`,
       `Projetos: ${projects.length}`,
       `Orcamentos: ${budgets.length}`,
@@ -468,7 +468,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       mode: "global",
-      scope: isAdmin ? "global" : "private",
+      scope: hasAdminScope ? "global" : "private",
       answer: responseText,
       metrics: {
         clients: clients.length,

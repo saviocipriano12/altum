@@ -25,8 +25,35 @@ service cloud.firestore {
       return signedIn() && myUserDoc().exists() && myStatus() == "active";
     }
 
+    function isAgencyAdmin() {
+      return isActive() && (
+        myRole() == "admin" ||
+        myRole() == "agency_owner" ||
+        myRole() == "agency_admin"
+      );
+    }
+
+    function isAgencyMember() {
+      return isActive() && (
+        isAgencyAdmin() ||
+        myRole() == "agency_agent" ||
+        myRole() == "closer" ||
+        myRole() == "sdr"
+      );
+    }
+
+    function isClientPanelRole() {
+      return isActive() && (
+        myRole() == "client" ||
+        myRole() == "client_owner" ||
+        myRole() == "client_admin" ||
+        myRole() == "client_agent" ||
+        myRole() == "client_viewer"
+      );
+    }
+
     function isAdmin() {
-      return isActive() && myRole() == "admin";
+      return isAgencyAdmin();
     }
 
     function isSelf(uid) {
@@ -37,11 +64,21 @@ service cloud.firestore {
       return isActive() && ownerId == myUid();
     }
 
+    function hasTenantMembership(tenantId) {
+      return isActive() &&
+        tenantId is string &&
+        exists(/databases/$(database)/documents/tenant_users/$(tenantId + "_" + myUid())) &&
+        get(/databases/$(database)/documents/tenant_users/$(tenantId + "_" + myUid())).data.status == "active";
+    }
+
     function canReadChat(chatId) {
       return isAdmin() ||
         (
           isActive() &&
-          get(/databases/$(database)/documents/chats/$(chatId)).data.ownerId == myUid()
+          (
+            get(/databases/$(database)/documents/chats/$(chatId)).data.ownerId == myUid() ||
+            hasTenantMembership(get(/databases/$(database)/documents/chats/$(chatId)).data.tenantId)
+          )
         );
     }
 
@@ -53,29 +90,86 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /tenants/{tenantId} {
+      allow read: if isAgencyMember() || hasTenantMembership(tenantId);
+      allow create, update, delete: if isAgencyAdmin();
+    }
+
+    match /tenant_users/{docId} {
+      allow read: if isAgencyMember() || resource.data.userId == myUid();
+      allow create, update, delete: if isAgencyAdmin();
+    }
+
+    match /tenant_settings/{tenantId} {
+      allow read: if isAgencyMember() || hasTenantMembership(tenantId);
+      allow create, update, delete: if isAgencyMember();
+    }
+
+    match /tenant_channels/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create, update, delete: if isAgencyMember();
+    }
+
     match /leads/{leadId} {
-      allow read: if isAdmin() || isOwner(resource.data.ownerId);
-      allow create: if isAdmin() || isOwner(request.resource.data.ownerId);
-      allow update: if isAdmin() || isOwner(resource.data.ownerId);
+      allow read: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAdmin() || isOwner(request.resource.data.ownerId) || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
       allow delete: if isAdmin() || isOwner(resource.data.ownerId);
 
       match /events/{eventId} {
-        allow read, create: if isAdmin() || isOwner(get(/databases/$(database)/documents/leads/$(leadId)).data.ownerId);
+        allow read, create: if isAdmin() ||
+          isOwner(get(/databases/$(database)/documents/leads/$(leadId)).data.ownerId) ||
+          hasTenantMembership(get(/databases/$(database)/documents/leads/$(leadId)).data.tenantId);
         allow update, delete: if isAdmin();
       }
     }
 
     match /chats/{chatId} {
-      allow read: if isAdmin() || isOwner(resource.data.ownerId);
-      allow create: if isAdmin() || isOwner(request.resource.data.ownerId);
-      allow update: if isAdmin() || isOwner(resource.data.ownerId);
+      allow read: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAdmin() || isOwner(request.resource.data.ownerId) || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
       allow delete: if isAdmin();
     }
 
     match /messages/{messageId} {
-      allow read: if isAdmin() || canReadChat(resource.data.chatId);
-      allow create: if isAdmin() || canReadChat(request.resource.data.chatId);
+      allow read: if isAdmin() || canReadChat(resource.data.chatId) || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAdmin() || canReadChat(request.resource.data.chatId) || hasTenantMembership(request.resource.data.tenantId);
       allow update, delete: if isAdmin();
+    }
+
+    match /pipeline/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /kb_docs/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /automations/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /jobs/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /metrics/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
     }
 
     match /clientes/{docId} {

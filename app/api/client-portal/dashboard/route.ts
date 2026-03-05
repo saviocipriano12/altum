@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { PortalAuthError, requirePortalRequestUser } from "@/app/lib/server/portal-auth";
+import { getTenantSettings } from "@/lib/server/tenant";
+
+type GenericRow = { id: string } & Record<string, unknown>;
 
 function toNumber(value: unknown) {
   const parsed = Number(value);
@@ -10,7 +13,12 @@ function toNumber(value: unknown) {
 function toDate(value: unknown) {
   if (!value) return null;
   if (typeof value === "number") return new Date(value);
-  if (typeof value === "object" && value && "toDate" in value && typeof (value as { toDate?: () => Date }).toDate === "function") {
+  if (
+    typeof value === "object" &&
+    value &&
+    "toDate" in value &&
+    typeof (value as { toDate?: () => Date }).toDate === "function"
+  ) {
     return (value as { toDate: () => Date }).toDate();
   }
   if (typeof value === "string") {
@@ -20,27 +28,66 @@ function toDate(value: unknown) {
   return null;
 }
 
+async function queryByTenantOrClient(collectionName: string, tenantId: string, clientId: string, limit: number) {
+  const tenantSnap = await adminDb
+    .collection(collectionName)
+    .where("tenantId", "==", tenantId)
+    .limit(limit)
+    .get();
+
+  if (!tenantSnap.empty) return tenantSnap;
+
+  return adminDb
+    .collection(collectionName)
+    .where("clientId", "==", clientId)
+    .limit(limit)
+    .get();
+}
+
 export async function GET(req: Request) {
   try {
     const portalUser = await requirePortalRequestUser(req);
-    const clientId = portalUser.clientId;
+    const tenantId = portalUser.tenantId;
+    const scopedClientId = portalUser.clientId || portalUser.tenantId;
 
-    const [clientSnap, adAccountsSnap, snapshotsSnap, projectsSnap, budgetsSnap, financeSnap, contractSnap] =
-      await Promise.all([
-        adminDb.collection("clientes").doc(clientId).get(),
-        adminDb.collection("ad_accounts").where("clientId", "==", clientId).limit(50).get(),
-        adminDb.collection("campaign_snapshots").where("clientId", "==", clientId).limit(1200).get(),
-        adminDb.collection("projetos").where("clientId", "==", clientId).limit(120).get(),
-        adminDb.collection("orcamentos").where("clientId", "==", clientId).limit(120).get(),
-        adminDb.collection("financeiro").where("clientId", "==", clientId).limit(200).get(),
-        adminDb.collection("client_contracts").doc(clientId).get(),
-      ]);
+    const [
+      tenantSnap,
+      settings,
+      legacyClientSnap,
+      adAccountsSnap,
+      snapshotsSnap,
+      projectsSnap,
+      budgetsSnap,
+      financeSnap,
+      tenantContractSnap,
+      legacyContractSnap,
+    ] = await Promise.all([
+      adminDb.collection("tenants").doc(tenantId).get(),
+      getTenantSettings(tenantId),
+      adminDb.collection("clientes").doc(scopedClientId).get(),
+      queryByTenantOrClient("ad_accounts", tenantId, scopedClientId, 50),
+      queryByTenantOrClient("campaign_snapshots", tenantId, scopedClientId, 1200),
+      queryByTenantOrClient("projetos", tenantId, scopedClientId, 120),
+      queryByTenantOrClient("orcamentos", tenantId, scopedClientId, 120),
+      queryByTenantOrClient("financeiro", tenantId, scopedClientId, 200),
+      adminDb.collection("client_contracts").doc(tenantId).get(),
+      adminDb.collection("client_contracts").doc(scopedClientId).get(),
+    ]);
 
-    if (!clientSnap.exists) {
-      return NextResponse.json({ error: "Cliente nao encontrado." }, { status: 404 });
-    }
+    const tenantData = tenantSnap.exists ? (tenantSnap.data() as Record<string, unknown>) : {};
+    const legacyClientData = legacyClientSnap.exists
+      ? (legacyClientSnap.data() as Record<string, unknown>)
+      : {};
 
-    const snapshots = snapshotsSnap.docs.map((doc) => ({
+    const clientData = {
+      ...legacyClientData,
+      ...tenantData,
+      ...(settings || {}),
+      id: tenantId,
+      tenantId,
+    };
+
+    const snapshots: GenericRow[] = snapshotsSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
@@ -60,13 +107,15 @@ export async function GET(req: Request) {
     const cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
     const cpl = totals.leads > 0 ? totals.spend / totals.leads : 0;
 
-    const financeItems = financeSnap.docs.map((doc) => ({
+    const financeItems: GenericRow[] = financeSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
+
     const paid = financeItems
       .filter((item) => String(item.status || "").toLowerCase() === "pago")
       .reduce((sum, item) => sum + toNumber(item.valor), 0);
+
     const pending = financeItems
       .filter((item) => {
         const status = String(item.status || "").toLowerCase();
@@ -74,11 +123,12 @@ export async function GET(req: Request) {
       })
       .reduce((sum, item) => sum + toNumber(item.valor), 0);
 
-    const projects = projectsSnap.docs.map((doc) => ({
+    const projects: GenericRow[] = projectsSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
-    const budgets = budgetsSnap.docs.map((doc) => ({
+
+    const budgets: GenericRow[] = budgetsSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
@@ -91,19 +141,21 @@ export async function GET(req: Request) {
       })
       .slice(0, 20);
 
+    const contractSnap = tenantContractSnap.exists ? tenantContractSnap : legacyContractSnap;
+
     return NextResponse.json({
       ok: true,
       portalUser: {
         uid: portalUser.uid,
         name: portalUser.name,
         email: portalUser.email,
+        tenantId: portalUser.tenantId,
+        tenantName: portalUser.tenantName,
+        tenantRole: portalUser.tenantRole,
         clientId: portalUser.clientId,
         clientName: portalUser.clientName,
       },
-      client: {
-        id: clientSnap.id,
-        ...(clientSnap.data() as Record<string, unknown>),
-      },
+      client: clientData,
       contract: contractSnap.exists
         ? { id: contractSnap.id, ...(contractSnap.data() as Record<string, unknown>) }
         : null,

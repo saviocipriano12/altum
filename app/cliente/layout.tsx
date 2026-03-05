@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import ClientePanelGuard from "@/app/cliente/ClientePanelGuard";
 
 export const metadata: Metadata = {
   title: "Portal do Cliente | ALTUM",
@@ -15,5 +16,5 @@ export default function ClienteLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return <ClientePanelGuard>{children}</ClientePanelGuard>;
 }

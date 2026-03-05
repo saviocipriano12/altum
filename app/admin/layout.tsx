@@ -16,6 +16,16 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/campanhas",
 ];
 
+function isClientPanelRole(role: unknown) {
+  return (
+    role === "client" ||
+    role === "client_owner" ||
+    role === "client_admin" ||
+    role === "client_agent" ||
+    role === "client_viewer"
+  );
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, profile, loading, isAdmin } = useAuth();
   const router = useRouter();
@@ -37,7 +47,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       return;
     }
 
-    if (profile.role === "client") {
+    if (isClientPanelRole(profile.role)) {
       router.push("/cliente/painel");
       return;
     }
@@ -65,7 +75,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   if (!user || !profile) return null;
-  if (profile.role === "client") return null;
+  if (isClientPanelRole(profile.role)) return null;
   if (needsAdmin && !isAdmin) return null;
 
   return (

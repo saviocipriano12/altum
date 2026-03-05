@@ -50,7 +50,7 @@ type MessageDoc = {
 type TeamUser = {
   id: string;
   name: string;
-  role: "admin" | "closer" | "sdr";
+  role: "admin" | "closer" | "sdr" | "agency_owner" | "agency_admin" | "agency_agent";
   status: "active" | "blocked";
 };
 
@@ -94,7 +94,10 @@ export default function ChatPage() {
   const searchParams = useSearchParams();
   const chatIdFromUrl = searchParams.get("chatId");
 
-  const isAdmin = profile?.role === "admin";
+  const isAdmin =
+    profile?.role === "admin" ||
+    profile?.role === "agency_owner" ||
+    profile?.role === "agency_admin";
 
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -164,7 +167,10 @@ export default function ChatPage() {
     const unsubscribe = onSnapshot(q, (snap) => {
       const users = snap.docs
         .map((item) => ({ id: item.id, ...(item.data() as Omit<TeamUser, "id">) }))
-        .filter((user) => user.role === "closer" || user.role === "sdr");
+        .filter(
+          (user) =>
+            user.role === "closer" || user.role === "sdr" || user.role === "agency_agent"
+        );
       setTeamUsers(users);
     });
     return () => unsubscribe();

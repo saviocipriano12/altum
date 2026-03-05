@@ -2,12 +2,21 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { getTenantForCurrentUser } from "@/lib/server/tenant";
 
 type Body = {
   leadIds?: string[];
   sellerIds?: string[];
   sellerRoles?: string[];
   vendedorIds?: string[];
+};
+
+type SellerTarget = {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  tenantId: string | null;
 };
 
 export async function POST(req: Request) {
@@ -29,8 +38,9 @@ export async function POST(req: Request) {
       : [];
 
     const mergedTargets = [...sellerIdsRaw, ...vendedorIdsRaw];
-    const roleSet = new Set(["closer", "sdr"]);
+    const roleSet = new Set(["closer", "sdr", "agency_agent"]);
     const targetRoles = new Set<string>(sellerRolesRaw.filter((role) => roleSet.has(role)));
+
     const explicitIds = mergedTargets.filter((target) => {
       const value = target.toLowerCase();
       if (roleSet.has(value)) {
@@ -47,26 +57,31 @@ export async function POST(req: Request) {
       );
     }
 
-    const sellerMap = new Map<
-      string,
-      { id: string; name: string; role: string; status: string }
-    >();
+    const sellerMap = new Map<string, SellerTarget>();
 
     if (explicitIds.length) {
       const sellerDocs = await Promise.all(
         explicitIds.map((id) => adminDb.collection("users").doc(id).get())
       );
-      sellerDocs
-        .filter((doc) => doc.exists)
-        .forEach((doc) => {
-          const data = doc.data() as { name?: string; role?: string; status?: string };
-          sellerMap.set(doc.id, {
-            id: doc.id,
-            name: data.name || "Vendedor",
-            role: (data.role || "sdr").toLowerCase(),
-            status: (data.status || "active").toLowerCase(),
-          });
-        });
+
+      const explicitEntries = await Promise.all(
+        sellerDocs
+          .filter((doc) => doc.exists)
+          .map(async (doc) => {
+            const data = doc.data() as { name?: string; role?: string; status?: string };
+            return {
+              id: doc.id,
+              name: data.name || "Vendedor",
+              role: (data.role || "sdr").toLowerCase(),
+              status: (data.status || "active").toLowerCase(),
+              tenantId: await getTenantForCurrentUser(doc.id),
+            } satisfies SellerTarget;
+          })
+      );
+
+      explicitEntries.forEach((entry) => {
+        sellerMap.set(entry.id, entry);
+      });
     }
 
     if (targetRoles.size) {
@@ -77,19 +92,31 @@ export async function POST(req: Request) {
         .where("role", "in", roleTargets)
         .get();
 
-      roleSnap.docs.forEach((doc) => {
-        const data = doc.data() as { name?: string; role?: string; status?: string };
-        sellerMap.set(doc.id, {
-          id: doc.id,
-          name: data.name || "Vendedor",
-          role: (data.role || "sdr").toLowerCase(),
-          status: (data.status || "active").toLowerCase(),
-        });
+      const roleEntries = await Promise.all(
+        roleSnap.docs.map(async (doc) => {
+          const data = doc.data() as { name?: string; role?: string; status?: string };
+          return {
+            id: doc.id,
+            name: data.name || "Vendedor",
+            role: (data.role || "sdr").toLowerCase(),
+            status: (data.status || "active").toLowerCase(),
+            tenantId: await getTenantForCurrentUser(doc.id),
+          } satisfies SellerTarget;
+        })
+      );
+
+      roleEntries.forEach((entry) => {
+        sellerMap.set(entry.id, entry);
       });
     }
 
-    const sellers = Array.from(sellerMap.values())
-      .filter((user) => user.status === "active" && user.role !== "admin");
+    const sellers = Array.from(sellerMap.values()).filter(
+      (user) =>
+        user.status === "active" &&
+        user.role !== "admin" &&
+        user.role !== "agency_owner" &&
+        user.role !== "agency_admin"
+    );
 
     if (!sellers.length) {
       return NextResponse.json(
@@ -109,6 +136,7 @@ export async function POST(req: Request) {
         {
           ownerId: seller.id,
           owner: seller.name,
+          tenantId: seller.tenantId,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }

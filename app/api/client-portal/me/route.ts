@@ -1,16 +1,30 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { PortalAuthError, requirePortalRequestUser } from "@/app/lib/server/portal-auth";
+import { getTenantSettings } from "@/lib/server/tenant";
 
 export async function GET(req: Request) {
   try {
     const portalUser = await requirePortalRequestUser(req);
 
-    const clientSnap = await adminDb.collection("clientes").doc(portalUser.clientId).get();
-    if (!clientSnap.exists) {
-      return NextResponse.json({ error: "Cliente vinculado nao encontrado." }, { status: 404 });
-    }
-    const clientData = clientSnap.data() as Record<string, unknown>;
+    const [tenantSnap, settings, legacyClientSnap] = await Promise.all([
+      adminDb.collection("tenants").doc(portalUser.tenantId).get(),
+      getTenantSettings(portalUser.tenantId),
+      adminDb.collection("clientes").doc(portalUser.clientId).get(),
+    ]);
+
+    const tenantData = tenantSnap.exists ? (tenantSnap.data() as Record<string, unknown>) : {};
+    const legacyClientData = legacyClientSnap.exists
+      ? (legacyClientSnap.data() as Record<string, unknown>)
+      : {};
+
+    const clientData = {
+      ...legacyClientData,
+      ...tenantData,
+      ...(settings || {}),
+      id: portalUser.tenantId,
+      tenantId: portalUser.tenantId,
+    };
 
     return NextResponse.json({
       ok: true,
@@ -18,13 +32,13 @@ export async function GET(req: Request) {
         uid: portalUser.uid,
         email: portalUser.email,
         name: portalUser.name,
+        tenantId: portalUser.tenantId,
+        tenantName: portalUser.tenantName,
+        tenantRole: portalUser.tenantRole,
         clientId: portalUser.clientId,
         clientName: portalUser.clientName,
       },
-      client: {
-        id: clientSnap.id,
-        ...clientData,
-      },
+      client: clientData,
     });
   } catch (error) {
     if (error instanceof PortalAuthError) {

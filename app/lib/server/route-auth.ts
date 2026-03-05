@@ -1,7 +1,10 @@
 import { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
 
-export type UserRole = "admin" | "closer" | "sdr" | "client";
+export type LegacyUserRole = "admin" | "closer" | "sdr" | "client";
+export type AgencyUserRole = "agency_owner" | "agency_admin" | "agency_agent";
+export type ClientUserRole = "client_owner" | "client_admin" | "client_agent" | "client_viewer";
+export type UserRole = LegacyUserRole | AgencyUserRole | ClientUserRole;
 export type UserStatus = "active" | "blocked";
 
 export type UserDoc = {
@@ -36,6 +39,35 @@ export class RouteAuthError extends Error {
   }
 }
 
+const ROLE_NORMALIZATION: Record<string, UserRole> = {
+  admin: "admin",
+  closer: "closer",
+  sdr: "sdr",
+  client: "client",
+  agency_owner: "agency_owner",
+  agency_admin: "agency_admin",
+  agency_agent: "agency_agent",
+  client_owner: "client_owner",
+  client_admin: "client_admin",
+  client_agent: "client_agent",
+  client_viewer: "client_viewer",
+};
+
+export const AGENCY_ADMIN_ROLES: UserRole[] = ["agency_owner", "agency_admin", "admin"];
+export const AGENCY_MEMBER_ROLES: UserRole[] = [
+  ...AGENCY_ADMIN_ROLES,
+  "agency_agent",
+  "closer",
+  "sdr",
+];
+export const CLIENT_PANEL_ROLES: UserRole[] = [
+  "client_owner",
+  "client_admin",
+  "client_agent",
+  "client_viewer",
+  "client",
+];
+
 function getBearerToken(req: Request): string | null {
   const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
   if (!authHeader) return null;
@@ -46,12 +78,54 @@ function getBearerToken(req: Request): string | null {
 }
 
 function normalizeRole(value: unknown): UserRole {
-  if (value === "admin" || value === "closer" || value === "sdr" || value === "client") return value;
-  return "sdr";
+  if (typeof value === "string") {
+    const normalized = ROLE_NORMALIZATION[value.trim().toLowerCase()];
+    if (normalized) return normalized;
+  }
+  return "agency_agent";
 }
 
 function normalizeStatus(value: unknown): UserStatus {
   return value === "blocked" ? "blocked" : "active";
+}
+
+type CanonicalRole =
+  | "agency_owner"
+  | "agency_admin"
+  | "agency_agent"
+  | "client_owner"
+  | "client_admin"
+  | "client_agent"
+  | "client_viewer";
+
+function toCanonicalRole(role: UserRole): CanonicalRole {
+  if (role === "admin") return "agency_owner";
+  if (role === "closer" || role === "sdr") return "agency_agent";
+  if (role === "client") return "client_viewer";
+  return role;
+}
+
+function roleMatchesRequired(actualRole: UserRole, requiredRole: UserRole) {
+  const actual = toCanonicalRole(actualRole);
+  const required = toCanonicalRole(requiredRole);
+
+  if (required === "agency_owner") return actual === "agency_owner";
+  if (required === "agency_admin") return actual === "agency_owner" || actual === "agency_admin";
+  if (required === "agency_agent") {
+    return actual === "agency_owner" || actual === "agency_admin" || actual === "agency_agent";
+  }
+
+  if (required === "client_owner") return actual === "client_owner";
+  if (required === "client_admin") return actual === "client_owner" || actual === "client_admin";
+  if (required === "client_agent") {
+    return actual === "client_owner" || actual === "client_admin" || actual === "client_agent";
+  }
+  return (
+    actual === "client_owner" ||
+    actual === "client_admin" ||
+    actual === "client_agent" ||
+    actual === "client_viewer"
+  );
 }
 
 export async function requireRequestUser(
@@ -60,7 +134,7 @@ export async function requireRequestUser(
 ): Promise<RequestUser> {
   const token = getBearerToken(req);
   if (!token) {
-    throw new RouteAuthError(401, "missing_token", "Token de autenticação ausente.");
+    throw new RouteAuthError(401, "missing_token", "Token de autenticacao ausente.");
   }
 
   let decoded: DecodedIdToken;
@@ -68,12 +142,14 @@ export async function requireRequestUser(
     try {
       decoded = await adminAuth.verifyIdToken(token, true);
     } catch (error: unknown) {
-      const code = typeof error === "object" && error && "code" in error
-        ? String((error as { code?: unknown }).code || "")
-        : "";
-      const message = typeof error === "object" && error && "message" in error
-        ? String((error as { message?: unknown }).message || "")
-        : "";
+      const code =
+        typeof error === "object" && error && "code" in error
+          ? String((error as { code?: unknown }).code || "")
+          : "";
+      const message =
+        typeof error === "object" && error && "message" in error
+          ? String((error as { message?: unknown }).message || "")
+          : "";
 
       const allowCredentialFallback =
         code === "app/invalid-credential" ||
@@ -89,13 +165,13 @@ export async function requireRequestUser(
       decoded = await adminAuth.verifyIdToken(token);
     }
   } catch {
-    throw new RouteAuthError(401, "invalid_token", "Token de autenticação inválido.");
+    throw new RouteAuthError(401, "invalid_token", "Token de autenticacao invalido.");
   }
 
   const userRef = adminDb.collection("users").doc(decoded.uid);
   const userSnap = await userRef.get();
   if (!userSnap.exists) {
-    throw new RouteAuthError(403, "profile_not_found", "Perfil de usuário não encontrado.");
+    throw new RouteAuthError(403, "profile_not_found", "Perfil de usuario nao encontrado.");
   }
 
   const userData = userSnap.data() as Partial<UserDoc>;
@@ -103,17 +179,20 @@ export async function requireRequestUser(
   const status = normalizeStatus(userData.status);
 
   if (!options?.allowBlocked && status !== "active") {
-    throw new RouteAuthError(403, "blocked_user", "Usuário bloqueado.");
+    throw new RouteAuthError(403, "blocked_user", "Usuario bloqueado.");
   }
 
-  if (options?.roles?.length && !options.roles.includes(role)) {
-    throw new RouteAuthError(403, "forbidden_role", "Sem permissão para esta operação.");
+  if (
+    options?.roles?.length &&
+    !options.roles.some((requiredRole) => roleMatchesRequired(role, requiredRole))
+  ) {
+    throw new RouteAuthError(403, "forbidden_role", "Sem permissao para esta operacao.");
   }
 
   return {
     uid: decoded.uid,
     email: userData.email || decoded.email || "",
-    name: userData.name || decoded.name || "Usuário",
+    name: userData.name || decoded.name || "Usuario",
     role,
     status,
     token: decoded,
@@ -121,5 +200,13 @@ export async function requireRequestUser(
 }
 
 export function isAdmin(user: RequestUser) {
-  return user.role === "admin";
+  return AGENCY_ADMIN_ROLES.some((role) => roleMatchesRequired(user.role, role));
+}
+
+export function isAgencyUser(user: RequestUser) {
+  return AGENCY_MEMBER_ROLES.some((role) => roleMatchesRequired(user.role, role));
+}
+
+export function isClientUser(user: RequestUser) {
+  return CLIENT_PANEL_ROLES.some((role) => roleMatchesRequired(user.role, role));
 }

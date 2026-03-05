@@ -44,11 +44,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const fromData = chatSnap.data() as { ownerId?: string; ownerName?: string };
+    const fromData = chatSnap.data() as { ownerId?: string; ownerName?: string; tenantId?: string };
     await chatRef.set(
       {
         ownerId: toUid,
         ownerName: toUser.name || "Time",
+        tenantId: fromData.tenantId || null,
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -72,6 +73,7 @@ export async function POST(req: Request) {
       type: "text",
       createdAt: FieldValue.serverTimestamp(),
       ownerId: toUid,
+      tenantId: fromData.tenantId || null,
     });
 
     return NextResponse.json({ ok: true, chatId, toUid });

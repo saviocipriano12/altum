@@ -43,13 +43,20 @@ async function resolveLeadOwner(phone: string) {
     .limit(1)
     .get();
 
-  if (leadSnap.empty) return { ownerId: null as string | null, leadId: null as string | null };
+  if (leadSnap.empty) {
+    return {
+      ownerId: null as string | null,
+      leadId: null as string | null,
+      tenantId: null as string | null,
+    };
+  }
 
   const leadDoc = leadSnap.docs[0];
-  const leadData = leadDoc.data() as { ownerId?: string };
+  const leadData = leadDoc.data() as { ownerId?: string; tenantId?: string };
   return {
     ownerId: leadData.ownerId || null,
     leadId: leadDoc.id,
+    tenantId: leadData.tenantId || null,
   };
 }
 
@@ -86,14 +93,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: "ignored" });
     }
 
-    const chatsRef = adminDb.collection("chats");
-    const chatQuery = await chatsRef.where("contactPhone", "==", from).limit(1).get();
-
     const ownerFromLead = await resolveLeadOwner(from);
     const ownerName = await resolveOwnerName(ownerFromLead.ownerId);
 
+    const chatsRef = adminDb.collection("chats");
+    const chatQuery = ownerFromLead.tenantId
+      ? await chatsRef
+          .where("contactPhone", "==", from)
+          .where("tenantId", "==", ownerFromLead.tenantId)
+          .limit(1)
+          .get()
+      : await chatsRef.where("contactPhone", "==", from).limit(1).get();
+
     let chatId: string;
     let currentOwnerId = ownerFromLead.ownerId;
+    let tenantId = ownerFromLead.tenantId;
 
     if (chatQuery.empty) {
       const newChat = await chatsRef.add({
@@ -106,15 +120,22 @@ export async function POST(req: Request) {
         ownerId: ownerFromLead.ownerId,
         ownerName,
         leadId: ownerFromLead.leadId,
+        tenantId,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
       chatId = newChat.id;
     } else {
       const chatDoc = chatQuery.docs[0];
-      const chatData = chatDoc.data() as { ownerId?: string; leadId?: string; assignedTo?: string };
+      const chatData = chatDoc.data() as {
+        ownerId?: string;
+        leadId?: string;
+        assignedTo?: string;
+        tenantId?: string;
+      };
       chatId = chatDoc.id;
       currentOwnerId = chatData.ownerId || chatData.assignedTo || ownerFromLead.ownerId;
+      tenantId = chatData.tenantId || ownerFromLead.tenantId;
 
       await chatDoc.ref.set(
         {
@@ -126,6 +147,7 @@ export async function POST(req: Request) {
           ownerId: currentOwnerId,
           ownerName: currentOwnerId ? await resolveOwnerName(currentOwnerId) : null,
           leadId: chatData.leadId || ownerFromLead.leadId,
+          tenantId,
         },
         { merge: true }
       );
@@ -137,6 +159,7 @@ export async function POST(req: Request) {
       sender: "client",
       type: "text",
       ownerId: currentOwnerId,
+      tenantId,
       createdAt: FieldValue.serverTimestamp(),
     });
 

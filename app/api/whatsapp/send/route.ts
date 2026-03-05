@@ -3,6 +3,7 @@ import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhone } from "@/app/lib/server/phone";
+import { getTenantForCurrentUser } from "@/lib/server/tenant";
 
 const META_TOKEN = process.env.META_WA_TOKEN || process.env.NEXT_PUBLIC_META_WA_TOKEN;
 const PHONE_NUMBER_ID = process.env.META_PHONE_ID || process.env.NEXT_PUBLIC_META_PHONE_ID;
@@ -13,6 +14,7 @@ type Body = {
   text?: string;
   to?: string;
   leadId?: string;
+  tenantId?: string;
 };
 
 async function resolveDestination(
@@ -36,6 +38,7 @@ async function resolveDestination(
       ownerId?: string;
       assignedTo?: string;
       contactName?: string;
+      tenantId?: string;
     };
 
     const ownerId = chat.ownerId || chat.assignedTo || null;
@@ -48,6 +51,11 @@ async function resolveDestination(
       throw new RouteAuthError(400, "chat_without_phone", "Chat sem telefone valido.");
     }
 
+    let tenantId = chat.tenantId || (body.tenantId || "").trim() || null;
+    if (!tenantId) {
+      tenantId = (await getTenantForCurrentUser(ownerId || user.uid)) || null;
+    }
+
     return {
       phone,
       text,
@@ -55,6 +63,7 @@ async function resolveDestination(
       chatRef,
       ownerId: ownerId || user.uid,
       contactName: chat.contactName || phone,
+      tenantId,
     };
   }
 
@@ -63,6 +72,7 @@ async function resolveDestination(
   let chatRef: DocumentReference | null = null;
   let ownerId = user.uid;
   let contactName = phone || "Contato";
+  let tenantId = (body.tenantId || "").trim() || null;
 
   if (body.leadId) {
     const leadRef = adminDb.collection("leads").doc(body.leadId);
@@ -75,6 +85,7 @@ async function resolveDestination(
       telefone?: string;
       nome?: string;
       ownerId?: string;
+      tenantId?: string;
     };
 
     ownerId = lead.ownerId || user.uid;
@@ -84,21 +95,33 @@ async function resolveDestination(
 
     phone = phone || normalizePhone(lead.telefone);
     contactName = lead.nome || contactName;
+    tenantId = lead.tenantId || tenantId;
+  }
+
+  if (!tenantId) {
+    tenantId = (await getTenantForCurrentUser(ownerId || user.uid)) || null;
   }
 
   if (!phone) {
     throw new RouteAuthError(400, "invalid_phone", "Telefone nao informado.");
   }
 
-  const chatQuery = await adminDb
-    .collection("chats")
-    .where("contactPhone", "==", phone)
-    .limit(1)
-    .get();
+  const chatQuery = tenantId
+    ? await adminDb
+        .collection("chats")
+        .where("contactPhone", "==", phone)
+        .where("tenantId", "==", tenantId)
+        .limit(1)
+        .get()
+    : await adminDb
+        .collection("chats")
+        .where("contactPhone", "==", phone)
+        .limit(1)
+        .get();
 
   if (!chatQuery.empty) {
     const found = chatQuery.docs[0];
-    const foundData = found.data() as { ownerId?: string; assignedTo?: string };
+    const foundData = found.data() as { ownerId?: string; assignedTo?: string; tenantId?: string };
     const foundOwner = foundData.ownerId || foundData.assignedTo || null;
 
     if (!isAdmin(user) && foundOwner && foundOwner !== user.uid) {
@@ -108,6 +131,7 @@ async function resolveDestination(
     chatId = found.id;
     chatRef = found.ref;
     ownerId = foundOwner || ownerId;
+    tenantId = foundData.tenantId || tenantId;
   } else {
     const created = await adminDb.collection("chats").add({
       contactName,
@@ -116,6 +140,7 @@ async function resolveDestination(
       status: "open",
       ownerId,
       ownerName: user.name,
+      tenantId,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       lastMessageTime: FieldValue.serverTimestamp(),
@@ -125,7 +150,7 @@ async function resolveDestination(
     chatRef = created;
   }
 
-  return { phone, text, chatId, chatRef, ownerId, contactName };
+  return { phone, text, chatId, chatRef, ownerId, contactName, tenantId };
 }
 
 export async function POST(req: Request) {
@@ -174,6 +199,7 @@ export async function POST(req: Request) {
         destination.chatRef.update({
           ownerId: destination.ownerId,
           ownerName: user.name,
+          tenantId: destination.tenantId,
           lastMessage: destination.text,
           lastMessageTime: FieldValue.serverTimestamp(),
           status: "open",
@@ -186,12 +212,18 @@ export async function POST(req: Request) {
           senderId: user.uid,
           type: "text",
           status: "sent",
+          tenantId: destination.tenantId,
           createdAt: FieldValue.serverTimestamp(),
         }),
       ]);
     }
 
-    return NextResponse.json({ success: true, data, chatId: destination.chatId });
+    return NextResponse.json({
+      success: true,
+      data,
+      chatId: destination.chatId,
+      tenantId: destination.tenantId,
+    });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json(

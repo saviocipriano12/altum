@@ -719,8 +719,18 @@ export default function GerarLeadsPremiumPage() {
               leadId: l.placeId,
               sourceId: l.placeId,
               sourceType: "google_places",
-              ownerId: profile?.role === "admin" ? null : user?.uid,
-              owner: profile?.role === "admin" ? null : (profile?.name || user?.displayName || "Time ALTUM"),
+              ownerId:
+                profile?.role === "admin" ||
+                profile?.role === "agency_owner" ||
+                profile?.role === "agency_admin"
+                  ? null
+                  : user?.uid,
+              owner:
+                profile?.role === "admin" ||
+                profile?.role === "agency_owner" ||
+                profile?.role === "agency_admin"
+                  ? null
+                  : profile?.name || user?.displayName || "Time ALTUM",
               nome: l.nome,
               endereco: l.endereco,
               telefone: cleanPhone,

@@ -8,6 +8,16 @@ import { Loader2, ShieldCheck, Lock, Mail, ArrowRight } from "lucide-react";
 import { auth, db } from "@/firebaseConfig";
 import { getMissingFirebaseClientEnvs } from "@/app/lib/firebase-client-env";
 
+function isClientRole(role: unknown) {
+  return (
+    role === "client" ||
+    role === "client_owner" ||
+    role === "client_admin" ||
+    role === "client_agent" ||
+    role === "client_viewer"
+  );
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -44,7 +54,7 @@ export default function LoginPage() {
       try {
         const profileSnap = await getDoc(doc(db, "users", user.uid));
         const role = (profileSnap.data() as { role?: string } | undefined)?.role;
-        if (role === "client") {
+        if (isClientRole(role)) {
           router.push("/cliente/painel");
           return;
         }
@@ -72,7 +82,7 @@ export default function LoginPage() {
       if (current) {
         const profileSnap = await getDoc(doc(db, "users", current.uid));
         const role = (profileSnap.data() as { role?: string } | undefined)?.role;
-        if (role === "client") {
+        if (isClientRole(role)) {
           router.push("/cliente/painel");
           return;
         }

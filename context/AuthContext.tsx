@@ -12,7 +12,18 @@ export interface UserProfile {
   uid: string;
   name: string;
   email: string;
-  role: "admin" | "closer" | "sdr" | "client";
+  role:
+    | "admin"
+    | "closer"
+    | "sdr"
+    | "client"
+    | "agency_owner"
+    | "agency_admin"
+    | "agency_agent"
+    | "client_owner"
+    | "client_admin"
+    | "client_agent"
+    | "client_viewer";
   status: "active" | "blocked";
   commissionRate: number;
   asaasWalletId?: string | null;
@@ -35,8 +46,22 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 function normalizeRole(value: unknown): UserProfile["role"] {
-  if (value === "admin" || value === "closer" || value === "sdr" || value === "client") return value;
-  return "sdr";
+  if (
+    value === "admin" ||
+    value === "closer" ||
+    value === "sdr" ||
+    value === "client" ||
+    value === "agency_owner" ||
+    value === "agency_admin" ||
+    value === "agency_agent" ||
+    value === "client_owner" ||
+    value === "client_admin" ||
+    value === "client_agent" ||
+    value === "client_viewer"
+  ) {
+    return value;
+  }
+  return "agency_agent";
 }
 
 function normalizeStatus(value: unknown): UserProfile["status"] {
@@ -177,13 +202,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     router.push("/login");
   }
 
+  const isAdminRole =
+    profile?.role === "admin" ||
+    profile?.role === "agency_owner" ||
+    profile?.role === "agency_admin";
+
   return (
     <AuthContext.Provider
       value={{
         user,
         profile,
         loading,
-        isAdmin: profile?.role === "admin",
+        isAdmin: Boolean(isAdminRole),
         signOutUser,
       }}
     >
