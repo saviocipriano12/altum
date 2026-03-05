@@ -4,8 +4,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhone } from "@/app/lib/server/phone";
 
-const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || process.env.NEXT_PUBLIC_META_VERIFY_TOKEN;
-const META_APP_SECRET = process.env.META_APP_SECRET || process.env.NEXT_PUBLIC_META_APP_SECRET;
+const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
+const META_APP_SECRET = process.env.META_APP_SECRET;
 
 function verifyMetaSignature(rawBody: string, signatureHeader: string | null) {
   if (!META_APP_SECRET) return true;

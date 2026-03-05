@@ -5,8 +5,8 @@ import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/ro
 import { normalizePhone } from "@/app/lib/server/phone";
 import { getTenantForCurrentUser } from "@/lib/server/tenant";
 
-const META_TOKEN = process.env.META_WA_TOKEN || process.env.NEXT_PUBLIC_META_WA_TOKEN;
-const PHONE_NUMBER_ID = process.env.META_PHONE_ID || process.env.NEXT_PUBLIC_META_PHONE_ID;
+const META_TOKEN = process.env.META_WA_TOKEN;
+const PHONE_NUMBER_ID = process.env.META_PHONE_ID;
 const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
 
 type Body = {

@@ -147,15 +147,35 @@ export async function assertTenantAccess(userId: string, tenantId: string): Prom
   if (snap.empty) {
     const compositeId = `${normalizedTenantId}_${normalizedUserId}`;
     const direct = await adminDb.collection("tenant_users").doc(compositeId).get();
-    if (!direct.exists) {
-      throw new TenantAccessError("tenant_access_denied", "Usuario sem acesso a este tenant.");
+    if (direct.exists) {
+      const parsed = normalizeMembership(direct.id, direct.data() as Record<string, unknown>);
+      if (parsed && parsed.status === "active") {
+        return parsed;
+      }
     }
 
-    const parsed = normalizeMembership(direct.id, direct.data() as Record<string, unknown>);
-    if (!parsed || parsed.status !== "active") {
-      throw new TenantAccessError("tenant_access_denied", "Usuario sem acesso a este tenant.");
+    const legacyPortal = await adminDb.collection("client_portal_users").doc(normalizedUserId).get();
+    if (legacyPortal.exists) {
+      const legacy = legacyPortal.data() as {
+        tenantId?: string;
+        clientId?: string;
+        status?: string;
+      };
+      const legacyTenantId = String(legacy.tenantId || legacy.clientId || "").trim();
+      const legacyStatus = legacy.status === "blocked" ? "blocked" : "active";
+      if (legacyTenantId === normalizedTenantId && legacyStatus === "active") {
+        return {
+          id: `legacy_${normalizedTenantId}_${normalizedUserId}`,
+          tenantId: normalizedTenantId,
+          userId: normalizedUserId,
+          role: "client_viewer",
+          status: "active",
+          isDefault: true,
+        };
+      }
     }
-    return parsed;
+
+    throw new TenantAccessError("tenant_access_denied", "Usuario sem acesso a este tenant.");
   }
 
   const membership = normalizeMembership(

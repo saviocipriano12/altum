@@ -53,10 +53,10 @@ export async function GET(req: Request) {
         "meta_whatsapp",
         "Meta WhatsApp Cloud API",
         [
-          ["META_WA_TOKEN", "NEXT_PUBLIC_META_WA_TOKEN"],
-          ["META_PHONE_ID", "NEXT_PUBLIC_META_PHONE_ID"],
-          ["META_VERIFY_TOKEN", "NEXT_PUBLIC_META_VERIFY_TOKEN"],
-          ["META_APP_SECRET", "NEXT_PUBLIC_META_APP_SECRET"],
+          ["META_WA_TOKEN"],
+          ["META_PHONE_ID"],
+          ["META_VERIFY_TOKEN"],
+          ["META_APP_SECRET"],
         ],
         "Envio, webhook e validacao de assinatura para inbox e automacoes."
       ),
