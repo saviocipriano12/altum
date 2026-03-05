@@ -56,7 +56,29 @@ export async function requirePortalRequestUser(req: Request): Promise<PortalRequ
 
   let decoded: DecodedIdToken;
   try {
-    decoded = await adminAuth.verifyIdToken(token, true);
+    try {
+      decoded = await adminAuth.verifyIdToken(token, true);
+    } catch (error: unknown) {
+      const code = typeof error === "object" && error && "code" in error
+        ? String((error as { code?: unknown }).code || "")
+        : "";
+      const message = typeof error === "object" && error && "message" in error
+        ? String((error as { message?: unknown }).message || "")
+        : "";
+
+      const allowCredentialFallback =
+        code === "app/invalid-credential" ||
+        code === "auth/insufficient-permission" ||
+        message.includes("Credential implementation provided") ||
+        message.includes("insufficient permission") ||
+        message.includes("Failed to determine service account");
+
+      if (!allowCredentialFallback) {
+        throw error;
+      }
+
+      decoded = await adminAuth.verifyIdToken(token);
+    }
   } catch {
     throw new PortalAuthError(401, "invalid_token", "Token de autenticação inválido.");
   }
