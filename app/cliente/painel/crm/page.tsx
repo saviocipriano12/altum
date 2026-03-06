@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { EmptyState, MetricCard, PanelCard, SectionHeader } from "@/app/cliente/painel/components/ui";
 
 type TimelineEvent = {
   id: string;
@@ -132,14 +133,11 @@ export default function ClienteCrmPage() {
     setError(null);
 
     try {
-      const res = await authedFetch(
-        `/api/tenant/${tenant.tenantId}/leads/${selectedLead.id}/stage`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stage: nextStage }),
-        }
-      );
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/${selectedLead.id}/stage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: nextStage }),
+      });
 
       const payload = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -149,9 +147,7 @@ export default function ClienteCrmPage() {
 
       const reload = await authedFetch(`/api/tenant/${tenant.tenantId}/leads`);
       const reloadPayload = (await reload.json()) as { items?: LeadItem[] };
-      if (reload.ok) {
-        setLeads(reloadPayload.items || []);
-      }
+      if (reload.ok) setLeads(reloadPayload.items || []);
     } catch {
       setError("Falha ao atualizar stage do lead.");
     } finally {
@@ -159,29 +155,38 @@ export default function ClienteCrmPage() {
     }
   }
 
+  if (!loading && leads.length === 0) {
+    return (
+      <div className="space-y-4">
+        <SectionHeader title="CRM" subtitle="Gestao de funil e timeline comercial." />
+        <EmptyState title="Nenhum lead encontrado" description="Quando novos leads entrarem no tenant, o pipeline aparecera aqui." />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      <SectionHeader title="CRM" subtitle="Pipeline visual, atualizacao de stage e historico de evolucao do lead." />
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {pipelineStats.map((item) => (
-          <div key={item.stage} className="rounded-xl border border-white/10 bg-[#111] p-3">
-            <p className="text-[11px] uppercase tracking-wide text-white/45">{item.stage}</p>
-            <p className="text-2xl font-semibold mt-1">{item.total}</p>
-          </div>
+        {pipelineStats.slice(0, 4).map((item) => (
+          <MetricCard
+            key={item.stage}
+            label={item.stage}
+            value={item.total.toLocaleString("pt-BR")}
+            trend="leads nesta etapa"
+          />
         ))}
       </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4 min-h-[65vh]">
-        <div className="rounded-2xl border border-white/10 bg-[#101010] overflow-hidden">
-          <div className="p-4 border-b border-white/10">
-            <h2 className="text-sm uppercase tracking-wide text-white/70">Leads</h2>
-          </div>
-          <div className="max-h-[65vh] overflow-y-auto">
+      <section className="grid min-h-[68vh] grid-cols-1 gap-4 lg:grid-cols-[330px_1fr]">
+        <PanelCard className="overflow-hidden">
+          <div className="border-b border-white/10 p-3 text-xs uppercase tracking-[0.16em] text-white/58">Leads</div>
+          <div className="max-h-[68vh] overflow-y-auto">
             {loading ? (
               <div className="p-6 text-center text-white/60">
-                <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
-            ) : leads.length === 0 ? (
-              <div className="p-6 text-sm text-white/50">Nenhum lead encontrado neste tenant.</div>
             ) : (
               leads.map((lead) => {
                 const stage = lead.pipelineStage || lead.stage || "captado";
@@ -189,35 +194,35 @@ export default function ClienteCrmPage() {
                   <button
                     key={lead.id}
                     onClick={() => setSelectedLeadId(lead.id)}
-                    className={`w-full text-left p-3 border-b border-white/5 transition hover:bg-white/5 ${
-                      selectedLeadId === lead.id ? "bg-blue-500/15" : ""
+                    className={`w-full border-b border-white/5 px-3 py-3 text-left transition ${
+                      selectedLeadId === lead.id ? "bg-cyan-400/13" : "hover:bg-white/[0.05]"
                     }`}
                   >
-                    <p className="text-sm font-medium text-white/90 truncate">{lead.nome || "Lead"}</p>
-                    <p className="text-xs text-white/55 truncate">{lead.email || lead.telefone || "Sem contato"}</p>
-                    <p className="text-[11px] text-blue-300/90 mt-1">Stage: {stage}</p>
+                    <p className="truncate text-sm font-medium text-white/92">{lead.nome || "Lead"}</p>
+                    <p className="mt-1 truncate text-xs text-white/55">{lead.email || lead.telefone || "Sem contato"}</p>
+                    <p className="mt-1 text-[11px] text-cyan-200">Stage: {stage}</p>
                   </button>
                 );
               })
             )}
           </div>
-        </div>
+        </PanelCard>
 
-        <div className="rounded-2xl border border-white/10 bg-[#101010] p-4 space-y-4">
+        <PanelCard className="p-4">
           {selectedLead ? (
             <>
               <div>
-                <h3 className="text-lg font-semibold">{selectedLead.nome || "Lead"}</h3>
-                <p className="text-sm text-white/55">{selectedLead.email || selectedLead.telefone || "Sem contato"}</p>
+                <h3 className="text-xl font-semibold text-white">{selectedLead.nome || "Lead"}</h3>
+                <p className="mt-1 text-sm text-white/55">{selectedLead.email || selectedLead.telefone || "Sem contato"}</p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                <p className="text-xs uppercase tracking-wide text-white/50 mb-2">Pipeline</p>
-                <div className="flex gap-2 items-center">
+              <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <p className="mb-2 text-xs uppercase tracking-[0.14em] text-white/55">Mover stage</p>
+                <div className="flex flex-wrap items-center gap-2">
                   <select
                     value={nextStage}
                     onChange={(event) => setNextStage(event.target.value)}
-                    className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                    className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm outline-none"
                   >
                     {STAGE_OPTIONS.map((stage) => (
                       <option key={stage} value={stage}>
@@ -228,7 +233,7 @@ export default function ClienteCrmPage() {
                   <button
                     onClick={() => void updateStage()}
                     disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:opacity-60"
                   >
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     Salvar stage
@@ -236,26 +241,26 @@ export default function ClienteCrmPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                <p className="text-xs uppercase tracking-wide text-white/50 mb-3">Timeline do lead</p>
-                <div className="space-y-2 max-h-[45vh] overflow-y-auto">
+              <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <p className="mb-3 text-xs uppercase tracking-[0.14em] text-white/55">Timeline do lead</p>
+                <div className="max-h-[46vh] space-y-2 overflow-y-auto">
                   {(selectedLead.timeline || []).length === 0 && (
                     <p className="text-sm text-white/50">Sem eventos ainda.</p>
                   )}
                   {(selectedLead.timeline || []).map((event) => (
-                    <div key={event.id} className="rounded-lg border border-white/10 bg-black/40 px-3 py-2">
-                      <p className="text-sm text-white/90">{event.title || event.type || "Evento"}</p>
-                      <p className="text-xs text-white/55">{event.detail || "Sem detalhe"}</p>
-                      <p className="text-[10px] text-white/40 mt-1">{formatDateTime(event.createdAt)}</p>
+                    <div key={event.id} className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                      <p className="text-sm text-white/92">{event.title || event.type || "Evento"}</p>
+                      <p className="mt-1 text-xs text-white/58">{event.detail || "Sem detalhe"}</p>
+                      <p className="mt-1 text-[10px] text-white/45">{formatDateTime(event.createdAt)}</p>
                     </div>
                   ))}
                 </div>
               </div>
             </>
           ) : (
-            <p className="text-sm text-white/50">Selecione um lead para abrir CRM e timeline.</p>
+            <p className="text-sm text-white/52">Selecione um lead para abrir o detalhe.</p>
           )}
-        </div>
+        </PanelCard>
       </section>
 
       {error && <p className="text-sm text-red-300">{error}</p>}

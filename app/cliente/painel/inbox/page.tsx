@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, PauseCircle, PlayCircle, Send } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { EmptyState, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
 
 type ChatItem = {
   id: string;
@@ -123,9 +124,7 @@ export default function ClienteInboxPage() {
     (async () => {
       try {
         setLoadingMessages(true);
-        const res = await authedFetch(
-          `/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/messages`
-        );
+        const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/messages`);
         const payload = (await res.json()) as { items?: MessageItem[]; error?: string };
 
         if (!mounted) return;
@@ -175,10 +174,7 @@ export default function ClienteInboxPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action,
-            pausedMinutes: 240,
-          }),
+          body: JSON.stringify({ action, pausedMinutes: 240 }),
         }
       );
 
@@ -238,58 +234,69 @@ export default function ClienteInboxPage() {
     }
   }
 
+  if (!selectedChat && !loadingChats && chats.length === 0) {
+    return (
+      <div className="space-y-4">
+        <SectionHeader title="Inbox" subtitle="Atendimento e takeover em tempo real." />
+        <EmptyState title="Nenhuma conversa encontrada" description="Quando novas mensagens chegarem no WhatsApp, elas aparecerao aqui." />
+      </div>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 min-h-[72vh]">
-      <section className="rounded-2xl border border-white/10 bg-[#101010] overflow-hidden">
-        <div className="p-4 border-b border-white/10">
-          <h2 className="text-sm uppercase tracking-wide text-white/70">Conversas</h2>
-          <p className="text-xs text-white/45">Inbox do tenant {tenant?.tenantId}</p>
-        </div>
+    <div className="space-y-4">
+      <SectionHeader
+        title="Inbox"
+        subtitle="Central operacional de conversas, takeover humano e respostas em tempo real."
+        action={
+          <StateBadge
+            label={aiPaused ? "IA pausada na conversa" : "IA ativa"}
+            tone={aiPaused ? "warning" : "success"}
+          />
+        }
+      />
 
-        <div className="max-h-[72vh] overflow-y-auto">
-          {loadingChats ? (
-            <div className="p-6 text-center text-white/60">
-              <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-            </div>
-          ) : chats.length === 0 ? (
-            <div className="p-6 text-sm text-white/50">Nenhuma conversa encontrada.</div>
-          ) : (
-            chats.map((chat) => (
-              <button
-                key={chat.id}
-                onClick={() => setSelectedChatId(chat.id)}
-                className={`w-full text-left p-3 border-b border-white/5 transition hover:bg-white/5 ${
-                  selectedChatId === chat.id ? "bg-blue-500/15" : ""
-                }`}
-              >
-                <p className="text-sm font-medium text-white/90 truncate">{chat.contactName || "Contato"}</p>
-                <p className="text-xs text-white/50 truncate">{chat.contactPhone || "Sem telefone"}</p>
-                <p className="text-xs text-white/60 truncate mt-1">{chat.lastMessage || "Sem mensagem"}</p>
-                <p className="text-[10px] text-white/40 mt-1">{formatTime(chat.lastMessageTime)}</p>
-              </button>
-            ))
-          )}
-        </div>
-      </section>
+      <div className="grid min-h-[74vh] grid-cols-1 gap-4 lg:grid-cols-[330px_1fr]">
+        <PanelCard className="overflow-hidden">
+          <div className="border-b border-white/10 p-3 text-xs uppercase tracking-[0.16em] text-white/58">Conversas</div>
+          <div className="max-h-[72vh] overflow-y-auto">
+            {loadingChats ? (
+              <div className="p-6 text-center text-white/60">
+                <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+              </div>
+            ) : (
+              chats.map((chat) => (
+                <button
+                  key={chat.id}
+                  onClick={() => setSelectedChatId(chat.id)}
+                  className={`w-full border-b border-white/5 px-3 py-3 text-left transition ${
+                    selectedChatId === chat.id ? "bg-cyan-400/13" : "hover:bg-white/[0.05]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-medium text-white/92">{chat.contactName || "Contato"}</p>
+                    <span className="text-[10px] text-white/45">{formatTime(chat.lastMessageTime)}</span>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-white/55">{chat.contactPhone || "Sem telefone"}</p>
+                  <p className="mt-1 truncate text-xs text-white/63">{chat.lastMessage || "Sem mensagem"}</p>
+                </button>
+              ))
+            )}
+          </div>
+        </PanelCard>
 
-      <section className="rounded-2xl border border-white/10 bg-[#101010] flex flex-col min-h-0">
-        <div className="p-4 border-b border-white/10">
-          <h3 className="text-sm font-semibold">{selectedChat?.contactName || "Selecione uma conversa"}</h3>
-          <p className="text-xs text-white/50">{selectedChat?.contactPhone || ""}</p>
-          {selectedChat && (
-            <div className="mt-3 flex items-center gap-2">
-              <span
-                className={`inline-flex rounded-full px-2 py-1 text-[10px] uppercase tracking-wide ${
-                  aiPaused ? "bg-amber-500/20 text-amber-100" : "bg-emerald-500/20 text-emerald-100"
-                }`}
-              >
-                {aiPaused ? "IA pausada" : "IA ativa"}
-              </span>
+        <PanelCard className="flex min-h-0 flex-col overflow-hidden">
+          <div className="border-b border-white/10 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-white">{selectedChat?.contactName || "Selecione uma conversa"}</p>
+                <p className="text-xs text-white/52">{selectedChat?.contactPhone || ""}</p>
+              </div>
               <button
                 type="button"
                 onClick={() => void handleToggleAi()}
-                disabled={updatingAi}
-                className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] hover:bg-white/10 disabled:opacity-60"
+                disabled={!selectedChat || updatingAi}
+                className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/[0.04] px-3 py-1.5 text-xs font-medium transition hover:bg-white/[0.09] disabled:opacity-50"
               >
                 {updatingAi ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -301,55 +308,55 @@ export default function ClienteInboxPage() {
                 {aiPaused ? "Retomar IA" : "Pausar IA"}
               </button>
             </div>
-          )}
-        </div>
+          </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-[45vh]">
-          {loadingMessages ? (
-            <div className="text-center text-white/60">
-              <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-            </div>
-          ) : messages.length === 0 ? (
-            <p className="text-sm text-white/50">Sem mensagens para esta conversa.</p>
-          ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                className={`max-w-[82%] rounded-xl px-3 py-2 text-sm ${
-                  message.sender === "agent"
-                    ? "ml-auto bg-blue-500/20 border border-blue-500/40"
-                    : message.sender === "system"
-                      ? "bg-amber-500/15 border border-amber-500/30"
-                      : "bg-white/5 border border-white/10"
-                }`}
-              >
-                <p className="whitespace-pre-wrap">{message.text || "-"}</p>
-                <p className="text-[10px] text-white/45 mt-1">{formatTime(message.createdAt)}</p>
+          <div className="min-h-[46vh] flex-1 space-y-2 overflow-y-auto p-4">
+            {loadingMessages ? (
+              <div className="text-center text-white/60">
+                <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
-            ))
-          )}
-        </div>
+            ) : messages.length === 0 ? (
+              <p className="text-sm text-white/52">Sem mensagens para esta conversa.</p>
+            ) : (
+              messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`max-w-[82%] rounded-2xl px-3 py-2 text-sm ${
+                    message.sender === "agent"
+                      ? "ml-auto border border-cyan-300/35 bg-cyan-400/14"
+                      : message.sender === "system"
+                        ? "border border-amber-300/35 bg-amber-400/12"
+                        : "border border-white/12 bg-white/[0.05]"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap text-white/92">{message.text || "-"}</p>
+                  <p className="mt-1 text-[10px] text-white/45">{formatTime(message.createdAt)}</p>
+                </div>
+              ))
+            )}
+          </div>
 
-        <form onSubmit={handleSend} className="p-3 border-t border-white/10 flex gap-2">
-          <input
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="Digite a mensagem"
-            className="flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-            disabled={!selectedChatId || sending}
-          />
-          <button
-            type="submit"
-            disabled={!selectedChatId || sending || !text.trim()}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold disabled:opacity-50"
-          >
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Enviar
-          </button>
-        </form>
+          <form onSubmit={handleSend} className="flex gap-2 border-t border-white/10 p-3">
+            <input
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              placeholder="Digite a mensagem"
+              className="flex-1 rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm outline-none ring-cyan-300/45 focus:ring"
+              disabled={!selectedChatId || sending}
+            />
+            <button
+              type="submit"
+              disabled={!selectedChatId || sending || !text.trim()}
+              className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:opacity-55"
+            >
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Enviar
+            </button>
+          </form>
 
-        {error && <p className="px-3 pb-3 text-xs text-red-300">{error}</p>}
-      </section>
+          {error && <p className="px-3 pb-3 text-xs text-red-300">{error}</p>}
+        </PanelCard>
+      </div>
     </div>
   );
 }

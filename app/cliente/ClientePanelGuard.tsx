@@ -13,10 +13,14 @@ type TenantSession = {
   tenantRole?: string;
   clientId?: string;
   clientName?: string;
+  userName?: string;
+  userEmail?: string;
 };
 
 type MeResponse = {
   portalUser?: {
+    name?: string;
+    email?: string;
     tenantId?: string;
     tenantName?: string;
     tenantRole?: string;
@@ -67,6 +71,8 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
           tenantRole: payload.portalUser.tenantRole,
           clientId: payload.portalUser.clientId,
           clientName: payload.portalUser.clientName,
+          userName: payload.portalUser.name,
+          userEmail: payload.portalUser.email,
         };
 
         setTenant(nextTenant);
