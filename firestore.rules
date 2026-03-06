@@ -172,6 +172,13 @@ service cloud.firestore {
       allow delete: if isAgencyAdmin();
     }
 
+    match /whatsapp_webhook_events/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
     match /clientes/{docId} {
       allow read: if isAdmin() || isOwner(resource.data.ownerId);
       allow create: if isAdmin() || isOwner(request.resource.data.ownerId);

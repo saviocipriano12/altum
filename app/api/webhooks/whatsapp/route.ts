@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+﻿import { NextResponse } from "next/server";
+import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import {
   extractWebhookPhoneNumberId,
@@ -8,7 +8,34 @@ import {
   verifyMetaSignature,
 } from "@/app/lib/server/whatsapp-channel";
 import { normalizePhone } from "@/app/lib/server/phone";
-import { handleIncomingMessage } from "@/lib/server/ai/agent";
+import { enqueueIncomingMessageJob, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+
+function sanitizeId(value: string, max = 220) {
+  const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, "_").trim();
+  return cleaned.slice(0, max) || `evt_${Date.now()}`;
+}
+
+function toDate(value: unknown) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (
+    typeof value === "object" &&
+    value &&
+    "toDate" in value &&
+    typeof (value as { toDate?: () => Date }).toDate === "function"
+  ) {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (
+    typeof value === "object" &&
+    value &&
+    "_seconds" in value &&
+    typeof (value as { _seconds?: number })._seconds === "number"
+  ) {
+    return new Date((value as { _seconds: number })._seconds * 1000);
+  }
+  return null;
+}
 
 async function resolveLeadOwner(phone: string, tenantId: string) {
   const scopedSnap = await adminDb
@@ -61,6 +88,78 @@ async function resolveOwnerName(ownerId: string | null) {
   return userData.name || null;
 }
 
+async function claimWebhookEvent(input: {
+  tenantId: string;
+  phoneNumberId: string;
+  metaMessageId: string;
+}) {
+  const metaMessageId = input.metaMessageId.trim();
+  if (!metaMessageId) {
+    return {
+      shouldProcess: true,
+      eventRef: null as DocumentReference | null,
+      reason: "missing_meta_message_id",
+    };
+  }
+
+  const eventId = sanitizeId(`${input.tenantId}_${input.phoneNumberId}_${metaMessageId}`, 220);
+  const eventRef = adminDb.collection("whatsapp_webhook_events").doc(eventId);
+
+  const result = await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(eventRef);
+    if (!snap.exists) {
+      tx.set(eventRef, {
+        tenantId: input.tenantId,
+        phoneNumberId: input.phoneNumberId,
+        metaMessageId,
+        status: "claimed",
+        attempts: 1,
+        claimedAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      return { shouldProcess: true, reason: "claimed_new" };
+    }
+
+    const data = snap.data() as {
+      status?: string;
+      claimedAt?: unknown;
+    };
+
+    const status = String(data.status || "").toLowerCase();
+    const claimedAt = toDate(data.claimedAt);
+    const isClaimStale = !claimedAt || Date.now() - claimedAt.getTime() > 5 * 60_000;
+
+    if (status === "processed") {
+      return { shouldProcess: false, reason: "duplicate_processed" };
+    }
+
+    if (status === "claimed" && !isClaimStale) {
+      return { shouldProcess: false, reason: "duplicate_claimed" };
+    }
+
+    tx.set(
+      eventRef,
+      {
+        status: "claimed",
+        attempts: FieldValue.increment(1),
+        claimedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return { shouldProcess: true, reason: status === "failed" ? "reclaimed_failed" : "reclaimed_stale" };
+  });
+
+  return {
+    shouldProcess: result.shouldProcess,
+    eventRef,
+    reason: result.reason,
+  };
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const mode = searchParams.get("hub.mode");
@@ -80,6 +179,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  let eventRef: DocumentReference | null = null;
+
   try {
     const rawBody = await req.text();
     const signature = req.headers.get("x-hub-signature-256");
@@ -120,6 +221,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: "ignored_no_message" });
     }
 
+    const tenantId = channel.tenantId;
+    const inboundMetaMessageId = String((message as { id?: unknown }).id || "").trim();
+
+    const claim = await claimWebhookEvent({
+      tenantId,
+      phoneNumberId: channel.phoneNumberId,
+      metaMessageId: inboundMetaMessageId,
+    });
+
+    if (!claim.shouldProcess) {
+      return NextResponse.json({
+        status: "ignored_duplicate_message",
+        reason: claim.reason,
+        tenantId,
+        phoneNumberId: channel.phoneNumberId,
+      });
+    }
+
+    eventRef = claim.eventRef;
+
     const from = normalizePhone(String((message as { from?: unknown }).from || ""));
     const text = String((message as { text?: { body?: unknown } }).text?.body || "").trim();
     const contactName =
@@ -134,19 +255,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: "ignored_invalid_phone" });
     }
 
-    const ownerFromLead = await resolveLeadOwner(from, channel.tenantId);
+    const ownerFromLead = await resolveLeadOwner(from, tenantId);
     const ownerName = await resolveOwnerName(ownerFromLead.ownerId);
 
     const chatsRef = adminDb.collection("chats");
     const chatQuery = await chatsRef
       .where("contactPhone", "==", from)
-      .where("tenantId", "==", channel.tenantId)
+      .where("tenantId", "==", tenantId)
       .limit(1)
       .get();
 
     let chatId: string;
     let currentOwnerId = ownerFromLead.ownerId;
-    const tenantId = channel.tenantId;
 
     if (chatQuery.empty) {
       const newChat = await chatsRef.add({
@@ -171,8 +291,8 @@ export async function POST(req: Request) {
         ownerId?: string;
         leadId?: string;
         assignedTo?: string;
-        tenantId?: string;
       };
+
       chatId = chatDoc.id;
       currentOwnerId = chatData.ownerId || chatData.assignedTo || ownerFromLead.ownerId;
 
@@ -193,35 +313,91 @@ export async function POST(req: Request) {
       );
     }
 
-    const incomingMessageRef = await adminDb.collection("messages").add({
-      chatId,
-      text,
-      sender: "client",
-      type: "text",
-      ownerId: currentOwnerId,
+    let incomingMessageRef: DocumentReference;
+
+    if (inboundMetaMessageId) {
+      const inboundDocId = sanitizeId(`in_${tenantId}_${channel.phoneNumberId}_${inboundMetaMessageId}`, 240);
+      incomingMessageRef = adminDb.collection("messages").doc(inboundDocId);
+
+      await incomingMessageRef.set(
+        {
+          chatId,
+          text,
+          sender: "client",
+          type: "text",
+          ownerId: currentOwnerId,
+          tenantId,
+          channelPhoneNumberId: channel.phoneNumberId,
+          inboundMetaMessageId,
+          source: "whatsapp_webhook",
+          createdAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } else {
+      incomingMessageRef = await adminDb.collection("messages").add({
+        chatId,
+        text,
+        sender: "client",
+        type: "text",
+        ownerId: currentOwnerId,
+        tenantId,
+        channelPhoneNumberId: channel.phoneNumberId,
+        source: "whatsapp_webhook",
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    const queue = await enqueueIncomingMessageJob({
       tenantId,
-      channelPhoneNumberId: channel.phoneNumberId,
-      createdAt: FieldValue.serverTimestamp(),
+      chatId,
+      messageId: incomingMessageRef.id,
+      source: "webhook_whatsapp",
+      dedupeKey: `${tenantId}_${incomingMessageRef.id}`,
     });
 
-    setImmediate(() => {
-      void handleIncomingMessage({
-        tenantId,
-        chatId,
-        messageId: incomingMessageRef.id,
-      }).catch((error) => {
-        console.error("Erro no AI Sales Agent (webhook async):", error);
-      });
-    });
+    triggerAiQueueWorker({ limit: 5 });
+
+    if (eventRef) {
+      await eventRef.set(
+        {
+          status: "processed",
+          chatId,
+          tenantId,
+          messageDocId: incomingMessageRef.id,
+          queueJobId: queue.jobId,
+          queueCreated: queue.created,
+          queueStatus: queue.status,
+          processedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
 
     return NextResponse.json({
       status: "ok",
       chatId,
       tenantId,
       phoneNumberId: channel.phoneNumberId,
+      queueJobId: queue.jobId,
+      queueCreated: queue.created,
     });
   } catch (error) {
+    if (eventRef) {
+      await eventRef.set(
+        {
+          status: "failed",
+          lastError: error instanceof Error ? error.message.slice(0, 300) : "Erro desconhecido.",
+          failedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
     console.error("Erro no webhook WhatsApp:", error);
     return NextResponse.json({ error: "Erro" }, { status: 500 });
   }
 }
+
