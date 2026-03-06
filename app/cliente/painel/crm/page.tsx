@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Loader2, Save } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
@@ -57,12 +58,14 @@ function formatDateTime(value: unknown) {
 
 export default function ClienteCrmPage() {
   const { tenant } = useClienteTenant();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [nextStage, setNextStage] = useState<string>("captado");
+  const leadFromQuery = searchParams.get("leadId");
 
   useEffect(() => {
     if (!tenant?.tenantId) return;
@@ -88,8 +91,15 @@ export default function ClienteCrmPage() {
 
         const firstLead = nextLeads[0];
         if (firstLead) {
-          setSelectedLeadId((current) => current || firstLead.id);
-          setNextStage(firstLead.pipelineStage || firstLead.stage || "captado");
+          const preferredLead =
+            leadFromQuery && nextLeads.some((item) => item.id === leadFromQuery)
+              ? leadFromQuery
+              : firstLead.id;
+
+          setSelectedLeadId((current) => current || preferredLead);
+
+          const selected = nextLeads.find((item) => item.id === preferredLead) || firstLead;
+          setNextStage(selected.pipelineStage || selected.stage || "captado");
         }
       } catch {
         if (!mounted) return;
@@ -102,7 +112,7 @@ export default function ClienteCrmPage() {
     return () => {
       mounted = false;
     };
-  }, [tenant?.tenantId]);
+  }, [tenant?.tenantId, leadFromQuery]);
 
   const selectedLead = useMemo(
     () => leads.find((item) => item.id === selectedLeadId) || null,

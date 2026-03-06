@@ -1,8 +1,10 @@
-﻿"use client";
+"use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  ArrowRight,
   Bot,
   ChartColumn,
   Clock3,
@@ -11,6 +13,8 @@ import {
   Loader2,
   Megaphone,
   MessageSquare,
+  Settings2,
+  Sparkles,
   Wallet,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
@@ -231,7 +235,7 @@ export default function ClientePainelOverviewPage() {
         id: `${lead.id}_${event.id}`,
         source: "lead" as const,
         title: event.title || "Evento de lead",
-        detail: `${lead.nome || "Lead"} · ${event.detail || "Atualizacao de pipeline"}`,
+        detail: `${lead.nome || "Lead"} | ${event.detail || "Atualizacao de pipeline"}`,
         createdAt: toDate(event.createdAt),
       }));
 
@@ -239,7 +243,7 @@ export default function ClientePainelOverviewPage() {
       id: item.id,
       source: "finance" as const,
       title: item.descricao || "Lancamento financeiro",
-      detail: `${String(item.status || "pendente")} · ${brl(Number(item.valor || 0))}`,
+      detail: `${String(item.status || "pendente")} | ${brl(Number(item.valor || 0))}`,
       createdAt: toDate(item.createdAt),
     }));
 
@@ -281,14 +285,136 @@ export default function ClientePainelOverviewPage() {
       <SectionHeader
         title="Client Operating System"
         subtitle="Visao executiva de operacao, funil, atendimento e automacao em tempo real."
-        action={<StateBadge label={ai.enabled === false ? "IA limitada" : "Operacao estavel"} tone={operationStatusTone} />}
+        action={
+          <StateBadge
+            label={ai.enabled === false ? "IA limitada" : "Operacao estavel"}
+            tone={operationStatusTone}
+          />
+        }
       />
 
+      <section className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+        <PanelCard className="overflow-hidden p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-cyan-100">
+                <Sparkles className="h-3.5 w-3.5" />
+                Executive Workspace
+              </div>
+              <h3 className="mt-4 text-2xl font-semibold tracking-tight text-white md:text-3xl">
+                {tenant?.tenantName || tenant?.clientName || "Cliente"} em modo operacional premium
+              </h3>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-white/62">
+                Centralize atendimento, pipeline, IA e sinais de performance em um unico painel com contexto de negocio.
+              </p>
+            </div>
+
+            <div className="min-w-[220px] rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Resumo do ciclo</p>
+              <div className="mt-3 space-y-3">
+                <HeroStat label="Leads ativos" value={(kpis?.leads || 0).toLocaleString("pt-BR")} />
+                <HeroStat label="Conversas abertas" value={chats.length.toLocaleString("pt-BR")} />
+                <HeroStat label="Canal IA" value={ai.enabled === false ? "Restrito" : "Rodando"} />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <QuickLink
+              href="/cliente/painel/inbox"
+              title="Assumir atendimento"
+              description="Abrir conversas com takeover e contexto imediato."
+              icon={MessageSquare}
+            />
+            <QuickLink
+              href="/cliente/painel/crm"
+              title="Atualizar pipeline"
+              description="Mover leads, revisar gargalos e acelerar fechamento."
+              icon={Funnel}
+            />
+            <QuickLink
+              href="/cliente/painel/ia"
+              title="Refinar agente"
+              description="Ajustar guardrails, tom de voz e base comercial."
+              icon={Bot}
+            />
+          </div>
+        </PanelCard>
+
+        <PanelCard className="p-5">
+          <CardTitle title="Foco da operacao" subtitle="O que exige atencao neste momento" />
+          <div className="mt-4 space-y-3">
+            <FocusRow
+              label="Atendimento"
+              value={aiPausedChats > 0 ? `${aiPausedChats} conversas em takeover` : "Fluxo assistido pela IA"}
+              tone={aiPausedChats > 0 ? "warning" : "success"}
+            />
+            <FocusRow
+              label="Pipeline"
+              value={
+                funnel.find((item) => item.stage === "proposta")?.total
+                  ? "Propostas em andamento"
+                  : "Topo de funil dominante"
+              }
+              tone="info"
+            />
+            <FocusRow
+              label="Configuracao"
+              value={kbCount > 0 ? `${kbCount} itens de conhecimento ativos` : "Base comercial ainda vazia"}
+              tone={kbCount > 0 ? "success" : "warning"}
+            />
+          </div>
+
+          <div className="mt-5 space-y-2">
+            <Link
+              href="/cliente/painel/configuracoes"
+              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Settings2 className="h-4 w-4 text-cyan-100" />
+                Revisar governanca do tenant
+              </span>
+              <ArrowRight className="h-4 w-4 text-white/45" />
+            </Link>
+            <Link
+              href="/cliente/painel/metricas"
+              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+            >
+              <span className="inline-flex items-center gap-2">
+                <ChartColumn className="h-4 w-4 text-cyan-100" />
+                Abrir painel de metricas consolidadas
+              </span>
+              <ArrowRight className="h-4 w-4 text-white/45" />
+            </Link>
+          </div>
+        </PanelCard>
+      </section>
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Leads" value={(kpis?.leads || 0).toLocaleString("pt-BR")} icon={Activity} trend="captacao" />
-        <MetricCard label="Conversas" value={chats.length.toLocaleString("pt-BR")} icon={MessageSquare} trend={`${aiPausedChats} com IA pausada`} />
-        <MetricCard label="Investimento" value={brl(Number(kpis?.spend || 0))} icon={Wallet} trend={`CPL ${brl(Number(kpis?.cpl || 0))}`} />
-        <MetricCard label="Receita" value={brl(Number(kpis?.paid || 0))} icon={Handshake} trend={`Pendente ${brl(Number(kpis?.pending || 0))}`} />
+        <MetricCard
+          label="Leads"
+          value={(kpis?.leads || 0).toLocaleString("pt-BR")}
+          icon={Activity}
+          trend="captacao"
+        />
+        <MetricCard
+          label="Conversas"
+          value={chats.length.toLocaleString("pt-BR")}
+          icon={MessageSquare}
+          trend={`${aiPausedChats} com IA pausada`}
+        />
+        <MetricCard
+          label="Investimento"
+          value={brl(Number(kpis?.spend || 0))}
+          icon={Wallet}
+          trend={`CPL ${brl(Number(kpis?.cpl || 0))}`}
+        />
+        <MetricCard
+          label="Receita"
+          value={brl(Number(kpis?.paid || 0))}
+          icon={Handshake}
+          trend={`Pendente ${brl(Number(kpis?.pending || 0))}`}
+        />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
@@ -319,7 +445,10 @@ export default function ClientePainelOverviewPage() {
           <div className="mt-4 space-y-3 text-sm">
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
               <span className="text-white/65">IA global</span>
-              <StateBadge label={ai.enabled === false ? "desativada" : "ativa"} tone={ai.enabled === false ? "warning" : "success"} />
+              <StateBadge
+                label={ai.enabled === false ? "desativada" : "ativa"}
+                tone={ai.enabled === false ? "warning" : "success"}
+              />
             </div>
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
               <span className="text-white/65">Guardrails configurados</span>
@@ -400,7 +529,12 @@ export default function ClientePainelOverviewPage() {
         <MetricCard label="CTR" value={pct(Number(kpis?.ctr || 0))} icon={ChartColumn} />
         <MetricCard label="CPC" value={brl(Number(kpis?.cpc || 0))} icon={Wallet} />
         <MetricCard label="CPL" value={brl(Number(kpis?.cpl || 0))} icon={Bot} />
-        <MetricCard label="Contrato" value={dashboard.contract?.status || "nao informado"} icon={Handshake} trend={dashboard.contract?.title || ""} />
+        <MetricCard
+          label="Contrato"
+          value={dashboard.contract?.status || "nao informado"}
+          icon={Handshake}
+          trend={dashboard.contract?.title || ""}
+        />
       </section>
     </div>
   );
@@ -412,5 +546,65 @@ function Row({ label, value }: { label: string; value: string }) {
       <td className="px-3 py-2 text-white/58">{label}</td>
       <td className="px-3 py-2 text-right font-medium text-white/92">{value}</td>
     </tr>
+  );
+}
+
+function HeroStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+      <span className="text-sm text-white/58">{label}</span>
+      <span className="text-sm font-semibold text-white">{value}</span>
+    </div>
+  );
+}
+
+function QuickLink({
+  href,
+  title,
+  description,
+  icon: Icon,
+}: {
+  href: string;
+  title: string;
+  description: string;
+  icon: typeof MessageSquare;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-cyan-300/25 hover:bg-cyan-400/[0.06]"
+    >
+      <div className="inline-flex rounded-xl border border-white/12 bg-white/[0.04] p-2 text-cyan-100">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-white">{title}</p>
+        <ArrowRight className="h-4 w-4 text-white/35 transition group-hover:text-cyan-100" />
+      </div>
+      <p className="mt-2 text-sm leading-6 text-white/56">{description}</p>
+    </Link>
+  );
+}
+
+function FocusRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "info";
+}) {
+  const badgeLabel =
+    tone === "warning" ? "atencao" : tone === "success" ? "ok" : tone === "danger" ? "risco" : "monitorar";
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-white">{label}</p>
+        <StateBadge label={badgeLabel} tone={tone} />
+      </div>
+      <p className="mt-1 text-sm text-white/58">{value}</p>
+    </div>
   );
 }
