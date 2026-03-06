@@ -62,6 +62,17 @@ export async function POST(req: Request) {
         timezone: clean(body.timezone, 80) || "America/Sao_Paulo",
         businessHours: clean(body.businessHours, 240) || "Seg-Sex 09:00-18:00",
         rules: body.rules || {},
+        ai: {
+          enabled: true,
+          toneOfVoice: "consultivo e objetivo",
+          businessSummary: name,
+          responsiblePhone: "",
+          guardrails: [
+            "Nao compartilhar informacoes sensiveis.",
+            "Sempre validar contexto antes de prometer prazo ou desconto.",
+            "Escalar para humano quando o cliente solicitar.",
+          ],
+        },
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },

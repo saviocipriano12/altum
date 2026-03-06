@@ -6,6 +6,8 @@ export const TENANT_SCOPED_COLLECTIONS = [
   "leads",
   "pipeline",
   "kb_docs",
+  "chat_state",
+  "ai_logs",
   "automations",
   "jobs",
   "metrics",
@@ -31,6 +33,13 @@ export type TenantMembership = {
 };
 
 export type TenantSettings = {
+  ai?: {
+    enabled?: boolean;
+    toneOfVoice?: string;
+    businessSummary?: string;
+    responsiblePhone?: string;
+    guardrails?: string[] | string;
+  };
   tenantId: string;
   name?: string;
   niche?: string;

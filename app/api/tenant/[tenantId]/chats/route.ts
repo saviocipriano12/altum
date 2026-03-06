@@ -3,6 +3,19 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
 
+type ChatStateItem = {
+  aiEnabled: boolean;
+  pausedUntil: unknown;
+  humanOwnerUserId: string | null;
+  updatedAt: unknown;
+};
+
+type ChatListItem = Record<string, unknown> & {
+  id: string;
+  lastMessageTime?: unknown;
+  aiState: ChatStateItem | null;
+};
+
 function toTime(value: unknown) {
   if (!value) return 0;
   if (typeof value === "number") return value;
@@ -40,11 +53,34 @@ export async function GET(
       .limit(200)
       .get();
 
-    const items = snap.docs
+    const stateSnap = await adminDb
+      .collection("chat_state")
+      .where("tenantId", "==", tenantId)
+      .limit(500)
+      .get();
+
+    const stateMap = new Map<string, ChatStateItem>(
+      stateSnap.docs.map((doc) => {
+        const data = doc.data() as Record<string, unknown>;
+        return [
+          String(data.chatId || ""),
+          {
+            aiEnabled: data.aiEnabled !== false,
+            pausedUntil: data.pausedUntil || null,
+            humanOwnerUserId:
+              typeof data.humanOwnerUserId === "string" ? data.humanOwnerUserId : null,
+            updatedAt: data.updatedAt || null,
+          },
+        ];
+      })
+    );
+
+    const items: ChatListItem[] = snap.docs
       .map((doc) => ({
         id: doc.id,
         ...(doc.data() as Record<string, unknown>),
-      }))
+        aiState: stateMap.get(doc.id) || null,
+      }) as ChatListItem)
       .sort((a, b) => toTime(b.lastMessageTime) - toTime(a.lastMessageTime));
 
     return NextResponse.json({ ok: true, tenantId, items });

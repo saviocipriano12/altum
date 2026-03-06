@@ -1,0 +1,163 @@
+import { NextResponse } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
+import { adminDb } from "@/app/lib/server/firebase-admin";
+import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
+import { getChatState, getChatStateDocId } from "@/lib/server/ai/agent";
+
+type Body = {
+  action?: "pause" | "resume";
+  pausedMinutes?: number;
+};
+
+function clampMinutes(value: unknown, fallback = 240) {
+  if (typeof value !== "number" || Number.isNaN(value)) return fallback;
+  return Math.min(24 * 60, Math.max(15, Math.round(value)));
+}
+
+function serializeState(state: Awaited<ReturnType<typeof getChatState>>) {
+  return {
+    tenantId: state.tenantId,
+    chatId: state.chatId,
+    aiEnabled: state.aiEnabled,
+    pausedUntil: state.pausedUntil ? state.pausedUntil.toISOString() : null,
+    humanOwnerUserId: state.humanOwnerUserId,
+  };
+}
+
+async function assertChatInTenant(chatId: string, tenantId: string) {
+  const chatRef = adminDb.collection("chats").doc(chatId);
+  const chatSnap = await chatRef.get();
+  if (!chatSnap.exists) {
+    throw new RouteAuthError(404, "chat_not_found", "Chat nao encontrado.");
+  }
+
+  const chat = chatSnap.data() as { tenantId?: string };
+  if ((chat.tenantId || "") !== tenantId) {
+    throw new RouteAuthError(403, "forbidden_tenant", "Chat fora do tenant informado.");
+  }
+
+  return chatRef;
+}
+
+export async function GET(
+  req: Request,
+  context: { params: Promise<{ tenantId: string; chatId: string }> }
+) {
+  try {
+    const user = await requireRequestUser(req);
+    const { tenantId, chatId } = await context.params;
+
+    await assertTenantAccess(user.uid, tenantId);
+    await assertChatInTenant(chatId, tenantId);
+
+    const state = await getChatState(tenantId, chatId);
+    return NextResponse.json({ ok: true, state: serializeState(state) });
+  } catch (error) {
+    if (error instanceof RouteAuthError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+
+    if (error instanceof TenantAccessError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    }
+
+    console.error("Erro ao carregar estado da IA do chat:", error);
+    return NextResponse.json({ error: "Falha ao carregar estado da IA." }, { status: 500 });
+  }
+}
+
+export async function POST(
+  req: Request,
+  context: { params: Promise<{ tenantId: string; chatId: string }> }
+) {
+  try {
+    const user = await requireRequestUser(req);
+    const { tenantId, chatId } = await context.params;
+
+    await assertTenantAccess(user.uid, tenantId);
+    await assertChatInTenant(chatId, tenantId);
+
+    const body = (await req.json()) as Body;
+    const action = body.action || "pause";
+    if (action !== "pause" && action !== "resume") {
+      return NextResponse.json({ error: "Acao invalida. Use pause ou resume." }, { status: 400 });
+    }
+
+    const stateRef = adminDb.collection("chat_state").doc(getChatStateDocId(tenantId, chatId));
+
+    if (action === "pause") {
+      const pausedMinutes = clampMinutes(body.pausedMinutes, 240);
+      const pausedUntil = new Date(Date.now() + pausedMinutes * 60 * 1000);
+
+      await Promise.all([
+        stateRef.set(
+          {
+            tenantId,
+            chatId,
+            aiEnabled: false,
+            pausedUntil,
+            humanOwnerUserId: user.uid,
+            updatedBy: user.uid,
+            updatedByName: user.name,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        ),
+        adminDb.collection("messages").add({
+          chatId,
+          tenantId,
+          sender: "system",
+          type: "text",
+          text: `IA pausada por ${user.name}.`,
+          createdAt: FieldValue.serverTimestamp(),
+        }),
+      ]);
+    }
+
+    if (action === "resume") {
+      await Promise.all([
+        stateRef.set(
+          {
+            tenantId,
+            chatId,
+            aiEnabled: true,
+            pausedUntil: null,
+            humanOwnerUserId: null,
+            updatedBy: user.uid,
+            updatedByName: user.name,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        ),
+        adminDb.collection("messages").add({
+          chatId,
+          tenantId,
+          sender: "system",
+          type: "text",
+          text: `IA retomada por ${user.name}.`,
+          createdAt: FieldValue.serverTimestamp(),
+        }),
+      ]);
+    }
+
+    const updatedState = await getChatState(tenantId, chatId);
+
+    return NextResponse.json({
+      ok: true,
+      action,
+      state: serializeState(updatedState),
+    });
+  } catch (error) {
+    if (error instanceof RouteAuthError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+
+    if (error instanceof TenantAccessError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    }
+
+    console.error("Erro ao atualizar estado da IA do chat:", error);
+    return NextResponse.json({ error: "Falha ao atualizar estado da IA." }, { status: 500 });
+  }
+}

@@ -8,6 +8,7 @@ import {
   verifyMetaSignature,
 } from "@/app/lib/server/whatsapp-channel";
 import { normalizePhone } from "@/app/lib/server/phone";
+import { handleIncomingMessage } from "@/lib/server/ai/agent";
 
 async function resolveLeadOwner(phone: string, tenantId: string) {
   const scopedSnap = await adminDb
@@ -98,23 +99,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Assinatura invalida." }, { status: 401 });
     }
 
-    const message =
-      (body.entry as Array<Record<string, unknown>> | undefined)?.[0]?.changes &&
-      Array.isArray((body.entry as Array<Record<string, unknown>> | undefined)?.[0]?.changes)
-        ? (((body.entry as Array<Record<string, unknown>>)[0].changes as Array<Record<string, unknown>>)[0]
-            ?.value as Record<string, unknown> | undefined)?.messages?.[0]
+    const entry = Array.isArray(body.entry)
+      ? ((body.entry[0] as Record<string, unknown> | undefined) ?? undefined)
+      : undefined;
+    const changes = entry && Array.isArray(entry.changes)
+      ? (entry.changes as Array<Record<string, unknown>>)
+      : [];
+    const firstChange = changes[0];
+    const valueObj =
+      firstChange &&
+      typeof firstChange.value === "object" &&
+      firstChange.value
+        ? (firstChange.value as Record<string, unknown>)
         : undefined;
+    const message = Array.isArray(valueObj?.messages)
+      ? (valueObj.messages[0] as Record<string, unknown> | undefined)
+      : undefined;
 
     if (!message || typeof message !== "object") {
       return NextResponse.json({ status: "ignored_no_message" });
     }
-
-    const valueObj =
-      (body.entry as Array<Record<string, unknown>> | undefined)?.[0]?.changes &&
-      Array.isArray((body.entry as Array<Record<string, unknown>> | undefined)?.[0]?.changes)
-        ? (((body.entry as Array<Record<string, unknown>>)[0].changes as Array<Record<string, unknown>>)[0]
-            ?.value as Record<string, unknown> | undefined)
-        : undefined;
 
     const from = normalizePhone(String((message as { from?: unknown }).from || ""));
     const text = String((message as { text?: { body?: unknown } }).text?.body || "").trim();
@@ -189,7 +193,7 @@ export async function POST(req: Request) {
       );
     }
 
-    await adminDb.collection("messages").add({
+    const incomingMessageRef = await adminDb.collection("messages").add({
       chatId,
       text,
       sender: "client",
@@ -198,6 +202,16 @@ export async function POST(req: Request) {
       tenantId,
       channelPhoneNumberId: channel.phoneNumberId,
       createdAt: FieldValue.serverTimestamp(),
+    });
+
+    setImmediate(() => {
+      void handleIncomingMessage({
+        tenantId,
+        chatId,
+        messageId: incomingMessageRef.id,
+      }).catch((error) => {
+        console.error("Erro no AI Sales Agent (webhook async):", error);
+      });
     });
 
     return NextResponse.json({

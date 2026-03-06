@@ -5,6 +5,7 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { normalizePhone } from "@/app/lib/server/phone";
 import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
 import { getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
+import { getChatStateDocId } from "@/lib/server/ai/agent";
 
 type Body = {
   text?: string;
@@ -201,6 +202,19 @@ export async function POST(
           channelPhoneNumberId: channel.phoneNumberId,
           createdAt: FieldValue.serverTimestamp(),
         }),
+        adminDb.collection("chat_state").doc(getChatStateDocId(tenantId, destination.chatId)).set(
+          {
+            tenantId,
+            chatId: destination.chatId,
+            aiEnabled: false,
+            pausedUntil: new Date(Date.now() + 30 * 60 * 1000),
+            humanOwnerUserId: user.uid,
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: user.uid,
+            updatedByName: user.name,
+          },
+          { merge: true }
+        ),
       ]);
     }
 

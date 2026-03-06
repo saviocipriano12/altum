@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Loader2, Send } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Loader2, PauseCircle, PlayCircle, Send } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 
@@ -12,6 +13,11 @@ type ChatItem = {
   lastMessage?: string;
   lastMessageTime?: unknown;
   status?: string;
+  aiState?: {
+    aiEnabled?: boolean;
+    pausedUntil?: unknown;
+    humanOwnerUserId?: string | null;
+  } | null;
 };
 
 type MessageItem = {
@@ -51,15 +57,19 @@ function formatTime(value: unknown) {
 
 export default function ClienteInboxPage() {
   const { tenant } = useClienteTenant();
+  const searchParams = useSearchParams();
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [updatingAi, setUpdatingAi] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [text, setText] = useState("");
+
+  const initialChatId = searchParams.get("chatId");
 
   useEffect(() => {
     if (!tenant?.tenantId) return;
@@ -82,7 +92,13 @@ export default function ClienteInboxPage() {
 
         const nextChats = payload.items || [];
         setChats(nextChats);
-        setSelectedChatId((current) => current || nextChats[0]?.id || null);
+        setSelectedChatId((current) => {
+          if (current && nextChats.some((chat) => chat.id === current)) return current;
+          if (initialChatId && nextChats.some((chat) => chat.id === initialChatId)) {
+            return initialChatId;
+          }
+          return nextChats[0]?.id || null;
+        });
       } catch {
         if (!mounted) return;
         setError("Falha ao carregar conversas.");
@@ -94,7 +110,7 @@ export default function ClienteInboxPage() {
     return () => {
       mounted = false;
     };
-  }, [tenant?.tenantId]);
+  }, [tenant?.tenantId, initialChatId]);
 
   useEffect(() => {
     if (!tenant?.tenantId || !selectedChatId) {
@@ -138,6 +154,49 @@ export default function ClienteInboxPage() {
     () => chats.find((item) => item.id === selectedChatId) || null,
     [chats, selectedChatId]
   );
+
+  const aiPaused = useMemo(() => {
+    if (!selectedChat?.aiState) return false;
+    if (selectedChat.aiState.aiEnabled === false) return true;
+    const pausedUntil = toDate(selectedChat.aiState.pausedUntil);
+    return Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
+  }, [selectedChat]);
+
+  async function handleToggleAi() {
+    if (!tenant?.tenantId || !selectedChatId) return;
+
+    const action = aiPaused ? "resume" : "pause";
+    setUpdatingAi(true);
+    setError(null);
+
+    try {
+      const res = await authedFetch(
+        `/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/ai-state`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action,
+            pausedMinutes: 240,
+          }),
+        }
+      );
+
+      const payload = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao atualizar estado da IA.");
+        return;
+      }
+
+      const chatsRes = await authedFetch(`/api/tenant/${tenant.tenantId}/chats`);
+      const chatsPayload = (await chatsRes.json()) as { items?: ChatItem[] };
+      if (chatsRes.ok) setChats(chatsPayload.items || []);
+    } catch {
+      setError("Falha ao atualizar takeover da IA.");
+    } finally {
+      setUpdatingAi(false);
+    }
+  }
 
   async function handleSend(event: FormEvent) {
     event.preventDefault();
@@ -217,6 +276,32 @@ export default function ClienteInboxPage() {
         <div className="p-4 border-b border-white/10">
           <h3 className="text-sm font-semibold">{selectedChat?.contactName || "Selecione uma conversa"}</h3>
           <p className="text-xs text-white/50">{selectedChat?.contactPhone || ""}</p>
+          {selectedChat && (
+            <div className="mt-3 flex items-center gap-2">
+              <span
+                className={`inline-flex rounded-full px-2 py-1 text-[10px] uppercase tracking-wide ${
+                  aiPaused ? "bg-amber-500/20 text-amber-100" : "bg-emerald-500/20 text-emerald-100"
+                }`}
+              >
+                {aiPaused ? "IA pausada" : "IA ativa"}
+              </span>
+              <button
+                type="button"
+                onClick={() => void handleToggleAi()}
+                disabled={updatingAi}
+                className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] hover:bg-white/10 disabled:opacity-60"
+              >
+                {updatingAi ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : aiPaused ? (
+                  <PlayCircle className="h-3.5 w-3.5" />
+                ) : (
+                  <PauseCircle className="h-3.5 w-3.5" />
+                )}
+                {aiPaused ? "Retomar IA" : "Pausar IA"}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-[45vh]">
