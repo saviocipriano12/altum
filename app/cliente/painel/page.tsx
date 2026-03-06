@@ -266,7 +266,7 @@ export default function ClientePainelOverviewPage() {
   if (loading) {
     return (
       <div className="flex min-h-[52vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-cyan-300" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-300" />
       </div>
     );
   }
@@ -297,7 +297,7 @@ export default function ClientePainelOverviewPage() {
         <PanelCard className="overflow-hidden p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-cyan-100">
+              <div className="inline-flex items-center gap-2 rounded-full border border-blue-300/25 bg-blue-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-blue-100">
                 <Sparkles className="h-3.5 w-3.5" />
                 Executive Workspace
               </div>
@@ -371,7 +371,7 @@ export default function ClientePainelOverviewPage() {
               className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
             >
               <span className="inline-flex items-center gap-2">
-                <Settings2 className="h-4 w-4 text-cyan-100" />
+                <Settings2 className="h-4 w-4 text-blue-100" />
                 Revisar governanca do tenant
               </span>
               <ArrowRight className="h-4 w-4 text-white/45" />
@@ -381,7 +381,7 @@ export default function ClientePainelOverviewPage() {
               className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
             >
               <span className="inline-flex items-center gap-2">
-                <ChartColumn className="h-4 w-4 text-cyan-100" />
+                <ChartColumn className="h-4 w-4 text-blue-100" />
                 Abrir painel de metricas consolidadas
               </span>
               <ArrowRight className="h-4 w-4 text-white/45" />
@@ -431,7 +431,7 @@ export default function ClientePainelOverviewPage() {
                 </div>
                 <div className="h-2 rounded-full bg-white/10">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500"
+                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-500"
                     style={{ width: `${Math.max(4, item.pct)}%` }}
                   />
                 </div>
@@ -572,14 +572,14 @@ function QuickLink({
   return (
     <Link
       href={href}
-      className="group rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-cyan-300/25 hover:bg-cyan-400/[0.06]"
+      className="group rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
     >
-      <div className="inline-flex rounded-xl border border-white/12 bg-white/[0.04] p-2 text-cyan-100">
+      <div className="inline-flex rounded-xl border border-white/12 bg-white/[0.04] p-2 text-blue-100">
         <Icon className="h-4 w-4" />
       </div>
       <div className="mt-4 flex items-center justify-between gap-3">
         <p className="text-sm font-semibold text-white">{title}</p>
-        <ArrowRight className="h-4 w-4 text-white/35 transition group-hover:text-cyan-100" />
+        <ArrowRight className="h-4 w-4 text-white/35 transition group-hover:text-blue-100" />
       </div>
       <p className="mt-2 text-sm leading-6 text-white/56">{description}</p>
     </Link>
@@ -608,3 +608,4 @@ function FocusRow({
     </div>
   );
 }
+

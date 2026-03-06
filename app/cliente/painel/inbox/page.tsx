@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -270,7 +270,7 @@ export default function ClienteInboxPage() {
                   key={chat.id}
                   onClick={() => setSelectedChatId(chat.id)}
                   className={`w-full border-b border-white/5 px-3 py-3 text-left transition ${
-                    selectedChatId === chat.id ? "bg-cyan-400/13" : "hover:bg-white/[0.05]"
+                    selectedChatId === chat.id ? "bg-blue-400/13" : "hover:bg-white/[0.05]"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -323,7 +323,7 @@ export default function ClienteInboxPage() {
                   key={message.id}
                   className={`max-w-[82%] rounded-2xl px-3 py-2 text-sm ${
                     message.sender === "agent"
-                      ? "ml-auto border border-cyan-300/35 bg-cyan-400/14"
+                      ? "ml-auto border border-blue-300/35 bg-blue-400/14"
                       : message.sender === "system"
                         ? "border border-amber-300/35 bg-amber-400/12"
                         : "border border-white/12 bg-white/[0.05]"
@@ -341,13 +341,13 @@ export default function ClienteInboxPage() {
               value={text}
               onChange={(event) => setText(event.target.value)}
               placeholder="Digite a mensagem"
-              className="flex-1 rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm outline-none ring-cyan-300/45 focus:ring"
+              className="flex-1 rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm outline-none ring-blue-300/45 focus:ring"
               disabled={!selectedChatId || sending}
             />
             <button
               type="submit"
               disabled={!selectedChatId || sending || !text.trim()}
-              className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:opacity-55"
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-55"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Enviar
@@ -360,3 +360,4 @@ export default function ClienteInboxPage() {
     </div>
   );
 }
+

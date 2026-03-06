@@ -189,7 +189,7 @@ export default function ClienteCanaisPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
                 >
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Salvar canal
@@ -229,7 +229,7 @@ export default function ClienteCanaisPage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <div className="inline-flex rounded-lg border border-cyan-300/30 bg-cyan-400/10 p-2 text-cyan-100">
+            <div className="inline-flex rounded-lg border border-blue-300/30 bg-blue-400/10 p-2 text-blue-100">
               <MessageSquare className="h-4 w-4" />
             </div>
             <p className="mt-3 text-sm font-semibold text-white/92">Roteamento multi-tenant ativo</p>
@@ -259,7 +259,7 @@ function Field(props: {
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
         required={props.required}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-cyan-300/35 focus:bg-black/45"
+        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-blue-300/35 focus:bg-black/45"
       />
     </label>
   );
@@ -281,8 +281,9 @@ function SecretField(props: {
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
         required={props.required}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-cyan-300/35 focus:bg-black/45"
+        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-blue-300/35 focus:bg-black/45"
       />
     </label>
   );
 }
+

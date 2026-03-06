@@ -95,7 +95,7 @@ export function ClienteGlobalSearch() {
 
   return (
     <div ref={rootRef} className="relative hidden md:block">
-      <label className="flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-sm text-white/70 transition hover:bg-white/[0.05]">
+      <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#111111] px-3 py-2 text-sm text-white/70 transition hover:bg-white/[0.06]">
         <Search className="h-4 w-4" />
         <input
           ref={inputRef}
@@ -105,14 +105,14 @@ export function ClienteGlobalSearch() {
           placeholder="Buscar modulo, lead ou conversa"
           className="w-[300px] bg-transparent text-sm outline-none placeholder:text-white/40"
         />
-        <span className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-white/45">
+        <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/40 px-1.5 py-0.5 text-[10px] text-white/45">
           <Command className="h-3 w-3" />
           Ctrl+K
         </span>
       </label>
 
       {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[520px] rounded-2xl border border-white/12 bg-[#0b1322]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[520px] rounded-2xl border border-white/10 bg-[#111111]/98 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
           {loading ? (
             <div className="flex items-center justify-center py-8 text-white/65">
               <Loader2 className="h-4 w-4 animate-spin" />

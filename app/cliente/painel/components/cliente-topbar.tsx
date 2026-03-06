@@ -17,7 +17,7 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
     "mailto:suporte.altum@gmail.com?subject=Suporte%20Painel%20Cliente%20ALTUM";
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-30 border-b border-white/10 bg-[#070d17]/92 backdrop-blur-xl lg:left-[270px]">
+    <header className="fixed left-0 right-0 top-0 z-30 border-b border-white/10 bg-[#0B0B0B]/80 backdrop-blur lg:left-[270px]">
       <div className="flex h-[76px] items-center gap-3 px-4 lg:px-6">
         <button
           type="button"
@@ -29,25 +29,27 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
         </button>
 
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white">
-            {tenant?.tenantName || tenant?.clientName || "Cliente"}
-          </p>
-          <div className="mt-1 flex items-center gap-2">
-            <StateBadge label="Operacao ativa" tone="success" />
-            <span className="hidden text-xs text-white/58 sm:inline">
-              Usuario: {tenant?.userName || "Operador"}
+          <p className="text-[12px] font-medium text-white/80">ALTUM - Painel do Cliente</p>
+          <div className="mt-1 flex items-center gap-2 text-[10px] text-white/38">
+            <span className="truncate uppercase tracking-[0.14em]">
+              {tenant?.tenantName || tenant?.clientName || "Cliente"}
             </span>
+            <span className="hidden sm:inline">|</span>
+            <span className="hidden truncate sm:inline">{tenant?.userName || "Operador"}</span>
           </div>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <div className="hidden md:inline-flex">
+            <StateBadge label="Operacao ativa" tone="success" />
+          </div>
           <ClienteGlobalSearch />
 
           <Link
             href={supportUrl}
             target="_blank"
             rel="noreferrer noopener"
-            className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/20"
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white/78 transition hover:bg-white/10"
           >
             <LifeBuoy className="h-4 w-4" />
             Suporte
@@ -57,3 +59,4 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
     </header>
   );
 }
+

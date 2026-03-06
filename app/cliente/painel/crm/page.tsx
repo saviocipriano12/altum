@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -205,12 +205,12 @@ export default function ClienteCrmPage() {
                     key={lead.id}
                     onClick={() => setSelectedLeadId(lead.id)}
                     className={`w-full border-b border-white/5 px-3 py-3 text-left transition ${
-                      selectedLeadId === lead.id ? "bg-cyan-400/13" : "hover:bg-white/[0.05]"
+                      selectedLeadId === lead.id ? "bg-blue-400/13" : "hover:bg-white/[0.05]"
                     }`}
                   >
                     <p className="truncate text-sm font-medium text-white/92">{lead.nome || "Lead"}</p>
                     <p className="mt-1 truncate text-xs text-white/55">{lead.email || lead.telefone || "Sem contato"}</p>
-                    <p className="mt-1 text-[11px] text-cyan-200">Stage: {stage}</p>
+                    <p className="mt-1 text-[11px] text-blue-200">Stage: {stage}</p>
                   </button>
                 );
               })
@@ -243,7 +243,7 @@ export default function ClienteCrmPage() {
                   <button
                     onClick={() => void updateStage()}
                     disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
                   >
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     Salvar stage
@@ -277,3 +277,4 @@ export default function ClienteCrmPage() {
     </div>
   );
 }
+

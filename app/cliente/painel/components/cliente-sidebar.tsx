@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -68,25 +68,25 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
       />
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[270px] flex-col border-r border-white/10 bg-[#0b111c]/98 p-4 transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[270px] flex-col border-r border-white/10 bg-[#0E0E0E] p-4 transition-transform duration-300 lg:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="rounded-2xl border border-white/12 bg-gradient-to-br from-[#111d35] via-[#0e1730] to-[#0b1224] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+        <div className="rounded-2xl border border-white/10 bg-[#111111] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-100/65">ALTUM OS</p>
+              <p className="text-[12px] font-bold italic tracking-widest text-white/85">ALTUM</p>
               <p className="mt-1 truncate text-base font-semibold text-white">
                 {tenant?.tenantName || tenant?.clientName || "Cliente"}
               </p>
-              <p className="mt-1 text-xs text-white/55">Tenant {tenant?.tenantId || "-"}</p>
+              <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-white/35">Client OS</p>
             </div>
-            <span className="inline-flex rounded-xl border border-cyan-300/25 bg-cyan-400/10 p-2 text-cyan-100">
+            <span className="inline-flex rounded-xl border border-blue-500/20 bg-blue-600/10 p-2 text-blue-200">
               <Crown className="h-4 w-4" />
             </span>
           </div>
 
-          <div className="mt-4 flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+          <div className="mt-4 flex items-center justify-between rounded-xl border border-white/10 bg-black/40 px-3 py-2">
             <div>
               <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Plano operacional</p>
               <p className="mt-1 text-sm font-medium text-white">Premium Workspace</p>
@@ -111,7 +111,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                       onClick={onClose}
                       className={`group flex items-center justify-between rounded-xl border px-3 py-2.5 transition ${
                         active
-                          ? "border-cyan-300/35 bg-cyan-400/14 text-white"
+                          ? "border-blue-500/20 bg-blue-600/10 text-blue-100"
                           : "border-transparent bg-transparent text-white/72 hover:border-white/10 hover:bg-white/[0.05] hover:text-white"
                       }`}
                     >
@@ -146,3 +146,4 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
     </>
   );
 }
+

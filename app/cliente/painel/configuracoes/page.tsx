@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { Bot, MessageSquare, Settings2 } from "lucide-react";
@@ -16,13 +16,13 @@ export default function ClienteConfiguracoesPage() {
       <section className="grid gap-3 md:grid-cols-3">
         <Link
           href="/cliente/painel/configuracoes/canais"
-          className="rounded-2xl border border-cyan-300/30 bg-cyan-400/10 p-4 transition hover:bg-cyan-400/16"
+          className="rounded-2xl border border-blue-300/30 bg-blue-400/10 p-4 transition hover:bg-blue-400/16"
         >
-          <div className="inline-flex rounded-lg border border-cyan-200/40 bg-cyan-200/10 p-2 text-cyan-100">
+          <div className="inline-flex rounded-lg border border-blue-200/40 bg-blue-200/10 p-2 text-blue-100">
             <MessageSquare className="h-4 w-4" />
           </div>
-          <h3 className="mt-3 text-base font-semibold text-cyan-50">Canais WhatsApp</h3>
-          <p className="mt-1 text-sm text-cyan-100/80">phoneNumberId, accessToken, verifyToken e appSecret por tenant.</p>
+          <h3 className="mt-3 text-base font-semibold text-blue-50">Canais WhatsApp</h3>
+          <p className="mt-1 text-sm text-blue-100/80">phoneNumberId, accessToken, verifyToken e appSecret por tenant.</p>
         </Link>
 
         <Link
@@ -47,3 +47,4 @@ export default function ClienteConfiguracoesPage() {
     </div>
   );
 }
+

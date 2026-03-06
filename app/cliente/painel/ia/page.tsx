@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Loader2, Save, ShieldCheck, Sparkles } from "lucide-react";
@@ -172,7 +172,7 @@ export default function ClienteIaPage() {
   if (loading) {
     return (
       <div className="flex min-h-[45vh] items-center justify-center text-white">
-        <Loader2 className="h-7 w-7 animate-spin text-cyan-300" />
+        <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
       </div>
     );
   }
@@ -222,7 +222,7 @@ export default function ClienteIaPage() {
                 value={guardrailsText}
                 onChange={(event) => setGuardrailsText(event.target.value)}
                 rows={5}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-cyan-300/45 focus:ring"
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-blue-300/45 focus:ring"
                 placeholder="Nao conceder desconto sem aprovacao\nNao prometer prazo sem validar operacao"
               />
             </label>
@@ -230,7 +230,7 @@ export default function ClienteIaPage() {
             <button
               type="submit"
               disabled={savingSettings}
-              className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
             >
               {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Salvar configuracoes
@@ -267,7 +267,7 @@ export default function ClienteIaPage() {
                 value={docContent}
                 onChange={(event) => setDocContent(event.target.value)}
                 rows={6}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-cyan-300/45 focus:ring"
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-blue-300/45 focus:ring"
                 placeholder="Descreva produto, resposta pronta, politica ou informacoes comerciais"
               />
             </label>
@@ -309,7 +309,7 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-cyan-300/45 focus:ring"
+        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-blue-300/45 focus:ring"
       />
     </label>
   );
@@ -331,3 +331,4 @@ function DocColumn({ title, docs }: { title: string; docs: KbDoc[] }) {
     </div>
   );
 }
+

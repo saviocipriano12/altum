@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { ReactNode } from "react";
 import { LucideIcon } from "lucide-react";
@@ -10,12 +10,12 @@ const BADGE_TONE: Record<BadgeTone, string> = {
   success: "border-emerald-300/30 bg-emerald-400/12 text-emerald-100",
   warning: "border-amber-300/30 bg-amber-400/12 text-amber-100",
   danger: "border-rose-300/30 bg-rose-400/12 text-rose-100",
-  info: "border-cyan-300/30 bg-cyan-400/12 text-cyan-100",
+  info: "border-blue-300/30 bg-blue-400/12 text-blue-100",
 };
 
 export function PanelCard({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <section className={`rounded-2xl border border-white/12 bg-[#0f1522]/88 ${className}`}>
+    <section className={`rounded-2xl border border-white/10 bg-[#101010] shadow-[0_10px_30px_rgba(0,0,0,0.18)] ${className}`}>
       {children}
     </section>
   );
@@ -53,15 +53,15 @@ export function MetricCard({
   trend?: string;
 }) {
   return (
-    <PanelCard className="p-4">
+    <PanelCard className="space-y-2 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-white/50">{label}</p>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">{label}</p>
           <p className="mt-2 text-2xl font-semibold leading-none text-white">{value}</p>
           {trend ? <p className="mt-2 text-xs text-white/62">{trend}</p> : null}
         </div>
         {Icon ? (
-          <span className="inline-flex rounded-lg border border-white/15 bg-white/[0.04] p-2 text-cyan-100">
+          <span className="inline-flex rounded-lg border border-blue-500/20 bg-blue-600/10 p-2 text-blue-200">
             <Icon className="h-4 w-4" />
           </span>
         ) : null}
@@ -112,3 +112,4 @@ export function CardTitle({ title, subtitle }: { title: string; subtitle?: strin
     </div>
   );
 }
+
