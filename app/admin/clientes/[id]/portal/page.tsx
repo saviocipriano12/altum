@@ -37,6 +37,7 @@ type PortalUserDoc = {
   email?: string;
   name?: string;
   status?: string;
+  role?: string;
 };
 
 type TenantSummary = {
@@ -272,17 +273,21 @@ export default function ClientePortalAdminPage() {
 
   async function invitePortalUser(e: FormEvent) {
     e.preventDefault();
+    if (!tenantSummary?.tenantId) {
+      setError("Provisione o tenant antes de convidar o primeiro usuario do cliente.");
+      return;
+    }
     setInviting(true);
     setError(null);
     setInviteLink("");
     try {
-      const res = await authedFetch("/api/admin/client-portal/users/invite", {
+      const res = await authedFetch(`/api/admin/tenants/${tenantSummary.tenantId}/users/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          clientId,
           email: inviteEmail.trim().toLowerCase(),
           name: inviteName.trim(),
+          role: "client_admin",
         }),
       });
       const data = (await res.json()) as { inviteLink?: string; error?: string };
@@ -368,7 +373,7 @@ export default function ClientePortalAdminPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <Link
             href={`/admin/clientes/${clientId}`}
@@ -382,6 +387,17 @@ export default function ClientePortalAdminPage() {
             Configuração de acesso e contrato do cliente: {clientName || "..." }
           </p>
         </div>
+        {tenantSummary ? (
+          <Link
+            href={`/cliente/painel?tenantId=${encodeURIComponent(tenantSummary.tenantId)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-100 transition hover:bg-blue-500/20"
+          >
+            <Rocket className="h-4 w-4" />
+            Abrir painel como ALTUM
+          </Link>
+        ) : null}
       </div>
 
       {error && (
@@ -697,6 +713,16 @@ export default function ClientePortalAdminPage() {
               Convidar usuário do cliente
             </h2>
 
+            <p className="text-sm text-white/55">
+              O primeiro convite sai como <span className="font-medium text-white">client_admin</span>, para o cliente conseguir editar empresa, canais, operacao e usuarios sem depender da ALTUM.
+            </p>
+
+            {!tenantSummary ? (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                Provisione o tenant antes de gerar o primeiro convite.
+              </div>
+            ) : null}
+
             <input
               required
               value={inviteName}
@@ -715,7 +741,7 @@ export default function ClientePortalAdminPage() {
 
             <button
               type="submit"
-              disabled={inviting}
+              disabled={inviting || !tenantSummary}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-60"
             >
               {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -740,7 +766,12 @@ export default function ClientePortalAdminPage() {
               ) : (
                 portalUsers.map((portalUser) => (
                   <div key={portalUser.id} className="rounded-lg border border-white/10 bg-black/40 p-2">
-                    <p className="text-sm text-white/90">{portalUser.name || "Usuário"}</p>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm text-white/90">{portalUser.name || "Usuario"}</p>
+                      <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-blue-100">
+                        {String(portalUser.role || "client_viewer").replace(/_/g, " ")}
+                      </span>
+                    </div>
                     <p className="text-xs text-white/55">
                       {portalUser.email || "-"} • {portalUser.status || "active"}
                     </p>

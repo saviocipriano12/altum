@@ -5,7 +5,11 @@ import { getTenantSettings } from "@/lib/server/tenant";
 
 export async function GET(req: Request) {
   try {
-    const portalUser = await requirePortalRequestUser(req);
+    const { searchParams } = new URL(req.url);
+    const tenantId = String(searchParams.get("tenantId") || "").trim();
+    const portalUser = await requirePortalRequestUser(req, {
+      tenantId: tenantId || undefined,
+    });
 
     const [tenantSnap, settings, legacyClientSnap] = await Promise.all([
       adminDb.collection("tenants").doc(portalUser.tenantId).get(),

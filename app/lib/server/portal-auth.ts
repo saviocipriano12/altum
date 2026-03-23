@@ -1,9 +1,23 @@
 import { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
-import { getDefaultTenantMembershipForUser, getTenantCapabilities, getTenantSettings, type TenantCapability } from "@/lib/server/tenant";
+import {
+  assertTenantAccess,
+  getDefaultTenantMembershipForUser,
+  getTenantCapabilities,
+  getTenantSettings,
+  type TenantCapability,
+} from "@/lib/server/tenant";
 
 export type PortalUserStatus = "active" | "blocked";
-export type PortalTenantRole = "client_owner" | "client_admin" | "client_agent" | "client_viewer" | "client";
+export type PortalTenantRole =
+  | "agency_owner"
+  | "agency_admin"
+  | "agency_agent"
+  | "client_owner"
+  | "client_admin"
+  | "client_agent"
+  | "client_viewer"
+  | "client";
 
 export type PortalUserDoc = {
   uid: string;
@@ -57,8 +71,11 @@ function normalizeStatus(value: unknown): PortalUserStatus {
   return value === "blocked" ? "blocked" : "active";
 }
 
-function normalizeClientRole(value: unknown): PortalTenantRole {
+function normalizePortalRole(value: unknown): PortalTenantRole {
   if (
+    value === "agency_owner" ||
+    value === "agency_admin" ||
+    value === "agency_agent" ||
     value === "client_owner" ||
     value === "client_admin" ||
     value === "client_agent" ||
@@ -70,8 +87,11 @@ function normalizeClientRole(value: unknown): PortalTenantRole {
   return "client_viewer";
 }
 
-function isClientRole(value: unknown) {
+function isPortalRole(value: unknown) {
   return (
+    value === "agency_owner" ||
+    value === "agency_admin" ||
+    value === "agency_agent" ||
     value === "client_owner" ||
     value === "client_admin" ||
     value === "client_agent" ||
@@ -80,7 +100,47 @@ function isClientRole(value: unknown) {
   );
 }
 
-export async function requirePortalRequestUser(req: Request): Promise<PortalRequestUser> {
+async function buildPortalUserFromMembership(
+  decoded: DecodedIdToken,
+  membership: Awaited<ReturnType<typeof getDefaultTenantMembershipForUser>>
+) {
+  if (!membership) return null;
+  if (membership.status !== "active") {
+    throw new PortalAuthError(403, "blocked_portal_user", "Usuario do portal bloqueado.");
+  }
+
+  if (!isPortalRole(membership.role)) {
+    throw new PortalAuthError(403, "forbidden_portal_role", "Perfil sem acesso ao painel do cliente.");
+  }
+
+  const tenantSnap = await adminDb.collection("tenants").doc(membership.tenantId).get();
+  const tenantData = tenantSnap.exists ? (tenantSnap.data() as Record<string, unknown>) : {};
+  const settings = await getTenantSettings(membership.tenantId);
+
+  const tenantName =
+    (typeof settings?.name === "string" ? settings.name : "") ||
+    (typeof tenantData.name === "string" ? String(tenantData.name) : "") ||
+    "Cliente";
+
+  return {
+    uid: decoded.uid,
+    email: decoded.email || "",
+    name: decoded.name || "Cliente",
+    tenantId: membership.tenantId,
+    tenantName,
+    tenantRole: normalizePortalRole(membership.role),
+    clientId: membership.tenantId,
+    clientName: tenantName,
+    status: "active" as const,
+    capabilities: getTenantCapabilities(membership),
+    token: decoded,
+  };
+}
+
+export async function requirePortalRequestUser(
+  req: Request,
+  options?: { tenantId?: string }
+): Promise<PortalRequestUser> {
   const token = getBearerToken(req);
   if (!token) {
     throw new PortalAuthError(401, "missing_token", "Token de autenticacao ausente.");
@@ -117,38 +177,23 @@ export async function requirePortalRequestUser(req: Request): Promise<PortalRequ
     throw new PortalAuthError(401, "invalid_token", "Token de autenticacao invalido.");
   }
 
+  const requestedTenantId = String(options?.tenantId || "").trim();
+  if (requestedTenantId) {
+    try {
+      const requestedMembership = await assertTenantAccess(decoded.uid, requestedTenantId);
+      const requestedPortalUser = await buildPortalUserFromMembership(decoded, requestedMembership);
+      if (requestedPortalUser) {
+        return requestedPortalUser;
+      }
+    } catch {
+      // Falls back to default membership or legacy portal below.
+    }
+  }
+
   const membership = await getDefaultTenantMembershipForUser(decoded.uid);
   if (membership) {
-    if (membership.status !== "active") {
-      throw new PortalAuthError(403, "blocked_portal_user", "Usuario do portal bloqueado.");
-    }
-
-    if (!isClientRole(membership.role)) {
-      throw new PortalAuthError(403, "forbidden_portal_role", "Perfil sem acesso ao painel do cliente.");
-    }
-
-    const tenantSnap = await adminDb.collection("tenants").doc(membership.tenantId).get();
-    const tenantData = tenantSnap.exists ? (tenantSnap.data() as Record<string, unknown>) : {};
-    const settings = await getTenantSettings(membership.tenantId);
-
-    const tenantName =
-      (typeof settings?.name === "string" ? settings.name : "") ||
-      (typeof tenantData.name === "string" ? String(tenantData.name) : "") ||
-      "Cliente";
-
-    return {
-      uid: decoded.uid,
-      email: decoded.email || "",
-      name: decoded.name || "Cliente",
-      tenantId: membership.tenantId,
-      tenantName,
-      tenantRole: normalizeClientRole(membership.role),
-      clientId: membership.tenantId,
-      clientName: tenantName,
-      status: "active",
-      capabilities: getTenantCapabilities(membership),
-      token: decoded,
-    };
+    const portalUser = await buildPortalUserFromMembership(decoded, membership);
+    if (portalUser) return portalUser;
   }
 
   const portalRef = adminDb.collection("client_portal_users").doc(decoded.uid);
@@ -174,11 +219,15 @@ export async function requirePortalRequestUser(req: Request): Promise<PortalRequ
     name: portalData.name || decoded.name || "Cliente",
     tenantId,
     tenantName: portalData.tenantName || portalData.clientName || "Cliente",
-    tenantRole: normalizeClientRole(portalData.role),
+    tenantRole: normalizePortalRole(portalData.role),
     clientId: String(portalData.clientId || tenantId),
     clientName: portalData.clientName || portalData.tenantName || "Cliente",
     status,
-    capabilities: [],
+    capabilities: getTenantCapabilities({
+      role: normalizePortalRole(portalData.role),
+      status,
+      capabilities: [],
+    }),
     token: decoded,
   };
 }

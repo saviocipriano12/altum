@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { auth } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 
@@ -32,6 +32,8 @@ type MeResponse = {
   error?: string;
 };
 
+const ACTIVE_TENANT_STORAGE_KEY = "altum-client-active-tenant";
+
 const ClienteTenantContext = createContext<{
   tenant: TenantSession | null;
   hasCapability: (capability: string) => boolean;
@@ -52,8 +54,10 @@ export function useClienteCapability(capability: string) {
 export default function ClientePanelGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [tenant, setTenant] = useState<TenantSession | null>(null);
+  const requestedTenantId = String(searchParams.get("tenantId") || "").trim();
 
   useEffect(() => {
     if (pathname === "/cliente/login") {
@@ -69,7 +73,15 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
       }
 
       try {
-        const res = await authedFetch("/api/client-portal/me");
+        const storedTenantId =
+          typeof window !== "undefined"
+            ? String(window.localStorage.getItem(ACTIVE_TENANT_STORAGE_KEY) || "").trim()
+            : "";
+        const tenantHint = requestedTenantId || storedTenantId;
+        const endpoint = tenantHint
+          ? `/api/client-portal/me?tenantId=${encodeURIComponent(tenantHint)}`
+          : "/api/client-portal/me";
+        const res = await authedFetch(endpoint);
         const payload = (await res.json()) as MeResponse;
 
         if (!res.ok || !payload.portalUser?.tenantId) {
@@ -90,6 +102,9 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
         };
 
         setTenant(nextTenant);
+        if (typeof window !== "undefined" && nextTenant.tenantId) {
+          window.localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, nextTenant.tenantId);
+        }
       } catch {
         setTenant(null);
         router.replace("/cliente/login");
@@ -99,7 +114,7 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
     });
 
     return () => unsub();
-  }, [router, pathname]);
+  }, [router, pathname, requestedTenantId]);
 
   if (loading) {
     return (

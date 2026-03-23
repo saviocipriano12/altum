@@ -11,6 +11,17 @@ type Body = {
 
 const CLIENT_ROLES = new Set(["client_owner", "client_admin", "client_agent", "client_viewer"]);
 
+function shouldPreserveGlobalRole(role: unknown) {
+  return (
+    role === "admin" ||
+    role === "closer" ||
+    role === "sdr" ||
+    role === "agency_owner" ||
+    role === "agency_admin" ||
+    role === "agency_agent"
+  );
+}
+
 function clean(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
@@ -71,6 +82,11 @@ export async function POST(
     }
 
     const uid = authUser.uid;
+    const existingUserSnap = await adminDb.collection("users").doc(uid).get();
+    const existingUser = existingUserSnap.exists
+      ? (existingUserSnap.data() as { role?: string; defaultTenantId?: string })
+      : null;
+    const nextGlobalRole = shouldPreserveGlobalRole(existingUser?.role) ? existingUser?.role : role;
 
     const existingMemberships = await adminDb
       .collection("tenant_users")
@@ -86,9 +102,12 @@ export async function POST(
         uid,
         email,
         name: name || authUser.displayName || tenantName,
-        role,
+        role: nextGlobalRole,
         status: "active",
-        defaultTenantId: tenantId,
+        defaultTenantId:
+          shouldPreserveGlobalRole(existingUser?.role) && existingUser?.defaultTenantId
+            ? existingUser.defaultTenantId
+            : tenantId,
         updatedAt: FieldValue.serverTimestamp(),
         createdAt: FieldValue.serverTimestamp(),
       },
