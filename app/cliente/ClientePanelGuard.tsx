@@ -11,6 +11,7 @@ type TenantSession = {
   tenantId: string;
   tenantName?: string;
   tenantRole?: string;
+  capabilities?: string[];
   clientId?: string;
   clientName?: string;
   userName?: string;
@@ -26,14 +27,26 @@ type MeResponse = {
     tenantRole?: string;
     clientId?: string;
     clientName?: string;
+    capabilities?: string[];
   };
   error?: string;
 };
 
-const ClienteTenantContext = createContext<{ tenant: TenantSession | null }>({ tenant: null });
+const ClienteTenantContext = createContext<{
+  tenant: TenantSession | null;
+  hasCapability: (capability: string) => boolean;
+}>({
+  tenant: null,
+  hasCapability: () => false,
+});
 
 export function useClienteTenant() {
   return useContext(ClienteTenantContext);
+}
+
+export function useClienteCapability(capability: string) {
+  const { hasCapability } = useClienteTenant();
+  return hasCapability(capability);
 }
 
 export default function ClientePanelGuard({ children }: { children: React.ReactNode }) {
@@ -69,6 +82,7 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
           tenantId: payload.portalUser.tenantId,
           tenantName: payload.portalUser.tenantName,
           tenantRole: payload.portalUser.tenantRole,
+          capabilities: payload.portalUser.capabilities || [],
           clientId: payload.portalUser.clientId,
           clientName: payload.portalUser.clientName,
           userName: payload.portalUser.name,
@@ -99,7 +113,12 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
   if (!tenant) return null;
 
   return (
-    <ClienteTenantContext.Provider value={{ tenant }}>
+    <ClienteTenantContext.Provider
+      value={{
+        tenant,
+        hasCapability: (capability: string) => Boolean((tenant.capabilities || []).includes(capability)),
+      }}
+    >
       <div data-tenant-id={tenant.tenantId}>{children}</div>
     </ClienteTenantContext.Provider>
   );

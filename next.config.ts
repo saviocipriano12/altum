@@ -1,10 +1,14 @@
 const nextConfig = {
-  // Do not block deploy while we finish full strict typing migration.
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   turbopack: {
     root: process.cwd(),
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
+    ],
   },
 } as const;
 

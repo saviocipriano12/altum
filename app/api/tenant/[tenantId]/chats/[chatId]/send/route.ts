@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { normalizePhone } from "@/app/lib/server/phone";
-import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
-import { getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
-import { getChatStateDocId } from "@/lib/server/ai/agent";
+import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { sendTenantChatText } from "@/lib/server/chat-dispatch";
 
 type Body = {
   text?: string;
@@ -18,15 +14,8 @@ export async function POST(
   try {
     const user = await requireRequestUser(req);
     const { tenantId, chatId } = await context.params;
-    await assertTenantAccess(user.uid, tenantId);
-
-    const channel = await getWhatsAppChannelForTenant(tenantId, { allowAgencyFallback: false });
-    if (!channel) {
-      return NextResponse.json(
-        { error: "Canal WhatsApp ativo nao configurado para este tenant." },
-        { status: 400 }
-      );
-    }
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantCapability(membership, "respond_inbox");
 
     const body = (await req.json()) as Body;
     const text = (body.text || "").trim();
@@ -34,72 +23,22 @@ export async function POST(
       return NextResponse.json({ error: "Campo obrigatorio: text." }, { status: 400 });
     }
 
-    const chatRef = adminDb.collection("chats").doc(chatId);
-    const chatSnap = await chatRef.get();
-    if (!chatSnap.exists) {
-      return NextResponse.json({ error: "Chat nao encontrado." }, { status: 404 });
-    }
-
-    const chat = chatSnap.data() as {
-      tenantId?: string;
-      contactPhone?: string;
-    };
-
-    if ((chat.tenantId || "") !== tenantId) {
-      return NextResponse.json({ error: "Chat fora do tenant informado." }, { status: 403 });
-    }
-
-    const phone = normalizePhone(chat.contactPhone);
-    if (!phone) {
-      return NextResponse.json({ error: "Chat sem telefone valido." }, { status: 400 });
-    }
-
-    const payload = await sendMetaTextMessage({ channel, to: phone, text });
-
-    await Promise.all([
-      chatRef.set(
-        {
-          lastMessage: text,
-          lastMessageTime: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-          status: "open",
-          channelPhoneNumberId: channel.phoneNumberId,
-        },
-        { merge: true }
-      ),
-      adminDb.collection("messages").add({
-        chatId,
-        tenantId,
-        text,
-        sender: "agent",
-        senderId: user.uid,
-        senderName: user.name,
-        type: "text",
-        status: "sent",
-        channelPhoneNumberId: channel.phoneNumberId,
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      adminDb.collection("chat_state").doc(getChatStateDocId(tenantId, chatId)).set(
-        {
-          tenantId,
-          chatId,
-          aiEnabled: false,
-          pausedUntil: new Date(Date.now() + 30 * 60 * 1000),
-          humanOwnerUserId: user.uid,
-          updatedAt: FieldValue.serverTimestamp(),
-          updatedBy: user.uid,
-          updatedByName: user.name,
-        },
-        { merge: true }
-      ),
-    ]);
+    const result = await sendTenantChatText({
+      tenantId,
+      chatId,
+      text,
+      actor: { id: user.uid, name: user.name },
+      pauseAi: true,
+      pauseMinutes: 30,
+    });
 
     return NextResponse.json({
       ok: true,
       tenantId,
       chatId,
-      phoneNumberId: channel.phoneNumberId,
-      metaMessageId: payload?.messages?.[0]?.id || null,
+      channel: result.channel,
+      phoneNumberId: result.phoneNumberId,
+      metaMessageId: result.metaMessageId,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {

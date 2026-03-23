@@ -2,12 +2,10 @@ import Link from "next/link";
 import {
   ArrowRight,
   BrainCircuit,
-  CheckCircle2,
   Clock3,
   Gauge,
   MessageSquare,
   Rocket,
-  ShieldCheck,
   Target,
   Workflow,
 } from "lucide-react";

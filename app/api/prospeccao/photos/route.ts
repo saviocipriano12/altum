@@ -15,7 +15,7 @@ function cleanWidth(value: string | null) {
 
 export async function GET(req: Request) {
   try {
-    await requireRequestUser(req);
+    await requireRequestUser(req, { roles: ["agency_agent"] });
 
     if (!PLACES_KEY) {
       return NextResponse.json(

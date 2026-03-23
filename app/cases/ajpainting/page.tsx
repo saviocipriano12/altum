@@ -1,6 +1,7 @@
 "use client";
+import Image from "next/image";
 import { motion } from 'framer-motion'
-import { Paintbrush, Factory, Building2, Home, ShieldCheck, Award, Phone, ArrowRight, Star, Quote, Mail, MapPin, Facebook, Instagram, Linkedin, CheckCircle, ChevronDown } from 'lucide-react'
+import { Paintbrush, ShieldCheck, Award, Phone, ArrowRight, Star, Mail, MapPin, Facebook, Instagram, Linkedin, CheckCircle, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 
 export default function AJPaintingCleaningPage() {
@@ -110,7 +111,7 @@ export default function AJPaintingCleaningPage() {
           </div>
         </div>
         <div>
-          <img src="/cases/team-van.jpg" alt="Team" className="rounded-3xl shadow-2xl border border-gray-100 w-full h-[400px] object-cover" />
+          <Image src="/cases/team-van.jpg" alt="Team" width={1200} height={800} className="rounded-3xl shadow-2xl border border-gray-100 w-full h-[400px] object-cover" />
         </div>
       </section>
 

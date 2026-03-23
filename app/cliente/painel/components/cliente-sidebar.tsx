@@ -2,19 +2,34 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
+  BookOpen,
   Bot,
   Cable,
+  CalendarDays,
+  ChevronLeft,
   ChevronRight,
   Crown,
+  DollarSign,
+  FileText,
+  Funnel,
+  GitBranchPlus,
   LayoutGrid,
+  ListTodo,
+  Megaphone,
   MessageSquare,
-  Shield,
+  Rocket,
   Settings,
+  Shield,
+  Sparkles,
   Target,
   Users,
+  X,
 } from "lucide-react";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useTenantReadiness } from "@/app/cliente/painel/hooks/use-tenant-readiness";
+import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { StateBadge } from "@/app/cliente/painel/components/ui";
 
 type Props = {
@@ -24,27 +39,39 @@ type Props = {
 
 const NAV_GROUPS = [
   {
-    title: "Workspace",
-    items: [{ href: "/cliente/painel", label: "Dashboard", icon: LayoutGrid }],
+    title: "Painel",
+    items: [{ href: "/cliente/painel", label: "Visao Geral", icon: LayoutGrid }],
   },
   {
     title: "Revenue Ops",
     items: [
       { href: "/cliente/painel/inbox", label: "Inbox", icon: MessageSquare },
       { href: "/cliente/painel/crm", label: "CRM", icon: Users },
+      { href: "/cliente/painel/follow-ups", label: "Follow-ups", icon: ListTodo },
+      { href: "/cliente/painel/agenda", label: "Agenda", icon: CalendarDays },
+      { href: "/cliente/painel/pipeline", label: "Pipeline", icon: Funnel },
+      { href: "/cliente/painel/comercial", label: "Comercial", icon: DollarSign, capability: "manage_commercial" },
+      { href: "/cliente/painel/captacao", label: "Captacao", icon: Megaphone },
+      { href: "/cliente/painel/campanhas", label: "Campanhas", icon: Sparkles, capability: "manage_automations", badge: "novo" },
     ],
   },
   {
-    title: "Intelligence",
+    title: "Inteligencia",
     items: [
-      { href: "/cliente/painel/ia", label: "IA", icon: Bot },
-      { href: "/cliente/painel/automacoes", label: "Automacoes", icon: Cable },
+      { href: "/cliente/painel/ia", label: "IA", icon: Bot, capability: "manage_ai" },
+      { href: "/cliente/painel/conhecimento", label: "Conhecimento", icon: BookOpen, capability: "manage_ai" },
+      { href: "/cliente/painel/handoffs", label: "Handoffs", icon: GitBranchPlus },
+      { href: "/cliente/painel/automacoes", label: "Automacoes", icon: Cable, capability: "manage_automations" },
       { href: "/cliente/painel/metricas", label: "Metricas", icon: Target },
     ],
   },
   {
     title: "Governanca",
-    items: [{ href: "/cliente/painel/configuracoes", label: "Configuracoes", icon: Settings }],
+    items: [
+      { href: "/cliente/painel/go-live", label: "Go-live", icon: Rocket },
+      { href: "/cliente/painel/logs", label: "Logs", icon: FileText },
+      { href: "/cliente/painel/configuracoes", label: "Configuracoes", icon: Settings, capability: "manage_settings" },
+    ],
   },
 ];
 
@@ -55,95 +82,190 @@ function isActive(pathname: string, href: string) {
 
 export function ClienteSidebar({ isOpen, onClose }: Props) {
   const pathname = usePathname();
-  const { tenant } = useClienteTenant();
+  const { tenant, hasCapability } = useClienteTenant();
+  const { pilotReady, readinessScore, blockerCount } = useTenantReadiness(tenant?.tenantId);
+  const { sidebarCollapsed, setSidebarCollapsed } = useClienteShell();
+  const [isDesktop, setIsDesktop] = useState(false);
+
   const roleLabel = tenant?.tenantRole?.replace(/_/g, " ") || "client viewer";
+  const navStateLabel = pilotReady ? "pilot ready" : blockerCount > 0 ? `${blockerCount} pend.` : "operando";
+  const compactMode = isDesktop && sidebarCollapsed;
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setIsDesktop(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-black/55 transition-opacity lg:hidden ${
+        className={`fixed inset-0 z-40 bg-black/45 backdrop-blur-sm transition-opacity lg:hidden ${
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
       />
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[270px] flex-col border-r border-white/10 bg-[#0E0E0E] p-4 transition-transform duration-300 lg:translate-x-0 ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`client-glass fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-[var(--cliente-border)] bg-[var(--cliente-sidebar)] shadow-[var(--cliente-shadow-hard)] transition-[width,transform] duration-300 lg:translate-x-0 ${
+          compactMode ? "w-[304px] lg:w-[92px]" : "w-[304px]"
+        } ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="rounded-2xl border border-white/10 bg-[#111111] p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[12px] font-bold italic tracking-widest text-white/85">ALTUM</p>
-              <p className="mt-1 truncate text-base font-semibold text-white">
-                {tenant?.tenantName || tenant?.clientName || "Cliente"}
-              </p>
-              <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-white/35">Client OS</p>
-            </div>
-            <span className="inline-flex rounded-xl border border-blue-500/20 bg-blue-600/10 p-2 text-blue-200">
-              <Crown className="h-4 w-4" />
-            </span>
+        <div className="pointer-events-none absolute inset-x-4 top-0 h-24 rounded-b-[32px] bg-[linear-gradient(180deg,var(--cliente-accent-soft),transparent)]" />
+
+        <div className="relative flex h-20 items-center gap-3 border-b border-[var(--cliente-border)] px-4">
+          <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)] shadow-[0_12px_30px_rgba(59,130,246,0.16)]">
+            <Crown className="h-5 w-5" />
           </div>
 
-          <div className="mt-4 flex items-center justify-between rounded-xl border border-white/10 bg-black/40 px-3 py-2">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Plano operacional</p>
-              <p className="mt-1 text-sm font-medium text-white">Premium Workspace</p>
+          {!compactMode ? (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[12px] font-black uppercase tracking-[0.28em] text-[var(--cliente-text)]">ALTUM</p>
+              <p className="truncate text-[10px] uppercase tracking-[0.22em] text-[var(--cliente-text-soft)]">Client Cloud</p>
             </div>
-            <StateBadge label="ativo" tone="success" />
+          ) : null}
+
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="hidden rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-text)] lg:inline-flex"
+              title={compactMode ? "Expandir menu" : "Recolher menu"}
+            >
+              {compactMode ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
+
+            <button
+              onClick={onClose}
+              className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-text-muted)] hover:text-[var(--cliente-text)] lg:hidden"
+              aria-label="Fechar menu"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
-        <nav className="mt-4 space-y-4">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.title}>
-              <p className="mb-1 px-2 text-[11px] uppercase tracking-[0.16em] text-white/38">{group.title}</p>
-              <div className="space-y-1.5">
-                {group.items.map((item) => {
-                  const active = isActive(pathname, item.href);
-                  const Icon = item.icon;
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={onClose}
-                      className={`group flex items-center justify-between rounded-xl border px-3 py-2.5 transition ${
-                        active
-                          ? "border-blue-500/20 bg-blue-600/10 text-blue-100"
-                          : "border-transparent bg-transparent text-white/72 hover:border-white/10 hover:bg-white/[0.05] hover:text-white"
-                      }`}
-                    >
-                      <span className="inline-flex items-center gap-2 text-sm font-medium">
-                        <Icon className="h-4 w-4" />
-                        {item.label}
-                      </span>
-                      <ChevronRight
-                        className={`h-4 w-4 transition ${
-                          active ? "opacity-100" : "opacity-0 group-hover:opacity-75"
-                        }`}
-                      />
-                    </Link>
-                  );
-                })}
+        <div className="px-4 pt-4">
+          <div
+            className={`client-glass overflow-hidden rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-sidebar-card)] shadow-[var(--cliente-shadow-soft)] ${
+              compactMode ? "px-2 py-3" : "px-4 py-4"
+            }`}
+          >
+            <div className={`flex items-start ${compactMode ? "justify-center" : "justify-between gap-3"}`}>
+              <div className={compactMode ? "hidden" : "min-w-0"}>
+                <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--cliente-text-soft)]">Workspace</p>
+                <p className="mt-2 truncate text-base font-semibold text-[var(--cliente-text)]">
+                  {tenant?.tenantName || tenant?.clientName || "Cliente"}
+                </p>
+                <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Executive operating system</p>
+              </div>
+              <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]">
+                <Shield className="h-4 w-4" />
               </div>
             </div>
-          ))}
+
+            {!compactMode ? (
+              <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">Prontidao</p>
+                    <p className="mt-1 text-sm font-medium text-[var(--cliente-text)]">
+                      {pilotReady ? "Piloto liberado" : "Workspace premium"}
+                    </p>
+                  </div>
+                  <StateBadge label={pilotReady ? `${readinessScore}%` : navStateLabel} tone={pilotReady ? "success" : blockerCount > 0 ? "warning" : "info"} />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <nav className="client-scrollbar mt-4 flex-1 space-y-5 overflow-y-auto px-3 pb-4">
+          {NAV_GROUPS.map((group) => {
+            const visibleItems = group.items.filter((item) => !("capability" in item) || !item.capability || hasCapability(item.capability));
+            if (visibleItems.length === 0) return null;
+
+            return (
+              <div key={group.title}>
+                {!compactMode ? (
+                  <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--cliente-text-soft)]">{group.title}</p>
+                ) : null}
+
+                <div className="space-y-1.5">
+                  {visibleItems.map((item) => {
+                    const active = isActive(pathname, item.href);
+                    const Icon = item.icon;
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={onClose}
+                        className={`group relative flex items-center rounded-2xl border px-3 py-3 text-sm font-medium transition ${
+                          active
+                            ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-text)] shadow-[0_12px_30px_rgba(59,130,246,0.14)]"
+                            : "border-transparent text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-text)]"
+                        } ${compactMode ? "justify-center px-2" : "justify-between gap-3"}`}
+                        title={compactMode ? item.label : undefined}
+                      >
+                        <span className={`inline-flex items-center ${compactMode ? "justify-center" : "gap-3"} min-w-0`}>
+                          <span
+                            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border ${
+                              active
+                                ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-panel-solid)] text-[var(--cliente-accent)]"
+                                : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-text-soft)] group-hover:text-[var(--cliente-text)]"
+                            }`}
+                          >
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          {!compactMode ? <span className="truncate">{item.label}</span> : null}
+                        </span>
+
+                        {!compactMode ? (
+                          <span className="ml-auto inline-flex items-center gap-2">
+                            {"badge" in item && item.badge ? <StateBadge label={item.badge} tone="info" /> : null}
+                            {active ? (
+                              <span className="h-2 w-2 rounded-full bg-[var(--cliente-accent)] shadow-[0_0_14px_var(--cliente-accent)]" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 opacity-0 group-hover:opacity-75" />
+                            )}
+                          </span>
+                        ) : (
+                          <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] px-3 py-2 text-xs text-[var(--cliente-text)] shadow-[var(--cliente-shadow-soft)] group-hover:block lg:group-hover:block">
+                            {item.label}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
-        <div className="mt-auto rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-          <div className="inline-flex rounded-xl border border-white/12 bg-white/[0.04] p-2 text-white/80">
-            <Shield className="h-4 w-4" />
+        <div className="border-t border-[var(--cliente-border)] px-4 py-4">
+          <div
+            className={`rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] ${
+              compactMode ? "flex justify-center px-2 py-3" : "px-4 py-4"
+            }`}
+          >
+            {compactMode ? (
+              <Shield className="h-5 w-5 text-[var(--cliente-accent)]" />
+            ) : (
+              <div>
+                <p className="text-sm font-semibold text-[var(--cliente-text)]">Workspace governado</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">{roleLabel}</p>
+                <p className="mt-2 text-sm text-[var(--cliente-text-muted)]">
+                  Tenant isolado, canais dedicados, modulos conectados e operacao centralizada.
+                </p>
+              </div>
+            )}
           </div>
-          <p className="mt-3 text-sm font-medium text-white">Workspace governado</p>
-          <p className="mt-1 text-xs uppercase tracking-[0.14em] text-white/48">{roleLabel}</p>
-          <p className="mt-2 text-sm text-white/58">
-            Seu painel opera com isolamento por tenant, canais dedicados e visibilidade executiva unificada.
-          </p>
         </div>
       </aside>
     </>
   );
 }
-

@@ -9,6 +9,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import type {
@@ -32,6 +33,10 @@ import {
   Timer,
   UserPlus,
   LineChart,
+  Bot,
+  HandCoins,
+  Handshake,
+  CalendarClock,
 } from "lucide-react";
 
 type PipelineStage =
@@ -75,12 +80,56 @@ type DashboardProject = AgencyProject;
 type DashboardBudget = AgencyBudget & { titulo?: string };
 type DashboardActivity = AgencyActivity & { data?: string | null };
 
+type AdminAiSignalsResponse = {
+  summary?: {
+    totalSignals?: number;
+    handoffs?: number;
+    proposalSignals?: number;
+    scheduleSignals?: number;
+    activeTenants?: number;
+  };
+  tenants?: Array<{
+    tenantId: string;
+    tenantName: string;
+    legacyClientId: string;
+    totalSignals: number;
+    handoffs: number;
+    proposalSignals: number;
+    scheduleSignals: number;
+    lastSignalAt?: unknown;
+  }>;
+};
+
+function toDateTime(value?: unknown) {
+  if (!value) return null;
+  if (typeof value === "number") return new Date(value);
+  if (
+    typeof value === "object" &&
+    value &&
+    "toDate" in value &&
+    typeof (value as { toDate?: () => Date }).toDate === "function"
+  ) {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (
+    typeof value === "object" &&
+    value &&
+    "_seconds" in value &&
+    typeof (value as { _seconds?: number })._seconds === "number"
+  ) {
+    return new Date((value as { _seconds: number })._seconds * 1000);
+  }
+  return null;
+}
+
 export default function DashboardReal() {
   const { user, isAdmin } = useAuth();
   const [leads, setLeads] = useState<DashboardLead[]>([]);
   const [projetos, setProjetos] = useState<DashboardProject[]>([]);
   const [orcamentos, setOrcamentos] = useState<DashboardBudget[]>([]);
   const [atividades, setAtividades] = useState<DashboardActivity[]>([]);
+  const [aiSignals, setAiSignals] = useState<AdminAiSignalsResponse>({});
+  const [aiSignalsLoading, setAiSignalsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -170,6 +219,30 @@ export default function DashboardReal() {
     };
   }, [user, isAdmin]);
 
+  useEffect(() => {
+    async function loadAiSignals() {
+      try {
+        setAiSignalsLoading(true);
+        const response = await authedFetch("/api/admin/ai/signals?limit=120");
+        const data = (await response.json().catch(() => ({}))) as AdminAiSignalsResponse;
+        if (response.ok) {
+          setAiSignals(data);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar sinais da IA no dashboard:", error);
+      } finally {
+        setAiSignalsLoading(false);
+      }
+    }
+
+    if (user && isAdmin) {
+      void loadAiSignals();
+    } else {
+      setAiSignals({});
+      setAiSignalsLoading(false);
+    }
+  }, [user, isAdmin]);
+
   // ======== MÉTRICAS BÁSICAS ========
 
   const leadsHoje = useMemo(
@@ -220,6 +293,8 @@ export default function DashboardReal() {
   const taxaFechamento = Math.round((totalFechados / totalLeads) * 100);
 
   const totalPropostas = orcamentos.length;
+  const aiSummary = aiSignals.summary || {};
+  const aiTenants = (aiSignals.tenants || []).slice(0, 4);
 
   // próximas 5 atividades (pendentes primeiro)
   const proximasAtividades = useMemo(() => {
@@ -330,6 +405,141 @@ export default function DashboardReal() {
             <Timer className="h-3 w-3" />
             Follow-ups e tarefas que precisam de atenção.
           </p>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-2xl border border-white/10 bg-[#101010] p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-white/50">
+                IA operacional ALTUM
+              </p>
+              <p className="text-sm text-white/70">
+                Leitura executiva dos sinais que a IA esta empurrando nos tenants.
+              </p>
+            </div>
+            <Link
+              href="/admin/ia"
+              className="text-[11px] text-blue-300 hover:text-blue-200 inline-flex items-center gap-1"
+            >
+              Abrir central de IA
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <MiniMetric
+              label="Sinais"
+              value={String(aiSummary.totalSignals || 0)}
+              hint="janela recente"
+              icon={Bot}
+            />
+            <MiniMetric
+              label="Handoffs"
+              value={String(aiSummary.handoffs || 0)}
+              hint="escalados"
+              icon={Handshake}
+            />
+            <MiniMetric
+              label="Propostas"
+              value={String(aiSummary.proposalSignals || 0)}
+              hint="sinais comerciais"
+              icon={HandCoins}
+            />
+            <MiniMetric
+              label="Agendas"
+              value={String(aiSummary.scheduleSignals || 0)}
+              hint="proximo passo"
+              icon={CalendarClock}
+            />
+          </div>
+
+          {aiSignalsLoading ? (
+            <p className="text-xs text-white/45">Carregando sinais de IA...</p>
+          ) : aiTenants.length === 0 ? (
+            <p className="text-xs text-white/45">Nenhum tenant com sinal recente da IA.</p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {aiTenants.map((tenant) => (
+                <div
+                  key={tenant.tenantId}
+                  className="rounded-xl border border-white/10 bg-black/40 p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-white">{tenant.tenantName}</p>
+                      <p className="text-[11px] text-white/45">Tenant {tenant.tenantId}</p>
+                    </div>
+                    <p className="text-[11px] text-white/45">
+                      {toDateTime(tenant.lastSignalAt)?.toLocaleString("pt-BR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }) || "sem data"}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 grid-cols-3 text-[11px] text-white/65">
+                    <span>{tenant.handoffs} handoff</span>
+                    <span>{tenant.proposalSignals} proposta</span>
+                    <span>{tenant.scheduleSignals} agenda</span>
+                  </div>
+
+                  {tenant.legacyClientId ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link
+                        href={`/admin/clientes/${tenant.legacyClientId}`}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] text-white/75 hover:bg-white/10 transition"
+                      >
+                        Cliente
+                      </Link>
+                      <Link
+                        href={`/admin/clientes/${tenant.legacyClientId}/portal`}
+                        className="rounded-lg border border-blue-500/30 bg-blue-600/10 px-3 py-1.5 text-[11px] text-blue-100 hover:bg-blue-600/20 transition"
+                      >
+                        Portal
+                      </Link>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-[#101010] p-4 space-y-3">
+          <p className="text-[11px] uppercase tracking-wide text-white/50">
+            Leitura executiva da IA
+          </p>
+          <div className="rounded-xl border border-white/10 bg-black/40 p-3">
+            <p className="text-sm font-medium text-white">Onde a ALTUM deve olhar primeiro</p>
+            <p className="mt-2 text-xs text-white/60">
+              Use handoffs para identificar operacoes sensiveis, propostas para atacar fechamento
+              e agendas para destravar proximos passos comerciais.
+            </p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/40 p-3">
+            <p className="text-sm font-medium text-white">Como agir</p>
+            <p className="mt-2 text-xs text-white/60">
+              Quando um tenant concentrar muitos sinais, abra a central de IA e depois o portal do
+              cliente para validar CRM, comercial e automacoes.
+            </p>
+          </div>
+          <Link
+            href="/admin/ia"
+            className="flex items-center justify-between rounded-xl border border-blue-500/30 bg-blue-600/10 px-3 py-3 hover:bg-blue-600/20 transition"
+          >
+            <div className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-blue-200" />
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-blue-100">Abrir supervisao da IA</span>
+                <span className="text-[11px] text-blue-100/75">Ver sinais por tenant e agir no backoffice</span>
+              </div>
+            </div>
+            <ArrowRight className="h-3 w-3 text-blue-100" />
+          </Link>
         </div>
       </section>
 
@@ -647,6 +857,33 @@ export default function DashboardReal() {
           Carregando dados em tempo real…
         </p>
       )}
+    </div>
+  );
+}
+
+function MiniMetric({
+  label,
+  value,
+  hint,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  icon: typeof Bot;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/40 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-white/45">{label}</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+          <p className="mt-1 text-[11px] text-white/45">{hint}</p>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+          <Icon className="h-4 w-4 text-white/70" />
+        </div>
+      </div>
     </div>
   );
 }

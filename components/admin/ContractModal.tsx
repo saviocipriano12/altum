@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, X, Download, Printer } from 'lucide-react';
+import { FileText, X, Printer } from 'lucide-react';
 
 interface ContractModalProps {
   isOpen: boolean;

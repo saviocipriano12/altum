@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 
 type Body = {
   type?: "faq" | "catalog" | "policy";
@@ -49,7 +49,8 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
 
-    await assertTenantAccess(user.uid, tenantId);
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantRole(membership, "client_viewer");
 
     const snap = await adminDb
       .collection("kb_docs")
@@ -93,7 +94,8 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
 
-    await assertTenantAccess(user.uid, tenantId);
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantCapability(membership, "manage_ai");
 
     const body = (await req.json()) as Body;
     const content = clean(body.content, 1600);

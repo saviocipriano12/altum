@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "@/firebaseConfig";
+import { getBusinessProfile, normalizeBusinessProfileId, type BusinessProfileId } from "@/lib/business-profiles";
 import {
   collection,
   doc,
@@ -56,6 +57,13 @@ type ClientFinance = FinanceTransaction & {
 
 type ClientActivity = AgencyActivity & {
   data?: string | null;
+};
+
+type ClientTenantSummary = {
+  tenantId: string;
+  status: string;
+  businessProfileId: BusinessProfileId;
+  niche: string;
 };
 
 function toDate(value?: TimestampLike | number | string | null): Date | null {
@@ -129,6 +137,7 @@ export default function ClienteDetalhePage() {
   const [budgets, setBudgets] = useState<ClientBudget[]>([]);
   const [transactions, setTransactions] = useState<ClientFinance[]>([]);
   const [activities, setActivities] = useState<ClientActivity[]>([]);
+  const [tenantSummary, setTenantSummary] = useState<ClientTenantSummary | null>(null);
 
   useEffect(() => {
     async function fetchClient() {
@@ -192,13 +201,19 @@ export default function ClienteDetalhePage() {
           where("clienteNome", "==", currentClient.name),
           limit(20)
         );
+        const tenantByLegacyClientQuery = query(
+          collection(db, "tenants"),
+          where("legacyClientId", "==", currentClient.id),
+          limit(1)
+        );
 
-        const [projectsSnap, budgetsSnap, financeByIdSnap, activitiesSnap] =
+        const [projectsSnap, budgetsSnap, financeByIdSnap, activitiesSnap, tenantSnap] =
           await Promise.all([
             getDocs(projectsQuery),
             getDocs(budgetsQuery),
             getDocs(financeByIdQuery),
             getDocs(activitiesByNameQuery),
+            getDocs(tenantByLegacyClientQuery),
           ]);
 
         const projectDocs: AgencyProject[] = projectsSnap.docs.map((item) => {
@@ -258,16 +273,42 @@ export default function ClienteDetalhePage() {
           };
         });
 
+        let nextTenantSummary: ClientTenantSummary | null = null;
+        if (!tenantSnap.empty) {
+          const tenantDoc = tenantSnap.docs[0];
+          const tenantData = tenantDoc.data() as {
+            status?: string;
+            niche?: string;
+            businessProfileId?: string;
+          };
+
+          const tenantSettingsSnap = await getDoc(doc(db, "tenant_settings", tenantDoc.id));
+          const tenantSettings = tenantSettingsSnap.exists()
+            ? (tenantSettingsSnap.data() as { businessProfileId?: string; niche?: string })
+            : null;
+
+          nextTenantSummary = {
+            tenantId: tenantDoc.id,
+            status: String(tenantData.status || "active"),
+            businessProfileId: normalizeBusinessProfileId(
+              tenantSettings?.businessProfileId || tenantData.businessProfileId
+            ),
+            niche: String(tenantSettings?.niche || tenantData.niche || currentClient.niche || ""),
+          };
+        }
+
         setProjects(sortByCreatedAtDesc(projectDocs));
         setBudgets(sortByCreatedAtDesc(budgetDocs));
         setTransactions(sortByCreatedAtDesc(financeDocs));
         setActivities(sortByCreatedAtDesc(activityDocs));
+        setTenantSummary(nextTenantSummary);
       } catch (error) {
         console.error("Erro ao buscar dados conectados do cliente:", error);
         setProjects([]);
         setBudgets([]);
         setTransactions([]);
         setActivities([]);
+        setTenantSummary(null);
       } finally {
         setLoadingRelated(false);
       }
@@ -277,6 +318,7 @@ export default function ClienteDetalhePage() {
   }, [client]);
 
   const clientCreatedAt = formatDateTime(client?.createdAt);
+  const businessProfile = tenantSummary ? getBusinessProfile(tenantSummary.businessProfileId) : null;
 
   const kpis = useMemo(() => {
     const activeProjects = projects.filter((project) => project.status === "Ativo").length;
@@ -579,6 +621,50 @@ export default function ClienteDetalhePage() {
               <Wallet className="h-3 w-3" />
               Abrir modulo financeiro
             </Link>
+          </div>
+
+          <div className="rounded-xl border border-blue-500/20 bg-blue-950/10 p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-blue-100">
+              Tenant e modo operacional
+            </h2>
+
+            {tenantSummary && businessProfile ? (
+              <>
+                <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-white/45">Tenant</p>
+                  <p className="mt-1 text-sm font-medium text-white">{tenantSummary.tenantId}</p>
+                  <p className="mt-1 text-xs text-white/55">
+                    {tenantSummary.status} · {tenantSummary.niche || "nicho nao informado"}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-white/45">Modo do negocio</p>
+                  <p className="mt-1 text-sm font-medium text-white">{businessProfile.label}</p>
+                  <p className="mt-1 text-xs text-white/55">{businessProfile.description}</p>
+                </div>
+
+                <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-white/45">Foco comercial</p>
+                  <p className="mt-1 text-xs text-white/75">{businessProfile.commercialMotion}</p>
+                  <p className="mt-2 text-[11px] text-white/55">
+                    Métricas naturais: {businessProfile.metrics.join(" · ")}
+                  </p>
+                </div>
+
+                <Link
+                  href={`/admin/clientes/${client.id}/portal`}
+                  className="inline-flex items-center gap-2 text-xs text-blue-300 hover:text-blue-200"
+                >
+                  <BadgeCheck className="h-3 w-3" />
+                  Abrir portal e continuar provisionamento
+                </Link>
+              </>
+            ) : (
+              <p className="text-xs text-white/60">
+                Este cliente ainda nao tem tenant/profil de negocio claramente vinculado. Vale revisar o provisionamento do portal.
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">

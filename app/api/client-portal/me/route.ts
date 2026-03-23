@@ -37,6 +37,7 @@ export async function GET(req: Request) {
         tenantRole: portalUser.tenantRole,
         clientId: portalUser.clientId,
         clientName: portalUser.clientName,
+        capabilities: portalUser.capabilities,
       },
       client: clientData,
     });

@@ -1,0 +1,433 @@
+import type {
+  AltumAiAutonomyMode,
+  AltumAiProvider,
+  AltumAiReasoningLevel,
+  AltumAiResponseStyle,
+  AltumAiTier,
+} from "@/lib/server/ai/operating-layer";
+import type { BusinessProfilePlaybookOffer, BusinessProfilePlaybookScript } from "@/lib/business-profiles";
+
+type ConversationMessage = {
+  id: string;
+  text: string;
+  sender: "agent" | "client" | "system";
+};
+
+type KnowledgeDoc = {
+  id: string;
+  type: "faq" | "catalog" | "policy";
+  content: string;
+  tags: string[];
+  score?: number;
+};
+
+export type ConversationAgentInput = {
+  tenantId: string;
+  chatId: string;
+  inboundText: string;
+  channel: string;
+  contactName?: string;
+  toneOfVoice: string;
+  businessSummary: string;
+  objective?: string;
+  guardrails: string[];
+  mandatoryQuestions?: string[];
+  escalationTopics?: string[];
+  playbookOffers?: BusinessProfilePlaybookOffer[];
+  playbookScripts?: BusinessProfilePlaybookScript[];
+  tier: AltumAiTier;
+  autonomyMode: AltumAiAutonomyMode;
+  reasoningLevel: AltumAiReasoningLevel;
+  responseStyle: AltumAiResponseStyle;
+  conversation: ConversationMessage[];
+  kbDocs: KnowledgeDoc[];
+  preferredProviders: AltumAiProvider[];
+};
+
+export type ConversationAgentResult = {
+  decision: "respond" | "ask_more" | "handoff" | "skip";
+  reason: string;
+  confidence: number;
+  responseText?: string;
+  nextAction?: string;
+  provider: AltumAiProvider;
+  model: string;
+  fallbackUsed: boolean;
+  extractedFields?: Record<string, string>;
+};
+
+type RuntimePolicy = {
+  primaryProvider: AltumAiProvider;
+  fallbackProviders: AltumAiProvider[];
+  conversationModel: string;
+  extractionModel: string;
+  retrievalMode: "keyword" | "hybrid" | "semantic";
+  supportsToolCalling: boolean;
+  supportsDeepReasoning: boolean;
+  budgetMode: "conservative" | "balanced" | "premium";
+};
+
+function sanitizeText(value: unknown, max = 900) {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function parseJsonPayload(raw: string) {
+  const text = raw.trim();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+function normalizeDecision(value: unknown) {
+  const raw = sanitizeText(value, 40).toLowerCase();
+  if (raw === "handoff" || raw === "ask_more" || raw === "skip") return raw;
+  return "respond";
+}
+
+function normalizeConfidence(value: unknown) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 0.56;
+  return Math.max(0, Math.min(0.99, numeric));
+}
+
+function normalizeExtractedFields(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Record<string, unknown>;
+  const entries = Object.entries(source)
+    .map(([key, item]) => [sanitizeText(key, 40), sanitizeText(item, 180)] as const)
+    .filter(([key, item]) => key && item);
+  if (!entries.length) return undefined;
+  return Object.fromEntries(entries);
+}
+
+function normalizeAgentResult(
+  payload: Record<string, unknown> | null,
+  provider: AltumAiProvider,
+  model: string,
+  fallbackUsed: boolean
+): ConversationAgentResult | null {
+  if (!payload) return null;
+
+  return {
+    decision: normalizeDecision(payload.decision),
+    reason: sanitizeText(payload.reason, 140) || "model_decision",
+    confidence: normalizeConfidence(payload.confidence),
+    responseText: sanitizeText(payload.responseText, 1600) || undefined,
+    nextAction: sanitizeText(payload.nextAction, 140) || undefined,
+    provider,
+    model,
+    fallbackUsed,
+    extractedFields: normalizeExtractedFields(payload.extractedFields),
+  };
+}
+
+function getProviderEnv(provider: AltumAiProvider) {
+  if (provider === "openai") {
+    return {
+      ready: Boolean(process.env.OPENAI_API_KEY),
+      apiKey: process.env.OPENAI_API_KEY || "",
+    };
+  }
+
+  if (provider === "anthropic") {
+    return {
+      ready: Boolean(process.env.ANTHROPIC_API_KEY),
+      apiKey: process.env.ANTHROPIC_API_KEY || "",
+    };
+  }
+
+  if (provider === "gemini") {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+    return {
+      ready: Boolean(apiKey),
+      apiKey,
+    };
+  }
+
+  if (provider === "mistral") {
+    return {
+      ready: Boolean(process.env.MISTRAL_API_KEY),
+      apiKey: process.env.MISTRAL_API_KEY || "",
+    };
+  }
+
+  return { ready: true, apiKey: "" };
+}
+
+function buildPrompt(input: ConversationAgentInput) {
+  const conversation = input.conversation
+    .slice(-16)
+    .map((item) => `${item.sender}: ${sanitizeText(item.text, 300)}`)
+    .join("\n");
+
+  const kb = input.kbDocs
+    .slice(0, 8)
+    .map((doc, index) => `${index + 1}. [${doc.type}] ${sanitizeText(doc.content, 320)}`)
+    .join("\n");
+
+  const guardrails = (input.guardrails || []).slice(0, 12).map((item) => `- ${sanitizeText(item, 180)}`).join("\n");
+  const questions = (input.mandatoryQuestions || []).slice(0, 10).map((item) => `- ${sanitizeText(item, 120)}`).join("\n");
+  const escalations = (input.escalationTopics || []).slice(0, 10).map((item) => `- ${sanitizeText(item, 120)}`).join("\n");
+  const playbookOffers = (input.playbookOffers || [])
+    .slice(0, 4)
+    .map(
+      (offer, index) =>
+        `${index + 1}. ${sanitizeText(offer.title, 120)} | ${sanitizeText(offer.targetProfile, 180)} | quando usar: ${sanitizeText(offer.whenToOffer, 220)}`
+    )
+    .join("\n");
+  const playbookScripts = (input.playbookScripts || [])
+    .slice(0, 4)
+    .map(
+      (script, index) =>
+        `${index + 1}. situacao: ${sanitizeText(script.situation, 120)} | objetivo: ${sanitizeText(script.goal, 120)} | script: ${sanitizeText(script.script, 260)}`
+    )
+    .join("\n");
+
+  const systemPrompt = [
+    "Voce e um agente comercial da ALTUM operando em portugues do Brasil.",
+    "Sua resposta deve ser extremamente humana, objetiva, comercial e segura.",
+    "Voce deve responder somente com JSON valido.",
+    "Campos obrigatorios do JSON: decision, reason, confidence, responseText, extractedFields, nextAction.",
+    "decision deve ser um de: respond, ask_more, handoff, skip.",
+    "Se houver risco, falta de contexto sensivel, pedido explicito de humano ou baixa seguranca, use handoff.",
+    "Se faltarem dados minimos para qualificar, use ask_more.",
+    "Se tiver contexto suficiente, responda de forma natural, comercial e precisa.",
+    "Quando existir playbook da vertical, use-o para guiar a conversa sem parecer scriptado.",
+  ].join(" ");
+
+  const userPrompt = [
+    `Contexto do negocio: ${sanitizeText(input.businessSummary, 360)}.`,
+    `Objetivo da IA: ${sanitizeText(input.objective, 220) || "qualificar, orientar e avancar a venda"}.`,
+    `Tom de voz: ${sanitizeText(input.toneOfVoice, 120)}.`,
+    `Tier: ${input.tier}. Autonomia: ${input.autonomyMode}. Raciocinio: ${input.reasoningLevel}. Estilo: ${input.responseStyle}.`,
+    `Canal: ${input.channel}. Contato: ${sanitizeText(input.contactName, 120) || "lead"}.`,
+    guardrails ? `Guardrails:\n${guardrails}` : "",
+    questions ? `Perguntas obrigatorias:\n${questions}` : "",
+    escalations ? `Topicos de escalada:\n${escalations}` : "",
+    playbookOffers ? `Ofertas sugeridas pela vertical:\n${playbookOffers}` : "",
+    playbookScripts ? `Cenas de conversa sugeridas pela vertical:\n${playbookScripts}` : "",
+    conversation ? `Historico recente:\n${conversation}` : "",
+    kb ? `Base relevante:\n${kb}` : "Base relevante: sem documentos relevantes.",
+    `Mensagem atual do lead: ${sanitizeText(input.inboundText, 700)}`,
+    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","nextAction":"...","extractedFields":{"serviceInterest":"...","budget":"...","city":"...","urgency":"...","intent":"..."}}',
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return { systemPrompt, userPrompt };
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 18000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callOpenAI(input: ConversationAgentInput, model: string) {
+  const env = getProviderEnv("openai");
+  if (!env.ready) return null;
+  const { systemPrompt, userPrompt } = buildPrompt(input);
+  const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.25,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`openai_http_${response.status}`);
+  }
+
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  return normalizeAgentResult(parseJsonPayload(data.choices?.[0]?.message?.content || ""), "openai", model, false);
+}
+
+async function callAnthropic(input: ConversationAgentInput, model: string) {
+  const env = getProviderEnv("anthropic");
+  if (!env.ready) return null;
+  const { systemPrompt, userPrompt } = buildPrompt(input);
+  const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": env.apiKey,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 900,
+      temperature: 0.25,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`anthropic_http_${response.status}`);
+  }
+
+  const data = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+  const text = data.content?.find((item) => item.type === "text")?.text || "";
+  return normalizeAgentResult(parseJsonPayload(text), "anthropic", model, false);
+}
+
+async function callGemini(input: ConversationAgentInput, model: string) {
+  const env = getProviderEnv("gemini");
+  if (!env.ready) return null;
+  const { systemPrompt, userPrompt } = buildPrompt(input);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.apiKey)}`;
+  const response = await fetchWithTimeout(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        temperature: 0.25,
+        responseMimeType: "application/json",
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`gemini_http_${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const text = data.candidates?.[0]?.content?.parts?.map((item) => item.text || "").join("") || "";
+  return normalizeAgentResult(parseJsonPayload(text), "gemini", model, false);
+}
+
+async function callMistral(input: ConversationAgentInput, model: string) {
+  const env = getProviderEnv("mistral");
+  if (!env.ready) return null;
+  const { systemPrompt, userPrompt } = buildPrompt(input);
+  const response = await fetchWithTimeout("https://api.mistral.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.25,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`mistral_http_${response.status}`);
+  }
+
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  return normalizeAgentResult(parseJsonPayload(data.choices?.[0]?.message?.content || ""), "mistral", model, false);
+}
+
+function modelForProvider(provider: AltumAiProvider, policy: RuntimePolicy, tier: AltumAiTier) {
+  if (provider === "openai") {
+    if (policy.primaryProvider === "openai") return policy.conversationModel;
+    return tier === "elite" || tier === "enterprise" ? "gpt-5.4" : "gpt-5-mini";
+  }
+
+  if (provider === "anthropic") {
+    if (policy.primaryProvider === "anthropic") return policy.conversationModel;
+    return tier === "elite" || tier === "enterprise" ? "claude-opus-4" : "claude-sonnet-4";
+  }
+
+  if (provider === "gemini") {
+    if (policy.primaryProvider === "gemini") return policy.conversationModel;
+    return "gemini-2.5-pro";
+  }
+
+  if (provider === "mistral") {
+    if (policy.primaryProvider === "mistral") return policy.conversationModel;
+    return "mistral-large";
+  }
+
+  return "altum_rules_v1";
+}
+
+function candidateProviders(policy: RuntimePolicy, preferred: AltumAiProvider[]) {
+  const ordered = [policy.primaryProvider, ...preferred, ...policy.fallbackProviders, "altum_rules"] as AltumAiProvider[];
+  return Array.from(new Set(ordered));
+}
+
+export async function runConversationAgent(
+  input: ConversationAgentInput,
+  policy: RuntimePolicy
+): Promise<ConversationAgentResult | null> {
+  const providers = candidateProviders(policy, input.preferredProviders);
+  let fallbackUsed = false;
+
+  for (const provider of providers) {
+    if (provider === "altum_rules") {
+      return null;
+    }
+
+    const env = getProviderEnv(provider);
+    if (!env.ready) {
+      fallbackUsed = true;
+      continue;
+    }
+
+    const model = modelForProvider(provider, policy, input.tier);
+
+    try {
+      const result =
+        provider === "openai"
+          ? await callOpenAI(input, model)
+          : provider === "anthropic"
+            ? await callAnthropic(input, model)
+            : provider === "gemini"
+              ? await callGemini(input, model)
+              : await callMistral(input, model);
+
+      if (result) {
+        return {
+          ...result,
+          fallbackUsed,
+        };
+      }
+    } catch {
+      fallbackUsed = true;
+    }
+  }
+
+  return null;
+}

@@ -27,6 +27,7 @@ import {
   SectionHeader,
   StateBadge,
 } from "@/app/cliente/painel/components/ui";
+import { getPipelineStageLabel, normalizePipelineStageId } from "@/lib/pipeline";
 
 type DashboardData = {
   contract?: {
@@ -75,6 +76,7 @@ type LeadItem = {
 type ChatItem = {
   id: string;
   contactName?: string;
+  channel?: string;
   status?: string;
   aiState?: {
     aiEnabled?: boolean;
@@ -98,6 +100,116 @@ type ActivityItem = {
   title: string;
   detail: string;
   createdAt: Date | null;
+  href: string;
+};
+
+type MetricsSummaryPayload = {
+  metrics?: {
+    conversionRate?: number;
+    avgFirstResponseMinutes?: number;
+    roi?: number;
+    growth?: number;
+    conversations?: number;
+    handoffChats?: number;
+    siteChatConversations?: number;
+    wonLeads?: number;
+    totalLeads?: number;
+    paidRevenue?: number;
+  };
+  ai?: {
+    responded?: number;
+    askMore?: number;
+    handoff?: number;
+    skipped?: number;
+    avgConfidence?: number;
+    avgLatencyMs?: number;
+  };
+  operations?: {
+    activeChats?: number;
+    overdueChats?: number;
+    unassignedChats?: number;
+    pendingChats?: number;
+    queueBreakdown?: {
+      triage?: number;
+      unassigned?: number;
+      assigned?: number;
+      assignedWaiting?: number;
+      slaBreached?: number;
+    };
+    aiBreakdown?: {
+      active?: number;
+      paused?: number;
+      humanOwned?: number;
+    };
+    channelOperations?: Array<{
+      channel: string;
+      activeChats: number;
+      overdueChats: number;
+      unassignedChats: number;
+      handoffChats: number;
+    }>;
+    teamPerformance?: Array<{
+      ownerId: string;
+      ownerName: string;
+      activeChats: number;
+      overdueChats: number;
+      pendingChats: number;
+      handoffChats: number;
+      totalLeads: number;
+      wonLeads: number;
+      winRate: number;
+    }>;
+  };
+  comparisons?: {
+    leadsDeltaPct?: number;
+    conversionDeltaPct?: number;
+    roiDeltaPct?: number;
+    spendDeltaPct?: number;
+  };
+};
+
+type AutomationSummaryPayload = {
+  summary?: {
+    activeAutomations?: number;
+    monitoredConversations?: number;
+    pausedConversations?: number;
+    kbDocs?: number;
+    guardrails?: number;
+    aiEnabled?: boolean;
+    waitingReplyBacklog?: number;
+    slaBreached?: number;
+    queue?: {
+      pending?: number;
+      processing?: number;
+      retrying?: number;
+      done?: number;
+      deadLetter?: number;
+    };
+  };
+};
+
+type ReadinessPayload = {
+  summary?: {
+    pilotReady?: boolean;
+    readinessScore?: number;
+  };
+  blockers?: Array<{
+    id: string;
+    href: string;
+    title: string;
+    description: string;
+    badge: string;
+    tone: "neutral" | "success" | "warning" | "danger" | "info";
+  }>;
+};
+
+type PriorityAction = {
+  id: string;
+  title: string;
+  description: string;
+  href: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "info";
+  badge: string;
 };
 
 const FUNNEL_ORDER = [
@@ -142,8 +254,16 @@ function pct(value: number) {
 }
 
 function normalizeStage(value?: string) {
-  const stage = String(value || "captado").trim().toLowerCase();
-  return stage || "captado";
+  return normalizePipelineStageId(value || "captado");
+}
+
+function formatChannelLabel(channel?: string) {
+  if (channel === "site_chat") return "Site chat";
+  if (channel === "site_form") return "Site form";
+  if (channel === "meta_ads") return "Meta Ads";
+  if (channel === "google_ads") return "Google Ads";
+  if (!channel) return "WhatsApp";
+  return channel.replaceAll("_", " ");
 }
 
 export default function ClientePainelOverviewPage() {
@@ -156,6 +276,9 @@ export default function ClientePainelOverviewPage() {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [ai, setAi] = useState<AiSettings>({});
   const [kbCount, setKbCount] = useState(0);
+  const [metricsSummary, setMetricsSummary] = useState<MetricsSummaryPayload>({});
+  const [automationSummary, setAutomationSummary] = useState<AutomationSummaryPayload>({});
+  const [readiness, setReadiness] = useState<ReadinessPayload>({});
 
   useEffect(() => {
     if (!tenant?.tenantId) return;
@@ -167,12 +290,15 @@ export default function ClientePainelOverviewPage() {
         setLoading(true);
         setError(null);
 
-        const [dashboardRes, leadsRes, chatsRes, aiRes, kbRes] = await Promise.all([
+        const [dashboardRes, leadsRes, chatsRes, aiRes, kbRes, metricsRes, automationRes, readinessRes] = await Promise.all([
           authedFetch("/api/client-portal/dashboard"),
           authedFetch(`/api/tenant/${tenant.tenantId}/leads`),
           authedFetch(`/api/tenant/${tenant.tenantId}/chats`),
           authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`),
           authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
+          authedFetch(`/api/tenant/${tenant.tenantId}/metrics-summary`),
+          authedFetch(`/api/tenant/${tenant.tenantId}/automation-summary`),
+          authedFetch(`/api/tenant/${tenant.tenantId}/readiness`),
         ]);
 
         const dashboardPayload = (await dashboardRes.json()) as DashboardData;
@@ -180,6 +306,9 @@ export default function ClientePainelOverviewPage() {
         const chatsPayload = (await chatsRes.json()) as { items?: ChatItem[]; error?: string };
         const aiPayload = (await aiRes.json()) as { ai?: AiSettings; error?: string };
         const kbPayload = (await kbRes.json()) as KbDocList;
+        const metricsPayload = (await metricsRes.json()) as MetricsSummaryPayload;
+        const automationPayload = (await automationRes.json()) as AutomationSummaryPayload;
+        const readinessPayload = (await readinessRes.json()) as ReadinessPayload;
 
         if (!mounted) return;
 
@@ -193,6 +322,9 @@ export default function ClientePainelOverviewPage() {
         if (chatsRes.ok) setChats(chatsPayload.items || []);
         if (aiRes.ok) setAi(aiPayload.ai || {});
         if (kbRes.ok) setKbCount((kbPayload.items || []).length);
+        if (metricsRes.ok) setMetricsSummary(metricsPayload || {});
+        if (automationRes.ok) setAutomationSummary(automationPayload || {});
+        if (readinessRes.ok) setReadiness(readinessPayload || {});
       } catch {
         if (!mounted) return;
         setError("Falha ao carregar dados do dashboard.");
@@ -237,6 +369,7 @@ export default function ClientePainelOverviewPage() {
         title: event.title || "Evento de lead",
         detail: `${lead.nome || "Lead"} | ${event.detail || "Atualizacao de pipeline"}`,
         createdAt: toDate(event.createdAt),
+        href: `/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`,
       }));
 
     const financeEvents: ActivityItem[] = (dashboard?.finance || []).map((item) => ({
@@ -245,6 +378,7 @@ export default function ClientePainelOverviewPage() {
       title: item.descricao || "Lancamento financeiro",
       detail: `${String(item.status || "pendente")} | ${brl(Number(item.valor || 0))}`,
       createdAt: toDate(item.createdAt),
+      href: "/cliente/painel/comercial",
     }));
 
     return [...leadEvents, ...financeEvents]
@@ -262,6 +396,113 @@ export default function ClientePainelOverviewPage() {
   }, [chats]);
 
   const operationStatusTone = ai.enabled === false ? "warning" : "success";
+  const metricKpis = metricsSummary.metrics || {};
+  const operationMetrics = metricsSummary.operations || {};
+  const aiMetrics = metricsSummary.ai || {};
+  const comparisonMetrics = metricsSummary.comparisons || {};
+  const automationMetrics = automationSummary.summary || {};
+  const queueBreakdown = operationMetrics.queueBreakdown || {};
+  const channelOperations = operationMetrics.channelOperations || [];
+  const pilotReady = readiness.summary?.pilotReady === true;
+  const readinessScore = Number(readiness.summary?.readinessScore || 0);
+
+  const priorityActions = useMemo<PriorityAction[]>(() => {
+    const items: PriorityAction[] = [];
+
+    if (!pilotReady && readiness.blockers?.[0]) {
+      items.push({
+        id: `readiness_${readiness.blockers[0].id}`,
+        title: readiness.blockers[0].title,
+        description: readiness.blockers[0].description,
+        href: readiness.blockers[0].href,
+        tone: readiness.blockers[0].tone,
+        badge: "go-live",
+      });
+    }
+
+    if (Number(automationMetrics.slaBreached || operationMetrics.overdueChats || 0) > 0) {
+      items.push({
+        id: "sla",
+        title: "SLA estourado no inbox",
+        description: `${automationMetrics.slaBreached || operationMetrics.overdueChats || 0} conversas exigem resposta imediata do time.`,
+        href: "/cliente/painel/inbox?queue=sla_breached",
+        tone: "danger",
+        badge: "urgente",
+      });
+    }
+
+    if (Number(operationMetrics.unassignedChats || 0) > 0) {
+      items.push({
+        id: "unassigned",
+        title: "Conversas sem responsavel",
+        description: `${operationMetrics.unassignedChats || 0} conversas precisam de atribuicao para nao travar o atendimento.`,
+        href: "/cliente/painel/inbox?queue=unassigned",
+        tone: "warning",
+        badge: "fila",
+      });
+    }
+
+    if (Number(automationMetrics.waitingReplyBacklog || 0) > 0) {
+      items.push({
+        id: "waiting_reply",
+        title: "Backlog aguardando resposta",
+        description: `${automationMetrics.waitingReplyBacklog || 0} conversas seguem abertas sem retorno do time.`,
+        href: "/cliente/painel/inbox?queue=assigned_waiting",
+        tone: "warning",
+        badge: "follow-up",
+      });
+    }
+
+    if (ai.enabled === false || kbCount === 0) {
+      items.push({
+        id: "ai_setup",
+        title: ai.enabled === false ? "IA desativada no tenant" : "Base comercial da IA esta vazia",
+        description:
+          ai.enabled === false
+            ? "Reative o agente para manter cobertura automatica do atendimento."
+            : "Cadastre FAQ, servicos e politicas para melhorar respostas e handoff.",
+        href: "/cliente/painel/ia",
+        tone: ai.enabled === false ? "warning" : "info",
+        badge: "ia",
+      });
+    }
+
+    if (Number(automationMetrics.activeAutomations || 0) === 0) {
+      items.push({
+        id: "automations",
+        title: "Sem automacoes publicadas",
+        description: "Ative playbooks de follow-up e operacao para reduzir fila manual.",
+        href: "/cliente/painel/automacoes",
+        tone: "info",
+        badge: "setup",
+      });
+    }
+
+    if (Number(metricKpis.totalLeads || leads.length || 0) === 0) {
+      items.push({
+        id: "capture",
+        title: "Sem leads no periodo",
+        description: "Publique formularios e widget para reaquecer o topo de funil.",
+        href: "/cliente/painel/captacao",
+        tone: "neutral",
+        badge: "captacao",
+      });
+    }
+
+    return items.slice(0, 5);
+  }, [
+    ai.enabled,
+    automationMetrics.activeAutomations,
+    automationMetrics.slaBreached,
+    automationMetrics.waitingReplyBacklog,
+    kbCount,
+    leads.length,
+    metricKpis.totalLeads,
+    operationMetrics.overdueChats,
+    operationMetrics.unassignedChats,
+    pilotReady,
+    readiness.blockers,
+  ]);
 
   if (loading) {
     return (
@@ -287,8 +528,8 @@ export default function ClientePainelOverviewPage() {
         subtitle="Visao executiva de operacao, funil, atendimento e automacao em tempo real."
         action={
           <StateBadge
-            label={ai.enabled === false ? "IA limitada" : "Operacao estavel"}
-            tone={operationStatusTone}
+            label={pilotReady ? "Pronto para piloto" : ai.enabled === false ? "IA limitada" : "Operacao estavel"}
+            tone={pilotReady ? "success" : operationStatusTone}
           />
         }
       />
@@ -297,7 +538,7 @@ export default function ClientePainelOverviewPage() {
         <PanelCard className="overflow-hidden p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-300/25 bg-blue-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-blue-100">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/78">
                 <Sparkles className="h-3.5 w-3.5" />
                 Executive Workspace
               </div>
@@ -307,13 +548,21 @@ export default function ClientePainelOverviewPage() {
               <p className="mt-3 max-w-xl text-sm leading-6 text-white/62">
                 Centralize atendimento, pipeline, IA e sinais de performance em um unico painel com contexto de negocio.
               </p>
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/72">
+                <span>Go-live</span>
+                <StateBadge
+                  label={pilotReady ? `pronto ${readinessScore}%` : `em fechamento ${readinessScore}%`}
+                  tone={pilotReady ? "success" : readinessScore >= 70 ? "info" : "warning"}
+                />
+              </div>
             </div>
 
-            <div className="min-w-[220px] rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Resumo do ciclo</p>
+            <div className="min-w-[220px] rounded-2xl border border-white/10 bg-black/40 p-4">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-white/38">Resumo do ciclo</p>
               <div className="mt-3 space-y-3">
                 <HeroStat label="Leads ativos" value={(kpis?.leads || 0).toLocaleString("pt-BR")} />
-                <HeroStat label="Conversas abertas" value={chats.length.toLocaleString("pt-BR")} />
+                <HeroStat label="Conversas abertas" value={String(operationMetrics.activeChats || chats.length)} />
+                <HeroStat label="Backlog resposta" value={String(automationMetrics.waitingReplyBacklog || 0)} />
                 <HeroStat label="Canal IA" value={ai.enabled === false ? "Restrito" : "Rodando"} />
               </div>
             </div>
@@ -327,7 +576,7 @@ export default function ClientePainelOverviewPage() {
               icon={MessageSquare}
             />
             <QuickLink
-              href="/cliente/painel/crm"
+              href="/cliente/painel/pipeline"
               title="Atualizar pipeline"
               description="Mover leads, revisar gargalos e acelerar fechamento."
               icon={Funnel}
@@ -338,34 +587,48 @@ export default function ClientePainelOverviewPage() {
               description="Ajustar guardrails, tom de voz e base comercial."
               icon={Bot}
             />
+            <QuickLink
+              href="/cliente/painel/captacao"
+              title="Escalar captacao"
+              description="Publicar formularios, widget e entrada de leads no site."
+              icon={Megaphone}
+            />
           </div>
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Foco da operacao" subtitle="O que exige atencao neste momento" />
+          <CardTitle title="Agenda imediata" subtitle="Prioridades guiadas para agir agora" />
           <div className="mt-4 space-y-3">
-            <FocusRow
-              label="Atendimento"
-              value={aiPausedChats > 0 ? `${aiPausedChats} conversas em takeover` : "Fluxo assistido pela IA"}
-              tone={aiPausedChats > 0 ? "warning" : "success"}
-            />
-            <FocusRow
-              label="Pipeline"
-              value={
-                funnel.find((item) => item.stage === "proposta")?.total
-                  ? "Propostas em andamento"
-                  : "Topo de funil dominante"
-              }
-              tone="info"
-            />
-            <FocusRow
-              label="Configuracao"
-              value={kbCount > 0 ? `${kbCount} itens de conhecimento ativos` : "Base comercial ainda vazia"}
-              tone={kbCount > 0 ? "success" : "warning"}
-            />
+            {priorityActions.length === 0 ? (
+              <>
+                <FocusRow
+                  href="/cliente/painel/inbox"
+                  label="Atendimento"
+                  value={aiPausedChats > 0 ? `${aiPausedChats} conversas em takeover` : "Fluxo assistido pela IA"}
+                  tone={aiPausedChats > 0 ? "warning" : "success"}
+                />
+                <FocusRow
+                  href="/cliente/painel/crm"
+                  label="Pipeline"
+                  value={Number(metricKpis.conversionRate || 0) > 0 ? `${pct(Number(metricKpis.conversionRate || 0))} de conversao no periodo` : "Topo de funil dominante"}
+                  tone="info"
+                />
+              </>
+            ) : (
+              priorityActions.map((item) => (
+                <FocusRow
+                  key={item.id}
+                  href={item.href}
+                  label={item.title}
+                  value={item.description}
+                  tone={item.tone}
+                  badgeLabel={item.badge}
+                />
+              ))
+            )}
           </div>
 
-          <div className="mt-5 space-y-2">
+          <div className="mt-5 grid gap-2 sm:grid-cols-2">
             <Link
               href="/cliente/painel/configuracoes"
               className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
@@ -390,31 +653,47 @@ export default function ClientePainelOverviewPage() {
         </PanelCard>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label="Leads"
-          value={(kpis?.leads || 0).toLocaleString("pt-BR")}
-          icon={Activity}
-          trend="captacao"
-        />
-        <MetricCard
-          label="Conversas"
-          value={chats.length.toLocaleString("pt-BR")}
-          icon={MessageSquare}
-          trend={`${aiPausedChats} com IA pausada`}
-        />
-        <MetricCard
-          label="Investimento"
-          value={brl(Number(kpis?.spend || 0))}
-          icon={Wallet}
-          trend={`CPL ${brl(Number(kpis?.cpl || 0))}`}
-        />
-        <MetricCard
-          label="Receita"
-          value={brl(Number(kpis?.paid || 0))}
-          icon={Handshake}
-          trend={`Pendente ${brl(Number(kpis?.pending || 0))}`}
-        />
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Link href="/cliente/painel/crm" className="block">
+          <MetricCard
+            label="Leads"
+            value={(kpis?.leads || 0).toLocaleString("pt-BR")}
+            icon={Activity}
+            trend="captacao"
+          />
+        </Link>
+        <Link href="/cliente/painel/inbox" className="block">
+          <MetricCard
+            label="Conversas"
+            value={String(metricKpis.conversations || chats.length)}
+            icon={MessageSquare}
+            trend={`${operationMetrics.unassignedChats || 0} sem responsavel`}
+          />
+        </Link>
+        <Link href="/cliente/painel/inbox?status=open" className="block">
+          <MetricCard
+            label="SLA risco"
+            value={String(automationMetrics.slaBreached || operationMetrics.overdueChats || 0)}
+            icon={Megaphone}
+            trend={`${automationMetrics.waitingReplyBacklog || 0} aguardando resposta`}
+          />
+        </Link>
+        <Link href="/cliente/painel/metricas" className="block">
+          <MetricCard
+            label="Investimento"
+            value={brl(Number(kpis?.spend || 0))}
+            icon={Wallet}
+            trend={`CPL ${brl(Number(kpis?.cpl || 0))}`}
+          />
+        </Link>
+        <Link href="/cliente/painel/comercial" className="block">
+          <MetricCard
+            label="Receita"
+            value={brl(Number(kpis?.paid || 0))}
+            icon={Handshake}
+            trend={`Pendente ${brl(Number(kpis?.pending || 0))}`}
+          />
+        </Link>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
@@ -422,9 +701,9 @@ export default function ClientePainelOverviewPage() {
           <CardTitle title="Funil visual" subtitle="Distribuicao dos leads por etapa comercial" />
           <div className="mt-4 space-y-3">
             {funnel.map((item) => (
-              <div key={item.stage} className="space-y-1.5">
+              <Link key={item.stage} href={`/cliente/painel/crm?stage=${encodeURIComponent(item.stage)}`} className="block space-y-1.5 rounded-xl px-2 py-2 transition hover:bg-white/[0.03]">
                 <div className="flex items-center justify-between text-xs text-white/62">
-                  <span className="uppercase tracking-wide">{item.stage}</span>
+                  <span className="uppercase tracking-wide">{getPipelineStageLabel(item.stage)}</span>
                   <span>
                     {item.total} leads ({item.pct}%)
                   </span>
@@ -435,7 +714,7 @@ export default function ClientePainelOverviewPage() {
                     style={{ width: `${Math.max(4, item.pct)}%` }}
                   />
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </PanelCard>
@@ -452,15 +731,19 @@ export default function ClientePainelOverviewPage() {
             </div>
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
               <span className="text-white/65">Guardrails configurados</span>
-              <span className="font-semibold text-white">{(ai.guardrails || []).length}</span>
+              <span className="font-semibold text-white">{automationMetrics.guardrails || (ai.guardrails || []).length}</span>
             </div>
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
               <span className="text-white/65">Base de conhecimento</span>
-              <span className="font-semibold text-white">{kbCount} docs</span>
+              <span className="font-semibold text-white">{automationMetrics.kbDocs || kbCount} docs</span>
             </div>
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
               <span className="text-white/65">Conversas com takeover</span>
-              <span className="font-semibold text-white">{aiPausedChats}</span>
+              <span className="font-semibold text-white">{automationMetrics.pausedConversations || aiPausedChats}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+              <span className="text-white/65">Fila de automacao</span>
+              <span className="font-semibold text-white">{automationMetrics.queue?.pending || 0} pendentes</span>
             </div>
           </div>
         </PanelCard>
@@ -474,7 +757,11 @@ export default function ClientePainelOverviewPage() {
               <p className="text-sm text-white/52">Sem eventos recentes para exibir.</p>
             ) : (
               activities.map((item) => (
-                <div key={item.id} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className="block rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium text-white/90">{item.title}</p>
                     <StateBadge label={item.source} tone={item.source === "lead" ? "info" : "neutral"} />
@@ -484,7 +771,7 @@ export default function ClientePainelOverviewPage() {
                     <Clock3 className="h-3 w-3" />
                     {item.createdAt ? item.createdAt.toLocaleString("pt-BR") : "sem data"}
                   </p>
-                </div>
+                </Link>
               ))
             )}
           </div>
@@ -502,25 +789,38 @@ export default function ClientePainelOverviewPage() {
                 <Row label="CPL" value={brl(Number(kpis?.cpl || 0))} />
                 <Row label="Projetos ativos" value={String(Number(kpis?.projects || 0))} />
                 <Row label="Orcamentos" value={String(Number(kpis?.budgets || 0))} />
+                <Row label="Tempo medio de 1a resposta" value={`${Number(metricKpis.avgFirstResponseMinutes || 0).toFixed(1)} min`} />
+                <Row label="ROI" value={`${Number(metricKpis.roi || 0).toFixed(2)}x`} />
+                <Row label="Conversao" value={pct(Number(metricKpis.conversionRate || 0))} />
               </tbody>
             </table>
           </div>
 
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <PanelCard className="border-white/10 bg-white/[0.03] p-3">
-              <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-white/50">
-                <Megaphone className="h-3.5 w-3.5" />
-                Midia
-              </div>
-              <p className="mt-2 text-base font-semibold">{brl(Number(kpis?.spend || 0))}</p>
-            </PanelCard>
-            <PanelCard className="border-white/10 bg-white/[0.03] p-3">
-              <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-white/50">
-                <Funnel className="h-3.5 w-3.5" />
-                Conversao
-              </div>
-              <p className="mt-2 text-base font-semibold">{(kpis?.leads || 0).toLocaleString("pt-BR")} leads</p>
-            </PanelCard>
+            <Link href="/cliente/painel/metricas" className="block">
+              <PanelCard className="border-white/10 bg-white/[0.03] p-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]">
+                <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-white/50">
+                  <Megaphone className="h-3.5 w-3.5" />
+                  Midia
+                </div>
+                <p className="mt-2 text-base font-semibold">{brl(Number(kpis?.spend || 0))}</p>
+                <p className="mt-1 text-xs text-white/45">
+                  Delta {formatDelta(comparisonMetrics.spendDeltaPct, "investimento")}
+                </p>
+              </PanelCard>
+            </Link>
+            <Link href="/cliente/painel/crm" className="block">
+              <PanelCard className="border-white/10 bg-white/[0.03] p-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]">
+                <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-white/50">
+                  <Funnel className="h-3.5 w-3.5" />
+                  Conversao
+                </div>
+                <p className="mt-2 text-base font-semibold">{(kpis?.leads || 0).toLocaleString("pt-BR")} leads</p>
+                <p className="mt-1 text-xs text-white/45">
+                  Delta {formatDelta(comparisonMetrics.conversionDeltaPct, "conversao")}
+                </p>
+              </PanelCard>
+            </Link>
           </div>
         </PanelCard>
       </section>
@@ -535,6 +835,118 @@ export default function ClientePainelOverviewPage() {
           icon={Handshake}
           trend={dashboard.contract?.title || ""}
         />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+        <PanelCard className="p-4">
+          <CardTitle title="Mesa operacional" subtitle="Fila, SLA e responsaveis com maior carga" />
+          <div className="mt-4 space-y-3">
+            <FocusRow
+              href="/cliente/painel/inbox?queue=assigned_waiting"
+              label="Fila sem resposta"
+              value={`${automationMetrics.waitingReplyBacklog || 0} conversas aguardando retorno`}
+              tone={Number(automationMetrics.waitingReplyBacklog || 0) > 0 ? "warning" : "success"}
+            />
+            <FocusRow
+              href="/cliente/painel/inbox?queue=sla_breached"
+              label="SLA estourado"
+              value={`${automationMetrics.slaBreached || operationMetrics.overdueChats || 0} conversas em risco`}
+              tone={Number(automationMetrics.slaBreached || operationMetrics.overdueChats || 0) > 0 ? "danger" : "success"}
+            />
+            <FocusRow
+              href="/cliente/painel/inbox?queue=unassigned"
+              label="Sem responsavel"
+              value={`${operationMetrics.unassignedChats || 0} conversas na fila`}
+              tone={Number(operationMetrics.unassignedChats || 0) > 0 ? "warning" : "success"}
+            />
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <MiniStatLink
+              href="/cliente/painel/inbox?queue=triage"
+              label="Triagem"
+              value={String(queueBreakdown.triage || 0)}
+            />
+            <MiniStatLink
+              href="/cliente/painel/inbox?queue=assigned"
+              label="Em atendimento"
+              value={String(queueBreakdown.assigned || 0)}
+            />
+            <MiniStatLink
+              href="/cliente/painel/inbox?ai=ai_active"
+              label="IA ativa"
+              value={String(operationMetrics.aiBreakdown?.active || 0)}
+            />
+            <MiniStatLink
+              href="/cliente/painel/inbox?ai=human_owned"
+              label="Takeover humano"
+              value={String(operationMetrics.aiBreakdown?.humanOwned || 0)}
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {(operationMetrics.teamPerformance || []).length === 0 ? (
+              <p className="text-sm text-white/52">Sem performance operacional suficiente para exibir responsaveis.</p>
+            ) : (
+              operationMetrics.teamPerformance?.slice(0, 5).map((owner) => (
+                <Link
+                  key={owner.ownerId}
+                  href={`/cliente/painel/inbox?assignedUser=${encodeURIComponent(owner.ownerId)}`}
+                  className="block rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-white">{owner.ownerName}</p>
+                    <StateBadge
+                      label={`${owner.activeChats} chats`}
+                      tone={owner.overdueChats > 0 ? "warning" : "info"}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-white/56">
+                    {owner.totalLeads} leads / {owner.wonLeads} ganhos / win rate {owner.winRate}%
+                  </p>
+                  <p className="mt-1 text-[11px] text-white/42">
+                    {owner.pendingChats} aguardando / {owner.handoffChats} handoffs
+                  </p>
+                </Link>
+              ))
+            )}
+          </div>
+        </PanelCard>
+
+        <PanelCard className="p-4">
+          <CardTitle title="Performance da IA" subtitle="Como o agente esta atuando no periodo" />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <MetricCard label="IA respondeu" value={String(aiMetrics.responded || 0)} trend="respostas automaticas" />
+            <MetricCard label="Handoffs" value={String(aiMetrics.handoff || metricKpis.handoffChats || 0)} trend="escaladas para humano" />
+            <MetricCard label="Confianca media" value={`${Number(aiMetrics.avgConfidence || 0).toFixed(2)}`} trend="assertividade do agente" />
+            <MetricCard label="Latencia media" value={`${Math.round(Number(aiMetrics.avgLatencyMs || 0))} ms`} trend="tempo de resposta" />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {channelOperations.length === 0 ? (
+              <p className="text-sm text-white/52">Sem canais operacionais suficientes para leitura comparativa.</p>
+            ) : (
+              channelOperations.slice(0, 4).map((item) => (
+                <Link
+                  key={item.channel}
+                  href={`/cliente/painel/inbox?channel=${encodeURIComponent(item.channel)}`}
+                  className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                >
+                  <div>
+                    <p className="font-medium text-white">{formatChannelLabel(item.channel)}</p>
+                    <p className="mt-1 text-xs text-white/50">
+                      {item.activeChats} ativos / {item.unassignedChats} sem dono / {item.handoffChats} handoffs
+                    </p>
+                  </div>
+                  <StateBadge
+                    label={item.overdueChats > 0 ? `${item.overdueChats} em risco` : "estavel"}
+                    tone={item.overdueChats > 0 ? "warning" : "success"}
+                  />
+                </Link>
+              ))
+            )}
+          </div>
+        </PanelCard>
       </section>
     </div>
   );
@@ -556,6 +968,12 @@ function HeroStat({ label, value }: { label: string; value: string }) {
       <span className="text-sm font-semibold text-white">{value}</span>
     </div>
   );
+}
+
+function formatDelta(value: number | undefined, subject: string) {
+  const numeric = Number(value || 0);
+  const prefix = numeric > 0 ? "+" : "";
+  return `${prefix}${numeric.toFixed(1)}% em ${subject}`;
 }
 
 function QuickLink({
@@ -587,25 +1005,53 @@ function QuickLink({
 }
 
 function FocusRow({
+  href,
   label,
   value,
   tone,
+  badgeLabel,
 }: {
+  href?: string;
   label: string;
   value: string;
   tone: "neutral" | "success" | "warning" | "danger" | "info";
+  badgeLabel?: string;
 }) {
-  const badgeLabel =
-    tone === "warning" ? "atencao" : tone === "success" ? "ok" : tone === "danger" ? "risco" : "monitorar";
+  const resolvedBadgeLabel =
+    badgeLabel || (tone === "warning" ? "atencao" : tone === "success" ? "ok" : tone === "danger" ? "risco" : "monitorar");
 
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+  const content = (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-white">{label}</p>
-        <StateBadge label={badgeLabel} tone={tone} />
+        <StateBadge label={resolvedBadgeLabel} tone={tone} />
       </div>
       <p className="mt-1 text-sm text-white/58">{value}</p>
     </div>
+  );
+
+  if (!href) return content;
+
+  return <Link href={href}>{content}</Link>;
+}
+
+function MiniStatLink({
+  href,
+  label,
+  value,
+}: {
+  href: string;
+  label: string;
+  value: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+    >
+      <p className="text-xs uppercase tracking-[0.14em] text-white/45">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-white">{value}</p>
+    </Link>
   );
 }
 

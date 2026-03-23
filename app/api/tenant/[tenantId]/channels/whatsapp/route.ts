@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 
 type Body = {
   displayName?: string;
@@ -32,7 +32,8 @@ export async function GET(
   try {
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
-    await assertTenantAccess(user.uid, tenantId);
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantRole(membership, "client_viewer");
 
     const settingsSnap = await adminDb.collection("tenant_settings").doc(tenantId).get();
     const preferredId = settingsSnap.exists
@@ -98,7 +99,8 @@ export async function POST(
   try {
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
-    await assertTenantAccess(user.uid, tenantId);
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantCapability(membership, "manage_channels");
 
     const body = (await req.json()) as Body;
 

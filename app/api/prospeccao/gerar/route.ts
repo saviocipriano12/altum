@@ -430,8 +430,8 @@ export async function POST(req: Request) {
     }
 
     const finalLeads = deduped.slice(0, limit).map((lead) => {
-      const cleanLead = { ...lead };
-      delete cleanLead._phoneNorm;
+      const { _phoneNorm, ...cleanLead } = lead;
+      void _phoneNorm;
       return cleanLead;
     });
 

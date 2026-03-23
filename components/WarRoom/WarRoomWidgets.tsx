@@ -1,7 +1,7 @@
 // CAMINHO: components/WarRoom/WarRoomWidgets.tsx
 "use client";
 
-import { Calculator, CheckCircle2, X, Copy, Printer, MousePointerClick, FileText } from "lucide-react";
+import { Calculator, CheckCircle2, X, Copy, Printer, MousePointerClick } from "lucide-react";
 // Importando do arquivo que acabamos de criar.
 // Se der erro aqui, mude para: "../../lib/war-room"
 import { FinancialScenario, ProposalItem, Lead, calculateROI } from "@/app/lib/war-room";

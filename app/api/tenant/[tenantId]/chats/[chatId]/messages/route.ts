@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 
 function toTime(value: unknown) {
   if (!value) return 0;
@@ -32,7 +32,8 @@ export async function GET(
   try {
     const user = await requireRequestUser(req);
     const { tenantId, chatId } = await context.params;
-    await assertTenantAccess(user.uid, tenantId);
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantRole(membership, "client_viewer");
 
     const chatRef = adminDb.collection("chats").doc(chatId);
     const chatSnap = await chatRef.get();
@@ -52,10 +53,12 @@ export async function GET(
       .get();
 
     const items = messagesSnap.docs
-      .map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Record<string, unknown>),
-      }))
+      .map(
+        (doc): Record<string, unknown> & { id: string; createdAt?: unknown } => ({
+          id: doc.id,
+          ...(doc.data() as Record<string, unknown>),
+        })
+      )
       .sort((a, b) => toTime(a.createdAt) - toTime(b.createdAt));
 
     return NextResponse.json({ ok: true, tenantId, chatId, items });

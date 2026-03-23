@@ -1,6 +1,6 @@
 import { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
-import { getDefaultTenantMembershipForUser, getTenantSettings } from "@/lib/server/tenant";
+import { getDefaultTenantMembershipForUser, getTenantCapabilities, getTenantSettings, type TenantCapability } from "@/lib/server/tenant";
 
 export type PortalUserStatus = "active" | "blocked";
 export type PortalTenantRole = "client_owner" | "client_admin" | "client_agent" | "client_viewer" | "client";
@@ -29,6 +29,7 @@ export type PortalRequestUser = {
   clientId: string;
   clientName: string;
   status: PortalUserStatus;
+  capabilities: TenantCapability[];
   token: DecodedIdToken;
 };
 
@@ -145,6 +146,7 @@ export async function requirePortalRequestUser(req: Request): Promise<PortalRequ
       clientId: membership.tenantId,
       clientName: tenantName,
       status: "active",
+      capabilities: getTenantCapabilities(membership),
       token: decoded,
     };
   }
@@ -176,6 +178,7 @@ export async function requirePortalRequestUser(req: Request): Promise<PortalRequ
     clientId: String(portalData.clientId || tenantId),
     clientName: portalData.clientName || portalData.tenantName || "Cliente",
     status,
+    capabilities: [],
     token: decoded,
   };
 }

@@ -7,6 +7,15 @@ type Body = {
   rangeDays?: number;
 };
 
+type SnapshotItem = {
+  id: string;
+  dateRef?: string;
+  impressions?: unknown;
+  clicks?: unknown;
+  spend?: unknown;
+  leads?: unknown;
+};
+
 function clean(value: unknown, max = 120) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
@@ -24,7 +33,7 @@ function parseDateRef(dateRef: string) {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireRequestUser(req);
+    const user = await requireRequestUser(req, { roles: ["agency_agent"] });
     const body = (await req.json()) as Body;
 
     const rangeDays = Math.min(60, Math.max(7, Math.round(toNumber(body.rangeDays, 14))));
@@ -59,14 +68,18 @@ export async function POST(req: Request) {
       chunks.push(accountIds.slice(i, i + chunkSize));
     }
 
-    const snapshots = [];
+    const snapshots: SnapshotItem[] = [];
     for (const chunk of chunks) {
       const snap = await adminDb
         .collection("campaign_snapshots")
         .where("adAccountId", "in", chunk)
         .limit(1200)
         .get();
-      snapshots.push(...snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) })));
+      snapshots.push(
+        ...snap.docs.map(
+          (doc): SnapshotItem => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) })
+        )
+      );
     }
 
     const scoped = snapshots.filter((item) => {

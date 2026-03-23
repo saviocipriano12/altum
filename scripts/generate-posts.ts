@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { blogTopics, type BlogTopic } from "../data/blog-topics.ts";
+import { blogTopics, type BlogTopic } from "../data/blog-topics";
 
 const ROOT = process.cwd();
 const BLOG_DIR = path.join(ROOT, "content", "blog");

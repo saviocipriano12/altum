@@ -70,7 +70,7 @@ function cleanScripts(input: unknown): ScriptInput[] {
 
 export async function GET(req: Request) {
   try {
-    await requireRequestUser(req);
+    await requireRequestUser(req, { roles: ["agency_agent"] });
 
     const playbookRef = adminDb.collection("sales_playbook").doc("main");
     const tipsRef = adminDb.collection("sales_playbook_tips");

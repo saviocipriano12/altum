@@ -137,6 +137,27 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /chat_notes/{noteId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /lead_notes/{noteId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /lead_tasks/{taskId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
     match /pipeline/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
       allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
@@ -145,6 +166,20 @@ service cloud.firestore {
     }
 
     match /kb_docs/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /chat_state/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /ai_logs/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
       allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
       allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
@@ -172,7 +207,28 @@ service cloud.firestore {
       allow delete: if isAgencyAdmin();
     }
 
+    match /capture_forms/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /capture_submissions/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
     match /whatsapp_webhook_events/{docId} {
+      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /meta_webhook_events/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
       allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
       allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
@@ -192,16 +248,20 @@ service cloud.firestore {
     }
 
     match /orcamentos/{docId} {
-      allow read: if isAdmin() || isOwner(resource.data.ownerId);
-      allow create: if isAdmin() || isOwner(request.resource.data.ownerId);
-      allow update, delete: if isAdmin() || isOwner(resource.data.ownerId);
+      allow read: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
+      allow create: if isAdmin() || isOwner(request.resource.data.ownerId) || hasTenantMembership(request.resource.data.tenantId);
+      allow update, delete: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
     }
 
     match /financeiro/{docId} {
       allow read: if isAdmin() ||
         isOwner(resource.data.ownerId) ||
-        isOwner(resource.data.vendedorId);
-      allow create, update, delete: if isAdmin();
+        isOwner(resource.data.vendedorId) ||
+        hasTenantMembership(resource.data.tenantId);
+      allow create: if isAdmin() ||
+        hasTenantMembership(request.resource.data.tenantId);
+      allow update, delete: if isAdmin() ||
+        hasTenantMembership(resource.data.tenantId);
     }
 
     match /atividades/{docId} {

@@ -34,7 +34,7 @@ function normalizeSyncMode(value: unknown): "api" | "manual" | "hybrid" {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireRequestUser(req);
+    const user = await requireRequestUser(req, { roles: ["agency_agent"] });
     const body = (await req.json()) as Body;
 
     const clientId = clean(body.clientId, 120);

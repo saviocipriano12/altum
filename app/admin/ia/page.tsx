@@ -1,8 +1,11 @@
-"use client";
+﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { authedFetch } from "@/app/lib/authed-fetch";
+import { humanizeAiNextAction } from "@/lib/ai-next-actions";
+import { getBusinessProfile, normalizeBusinessProfileId } from "@/lib/business-profiles";
 import {
   Bot,
   BrainCircuit,
@@ -11,6 +14,10 @@ import {
   Send,
   Sparkles,
   User,
+  Activity,
+  CalendarClock,
+  HandCoins,
+  Handshake,
 } from "lucide-react";
 
 type ChatMessage = {
@@ -41,6 +48,48 @@ type AskResponse = {
   actionProposal?: ProposedAction | null;
 };
 
+type AdminAiSignalsResponse = {
+  summary?: {
+    totalSignals?: number;
+    handoffs?: number;
+    proposalSignals?: number;
+    scheduleSignals?: number;
+    qualificationSignals?: number;
+    activeTenants?: number;
+  };
+  tenants?: Array<{
+    tenantId: string;
+    tenantName: string;
+    legacyClientId: string;
+    businessProfileId: string;
+    totalSignals: number;
+    handoffs: number;
+    proposalSignals: number;
+    scheduleSignals: number;
+    qualificationSignals: number;
+    lastSignalAt?: unknown;
+  }>;
+  topActions?: Array<{
+    key: string;
+    count: number;
+  }>;
+  recent?: Array<{
+    id: string;
+    tenantId: string;
+    tenantName: string;
+    legacyClientId: string;
+    businessProfileId: string;
+    chatId: string;
+    leadId: string;
+    decision: "respond" | "ask_more" | "handoff" | "skip";
+    nextAction: string;
+    provider: string;
+    model: string;
+    confidence: number | null;
+    createdAt?: unknown;
+  }>;
+};
+
 const SUGGESTIONS = [
   "Como esta o cliente Vitta Prime?",
   "Me de um resumo geral da empresa hoje.",
@@ -53,6 +102,10 @@ export default function AdminIAPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [signalsLoading, setSignalsLoading] = useState(true);
+  const [signalsError, setSignalsError] = useState<string | null>(null);
+  const [signals, setSignals] = useState<AdminAiSignalsResponse>({});
+  const [selectedTenantId, setSelectedTenantId] = useState("all");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "boot",
@@ -73,6 +126,57 @@ export default function AdminIAPage() {
     ],
     []
   );
+
+  useEffect(() => {
+    async function loadSignals() {
+      try {
+        setSignalsLoading(true);
+        setSignalsError(null);
+
+        const response = await authedFetch("/api/admin/ai/signals");
+        const data = (await response.json().catch(() => ({}))) as AdminAiSignalsResponse & { error?: string };
+        if (!response.ok) {
+          throw new Error(data.error || "Falha ao carregar sinais da IA.");
+        }
+
+        setSignals(data);
+      } catch (error) {
+        setSignalsError(error instanceof Error ? error.message : "Falha ao carregar sinais da IA.");
+      } finally {
+        setSignalsLoading(false);
+      }
+    }
+
+    void loadSignals();
+  }, []);
+
+  const signalSummary = useMemo(() => signals.summary || {}, [signals.summary]);
+  const tenantSignals = useMemo(() => signals.tenants || [], [signals.tenants]);
+  const recentSignals = useMemo(() => signals.recent || [], [signals.recent]);
+  const filteredRecentSignals = useMemo(
+    () =>
+      selectedTenantId === "all"
+        ? recentSignals
+        : recentSignals.filter((item) => item.tenantId === selectedTenantId),
+    [recentSignals, selectedTenantId]
+  );
+  const selectedTenant = useMemo(
+    () => tenantSignals.find((tenant) => tenant.tenantId === selectedTenantId) || null,
+    [selectedTenantId, tenantSignals]
+  );
+  const topActions = useMemo(() => {
+    const source = selectedTenantId === "all" ? recentSignals : filteredRecentSignals;
+    return Array.from(
+      source.reduce((acc, item) => {
+        const key = item.nextAction || "sem_acao";
+        acc.set(key, (acc.get(key) || 0) + 1);
+        return acc;
+      }, new Map<string, number>())
+    )
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+  }, [filteredRecentSignals, recentSignals, selectedTenantId]);
 
   async function ask(question: string) {
     const cleaned = question.trim();
@@ -194,6 +298,162 @@ export default function AdminIAPage() {
           </div>
           <div className="text-xs text-white/60 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
             Usuario: <span className="text-white/90">{profile?.name || "Operador"}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <SignalMetric label="Sinais recentes" value={String(signalSummary.totalSignals || 0)} icon={Activity} />
+        <SignalMetric label="Handoffs" value={String(signalSummary.handoffs || 0)} icon={Handshake} />
+        <SignalMetric label="Propostas" value={String(signalSummary.proposalSignals || 0)} icon={HandCoins} />
+        <SignalMetric label="Agendamentos" value={String(signalSummary.scheduleSignals || 0)} icon={CalendarClock} />
+        <SignalMetric label="Tenants ativos" value={String(signalSummary.activeTenants || 0)} icon={Sparkles} />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Supervisao da ALTUM</p>
+              <h2 className="mt-1 text-lg font-semibold text-white">Tenants com mais sinais da IA</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedTenantId}
+                onChange={(event) => setSelectedTenantId(event.target.value)}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/75 outline-none"
+              >
+                <option value="all">Todos os tenants</option>
+                {tenantSignals.map((tenant) => (
+                  <option key={tenant.tenantId} value={tenant.tenantId}>
+                    {tenant.tenantName}
+                  </option>
+                ))}
+              </select>
+              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/65">
+                {signalsLoading ? "Atualizando..." : `${tenantSignals.length} tenant(s) no radar`}
+              </div>
+            </div>
+          </div>
+
+          {signalsError ? (
+            <p className="mt-4 text-sm text-rose-200">{signalsError}</p>
+          ) : signalsLoading ? (
+            <div className="mt-6 inline-flex items-center gap-2 text-sm text-white/60">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando sinais operacionais...
+            </div>
+          ) : tenantSignals.length === 0 ? (
+            <p className="mt-4 text-sm text-white/55">Nenhum sinal recente da IA no recorte atual.</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {(selectedTenant ? [selectedTenant] : tenantSignals).map((tenant) => {
+                const businessProfile = getBusinessProfile(normalizeBusinessProfileId(tenant.businessProfileId));
+                return (
+                <div key={tenant.tenantId} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{tenant.tenantName}</p>
+                      <p className="mt-1 text-xs text-white/50">
+                        Tenant {tenant.tenantId} Â· modo {businessProfile.label}
+                      </p>
+                    </div>
+                    <div className="text-right text-xs text-white/55">
+                      <p>{tenant.totalSignals} sinais</p>
+                      <p>{formatDateTime(tenant.lastSignalAt)}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                    <MiniPill label="handoff" value={tenant.handoffs} tone="amber" />
+                    <MiniPill label="proposta" value={tenant.proposalSignals} tone="blue" />
+                    <MiniPill label="agenda" value={tenant.scheduleSignals} tone="emerald" />
+                    <MiniPill label="qualificacao" value={tenant.qualificationSignals} tone="violet" />
+                  </div>
+                  {tenant.legacyClientId ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link
+                        href={`/admin/clientes/${tenant.legacyClientId}`}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/75 transition hover:bg-white/10"
+                      >
+                        Abrir cliente
+                      </Link>
+                      <Link
+                        href={`/admin/clientes/${tenant.legacyClientId}/portal`}
+                        className="rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-100 transition hover:bg-blue-500/15"
+                      >
+                        Abrir portal
+                      </Link>
+                    </div>
+                  ) : null}
+                </div>
+              )})}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-[#111] p-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Pulso da inteligencia</p>
+            <h2 className="mt-1 text-lg font-semibold text-white">Ultimos sinais</h2>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {filteredRecentSignals.length === 0 ? (
+              <p className="text-sm text-white/55">Sem sinais recentes para mostrar.</p>
+            ) : (
+              filteredRecentSignals.slice(0, 10).map((item) => {
+                const businessProfile = getBusinessProfile(normalizeBusinessProfileId(item.businessProfileId));
+                return (
+                <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{item.tenantName}</p>
+                      <p className="mt-1 text-xs text-white/55">
+                        {humanizeAiNextAction(item.nextAction)} Â· {humanizeDecision(item.decision)} Â· {businessProfile.label}
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-white/45">{formatDateTime(item.createdAt)}</span>
+                  </div>
+                  <p className="mt-2 text-xs text-white/50">
+                    lead {item.leadId || "-"} Â· chat {item.chatId || "-"} Â· {item.provider || "provider"} / {item.model || "model"}
+                  </p>
+                  {item.legacyClientId ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link
+                        href={`/admin/clientes/${item.legacyClientId}`}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] text-white/75 transition hover:bg-white/10"
+                      >
+                        Cliente
+                      </Link>
+                      <Link
+                        href={`/admin/clientes/${item.legacyClientId}/portal`}
+                        className="rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-1.5 text-[11px] text-blue-100 transition hover:bg-blue-500/15"
+                      >
+                        Portal
+                      </Link>
+                    </div>
+                  ) : null}
+                </div>
+              )})
+            )}
+          </div>
+
+          <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-3">
+            <p className="text-xs uppercase tracking-wide text-white/55">Acoes mais frequentes</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {topActions.length === 0 ? (
+                <span className="text-xs text-white/45">Sem recorrencia suficiente ainda.</span>
+              ) : (
+                topActions.map((action) => (
+                  <span
+                    key={action.key}
+                    className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/75"
+                  >
+                    {humanizeAiNextAction(action.key)} Â· {action.count}
+                  </span>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -336,4 +596,99 @@ export default function AdminIAPage() {
     </div>
   );
 }
+
+function formatDateTime(value?: unknown) {
+  if (!value) return "Sem data";
+  if (
+    typeof value === "object" &&
+    value &&
+    "toDate" in value &&
+    typeof (value as { toDate?: () => Date }).toDate === "function"
+  ) {
+    return (value as { toDate: () => Date }).toDate().toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  if (
+    typeof value === "object" &&
+    value &&
+    "_seconds" in value &&
+    typeof (value as { _seconds?: number })._seconds === "number"
+  ) {
+    return new Date((value as { _seconds: number })._seconds * 1000).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  if (typeof value === "number") {
+    return new Date(value).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  return "Sem data";
+}
+
+function humanizeDecision(value: "respond" | "ask_more" | "handoff" | "skip") {
+  if (value === "respond") return "respondeu";
+  if (value === "ask_more") return "qualificou";
+  if (value === "handoff") return "escalou";
+  return "ignorou";
+}
+
+function SignalMetric({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon: typeof Activity;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-white/45">{label}</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+        </div>
+        <div className="rounded-xl border border-blue-400/20 bg-blue-500/10 p-2 text-blue-200">
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "amber" | "blue" | "emerald" | "violet";
+}) {
+  const tones: Record<typeof tone, string> = {
+    amber: "border-amber-400/20 bg-amber-500/10 text-amber-100",
+    blue: "border-blue-400/20 bg-blue-500/10 text-blue-100",
+    emerald: "border-emerald-400/20 bg-emerald-500/10 text-emerald-100",
+    violet: "border-violet-400/20 bg-violet-500/10 text-violet-100",
+  };
+
+  return (
+    <div className={`rounded-xl border px-3 py-2 text-xs ${tones[tone]}`}>
+      <span className="block uppercase tracking-wide opacity-70">{label}</span>
+      <span className="mt-1 block text-sm font-semibold">{value}</span>
+    </div>
+  );
+}
+
 

@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 

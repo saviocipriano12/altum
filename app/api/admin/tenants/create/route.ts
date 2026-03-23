@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { getBusinessProfile, normalizeBusinessProfileId, type BusinessProfileId } from "@/lib/business-profiles";
+import { applyBusinessProfileStarterKit } from "@/lib/server/business-profile-provisioning";
 
 type Body = {
   name?: string;
@@ -12,6 +14,8 @@ type Body = {
   businessHours?: string;
   rules?: Record<string, unknown>;
   legacyClientId?: string;
+  businessProfileId?: BusinessProfileId | string;
+  applyStarterKit?: boolean;
 };
 
 function clean(value: unknown, max = 200) {
@@ -33,6 +37,8 @@ export async function POST(req: Request) {
 
     const tenantRef = adminDb.collection("tenants").doc();
     const tenantId = tenantRef.id;
+    const businessProfileId = normalizeBusinessProfileId(body.businessProfileId);
+    const businessProfile = getBusinessProfile(businessProfileId);
 
     const payload = {
       name,
@@ -40,6 +46,7 @@ export async function POST(req: Request) {
       responsibleName: clean(body.responsibleName, 140) || actor.name,
       responsibleEmail: clean(body.responsibleEmail, 180).toLowerCase() || actor.email || "",
       status: "active",
+      businessProfileId,
       legacyClientId: clean(body.legacyClientId, 120) || tenantId,
       createdBy: actor.uid,
       createdByName: actor.name,
@@ -57,6 +64,7 @@ export async function POST(req: Request) {
         tenantId,
         name,
         niche: payload.niche,
+        businessProfileId,
         responsibleName: payload.responsibleName,
         responsibleEmail: payload.responsibleEmail,
         timezone: clean(body.timezone, 80) || "America/Sao_Paulo",
@@ -64,14 +72,13 @@ export async function POST(req: Request) {
         rules: body.rules || {},
         ai: {
           enabled: true,
-          toneOfVoice: "consultivo e objetivo",
+          toneOfVoice: businessProfile.ai.toneOfVoice,
           businessSummary: name,
+          objective: businessProfile.ai.objective,
           responsiblePhone: "",
-          guardrails: [
-            "Nao compartilhar informacoes sensiveis.",
-            "Sempre validar contexto antes de prometer prazo ou desconto.",
-            "Escalar para humano quando o cliente solicitar.",
-          ],
+          mandatoryQuestions: businessProfile.ai.mandatoryQuestions,
+          escalationTopics: businessProfile.ai.escalationTopics,
+          guardrails: businessProfile.ai.guardrails,
         },
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -104,9 +111,33 @@ export async function POST(req: Request) {
 
     await batch.commit();
 
+    let starterKit: Awaited<ReturnType<typeof applyBusinessProfileStarterKit>> | null = null;
+    let starterKitError = "";
+    if (body.applyStarterKit !== false) {
+      try {
+        starterKit = await applyBusinessProfileStarterKit({
+          tenantId,
+          businessProfileId,
+          actorId: actor.uid,
+          actorName: actor.name,
+          overwriteExisting: true,
+        });
+      } catch (starterError) {
+        starterKitError =
+          starterError instanceof Error ? starterError.message : "Falha ao aplicar starter kit.";
+        console.error("Starter kit aplicado com falha apos criar tenant:", {
+          tenantId,
+          businessProfileId,
+          error: starterError,
+        });
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       tenantId,
+      starterKit,
+      starterKitError,
       tenant: {
         id: tenantId,
         ...payload,

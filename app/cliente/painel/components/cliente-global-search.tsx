@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import { Command, Loader2, Search } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { getPipelineStageLabel } from "@/lib/pipeline";
 
 type SearchResponse = {
   modules?: Array<{ id: string; label: string; path: string; description?: string }>;
   leads?: Array<{ id: string; name: string; email?: string; phone?: string; stage?: string }>;
   chats?: Array<{ id: string; contactName: string; contactPhone?: string; preview?: string }>;
+  budgets?: Array<{ id: string; title: string; leadId?: string; leadName?: string; status?: string }>;
+  finance?: Array<{ id: string; description: string; leadId?: string; leadName?: string; status?: string; type?: string }>;
 };
 
 export function ClienteGlobalSearch() {
@@ -58,9 +61,7 @@ export function ClienteGlobalSearch() {
     const timeout = setTimeout(async () => {
       try {
         setLoading(true);
-        const res = await authedFetch(
-          `/api/tenant/${tenant.tenantId}/search?q=${encodeURIComponent(normalized)}`
-        );
+        const res = await authedFetch(`/api/tenant/${tenant.tenantId}/search?q=${encodeURIComponent(normalized)}`);
         const payload = (await res.json()) as SearchResponse;
 
         if (res.ok) {
@@ -68,13 +69,15 @@ export function ClienteGlobalSearch() {
             modules: payload.modules || [],
             leads: payload.leads || [],
             chats: payload.chats || [],
+            budgets: payload.budgets || [],
+            finance: payload.finance || [],
           });
           return;
         }
 
-        setData({ modules: [], leads: [], chats: [] });
+        setData({ modules: [], leads: [], chats: [], budgets: [], finance: [] });
       } catch {
-        setData({ modules: [], leads: [], chats: [] });
+        setData({ modules: [], leads: [], chats: [], budgets: [], finance: [] });
       } finally {
         setLoading(false);
       }
@@ -84,8 +87,14 @@ export function ClienteGlobalSearch() {
   }, [query, tenant?.tenantId]);
 
   const hasAnyResult = useMemo(() => {
-    return Boolean((data.modules || []).length || (data.leads || []).length || (data.chats || []).length);
-  }, [data.chats, data.leads, data.modules]);
+    return Boolean(
+      (data.modules || []).length ||
+        (data.leads || []).length ||
+        (data.chats || []).length ||
+        (data.budgets || []).length ||
+        (data.finance || []).length
+    );
+  }, [data]);
 
   function navigate(path: string) {
     router.push(path);
@@ -93,97 +102,149 @@ export function ClienteGlobalSearch() {
     setQuery("");
   }
 
+  function SearchSection({
+    title,
+    children,
+  }: {
+    title: string;
+    children: React.ReactNode;
+  }) {
+    return (
+      <section>
+        <p className="mb-1 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-text-soft)]">{title}</p>
+        <div className="space-y-1">{children}</div>
+      </section>
+    );
+  }
+
+  function SearchButton({
+    title,
+    subtitle,
+    onClick,
+  }: {
+    title: string;
+    subtitle: string;
+    onClick: () => void;
+  }) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="w-full rounded-2xl border border-transparent bg-[var(--cliente-accent-soft)]/40 px-3 py-2 text-left transition hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)]"
+      >
+        <p className="text-sm font-medium text-[var(--cliente-text)]">{title}</p>
+        <p className="text-xs text-[var(--cliente-text-soft)]">{subtitle}</p>
+      </button>
+    );
+  }
+
   return (
-    <div ref={rootRef} className="relative hidden md:block">
-      <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#111111] px-3 py-2 text-sm text-white/70 transition hover:bg-white/[0.06]">
-        <Search className="h-4 w-4" />
+    <div ref={rootRef} className="relative w-full xl:w-auto">
+      <label className="client-glass flex w-full items-center gap-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2.5 text-sm text-[var(--cliente-text-muted)] shadow-[var(--cliente-shadow-soft)] transition hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-text)]">
+        <Search className="h-4 w-4 shrink-0" />
         <input
           ref={inputRef}
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar modulo, lead ou conversa"
-          className="w-[300px] bg-transparent text-sm outline-none placeholder:text-white/40"
+          placeholder="Buscar modulo, lead, proposta ou conversa"
+          className="w-full bg-transparent text-sm text-[var(--cliente-text)] outline-none placeholder:text-[var(--cliente-text-soft)] xl:w-[320px]"
         />
-        <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/40 px-1.5 py-0.5 text-[10px] text-white/45">
+        <span className="hidden items-center gap-1 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-2 py-1 text-[10px] text-[var(--cliente-text-soft)] lg:inline-flex">
           <Command className="h-3 w-3" />
           Ctrl+K
         </span>
       </label>
 
       {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[520px] rounded-2xl border border-white/10 bg-[#111111]/98 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+        <div className="client-glass absolute right-0 top-[calc(100%+10px)] z-40 w-full max-w-[560px] rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)]/95 p-3 shadow-[var(--cliente-shadow-hard)] xl:w-[560px]">
           {loading ? (
-            <div className="flex items-center justify-center py-8 text-white/65">
+            <div className="flex items-center justify-center py-8 text-[var(--cliente-text-muted)]">
               <Loader2 className="h-4 w-4 animate-spin" />
             </div>
           ) : hasAnyResult ? (
             <div className="space-y-3">
               {(data.modules || []).length ? (
-                <section>
-                  <p className="mb-1 text-[11px] uppercase tracking-[0.14em] text-white/45">Modulos</p>
-                  <div className="space-y-1">
-                    {(data.modules || []).map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => navigate(item.path)}
-                        className="w-full rounded-xl border border-transparent bg-white/[0.02] px-3 py-2 text-left transition hover:border-white/12 hover:bg-white/[0.05]"
-                      >
-                        <p className="text-sm font-medium text-white/92">{item.label}</p>
-                        <p className="text-xs text-white/52">{item.description || item.path}</p>
-                      </button>
-                    ))}
-                  </div>
-                </section>
+                <SearchSection title="Modulos">
+                  {(data.modules || []).map((item) => (
+                    <SearchButton
+                      key={item.id}
+                      title={item.label}
+                      subtitle={item.description || item.path}
+                      onClick={() => navigate(item.path)}
+                    />
+                  ))}
+                </SearchSection>
               ) : null}
 
               {(data.leads || []).length ? (
-                <section>
-                  <p className="mb-1 text-[11px] uppercase tracking-[0.14em] text-white/45">Leads</p>
-                  <div className="space-y-1">
-                    {(data.leads || []).map((lead) => (
-                      <button
-                        key={lead.id}
-                        type="button"
-                        onClick={() => navigate(`/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`)}
-                        className="w-full rounded-xl border border-transparent bg-white/[0.02] px-3 py-2 text-left transition hover:border-white/12 hover:bg-white/[0.05]"
-                      >
-                        <p className="text-sm font-medium text-white/92">{lead.name}</p>
-                        <p className="text-xs text-white/52">
-                          {lead.email || lead.phone || "Sem contato"} | Stage {lead.stage || "captado"}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </section>
+                <SearchSection title="Leads">
+                  {(data.leads || []).map((lead) => (
+                    <SearchButton
+                      key={lead.id}
+                      title={lead.name}
+                      subtitle={`${lead.email || lead.phone || "Sem contato"} | Stage ${getPipelineStageLabel(lead.stage || "captado")}`}
+                      onClick={() => navigate(`/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`)}
+                    />
+                  ))}
+                </SearchSection>
               ) : null}
 
               {(data.chats || []).length ? (
-                <section>
-                  <p className="mb-1 text-[11px] uppercase tracking-[0.14em] text-white/45">Conversas</p>
-                  <div className="space-y-1">
-                    {(data.chats || []).map((chat) => (
-                      <button
-                        key={chat.id}
-                        type="button"
-                        onClick={() => navigate(`/cliente/painel/inbox?chatId=${encodeURIComponent(chat.id)}`)}
-                        className="w-full rounded-xl border border-transparent bg-white/[0.02] px-3 py-2 text-left transition hover:border-white/12 hover:bg-white/[0.05]"
-                      >
-                        <p className="text-sm font-medium text-white/92">{chat.contactName || "Conversa"}</p>
-                        <p className="truncate text-xs text-white/52">
-                          {chat.contactPhone || "Sem telefone"} | {chat.preview || "Sem mensagens recentes"}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </section>
+                <SearchSection title="Conversas">
+                  {(data.chats || []).map((chat) => (
+                    <SearchButton
+                      key={chat.id}
+                      title={chat.contactName || "Conversa"}
+                      subtitle={`${chat.contactPhone || "Sem telefone"} | ${chat.preview || "Sem mensagens recentes"}`}
+                      onClick={() => navigate(`/cliente/painel/inbox?chatId=${encodeURIComponent(chat.id)}`)}
+                    />
+                  ))}
+                </SearchSection>
+              ) : null}
+
+              {(data.budgets || []).length ? (
+                <SearchSection title="Propostas">
+                  {(data.budgets || []).map((budget) => (
+                    <SearchButton
+                      key={budget.id}
+                      title={budget.title}
+                      subtitle={`${budget.leadName || "Sem lead"} | ${budget.status || "Rascunho"}`}
+                      onClick={() =>
+                        navigate(
+                          budget.leadId
+                            ? `/cliente/painel/comercial?leadId=${encodeURIComponent(budget.leadId)}&budgetStatus=${encodeURIComponent(budget.status || "")}`
+                            : "/cliente/painel/comercial"
+                        )
+                      }
+                    />
+                  ))}
+                </SearchSection>
+              ) : null}
+
+              {(data.finance || []).length ? (
+                <SearchSection title="Financeiro comercial">
+                  {(data.finance || []).map((item) => (
+                    <SearchButton
+                      key={item.id}
+                      title={item.description}
+                      subtitle={`${item.leadName || "Sem lead"} | ${item.type || "Receita"} • ${item.status || "pendente"}`}
+                      onClick={() =>
+                        navigate(
+                          item.leadId
+                            ? `/cliente/painel/comercial?leadId=${encodeURIComponent(item.leadId)}&financeStatus=${encodeURIComponent(item.status || "")}&financeType=${encodeURIComponent(item.type || "")}`
+                            : "/cliente/painel/comercial"
+                        )
+                      }
+                    />
+                  ))}
+                </SearchSection>
               ) : null}
             </div>
           ) : (
             <div className="py-8 text-center">
-              <p className="text-sm font-medium text-white/86">Nenhum resultado encontrado</p>
-              <p className="mt-1 text-xs text-white/50">Tente outro termo para buscar modulos, leads ou conversas.</p>
+              <p className="text-sm font-medium text-[var(--cliente-text)]">Nenhum resultado encontrado</p>
+              <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Tente outro termo para buscar modulos, leads, propostas ou conversas.</p>
             </div>
           )}
         </div>

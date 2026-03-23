@@ -9,6 +9,12 @@ import {
 } from "@/app/lib/server/whatsapp-channel";
 import { normalizePhone } from "@/app/lib/server/phone";
 import { enqueueIncomingMessageJob, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+import { runLeadAutomations } from "@/lib/server/automations";
+import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
+import { upsertContactProfile } from "@/lib/server/contact-profile";
+import { recordInboundLead } from "@/lib/server/lead-intake";
+import { getTenantSettings } from "@/lib/server/tenant";
+import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
 
 function sanitizeId(value: string, max = 220) {
   const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, "_").trim();
@@ -222,6 +228,8 @@ export async function POST(req: Request) {
     }
 
     const tenantId = channel.tenantId;
+    const tenantSettings = await getTenantSettings(tenantId);
+    const slaMinutes = resolveFirstResponseSlaMinutes(tenantSettings as Record<string, unknown> | null);
     const inboundMetaMessageId = String((message as { id?: unknown }).id || "").trim();
 
     const claim = await claimWebhookEvent({
@@ -256,7 +264,47 @@ export async function POST(req: Request) {
     }
 
     const ownerFromLead = await resolveLeadOwner(from, tenantId);
-    const ownerName = await resolveOwnerName(ownerFromLead.ownerId);
+    let resolvedLeadId = ownerFromLead.leadId;
+    let resolvedOwnerId = ownerFromLead.ownerId;
+    let resolvedOwnerName = await resolveOwnerName(resolvedOwnerId);
+
+    if (!resolvedLeadId) {
+      const inboundAssignee = await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium" });
+      const intake = await recordInboundLead({
+        tenantId,
+        sourceType: "whatsapp_inbound",
+        sourceId: `whatsapp_${from}`,
+        sourceLabel: "WhatsApp",
+        channel: "whatsapp",
+        nome: contactName,
+        telefone: from,
+        mensagem: text,
+        tags: ["whatsapp", "inbound"],
+        defaultOwnerId: inboundAssignee?.userId || null,
+        defaultOwnerName: inboundAssignee?.name || null,
+        automationActorId: "whatsapp_webhook",
+        automationActorName: "WhatsApp Webhook",
+      });
+
+      resolvedLeadId = intake.leadId;
+      resolvedOwnerId = inboundAssignee?.userId || null;
+      resolvedOwnerName = inboundAssignee?.name || null;
+    } else if (!resolvedOwnerId) {
+      const inboundAssignee = await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium" });
+      if (inboundAssignee) {
+        resolvedOwnerId = inboundAssignee.userId;
+        resolvedOwnerName = inboundAssignee.name;
+
+        await adminDb.collection("leads").doc(resolvedLeadId).set(
+          {
+            ownerId: inboundAssignee.userId,
+            owner: inboundAssignee.name,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    }
 
     const chatsRef = adminDb.collection("chats");
     const chatQuery = await chatsRef
@@ -266,21 +314,27 @@ export async function POST(req: Request) {
       .get();
 
     let chatId: string;
-    let currentOwnerId = ownerFromLead.ownerId;
+    let currentOwnerId = resolvedOwnerId;
 
     if (chatQuery.empty) {
       const newChat = await chatsRef.add({
         contactName,
         contactPhone: from,
         contactPhoneNormalized: from,
+        channel: "whatsapp",
         lastMessage: text,
         lastMessageTime: FieldValue.serverTimestamp(),
-        status: "open",
-        ownerId: ownerFromLead.ownerId,
-        ownerName,
-        leadId: ownerFromLead.leadId,
+        ownerId: resolvedOwnerId,
+        ownerName: resolvedOwnerName,
+        assignedUserName: resolvedOwnerName,
+        leadId: resolvedLeadId,
         tenantId,
         channelPhoneNumberId: channel.phoneNumberId,
+        ...buildIncomingChatOperationalPatch({
+          status: "open",
+          assignedTo: resolvedOwnerId,
+          slaMinutes,
+        }),
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -294,24 +348,51 @@ export async function POST(req: Request) {
       };
 
       chatId = chatDoc.id;
-      currentOwnerId = chatData.ownerId || chatData.assignedTo || ownerFromLead.ownerId;
+      currentOwnerId = chatData.ownerId || chatData.assignedTo || resolvedOwnerId;
 
       await chatDoc.ref.set(
         {
           contactName,
+          channel: "whatsapp",
           lastMessage: text,
           lastMessageTime: FieldValue.serverTimestamp(),
-          status: "open",
           updatedAt: FieldValue.serverTimestamp(),
           ownerId: currentOwnerId,
           ownerName: currentOwnerId ? await resolveOwnerName(currentOwnerId) : null,
-          leadId: chatData.leadId || ownerFromLead.leadId,
+          assignedUserName: currentOwnerId ? await resolveOwnerName(currentOwnerId) : null,
+          leadId: chatData.leadId || resolvedLeadId,
           tenantId,
           channelPhoneNumberId: channel.phoneNumberId,
+          ...buildIncomingChatOperationalPatch({
+            status: "open",
+            assignedTo: currentOwnerId,
+            slaMinutes,
+          }),
         },
         { merge: true }
       );
     }
+
+    let leadEmail = "";
+    let leadCompany = "";
+    if (resolvedLeadId) {
+      const leadSnap = await adminDb.collection("leads").doc(resolvedLeadId).get();
+      if (leadSnap.exists) {
+        const leadData = leadSnap.data() as { email?: unknown; empresa?: unknown };
+        leadEmail = typeof leadData.email === "string" ? leadData.email.trim() : "";
+        leadCompany = typeof leadData.empresa === "string" ? leadData.empresa.trim() : "";
+      }
+    }
+
+    await upsertContactProfile({
+      tenantId,
+      phone: from,
+      leadId: resolvedLeadId,
+      channel: "whatsapp",
+      name: contactName,
+      email: leadEmail,
+      company: leadCompany,
+    });
 
     let incomingMessageRef: DocumentReference;
 
@@ -345,6 +426,19 @@ export async function POST(req: Request) {
         channelPhoneNumberId: channel.phoneNumberId,
         source: "whatsapp_webhook",
         createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    if (resolvedLeadId) {
+      await runLeadAutomations({
+        tenantId,
+        trigger: "message_received",
+        leadId: resolvedLeadId,
+        chatId,
+        channel: "whatsapp",
+        messageText: text,
+        actorId: "whatsapp_webhook",
+        actorName: "WhatsApp Webhook",
       });
     }
 

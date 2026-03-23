@@ -6,16 +6,18 @@ import { LucideIcon } from "lucide-react";
 type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
 
 const BADGE_TONE: Record<BadgeTone, string> = {
-  neutral: "border-white/15 bg-white/5 text-white/80",
-  success: "border-emerald-300/30 bg-emerald-400/12 text-emerald-100",
-  warning: "border-amber-300/30 bg-amber-400/12 text-amber-100",
-  danger: "border-rose-300/30 bg-rose-400/12 text-rose-100",
-  info: "border-blue-300/30 bg-blue-400/12 text-blue-100",
+  neutral: "border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-card-text-muted)]",
+  success: "border-emerald-400/20 bg-emerald-500/10 text-emerald-500 dark:text-emerald-100",
+  warning: "border-amber-400/20 bg-amber-500/10 text-amber-600 dark:text-amber-100",
+  danger: "border-rose-400/20 bg-rose-500/10 text-rose-600 dark:text-rose-100",
+  info: "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]",
 };
 
 export function PanelCard({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <section className={`rounded-2xl border border-white/10 bg-[#101010] shadow-[0_10px_30px_rgba(0,0,0,0.18)] ${className}`}>
+    <section
+      className={`client-glass rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)] ${className}`}
+    >
       {children}
     </section>
   );
@@ -33,8 +35,8 @@ export function SectionHeader({
   return (
     <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight text-white md:text-xl">{title}</h2>
-        {subtitle ? <p className="mt-1 text-sm text-white/58">{subtitle}</p> : null}
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--cliente-card-text)] md:text-xl">{title}</h2>
+        {subtitle ? <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
       </div>
       {action ? <div>{action}</div> : null}
     </header>
@@ -56,12 +58,12 @@ export function MetricCard({
     <PanelCard className="space-y-2 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">{label}</p>
-          <p className="mt-2 text-2xl font-semibold leading-none text-white">{value}</p>
-          {trend ? <p className="mt-2 text-xs text-white/62">{trend}</p> : null}
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">{label}</p>
+          <p className="mt-2 text-2xl font-semibold leading-none text-[var(--cliente-card-text)]">{value}</p>
+          {trend ? <p className="mt-2 text-[11px] text-[var(--cliente-card-text-soft)]">{trend}</p> : null}
         </div>
         {Icon ? (
-          <span className="inline-flex rounded-lg border border-blue-500/20 bg-blue-600/10 p-2 text-blue-200">
+          <span className="inline-flex rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] p-2.5 text-[var(--cliente-accent)]">
             <Icon className="h-4 w-4" />
           </span>
         ) : null}
@@ -97,8 +99,8 @@ export function EmptyState({
 }) {
   return (
     <PanelCard className="p-6 text-center">
-      <p className="text-sm font-semibold text-white/90">{title}</p>
-      {description ? <p className="mx-auto mt-1 max-w-xl text-sm text-white/55">{description}</p> : null}
+      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
+      {description ? <p className="mx-auto mt-1 max-w-xl text-sm text-[var(--cliente-card-text-soft)]">{description}</p> : null}
       {action ? <div className="mt-3">{action}</div> : null}
     </PanelCard>
   );
@@ -107,8 +109,8 @@ export function EmptyState({
 export function CardTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/66">{title}</h3>
-      {subtitle ? <p className="mt-1 text-xs text-white/48">{subtitle}</p> : null}
+      <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">{title}</h3>
+      {subtitle ? <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{subtitle}</p> : null}
     </div>
   );
 }

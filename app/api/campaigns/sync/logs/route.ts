@@ -30,16 +30,23 @@ function getMillis(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value instanceof Date) return value.getTime();
 
-  const maybeTimestamp = value as
-    | { toDate?: () => Date }
-    | { _seconds?: number; _nanoseconds?: number };
-  if (typeof maybeTimestamp?.toDate === "function") {
-    const date = maybeTimestamp.toDate();
+  if (
+    typeof value === "object" &&
+    value &&
+    "toDate" in value &&
+    typeof (value as { toDate?: () => Date }).toDate === "function"
+  ) {
+    const date = (value as { toDate: () => Date }).toDate();
     return date instanceof Date ? date.getTime() : 0;
   }
 
-  if (typeof maybeTimestamp?._seconds === "number") {
-    return maybeTimestamp._seconds * 1000;
+  if (
+    typeof value === "object" &&
+    value &&
+    "_seconds" in value &&
+    typeof (value as { _seconds?: number })._seconds === "number"
+  ) {
+    return (value as { _seconds: number })._seconds * 1000;
   }
 
   return 0;
@@ -47,7 +54,7 @@ function getMillis(value: unknown) {
 
 export async function GET(req: Request) {
   try {
-    const user = await requireRequestUser(req);
+    const user = await requireRequestUser(req, { roles: ["agency_agent"] });
     const { searchParams } = new URL(req.url);
     const adAccountId = clean(searchParams.get("adAccountId"), 120);
     const clientId = clean(searchParams.get("clientId"), 120);
@@ -79,10 +86,12 @@ export async function GET(req: Request) {
       .limit(500)
       .get();
 
-    let logs = logsSnap.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Omit<SyncLogItem, "id">),
-    }));
+    let logs: SyncLogItem[] = logsSnap.docs.map(
+      (doc): SyncLogItem => ({
+        id: doc.id,
+        ...(doc.data() as Omit<SyncLogItem, "id">),
+      })
+    );
 
     if (!isAdmin(user) && !adAccountId && !clientId) {
       const accountsSnap = await adminDb

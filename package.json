@@ -7,6 +7,9 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
+    "typegen": "next typegen",
+    "typecheck": "npm run typegen && npx tsc --noEmit --incremental false",
+    "test:smoke": "node scripts/run-smoke-tests.mjs",
     "migrate:ownership": "node scripts/migrate-users-ownership.mjs"
   },
   "dependencies": {

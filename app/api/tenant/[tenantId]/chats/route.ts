@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 
 type ChatStateItem = {
   aiEnabled: boolean;
@@ -45,7 +45,8 @@ export async function GET(
   try {
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
-    await assertTenantAccess(user.uid, tenantId);
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantRole(membership, "client_viewer");
 
     const snap = await adminDb
       .collection("chats")

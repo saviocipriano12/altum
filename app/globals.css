@@ -5,6 +5,60 @@
   --foreground: #171717;
 }
 
+[data-client-theme="dark"] {
+  --cliente-bg: #07111f;
+  --cliente-bg-elevated: #0d1728;
+  --cliente-panel: rgba(14, 24, 40, 0.82);
+  --cliente-panel-solid: #0f1a2d;
+  --cliente-panel-soft: rgba(17, 28, 45, 0.76);
+  --cliente-card: rgba(14, 24, 40, 0.82);
+  --cliente-card-text: #f8fbff;
+  --cliente-card-text-muted: rgba(226, 232, 240, 0.76);
+  --cliente-card-text-soft: rgba(203, 213, 225, 0.54);
+  --cliente-sidebar: rgba(8, 15, 28, 0.94);
+  --cliente-sidebar-card: rgba(16, 28, 48, 0.78);
+  --cliente-topbar: rgba(7, 13, 24, 0.82);
+  --cliente-border: rgba(148, 163, 184, 0.16);
+  --cliente-border-strong: rgba(96, 165, 250, 0.26);
+  --cliente-text: #f8fbff;
+  --cliente-text-muted: rgba(226, 232, 240, 0.76);
+  --cliente-text-soft: rgba(203, 213, 225, 0.54);
+  --cliente-accent: #68a8ff;
+  --cliente-accent-strong: #3b82f6;
+  --cliente-accent-soft: rgba(59, 130, 246, 0.16);
+  --cliente-accent-glow: rgba(59, 130, 246, 0.24);
+  --cliente-accent-secondary-glow: rgba(34, 211, 238, 0.14);
+  --cliente-shadow-soft: 0 24px 80px rgba(0, 0, 0, 0.26);
+  --cliente-shadow-hard: 0 32px 90px rgba(3, 7, 18, 0.42);
+}
+
+[data-client-theme="light"] {
+  --cliente-bg: #f5f8fc;
+  --cliente-bg-elevated: #ffffff;
+  --cliente-panel: rgba(255, 255, 255, 0.82);
+  --cliente-panel-solid: #ffffff;
+  --cliente-panel-soft: rgba(248, 250, 252, 0.92);
+  --cliente-card: rgba(15, 23, 42, 0.84);
+  --cliente-card-text: #f8fbff;
+  --cliente-card-text-muted: rgba(226, 232, 240, 0.78);
+  --cliente-card-text-soft: rgba(203, 213, 225, 0.56);
+  --cliente-sidebar: rgba(247, 250, 255, 0.96);
+  --cliente-sidebar-card: rgba(255, 255, 255, 0.92);
+  --cliente-topbar: rgba(247, 250, 255, 0.82);
+  --cliente-border: rgba(15, 23, 42, 0.08);
+  --cliente-border-strong: rgba(59, 130, 246, 0.24);
+  --cliente-text: #0f172a;
+  --cliente-text-muted: rgba(15, 23, 42, 0.76);
+  --cliente-text-soft: rgba(51, 65, 85, 0.6);
+  --cliente-accent: #2563eb;
+  --cliente-accent-strong: #1d4ed8;
+  --cliente-accent-soft: rgba(37, 99, 235, 0.12);
+  --cliente-accent-glow: rgba(59, 130, 246, 0.14);
+  --cliente-accent-secondary-glow: rgba(14, 165, 233, 0.1);
+  --cliente-shadow-soft: 0 18px 48px rgba(15, 23, 42, 0.08);
+  --cliente-shadow-hard: 0 24px 60px rgba(15, 23, 42, 0.12);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -25,6 +79,36 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+[data-client-theme] * {
+  transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+  transition-duration: 220ms;
+  transition-timing-function: ease;
+}
+
+.client-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--cliente-border-strong) transparent;
+}
+
+.client-scrollbar::-webkit-scrollbar {
+  width: 10px;
+}
+
+.client-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.client-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(var(--cliente-accent-soft), var(--cliente-accent-glow));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.client-glass {
+  backdrop-filter: blur(18px);
 }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {

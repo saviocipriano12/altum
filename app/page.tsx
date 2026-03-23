@@ -4,12 +4,10 @@
 
 "use client";
 
+import Image from "next/image";
 import React, { useEffect, useState } from "react";
 import { 
   motion, 
-  useScroll, 
-  useTransform, 
-  useSpring, 
   useMotionValue, 
   useMotionTemplate, 
   AnimatePresence 
@@ -19,24 +17,16 @@ import {
   BarChart3,
   Bot,
   CheckCircle2,
-  ChevronDown,
-  Code2,
   Filter,
   LayoutTemplate,
   Mail,
   Menu,
   MessageCircle,
   ShieldCheck,
-  Sparkles,
-  Star,
   Target,
   X,
   Zap,
-  Play,
-  TrendingUp,
-  Cpu,
   Layers,
-  Globe,
   Settings,
   Rocket
 } from "lucide-react";
@@ -85,9 +75,9 @@ function Button({
   href: string;
   children: React.ReactNode;
   variant: "primary" | "secondary" | "outline" | "ghost" | "dark";
-  className: string;
-  icon: React.ComponentType<{ className: string; size: number }>;
-  onClick: (e: React.MouseEvent) => void;
+  className?: string;
+  icon?: React.ComponentType<{ className?: string; size?: number }>;
+  onClick?: (e: React.MouseEvent) => void;
 }) {
   return (
     <a
@@ -116,7 +106,15 @@ function Button({
 }
 
 // Card Bento Grid com Spotlight
-function SpotlightCard({ children, className = "", noBorder = false }: { children: React.ReactNode; className: string; noBorder: boolean }) {
+function SpotlightCard({
+  children,
+  className = "",
+  noBorder = false,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  noBorder?: boolean;
+}) {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
@@ -175,7 +173,7 @@ function Header({ onOpenBot }: { onOpenBot: (e: React.MouseEvent) => void }) {
         )}>
           {/* Logo com Imagem */}
           <a href="#" className="flex items-center gap-3 group">
-            <img src="/logo-a.png" alt="Altum Logo" className="h-10 w-auto" />
+            <Image src="/logo-a.png" alt="Altum Logo" width={160} height={40} className="h-10 w-auto" />
             <span className="text-xl font-bold tracking-tight text-[#151419]">ALTUM</span>
           </a>
 
@@ -703,7 +701,7 @@ function Founder() {
         <div className="grid lg:grid-cols-2 gap-16 items-center">
            <div className="relative order-2 lg:order-1">
               <div className="aspect-[3/4] bg-[#151419] rounded-[2.5rem] overflow-hidden relative shadow-2xl rotate-3 hover:rotate-0 transition-all duration-700 group">
-                 <img src="/images/founder/savio.jpg" alt="Sávio Cipriano" className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
+                 <Image src="/images/founder/savio.jpg" alt="S�vio Cipriano" fill sizes="(min-width: 1024px) 33vw, 100vw" className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
                  <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
                  <div className="absolute bottom-8 left-8 text-white">
                     <div className="text-2xl font-bold">Sávio Cipriano</div>
@@ -792,7 +790,7 @@ function Footer() {
     <footer className="bg-white pt-20 pb-10 border-t border-gray-100 relative z-10">
        <div className="mx-auto max-w-7xl px-6 flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="flex items-center gap-3">
-             <img src="/logo-a.png" alt="Altum Logo" className="h-8 w-auto" />
+             <Image src="/logo-a.png" alt="Altum Logo" width={128} height={32} className="h-8 w-auto" />
              <div>
                 <div className="font-bold text-[#151419] tracking-tight text-lg">ALTUM</div>
                 <div className="text-xs text-gray-500 uppercase tracking-widest">High-Ticket Sales</div>
@@ -847,3 +845,4 @@ export default function Page() {
     </main>
   );
 }
+

@@ -3,7 +3,7 @@ import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhone } from "@/app/lib/server/phone";
-import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
 import { getChatStateDocId } from "@/lib/server/ai/agent";
 
@@ -152,7 +152,8 @@ export async function POST(
   try {
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
-    await assertTenantAccess(user.uid, tenantId);
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantCapability(membership, "respond_inbox");
 
     const channel = await getWhatsAppChannelForTenant(tenantId, { allowAgencyFallback: false });
     if (!channel) {

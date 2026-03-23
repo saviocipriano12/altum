@@ -6,7 +6,6 @@ import {
   ArrowRight,
   BadgeCheck,
   Building2,
-  CheckCircle2,
   Clock3,
   Filter,
   Layers,

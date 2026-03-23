@@ -508,6 +508,8 @@ function FinanceCheckoutModule({ lead, onSendMessage, onPaymentSuccess }: { lead
           <div className="space-y-3 animate-in zoom-in duration-300">
             {method === "PIX" && (
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
+                    {/* QR PIX em data URI; next/image nao agrega aqui. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`data:image/png;base64,${result.pix?.encodedImage || ""}`} alt="QR code Pix" className="w-40 h-40 mx-auto rounded-xl mb-4 border-4 border-white shadow-2xl"/>
                     <button onClick={() => copyToClip(result.pix?.payload || "")} className="w-full py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black text-white/60 flex items-center justify-center gap-2 border border-white/5 transition">
                         {copied ? <Check size={14} className="text-emerald-500"/> : <Copy size={14}/>} {copied ? "COPIADO!" : "COPIAR PIX COPIA E COLA"}
@@ -1126,6 +1128,8 @@ export default function LeadDetalhePage() {
                       rel="noreferrer"
                       className="group relative overflow-hidden rounded-xl border border-white/10 bg-black/30"
                     >
+                      {/* URL externa dinamica de fotos do lead; manter img evita configuracoes excessivas de dominios. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={photo}
                         alt={`Foto do negocio ${index + 1}`}

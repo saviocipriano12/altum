@@ -22,7 +22,7 @@ function clean(value: unknown, max = 200) {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireRequestUser(req);
+    const user = await requireRequestUser(req, { roles: ["agency_agent"] });
     const body = (await req.json()) as Body;
     const budgetId = clean(body.budgetId, 120);
     if (!budgetId) {

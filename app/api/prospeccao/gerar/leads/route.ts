@@ -14,7 +14,7 @@ function firstString(...values: unknown[]) {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireRequestUser(req);
+    const user = await requireRequestUser(req, { roles: ["agency_agent"] });
     const body = (await req.json()) as Record<string, unknown>;
 
     const nome = firstString(body.nome, body.name, body.full_name) || "Lead via Webhook";
@@ -31,7 +31,18 @@ export async function POST(req: Request) {
       utm_term: firstString(body.utm_term),
     };
 
-    const { nome: _n, name: _nm, email: _e, mail: _m, telefone: _t, phone: _p, whatsapp: _w, origem: _o, source: _s, mensagem: _msg, ownerId: _owner, ...dadosExtras } = body;
+    const dadosExtras = { ...body };
+    delete dadosExtras.nome;
+    delete dadosExtras.name;
+    delete dadosExtras.email;
+    delete dadosExtras.mail;
+    delete dadosExtras.telefone;
+    delete dadosExtras.phone;
+    delete dadosExtras.whatsapp;
+    delete dadosExtras.origem;
+    delete dadosExtras.source;
+    delete dadosExtras.mensagem;
+    delete dadosExtras.ownerId;
 
     if (!telefoneRaw && !email) {
       return NextResponse.json(

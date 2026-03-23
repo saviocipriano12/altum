@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useAuth } from "@/context/AuthContext";
 import {
+  BUSINESS_PROFILES,
+  getBusinessProfile,
+  getBusinessProfilePlaybookPreset,
+  type BusinessProfileId,
+} from "@/lib/business-profiles";
+import {
   BookOpen,
   Bot,
   Loader2,
@@ -87,8 +93,11 @@ export default function PlaybookComercialPage() {
     script: "",
     result: "",
   });
+  const [presetProfileId, setPresetProfileId] = useState<BusinessProfileId>("generic");
 
   const canSave = isAdmin && !saving;
+  const selectedProfile = getBusinessProfile(presetProfileId);
+  const selectedPreset = getBusinessProfilePlaybookPreset(presetProfileId);
 
   async function loadPlaybook() {
     setLoading(true);
@@ -212,6 +221,40 @@ export default function PlaybookComercialPage() {
     [tips]
   );
 
+  function applyPreset(target: "products" | "scripts" | "both") {
+    if (!isAdmin) return;
+
+    if (target === "products" || target === "both") {
+      setProducts((prev) => [
+        ...selectedPreset.offers.map((item) => ({
+          id: `preset-prod-${presetProfileId}-${Math.random().toString(36).slice(2, 8)}`,
+          title: item.title,
+          category: item.category,
+          targetProfile: item.targetProfile,
+          whenToOffer: item.whenToOffer,
+          priceFrom: item.priceFrom,
+          priceTo: item.priceTo,
+        })),
+        ...prev,
+      ]);
+    }
+
+    if (target === "scripts" || target === "both") {
+      setScripts((prev) => [
+        ...selectedPreset.scripts.map((item) => ({
+          id: `preset-script-${presetProfileId}-${Math.random().toString(36).slice(2, 8)}`,
+          situation: item.situation,
+          goal: item.goal,
+          script: item.script,
+        })),
+        ...prev,
+      ]);
+    }
+
+    setSuccess(`Preset do modo ${selectedProfile.label} aplicado no playbook.`);
+    setError(null);
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-white/10 bg-[#101010] p-5">
@@ -223,7 +266,7 @@ export default function PlaybookComercialPage() {
               Playbook Comercial
             </h1>
             <p className="text-sm text-white/60 mt-1">
-              Catálogo oficial de ofertas da agência, scripts por situação e dicas práticas do time.
+              CatÃƒÂ¡logo oficial de ofertas da agÃƒÂªncia, scripts por situaÃƒÂ§ÃƒÂ£o e dicas prÃƒÂ¡ticas do time.
             </p>
           </div>
           <div className="text-xs rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/70">
@@ -240,9 +283,92 @@ export default function PlaybookComercialPage() {
       )}
 
       <section className="flex flex-wrap gap-2">
-        <TabButton active={tab === "products"} onClick={() => setTab("products")} icon={<Sparkles className="h-4 w-4" />} label="Produtos e Serviços" />
+        <TabButton active={tab === "products"} onClick={() => setTab("products")} icon={<Sparkles className="h-4 w-4" />} label="Produtos e ServiÃƒÂ§os" />
         <TabButton active={tab === "scripts"} onClick={() => setTab("scripts")} icon={<Bot className="h-4 w-4" />} label="Scripts Oficiais" />
         <TabButton active={tab === "tips"} onClick={() => setTab("tips")} icon={<Trophy className="h-4 w-4" />} label="Dicas do Time" />
+      </section>
+
+      <section className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 space-y-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-blue-100/70">Preset por vertical</p>
+            <h2 className="mt-1 text-sm font-semibold text-white">Playbook base por tipo de negocio</h2>
+            <p className="mt-2 max-w-3xl text-sm text-white/65">
+              Use esse bloco para acelerar provisionamento da ALTUM. O preset injeta ofertas e scripts alinhados ao modo operacional do cliente.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={presetProfileId}
+              onChange={(event) => setPresetProfileId(event.target.value as BusinessProfileId)}
+              className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-white outline-none"
+            >
+              {Object.values(BUSINESS_PROFILES).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            {isAdmin ? (
+              <>
+                <button
+                  onClick={() => applyPreset("products")}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 transition hover:bg-white/10"
+                >
+                  Aplicar ofertas
+                </button>
+                <button
+                  onClick={() => applyPreset("scripts")}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 transition hover:bg-white/10"
+                >
+                  Aplicar scripts
+                </button>
+                <button
+                  onClick={() => applyPreset("both")}
+                  className="rounded-xl border border-blue-400/25 bg-blue-500/15 px-3 py-2 text-xs text-blue-100 transition hover:bg-blue-500/20"
+                >
+                  Aplicar pacote completo
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
+          <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+            <p className="text-sm font-semibold text-white">{selectedProfile.label}</p>
+            <p className="mt-2 text-sm text-white/60">{selectedProfile.description}</p>
+            <p className="mt-3 text-xs text-white/55">Foco comercial: {selectedProfile.commercialMotion}</p>
+            <p className="mt-2 text-xs text-white/55">Perguntas obrigatorias: {selectedProfile.ai.mandatoryQuestions.slice(0, 3).join(" · ")}</p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+              <p className="text-[11px] uppercase tracking-wide text-white/45">Ofertas sugeridas</p>
+              <div className="mt-3 space-y-2">
+                {selectedPreset.offers.map((item) => (
+                  <div key={item.title} className="rounded-lg border border-white/10 bg-black/30 p-2">
+                    <p className="text-xs font-medium text-white">{item.title}</p>
+                    <p className="mt-1 text-[11px] text-white/55">{item.category} · {item.targetProfile}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+              <p className="text-[11px] uppercase tracking-wide text-white/45">Cenas de conversa</p>
+              <div className="mt-3 space-y-2">
+                {selectedPreset.scripts.map((item) => (
+                  <div key={item.situation} className="rounded-lg border border-white/10 bg-black/30 p-2">
+                    <p className="text-xs font-medium text-white">{item.situation}</p>
+                    <p className="mt-1 text-[11px] text-white/55">{item.goal}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       {loading ? (
@@ -255,7 +381,7 @@ export default function PlaybookComercialPage() {
           {tab === "products" && (
             <section className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">Produtos e Serviços</h2>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">Produtos e ServiÃƒÂ§os</h2>
                 {isAdmin && (
                   <button
                     onClick={() => setProducts((prev) => [emptyProduct(), ...prev])}
@@ -268,7 +394,7 @@ export default function PlaybookComercialPage() {
               </div>
 
               {products.length === 0 ? (
-                <p className="text-sm text-white/55">Nenhum produto/serviço cadastrado ainda.</p>
+                <p className="text-sm text-white/55">Nenhum produto/serviÃƒÂ§o cadastrado ainda.</p>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2">
                   {products.map((item, idx) => (
@@ -322,7 +448,7 @@ export default function PlaybookComercialPage() {
                             )
                           }
                           className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
-                          placeholder="Preço inicial"
+                          placeholder="PreÃƒÂ§o inicial"
                         />
                         <input
                           type="number"
@@ -334,7 +460,7 @@ export default function PlaybookComercialPage() {
                             )
                           }
                           className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
-                          placeholder="Preço final"
+                          placeholder="PreÃƒÂ§o final"
                         />
                       </div>
                       {isAdmin && (
@@ -384,7 +510,7 @@ export default function PlaybookComercialPage() {
                             setScripts((prev) => prev.map((s, i) => (i === idx ? { ...s, situation: e.target.value } : s)))
                           }
                           className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
-                          placeholder="Situação (ex: lead frio, objeção de preço...)"
+                          placeholder="SituaÃƒÂ§ÃƒÂ£o (ex: lead frio, objeÃƒÂ§ÃƒÂ£o de preÃƒÂ§o...)"
                         />
                         <input
                           disabled={!isAdmin}
@@ -432,13 +558,13 @@ export default function PlaybookComercialPage() {
                     value={tipForm.situation}
                     onChange={(e) => setTipForm((prev) => ({ ...prev, situation: e.target.value }))}
                     className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
-                    placeholder="Situação onde o script funcionou"
+                    placeholder="SituaÃƒÂ§ÃƒÂ£o onde o script funcionou"
                   />
                   <input
                     value={tipForm.result}
                     onChange={(e) => setTipForm((prev) => ({ ...prev, result: e.target.value }))}
                     className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
-                    placeholder="Resultado alcançado"
+                    placeholder="Resultado alcanÃƒÂ§ado"
                   />
                 </div>
                 <textarea
@@ -464,7 +590,7 @@ export default function PlaybookComercialPage() {
                   {sortedTips.map((tip) => (
                     <div key={tip.id} className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs uppercase tracking-wide text-white/60">{tip.situation || "Situação não informada"}</p>
+                        <p className="text-xs uppercase tracking-wide text-white/60">{tip.situation || "SituaÃƒÂ§ÃƒÂ£o nÃƒÂ£o informada"}</p>
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] text-white/45">
                             {tip.authorName || "Time"} ({tip.authorRole || "sdr"})
@@ -483,7 +609,7 @@ export default function PlaybookComercialPage() {
                       <p className="whitespace-pre-line rounded-lg border border-white/10 bg-black/30 p-3 text-sm text-white/85">
                         {tip.script || "-"}
                       </p>
-                      <p className="text-xs text-emerald-200/90">Resultado: {tip.result || "não informado"}</p>
+                      <p className="text-xs text-emerald-200/90">Resultado: {tip.result || "nÃƒÂ£o informado"}</p>
                       <p className="text-[11px] text-white/35">
                         Publicado em: {toDate(tip.createdAt)?.toLocaleDateString("pt-BR") || "-"}
                       </p>

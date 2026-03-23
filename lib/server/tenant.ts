@@ -2,16 +2,25 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 
 export const TENANT_SCOPED_COLLECTIONS = [
   "chats",
+  "chat_notes",
   "messages",
   "leads",
+  "lead_notes",
+  "lead_tasks",
   "pipeline",
   "kb_docs",
   "chat_state",
   "ai_logs",
+  "ai_usage_ledger",
   "automations",
   "jobs",
   "metrics",
+  "capture_forms",
+  "capture_submissions",
+  "orcamentos",
+  "financeiro",
   "whatsapp_webhook_events",
+  "meta_webhook_events",
 ] as const;
 
 export type TenantUserRole =
@@ -24,6 +33,31 @@ export type TenantUserRole =
   | "client_viewer"
   | "client";
 
+export type TenantCapability =
+  | "view_metrics"
+  | "respond_inbox"
+  | "edit_leads"
+  | "manage_pipeline"
+  | "manage_commercial"
+  | "manage_ai"
+  | "manage_automations"
+  | "manage_channels"
+  | "manage_users"
+  | "manage_settings";
+
+export const TENANT_CAPABILITIES: TenantCapability[] = [
+  "view_metrics",
+  "respond_inbox",
+  "edit_leads",
+  "manage_pipeline",
+  "manage_commercial",
+  "manage_ai",
+  "manage_automations",
+  "manage_channels",
+  "manage_users",
+  "manage_settings",
+];
+
 export type TenantMembership = {
   id: string;
   tenantId: string;
@@ -31,6 +65,7 @@ export type TenantMembership = {
   role: TenantUserRole;
   status: "active" | "blocked";
   isDefault: boolean;
+  capabilities: TenantCapability[];
 };
 
 export type TenantSettings = {
@@ -38,8 +73,20 @@ export type TenantSettings = {
     enabled?: boolean;
     toneOfVoice?: string;
     businessSummary?: string;
+    objective?: string;
     responsiblePhone?: string;
     guardrails?: string[] | string;
+    mandatoryQuestions?: string[] | string;
+    escalationTopics?: string[] | string;
+    operatingProfile?: {
+      tier?: "essential" | "growth" | "premium" | "elite" | "enterprise";
+      autonomyMode?: "copilot" | "hybrid" | "autonomous";
+      reasoningLevel?: "fast" | "balanced" | "deep";
+      responseStyle?: "concise" | "consultative" | "premium_sales" | "closer";
+      preferredProviders?: string[] | string;
+      monthlyBudgetUsd?: number;
+      monthlyUsageCap?: number;
+    };
   };
   tenantId: string;
   name?: string;
@@ -61,6 +108,28 @@ export class TenantAccessError extends Error {
   }
 }
 
+const TENANT_ROLE_ORDER: Record<TenantUserRole, number> = {
+  client: 10,
+  client_viewer: 10,
+  client_agent: 20,
+  client_admin: 30,
+  client_owner: 40,
+  agency_agent: 90,
+  agency_admin: 100,
+  agency_owner: 110,
+};
+
+const DEFAULT_CAPABILITIES_BY_ROLE: Record<TenantUserRole, TenantCapability[]> = {
+  client: ["view_metrics"],
+  client_viewer: ["view_metrics"],
+  client_agent: ["view_metrics", "respond_inbox", "edit_leads", "manage_pipeline", "manage_commercial"],
+  client_admin: [...TENANT_CAPABILITIES],
+  client_owner: [...TENANT_CAPABILITIES],
+  agency_agent: [...TENANT_CAPABILITIES],
+  agency_admin: [...TENANT_CAPABILITIES],
+  agency_owner: [...TENANT_CAPABILITIES],
+};
+
 function normalizeRole(value: unknown): TenantUserRole {
   if (typeof value !== "string") return "client_viewer";
   const role = value.trim().toLowerCase();
@@ -79,6 +148,22 @@ function normalizeRole(value: unknown): TenantUserRole {
   return "client_viewer";
 }
 
+function normalizeCapabilities(value: unknown): TenantCapability[] {
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+
+  return Array.from(
+    new Set(
+      source
+        .map((item) => String(item || "").trim().toLowerCase())
+        .filter((item): item is TenantCapability => TENANT_CAPABILITIES.includes(item as TenantCapability))
+    )
+  );
+}
+
 function normalizeMembership(
   id: string,
   data: Record<string, unknown>
@@ -95,6 +180,7 @@ function normalizeMembership(
     role: normalizeRole(data.role),
     status: data.status === "blocked" ? "blocked" : "active",
     isDefault: Boolean(data.isDefault),
+    capabilities: normalizeCapabilities(data.capabilities),
   };
 }
 
@@ -181,6 +267,7 @@ export async function assertTenantAccess(userId: string, tenantId: string): Prom
           role: "client_viewer",
           status: "active",
           isDefault: true,
+          capabilities: [],
         };
       }
     }
@@ -198,6 +285,46 @@ export async function assertTenantAccess(userId: string, tenantId: string): Prom
   }
 
   return membership;
+}
+
+export function hasRequiredTenantRole(
+  membership: Pick<TenantMembership, "role" | "status">,
+  minimumRole: TenantUserRole
+) {
+  if (membership.status !== "active") return false;
+  return TENANT_ROLE_ORDER[membership.role] >= TENANT_ROLE_ORDER[minimumRole];
+}
+
+export function assertTenantRole(
+  membership: Pick<TenantMembership, "role" | "status">,
+  minimumRole: TenantUserRole
+) {
+  if (!hasRequiredTenantRole(membership, minimumRole)) {
+    throw new TenantAccessError("tenant_role_denied", "Perfil sem permissao para esta operacao.");
+  }
+}
+
+export function getTenantCapabilities(membership: Pick<TenantMembership, "role" | "status" | "capabilities">) {
+  if (membership.status !== "active") return [] as TenantCapability[];
+  return membership.capabilities.length > 0
+    ? membership.capabilities
+    : DEFAULT_CAPABILITIES_BY_ROLE[membership.role] || [];
+}
+
+export function hasTenantCapability(
+  membership: Pick<TenantMembership, "role" | "status" | "capabilities">,
+  capability: TenantCapability
+) {
+  return getTenantCapabilities(membership).includes(capability);
+}
+
+export function assertTenantCapability(
+  membership: Pick<TenantMembership, "role" | "status" | "capabilities">,
+  capability: TenantCapability
+) {
+  if (!hasTenantCapability(membership, capability)) {
+    throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para esta operacao.");
+  }
 }
 
 export async function getTenantSettings(tenantId: string): Promise<TenantSettings | null> {

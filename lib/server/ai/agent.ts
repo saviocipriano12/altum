@@ -1,8 +1,34 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhone } from "@/app/lib/server/phone";
+import { buildOutgoingChatOperationalPatch } from "@/lib/server/chat-operations";
+import {
+  buildAiRuntimePolicy,
+  normalizeTenantAiOperatingProfile,
+  type AltumAiAutonomyMode,
+  type AltumAiProvider,
+  type AltumAiReasoningLevel,
+  type AltumAiResponseStyle,
+  type AltumAiTier,
+} from "@/lib/server/ai/operating-layer";
+import { runConversationAgent } from "@/lib/server/ai/router";
+import { logAiUsage } from "@/lib/server/ai/usage-ledger";
+import {
+  getMetaChannelForTenant,
+  isMetaConversationChannelType,
+  sendMetaConversationText,
+} from "@/app/lib/server/meta-channel";
 import { getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
 import { getTenantSettings } from "@/lib/server/tenant";
+import {
+  getBusinessProfile,
+  getBusinessProfilePlaybookPreset,
+  normalizeBusinessProfileId,
+  type BusinessProfileId,
+  type BusinessProfilePlaybookOffer,
+  type BusinessProfilePlaybookScript,
+} from "@/lib/business-profiles";
+import { runLeadAutomations } from "@/lib/server/automations";
 
 const MAX_CONTEXT_MESSAGES = 24;
 const MAX_KB_DOCS = 50;
@@ -38,10 +64,25 @@ type ConversationMessage = {
 
 type TenantAiConfig = {
   enabled: boolean;
+  businessProfileId: BusinessProfileId;
+  businessProfileLabel: string;
   toneOfVoice: string;
   businessSummary: string;
+  objective: string;
   responsiblePhone: string;
   guardrails: string[];
+  mandatoryQuestions: string[];
+  escalationTopics: string[];
+  playbookOffers: BusinessProfilePlaybookOffer[];
+  playbookScripts: BusinessProfilePlaybookScript[];
+  tier: AltumAiTier;
+  autonomyMode: AltumAiAutonomyMode;
+  reasoningLevel: AltumAiReasoningLevel;
+  responseStyle: AltumAiResponseStyle;
+  preferredProviders: AltumAiProvider[];
+  monthlyBudgetUsd: number;
+  monthlyUsageCap: number;
+  runtimePolicy: ReturnType<typeof buildAiRuntimePolicy>;
 };
 
 type Decision = "respond" | "ask_more" | "handoff" | "skip";
@@ -50,6 +91,8 @@ type AgentDecision = {
   decision: Exclude<Decision, "skip">;
   responseText?: string;
   reason: string;
+  confidence: number;
+  nextAction?: string;
 };
 
 export type HandleIncomingMessageInput = {
@@ -138,21 +181,53 @@ function parseGuardrails(value: unknown) {
   return [];
 }
 
+function parseLines(value: unknown, maxItems = 12) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeText(item, 160))
+      .filter(Boolean)
+      .slice(0, maxItems);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(/\n|;|\|/)
+      .map((item) => sanitizeText(item, 160))
+      .filter(Boolean)
+      .slice(0, maxItems);
+  }
+
+  return [];
+}
+
 function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>): TenantAiConfig {
   const ai =
     settings && typeof settings.ai === "object" && settings.ai
       ? (settings.ai as Record<string, unknown>)
       : {};
+  const businessProfileId = normalizeBusinessProfileId(settings?.businessProfileId);
+  const businessProfile = getBusinessProfile(businessProfileId);
+  const playbookPreset = getBusinessProfilePlaybookPreset(businessProfileId);
+  const operatingProfile = normalizeTenantAiOperatingProfile(ai.operatingProfile);
 
   return {
     enabled: ai.enabled !== false,
-    toneOfVoice: sanitizeText(ai.toneOfVoice, 120) || "consultivo e objetivo",
+    businessProfileId,
+    businessProfileLabel: businessProfile.label,
+    toneOfVoice: sanitizeText(ai.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
     businessSummary:
       sanitizeText(ai.businessSummary, 360) ||
       sanitizeText(settings?.name, 120) ||
-      "empresa de servicos com atendimento consultivo",
+      businessProfile.description,
+    objective: sanitizeText(ai.objective, 200) || businessProfile.ai.objective,
     responsiblePhone: normalizePhone(String(ai.responsiblePhone || "")),
-    guardrails: [...DEFAULT_GUARDRAILS, ...parseGuardrails(ai.guardrails)],
+    guardrails: Array.from(new Set([...DEFAULT_GUARDRAILS, ...businessProfile.ai.guardrails, ...parseGuardrails(ai.guardrails)])).slice(0, 24),
+    mandatoryQuestions: Array.from(new Set([...businessProfile.ai.mandatoryQuestions, ...parseLines(ai.mandatoryQuestions, 12)])).slice(0, 12),
+    escalationTopics: Array.from(new Set([...businessProfile.ai.escalationTopics, ...parseLines(ai.escalationTopics, 12)])).slice(0, 12),
+    playbookOffers: playbookPreset.offers.slice(0, 6),
+    playbookScripts: playbookPreset.scripts.slice(0, 6),
+    ...operatingProfile,
+    runtimePolicy: buildAiRuntimePolicy(operatingProfile),
   };
 }
 
@@ -215,10 +290,14 @@ function makeLeadFacingReply(input: {
   kbDocs: KbDoc[];
 }) {
   if (input.decision === "ask_more") {
+    const prompts = input.tenantAi.mandatoryQuestions.slice(0, 2);
+    const playbookScript = findRelevantPlaybookScript(input.inboundText, input.tenantAi.playbookScripts);
     return [
-      `Perfeito. Para te ajudar com mais precisao, preciso de 2 pontos:`,
-      `1) Qual servico/produto voce quer agora?`,
-      `2) Qual prazo voce tem para comecar?`,
+      playbookScript
+        ? sanitizeText(playbookScript.script, 260)
+        : `Perfeito. Para te ajudar com mais precisao, preciso de 2 pontos:`,
+      `1) ${prompts[0] || "Qual servico ou produto voce quer agora?"}`,
+      `2) ${prompts[1] || "Qual prazo voce tem para comecar?"}`,
       `Atendo no estilo ${input.tenantAi.toneOfVoice}.`,
     ].join("\n");
   }
@@ -234,6 +313,8 @@ function makeLeadFacingReply(input: {
   const leadSignal = textHasAny(input.inboundText, ["preco", "valor", "plano", "orcamento"])
     ? "Se fizer sentido, te passo uma proposta alinhada ao seu cenario."
     : "Se fizer sentido, ja te proponho o proximo passo para avancarmos.";
+  const playbookOffer = findRelevantPlaybookOffer(input.inboundText, input.tenantAi.playbookOffers);
+  const playbookScript = findRelevantPlaybookScript(input.inboundText, input.tenantAi.playbookScripts);
 
   const guardrailHint = input.tenantAi.guardrails[0]
     ? `Regra de atendimento: ${sanitizeText(input.tenantAi.guardrails[0], 120)}.`
@@ -241,7 +322,9 @@ function makeLeadFacingReply(input: {
 
   return [
     `Entendi. Atuamos com ${input.tenantAi.businessSummary}.`,
+    playbookScript ? sanitizeText(playbookScript.script, 280) : "",
     ...points,
+    playbookOffer ? `O caminho que mais faz sentido aqui e ${sanitizeText(playbookOffer.title, 120)}.` : "",
     leadSignal,
     guardrailHint,
   ]
@@ -366,22 +449,46 @@ async function saveAiLog(input: {
   tenantId: string;
   chatId: string;
   messageId: string;
+  leadId?: string | null;
   decision: Decision;
   reason: string;
   inboundText: string;
   outboundText: string;
   toolCalls: string[];
+  confidence?: number;
+  matchedKbDocIds?: string[];
+  extractedFields?: Record<string, string> | null;
+  nextAction?: string | null;
+  latencyMs?: number;
+  provider?: AltumAiProvider;
+  model?: string;
+  tier?: AltumAiTier;
+  autonomyMode?: AltumAiAutonomyMode;
+  reasoningLevel?: AltumAiReasoningLevel;
+  responseStyle?: AltumAiResponseStyle;
 }) {
   await adminDb.collection("ai_logs").doc(input.logDocId).set(
     {
       tenantId: input.tenantId,
       chatId: input.chatId,
       messageId: input.messageId,
+      leadId: input.leadId || null,
       input: input.inboundText,
       output: input.outboundText,
       toolCalls: input.toolCalls,
       decision: input.decision,
       reason: input.reason,
+      confidence: input.confidence ?? null,
+      matchedKbDocIds: input.matchedKbDocIds || [],
+      extractedFields: input.extractedFields || null,
+      nextAction: input.nextAction || null,
+      latencyMs: input.latencyMs ?? null,
+      provider: input.provider || "altum_rules",
+      model: input.model || "altum_rules_v1",
+      tier: input.tier || null,
+      autonomyMode: input.autonomyMode || null,
+      reasoningLevel: input.reasoningLevel || null,
+      responseStyle: input.responseStyle || null,
       createdAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
@@ -416,6 +523,7 @@ async function addMessage(input: {
   sender: "agent" | "system";
   type?: "text";
   channelPhoneNumberId?: string;
+  channel?: string;
   senderId?: string;
   senderName?: string;
 }) {
@@ -432,6 +540,7 @@ async function addMessage(input: {
       senderName: input.senderName || (input.sender === "agent" ? "AI Sales Agent" : null),
       type: input.type || "text",
       status: "sent",
+      channel: input.channel || null,
       channelPhoneNumberId: input.channelPhoneNumberId || null,
       createdAt: FieldValue.serverTimestamp(),
     }),
@@ -440,8 +549,11 @@ async function addMessage(input: {
         tenantId: input.tenantId,
         lastMessage: cleanText,
         lastMessageTime: FieldValue.serverTimestamp(),
-        status: "open",
         updatedAt: FieldValue.serverTimestamp(),
+        ...buildOutgoingChatOperationalPatch({
+          status: "open",
+          assignedTo: null,
+        }),
       },
       { merge: true }
     ),
@@ -451,11 +563,14 @@ async function addMessage(input: {
 function decide(input: {
   inboundText: string;
   kbDocs: KbDoc[];
+  tenantAi: TenantAiConfig;
 }): AgentDecision {
   if (shouldHandoff(input.inboundText)) {
     return {
       decision: "handoff",
       reason: "lead_requested_human",
+      confidence: 0.92,
+      nextAction: "assumir_handoff_humano",
     };
   }
 
@@ -463,20 +578,149 @@ function decide(input: {
     return {
       decision: "ask_more",
       reason: "need_more_context",
+      confidence: 0.42,
+      nextAction: "qualificar_contexto_minimo",
     };
   }
 
   if (input.kbDocs.length === 0) {
+    if (findRelevantPlaybookScript(input.inboundText, input.tenantAi.playbookScripts)) {
+      return {
+        decision: "respond",
+        reason: "matched_playbook",
+        confidence: 0.46,
+        nextAction: "conduzir_para_proximo_passo",
+      };
+    }
+
     return {
       decision: "ask_more",
       reason: "kb_not_found",
+      confidence: 0.38,
+      nextAction: "coletar_campos_obrigatorios",
     };
   }
 
   return {
     decision: "respond",
     reason: "matched_kb",
+    confidence: Math.min(0.97, 0.58 + Math.min(input.kbDocs[0]?.score || 0, 6) * 0.06),
+    nextAction: "aprofundar_oportunidade",
   };
+}
+
+function scorePlaybookText(inboundText: string, parts: string[]) {
+  const inboundWords = normalizeWords(inboundText);
+  if (!inboundWords.length) return 0;
+  const corpus = new Set(parts.flatMap((item) => normalizeWords(item)));
+  let score = 0;
+  for (const word of inboundWords) {
+    if (corpus.has(word)) score += 1;
+  }
+  return score;
+}
+
+function findRelevantPlaybookScript(inboundText: string, scripts: BusinessProfilePlaybookScript[]) {
+  return [...scripts]
+    .map((script) => ({
+      script,
+      score: scorePlaybookText(inboundText, [script.situation, script.goal, script.script]),
+    }))
+    .sort((a, b) => b.score - a.score)[0]?.score
+    ? [...scripts]
+        .map((script) => ({
+          script,
+          score: scorePlaybookText(inboundText, [script.situation, script.goal, script.script]),
+        }))
+        .sort((a, b) => b.score - a.score)[0].script
+    : scripts[0];
+}
+
+function findRelevantPlaybookOffer(inboundText: string, offers: BusinessProfilePlaybookOffer[]) {
+  const priceSignal = textHasAny(inboundText, ["preco", "valor", "orcamento", "plano", "investimento"]);
+  const ranked = [...offers]
+    .map((offer) => ({
+      offer,
+      score:
+        scorePlaybookText(inboundText, [offer.title, offer.category, offer.targetProfile, offer.whenToOffer]) +
+        (priceSignal ? 1 : 0),
+    }))
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.score ? ranked[0].offer : priceSignal ? offers[0] : null;
+}
+
+function normalizeFieldKey(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+}
+
+function extractBusinessFields(inboundText: string, tenantAi: TenantAiConfig) {
+  const normalizedText = sanitizeText(inboundText, 1000);
+  if (!normalizedText) return undefined;
+
+  const extracted: Record<string, string> = {};
+  const lowerText = normalizedText.toLowerCase();
+
+  for (const field of tenantAi.playbookOffers.length ? tenantAi.playbookOffers : []) {
+    if (textHasAny(normalizedText, [field.category, field.title])) {
+      extracted.offer_interest = field.title;
+      break;
+    }
+  }
+
+  if (/\b\d{3,}\s?(k|mil)?\b/i.test(normalizedText) || textHasAny(normalizedText, ["orcamento", "budget", "valor", "preco"])) {
+    const budgetMatch = normalizedText.match(/(\d[\d\.\,]*\s?(?:k|mil)?)/i);
+    if (budgetMatch?.[1]) {
+      extracted.orcamento = budgetMatch[1].trim();
+    }
+  }
+
+  if (textHasAny(normalizedText, ["urgente", "urgencia", "hoje", "imediato", "essa semana"])) {
+    extracted.urgencia = "alta";
+  }
+
+  if (textHasAny(normalizedText, ["30 dias", "este mes", "esse mes", "proxima semana"])) {
+    extracted.prazo = "curto_prazo";
+  }
+
+  const cityMatch = normalizedText.match(/\b(?:em|de|moro em|cidade)\s+([A-Za-zÀ-ÿ\s]{3,40})/i);
+  if (cityMatch?.[1]) {
+    extracted.cidade = sanitizeText(cityMatch[1], 40);
+  }
+
+  for (const field of tenantAi.mandatoryQuestions) {
+    const key = normalizeFieldKey(field);
+    if (!key || extracted[key]) continue;
+    if (textHasAny(lowerText, normalizeWords(field))) {
+      extracted[key] = "mencionado_na_conversa";
+    }
+  }
+
+  return Object.keys(extracted).length ? extracted : undefined;
+}
+
+function suggestNextAction(input: {
+  decision: Exclude<Decision, "skip">;
+  inboundText: string;
+  tenantAi: TenantAiConfig;
+}) {
+  if (input.decision === "handoff") return "assumir_handoff_humano";
+  if (input.decision === "ask_more") return "coletar_campos_obrigatorios";
+  if (textHasAny(input.inboundText, ["preco", "valor", "orcamento", "proposta"])) {
+    return "preparar_proposta_comercial";
+  }
+  if (textHasAny(input.inboundText, ["visita", "agendar", "consulta", "reuniao", "diagnostico"])) {
+    return "agendar_proximo_passo";
+  }
+  if (input.tenantAi.playbookOffers.length) {
+    return `sugerir_oferta_${normalizeFieldKey(input.tenantAi.playbookOffers[0].title)}`;
+  }
+  return "aprofundar_oportunidade";
 }
 
 function buildConversationLink(tenantId: string, chatId: string) {
@@ -494,6 +738,7 @@ function buildConversationLink(tenantId: string, chatId: string) {
 export async function handleIncomingMessage(
   input: HandleIncomingMessageInput
 ): Promise<HandleIncomingMessageResult> {
+  const startedAt = Date.now();
   const tenantId = input.tenantId.trim();
   const chatId = input.chatId.trim();
   const messageId = input.messageId.trim();
@@ -527,12 +772,17 @@ export async function handleIncomingMessage(
   const incomingMessage = messageSnap.data() as Record<string, unknown>;
   const incomingSender = String(incomingMessage.sender || "").toLowerCase();
   const inboundText = sanitizeText(incomingMessage.text, 1400);
+  const leadId = sanitizeText(chatData.leadId, 160) || undefined;
 
   if (incomingSender !== "client") {
     return { decision: "skip", reason: "not_client_message" };
   }
 
   const aiConfig = parseAiConfig(tenantSettings);
+  const runtimeProvider = aiConfig.runtimePolicy.primaryProvider;
+  const runtimeModel = aiConfig.runtimePolicy.conversationModel;
+  const chatChannel = String(chatData.channel || "whatsapp").trim().toLowerCase() || "whatsapp";
+  const isMetaConversation = isMetaConversationChannelType(chatChannel);
 
   if (!aiConfig.enabled) {
     await saveAiLog({
@@ -540,11 +790,19 @@ export async function handleIncomingMessage(
       tenantId,
       chatId,
       messageId,
+      leadId,
       decision: "skip",
       reason: "tenant_ai_disabled",
       inboundText,
       outboundText: "",
       toolCalls: ["tenant_settings.ai.enabled"],
+      provider: runtimeProvider,
+      model: runtimeModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+      latencyMs: Date.now() - startedAt,
     });
     return { decision: "skip", reason: "tenant_ai_disabled" };
   }
@@ -555,11 +813,19 @@ export async function handleIncomingMessage(
       tenantId,
       chatId,
       messageId,
+      leadId,
       decision: "skip",
       reason: "chat_ai_paused",
       inboundText,
       outboundText: "",
       toolCalls: ["chat_state.aiEnabled"],
+      provider: runtimeProvider,
+      model: runtimeModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+      latencyMs: Date.now() - startedAt,
     });
     return { decision: "skip", reason: "chat_ai_paused" };
   }
@@ -570,11 +836,19 @@ export async function handleIncomingMessage(
       tenantId,
       chatId,
       messageId,
+      leadId,
       decision: "skip",
       reason: "chat_ai_paused_until",
       inboundText,
       outboundText: "",
       toolCalls: ["chat_state.pausedUntil"],
+      provider: runtimeProvider,
+      model: runtimeModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+      latencyMs: Date.now() - startedAt,
     });
     return { decision: "skip", reason: "chat_ai_paused_until" };
   }
@@ -585,11 +859,19 @@ export async function handleIncomingMessage(
       tenantId,
       chatId,
       messageId,
+      leadId,
       decision: "skip",
       reason: "human_takeover_active",
       inboundText,
       outboundText: "",
       toolCalls: ["chat_state.humanOwnerUserId"],
+      provider: runtimeProvider,
+      model: runtimeModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+      latencyMs: Date.now() - startedAt,
     });
     return { decision: "skip", reason: "human_takeover_active" };
   }
@@ -599,41 +881,168 @@ export async function handleIncomingMessage(
     fetchKbDocs(tenantId, inboundText),
   ]);
 
-  const choice = decide({ inboundText, kbDocs });
+  const llmResult =
+    runtimeProvider !== "altum_rules"
+      ? await runConversationAgent(
+          {
+            tenantId,
+            chatId,
+            inboundText,
+            channel: chatChannel,
+            contactName: sanitizeText(chatData.contactName, 120) || undefined,
+            toneOfVoice: aiConfig.toneOfVoice,
+            businessSummary: aiConfig.businessSummary,
+            objective: aiConfig.objective,
+            guardrails: aiConfig.guardrails,
+            mandatoryQuestions: aiConfig.mandatoryQuestions,
+            escalationTopics: aiConfig.escalationTopics,
+            playbookOffers: aiConfig.playbookOffers,
+            playbookScripts: aiConfig.playbookScripts,
+            tier: aiConfig.tier,
+            autonomyMode: aiConfig.autonomyMode,
+            reasoningLevel: aiConfig.reasoningLevel,
+            responseStyle: aiConfig.responseStyle,
+            conversation,
+            kbDocs,
+            preferredProviders: aiConfig.preferredProviders,
+          },
+          aiConfig.runtimePolicy
+        )
+      : null;
 
-  const channel = await getWhatsAppChannelForTenant(tenantId, {
-    allowAgencyFallback: tenantId === "ALTUM_AGENCY",
+  const choice = llmResult
+    ? {
+        decision: llmResult.decision === "skip" ? "ask_more" : llmResult.decision,
+        reason: llmResult.reason,
+        confidence: llmResult.confidence,
+        responseText: llmResult.responseText,
+      }
+    : decide({ inboundText, kbDocs, tenantAi: aiConfig });
+  const extractedFields = llmResult?.extractedFields || extractBusinessFields(inboundText, aiConfig) || null;
+  const nextAction = llmResult?.nextAction || choice.nextAction || suggestNextAction({
+    decision: choice.decision,
+    inboundText,
+    tenantAi: aiConfig,
   });
+  const effectiveProvider = llmResult?.provider || runtimeProvider;
+  const effectiveModel = llmResult?.model || runtimeModel;
 
-  if (!channel) {
+  const shouldUseWhatsApp = chatChannel === "whatsapp";
+  const whatsappChannel = shouldUseWhatsApp
+    ? await getWhatsAppChannelForTenant(tenantId, {
+        allowAgencyFallback: tenantId === "ALTUM_AGENCY",
+      })
+    : null;
+  const metaChannel = isMetaConversation
+    ? await getMetaChannelForTenant(tenantId, chatChannel, {
+        channelId: String(chatData.channelId || "").trim() || null,
+        externalAccountId: String(chatData.channelExternalAccountId || "").trim() || null,
+        pageId: String(chatData.channelPageId || "").trim() || null,
+      })
+    : null;
+
+  if (shouldUseWhatsApp && !whatsappChannel) {
     await saveAiLog({
       logDocId,
       tenantId,
       chatId,
       messageId,
+      leadId,
       decision: "skip",
       reason: "channel_not_found",
       inboundText,
       outboundText: "",
       toolCalls: ["tenant_channels.whatsapp"],
+      confidence: choice.confidence,
+      matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+      extractedFields,
+      nextAction,
+      latencyMs: Date.now() - startedAt,
+      provider: effectiveProvider,
+      model: effectiveModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
     });
     return { decision: "skip", reason: "channel_not_found" };
   }
-
-  const leadPhone = normalizePhone(String(chatData.contactPhone || ""));
-  if (!leadPhone) {
+  if (isMetaConversation && !metaChannel) {
     await saveAiLog({
       logDocId,
       tenantId,
       chatId,
       messageId,
+      leadId,
+      decision: "skip",
+      reason: "channel_not_found",
+      inboundText,
+      outboundText: "",
+      toolCalls: [`tenant_channels.${chatChannel}`],
+      confidence: choice.confidence,
+      matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+      latencyMs: Date.now() - startedAt,
+      provider: effectiveProvider,
+      model: effectiveModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+    });
+    return { decision: "skip", reason: "channel_not_found" };
+  }
+
+  const leadPhone = shouldUseWhatsApp ? normalizePhone(String(chatData.contactPhone || "")) : "";
+  if (shouldUseWhatsApp && !leadPhone) {
+    await saveAiLog({
+      logDocId,
+      tenantId,
+      chatId,
+      messageId,
+      leadId,
       decision: "skip",
       reason: "lead_phone_missing",
       inboundText,
       outboundText: "",
       toolCalls: ["chats.contactPhone"],
+      confidence: choice.confidence,
+      matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+      latencyMs: Date.now() - startedAt,
+      provider: effectiveProvider,
+      model: effectiveModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
     });
     return { decision: "skip", reason: "lead_phone_missing" };
+  }
+  const metaRecipientId = isMetaConversation
+    ? sanitizeText(chatData.contactExternalId, 180)
+    : "";
+  if (isMetaConversation && !metaRecipientId) {
+    await saveAiLog({
+      logDocId,
+      tenantId,
+      chatId,
+      messageId,
+      leadId,
+      decision: "skip",
+      reason: "lead_external_id_missing",
+      inboundText,
+      outboundText: "",
+      toolCalls: ["chats.contactExternalId"],
+      confidence: choice.confidence,
+      matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+      latencyMs: Date.now() - startedAt,
+      provider: effectiveProvider,
+      model: effectiveModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+    });
+    return { decision: "skip", reason: "lead_external_id_missing" };
   }
 
   if (choice.decision === "handoff") {
@@ -643,18 +1052,27 @@ export async function handleIncomingMessage(
     const leadAck =
       "Perfeito, vou acionar um especialista humano agora e priorizar seu atendimento.";
 
-    await sendMetaTextMessage({
-      channel,
-      to: leadPhone,
-      text: leadAck,
-    });
+    if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
+      await sendMetaTextMessage({
+        channel: whatsappChannel,
+        to: leadPhone,
+        text: leadAck,
+      });
+    } else if (isMetaConversation && metaChannel && metaRecipientId) {
+      await sendMetaConversationText({
+        channel: metaChannel,
+        recipientId: metaRecipientId,
+        text: leadAck,
+      });
+    }
 
     await addMessage({
       chatId,
       tenantId,
       text: leadAck,
       sender: "agent",
-      channelPhoneNumberId: channel.phoneNumberId,
+      channel: chatChannel,
+      channelPhoneNumberId: whatsappChannel?.phoneNumberId,
       senderName: "AI Sales Agent",
     });
 
@@ -666,10 +1084,11 @@ export async function handleIncomingMessage(
       tenantId,
       text: systemEventText,
       sender: "system",
-      channelPhoneNumberId: channel.phoneNumberId,
+      channel: chatChannel,
+      channelPhoneNumberId: whatsappChannel?.phoneNumberId,
     });
 
-    if (aiConfig.responsiblePhone) {
+    if (aiConfig.responsiblePhone && whatsappChannel) {
       const notification = [
         `Handoff solicitado para tenant ${tenantId}.`,
         `Conversa: ${chatId}`,
@@ -680,7 +1099,7 @@ export async function handleIncomingMessage(
       ].join("\n");
 
       await sendMetaTextMessage({
-        channel,
+        channel: whatsappChannel,
         to: aiConfig.responsiblePhone,
         text: notification,
       });
@@ -699,49 +1118,177 @@ export async function handleIncomingMessage(
       tenantId,
       chatId,
       messageId,
+      leadId,
       decision: "handoff",
       reason: choice.reason,
       inboundText,
       outboundText: leadAck,
-      toolCalls: ["kb_docs", "chat_state", "tenant_settings.ai", "whatsapp_send", "handoff_notify"],
+      toolCalls: [
+        "kb_docs",
+        "chat_state",
+        "tenant_settings.ai",
+        shouldUseWhatsApp ? "whatsapp_send" : isMetaConversation ? "meta_send" : "site_chat_reply",
+        aiConfig.responsiblePhone && whatsappChannel ? "handoff_notify" : "handoff_log",
+      ],
+      confidence: choice.confidence,
+      matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+      latencyMs: Date.now() - startedAt,
+      provider: runtimeProvider,
+      model: runtimeModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
     });
+    await logAiUsage({
+      tenantId,
+      scope: "conversation",
+      provider: runtimeProvider,
+      model: runtimeModel,
+      agentId: "sales_autopilot_v1",
+      chatId,
+      leadId,
+      messageId,
+      aiLogId: logDocId,
+      decision: "handoff",
+      confidence: choice.confidence,
+      latencyMs: Date.now() - startedAt,
+      estimatedCostUsd: 0,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+      status: "success",
+      metadata: {
+        reason: choice.reason,
+        runtimePolicy: aiConfig.runtimePolicy,
+        fallbackUsed: llmResult?.fallbackUsed || false,
+        matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+        extractedFields,
+        nextAction,
+      },
+    });
+
+    if (leadId && nextAction) {
+      await runLeadAutomations({
+        tenantId,
+        trigger: "ai_next_action",
+        leadId,
+        actorId: "ai_sales_agent",
+        actorName: "AI Sales Agent",
+        chatId,
+        channel: chatChannel,
+        messageText: inboundText,
+        aiNextAction: nextAction,
+      });
+    }
 
     return { decision: "handoff", reason: choice.reason };
   }
 
-  const responseText = makeLeadFacingReply({
-    tenantAi: aiConfig,
-    decision: choice.decision,
-    inboundText,
-    kbDocs,
-  });
+  const responseText =
+    choice.responseText ||
+    makeLeadFacingReply({
+      tenantAi: aiConfig,
+      decision: choice.decision,
+      inboundText,
+      kbDocs,
+    });
 
-  await sendMetaTextMessage({
-    channel,
-    to: leadPhone,
-    text: responseText,
-  });
+  if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
+    await sendMetaTextMessage({
+      channel: whatsappChannel,
+      to: leadPhone,
+      text: responseText,
+    });
+  } else if (isMetaConversation && metaChannel && metaRecipientId) {
+    await sendMetaConversationText({
+      channel: metaChannel,
+      recipientId: metaRecipientId,
+      text: responseText,
+    });
+  }
 
   await addMessage({
     chatId,
     tenantId,
     text: responseText,
     sender: "agent",
-    channelPhoneNumberId: channel.phoneNumberId,
+    channel: chatChannel,
+    channelPhoneNumberId: whatsappChannel?.phoneNumberId,
     senderName: "AI Sales Agent",
   });
 
   await saveAiLog({
     logDocId,
-    tenantId,
-    chatId,
-    messageId,
-    decision: choice.decision,
+      tenantId,
+      chatId,
+      messageId,
+      leadId,
+      decision: choice.decision,
     reason: choice.reason,
     inboundText,
     outboundText: responseText,
-    toolCalls: ["kb_docs", "chat_state", "tenant_settings.ai", "whatsapp_send"],
+    toolCalls: [
+      "kb_docs",
+      "chat_state",
+      "tenant_settings.ai",
+      shouldUseWhatsApp ? "whatsapp_send" : isMetaConversation ? "meta_send" : "site_chat_reply",
+    ],
+    confidence: choice.confidence,
+    matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+    extractedFields,
+    nextAction,
+    latencyMs: Date.now() - startedAt,
+    provider: effectiveProvider,
+    model: effectiveModel,
+    tier: aiConfig.tier,
+    autonomyMode: aiConfig.autonomyMode,
+    reasoningLevel: aiConfig.reasoningLevel,
+    responseStyle: aiConfig.responseStyle,
   });
+  await logAiUsage({
+    tenantId,
+    scope: "conversation",
+    provider: effectiveProvider,
+    model: effectiveModel,
+    agentId: "sales_autopilot_v1",
+      chatId,
+      leadId,
+      messageId,
+    aiLogId: logDocId,
+    decision: choice.decision,
+    confidence: choice.confidence,
+    latencyMs: Date.now() - startedAt,
+    estimatedCostUsd: 0,
+    tier: aiConfig.tier,
+    autonomyMode: aiConfig.autonomyMode,
+    reasoningLevel: aiConfig.reasoningLevel,
+    responseStyle: aiConfig.responseStyle,
+    status: "success",
+    metadata: {
+      reason: choice.reason,
+      runtimePolicy: aiConfig.runtimePolicy,
+      fallbackUsed: llmResult?.fallbackUsed || false,
+      matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+      extractedFields,
+      nextAction,
+    },
+  });
+
+  if (leadId && nextAction) {
+    await runLeadAutomations({
+      tenantId,
+      trigger: "ai_next_action",
+      leadId,
+      actorId: "ai_sales_agent",
+      actorName: "AI Sales Agent",
+      chatId,
+      channel: chatChannel,
+      messageText: inboundText,
+      aiNextAction: nextAction,
+    });
+  }
 
   return {
     decision: choice.decision,

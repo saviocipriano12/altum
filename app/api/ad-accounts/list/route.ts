@@ -10,7 +10,7 @@ function clean(value: unknown, max = 140) {
 
 export async function GET(req: Request) {
   try {
-    const user = await requireRequestUser(req);
+    const user = await requireRequestUser(req, { roles: ["agency_agent"] });
     const { searchParams } = new URL(req.url);
     const clientId = clean(searchParams.get("clientId"), 120);
 

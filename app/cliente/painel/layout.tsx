@@ -2,22 +2,38 @@
 
 import { useState } from "react";
 import { ClienteSidebar } from "@/app/cliente/painel/components/cliente-sidebar";
+import { ClienteShellProvider } from "@/app/cliente/painel/components/cliente-shell";
 import { ClienteTopbar } from "@/app/cliente/painel/components/cliente-topbar";
 
-export default function ClientePainelLayout({ children }: { children: React.ReactNode }) {
+function ClientePainelShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#0B0B0B] text-white [font-family:var(--font-sans)]">
+    <div className="relative min-h-screen overflow-hidden bg-[var(--cliente-bg)] text-[var(--cliente-text)] [font-family:var(--font-sans)] transition-[background-color,color] duration-300">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-24 top-[-120px] h-[320px] w-[320px] rounded-full bg-[var(--cliente-accent-glow)] blur-3xl" />
+        <div className="absolute right-[-100px] top-[120px] h-[280px] w-[280px] rounded-full bg-[var(--cliente-accent-secondary-glow)] blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_58%)] opacity-80" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.02))]" />
+      </div>
+
       <ClienteSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <ClienteTopbar onOpenMenu={() => setSidebarOpen(true)} />
 
-      <div className="lg:pl-[270px]">
-        <main className="min-h-screen px-4 pb-8 pt-[92px] lg:px-6 lg:pt-[94px] bg-gradient-to-br from-[#0B0B0B] via-[#0E0E0E] to-black">
+      <div className="relative transition-[padding] duration-300 lg:pl-[var(--cliente-sidebar-width)]">
+        <main className="min-h-screen px-4 pb-10 pt-[132px] transition-[padding] duration-300 lg:px-6 xl:pt-[98px]">
           <div className="mx-auto max-w-[1280px]">{children}</div>
         </main>
       </div>
     </div>
+  );
+}
+
+export default function ClientePainelLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <ClienteShellProvider>
+      <ClientePainelShell>{children}</ClientePainelShell>
+    </ClienteShellProvider>
   );
 }
 

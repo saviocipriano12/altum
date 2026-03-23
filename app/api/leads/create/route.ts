@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
 import { getTenantForCurrentUser } from "@/lib/server/tenant";
+import { runLeadAutomations } from "@/lib/server/automations";
 
 type Body = {
   leadId?: string;
@@ -78,7 +79,7 @@ function removeUndefinedFields<T extends Record<string, unknown>>(obj: T): Recor
 
 export async function POST(req: Request) {
   try {
-    const user = await requireRequestUser(req);
+    const user = await requireRequestUser(req, { roles: ["agency_agent"] });
     const body = (await req.json()) as Body;
 
     const nome = clean(body.nome, 180);
@@ -200,6 +201,16 @@ export async function POST(req: Request) {
         detail: "Lead registrado pela plataforma.",
         createdAt: FieldValue.serverTimestamp(),
       });
+
+      if (tenantId) {
+        await runLeadAutomations({
+          tenantId,
+          trigger: "lead_created",
+          leadId: leadRef.id,
+          actorId: user.uid,
+          actorName: user.name,
+        });
+      }
     }
 
     return NextResponse.json({

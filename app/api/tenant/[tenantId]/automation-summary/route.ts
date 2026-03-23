@@ -2,9 +2,20 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { AI_QUEUE_JOB_TYPE } from "@/lib/server/ai/queue";
+import { AUTOMATION_SCHEDULED_JOB_TYPE, normalizeAutomationDoc } from "@/lib/server/automations";
 import { assertTenantAccess, TenantAccessError, getTenantSettings } from "@/lib/server/tenant";
 
 type JobStatus = "pending" | "processing" | "retrying" | "done" | "dead_letter";
+type JobItem = {
+  id: string;
+  type?: string;
+  status?: string;
+  updatedAt?: unknown;
+  chatId?: string;
+  attempts?: number;
+  lastError?: string;
+  [key: string]: unknown;
+};
 
 function normalizeStatus(value: unknown): JobStatus {
   const raw = String(value || "").toLowerCase();
@@ -86,12 +97,21 @@ export async function GET(
       return !aiEnabledForChat || Boolean(humanOwnerUserId) || Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
     }).length;
 
-    const queueJobs = jobsSnap.docs
-      .map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Record<string, unknown>),
-      }))
+    const allJobs: JobItem[] = jobsSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Record<string, unknown>),
+    }));
+
+    const queueJobs = allJobs
       .filter((item) => String(item.type || "") === AI_QUEUE_JOB_TYPE);
+    const scheduledJobs = allJobs
+      .filter((item) => String(item.type || "") === AUTOMATION_SCHEDULED_JOB_TYPE);
+
+    const automationExecutions = allJobs
+      .filter((item) => String(item.type || "") === "automation_execution")
+      .map((item) => item)
+      .sort((a, b) => toTime(b.updatedAt) - toTime(a.updatedAt))
+      .slice(0, 12);
 
     const queueCounts = {
       pending: queueJobs.filter((item) => normalizeStatus(item.status) === "pending").length,
@@ -99,6 +119,13 @@ export async function GET(
       retrying: queueJobs.filter((item) => normalizeStatus(item.status) === "retrying").length,
       done: queueJobs.filter((item) => normalizeStatus(item.status) === "done").length,
       deadLetter: queueJobs.filter((item) => normalizeStatus(item.status) === "dead_letter").length,
+    };
+    const scheduledCounts = {
+      pending: scheduledJobs.filter((item) => normalizeStatus(item.status) === "pending").length,
+      processing: scheduledJobs.filter((item) => normalizeStatus(item.status) === "processing").length,
+      retrying: scheduledJobs.filter((item) => normalizeStatus(item.status) === "retrying").length,
+      done: scheduledJobs.filter((item) => normalizeStatus(item.status) === "done").length,
+      deadLetter: scheduledJobs.filter((item) => normalizeStatus(item.status) === "dead_letter").length,
     };
 
     const recentQueue = queueJobs
@@ -121,15 +148,32 @@ export async function GET(
       (sum, item) => sum + toCounter(item.counters, "processed"),
       0
     );
+    const now = Date.now();
+    const waitingReplyBacklog = chatsSnap.docs.filter((doc) => {
+      const data = doc.data() as Record<string, unknown>;
+      const status = String(data.status || "open").toLowerCase();
+      if (status === "resolved" || status === "archived") return false;
+      const clientAt = toDate(data.lastClientMessageAt);
+      const agentAt = toDate(data.lastAgentMessageAt);
+      return Boolean(clientAt && (!agentAt || agentAt.getTime() < clientAt.getTime()));
+    }).length;
+    const slaBreached = chatsSnap.docs.filter((doc) => {
+      const data = doc.data() as Record<string, unknown>;
+      const status = String(data.status || "open").toLowerCase();
+      if (status === "resolved" || status === "archived") return false;
+      const dueAt = toDate(data.slaDueAt);
+      return Boolean(dueAt && dueAt.getTime() <= now);
+    }).length;
 
-    const activeAutomations = automationsSnap.empty
+    const automationItems = automationsSnap.docs
+      .map((doc) => normalizeAutomationDoc(doc.id, doc.data() as Record<string, unknown>, tenantId))
+      .sort((a, b) => toTime(b.updatedAt) - toTime(a.updatedAt));
+
+    const activeAutomations = automationItems.length === 0
       ? aiEnabled
         ? 1
         : 0
-      : automationsSnap.docs.filter((doc) => {
-          const data = doc.data() as Record<string, unknown>;
-          return data.enabled !== false && String(data.status || "active") !== "paused";
-        }).length;
+      : automationItems.filter((item) => item.enabled && item.status !== "paused").length;
 
     return NextResponse.json({
       ok: true,
@@ -141,9 +185,14 @@ export async function GET(
         kbDocs: kbSnap.size,
         guardrails,
         queue: queueCounts,
+        scheduled: scheduledCounts,
         processedTotal,
         aiEnabled,
+        waitingReplyBacklog,
+        slaBreached,
       },
+      automations: automationItems,
+      recentExecutions: automationExecutions,
       recentQueue,
     });
   } catch (error) {

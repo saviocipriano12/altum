@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useMemo, useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import {
@@ -164,10 +165,12 @@ export default function VittaCasePage() {
             transition={{ delay: 0.35 }}
             className="relative mt-16 w-full max-w-4xl overflow-hidden rounded-3xl shadow-xl ring-1 ring-emerald-100"
           >
-            <img
+            <Image
               alt="hero"
               className="h-[420px] w-full object-cover"
               src="https://images.unsplash.com/photo-1518611012118-696072aa579a?q=80&w=1600&auto=format&fit=crop"
+              width={1600}
+              height={900}
             />
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-6 text-left text-white">
               <p className="text-sm opacity-90">Plano nutricional + acompanhamento</p>
