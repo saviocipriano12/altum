@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -58,6 +58,17 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
   const [loading, setLoading] = useState(true);
   const [tenant, setTenant] = useState<TenantSession | null>(null);
   const requestedTenantId = String(searchParams.get("tenantId") || "").trim();
+  const currentQuery = searchParams.toString();
+
+  const buildClienteLoginHref = useCallback(() => {
+    const nextPath = pathname + (currentQuery ? `?${currentQuery}` : "");
+    const nextParams = new URLSearchParams();
+    if (requestedTenantId) {
+      nextParams.set("tenantId", requestedTenantId);
+    }
+    nextParams.set("next", nextPath);
+    return `/cliente/login?${nextParams.toString()}`;
+  }, [currentQuery, pathname, requestedTenantId]);
 
   useEffect(() => {
     if (pathname === "/cliente/login") {
@@ -68,7 +79,7 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         setLoading(false);
-        router.replace("/cliente/login");
+        router.replace(buildClienteLoginHref());
         return;
       }
 
@@ -86,7 +97,7 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
 
         if (!res.ok || !payload.portalUser?.tenantId) {
           setTenant(null);
-          router.replace("/cliente/login");
+          router.replace(buildClienteLoginHref());
           return;
         }
 
@@ -107,14 +118,14 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
         }
       } catch {
         setTenant(null);
-        router.replace("/cliente/login");
+        router.replace(buildClienteLoginHref());
       } finally {
         setLoading(false);
       }
     });
 
     return () => unsub();
-  }, [router, pathname, requestedTenantId]);
+  }, [buildClienteLoginHref, router, pathname, requestedTenantId, currentQuery]);
 
   if (loading) {
     return (

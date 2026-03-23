@@ -207,6 +207,10 @@ async function listMembershipsForUser(userId: string) {
   return parsed ? [parsed] : memberships;
 }
 
+function isGlobalAgencyAdminRole(role: unknown) {
+  return role === "agency_owner" || role === "agency_admin" || role === "admin";
+}
+
 export async function getDefaultTenantMembershipForUser(userId: string) {
   const memberships = await listMembershipsForUser(userId);
   if (memberships.length === 0) return null;
@@ -267,6 +271,27 @@ export async function assertTenantAccess(userId: string, tenantId: string): Prom
           role: "client_viewer",
           status: "active",
           isDefault: true,
+          capabilities: [],
+        };
+      }
+    }
+
+    const [userSnap, tenantSnap] = await Promise.all([
+      adminDb.collection("users").doc(normalizedUserId).get(),
+      adminDb.collection("tenants").doc(normalizedTenantId).get(),
+    ]);
+
+    if (tenantSnap.exists && userSnap.exists) {
+      const userData = userSnap.data() as { role?: string; status?: string };
+      const userStatus = userData.status === "blocked" ? "blocked" : "active";
+      if (userStatus === "active" && isGlobalAgencyAdminRole(userData.role)) {
+        return {
+          id: `agency_global_${normalizedTenantId}_${normalizedUserId}`,
+          tenantId: normalizedTenantId,
+          userId: normalizedUserId,
+          role: userData.role === "agency_owner" || userData.role === "admin" ? "agency_owner" : "agency_admin",
+          status: "active",
+          isDefault: false,
           capabilities: [],
         };
       }

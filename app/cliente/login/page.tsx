@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { auth } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { Loader2, Lock, Mail, ArrowRight, ShieldCheck } from "lucide-react";
@@ -14,6 +14,26 @@ export default function ClienteLoginPage() {
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tenantId = String(searchParams.get("tenantId") || "").trim();
+  const next = String(searchParams.get("next") || "").trim();
+
+  const buildPortalEndpoint = useCallback(() => {
+    return tenantId
+      ? `/api/client-portal/me?tenantId=${encodeURIComponent(tenantId)}`
+      : "/api/client-portal/me";
+  }, [tenantId]);
+
+  const buildPostLoginHref = useCallback((resolvedTenantId?: string) => {
+    if (next.startsWith("/cliente/")) {
+      return next;
+    }
+    const finalTenantId = String(resolvedTenantId || tenantId || "").trim();
+    if (finalTenantId) {
+      return `/cliente/painel?tenantId=${encodeURIComponent(finalTenantId)}`;
+    }
+    return "/cliente/painel";
+  }, [next, tenantId]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -23,9 +43,12 @@ export default function ClienteLoginPage() {
       }
 
       try {
-        const res = await authedFetch("/api/client-portal/me");
-        if (res.ok) {
-          router.push("/cliente/painel");
+        const res = await authedFetch(buildPortalEndpoint());
+        const payload = (await res.json()) as {
+          portalUser?: { tenantId?: string };
+        };
+        if (res.ok && payload.portalUser?.tenantId) {
+          router.push(buildPostLoginHref(payload.portalUser.tenantId));
           return;
         }
       } catch {
@@ -34,7 +57,7 @@ export default function ClienteLoginPage() {
       setChecking(false);
     });
     return () => unsub();
-  }, [router]);
+  }, [buildPortalEndpoint, buildPostLoginHref, router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -43,14 +66,17 @@ export default function ClienteLoginPage() {
 
     try {
       await signInWithEmailAndPassword(auth, email.trim(), password);
-      const res = await authedFetch("/api/client-portal/me");
-      const data = (await res.json()) as { error?: string };
+      const res = await authedFetch(buildPortalEndpoint());
+      const data = (await res.json()) as {
+        error?: string;
+        portalUser?: { tenantId?: string };
+      };
       if (!res.ok) {
         setError(data.error || "Seu acesso ao portal ainda nao foi liberado.");
         return;
       }
 
-      router.push("/cliente/painel");
+      router.push(buildPostLoginHref(data.portalUser?.tenantId));
     } catch {
       setError("Nao foi possivel entrar. Verifique e-mail e senha.");
     } finally {
