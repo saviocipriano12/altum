@@ -1400,11 +1400,7 @@ export default function ChatPage() {
     const pin = !msg?.pinned;
     await updateDoc(doc(db, "messages", id), { pinned: pin });
     showToast("ok", pin ? "Mensagem fixada" : "Desfixada");
-    // refresh pinned list
-    if (selectedChatId) {
-      getDocs(query(collection(db, "messages"), where("chatId", "==", selectedChatId), where("pinned", "==", true), orderBy("createdAt", "desc"), limit(20)))
-        .then((snap) => setPinnedMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as MessageDoc))));
-    }
+    setPinnedMessages(sortByCreatedAtDesc(messages.filter((message) => (message.id === id ? pin : message.pinned))));
   }
 
   async function starMessage(id: string) {
