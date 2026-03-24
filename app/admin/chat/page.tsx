@@ -20,8 +20,8 @@ import React, {
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   collection, doc, getDoc, getDocs, limit, onSnapshot,
-  orderBy, query, startAfter, where, updateDoc, arrayUnion,
-  arrayRemove, serverTimestamp, DocumentData, QueryDocumentSnapshot,
+  orderBy, query, where, updateDoc, arrayUnion,
+  arrayRemove, serverTimestamp,
   writeBatch, increment,
 } from "firebase/firestore";
 import {
@@ -76,6 +76,14 @@ type GlobalCtx = {
 };
 const GlobalContext = createContext<GlobalCtx>({} as GlobalCtx);
 const useGlobal = () => useContext(GlobalContext);
+
+function sortByCreatedAtAsc<T extends { createdAt?: TimestampLike }>(items: T[]) {
+  return [...items].sort((a, b) => (toDate(a.createdAt)?.getTime() || 0) - (toDate(b.createdAt)?.getTime() || 0));
+}
+
+function sortByCreatedAtDesc<T extends { createdAt?: TimestampLike }>(items: T[]) {
+  return [...items].sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
+}
 
 // ============================================================
 //  HOOKS
@@ -1184,10 +1192,7 @@ export default function ChatPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const lastSnapRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const loadingMoreRef = useRef(false);
   const callTimerRef = useRef<number>(0);
-  const MESSAGES_PAGE = 60;
 
   const selectedChat = useMemo(() => allChats.find((c) => c.id === selectedChatId) || null, [allChats, selectedChatId]);
   const selectedChatTenantId = useMemo(() => String(selectedChat?.tenantId || "").trim(), [selectedChat?.tenantId]);
@@ -1237,17 +1242,13 @@ export default function ChatPage() {
     setLoadingMessages(true);
     setMessages([]);
     setHasMoreMessages(false);
-    lastSnapRef.current = null;
     const q = query(
       collection(db, "messages"),
-      where("chatId", "==", selectedChatId),
-      orderBy("createdAt", "desc"),
-      limit(MESSAGES_PAGE)
+      where("chatId", "==", selectedChatId)
     );
     return onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as MessageDoc)).reverse());
-      lastSnapRef.current = snap.docs[snap.docs.length - 1] || null;
-      setHasMoreMessages(snap.size === MESSAGES_PAGE);
+      const nextMessages = snap.docs.map((d) => ({ id: d.id, ...d.data() } as MessageDoc));
+      setMessages(sortByCreatedAtAsc(nextMessages));
       setLoadingMessages(false);
     }, () => setLoadingMessages(false));
   }, [selectedChatId]);
@@ -1260,31 +1261,6 @@ export default function ChatPage() {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     }
   }, [messages.length]);
-
-  // ── Load older ────────────────────────────────────────────────
-  async function loadOlderMessages() {
-    if (!selectedChatId || !lastSnapRef.current || loadingMoreRef.current) return;
-    loadingMoreRef.current = true;
-    const savedScrollHeight = scrollRef.current?.scrollHeight || 0;
-    try {
-      const snap = await getDocs(query(
-        collection(db, "messages"),
-        where("chatId", "==", selectedChatId),
-        orderBy("createdAt", "desc"),
-        startAfter(lastSnapRef.current),
-        limit(MESSAGES_PAGE)
-      ));
-      if (snap.empty) { setHasMoreMessages(false); return; }
-      const older = snap.docs.map((d) => ({ id: d.id, ...d.data() } as MessageDoc)).reverse();
-      setMessages((p) => [...older, ...p]);
-      lastSnapRef.current = snap.docs[snap.docs.length - 1] || lastSnapRef.current;
-      if (snap.size < MESSAGES_PAGE) setHasMoreMessages(false);
-      // restore scroll position
-      requestAnimationFrame(() => {
-        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight - savedScrollHeight;
-      });
-    } finally { loadingMoreRef.current = false; }
-  }
 
   // ── Lead ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -1350,22 +1326,28 @@ export default function ChatPage() {
   // ── Gallery ───────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedChatId) { setProfileGallery([]); return; }
-    getDocs(query(collection(db, "messages"), where("chatId", "==", selectedChatId), where("type", "in", ["image", "video"]), orderBy("createdAt", "desc"), limit(50)))
-      .then((snap) => setProfileGallery(snap.docs.map((d) => (d.data() as any).mediaUrl).filter(Boolean)));
-  }, [selectedChatId]);
+    setProfileGallery(
+      sortByCreatedAtDesc(messages)
+        .filter((message) => message.type === "image" || message.type === "video")
+        .map((message) => message.mediaUrl)
+        .filter(Boolean) as string[]
+    );
+  }, [messages, selectedChatId]);
 
   // ── Pinned ────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedChatId) { setPinnedMessages([]); return; }
-    getDocs(query(collection(db, "messages"), where("chatId", "==", selectedChatId), where("pinned", "==", true), orderBy("createdAt", "desc"), limit(20)))
-      .then((snap) => setPinnedMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as MessageDoc))));
-  }, [selectedChatId]);
+    setPinnedMessages(sortByCreatedAtDesc(messages.filter((message) => message.pinned)));
+  }, [messages, selectedChatId]);
 
   // ── Audit log ─────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedChatId) { setAuditLog([]); return; }
-    const q = query(collection(db, "audit_events"), where("chatId", "==", selectedChatId), orderBy("createdAt", "desc"), limit(30));
-    return onSnapshot(q, (snap) => setAuditLog(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuditEvent))));
+    const q = query(collection(db, "audit_events"), where("chatId", "==", selectedChatId), limit(60));
+    return onSnapshot(q, (snap) => {
+      const nextItems = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuditEvent));
+      setAuditLog(sortByCreatedAtDesc(nextItems).slice(0, 30));
+    });
   }, [selectedChatId]);
 
   // ── Call timer ────────────────────────────────────────────────
@@ -1907,12 +1889,12 @@ export default function ChatPage() {
                   background: "radial-gradient(ellipse at 20% 50%, rgba(14,165,233,0.02) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(99,102,241,0.025) 0%, transparent 60%)",
                 }}
                 onScroll={(e) => {
-                  if (e.currentTarget.scrollTop < 100 && hasMoreMessages && !loadingMoreRef.current) loadOlderMessages();
+                  if (e.currentTarget.scrollTop < 100 && hasMoreMessages) return;
                 }}
               >
                 {hasMoreMessages && (
                   <div className="flex justify-center py-3">
-                    <button onClick={loadOlderMessages} className="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 bg-white/4 border border-white/8 px-4 py-2 rounded-xl transition-colors hover:bg-white/8">
+                    <button className="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 bg-white/4 border border-white/8 px-4 py-2 rounded-xl transition-colors hover:bg-white/8">
                       <RefreshCw className="h-3.5 w-3.5" /> Carregar mensagens anteriores
                     </button>
                   </div>
