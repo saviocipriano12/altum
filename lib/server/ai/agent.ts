@@ -289,44 +289,55 @@ function makeLeadFacingReply(input: {
   inboundText: string;
   kbDocs: KbDoc[];
 }) {
+  const inboundHasPriceSignal = textHasAny(input.inboundText, ["preco", "valor", "plano", "orcamento", "investimento"]);
+  const leadFacingKbDocs = input.kbDocs.filter((doc) => doc.type !== "policy");
+  const primaryKbDoc = leadFacingKbDocs[0] || input.kbDocs[0] || null;
+  const primaryKbSnippet = primaryKbDoc
+    ? sanitizeText(
+        primaryKbDoc.content
+          .replace(/^faq:\s*/i, "")
+          .replace(/^oferta:\s*/i, "")
+          .replace(/^politica:\s*/i, "")
+          .replace(/^pergunta:\s*/i, "")
+          .replace(/^resposta:\s*/i, ""),
+        220
+      )
+    : "";
+
   if (input.decision === "ask_more") {
-    const prompts = input.tenantAi.mandatoryQuestions.slice(0, 2);
+    const prompts = input.tenantAi.mandatoryQuestions.slice(0, 3);
     const playbookScript = findRelevantPlaybookScript(input.inboundText, input.tenantAi.playbookScripts);
+    const firstQuestion =
+      inboundHasPriceSignal
+        ? prompts[0] || "Qual e o nicho da sua empresa?"
+        : prompts[1] || prompts[0] || "Qual e o principal objetivo agora?";
+
     return [
       playbookScript
-        ? sanitizeText(playbookScript.script, 260)
-        : `Perfeito. Para te ajudar com mais precisao, preciso de 2 pontos:`,
-      `1) ${prompts[0] || "Qual servico ou produto voce quer agora?"}`,
-      `2) ${prompts[1] || "Qual prazo voce tem para comecar?"}`,
-      `Atendo no estilo ${input.tenantAi.toneOfVoice}.`,
+        ? sanitizeText(playbookScript.script, 220)
+        : inboundHasPriceSignal
+          ? "Consigo te passar uma faixa, sim. So prefiro entender seu momento antes para te orientar sem te empurrar algo errado."
+          : "Perfeito. Me passa so um ponto rapido para eu te orientar melhor.",
+      firstQuestion,
     ].join("\n");
   }
 
-  const topDocs = input.kbDocs.slice(0, 2);
-  const points = topDocs
-    .map((doc, index) => {
-      const snippet = sanitizeText(doc.content, 180);
-      return `${index + 1}) ${snippet}`;
-    })
-    .filter(Boolean);
-
-  const leadSignal = textHasAny(input.inboundText, ["preco", "valor", "plano", "orcamento"])
-    ? "Se fizer sentido, te passo uma proposta alinhada ao seu cenario."
-    : "Se fizer sentido, ja te proponho o proximo passo para avancarmos.";
   const playbookOffer = findRelevantPlaybookOffer(input.inboundText, input.tenantAi.playbookOffers);
   const playbookScript = findRelevantPlaybookScript(input.inboundText, input.tenantAi.playbookScripts);
-
-  const guardrailHint = input.tenantAi.guardrails[0]
-    ? `Regra de atendimento: ${sanitizeText(input.tenantAi.guardrails[0], 120)}.`
-    : "";
+  const leadSignal = inboundHasPriceSignal
+    ? "Se fizer sentido, eu te explico qual formato tende a encaixar melhor no seu caso."
+    : "Se fizer sentido, te mostro o proximo passo mais aderente para avancarmos.";
+  const qualifyingQuestion =
+    input.tenantAi.mandatoryQuestions[0] || "Qual e o contexto do seu negocio hoje?";
 
   return [
-    `Entendi. Atuamos com ${input.tenantAi.businessSummary}.`,
-    playbookScript ? sanitizeText(playbookScript.script, 280) : "",
-    ...points,
-    playbookOffer ? `O caminho que mais faz sentido aqui e ${sanitizeText(playbookOffer.title, 120)}.` : "",
+    primaryKbSnippet
+      ? `Entendi. ${primaryKbSnippet}`
+      : `Entendi. A ALTUM atua com ${input.tenantAi.businessSummary}.`,
+    playbookScript ? sanitizeText(playbookScript.script, 220) : "",
+    playbookOffer ? `O caminho que mais faz sentido aqui tende a ser ${sanitizeText(playbookOffer.title, 120)}.` : "",
     leadSignal,
-    guardrailHint,
+    qualifyingQuestion,
   ]
     .filter(Boolean)
     .join("\n");

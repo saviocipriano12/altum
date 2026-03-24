@@ -452,6 +452,29 @@ export function triggerAiQueueWorker(options?: { limit?: number }) {
       console.error("Erro no worker assincrono da fila de IA:", error);
     });
   });
+
+  const baseUrl =
+    String(process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "").trim() ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+  const token = String(process.env.AI_JOBS_PROCESS_TOKEN || "").trim();
+
+  if (!baseUrl || !token) return;
+
+  const limit = Math.min(100, Math.max(1, options?.limit || DEFAULT_BATCH_LIMIT));
+  const url = `${baseUrl.replace(/\/$/, "")}/api/internal/jobs/ai/process?limit=${limit}`;
+
+  setImmediate(() => {
+    void fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    }).catch((error) => {
+      console.error("Erro ao acionar endpoint interno da fila de IA:", error);
+    });
+  });
 }
 
 export const AI_QUEUE_JOB_TYPE = JOB_TYPE;

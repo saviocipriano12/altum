@@ -782,6 +782,17 @@ export default function ClienteInboxPage() {
     void loadSelectedChat(selectedChatId);
   }, [selectedChatId, loadSelectedChat]);
 
+  useEffect(() => {
+    if (!tenant?.tenantId) return;
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void refreshSelected(true);
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [refreshSelected, tenant?.tenantId]);
+
   const selectedChat = useMemo(
     () => chats.find((item) => item.id === selectedChatId) || detail?.chat || null,
     [chats, selectedChatId, detail]
