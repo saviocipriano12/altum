@@ -176,7 +176,15 @@ function buildPrompt(input: ConversationAgentInput) {
 
   const kb = input.kbDocs
     .slice(0, 8)
-    .map((doc, index) => `${index + 1}. [${doc.type}] ${sanitizeText(doc.content, 320)}`)
+    .map((doc, index) => {
+      const label =
+        doc.type === "policy"
+          ? "POLITICA_INTERNA_NAO_CITAR"
+          : doc.type === "catalog"
+            ? "BASE_COMERCIAL"
+            : "FAQ_COMERCIAL";
+      return `${index + 1}. [${label}] ${sanitizeText(doc.content, 260)}`;
+    })
     .join("\n");
 
   const guardrails = (input.guardrails || []).slice(0, 12).map((item) => `- ${sanitizeText(item, 180)}`).join("\n");
@@ -200,6 +208,11 @@ function buildPrompt(input: ConversationAgentInput) {
   const systemPrompt = [
     "Voce e um agente comercial da ALTUM operando em portugues do Brasil.",
     "Sua resposta deve ser extremamente humana, objetiva, comercial e segura.",
+    "Nunca exponha rotulos internos como FAQ, POLICY, POLITICA, PLAYBOOK, CATALOGO, GUARDRAIL ou nomes de documentos.",
+    "Nunca copie documentos brutos para o lead. Sempre sintetize em linguagem natural.",
+    "Se faltar contexto, faca somente 1 pergunta por vez.",
+    "Se o lead apenas cumprimentar, responda de forma humana e avance com uma pergunta simples.",
+    "Prefira respostas curtas, normalmente de 2 a 4 frases.",
     "Voce deve responder somente com JSON valido.",
     "Campos obrigatorios do JSON: decision, reason, confidence, responseText, extractedFields, nextAction.",
     "decision deve ser um de: respond, ask_more, handoff, skip.",

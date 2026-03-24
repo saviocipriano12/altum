@@ -632,19 +632,14 @@ function scorePlaybookText(inboundText: string, parts: string[]) {
 }
 
 function findRelevantPlaybookScript(inboundText: string, scripts: BusinessProfilePlaybookScript[]) {
-  return [...scripts]
+  const ranked = [...scripts]
     .map((script) => ({
       script,
       score: scorePlaybookText(inboundText, [script.situation, script.goal, script.script]),
     }))
-    .sort((a, b) => b.score - a.score)[0]?.score
-    ? [...scripts]
-        .map((script) => ({
-          script,
-          score: scorePlaybookText(inboundText, [script.situation, script.goal, script.script]),
-        }))
-        .sort((a, b) => b.score - a.score)[0].script
-    : scripts[0];
+    .sort((a, b) => b.score - a.score);
+
+  return ranked[0]?.score ? ranked[0].script : null;
 }
 
 function findRelevantPlaybookOffer(inboundText: string, offers: BusinessProfilePlaybookOffer[]) {

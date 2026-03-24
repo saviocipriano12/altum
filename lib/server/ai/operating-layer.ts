@@ -109,7 +109,7 @@ export function buildAiRuntimePolicy(profile: TenantAiOperatingProfile): TenantA
 
   const conversationModel =
     primaryProvider === "openai"
-      ? profile.tier === "elite" || profile.tier === "enterprise"
+      ? profile.reasoningLevel === "deep" && (profile.tier === "elite" || profile.tier === "enterprise")
         ? "gpt-5.4"
         : "gpt-5-mini"
       : primaryProvider === "anthropic"

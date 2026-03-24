@@ -783,15 +783,26 @@ export default function ClienteInboxPage() {
   }, [selectedChatId, loadSelectedChat]);
 
   useEffect(() => {
+    if (!tenant?.tenantId || !selectedChatId) return;
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void loadSelectedChat(selectedChatId, { withMessages: true });
+    }, 4000);
+
+    return () => window.clearInterval(interval);
+  }, [loadSelectedChat, selectedChatId, tenant?.tenantId]);
+
+  useEffect(() => {
     if (!tenant?.tenantId) return;
 
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void refreshSelected(true);
-    }, 5000);
+      void loadChats();
+    }, 15000);
 
     return () => window.clearInterval(interval);
-  }, [refreshSelected, tenant?.tenantId]);
+  }, [loadChats, tenant?.tenantId]);
 
   const selectedChat = useMemo(
     () => chats.find((item) => item.id === selectedChatId) || detail?.chat || null,

@@ -454,7 +454,7 @@ export function triggerAiQueueWorker(options?: { limit?: number }) {
   });
 
   const baseUrl =
-    String(process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "").trim() ||
+    String(process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "").trim() ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
   const token = String(process.env.AI_JOBS_PROCESS_TOKEN || "").trim();
 
