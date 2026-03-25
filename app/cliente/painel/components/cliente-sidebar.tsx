@@ -37,13 +37,26 @@ type Props = {
   onClose: () => void;
 };
 
-const NAV_GROUPS = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutGrid;
+  capability?: string;
+  badge?: string;
+};
+
+type NavGroup = {
+  title: string;
+  items: NavItem[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
   {
-    title: "Painel",
-    items: [{ href: "/cliente/painel", label: "Visao Geral", icon: LayoutGrid }],
+    title: "Operacao",
+    items: [{ href: "/cliente/painel", label: "Visao geral", icon: LayoutGrid }],
   },
   {
-    title: "Revenue Ops",
+    title: "Atendimento e vendas",
     items: [
       { href: "/cliente/painel/inbox", label: "Inbox", icon: MessageSquare },
       { href: "/cliente/painel/crm", label: "CRM", icon: Users },
@@ -51,6 +64,11 @@ const NAV_GROUPS = [
       { href: "/cliente/painel/agenda", label: "Agenda", icon: CalendarDays },
       { href: "/cliente/painel/pipeline", label: "Pipeline", icon: Funnel },
       { href: "/cliente/painel/comercial", label: "Comercial", icon: DollarSign, capability: "manage_commercial" },
+    ],
+  },
+  {
+    title: "Crescimento",
+    items: [
       { href: "/cliente/painel/captacao", label: "Captacao", icon: Megaphone },
       { href: "/cliente/painel/campanhas", label: "Campanhas", icon: Sparkles, capability: "manage_automations", badge: "novo" },
     ],
@@ -87,8 +105,8 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
   const { sidebarCollapsed, setSidebarCollapsed } = useClienteShell();
   const [isDesktop, setIsDesktop] = useState(false);
 
-  const roleLabel = tenant?.tenantRole?.replace(/_/g, " ") || "client viewer";
-  const navStateLabel = pilotReady ? "pilot ready" : blockerCount > 0 ? `${blockerCount} pend.` : "operando";
+  const roleLabel = tenant?.tenantRole?.replace(/_/g, " ") || "cliente";
+  const navStateLabel = pilotReady ? "pronto" : blockerCount > 0 ? `${blockerCount} pend.` : "operando";
   const compactMode = isDesktop && sidebarCollapsed;
 
   useEffect(() => {
@@ -123,7 +141,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
           {!compactMode ? (
             <div className="min-w-0 flex-1">
               <p className="truncate text-[12px] font-black uppercase tracking-[0.28em] text-[var(--cliente-text)]">ALTUM</p>
-              <p className="truncate text-[10px] uppercase tracking-[0.22em] text-[var(--cliente-text-soft)]">Client Cloud</p>
+              <p className="truncate text-[10px] uppercase tracking-[0.22em] text-[var(--cliente-text-soft)]">Portal do cliente</p>
             </div>
           ) : null}
 
@@ -159,7 +177,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                 <p className="mt-2 truncate text-base font-semibold text-[var(--cliente-text)]">
                   {tenant?.tenantName || tenant?.clientName || "Cliente"}
                 </p>
-                <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Executive operating system</p>
+                <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Operacao centralizada da conta</p>
               </div>
               <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]">
                 <Shield className="h-4 w-4" />
@@ -172,7 +190,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">Prontidao</p>
                     <p className="mt-1 text-sm font-medium text-[var(--cliente-text)]">
-                      {pilotReady ? "Piloto liberado" : "Workspace premium"}
+                      {pilotReady ? "Operacao pronta" : "Estrutura em implantacao"}
                     </p>
                   </div>
                   <StateBadge label={pilotReady ? `${readinessScore}%` : navStateLabel} tone={pilotReady ? "success" : blockerCount > 0 ? "warning" : "info"} />
@@ -225,7 +243,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
                         {!compactMode ? (
                           <span className="ml-auto inline-flex items-center gap-2">
-                            {"badge" in item && item.badge ? <StateBadge label={item.badge} tone="info" /> : null}
+                            {typeof item.badge === "string" && item.badge ? <StateBadge label={item.badge} tone="info" /> : null}
                             {active ? (
                               <span className="h-2 w-2 rounded-full bg-[var(--cliente-accent)] shadow-[0_0_14px_var(--cliente-accent)]" />
                             ) : (
@@ -259,7 +277,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                 <p className="text-sm font-semibold text-[var(--cliente-text)]">Workspace governado</p>
                 <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">{roleLabel}</p>
                 <p className="mt-2 text-sm text-[var(--cliente-text-muted)]">
-                  Tenant isolado, canais dedicados, modulos conectados e operacao centralizada.
+                  Conta isolada, canais dedicados, modulos conectados e operacao centralizada.
                 </p>
               </div>
             )}

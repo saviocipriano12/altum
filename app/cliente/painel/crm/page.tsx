@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -788,12 +788,12 @@ export default function ClienteCrmPage() {
                 <Link
                   key={item.id}
                   href={item.href}
-                  className="block rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                  className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{item.title}</p>
-                      <p className="mt-1 text-sm text-white/60">{item.detail}</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
                     </div>
                     <StateBadge label={item.badge} tone={item.tone} />
                   </div>
@@ -815,9 +815,9 @@ export default function ClienteCrmPage() {
 
         <PanelCard className="p-5">
           <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Campos e tags sugeridos pelo perfil ativo do tenant." />
-          <p className="mt-4 text-sm text-white/60">{businessProfile.description}</p>
+          <p className="mt-4 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.description}</p>
           <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42">Campos que merecem foco</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Campos que merecem foco</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {businessProfile.crm.leadFields.map((field) => (
                 <StateBadge key={field} label={field.replaceAll("_", " ")} tone="info" />
@@ -825,7 +825,7 @@ export default function ClienteCrmPage() {
             </div>
           </div>
           <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42">Tags sugeridas</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Tags sugeridas</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {businessProfile.crm.suggestedTags.map((tag) => (
                 <StateBadge key={tag} label={tag} tone="neutral" />
@@ -837,18 +837,18 @@ export default function ClienteCrmPage() {
 
       <section className="grid min-h-[74vh] grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)_360px]">
         <PanelCard className="flex min-h-0 flex-col overflow-hidden">
-          <div className="border-b border-white/10 p-4">
+          <div className="border-b border-[var(--cliente-border)] p-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle title="Base de leads" subtitle={`${filteredLeads.length} visiveis`} />
               <StateBadge label={`${leads.length} no tenant`} tone="info" />
             </div>
-            <label className="mt-4 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/72">
-              <Search className="h-4 w-4 text-white/40" />
+            <label className="mt-4 flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Buscar nome, origem, empresa..."
-                className="w-full bg-transparent outline-none placeholder:text-white/30"
+                className="w-full bg-transparent outline-none placeholder:text-[var(--cliente-card-text-soft)]"
               />
             </label>
 
@@ -856,7 +856,7 @@ export default function ClienteCrmPage() {
               <select
                 value={stageFilter}
                 onChange={(event) => setStageFilter(event.target.value)}
-                className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="rounded-xl border client-input px-3 py-2 text-sm"
               >
                 <option value="all">Todos os stages</option>
                 {stageOptions.map((option) => (
@@ -868,7 +868,7 @@ export default function ClienteCrmPage() {
               <select
                 value={heatFilter}
                 onChange={(event) => setHeatFilter(event.target.value)}
-                className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="rounded-xl border client-input px-3 py-2 text-sm"
               >
                 <option value="all">Todas as temperaturas</option>
                 {HEAT_OPTIONS.map((option) => (
@@ -880,7 +880,7 @@ export default function ClienteCrmPage() {
               <select
                 value={priorityFilter}
                 onChange={(event) => setPriorityFilter(event.target.value)}
-                className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="rounded-xl border client-input px-3 py-2 text-sm"
               >
                 <option value="all">Todas as prioridades</option>
                 {PRIORITY_OPTIONS.map((option) => (
@@ -892,7 +892,7 @@ export default function ClienteCrmPage() {
               <select
                 value={sourceFilter}
                 onChange={(event) => setSourceFilter(event.target.value)}
-                className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="rounded-xl border client-input px-3 py-2 text-sm"
               >
                 <option value="all">Todas as origens</option>
                 {sourceOptions.map((option) => (
@@ -904,7 +904,7 @@ export default function ClienteCrmPage() {
               <select
                 value={channelFilter}
                 onChange={(event) => setChannelFilter(event.target.value)}
-                className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="rounded-xl border client-input px-3 py-2 text-sm"
               >
                 <option value="all">Todos os canais</option>
                 {channelOptions.map((option) => (
@@ -918,7 +918,7 @@ export default function ClienteCrmPage() {
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? (
-              <div className="p-6 text-center text-white/60">
+              <div className="p-6 text-center text-[var(--cliente-card-text-muted)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
             ) : (
@@ -929,14 +929,14 @@ export default function ClienteCrmPage() {
                     key={lead.id}
                     type="button"
                     onClick={() => setSelectedLeadId(lead.id)}
-                    className={`w-full border-b border-white/6 px-4 py-4 text-left transition ${
-                      selectedLeadId === lead.id ? "bg-blue-500/10" : "hover:bg-white/[0.04]"
+                    className={`w-full border-b border-[var(--cliente-border)] px-4 py-4 text-left transition ${
+                      selectedLeadId === lead.id ? "bg-[var(--cliente-accent-soft)]" : "hover:bg-[var(--cliente-surface-muted)]"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-white/92">{lead.nome || "Lead"}</p>
-                        <p className="mt-1 truncate text-xs text-white/48">
+                        <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{lead.nome || "Lead"}</p>
+                        <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">
                           {lead.empresa || lead.email || lead.telefone || "Sem contato"}
                         </p>
                       </div>
@@ -947,7 +947,7 @@ export default function ClienteCrmPage() {
                       {lead.priority ? <StateBadge label={lead.priority} tone={getPriorityTone(lead.priority)} /> : null}
                       {typeof lead.score === "number" ? <StateBadge label={`score ${lead.score}`} tone="neutral" /> : null}
                     </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-white/46">
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-[var(--cliente-card-text-soft)]">
                       <span>{lead.chatSummary?.unresolved || 0} conversas ativas</span>
                       <span>{lead.chatSummary?.highPriority || 0} prioritarias</span>
                       <span>{formatRelative(lead.chatSummary?.lastInteractionAt)}</span>
@@ -966,7 +966,7 @@ export default function ClienteCrmPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-xl font-semibold text-white">{selectedLead.nome || "Lead"}</h3>
-                    <p className="mt-1 text-sm text-white/55">
+                    <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
                       {selectedLead.email || selectedLead.telefone || "Sem contato principal"}
                     </p>
                   </div>
@@ -982,61 +982,61 @@ export default function ClienteCrmPage() {
                 <div className="mt-4 grid gap-2 md:grid-cols-3">
                   <Link
                     href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`}
-                    className="inline-flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+                    className="inline-flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                   >
                     <span className="inline-flex items-center gap-2">
-                      <MessageSquareText className="h-4 w-4 text-blue-100" />
+                      <MessageSquareText className="h-4 w-4 text-[var(--cliente-accent)]" />
                       Abrir no inbox
                     </span>
-                    <ArrowRight className="h-4 w-4 text-white/40" />
+                    <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
                   </Link>
                   <Link
                     href={`/cliente/painel/pipeline?leadId=${encodeURIComponent(selectedLead.id)}`}
-                    className="inline-flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+                    className="inline-flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                   >
                     <span className="inline-flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-blue-100" />
+                      <Sparkles className="h-4 w-4 text-[var(--cliente-accent)]" />
                       Ver no pipeline
                     </span>
-                    <ArrowRight className="h-4 w-4 text-white/40" />
+                    <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
                   </Link>
                   <Link
                     href={`/cliente/painel/comercial?leadId=${encodeURIComponent(selectedLead.id)}`}
-                    className="inline-flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+                    className="inline-flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                   >
                     <span className="inline-flex items-center gap-2">
-                      <ClipboardList className="h-4 w-4 text-blue-100" />
+                      <ClipboardList className="h-4 w-4 text-[var(--cliente-accent)]" />
                       Gerar proposta
                     </span>
-                    <ArrowRight className="h-4 w-4 text-white/40" />
+                    <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
                   </Link>
                 </div>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-white/42">Conversas</p>
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Conversas</p>
                     <p className="mt-2 text-lg font-semibold text-white">{selectedConversationSummary.total || 0}</p>
-                    <p className="mt-1 text-xs text-white/46">{selectedConversationSummary.open || 0} abertas</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{selectedConversationSummary.open || 0} abertas</p>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-white/42">Pendencias</p>
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Pendencias</p>
                     <p className="mt-2 text-lg font-semibold text-white">{selectedConversationSummary.pending || 0}</p>
-                    <p className="mt-1 text-xs text-white/46">{selectedConversationSummary.unassigned || 0} sem responsavel</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{selectedConversationSummary.unassigned || 0} sem responsavel</p>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-white/42">Prioridade</p>
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Prioridade</p>
                     <p className="mt-2 text-lg font-semibold text-white">{selectedConversationSummary.highPriority || 0}</p>
-                    <p className="mt-1 text-xs text-white/46">conversas quentes</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">conversas quentes</p>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-white/42">Ultimo toque</p>
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Ultimo toque</p>
                     <p className="mt-2 text-lg font-semibold text-white">{formatRelative(selectedConversationSummary.lastInteractionAt)}</p>
-                    <p className="mt-1 text-xs text-white/46">{formatDateTime(selectedConversationSummary.lastInteractionAt)}</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDateTime(selectedConversationSummary.lastInteractionAt)}</p>
                   </div>
                 </div>
 
                 {customFieldEntries.length ? (
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                     <div className="flex items-center justify-between gap-3">
                       <CardTitle
                         title="Dados capturados"
@@ -1046,8 +1046,8 @@ export default function ClienteCrmPage() {
                     </div>
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       {customFieldEntries.map(([key, value]) => (
-                        <div key={key} className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-                          <p className="text-[11px] uppercase tracking-[0.14em] text-white/42">
+                        <div key={key} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
+                          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                             {key.replaceAll("_", " ")}
                           </p>
                           <p className="mt-2 text-sm text-white">{formatCustomFieldValue(value)}</p>
@@ -1058,7 +1058,7 @@ export default function ClienteCrmPage() {
                 ) : null}
 
                 {selectedLeadAiLogs.length ? (
-                  <div className="mt-4 rounded-2xl border border-blue-400/20 bg-blue-500/[0.05] p-4">
+                  <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] p-4">
                     <div className="flex items-center justify-between gap-3">
                       <CardTitle
                         title="Pulso operacional da IA"
@@ -1068,14 +1068,17 @@ export default function ClienteCrmPage() {
                     </div>
                     <div className="mt-4 space-y-3">
                       {selectedLeadAiLogs.map((log) => (
-                        <div key={log.id} className="rounded-xl border border-white/10 bg-black/25 p-3">
+                        <div key={log.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-sm font-medium text-white">{humanizeAiNextAction(log.nextAction)}</p>
-                            <p className="text-xs text-white/45">{formatDateTime(log.createdAt)}</p>
+                            <p className="text-xs text-[var(--cliente-card-text-soft)]">{formatDateTime(log.createdAt)}</p>
                           </div>
                           <div className="mt-2 flex flex-wrap gap-2">
                             {Object.entries(log.extractedFields || {}).slice(0, 5).map(([field, value]) => (
-                              <span key={`${log.id}_${field}`} className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/70">
+                              <span
+                                key={`${log.id}_${field}`}
+                                className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]"
+                              >
                                 {field}: {value}
                               </span>
                             ))}
@@ -1085,7 +1088,7 @@ export default function ClienteCrmPage() {
                               type="button"
                               onClick={() => applyAiTaskSuggestion(log)}
                               disabled={!canOperate}
-                              className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/82 transition hover:bg-white/[0.08] disabled:opacity-50"
+                              className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50"
                             >
                               Aplicar no follow-up
                             </button>
@@ -1094,7 +1097,7 @@ export default function ClienteCrmPage() {
                                 type="button"
                                 onClick={() => applyAiStageSuggestion(log)}
                                 disabled={!canOperate}
-                                className="rounded-xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs font-medium text-blue-100 transition hover:bg-blue-500/15 disabled:opacity-50"
+                                className="rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-medium text-[var(--cliente-accent)] transition hover:brightness-95 disabled:opacity-50"
                               >
                                 Preparar stage
                               </button>
@@ -1114,14 +1117,14 @@ export default function ClienteCrmPage() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                  <p className="mb-2 text-xs uppercase tracking-[0.14em] text-white/55">Mover stage</p>
+                <div className="mt-4 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                  <p className="mb-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Mover stage</p>
                   <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={nextStage}
                       onChange={(event) => setNextStage(event.target.value)}
                       disabled={!canOperate}
-                      className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm outline-none"
+                      className="rounded-xl border client-input px-3 py-2 text-sm"
                     >
                       {stageOptions.map((stage) => (
                         <option key={stage} value={stage}>
@@ -1132,7 +1135,7 @@ export default function ClienteCrmPage() {
                     <button
                       onClick={() => void updateStage()}
                       disabled={savingStage || !canOperate}
-                      className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
                     >
                       {savingStage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                       Salvar stage
@@ -1142,33 +1145,33 @@ export default function ClienteCrmPage() {
 
                 <form onSubmit={saveProfile} className="mt-4 space-y-4">
                   <div className="grid gap-3 md:grid-cols-2">
-                    <input value={profileForm.nome} onChange={(event) => setProfileForm((current) => ({ ...current, nome: event.target.value }))} disabled={!canOperate} placeholder="Nome do lead" className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
-                    <input value={profileForm.empresa} onChange={(event) => setProfileForm((current) => ({ ...current, empresa: event.target.value }))} disabled={!canOperate} placeholder="Empresa" className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
-                    <input value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} disabled={!canOperate} placeholder="E-mail" className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
-                    <input value={profileForm.telefone} onChange={(event) => setProfileForm((current) => ({ ...current, telefone: event.target.value }))} disabled={!canOperate} placeholder="Telefone" className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
-                    <input value={profileForm.origem} onChange={(event) => setProfileForm((current) => ({ ...current, origem: event.target.value }))} disabled={!canOperate} placeholder="Origem" className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
-                    <input value={profileForm.channel} onChange={(event) => setProfileForm((current) => ({ ...current, channel: event.target.value }))} disabled={!canOperate} placeholder="Canal" className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
-                    <select value={profileForm.priority} onChange={(event) => setProfileForm((current) => ({ ...current, priority: event.target.value }))} disabled={!canOperate} className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none">
+                    <input value={profileForm.nome} onChange={(event) => setProfileForm((current) => ({ ...current, nome: event.target.value }))} disabled={!canOperate} placeholder="Nome do lead" className="rounded-xl border client-input px-3 py-2 text-sm" />
+                    <input value={profileForm.empresa} onChange={(event) => setProfileForm((current) => ({ ...current, empresa: event.target.value }))} disabled={!canOperate} placeholder="Empresa" className="rounded-xl border client-input px-3 py-2 text-sm" />
+                    <input value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} disabled={!canOperate} placeholder="E-mail" className="rounded-xl border client-input px-3 py-2 text-sm" />
+                    <input value={profileForm.telefone} onChange={(event) => setProfileForm((current) => ({ ...current, telefone: event.target.value }))} disabled={!canOperate} placeholder="Telefone" className="rounded-xl border client-input px-3 py-2 text-sm" />
+                    <input value={profileForm.origem} onChange={(event) => setProfileForm((current) => ({ ...current, origem: event.target.value }))} disabled={!canOperate} placeholder="Origem" className="rounded-xl border client-input px-3 py-2 text-sm" />
+                    <input value={profileForm.channel} onChange={(event) => setProfileForm((current) => ({ ...current, channel: event.target.value }))} disabled={!canOperate} placeholder="Canal" className="rounded-xl border client-input px-3 py-2 text-sm" />
+                    <select value={profileForm.priority} onChange={(event) => setProfileForm((current) => ({ ...current, priority: event.target.value }))} disabled={!canOperate} className="rounded-xl border client-input px-3 py-2 text-sm">
                       {PRIORITY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                     </select>
-                    <select value={profileForm.heat} onChange={(event) => setProfileForm((current) => ({ ...current, heat: event.target.value }))} disabled={!canOperate} className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none">
+                    <select value={profileForm.heat} onChange={(event) => setProfileForm((current) => ({ ...current, heat: event.target.value }))} disabled={!canOperate} className="rounded-xl border client-input px-3 py-2 text-sm">
                       {HEAT_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                     </select>
-                    <input value={profileForm.score} onChange={(event) => setProfileForm((current) => ({ ...current, score: event.target.value }))} disabled={!canOperate} placeholder="Score" className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
-                    <input value={profileForm.potentialValue} onChange={(event) => setProfileForm((current) => ({ ...current, potentialValue: event.target.value }))} disabled={!canOperate} placeholder="Valor potencial" className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
+                    <input value={profileForm.score} onChange={(event) => setProfileForm((current) => ({ ...current, score: event.target.value }))} disabled={!canOperate} placeholder="Score" className="rounded-xl border client-input px-3 py-2 text-sm" />
+                    <input value={profileForm.potentialValue} onChange={(event) => setProfileForm((current) => ({ ...current, potentialValue: event.target.value }))} disabled={!canOperate} placeholder="Valor potencial" className="rounded-xl border client-input px-3 py-2 text-sm" />
                   </div>
-                  <input value={profileForm.tagsInput} onChange={(event) => setProfileForm((current) => ({ ...current, tagsInput: event.target.value }))} disabled={!canOperate} placeholder="Tags separadas por virgula" className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
+                  <input value={profileForm.tagsInput} onChange={(event) => setProfileForm((current) => ({ ...current, tagsInput: event.target.value }))} disabled={!canOperate} placeholder="Tags separadas por virgula" className="w-full rounded-xl border client-input px-3 py-2 text-sm" />
 
-                  <textarea value={profileForm.notes} onChange={(event) => setProfileForm((current) => ({ ...current, notes: event.target.value }))} disabled={!canOperate} placeholder="Resumo comercial, contexto e observacoes" className="min-h-[120px] w-full rounded-xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none" />
+                  <textarea value={profileForm.notes} onChange={(event) => setProfileForm((current) => ({ ...current, notes: event.target.value }))} disabled={!canOperate} placeholder="Resumo comercial, contexto e observacoes" className="min-h-[120px] w-full rounded-xl border client-input px-3 py-3 text-sm" />
 
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm text-white/55">
+                    <div className="text-sm text-[var(--cliente-card-text-muted)]">
                       Potencial atual: <span className="font-semibold text-white">{formatMoney(selectedLead.potentialValue)}</span>
                     </div>
                     <button
                       type="submit"
                       disabled={savingProfile || !canOperate}
-                      className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
                     >
                       {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                       Salvar perfil
@@ -1176,30 +1179,30 @@ export default function ClienteCrmPage() {
                   </div>
                 </form>
 
-                <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                   <CardTitle title="Conversas relacionadas" subtitle="Contexto de atendimento conectado ao lead" />
                   <div className="mt-4 space-y-2">
                     {(detail?.relatedChats || []).length === 0 ? (
-                      <p className="text-sm text-white/46">Ainda nao existe conversa vinculada a este lead.</p>
+                      <p className="text-sm text-[var(--cliente-card-text-soft)]">Ainda nao existe conversa vinculada a este lead.</p>
                     ) : (
                       (detail?.relatedChats || []).map((chat) => (
                         <Link
                           key={chat.id}
                           href={`/cliente/painel/inbox?chatId=${encodeURIComponent(chat.id)}&leadId=${encodeURIComponent(selectedLead.id)}`}
-                          className="block rounded-xl border border-white/10 bg-black/25 px-3 py-3 transition hover:bg-white/[0.04]"
+                          className="block rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:bg-[var(--cliente-panel-soft)]"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <p className="truncate text-sm font-medium text-white/92">{chat.contactName || selectedLead.nome || "Contato"}</p>
+                                <p className="truncate text-sm font-medium text-[var(--cliente-card-text)]">{chat.contactName || selectedLead.nome || "Contato"}</p>
                                 <StateBadge label={formatChannelLabel(chat.channel)} tone="neutral" />
                               </div>
-                              <p className="mt-1 truncate text-xs text-white/52">
+                              <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">
                                 {chat.lastMessage || chat.contactPhone || "Sem mensagem recente"}
                               </p>
                             </div>
                             <div className="text-right">
-                              <p className="text-xs text-white/46">{formatRelative(chat.lastMessageTime)}</p>
+                              <p className="text-xs text-[var(--cliente-card-text-soft)]">{formatRelative(chat.lastMessageTime)}</p>
                               {typeof chat.unreadCount === "number" && chat.unreadCount > 0 ? (
                                 <p className="mt-1 text-[11px] text-amber-100">{chat.unreadCount} sem resposta</p>
                               ) : null}
@@ -1210,7 +1213,7 @@ export default function ClienteCrmPage() {
                             {chat.priority ? <StateBadge label={chat.priority} tone={getPriorityTone(chat.priority)} /> : null}
                             {chat.ownerName ? <StateBadge label={chat.ownerName} tone="neutral" /> : null}
                             {chat.contactPhone ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-white/42">
+                              <span className="inline-flex items-center gap-1 text-[11px] text-[var(--cliente-card-text-soft)]">
                                 <PhoneCall className="h-3.5 w-3.5" />
                                 {chat.contactPhone}
                               </span>
@@ -1223,7 +1226,7 @@ export default function ClienteCrmPage() {
                 </div>
               </>
             ) : (
-              <p className="text-sm text-white/52">Selecione um lead para abrir o detalhe.</p>
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Selecione um lead para abrir o detalhe.</p>
             )}
           </PanelCard>
 
@@ -1231,13 +1234,13 @@ export default function ClienteCrmPage() {
             <CardTitle title="Timeline do lead" subtitle="Eventos, movimentacoes e historico recente" />
             <div className="mt-4 max-h-[36vh] space-y-2 overflow-y-auto">
               {(detail?.timeline || selectedLead?.timeline || []).length === 0 ? (
-                <p className="text-sm text-white/45">Sem eventos ainda.</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem eventos ainda.</p>
               ) : (
                 (detail?.timeline || selectedLead?.timeline || []).map((event) => (
-                  <div key={event.id} className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-                    <p className="text-sm text-white/92">{event.title || event.type || "Evento"}</p>
-                    <p className="mt-1 text-xs text-white/58">{event.detail || "Sem detalhe"}</p>
-                    <p className="mt-1 text-[10px] text-white/45">{formatDateTime(event.createdAt)}</p>
+                  <div key={event.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+                    <p className="text-sm text-[var(--cliente-card-text)]">{event.title || event.type || "Evento"}</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">{event.detail || "Sem detalhe"}</p>
+                    <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">{formatDateTime(event.createdAt)}</p>
                   </div>
                 ))
               )}
@@ -1250,20 +1253,20 @@ export default function ClienteCrmPage() {
             <CardTitle title="Follow-ups e tarefas" subtitle="Acompanhe o proximo passo comercial" />
 
             <form onSubmit={createTask} className="mt-4 space-y-3">
-              <input value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} disabled={!canOperate} placeholder="Ex: Retornar proposta ou ligar amanha" className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
+              <input value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} disabled={!canOperate} placeholder="Ex: Retornar proposta ou ligar amanha" className="w-full rounded-xl border client-input px-3 py-2 text-sm" />
               <div className="grid gap-3 sm:grid-cols-3">
-                <input type="datetime-local" value={taskForm.dueAt} onChange={(event) => setTaskForm((current) => ({ ...current, dueAt: event.target.value }))} disabled={!canOperate} className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none" />
-                <select value={taskForm.type} onChange={(event) => setTaskForm((current) => ({ ...current, type: event.target.value }))} disabled={!canOperate} className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none">
+                <input type="datetime-local" value={taskForm.dueAt} onChange={(event) => setTaskForm((current) => ({ ...current, dueAt: event.target.value }))} disabled={!canOperate} className="rounded-xl border client-input px-3 py-2 text-sm" />
+                <select value={taskForm.type} onChange={(event) => setTaskForm((current) => ({ ...current, type: event.target.value }))} disabled={!canOperate} className="rounded-xl border client-input px-3 py-2 text-sm">
                   <option value="follow_up">follow_up</option>
                   <option value="ligacao">ligacao</option>
                   <option value="reuniao">reuniao</option>
                   <option value="pendencia">pendencia</option>
                 </select>
-                <select value={taskForm.priority} onChange={(event) => setTaskForm((current) => ({ ...current, priority: event.target.value }))} disabled={!canOperate} className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none">
+                <select value={taskForm.priority} onChange={(event) => setTaskForm((current) => ({ ...current, priority: event.target.value }))} disabled={!canOperate} className="rounded-xl border client-input px-3 py-2 text-sm">
                   {PRIORITY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
               </div>
-              <button type="submit" disabled={!taskForm.title.trim() || savingTask || !canOperate} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-white/82 transition hover:bg-white/[0.08] disabled:opacity-50">
+              <button type="submit" disabled={!taskForm.title.trim() || savingTask || !canOperate} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50">
                 {savingTask ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
                 Criar tarefa
               </button>
@@ -1271,14 +1274,14 @@ export default function ClienteCrmPage() {
 
             <div className="mt-4 space-y-2">
               {(detail?.tasks || []).length === 0 ? (
-                <p className="text-sm text-white/45">Nenhum follow-up criado para este lead.</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhum follow-up criado para este lead.</p>
               ) : (
                 (detail?.tasks || []).map((task) => (
-                  <button key={task.id} type="button" onClick={() => void toggleTask(task.id, task.status === "done" ? "pending" : "done")} disabled={!canOperate} className="w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-left transition hover:bg-white/[0.04] disabled:cursor-default">
+                  <button key={task.id} type="button" onClick={() => void toggleTask(task.id, task.status === "done" ? "pending" : "done")} disabled={!canOperate} className="w-full rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-left transition hover:bg-[var(--cliente-panel-soft)] disabled:cursor-default">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-medium text-white/90">{task.title || "Tarefa"}</p>
-                        <p className="mt-1 text-xs text-white/52">{task.type || "follow_up"} {task.dueAt ? `• ${formatDateTime(task.dueAt)}` : ""}</p>
+                        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{task.title || "Tarefa"}</p>
+                        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{task.type || "follow_up"} {task.dueAt ? `· ${formatDateTime(task.dueAt)}` : ""}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <StateBadge label={task.status || "pending"} tone={task.status === "done" ? "success" : "warning"} />
@@ -1295,8 +1298,8 @@ export default function ClienteCrmPage() {
             <CardTitle title="Notas do lead" subtitle="Contexto comercial e memoria operacional" />
 
             <form onSubmit={createNote} className="mt-4 space-y-3">
-              <textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} disabled={!canOperate} placeholder="Registrar objeccoes, contexto, proximos passos..." className="min-h-[96px] w-full rounded-xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none" />
-              <button type="submit" disabled={!noteText.trim() || savingNote || !canOperate} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-white/82 transition hover:bg-white/[0.08] disabled:opacity-50">
+              <textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} disabled={!canOperate} placeholder="Registrar objeccoes, contexto, proximos passos..." className="min-h-[96px] w-full rounded-xl border client-input px-3 py-3 text-sm" />
+              <button type="submit" disabled={!noteText.trim() || savingNote || !canOperate} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50">
                 {savingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 Adicionar nota
               </button>
@@ -1304,18 +1307,18 @@ export default function ClienteCrmPage() {
 
             <div className="mt-4 space-y-2">
               {(detail?.notes || []).length === 0 ? (
-                <p className="text-sm text-white/45">Nenhuma nota interna para este lead.</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhuma nota interna para este lead.</p>
               ) : (
                 (detail?.notes || []).map((note) => (
-                  <div key={note.id} className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                  <div key={note.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-white/42">
+                      <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                         <UserRound className="h-3.5 w-3.5" />
                         {note.authorName || "Equipe"}
                       </div>
-                      <span className="text-[10px] uppercase tracking-[0.14em] text-white/34">{formatDateTime(note.createdAt)}</span>
+                      <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{formatDateTime(note.createdAt)}</span>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-white/86">{note.text || "-"}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text)]">{note.text || "-"}</p>
                   </div>
                 ))
               )}
@@ -1339,11 +1342,12 @@ function QuickContext({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-      <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">{title}</p>
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{title}</p>
       <p className="mt-2 text-sm font-semibold text-white">{value}</p>
-      <p className="mt-1 text-xs text-white/52">{detail}</p>
+      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
     </div>
   );
 }
+
 

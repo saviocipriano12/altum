@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Megaphone, Play, Plus, Save, Send, Trash2 } from "lucide-react";
@@ -69,7 +69,7 @@ function emptyCampaign(): CampaignEditorState {
     name: "",
     status: "draft",
     messageTemplate:
-      "Oi {nome}, aqui é da ALTUM. Vi que você demonstrou interesse e queria entender se ainda faz sentido conversar por aqui.",
+      "Oi {nome}, aqui Ã© da ALTUM. Vi que vocÃª demonstrou interesse e queria entender se ainda faz sentido conversar por aqui.",
     maxRecipients: 50,
     filters: {
       stageIds: [] as string[],
@@ -317,7 +317,7 @@ export default function ClienteCampanhasPage() {
   if (loading) {
     return (
       <div className="flex min-h-[45vh] items-center justify-center">
-        <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+        <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
@@ -340,28 +340,28 @@ export default function ClienteCampanhasPage() {
       <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PanelCard className="p-5">
           <div className="flex items-start justify-between gap-3">
-            <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Contexto vertical usado para segmentação e copy de outbound." />
+            <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Contexto vertical usado para segmentaÃ§Ã£o e copy de outbound." />
             <StateBadge label={businessProfile.id} tone="info" />
           </div>
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-sm text-white/72">{businessProfile.description}</p>
-            <p className="mt-3 text-sm text-white/58">Movimento comercial: {businessProfile.commercialMotion}</p>
-            <p className="mt-2 text-sm text-white/58">Stages naturais: {pipelineStages.map((item) => item.id).join(", ")}</p>
+          <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+            <p className="text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.description}</p>
+            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Movimento comercial: {businessProfile.commercialMotion}</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">Stages naturais: {pipelineStages.map((item) => item.id).join(", ")}</p>
           </div>
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Preset outbound do modo" subtitle="Base rápida de copy e segmentação para campanhas mais coerentes." />
+          <CardTitle title="Preset outbound do modo" subtitle="Base rÃ¡pida de copy e segmentaÃ§Ã£o para campanhas mais coerentes." />
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-sm font-semibold text-white">Cenário sugerido</p>
-              <p className="mt-2 text-sm text-white/60">{playbookPreset.scripts[0]?.situation || "Sem cena sugerida."}</p>
-              <p className="mt-2 text-xs text-white/48">{playbookPreset.scripts[0]?.goal || ""}</p>
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+              <p className="text-sm font-semibold text-white">CenÃ¡rio sugerido</p>
+              <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{playbookPreset.scripts[0]?.situation || "Sem cena sugerida."}</p>
+              <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{playbookPreset.scripts[0]?.goal || ""}</p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
               <p className="text-sm font-semibold text-white">Oferta em foco</p>
-              <p className="mt-2 text-sm text-white/60">{playbookPreset.offers[0]?.title || "Sem oferta sugerida."}</p>
-              <p className="mt-2 text-xs text-white/48">{playbookPreset.offers[0]?.targetProfile || ""}</p>
+              <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{playbookPreset.offers[0]?.title || "Sem oferta sugerida."}</p>
+              <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{playbookPreset.offers[0]?.targetProfile || ""}</p>
             </div>
           </div>
           {canManage ? (
@@ -369,7 +369,7 @@ export default function ClienteCampanhasPage() {
               <button
                 type="button"
                 onClick={applyBusinessCampaignPreset}
-                className="inline-flex items-center gap-2 rounded-xl border border-blue-400/25 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/15"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
               >
                 <Megaphone className="h-3.5 w-3.5" />
                 Aplicar preset do modo
@@ -387,7 +387,7 @@ export default function ClienteCampanhasPage() {
               <button
                 type="button"
                 onClick={handleCreate}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Nova
@@ -405,18 +405,18 @@ export default function ClienteCampanhasPage() {
                   onClick={() => setSelectedId(item.id)}
                   className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
                     selectedId === item.id
-                      ? "border-blue-300/35 bg-blue-400/10"
-                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                      ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
+                      : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] hover:bg-[var(--cliente-surface-muted)]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{item.name}</p>
-                      <p className="mt-1 text-xs text-white/52">{item.maxRecipients} destinatarios maximos</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.maxRecipients} destinatarios maximos</p>
                     </div>
                     <StateBadge label={item.status} tone={item.status === "active" ? "success" : item.status === "paused" ? "warning" : "neutral"} />
                   </div>
-                  <p className="mt-3 text-xs text-white/45">{formatDate(item.lastRunAt)}</p>
+                  <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">{formatDate(item.lastRunAt)}</p>
                 </button>
               ))
             )}
@@ -489,7 +489,7 @@ export default function ClienteCampanhasPage() {
                 disabled={!canManage}
               />
               <label className="block space-y-1">
-                <span className="text-xs uppercase tracking-[0.14em] text-white/55">Owners alvo</span>
+                <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Owners alvo</span>
                 <select
                   multiple
                   value={state.filters.ownerIds}
@@ -503,7 +503,7 @@ export default function ClienteCampanhasPage() {
                     }))
                   }
                   disabled={!canManage}
-                  className="min-h-[112px] w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                  className="min-h-[112px] w-full rounded-xl border client-input px-3 py-2.5 text-sm"
                 >
                   {users.map((user) => (
                     <option key={user.userId} value={user.userId}>
@@ -515,15 +515,15 @@ export default function ClienteCampanhasPage() {
             </div>
 
             <label className="mt-4 block space-y-1">
-              <span className="text-xs uppercase tracking-[0.14em] text-white/55">Mensagem</span>
+              <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Mensagem</span>
               <textarea
                 value={state.messageTemplate}
                 onChange={(event) => setState((current) => ({ ...current, messageTemplate: event.target.value }))}
                 disabled={!canManage}
-                placeholder="Oi {nome}, aqui é da ALTUM..."
-                className="min-h-[180px] w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                placeholder="Oi {nome}, aqui e da ALTUM..."
+                className="client-input min-h-[180px] w-full rounded-2xl px-3 py-3 text-sm"
               />
-              <p className="text-xs text-white/42">Variaveis: {"{nome}"}, {"{empresa}"}, {"{telefone}"}, {"{email}"}, {"{stage}"}, {"{origem}"}.</p>
+              <p className="text-xs text-[var(--cliente-card-text-soft)]">Variaveis: {"{nome}"}, {"{empresa}"}, {"{telefone}"}, {"{email}"}, {"{stage}"}, {"{origem}"}.</p>
             </label>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -533,7 +533,7 @@ export default function ClienteCampanhasPage() {
                     type="button"
                     onClick={() => void handleSave()}
                     disabled={saving || !state.name.trim() || !state.messageTemplate.trim()}
-                    className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-55"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-55"
                   >
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     Salvar campanha
@@ -572,18 +572,18 @@ export default function ClienteCampanhasPage() {
             </div>
             <div className="mt-4 space-y-2">
               {runs.length === 0 ? (
-                <p className="text-sm text-white/52">Ainda nao houve disparos registrados.</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Ainda nao houve disparos registrados.</p>
               ) : (
                 runs.map((run) => (
-                  <div key={run.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                  <div key={run.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-white">{run.campaignName}</p>
-                        <p className="mt-1 text-xs text-white/48">{formatDate(run.createdAt)}</p>
+                        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDate(run.createdAt)}</p>
                       </div>
                       <StateBadge label={`${run.summary.sent} enviados`} tone="success" />
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/58">
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--cliente-card-text-muted)]">
                       <span>Match: {run.summary.totalMatched}</span>
                       <span>Pulados: {run.summary.skipped}</span>
                       <span>Falhas: {run.summary.failed}</span>
@@ -611,13 +611,13 @@ function Field(props: {
 }) {
   return (
     <label className="block space-y-1">
-      <span className="text-xs uppercase tracking-[0.14em] text-white/55">{props.label}</span>
+      <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">{props.label}</span>
       <input
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
         disabled={props.disabled}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/35"
+        className="client-input w-full rounded-xl px-3 py-2.5 text-sm"
       />
     </label>
   );
@@ -632,12 +632,12 @@ function SelectField(props: {
 }) {
   return (
     <label className="block space-y-1">
-      <span className="text-xs uppercase tracking-[0.14em] text-white/55">{props.label}</span>
+      <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">{props.label}</span>
       <select
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         disabled={props.disabled}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+        className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
       >
         {props.options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -648,3 +648,4 @@ function SelectField(props: {
     </label>
   );
 }
+

@@ -726,7 +726,7 @@ export default function ClienteComercialPage() {
   if (loading) {
     return (
       <div className="flex min-h-[45vh] items-center justify-center">
-        <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+        <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
@@ -770,10 +770,10 @@ export default function ClienteComercialPage() {
             <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Leitura comercial e ofertas sugeridas para este tenant." />
             <StateBadge label={businessProfile.id} tone="info" />
           </div>
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-sm text-white/72">{businessProfile.description}</p>
-            <p className="mt-3 text-sm text-white/58">Movimento comercial: {businessProfile.commercialMotion}</p>
-            <p className="mt-2 text-sm text-white/58">Métricas naturais: {businessProfile.metrics.join(" · ")}</p>
+          <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+            <p className="text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.description}</p>
+            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Movimento comercial: {businessProfile.commercialMotion}</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">Métricas naturais: {businessProfile.metrics.join(" · ")}</p>
           </div>
         </PanelCard>
 
@@ -781,12 +781,12 @@ export default function ClienteComercialPage() {
           <CardTitle title="Ofertas sugeridas pelo modo" subtitle="Aplique uma sugestão base para acelerar proposta e cobrança." />
           <div className="mt-4 grid gap-3">
             {playbookPreset.offers.slice(0, 3).map((offer, index) => (
-              <div key={offer.title} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div key={offer.title} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-white">{offer.title}</p>
-                    <p className="mt-1 text-xs text-white/48">{offer.category} · {offer.targetProfile}</p>
-                    <p className="mt-2 text-sm text-white/60">{offer.whenToOffer}</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{offer.category} · {offer.targetProfile}</p>
+                    <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{offer.whenToOffer}</p>
                   </div>
                   <StateBadge label={money(offer.priceFrom)} tone="success" />
                 </div>
@@ -795,7 +795,7 @@ export default function ClienteComercialPage() {
                     <button
                       type="button"
                       onClick={() => applyBusinessOfferPreset(index)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-blue-400/25 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/15"
+                      className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
                       Aplicar na proposta
@@ -822,12 +822,12 @@ export default function ClienteComercialPage() {
                 <Link
                   key={item.id}
                   href={item.href}
-                  className="block rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                  className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{item.title}</p>
-                      <p className="mt-1 text-sm text-white/60">{item.detail}</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
                     </div>
                     <StateBadge label={item.badge} tone={item.tone} />
                   </div>
@@ -869,12 +869,12 @@ export default function ClienteComercialPage() {
           <PanelCard className="p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-white/76">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text)]">
                   <WalletCards className="h-3.5 w-3.5" />
                   Lead em negociacao
                 </div>
                 <h3 className="mt-4 text-2xl font-semibold text-white">{selectedLead.nome || "Lead"}</h3>
-                <p className="mt-2 text-sm text-white/58">
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
                   {selectedLead.empresa || selectedLead.email || selectedLead.telefone || "Sem contato principal"}
                 </p>
               </div>
@@ -899,44 +899,47 @@ export default function ClienteComercialPage() {
             <div className="mt-4 space-y-2">
               <Link
                 href={`/cliente/painel/crm?leadId=${encodeURIComponent(selectedLead.id)}`}
-                className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+                className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <span>Abrir ficha no CRM</span>
-                <span className="text-white/40">→</span>
+                <span className="text-[var(--cliente-card-text-soft)]">→</span>
               </Link>
               <Link
                 href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`}
-                className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+                className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <span>Ver conversas no inbox</span>
-                <span className="text-white/40">→</span>
+                <span className="text-[var(--cliente-card-text-soft)]">→</span>
               </Link>
               <Link
                 href={`/cliente/painel/pipeline?leadId=${encodeURIComponent(selectedLead.id)}`}
-                className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+                className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <span>Destacar no pipeline</span>
-                <span className="text-white/40">→</span>
+                <span className="text-[var(--cliente-card-text-soft)]">→</span>
               </Link>
               <Link
                 href="/cliente/painel/comercial"
-                className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+                className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <span>Limpar contexto do lead</span>
-                <span className="text-white/40">→</span>
+                <span className="text-[var(--cliente-card-text-soft)]">→</span>
               </Link>
             </div>
 
             {selectedLeadAiLogs.length ? (
-              <div className="mt-4 rounded-2xl border border-blue-400/20 bg-blue-500/[0.05] p-4">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-white/42">Pulso comercial da IA</p>
+              <div className="mt-4 rounded-2xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] p-4">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Pulso comercial da IA</p>
                 <div className="mt-3 space-y-3">
                   {selectedLeadAiLogs.map((log) => (
-                    <div key={log.id} className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <div key={log.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                       <p className="text-sm font-medium text-white">{humanizeAiNextAction(log.nextAction)}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {Object.entries(log.extractedFields || {}).slice(0, 4).map(([field, value]) => (
-                          <span key={`${log.id}_${field}`} className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/70">
+                          <span
+                            key={`${log.id}_${field}`}
+                            className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]"
+                          >
                             {field}: {value}
                           </span>
                         ))}
@@ -946,14 +949,14 @@ export default function ClienteComercialPage() {
                           type="button"
                           onClick={() => applyAiCommercialSuggestion(log)}
                           disabled={!canOperate}
-                          className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/82 transition hover:bg-white/[0.08] disabled:opacity-50"
+                          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50"
                         >
                           Aplicar na proposta
                         </button>
                         {log.nextAction === "agendar_proximo_passo" ? (
                           <Link
                             href={`/cliente/painel/agenda?leadId=${encodeURIComponent(selectedLead.id)}`}
-                            className="rounded-xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs font-medium text-blue-100 transition hover:bg-blue-500/15"
+                            className="rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-medium text-[var(--cliente-accent)] transition hover:brightness-95"
                           >
                             Ir para agenda
                           </Link>
@@ -976,7 +979,7 @@ export default function ClienteComercialPage() {
               value={budgetForm.leadId}
               onChange={(event) => setBudgetForm((current) => ({ ...current, leadId: event.target.value }))}
               disabled={!canOperate}
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             >
               <option value="">Selecione um lead</option>
               {leads.map((lead) => (
@@ -985,23 +988,23 @@ export default function ClienteComercialPage() {
                 </option>
               ))}
             </select>
-            <input value={budgetForm.titulo} onChange={(event) => setBudgetForm((current) => ({ ...current, titulo: event.target.value }))} disabled={!canOperate} placeholder="Ex: Proposta performance trimestral" className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
+            <input value={budgetForm.titulo} onChange={(event) => setBudgetForm((current) => ({ ...current, titulo: event.target.value }))} disabled={!canOperate} placeholder="Ex: Proposta performance trimestral" className="w-full rounded-xl border client-input px-3 py-2.5 text-sm" />
             <div className="grid gap-3 md:grid-cols-3">
-              <select value={budgetForm.tipo} onChange={(event) => setBudgetForm((current) => ({ ...current, tipo: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none">
+              <select value={budgetForm.tipo} onChange={(event) => setBudgetForm((current) => ({ ...current, tipo: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border client-input px-3 py-2.5 text-sm">
                 <option>Projeto unico</option>
                 <option>Recorrente</option>
               </select>
-              <select value={budgetForm.status} onChange={(event) => setBudgetForm((current) => ({ ...current, status: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none">
+              <select value={budgetForm.status} onChange={(event) => setBudgetForm((current) => ({ ...current, status: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border client-input px-3 py-2.5 text-sm">
                 <option>Rascunho</option>
                 <option>Enviado</option>
                 <option>Aprovado</option>
                 <option>Perdido</option>
               </select>
-              <input value={budgetForm.valorTotal} onChange={(event) => setBudgetForm((current) => ({ ...current, valorTotal: event.target.value }))} disabled={!canOperate} placeholder="Valor total" className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
+              <input value={budgetForm.valorTotal} onChange={(event) => setBudgetForm((current) => ({ ...current, valorTotal: event.target.value }))} disabled={!canOperate} placeholder="Valor total" className="w-full rounded-xl border client-input px-3 py-2.5 text-sm" />
             </div>
-            <input type="date" value={budgetForm.validade} onChange={(event) => setBudgetForm((current) => ({ ...current, validade: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
-            <textarea value={budgetForm.resumo} onChange={(event) => setBudgetForm((current) => ({ ...current, resumo: event.target.value }))} disabled={!canOperate} placeholder="Escopo, premissas e resumo comercial" rows={4} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
-            <button type="submit" disabled={!canOperate || savingBudget} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60">
+            <input type="date" value={budgetForm.validade} onChange={(event) => setBudgetForm((current) => ({ ...current, validade: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border client-input px-3 py-2.5 text-sm" />
+            <textarea value={budgetForm.resumo} onChange={(event) => setBudgetForm((current) => ({ ...current, resumo: event.target.value }))} disabled={!canOperate} placeholder="Escopo, premissas e resumo comercial" rows={4} className="w-full rounded-xl border client-input px-3 py-2.5 text-sm" />
+            <button type="submit" disabled={!canOperate || savingBudget} className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60">
               {savingBudget ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Salvar proposta
             </button>
@@ -1015,7 +1018,7 @@ export default function ClienteComercialPage() {
               value={financeForm.leadId}
               onChange={(event) => setFinanceForm((current) => ({ ...current, leadId: event.target.value }))}
               disabled={!canOperate}
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             >
               <option value="">Sem lead vinculado</option>
               {leads.map((lead) => (
@@ -1024,22 +1027,22 @@ export default function ClienteComercialPage() {
                 </option>
               ))}
             </select>
-            <input value={financeForm.descricao} onChange={(event) => setFinanceForm((current) => ({ ...current, descricao: event.target.value }))} disabled={!canOperate} placeholder="Ex: Sinal da proposta ou setup inicial" className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
+            <input value={financeForm.descricao} onChange={(event) => setFinanceForm((current) => ({ ...current, descricao: event.target.value }))} disabled={!canOperate} placeholder="Ex: Sinal da proposta ou setup inicial" className="w-full rounded-xl border client-input px-3 py-2.5 text-sm" />
             <div className="grid gap-3 md:grid-cols-4">
-              <select value={financeForm.tipo} onChange={(event) => setFinanceForm((current) => ({ ...current, tipo: event.target.value, categoria: event.target.value === "Despesa" ? "Despesa operacional" : "Receita comercial" }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none">
+              <select value={financeForm.tipo} onChange={(event) => setFinanceForm((current) => ({ ...current, tipo: event.target.value, categoria: event.target.value === "Despesa" ? "Despesa operacional" : "Receita comercial" }))} disabled={!canOperate} className="w-full rounded-xl border client-input px-3 py-2.5 text-sm">
                 <option>Receita</option>
                 <option>Despesa</option>
               </select>
-              <input value={financeForm.valor} onChange={(event) => setFinanceForm((current) => ({ ...current, valor: event.target.value }))} disabled={!canOperate} placeholder="Valor" className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
-              <input type="date" value={financeForm.vencimento} onChange={(event) => setFinanceForm((current) => ({ ...current, vencimento: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
-              <select value={financeForm.status} onChange={(event) => setFinanceForm((current) => ({ ...current, status: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none">
+              <input value={financeForm.valor} onChange={(event) => setFinanceForm((current) => ({ ...current, valor: event.target.value }))} disabled={!canOperate} placeholder="Valor" className="w-full rounded-xl border client-input px-3 py-2.5 text-sm" />
+              <input type="date" value={financeForm.vencimento} onChange={(event) => setFinanceForm((current) => ({ ...current, vencimento: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border client-input px-3 py-2.5 text-sm" />
+              <select value={financeForm.status} onChange={(event) => setFinanceForm((current) => ({ ...current, status: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border client-input px-3 py-2.5 text-sm">
                 <option value="pendente">pendente</option>
                 <option value="pago">pago</option>
                 <option value="cancelado">cancelado</option>
               </select>
             </div>
-            <input value={financeForm.meioPagamento} onChange={(event) => setFinanceForm((current) => ({ ...current, meioPagamento: event.target.value }))} disabled={!canOperate} placeholder="Ex: Pix, boleto, cartao" className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
-            <button type="submit" disabled={!canOperate || savingFinance} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60">
+            <input value={financeForm.meioPagamento} onChange={(event) => setFinanceForm((current) => ({ ...current, meioPagamento: event.target.value }))} disabled={!canOperate} placeholder="Ex: Pix, boleto, cartao" className="w-full rounded-xl border client-input px-3 py-2.5 text-sm" />
+            <button type="submit" disabled={!canOperate || savingFinance} className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60">
               {savingFinance ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Salvar lancamento
             </button>
@@ -1056,11 +1059,11 @@ export default function ClienteComercialPage() {
                 const chargeLead = leads.find((item) => item.id === chargeForm.leadId);
                 if (!chargeLead) return null;
                 return (
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-white">{chargeLead.nome || "Lead"}</p>
-                        <p className="mt-1 text-xs text-white/48">
+                        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                           {chargeLead.empresa || chargeLead.email || chargeLead.telefone || "Sem contato principal"}
                         </p>
                       </div>
@@ -1090,7 +1093,7 @@ export default function ClienteComercialPage() {
                 }));
               }}
               disabled={!canOperate}
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             >
               <option value="">Selecione um lead</option>
               {leads.map((lead) => (
@@ -1113,7 +1116,7 @@ export default function ClienteComercialPage() {
                 }));
               }}
               disabled={!canOperate || !chargeForm.leadId}
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             >
               <option value="">Sem proposta vinculada</option>
               {availableChargeBudgets.map((budget) => (
@@ -1127,7 +1130,7 @@ export default function ClienteComercialPage() {
               onChange={(event) => setChargeForm((current) => ({ ...current, description: event.target.value }))}
               disabled={!canOperate}
               placeholder="Descricao da cobranca"
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             />
             <div className="grid gap-3 md:grid-cols-3">
               <input
@@ -1135,27 +1138,27 @@ export default function ClienteComercialPage() {
                 onChange={(event) => setChargeForm((current) => ({ ...current, amount: event.target.value }))}
                 disabled={!canOperate}
                 placeholder="Valor"
-                className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
               />
               <input
                 type="date"
                 value={chargeForm.dueDate}
                 onChange={(event) => setChargeForm((current) => ({ ...current, dueDate: event.target.value }))}
                 disabled={!canOperate}
-                className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
               />
               <select
                 value={chargeForm.billingType}
                 onChange={(event) => setChargeForm((current) => ({ ...current, billingType: event.target.value }))}
                 disabled={!canOperate}
-                className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
               >
                 <option value="PIX">PIX</option>
                 <option value="BOLETO">BOLETO</option>
                 <option value="CREDIT_CARD">CREDIT_CARD</option>
               </select>
             </div>
-            <button type="submit" disabled={!canOperate || creatingCharge || !chargeForm.leadId || !chargeForm.amount || !leads.find((item) => item.id === chargeForm.leadId)?.email} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60">
+            <button type="submit" disabled={!canOperate || creatingCharge || !chargeForm.leadId || !chargeForm.amount || !leads.find((item) => item.id === chargeForm.leadId)?.email} className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60">
               {creatingCharge ? <Loader2 className="h-4 w-4 animate-spin" /> : <WalletCards className="h-4 w-4" />}
               Gerar cobranca
             </button>
@@ -1166,21 +1169,21 @@ export default function ClienteComercialPage() {
           <CardTitle title="Retorno da cobranca" subtitle="Link, boleto ou PIX da ultima cobranca gerada neste contexto." />
           {chargePreview ? (
             <div className="mt-4 space-y-3">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-white">Charge #{chargePreview.chargeId}</p>
-                    <p className="mt-1 text-xs text-white/48">Financeiro vinculado: {chargePreview.financeId}</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Financeiro vinculado: {chargePreview.financeId}</p>
                   </div>
                   <StateBadge label={chargePreview.billingType || "cobranca"} tone="success" />
                 </div>
                 {chargePreview.invoiceUrl ? (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <a href={chargePreview.invoiceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]">
+                    <a href={chargePreview.invoiceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]">
                       <ExternalLink className="h-3.5 w-3.5" />
                       Abrir link
                     </a>
-                    <button type="button" onClick={() => void copyChargeValue("invoice", chargePreview.invoiceUrl || "")} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]">
+                    <button type="button" onClick={() => void copyChargeValue("invoice", chargePreview.invoiceUrl || "")} className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]">
                       <Copy className="h-3.5 w-3.5" />
                       {copiedChargeKey === "invoice" ? "Copiado" : "Copiar link"}
                     </button>
@@ -1188,19 +1191,19 @@ export default function ClienteComercialPage() {
                 ) : null}
                 {chargePreview.bankSlipUrl ? (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <a href={chargePreview.bankSlipUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]">
+                    <a href={chargePreview.bankSlipUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]">
                       <ExternalLink className="h-3.5 w-3.5" />
                       Abrir boleto
                     </a>
                   </div>
                 ) : null}
                 {chargePreview.pix?.encodedImage ? (
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
-                    <p className="text-xs uppercase tracking-[0.14em] text-white/45">PIX gerado</p>
-                    <Image src={`data:image/png;base64,${chargePreview.pix.encodedImage}`} alt="QR Code PIX" width={192} height={192} className="mt-3 h-48 w-48 rounded-2xl border border-white/10 bg-white p-2" unoptimized />
+                  <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">PIX gerado</p>
+                    <Image src={`data:image/png;base64,${chargePreview.pix.encodedImage}`} alt="QR Code PIX" width={192} height={192} className="mt-3 h-48 w-48 rounded-2xl border border-[var(--cliente-border)] bg-white p-2" unoptimized />
                     {chargePreview.pix.payload ? (
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <button type="button" onClick={() => void copyChargeValue("pix", chargePreview.pix?.payload || "")} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]">
+                        <button type="button" onClick={() => void copyChargeValue("pix", chargePreview.pix?.payload || "")} className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]">
                           <Copy className="h-3.5 w-3.5" />
                           {copiedChargeKey === "pix" ? "Copiado" : "Copiar payload PIX"}
                         </button>
@@ -1224,12 +1227,12 @@ export default function ClienteComercialPage() {
               value={budgetSearch}
               onChange={(event) => setBudgetSearch(event.target.value)}
               placeholder="Buscar proposta, lead ou resumo"
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             />
             <select
               value={budgetStatusFilter}
               onChange={(event) => setBudgetStatusFilter(event.target.value)}
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             >
               <option value="all">Todos os status</option>
               <option value="Rascunho">Rascunho</option>
@@ -1241,11 +1244,11 @@ export default function ClienteComercialPage() {
           <div className="mt-4 space-y-3">
             {filteredBudgets.length ? (
               filteredBudgets.map((budget) => (
-                <div key={budget.id} className={`rounded-2xl border p-4 ${selectedLead && budget.leadId === selectedLead.id ? "border-blue-400/25 bg-blue-500/[0.05]" : "border-white/10 bg-black/30"}`}>
+                <div key={budget.id} className={`rounded-2xl border p-4 ${selectedLead && budget.leadId === selectedLead.id ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]" : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{budget.titulo || "Proposta"}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-white/42">
+                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                         {budget.leadName || "Sem lead"} • validade {formatDate(budget.validade)}
                       </p>
                     </div>
@@ -1265,19 +1268,19 @@ export default function ClienteComercialPage() {
                       <p className="mt-2 text-sm font-semibold text-white">{money(Number(budget.valorTotal || 0))}</p>
                     </div>
                   </div>
-                  {budget.resumo ? <p className="mt-3 text-sm text-white/60">{budget.resumo}</p> : null}
+                  {budget.resumo ? <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">{budget.resumo}</p> : null}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {budget.leadId ? (
                       <>
                         <Link
                           href={`/cliente/painel/crm?leadId=${encodeURIComponent(budget.leadId)}`}
-                          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                         >
                           Abrir lead
                         </Link>
                         <Link
                           href={`/cliente/painel/inbox?leadId=${encodeURIComponent(budget.leadId)}`}
-                          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                         >
                           Ver conversa
                         </Link>
@@ -1302,8 +1305,8 @@ export default function ClienteComercialPage() {
                           onClick={() => void updateBudgetStatus(budget.id, status)}
                           className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${
                             budget.status === status
-                              ? "border-blue-500/20 bg-blue-600/10 text-blue-100"
-                              : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
+                              ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+                              : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)]"
                           }`}
                         >
                           {status}
@@ -1333,12 +1336,12 @@ export default function ClienteComercialPage() {
               value={financeSearch}
               onChange={(event) => setFinanceSearch(event.target.value)}
               placeholder="Buscar descricao, lead, categoria ou meio"
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             />
             <select
               value={financeStatusFilter}
               onChange={(event) => setFinanceStatusFilter(event.target.value)}
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             >
               <option value="all">Todos os status</option>
               <option value="pendente">Pendente</option>
@@ -1348,7 +1351,7 @@ export default function ClienteComercialPage() {
             <select
               value={financeTypeFilter}
               onChange={(event) => setFinanceTypeFilter(event.target.value)}
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             >
               <option value="all">Receitas e despesas</option>
               <option value="Receita">Receita</option>
@@ -1358,11 +1361,11 @@ export default function ClienteComercialPage() {
           <div className="mt-4 space-y-3">
             {filteredFinance.length ? (
               filteredFinance.map((item) => (
-                <div key={item.id} className={`rounded-2xl border p-4 ${selectedLead && item.leadId === selectedLead.id ? "border-blue-400/25 bg-blue-500/[0.05]" : "border-white/10 bg-black/30"}`}>
+                <div key={item.id} className={`rounded-2xl border p-4 ${selectedLead && item.leadId === selectedLead.id ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]" : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{item.descricao || "Lancamento"}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-white/42">
+                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                         {item.leadName || "Sem lead"} • vencimento {formatDate(item.vencimento)}
                       </p>
                     </div>
@@ -1374,7 +1377,7 @@ export default function ClienteComercialPage() {
                       <p className="mt-2 text-sm font-semibold text-white">{money(Number(item.valor || 0))}</p>
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-white/52">
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--cliente-card-text-soft)]">
                     <span>{item.tipo || "Receita"}</span>
                     <span>•</span>
                     <span>{item.categoria || "Sem categoria"}</span>
@@ -1396,13 +1399,13 @@ export default function ClienteComercialPage() {
                       <>
                         <Link
                           href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`}
-                          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                         >
                           Abrir lead
                         </Link>
                         <Link
                           href={`/cliente/painel/inbox?leadId=${encodeURIComponent(item.leadId)}`}
-                          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                         >
                           Ver conversa
                         </Link>
@@ -1413,7 +1416,7 @@ export default function ClienteComercialPage() {
                         href={item.invoiceUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                        className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                       >
                         Abrir cobranca
                       </a>
@@ -1423,7 +1426,7 @@ export default function ClienteComercialPage() {
                         href={item.bankSlipUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                        className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                       >
                         Abrir boleto
                       </a>
@@ -1438,8 +1441,8 @@ export default function ClienteComercialPage() {
                           onClick={() => void updateFinanceStatus(item.id, status)}
                           className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${
                             item.status === status
-                              ? "border-blue-500/20 bg-blue-600/10 text-blue-100"
-                              : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
+                              ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+                              : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)]"
                           }`}
                         >
                           {status}
@@ -1476,13 +1479,14 @@ function DeskCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-      <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">{title}</p>
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{title}</p>
       <p className="mt-2 text-lg font-semibold text-white">{value}</p>
-      <p className="mt-1 text-xs text-white/52">{detail}</p>
+      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
     </div>
   );
 }
+
 
 
 

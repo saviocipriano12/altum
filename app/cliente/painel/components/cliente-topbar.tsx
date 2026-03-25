@@ -40,13 +40,13 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
           <div className="flex items-center gap-2">
             <p className="text-[12px] font-black uppercase tracking-[0.28em] text-[var(--cliente-text)]">ALTUM</p>
             <span className="hidden rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--cliente-accent)] md:inline-flex">
-              Client Cloud
+              Portal do cliente
             </span>
           </div>
           <div className="mt-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">
             <span className="truncate">{workspaceName}</span>
             <span className="hidden sm:inline">/</span>
-            <span className="hidden sm:inline">Operating system</span>
+            <span className="hidden sm:inline">Operacao em tempo real</span>
           </div>
         </div>
 
@@ -76,8 +76,8 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
             aria-label={theme === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
             title={theme === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
           >
-            {theme === "dark" ? <SunMedium className="h-4 w-4 text-amber-500" /> : <MoonStar className="h-4 w-4 text-[var(--cliente-accent)]" />}
-            <span className="hidden lg:inline">{theme === "dark" ? "Claro" : "Dark"}</span>
+            {theme === "dark" ? <SunMedium className="h-4 w-4 text-[var(--cliente-accent)]" /> : <MoonStar className="h-4 w-4 text-[var(--cliente-accent)]" />}
+            <span className="hidden lg:inline">{theme === "dark" ? "Claro" : "Escuro"}</span>
           </button>
 
           <div className="hidden rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2 text-right shadow-[var(--cliente-shadow-soft)] md:block">

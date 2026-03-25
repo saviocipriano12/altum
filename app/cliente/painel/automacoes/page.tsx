@@ -976,7 +976,7 @@ export default function ClienteAutomacoesPage() {
   if (loading) {
     return (
       <div className="flex min-h-[45vh] items-center justify-center">
-        <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+        <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
@@ -1008,7 +1008,7 @@ export default function ClienteAutomacoesPage() {
                   type="button"
                   onClick={() => void processScheduledQueue()}
                   disabled={processingScheduled}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-medium text-white/82 transition hover:bg-white/[0.06] disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
                 >
                   {processingScheduled ? <Loader2 className="h-4 w-4 animate-spin" /> : <Workflow className="h-4 w-4" />}
                   Rodar fila e watchdog
@@ -1019,7 +1019,7 @@ export default function ClienteAutomacoesPage() {
                     setDraft(createEmptyDraft());
                     setEditorOpen((current) => !current);
                   }}
-                  className="inline-flex items-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/15 px-3 py-2 text-sm font-medium text-blue-100 transition hover:bg-blue-500/20"
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-sm font-medium text-[var(--cliente-accent)] transition hover:brightness-95"
                 >
                   <Plus className="h-4 w-4" />
                   Nova automacao
@@ -1048,8 +1048,8 @@ export default function ClienteAutomacoesPage() {
       <section className="grid gap-3 xl:grid-cols-5">
         {focusSignals.length === 0 ? (
           <PanelCard className="p-4 xl:col-span-5">
-            <p className="text-sm font-semibold text-white">Engine operacional sem alertas criticos</p>
-            <p className="mt-2 text-sm text-white/58">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Engine operacional sem alertas criticos</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
               Nao ha backlog relevante, fila quebrada ou ausencia total de automacoes neste recorte.
             </p>
           </PanelCard>
@@ -1058,12 +1058,12 @@ export default function ClienteAutomacoesPage() {
             <Link
               key={item.id}
               href={item.href}
-              className="block rounded-2xl border border-white/10 bg-[#0E0E0E] p-4 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+              className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-white">{item.title}</p>
-                  <p className="mt-2 text-sm text-white/58">{item.detail}</p>
+                  <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                  <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
                 </div>
                 <StateBadge label={item.badge} tone={item.tone} />
               </div>
@@ -1074,7 +1074,7 @@ export default function ClienteAutomacoesPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <PanelCard className="p-5">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/65">Saude operacional</h3>
+          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Saude operacional</h3>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <HealthRow label="Conversas monitoradas" value={String(summary.monitoredConversations || 0)} />
             <HealthRow label="Takeovers ativos" value={String(summary.pausedConversations || 0)} />
@@ -1097,19 +1097,19 @@ export default function ClienteAutomacoesPage() {
           <div className="mt-4 grid gap-2 md:grid-cols-3">
             <Link
               href="/cliente/painel/inbox?queue=assigned_waiting"
-              className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/76 transition hover:bg-white/[0.06]"
+              className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
               Abrir backlog sem resposta
             </Link>
             <Link
               href="/cliente/painel/inbox?queue=sla_breached"
-              className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/76 transition hover:bg-white/[0.06]"
+              className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
               Ver conversas com SLA estourado
             </Link>
             <Link
               href="/cliente/painel/ia"
-              className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/76 transition hover:bg-white/[0.06]"
+              className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
               Revisar IA e base de conhecimento
             </Link>
@@ -1117,7 +1117,7 @@ export default function ClienteAutomacoesPage() {
         </PanelCard>
 
         <PanelCard className="p-5">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/65">Leitura do sistema</h3>
+          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Leitura do sistema</h3>
           <div className="mt-4 space-y-3">
             <Insight
               title="Regras ativas"
@@ -1156,17 +1156,17 @@ export default function ClienteAutomacoesPage() {
           <StateBadge label={businessProfile.id} tone="info" />
         </div>
         <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_1fr]">
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-            <p className="text-sm font-semibold text-white">Etapas mais importantes deste modo</p>
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Etapas mais importantes deste modo</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {businessProfile.pipeline.stages.map((stage) => (
                 <StateBadge key={stage} label={getPipelineStageLabel(normalizePipelineStageId(stage))} tone="neutral" />
               ))}
             </div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-            <p className="text-sm font-semibold text-white">Movimento comercial esperado</p>
-            <p className="mt-3 text-sm text-white/60">{businessProfile.commercialMotion}</p>
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Movimento comercial esperado</p>
+            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.commercialMotion}</p>
           </div>
         </div>
       </PanelCard>
@@ -1185,13 +1185,16 @@ export default function ClienteAutomacoesPage() {
             {(Object.entries(AUTOMATION_TEMPLATE_LABELS) as Array<
               [AutomationTemplateKey, { title: string; description: string }]
             >).map(([key, template]) => (
-              <div key={key} className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                <p className="text-sm font-semibold text-white">{template.title}</p>
-                <p className="mt-2 text-sm text-white/58">{template.description}</p>
+              <div
+                key={key}
+                className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4"
+              >
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{template.title}</p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{template.description}</p>
                 <button
                   type="button"
                   onClick={() => applyTemplate(key)}
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/82 transition hover:bg-white/[0.06]"
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                 >
                   <Plus className="h-4 w-4" />
                   Usar playbook
@@ -1218,7 +1221,7 @@ export default function ClienteAutomacoesPage() {
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <PanelCard className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/65">Regras do tenant</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Regras do tenant</h3>
             <StateBadge
               label={filteredAutomations.length ? `${filteredAutomations.length} visiveis` : "sem regras"}
               tone={filteredAutomations.length ? "info" : "warning"}
@@ -1227,18 +1230,18 @@ export default function ClienteAutomacoesPage() {
 
           <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.7fr_0.7fr]">
             <label className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/32" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--cliente-card-text-soft)]" />
               <input
                 value={automationSearch}
                 onChange={(event) => setAutomationSearch(event.target.value)}
                 placeholder="Buscar regra por nome, trigger, origem ou canal"
-                className="w-full rounded-xl border border-white/12 bg-black/30 py-2 pl-9 pr-3 text-sm text-white outline-none"
+                className="client-input w-full py-2 pl-9 pr-3 text-sm"
               />
             </label>
             <select
               value={triggerFilter}
               onChange={(event) => setTriggerFilter(event.target.value as "all" | AutomationTrigger)}
-              className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input px-3 py-2 text-sm"
             >
               <option value="all">Todos os gatilhos</option>
               {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
@@ -1250,7 +1253,7 @@ export default function ClienteAutomacoesPage() {
             <select
               value={automationStatusFilter}
               onChange={(event) => setAutomationStatusFilter(event.target.value as AutomationStatusFilter)}
-              className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input px-3 py-2 text-sm"
             >
               <option value="all">Todos os status</option>
               <option value="active">Ativas</option>
@@ -1259,17 +1262,20 @@ export default function ClienteAutomacoesPage() {
           </div>
 
           {automations.length === 0 ? (
-            <p className="mt-3 text-sm text-white/55">Nenhuma automacao configurada ainda.</p>
+            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhuma automacao configurada ainda.</p>
           ) : filteredAutomations.length === 0 ? (
-            <p className="mt-3 text-sm text-white/55">Nenhuma automacao corresponde aos filtros atuais.</p>
+            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhuma automacao corresponde aos filtros atuais.</p>
           ) : (
             <div className="mt-4 space-y-3">
               {filteredAutomations.map((automation) => (
-                <div key={automation.id} className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                <div
+                  key={automation.id}
+                  className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4"
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{automation.name}</p>
-                      <p className="mt-1 text-sm text-white/55">{automation.description || "Sem descricao operacional."}</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{automation.description || "Sem descricao operacional."}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <StateBadge label={TRIGGER_LABELS[automation.trigger] || automation.trigger} tone="info" />
@@ -1298,9 +1304,9 @@ export default function ClienteAutomacoesPage() {
                     ) : null}
                   </div>
 
-                  <div className="mt-3 rounded-xl border border-blue-400/15 bg-blue-500/[0.06] px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-blue-100/70">Cadencia</p>
-                    <p className="mt-2 text-sm text-blue-50">{summarizeAutomationCadence(automation.actions)}</p>
+                  <div className="mt-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-accent)]">Cadencia</p>
+                    <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{summarizeAutomationCadence(automation.actions)}</p>
                   </div>
 
                   <div className="mt-3 space-y-2">
@@ -1311,7 +1317,10 @@ export default function ClienteAutomacoesPage() {
                         return Number(a.waitInHours || 0) - Number(b.waitInHours || 0);
                       })
                       .map((action, index) => (
-                      <div key={`${automation.id}_${index}`} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/72">
+                      <div
+                        key={`${automation.id}_${index}`}
+                        className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]"
+                      >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="font-medium text-white">{ACTION_LABELS[action.type]}</p>
                           <div className="flex flex-wrap gap-2">
@@ -1321,7 +1330,7 @@ export default function ClienteAutomacoesPage() {
                             ) : null}
                           </div>
                         </div>
-                        <p className="mt-1 text-xs text-white/50">{getActionSummary(action)}</p>
+                        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{getActionSummary(action)}</p>
                       </div>
                     ))}
                   </div>
@@ -1334,7 +1343,7 @@ export default function ClienteAutomacoesPage() {
                           setDraft(draftFromAutomation(automation));
                           setEditorOpen(true);
                         }}
-                        className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/82 transition hover:bg-white/[0.06]"
+                        className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                       >
                         Editar
                       </button>
@@ -1347,7 +1356,7 @@ export default function ClienteAutomacoesPage() {
                             status: automation.status === "paused" ? "active" : "paused",
                           })
                         }
-                        className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/82 transition hover:bg-white/[0.06] disabled:opacity-60"
+                        className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)] disabled:opacity-60"
                       >
                         {automation.status === "paused" ? "Retomar" : "Pausar"}
                       </button>
@@ -1371,24 +1380,24 @@ export default function ClienteAutomacoesPage() {
         <div className="space-y-4">
           <PanelCard className="p-5">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/65">Execucoes recentes</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Execucoes recentes</h3>
               <StateBadge label={executionStats.errors ? "com alertas" : "estavel"} tone={executionStats.errors ? "warning" : "success"} />
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-[1.1fr_0.7fr]">
               <label className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/32" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--cliente-card-text-soft)]" />
                 <input
                   value={executionSearch}
                   onChange={(event) => setExecutionSearch(event.target.value)}
                   placeholder="Buscar por automacao, lead, chat, erro ou detalhe"
-                  className="w-full rounded-xl border border-white/12 bg-black/30 py-2 pl-9 pr-3 text-sm text-white outline-none"
+                  className="client-input w-full py-2 pl-9 pr-3 text-sm"
                 />
               </label>
               <select
                 value={executionStatusFilter}
                 onChange={(event) => setExecutionStatusFilter(event.target.value as ExecutionStatusFilter)}
-                className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="client-input px-3 py-2 text-sm"
               >
                 <option value="all">Todos os status</option>
                 <option value="done">Concluidas</option>
@@ -1398,17 +1407,20 @@ export default function ClienteAutomacoesPage() {
             </div>
 
             {executions.length === 0 ? (
-              <p className="mt-3 text-sm text-white/55">Nenhuma execucao recente encontrada para este tenant.</p>
+              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhuma execucao recente encontrada para este tenant.</p>
             ) : filteredExecutions.length === 0 ? (
-              <p className="mt-3 text-sm text-white/55">Nenhuma execucao corresponde aos filtros atuais.</p>
+              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhuma execucao corresponde aos filtros atuais.</p>
             ) : (
               <div className="mt-4 space-y-2">
                 {filteredExecutions.map((execution) => (
-                  <div key={execution.id} className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
+                  <div
+                    key={execution.id}
+                    className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <p className="text-sm font-medium text-white">{execution.automationName || "Automacao"}</p>
-                        <p className="text-xs text-white/50">
+                        <p className="text-xs text-[var(--cliente-card-text-soft)]">
                           {TRIGGER_LABELS[execution.trigger as AutomationTrigger] || execution.trigger || "Trigger"} | lead {execution.leadId || "-"}
                         </p>
                       </div>
@@ -1420,8 +1432,8 @@ export default function ClienteAutomacoesPage() {
                         <StateBadge label={formatExecutionStatusLabel(execution.status)} tone={getExecutionStatusTone(execution.status)} />
                       </div>
                     </div>
-                    <p className="mt-2 text-xs text-white/58">{execution.detail || "Sem detalhe"}</p>
-                    <p className="mt-1 text-[11px] text-white/45">{formatDateTime(execution.updatedAt)}</p>
+                    <p className="mt-2 text-xs text-[var(--cliente-card-text-muted)]">{execution.detail || "Sem detalhe"}</p>
+                    <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">{formatDateTime(execution.updatedAt)}</p>
                     {execution.lastError ? (
                       <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                         <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -1432,7 +1444,7 @@ export default function ClienteAutomacoesPage() {
                       {execution.leadId ? (
                         <Link
                           href={`/cliente/painel/crm?leadId=${encodeURIComponent(execution.leadId)}`}
-                          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                         >
                           Abrir lead no CRM
                         </Link>
@@ -1440,14 +1452,14 @@ export default function ClienteAutomacoesPage() {
                       {execution.chatId ? (
                         <Link
                           href={`/cliente/painel/inbox?chatId=${encodeURIComponent(execution.chatId)}`}
-                          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                         >
                           Abrir conversa no Inbox
                         </Link>
                       ) : execution.leadId ? (
                         <Link
                           href={`/cliente/painel/inbox?leadId=${encodeURIComponent(execution.leadId)}`}
-                          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                         >
                           Ver contexto no Inbox
                         </Link>
@@ -1461,18 +1473,18 @@ export default function ClienteAutomacoesPage() {
 
           <PanelCard className="p-5">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/65">Fila recente da IA</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Fila recente da IA</h3>
               <StateBadge label={queue.deadLetter ? "requer revisao" : "estavel"} tone={queue.deadLetter ? "warning" : "success"} />
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
-              <p className="text-sm text-white/55">
+              <p className="text-sm text-[var(--cliente-card-text-muted)]">
                 Jobs recentes da fila conversacional. Use os links para cair direto na conversa que precisa de atencao.
               </p>
               <select
                 value={queueStatusFilter}
                 onChange={(event) => setQueueStatusFilter(event.target.value as QueueStatusFilter)}
-                className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="client-input px-3 py-2 text-sm"
               >
                 <option value="all">Todos os jobs</option>
                 <option value="pending">Pendentes</option>
@@ -1484,21 +1496,24 @@ export default function ClienteAutomacoesPage() {
             </div>
 
             {(data.recentQueue || []).length === 0 ? (
-              <p className="mt-3 text-sm text-white/55">Nenhum job recente encontrado para este tenant.</p>
+              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhum job recente encontrado para este tenant.</p>
             ) : filteredQueue.length === 0 ? (
-              <p className="mt-3 text-sm text-white/55">Nenhum job corresponde aos filtros atuais.</p>
+              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhum job corresponde aos filtros atuais.</p>
             ) : (
               <div className="mt-4 space-y-2">
                 {filteredQueue.map((job) => (
-                  <div key={job.id} className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
+                  <div
+                    key={job.id}
+                    className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <p className="text-sm font-medium text-white">Chat {job.chatId || "-"}</p>
-                        <p className="text-xs text-white/50">Tentativas {job.attempts}</p>
+                        <p className="text-xs text-[var(--cliente-card-text-soft)]">Tentativas {job.attempts}</p>
                       </div>
                       <StateBadge label={formatQueueJobLabel(job.status)} tone={getQueueJobTone(job.status)} />
                     </div>
-                    <p className="mt-2 text-[11px] text-white/45">{formatDateTime(job.updatedAt)}</p>
+                    <p className="mt-2 text-[11px] text-[var(--cliente-card-text-soft)]">{formatDateTime(job.updatedAt)}</p>
                     {job.lastError ? (
                       <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                         <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -1508,14 +1523,14 @@ export default function ClienteAutomacoesPage() {
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Link
                         href={`/cliente/painel/inbox?chatId=${encodeURIComponent(job.chatId)}`}
-                        className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                        className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                       >
                         Abrir conversa
                       </Link>
                       {job.status === "dead_letter" ? (
                         <Link
                           href="/cliente/painel/ia"
-                          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                         >
                           Revisar IA e fila
                         </Link>
@@ -1618,19 +1633,19 @@ function AutomationEditor({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/82 transition hover:bg-white/[0.06]"
+          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
         >
           Cancelar
         </button>
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
-        <div className="rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(37,99,235,0.16),rgba(8,12,20,0.6))] p-4">
+        <div className="rounded-3xl border border-[var(--cliente-border)] bg-[linear-gradient(180deg,rgba(232,80,2,0.14),rgba(12,12,12,0.94))] p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-blue-100/70">Builder visual</p>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-accent)]">Builder visual</p>
               <h3 className="mt-2 text-lg font-semibold text-white">Fluxo operacional da regra</h3>
-              <p className="mt-1 max-w-2xl text-sm text-blue-50/75">
+              <p className="mt-1 max-w-2xl text-sm text-[var(--cliente-card-text-muted)]">
                 Modele entrada, filtros e cadência de ações sem sair da mesma tela. O motor continua o mesmo,
                 mas a leitura agora mostra o que acontece na prática.
               </p>
@@ -1643,24 +1658,24 @@ function AutomationEditor({
           </div>
 
           <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_280px]">
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
               <div className="grid gap-3 lg:grid-cols-[220px_1fr]">
                 <button
                   type="button"
                   onClick={() => setSelectedActionIndex(0)}
-                  className="rounded-2xl border border-blue-400/25 bg-blue-500/10 p-4 text-left transition hover:bg-blue-500/15"
+                  className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] p-4 text-left transition hover:border-[var(--cliente-border-strong)] hover:brightness-95"
                 >
                   <div className="flex items-center gap-2">
-                    <Workflow className="h-4 w-4 text-blue-100" />
+                    <Workflow className="h-4 w-4 text-[var(--cliente-accent)]" />
                     <p className="text-sm font-semibold text-white">Gatilho de entrada</p>
                   </div>
-                  <p className="mt-2 text-base font-semibold text-blue-50">{TRIGGER_LABELS[draft.trigger]}</p>
-                  <p className="mt-2 text-sm text-blue-50/70">
+                  <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">{TRIGGER_LABELS[draft.trigger]}</p>
+                  <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
                     {draft.description.trim() || "Defina uma descricao operacional para a equipe entender quando essa regra entra em cena."}
                   </p>
                 </button>
 
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-white">Portas de entrada</p>
                     <StateBadge label={conditionChips.length ? `${conditionChips.length} filtros` : "sem filtros"} tone={conditionChips.length ? "info" : "neutral"} />
@@ -1672,7 +1687,7 @@ function AutomationEditor({
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-3 text-sm text-white/55">
+                    <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
                       Sem filtros adicionais. A regra entra para todo lead ou conversa que bater no gatilho.
                     </p>
                   )}
@@ -1682,7 +1697,7 @@ function AutomationEditor({
               <div className="mt-4">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold text-white">Cadência</p>
-                  <div className="h-px flex-1 bg-white/10" />
+                  <div className="h-px flex-1 bg-[var(--cliente-border)]" />
                 </div>
                 <div className="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                   {orderedDraftActions.map((action, index) => {
@@ -1695,13 +1710,13 @@ function AutomationEditor({
                         onClick={() => setSelectedActionIndex(index)}
                         className={`rounded-2xl border p-4 text-left transition ${
                           isSelected
-                            ? "border-blue-400/40 bg-blue-500/10 shadow-[0_0_0_1px_rgba(96,165,250,0.12)]"
-                            : "border-white/10 bg-black/25 hover:bg-white/[0.04]"
+                            ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] shadow-[0_0_0_1px_rgba(232,80,2,0.12)]"
+                            : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] hover:bg-[var(--cliente-panel-soft)]"
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Etapa {index + 1}</p>
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Etapa {index + 1}</p>
                             <p className="mt-2 text-sm font-semibold text-white">{ACTION_LABELS[action.type]}</p>
                           </div>
                           <StateBadge
@@ -1709,7 +1724,7 @@ function AutomationEditor({
                             tone={asNumber(action.waitInHours) > 0 ? "warning" : "success"}
                           />
                         </div>
-                        <p className="mt-3 text-sm text-white/62">
+                        <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
                           {getActionSummary({
                             ...action,
                             dueInHours: action.dueInHours ? Number(action.dueInHours) : null,
@@ -1729,14 +1744,14 @@ function AutomationEditor({
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Inspector</p>
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Inspector</p>
                 {selectedAction ? (
                   <>
                     <p className="mt-2 text-sm font-semibold text-white">
                       Etapa {selectedActionIndex + 1} · {ACTION_LABELS[selectedAction.type]}
                     </p>
-                    <p className="mt-2 text-sm text-white/62">
+                    <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
                       {getActionSummary({
                         ...selectedAction,
                         dueInHours: selectedAction.dueInHours ? Number(selectedAction.dueInHours) : null,
@@ -1754,12 +1769,12 @@ function AutomationEditor({
                     </div>
                   </>
                 ) : (
-                  <p className="mt-2 text-sm text-white/55">Adicione a primeira etapa para inspecionar a cadência.</p>
+                  <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">Adicione a primeira etapa para inspecionar a cadência.</p>
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Checklist do fluxo</p>
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Checklist do fluxo</p>
                 <div className="mt-3 space-y-2">
                   {validationIssues.length ? (
                     validationIssues.map((issue) => (
@@ -1775,8 +1790,8 @@ function AutomationEditor({
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Resumo executivo</p>
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Resumo executivo</p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <HealthRow label="Acoes" value={String(orderedDraftActions.length)} />
                   <HealthRow label="Filtros" value={String(conditionChips.length)} />
@@ -1789,19 +1804,19 @@ function AutomationEditor({
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Identidade da regra</p>
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Identidade da regra</p>
             <div className="mt-3 grid gap-3">
               <input
                 value={draft.name}
                 onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
                 placeholder="Nome da automacao"
-                className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="client-input px-3 py-2 text-sm"
               />
               <select
                 value={draft.trigger}
                 onChange={(event) => setDraft((current) => ({ ...current, trigger: event.target.value as AutomationTrigger }))}
-                className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="client-input px-3 py-2 text-sm"
               >
                 {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -1813,14 +1828,14 @@ function AutomationEditor({
                 value={draft.description}
                 onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
                 placeholder="Descricao operacional da regra"
-                className="min-h-[120px] rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="client-input min-h-[120px] px-3 py-2 text-sm"
               />
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Guia de construcao</p>
-            <div className="mt-3 space-y-2 text-sm text-white/62">
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Guia de construcao</p>
+            <div className="mt-3 space-y-2 text-sm text-[var(--cliente-card-text-muted)]">
               <p>1. Defina o gatilho que ativa a regra.</p>
               <p>2. Use filtros para restringir origem, canal, stage e score.</p>
               <p>3. Organize a cadência com espera e prioridade para cada etapa.</p>
@@ -1830,10 +1845,10 @@ function AutomationEditor({
         </div>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
         <p className="text-sm font-semibold text-white">Condicoes</p>
         <div className="mt-3 grid gap-3 md:grid-cols-6">
-          <label className="space-y-2 text-xs text-white/52">
+          <label className="space-y-2 text-xs text-[var(--cliente-card-text-soft)]">
             <span>Stages alvo</span>
             <select
               multiple
@@ -1844,7 +1859,7 @@ function AutomationEditor({
                   stageIn: Array.from(event.target.selectedOptions).map((item) => item.value),
                 }))
               }
-              className="min-h-[132px] w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input min-h-[132px] w-full px-3 py-2 text-sm"
             >
               {stageOptions.map((stage) => (
                 <option key={stage} value={stage}>
@@ -1854,59 +1869,59 @@ function AutomationEditor({
             </select>
           </label>
 
-          <label className="space-y-2 text-xs text-white/52">
+          <label className="space-y-2 text-xs text-[var(--cliente-card-text-soft)]">
             <span>Origens (separadas por virgula)</span>
             <textarea
               value={draft.sourceInInput}
               onChange={(event) => setDraft((current) => ({ ...current, sourceInInput: event.target.value }))}
               placeholder="meta ads, whatsapp, indicacao"
-              className="min-h-[132px] w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input min-h-[132px] w-full px-3 py-2 text-sm"
             />
           </label>
 
-          <label className="space-y-2 text-xs text-white/52">
+          <label className="space-y-2 text-xs text-[var(--cliente-card-text-soft)]">
             <span>Canais (separados por virgula)</span>
             <textarea
               value={draft.channelInInput}
               onChange={(event) => setDraft((current) => ({ ...current, channelInInput: event.target.value }))}
               placeholder="whatsapp, instagram, messenger, site_chat"
-              className="min-h-[132px] w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input min-h-[132px] w-full px-3 py-2 text-sm"
             />
           </label>
 
-          <label className="space-y-2 text-xs text-white/52">
+          <label className="space-y-2 text-xs text-[var(--cliente-card-text-soft)]">
             <span>Sinais da IA (separados por virgula)</span>
             <textarea
               value={draft.aiNextActionInInput}
               onChange={(event) => setDraft((current) => ({ ...current, aiNextActionInInput: event.target.value }))}
               placeholder="preparar_proposta_comercial, agendar_proximo_passo"
-              className="min-h-[132px] w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input min-h-[132px] w-full px-3 py-2 text-sm"
             />
           </label>
 
-          <label className="space-y-2 text-xs text-white/52">
+          <label className="space-y-2 text-xs text-[var(--cliente-card-text-soft)]">
             <span>Score minimo</span>
             <input
               value={draft.scoreGte}
               onChange={(event) => setDraft((current) => ({ ...current, scoreGte: event.target.value }))}
               placeholder="80"
-              className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input px-3 py-2 text-sm"
             />
           </label>
 
-          <label className="space-y-2 text-xs text-white/52">
+          <label className="space-y-2 text-xs text-[var(--cliente-card-text-soft)]">
             <span>Aguardar ao menos (h)</span>
             <input
               value={draft.waitAtLeastHours}
               onChange={(event) => setDraft((current) => ({ ...current, waitAtLeastHours: event.target.value }))}
               placeholder="2"
-              className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input px-3 py-2 text-sm"
             />
           </label>
         </div>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-semibold text-white">Acoes</p>
           <div className="flex flex-wrap gap-2">
@@ -1921,7 +1936,7 @@ function AutomationEditor({
                   })),
                 }))
               }
-              className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/82 transition hover:bg-white/[0.06]"
+              className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
             >
               Ordenar cadencia
             </button>
@@ -1936,18 +1951,21 @@ function AutomationEditor({
                   ],
                 }))
               }
-              className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/82 transition hover:bg-white/[0.06]"
+              className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
             >
               Adicionar acao
             </button>
           </div>
         </div>
 
-        <div className="mt-3 rounded-2xl border border-blue-400/15 bg-blue-500/[0.05] p-3">
+        <div className="mt-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] p-3">
           <p className="text-sm font-semibold text-white">Preview da cadencia</p>
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             {orderedDraftActions.map((action, index) => (
-              <div key={`preview_${index}`} className="rounded-xl border border-white/10 bg-black/25 p-3">
+              <div
+                key={`preview_${index}`}
+                className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <StateBadge label={`etapa ${index + 1}`} tone="neutral" />
                   <StateBadge
@@ -1956,7 +1974,7 @@ function AutomationEditor({
                   />
                 </div>
                 <p className="mt-3 text-sm font-medium text-white">{ACTION_LABELS[action.type]}</p>
-                <p className="mt-1 text-xs text-white/55">
+                <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
                   {getActionSummary({
                     ...action,
                     dueInHours: action.dueInHours ? Number(action.dueInHours) : null,
@@ -1973,7 +1991,9 @@ function AutomationEditor({
             <div
               key={`${action.type}_${index}`}
               className={`rounded-2xl border p-3 ${
-                selectedActionIndex === index ? "border-blue-400/35 bg-blue-500/[0.07]" : "border-white/10 bg-black/20"
+                selectedActionIndex === index
+                  ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
+                  : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"
               }`}
             >
               <div className="grid gap-3 md:grid-cols-[180px_1fr_auto]">
@@ -1993,7 +2013,7 @@ function AutomationEditor({
                       ),
                     }))
                   }
-                  className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  className="client-input px-3 py-2 text-sm"
                 >
                   {Object.entries(ACTION_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -2007,13 +2027,13 @@ function AutomationEditor({
                     value={action.sequenceOrder}
                     onChange={(event) => updateAction(index, { sequenceOrder: event.target.value })}
                     placeholder="Ordem (ex: 1)"
-                    className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                    className="client-input px-3 py-2 text-sm"
                   />
                   <input
                     value={action.waitInHours}
                     onChange={(event) => updateAction(index, { waitInHours: event.target.value })}
                     placeholder="Espera antes da acao (h)"
-                    className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                    className="client-input px-3 py-2 text-sm"
                   />
 
                   {action.type === "create_task" ? (
@@ -2022,13 +2042,13 @@ function AutomationEditor({
                         value={action.title}
                         onChange={(event) => updateAction(index, { title: event.target.value })}
                         placeholder="Titulo da tarefa"
-                        className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                        className="client-input px-3 py-2 text-sm"
                       />
                       <input
                         value={action.dueInHours}
                         onChange={(event) => updateAction(index, { dueInHours: event.target.value })}
                         placeholder="Prazo em horas"
-                        className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                        className="client-input px-3 py-2 text-sm"
                       />
                     </>
                   ) : null}
@@ -2038,7 +2058,7 @@ function AutomationEditor({
                       value={action.text}
                       onChange={(event) => updateAction(index, { text: event.target.value })}
                       placeholder="Texto da nota automatica"
-                      className="min-h-[88px] rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none md:col-span-2"
+                      className="client-input min-h-[88px] px-3 py-2 text-sm md:col-span-2"
                     />
                   ) : null}
 
@@ -2047,7 +2067,7 @@ function AutomationEditor({
                       value={action.text}
                       onChange={(event) => updateAction(index, { text: event.target.value })}
                       placeholder="Mensagem de follow-up automatica"
-                      className="min-h-[88px] rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none md:col-span-2"
+                      className="client-input min-h-[88px] px-3 py-2 text-sm md:col-span-2"
                     />
                   ) : null}
 
@@ -2056,7 +2076,7 @@ function AutomationEditor({
                       value={action.tag}
                       onChange={(event) => updateAction(index, { tag: event.target.value })}
                       placeholder="tag-comercial"
-                      className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                      className="client-input px-3 py-2 text-sm"
                     />
                   ) : null}
 
@@ -2064,7 +2084,7 @@ function AutomationEditor({
                     <select
                       value={action.priority}
                       onChange={(event) => updateAction(index, { priority: event.target.value })}
-                      className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                      className="client-input px-3 py-2 text-sm"
                     >
                       <option value="low">low</option>
                       <option value="medium">medium</option>
@@ -2078,7 +2098,7 @@ function AutomationEditor({
                     type="button"
                     onClick={() => moveAction(index, -1)}
                     disabled={index === 0}
-                    className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/82 transition hover:bg-white/[0.06] disabled:opacity-40"
+                    className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)] disabled:opacity-40"
                   >
                     <MoveUp className="mx-auto h-4 w-4" />
                   </button>
@@ -2086,7 +2106,7 @@ function AutomationEditor({
                     type="button"
                     onClick={() => moveAction(index, 1)}
                     disabled={index === draft.actions.length - 1}
-                    className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/82 transition hover:bg-white/[0.06] disabled:opacity-40"
+                    className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)] disabled:opacity-40"
                   >
                     <MoveDown className="mx-auto h-4 w-4" />
                   </button>
@@ -2107,7 +2127,7 @@ function AutomationEditor({
                   <button
                     type="button"
                     onClick={() => setSelectedActionIndex(index)}
-                    className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]"
+                    className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                   >
                     Inspecionar
                   </button>
@@ -2123,7 +2143,7 @@ function AutomationEditor({
           type="button"
           onClick={onSave}
           disabled={saving}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Salvar automacao
@@ -2135,8 +2155,8 @@ function AutomationEditor({
 
 function QueuePill({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-      <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">{label}</p>
+    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
+      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
       <p className="mt-2 text-xl font-semibold text-white">{value}</p>
     </div>
   );
@@ -2144,8 +2164,14 @@ function QueuePill({ label, value }: { label: string; value: number }) {
 
 function HealthRow({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
   return (
-    <div className={`rounded-xl border px-3 py-3 ${danger ? "border-rose-500/30 bg-rose-500/10" : "border-white/10 bg-black/30"}`}>
-      <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">{label}</p>
+    <div
+      className={`rounded-xl border px-3 py-3 ${
+        danger
+          ? "border-rose-500/30 bg-rose-500/10"
+          : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"
+      }`}
+    >
+      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
       <p className="mt-2 text-xl font-semibold text-white">{value}</p>
     </div>
   );
@@ -2153,9 +2179,9 @@ function HealthRow({ label, value, danger = false }: { label: string; value: str
 
 function Insight({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-      <p className="text-sm font-medium text-white">{title}</p>
-      <p className="mt-1 text-sm text-white/58">{description}</p>
+    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
+      <p className="text-sm font-medium text-[var(--cliente-card-text)]">{title}</p>
+      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{description}</p>
     </div>
   );
 }

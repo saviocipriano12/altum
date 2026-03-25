@@ -13,8 +13,8 @@ function ClientePainelShell({ children }: { children: React.ReactNode }) {
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -left-24 top-[-120px] h-[320px] w-[320px] rounded-full bg-[var(--cliente-accent-glow)] blur-3xl" />
         <div className="absolute right-[-100px] top-[120px] h-[280px] w-[280px] rounded-full bg-[var(--cliente-accent-secondary-glow)] blur-3xl" />
-        <div className="absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_58%)] opacity-80" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.02))]" />
+        <div className="absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_top,var(--cliente-accent-soft),transparent_58%)] opacity-80" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent,var(--cliente-surface-muted))]" />
       </div>
 
       <ClienteSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />

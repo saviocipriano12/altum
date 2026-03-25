@@ -507,7 +507,7 @@ export default function ClientePainelOverviewPage() {
   if (loading) {
     return (
       <div className="flex min-h-[52vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-300" />
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
@@ -524,11 +524,11 @@ export default function ClientePainelOverviewPage() {
   return (
     <div className="space-y-5">
       <SectionHeader
-        title="Client Operating System"
-        subtitle="Visao executiva de operacao, funil, atendimento e automacao em tempo real."
+        title="Visao geral"
+        subtitle="Uma leitura executiva do que esta pronto, do que pede atencao e do que fazer agora no tenant."
         action={
           <StateBadge
-            label={pilotReady ? "Pronto para piloto" : ai.enabled === false ? "IA limitada" : "Operacao estavel"}
+            label={pilotReady ? "Pronto para operar" : ai.enabled === false ? "IA limitada" : "Operacao acompanhada"}
             tone={pilotReady ? "success" : operationStatusTone}
           />
         }
@@ -538,27 +538,27 @@ export default function ClientePainelOverviewPage() {
         <PanelCard className="overflow-hidden p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/78">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-card-text-muted)]">
                 <Sparkles className="h-3.5 w-3.5" />
-                Executive Workspace
+                Workspace ALTUM
               </div>
-              <h3 className="mt-4 text-2xl font-semibold tracking-tight text-white md:text-3xl">
+              <h3 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--cliente-card-text)] md:text-3xl">
                 {tenant?.tenantName || tenant?.clientName || "Cliente"} em modo operacional premium
               </h3>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-white/62">
-                Centralize atendimento, pipeline, IA e sinais de performance em um unico painel com contexto de negocio.
+              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                Veja atendimento, pipeline, IA e sinais de performance em uma leitura mais simples, com foco no que fazer primeiro.
               </p>
-              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/72">
-                <span>Go-live</span>
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1 text-xs text-[var(--cliente-card-text-muted)]">
+                <span>Prontidao</span>
                 <StateBadge
-                  label={pilotReady ? `pronto ${readinessScore}%` : `em fechamento ${readinessScore}%`}
+                  label={pilotReady ? `pronto ${readinessScore}%` : `em implantacao ${readinessScore}%`}
                   tone={pilotReady ? "success" : readinessScore >= 70 ? "info" : "warning"}
                 />
               </div>
             </div>
 
-            <div className="min-w-[220px] rounded-2xl border border-white/10 bg-black/40 p-4">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-white/38">Resumo do ciclo</p>
+            <div className="min-w-[220px] rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Resumo rapido</p>
               <div className="mt-3 space-y-3">
                 <HeroStat label="Leads ativos" value={(kpis?.leads || 0).toLocaleString("pt-BR")} />
                 <HeroStat label="Conversas abertas" value={String(operationMetrics.activeChats || chats.length)} />
@@ -631,23 +631,23 @@ export default function ClientePainelOverviewPage() {
           <div className="mt-5 grid gap-2 sm:grid-cols-2">
             <Link
               href="/cliente/painel/configuracoes"
-              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+              className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
             >
               <span className="inline-flex items-center gap-2">
-                <Settings2 className="h-4 w-4 text-blue-100" />
-                Revisar governanca do tenant
+                <Settings2 className="h-4 w-4 text-[var(--cliente-accent)]" />
+                Revisar configuracoes essenciais
               </span>
-              <ArrowRight className="h-4 w-4 text-white/45" />
+              <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
             </Link>
             <Link
               href="/cliente/painel/metricas"
-              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+              className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
             >
               <span className="inline-flex items-center gap-2">
-                <ChartColumn className="h-4 w-4 text-blue-100" />
-                Abrir painel de metricas consolidadas
+                <ChartColumn className="h-4 w-4 text-[var(--cliente-accent)]" />
+                Abrir metricas consolidadas
               </span>
-              <ArrowRight className="h-4 w-4 text-white/45" />
+              <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
             </Link>
           </div>
         </PanelCard>
@@ -701,16 +701,16 @@ export default function ClientePainelOverviewPage() {
           <CardTitle title="Funil visual" subtitle="Distribuicao dos leads por etapa comercial" />
           <div className="mt-4 space-y-3">
             {funnel.map((item) => (
-              <Link key={item.stage} href={`/cliente/painel/crm?stage=${encodeURIComponent(item.stage)}`} className="block space-y-1.5 rounded-xl px-2 py-2 transition hover:bg-white/[0.03]">
-                <div className="flex items-center justify-between text-xs text-white/62">
+              <Link key={item.stage} href={`/cliente/painel/crm?stage=${encodeURIComponent(item.stage)}`} className="block space-y-1.5 rounded-xl px-2 py-2 transition hover:bg-[var(--cliente-surface-muted)]">
+                <div className="flex items-center justify-between text-xs text-[var(--cliente-card-text-soft)]">
                   <span className="uppercase tracking-wide">{getPipelineStageLabel(item.stage)}</span>
                   <span>
                     {item.total} leads ({item.pct}%)
                   </span>
                 </div>
-                <div className="h-2 rounded-full bg-white/10">
+                <div className="h-2 rounded-full bg-[var(--cliente-border)]">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-500"
+                    className="h-full rounded-full bg-gradient-to-r from-[var(--cliente-accent)] to-[var(--cliente-accent-strong)]"
                     style={{ width: `${Math.max(4, item.pct)}%` }}
                   />
                 </div>
@@ -722,28 +722,28 @@ export default function ClientePainelOverviewPage() {
         <PanelCard className="p-4">
           <CardTitle title="Saude da automacao" subtitle="Estado atual do motor de atendimento e IA" />
           <div className="mt-4 space-y-3 text-sm">
-            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-              <span className="text-white/65">IA global</span>
+            <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+              <span className="text-[var(--cliente-card-text-soft)]">IA global</span>
               <StateBadge
                 label={ai.enabled === false ? "desativada" : "ativa"}
                 tone={ai.enabled === false ? "warning" : "success"}
               />
             </div>
-            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-              <span className="text-white/65">Guardrails configurados</span>
-              <span className="font-semibold text-white">{automationMetrics.guardrails || (ai.guardrails || []).length}</span>
+            <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+              <span className="text-[var(--cliente-card-text-soft)]">Guardrails configurados</span>
+              <span className="font-semibold text-[var(--cliente-card-text)]">{automationMetrics.guardrails || (ai.guardrails || []).length}</span>
             </div>
-            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-              <span className="text-white/65">Base de conhecimento</span>
-              <span className="font-semibold text-white">{automationMetrics.kbDocs || kbCount} docs</span>
+            <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+              <span className="text-[var(--cliente-card-text-soft)]">Base de conhecimento</span>
+              <span className="font-semibold text-[var(--cliente-card-text)]">{automationMetrics.kbDocs || kbCount} docs</span>
             </div>
-            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-              <span className="text-white/65">Conversas com takeover</span>
-              <span className="font-semibold text-white">{automationMetrics.pausedConversations || aiPausedChats}</span>
+            <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+              <span className="text-[var(--cliente-card-text-soft)]">Conversas com takeover</span>
+              <span className="font-semibold text-[var(--cliente-card-text)]">{automationMetrics.pausedConversations || aiPausedChats}</span>
             </div>
-            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-              <span className="text-white/65">Fila de automacao</span>
-              <span className="font-semibold text-white">{automationMetrics.queue?.pending || 0} pendentes</span>
+            <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+              <span className="text-[var(--cliente-card-text-soft)]">Fila de automacao</span>
+              <span className="font-semibold text-[var(--cliente-card-text)]">{automationMetrics.queue?.pending || 0} pendentes</span>
             </div>
           </div>
         </PanelCard>
@@ -754,20 +754,20 @@ export default function ClientePainelOverviewPage() {
           <CardTitle title="Atividades recentes" subtitle="Ultimos eventos de financeiro e CRM" />
           <div className="mt-4 space-y-2">
             {activities.length === 0 ? (
-              <p className="text-sm text-white/52">Sem eventos recentes para exibir.</p>
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem eventos recentes para exibir.</p>
             ) : (
               activities.map((item) => (
                 <Link
                   key={item.id}
                   href={item.href}
-                  className="block rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                  className="block rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-white/90">{item.title}</p>
+                    <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.title}</p>
                     <StateBadge label={item.source} tone={item.source === "lead" ? "info" : "neutral"} />
                   </div>
-                  <p className="mt-1 text-xs text-white/58">{item.detail}</p>
-                  <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-white/45">
+                  <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">{item.detail}</p>
+                  <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--cliente-card-text-soft)]">
                     <Clock3 className="h-3 w-3" />
                     {item.createdAt ? item.createdAt.toLocaleString("pt-BR") : "sem data"}
                   </p>
@@ -779,7 +779,7 @@ export default function ClientePainelOverviewPage() {
 
         <PanelCard className="p-4">
           <CardTitle title="Metricas resumidas" subtitle="Resumo executivo do periodo" />
-          <div className="mt-4 overflow-hidden rounded-xl border border-white/10">
+          <div className="mt-4 overflow-hidden rounded-xl border border-[var(--cliente-border)]">
             <table className="w-full text-sm">
               <tbody>
                 <Row label="Impressoes" value={(kpis?.impressions || 0).toLocaleString("pt-BR")} />
@@ -798,25 +798,25 @@ export default function ClientePainelOverviewPage() {
 
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             <Link href="/cliente/painel/metricas" className="block">
-              <PanelCard className="border-white/10 bg-white/[0.03] p-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]">
-                <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-white/50">
+              <PanelCard className="border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
+                <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                   <Megaphone className="h-3.5 w-3.5" />
                   Midia
                 </div>
                 <p className="mt-2 text-base font-semibold">{brl(Number(kpis?.spend || 0))}</p>
-                <p className="mt-1 text-xs text-white/45">
+                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                   Delta {formatDelta(comparisonMetrics.spendDeltaPct, "investimento")}
                 </p>
               </PanelCard>
             </Link>
             <Link href="/cliente/painel/crm" className="block">
-              <PanelCard className="border-white/10 bg-white/[0.03] p-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]">
-                <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-white/50">
+              <PanelCard className="border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
+                <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                   <Funnel className="h-3.5 w-3.5" />
                   Conversao
                 </div>
                 <p className="mt-2 text-base font-semibold">{(kpis?.leads || 0).toLocaleString("pt-BR")} leads</p>
-                <p className="mt-1 text-xs text-white/45">
+                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                   Delta {formatDelta(comparisonMetrics.conversionDeltaPct, "conversao")}
                 </p>
               </PanelCard>
@@ -886,25 +886,25 @@ export default function ClientePainelOverviewPage() {
 
           <div className="mt-4 space-y-2">
             {(operationMetrics.teamPerformance || []).length === 0 ? (
-              <p className="text-sm text-white/52">Sem performance operacional suficiente para exibir responsaveis.</p>
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem performance operacional suficiente para exibir responsaveis.</p>
             ) : (
               operationMetrics.teamPerformance?.slice(0, 5).map((owner) => (
                 <Link
                   key={owner.ownerId}
                   href={`/cliente/painel/inbox?assignedUser=${encodeURIComponent(owner.ownerId)}`}
-                  className="block rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                  className="block rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-white">{owner.ownerName}</p>
+                    <p className="text-sm font-medium text-[var(--cliente-card-text)]">{owner.ownerName}</p>
                     <StateBadge
                       label={`${owner.activeChats} chats`}
                       tone={owner.overdueChats > 0 ? "warning" : "info"}
                     />
                   </div>
-                  <p className="mt-1 text-xs text-white/56">
+                  <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
                     {owner.totalLeads} leads / {owner.wonLeads} ganhos / win rate {owner.winRate}%
                   </p>
-                  <p className="mt-1 text-[11px] text-white/42">
+                  <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">
                     {owner.pendingChats} aguardando / {owner.handoffChats} handoffs
                   </p>
                 </Link>
@@ -924,17 +924,17 @@ export default function ClientePainelOverviewPage() {
 
           <div className="mt-4 space-y-2">
             {channelOperations.length === 0 ? (
-              <p className="text-sm text-white/52">Sem canais operacionais suficientes para leitura comparativa.</p>
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem canais operacionais suficientes para leitura comparativa.</p>
             ) : (
               channelOperations.slice(0, 4).map((item) => (
                 <Link
                   key={item.channel}
                   href={`/cliente/painel/inbox?channel=${encodeURIComponent(item.channel)}`}
-                  className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                  className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
                 >
                   <div>
-                    <p className="font-medium text-white">{formatChannelLabel(item.channel)}</p>
-                    <p className="mt-1 text-xs text-white/50">
+                    <p className="font-medium text-[var(--cliente-card-text)]">{formatChannelLabel(item.channel)}</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                       {item.activeChats} ativos / {item.unassignedChats} sem dono / {item.handoffChats} handoffs
                     </p>
                   </div>
@@ -954,18 +954,18 @@ export default function ClientePainelOverviewPage() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <tr className="border-b border-white/10 last:border-none">
-      <td className="px-3 py-2 text-white/58">{label}</td>
-      <td className="px-3 py-2 text-right font-medium text-white/92">{value}</td>
+    <tr className="border-b border-[var(--cliente-border)] last:border-none">
+      <td className="px-3 py-2 text-[var(--cliente-card-text-soft)]">{label}</td>
+      <td className="px-3 py-2 text-right font-medium text-[var(--cliente-card-text)]">{value}</td>
     </tr>
   );
 }
 
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-      <span className="text-sm text-white/58">{label}</span>
-      <span className="text-sm font-semibold text-white">{value}</span>
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
+      <span className="text-sm text-[var(--cliente-card-text-soft)]">{label}</span>
+      <span className="text-sm font-semibold text-[var(--cliente-card-text)]">{value}</span>
     </div>
   );
 }
@@ -990,16 +990,16 @@ function QuickLink({
   return (
     <Link
       href={href}
-      className="group rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+      className="group rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
     >
-      <div className="inline-flex rounded-xl border border-white/12 bg-white/[0.04] p-2 text-blue-100">
+      <div className="inline-flex rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-accent)]">
         <Icon className="h-4 w-4" />
       </div>
       <div className="mt-4 flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-white">{title}</p>
-        <ArrowRight className="h-4 w-4 text-white/35 transition group-hover:text-blue-100" />
+        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
+        <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)] transition group-hover:text-[var(--cliente-accent)]" />
       </div>
-      <p className="mt-2 text-sm leading-6 text-white/56">{description}</p>
+      <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-soft)]">{description}</p>
     </Link>
   );
 }
@@ -1021,12 +1021,12 @@ function FocusRow({
     badgeLabel || (tone === "warning" ? "atencao" : tone === "success" ? "ok" : tone === "danger" ? "risco" : "monitorar");
 
   const content = (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]">
+    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-white">{label}</p>
+        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{label}</p>
         <StateBadge label={resolvedBadgeLabel} tone={tone} />
       </div>
-      <p className="mt-1 text-sm text-white/58">{value}</p>
+      <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{value}</p>
     </div>
   );
 
@@ -1047,10 +1047,10 @@ function MiniStatLink({
   return (
     <Link
       href={href}
-      className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+      className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
     >
-      <p className="text-xs uppercase tracking-[0.14em] text-white/45">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-white">{value}</p>
+      <p className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{value}</p>
     </Link>
   );
 }

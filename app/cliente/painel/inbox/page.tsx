@@ -418,32 +418,32 @@ function ConversationListItem({
       className={cn(
         "w-full rounded-2xl border p-3 text-left transition",
         active
-          ? "border-blue-400/35 bg-blue-500/[0.08] shadow-[0_0_0_1px_rgba(59,130,246,0.12)]"
-          : "border-white/8 bg-white/[0.02] hover:border-white/14 hover:bg-white/[0.045]"
+          ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] shadow-[0_0_0_1px_rgba(232,80,2,0.12)]"
+          : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-semibold text-white">
+            <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">
               {chat.contactName || chat.contactPhone || "Contato sem nome"}
             </p>
             <StateBadge label={formatPriorityLabel(chat.priority)} tone={getPriorityTone(chat.priority)} />
           </div>
-          <div className="mt-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-white/38">
+          <div className="mt-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
             <span>{formatChannelLabel(chat.channel)}</span>
             <span>/</span>
             <span>{formatStatusLabel(chat.status)}</span>
           </div>
         </div>
 
-        <div className="text-right text-[11px] text-white/36">
+        <div className="text-right text-[11px] text-[var(--cliente-card-text-soft)]">
           <p>{formatTime(chat.lastMessageTime)}</p>
           <p className="mt-1">{formatRelative(chat.lastMessageTime)}</p>
         </div>
       </div>
 
-      <p className="mt-3 line-clamp-2 text-sm text-white/66">
+      <p className="mt-3 line-clamp-2 text-sm text-[var(--cliente-card-text-muted)]">
         {chat.lastMessage || "Sem ultima mensagem registrada."}
       </p>
 
@@ -453,7 +453,7 @@ function ConversationListItem({
         <StateBadge label={aiPaused ? "IA pausada" : "IA ativa"} tone={aiPaused ? "warning" : "success"} />
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3 text-xs text-white/46">
+      <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[var(--cliente-card-text-soft)]">
         <span className="truncate">{chat.assignedUserName || chat.ownerName || "Sem responsavel"}</span>
         <span>{chat.tags?.slice(0, 2).join(" / ") || "sem tags"}</span>
       </div>
@@ -471,18 +471,18 @@ function MessageBubble({ message }: { message: MessageItem }) {
         className={cn(
           "max-w-[84%] rounded-2xl border px-4 py-3 text-sm",
           isAgent
-            ? "border-blue-300/30 bg-blue-500/12"
+            ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
             : isSystem
               ? "border-amber-300/24 bg-amber-500/10"
-              : "border-white/10 bg-white/[0.04]"
+              : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"
         )}
       >
-        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-white/40">
+        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
           <span>{isAgent ? "Time" : isSystem ? "Sistema" : "Lead"}</span>
           <span>/</span>
           <span>{formatDateTime(message.createdAt)}</span>
         </div>
-        <p className="mt-2 whitespace-pre-wrap text-[14px] leading-6 text-white/92">
+        <p className="mt-2 whitespace-pre-wrap text-[14px] leading-6 text-[var(--cliente-card-text)]">
           {message.text || "-"}
         </p>
       </div>
@@ -492,9 +492,9 @@ function MessageBubble({ message }: { message: MessageItem }) {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-white/6 py-2.5 last:border-b-0 last:pb-0">
-      <span className="text-[11px] uppercase tracking-[0.14em] text-white/36">{label}</span>
-      <span className="max-w-[62%] text-right text-sm text-white/82">{value || "--"}</span>
+    <div className="flex items-start justify-between gap-4 border-b border-[var(--cliente-border)] py-2.5 last:border-b-0 last:pb-0">
+      <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</span>
+      <span className="max-w-[62%] text-right text-sm text-[var(--cliente-card-text-muted)]">{value || "--"}</span>
     </div>
   );
 }
@@ -519,12 +519,12 @@ function NoteCard({
 
       <div className="mt-4 space-y-3">
         {notes.length === 0 ? (
-          <p className="text-sm text-white/48">{emptyLabel}</p>
+          <p className="text-sm text-[var(--cliente-card-text-soft)]">{emptyLabel}</p>
         ) : (
           notes.slice(0, 6).map((note) => (
-            <div key={note.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-              <p className="text-sm leading-6 text-white/86">{note.text || "-"}</p>
-              <div className="mt-2 flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.14em] text-white/36">
+            <div key={note.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+              <p className="text-sm leading-6 text-[var(--cliente-card-text)]">{note.text || "-"}</p>
+              <div className="mt-2 flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                 <span>{note.authorName || "Time ALTUM"}</span>
                 <span>{formatDateTime(note.createdAt)}</span>
               </div>
@@ -548,14 +548,14 @@ function CommercialMetric({
   hint: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-white/38">{label}</p>
-          <p className="mt-2 text-base font-semibold text-white">{value}</p>
-          <p className="mt-1 text-xs text-white/46">{hint}</p>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
+          <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">{value}</p>
+          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{hint}</p>
         </div>
-        <div className="rounded-xl border border-white/10 bg-black/30 p-2 text-white/64">
+        <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-card-text-muted)]">
           <Icon className="h-4 w-4" />
         </div>
       </div>
@@ -1300,7 +1300,7 @@ export default function ClienteInboxPage() {
                 type="button"
                 onClick={handleDistributeQueue}
                 disabled={distributing}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08] disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
               >
                 {distributing ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1313,7 +1313,7 @@ export default function ClienteInboxPage() {
             <button
               type="button"
               onClick={() => void refreshSelected(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+              className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Atualizar
@@ -1358,8 +1358,8 @@ export default function ClienteInboxPage() {
       <section className="grid gap-3 xl:grid-cols-5">
         {focusSignals.length === 0 ? (
           <PanelCard className="p-4 xl:col-span-5">
-            <p className="text-sm font-semibold text-white">Inbox sem gargalos relevantes no momento</p>
-            <p className="mt-2 text-sm text-white/58">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Inbox sem gargalos relevantes no momento</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
               O atendimento atual nao mostra fila critica, SLA estourado ou operacao sem ownership.
             </p>
           </PanelCard>
@@ -1368,12 +1368,12 @@ export default function ClienteInboxPage() {
             <Link
               key={item.id}
               href={item.href}
-              className="block rounded-2xl border border-white/10 bg-[#0E0E0E] p-4 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+              className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-white">{item.title}</p>
-                  <p className="mt-2 text-sm text-white/58">{item.detail}</p>
+                  <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                  <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
                 </div>
                 <StateBadge label={item.badge} tone={item.tone} />
               </div>
@@ -1390,20 +1390,20 @@ export default function ClienteInboxPage() {
 
       <section className="grid min-h-[80vh] grid-cols-1 gap-4 2xl:grid-cols-[340px_minmax(0,1fr)_360px]">
         <PanelCard className="flex min-h-0 flex-col overflow-hidden">
-          <div className="border-b border-white/10 p-4">
+          <div className="border-b border-[var(--cliente-border)] p-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle title="Fila de conversas" subtitle={`${filteredChats.length} visiveis agora`} />
               <StateBadge label={`${inboxStats.highPriority} prioritarias`} tone="danger" />
             </div>
 
             <div className="mt-4 space-y-3">
-              <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/72">
-                <Search className="h-4 w-4 text-white/40" />
+              <label className="client-input flex items-center gap-2 rounded-xl border px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+                <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Buscar por nome, telefone, tag..."
-                  className="w-full bg-transparent outline-none placeholder:text-white/32"
+                  className="w-full bg-transparent outline-none placeholder:text-[var(--cliente-card-text-soft)]"
                 />
               </label>
 
@@ -1416,8 +1416,8 @@ export default function ClienteInboxPage() {
                     className={cn(
                       "rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] transition",
                       statusFilter === filter
-                        ? "border-blue-400/40 bg-blue-500/14 text-blue-100"
-                        : "border-white/10 bg-white/[0.03] text-white/52 hover:bg-white/[0.08]"
+                        ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+                        : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)]"
                     )}
                   >
                     {filter === "all" ? "todas" : filter}
@@ -1429,7 +1429,7 @@ export default function ClienteInboxPage() {
                 <select
                   value={priorityFilter}
                   onChange={(event) => setPriorityFilter(event.target.value as PriorityFilter)}
-                  className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
                 >
                   {PRIORITY_FILTERS.map((option) => (
                     <option key={option} value={option}>
@@ -1443,7 +1443,7 @@ export default function ClienteInboxPage() {
                 <select
                   value={queueFilter}
                   onChange={(event) => setQueueFilter(event.target.value as QueueFilter)}
-                  className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
                 >
                   {QUEUE_FILTERS.map((option) => (
                     <option key={option} value={option}>
@@ -1455,7 +1455,7 @@ export default function ClienteInboxPage() {
                 <select
                   value={aiFilter}
                   onChange={(event) => setAiFilter(event.target.value as AiFilter)}
-                  className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
                 >
                   {AI_FILTERS.map((option) => (
                     <option key={option} value={option}>
@@ -1469,7 +1469,7 @@ export default function ClienteInboxPage() {
                 <select
                   value={channelFilter}
                   onChange={(event) => setChannelFilter(event.target.value)}
-                  className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
                 >
                   <option value="all">Todos os canais</option>
                   {availableChannels.map((channel) => (
@@ -1484,7 +1484,7 @@ export default function ClienteInboxPage() {
                 <select
                   value={assignedUserFilter}
                   onChange={(event) => setAssignedUserFilter(event.target.value)}
-                  className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
                 >
                   <option value="all">Todos os responsaveis</option>
                   {availableAssignees.map((assignee) => (
@@ -1498,7 +1498,7 @@ export default function ClienteInboxPage() {
           </div>
           <div className="flex-1 space-y-3 overflow-y-auto p-3">
             {loadingChats ? (
-              <div className="py-10 text-center text-white/56">
+              <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
             ) : filteredChats.length === 0 ? (
@@ -1522,22 +1522,22 @@ export default function ClienteInboxPage() {
         </PanelCard>
 
         <PanelCard className="flex min-h-0 flex-col overflow-hidden">
-          <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_34%)] p-4">
+          <div className="border-b border-[var(--cliente-border)] bg-[radial-gradient(circle_at_top_left,_var(--cliente-accent-soft),_transparent_34%)] p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-semibold tracking-tight text-white">
+                  <h3 className="text-xl font-semibold tracking-tight text-[var(--cliente-card-text)]">
                     {activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
                   </h3>
                   <StateBadge label={formatChannelLabel(activeChat?.channel)} tone="neutral" />
                   <StateBadge label={formatStatusLabel(activeChat?.status)} tone={getStatusTone(activeChat?.status)} />
                   <StateBadge label={activeSla.label} tone={activeSla.breached ? "danger" : "info"} />
                 </div>
-                <p className="mt-2 text-sm text-white/58">
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
                   {detail?.company?.name || tenant?.tenantName || "Cliente"}
                   {detail?.company?.niche ? ` / ${detail.company.niche}` : ""}
                 </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-white/46">
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--cliente-card-text-soft)]">
                   <span>
                     Responsavel: {activeChat?.assignedUserName || activeChat?.ownerName || "Sem atribuicao"}
                   </span>
@@ -1553,7 +1553,7 @@ export default function ClienteInboxPage() {
                   type="button"
                   onClick={() => void handleToggleAi()}
                   disabled={!selectedChat || updatingAi || !canOperate}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08] disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
                 >
                   {updatingAi ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1577,7 +1577,7 @@ export default function ClienteInboxPage() {
                   type="button"
                   onClick={() => void handleQuickStatus("pending")}
                   disabled={!selectedChat || savingMeta || !canOperate}
-                  className="rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08] disabled:opacity-50"
+                  className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
                 >
                   Marcar pendente
                 </button>
@@ -1594,28 +1594,28 @@ export default function ClienteInboxPage() {
 
             {activeLead ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-white/38">Lead</p>
-                  <p className="mt-2 text-base font-semibold text-white">{activeLead.nome || "Lead"}</p>
-                  <p className="mt-1 text-sm text-white/52">
+                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Lead</p>
+                  <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">{activeLead.nome || "Lead"}</p>
+                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
                     {activeLead.empresa || activeLead.origem || "Sem empresa"}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-white/38">Pipeline</p>
-                  <p className="mt-2 text-base font-semibold text-white">
+                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Pipeline</p>
+                  <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">
                     {getPipelineStageLabel(
                       normalizePipelineStageId(activeLead.pipelineStage || activeLead.stage || "captado")
                     )}
                   </p>
-                  <p className="mt-1 text-sm text-white/52">{activeLead.owner || "Sem dono comercial"}</p>
+                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{activeLead.owner || "Sem dono comercial"}</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-white/38">Valor potencial</p>
-                  <p className="mt-2 text-base font-semibold text-white">
+                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Valor potencial</p>
+                  <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">
                     {formatMoney(activeLead.potentialValue)}
                   </p>
-                  <p className="mt-1 text-sm text-white/52">Score {activeLead.score ?? "--"}</p>
+                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Score {activeLead.score ?? "--"}</p>
                 </div>
               </div>
             ) : null}
@@ -1623,7 +1623,7 @@ export default function ClienteInboxPage() {
 
           <div className="min-h-[46vh] flex-1 space-y-4 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_28%)] p-4">
             {loadingMessages ? (
-              <div className="py-10 text-center text-white/60">
+              <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
             ) : messages.length === 0 ? (
@@ -1636,19 +1636,19 @@ export default function ClienteInboxPage() {
             )}
           </div>
 
-          <form onSubmit={handleSend} className="border-t border-white/10 p-3">
-            <div className="flex gap-2 rounded-2xl border border-white/10 bg-black/30 p-2">
+          <form onSubmit={handleSend} className="border-t border-[var(--cliente-border)] p-3">
+            <div className="flex gap-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2">
               <input
                 value={messageText}
                 onChange={(event) => setMessageText(event.target.value)}
                 placeholder={canOperate ? "Digite a mensagem manual do time" : "Perfil sem permissao para responder"}
-                className="flex-1 bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-white/30"
+                className="flex-1 bg-transparent px-2 py-2 text-sm text-[var(--cliente-card-text)] outline-none placeholder:text-[var(--cliente-card-text-soft)]"
                 disabled={!selectedChatId || sending || !canOperate}
               />
               <button
                 type="submit"
                 disabled={!selectedChatId || sending || !messageText.trim() || !canOperate}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-55"
+                className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-55"
               >
                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Enviar
@@ -1672,12 +1672,12 @@ export default function ClienteInboxPage() {
             </div>
 
             {loadingDetail ? (
-              <div className="py-8 text-center text-white/60">
+              <div className="py-8 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
             ) : activeLead ? (
               <>
-                <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                   <InfoRow label="Nome" value={activeLead.nome || "Lead"} />
                   <InfoRow label="Telefone" value={activeLead.telefone || activeChat?.contactPhone || "--"} />
                   <InfoRow label="Email" value={activeLead.email || "--"} />
@@ -1687,13 +1687,13 @@ export default function ClienteInboxPage() {
                 </div>
 
                 <div className="mt-4 grid gap-3">
-                  <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-white/50">
+                  <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                     <span>Stage do pipeline</span>
                     <select
                       value={leadStage}
                       onChange={(event) => setLeadStage(event.target.value)}
                       disabled={!canOperate}
-                      className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                      className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
                     >
                       {DEFAULT_PIPELINE_STAGES.map((stage) => (
                         <option key={stage.id} value={stage.id}>
@@ -1707,7 +1707,7 @@ export default function ClienteInboxPage() {
                     type="button"
                     onClick={() => void handleMoveLeadStage()}
                     disabled={!canOperate || savingLeadStage}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
                   >
                     {savingLeadStage ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1731,28 +1731,28 @@ export default function ClienteInboxPage() {
                   {(activeLead.tags || []).length > 0 ? (
                     activeLead.tags?.map((tag) => <StateBadge key={tag} label={tag} tone="neutral" />)
                   ) : (
-                    <p className="text-sm text-white/46">Sem tags comerciais no lead.</p>
+                    <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem tags comerciais no lead.</p>
                   )}
                 </div>
 
                 <div className="mt-4 grid gap-2">
                   <Link
                     href={`/cliente/painel/crm?leadId=${encodeURIComponent(activeLead.id)}`}
-                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
                   >
                     <span>Abrir CRM</span>
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                   <Link
                     href={`/cliente/painel/pipeline?leadId=${encodeURIComponent(activeLead.id)}`}
-                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
                   >
                     <span>Ver no pipeline</span>
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                   <Link
                     href={`/cliente/painel/comercial?leadId=${encodeURIComponent(activeLead.id)}`}
-                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
                   >
                     <span>Abrir comercial</span>
                     <ArrowRight className="h-4 w-4" />
@@ -1762,7 +1762,7 @@ export default function ClienteInboxPage() {
                       href={`https://wa.me/${encodeURIComponent(String(activeLead.telefone || activeChat?.contactPhone || "").replace(/\D/g, ""))}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center justify-between gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                      className="inline-flex items-center justify-between gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
                     >
                       <span>Abrir no WhatsApp</span>
                       <ArrowRight className="h-4 w-4" />
@@ -1770,7 +1770,7 @@ export default function ClienteInboxPage() {
                   ) : null}
                   <Link
                     href={`/cliente/painel/metricas`}
-                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
                   >
                     <span>Ver metricas da operacao</span>
                     <ArrowRight className="h-4 w-4" />
@@ -1778,7 +1778,7 @@ export default function ClienteInboxPage() {
                 </div>
               </>
             ) : (
-              <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-sm text-white/52">
+              <div className="mt-4 rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
                 Esta conversa ainda nao esta associada a um lead com perfil comercial completo.
               </div>
             )}
@@ -1797,13 +1797,13 @@ export default function ClienteInboxPage() {
             </div>
 
             <div className="mt-4 grid gap-3">
-              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-white/50">
+              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                 <span>Status</span>
                 <select
                   value={metaForm.status}
                   onChange={(event) => setMetaForm((current) => ({ ...current, status: event.target.value }))}
                   disabled={!canOperate}
-                  className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
                 >
                   {STATUS_OPTIONS.map((status) => (
                     <option key={status} value={status}>
@@ -1813,13 +1813,13 @@ export default function ClienteInboxPage() {
                 </select>
               </label>
 
-              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-white/50">
+              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                 <span>Prioridade</span>
                 <select
                   value={metaForm.priority}
                   onChange={(event) => setMetaForm((current) => ({ ...current, priority: event.target.value }))}
                   disabled={!canOperate}
-                  className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
                 >
                   {PRIORITY_OPTIONS.map((priority) => (
                     <option key={priority} value={priority}>
@@ -1829,7 +1829,7 @@ export default function ClienteInboxPage() {
                 </select>
               </label>
 
-              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-white/50">
+              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                 <span>Responsavel</span>
                 <select
                   value={metaForm.assignedUserId}
@@ -1837,7 +1837,7 @@ export default function ClienteInboxPage() {
                     setMetaForm((current) => ({ ...current, assignedUserId: event.target.value }))
                   }
                   disabled={!canOperate}
-                  className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
                 >
                   <option value="">Sem atribuicao</option>
                   {teamMembers.map((member) => (
@@ -1848,14 +1848,14 @@ export default function ClienteInboxPage() {
                 </select>
               </label>
 
-              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-white/50">
+              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                 <span>Tags</span>
                 <input
                   value={metaForm.tagsInput}
                   onChange={(event) => setMetaForm((current) => ({ ...current, tagsInput: event.target.value }))}
                   disabled={!canOperate}
                   placeholder="vip, proposta, urgente"
-                  className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-white/28"
+                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
                 />
               </label>
             </div>
@@ -1864,7 +1864,7 @@ export default function ClienteInboxPage() {
               type="button"
               onClick={() => void handleSaveMeta()}
               disabled={savingMeta || !canOperate}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-50"
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
             >
               {savingMeta ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -1918,25 +1918,25 @@ export default function ClienteInboxPage() {
 
                 <div className="mt-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-white/38">Propostas recentes</p>
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Propostas recentes</p>
                     <Link
                       href={`/cliente/painel/comercial?leadId=${encodeURIComponent(activeLead.id)}`}
-                      className="text-xs font-semibold text-blue-200 transition hover:text-white"
+                      className="text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
                     >
                       Abrir comercial
                     </Link>
                   </div>
                   {leadBudgets.length === 0 ? (
-                    <p className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-3 text-sm text-white/48">
+                    <p className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 text-sm text-[var(--cliente-card-text-soft)]">
                       Nenhuma proposta vinculada a este lead ainda.
                     </p>
                   ) : (
                     leadBudgets.map((budget) => (
-                      <div key={budget.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                      <div key={budget.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-sm font-semibold text-white/88">{budget.titulo || "Proposta"}</p>
-                            <p className="mt-1 text-xs text-white/46">
+                            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{budget.titulo || "Proposta"}</p>
+                            <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                               validade {formatDate(budget.validade)} / atualizada {formatDateTime(budget.updatedAt)}
                             </p>
                           </div>
@@ -1952,9 +1952,9 @@ export default function ClienteInboxPage() {
                           />
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-white">{formatMoney(Number(budget.valorTotal || 0))}</p>
+                          <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{formatMoney(Number(budget.valorTotal || 0))}</p>
                           {budget.resumo ? (
-                            <p className="line-clamp-1 max-w-[62%] text-right text-xs text-white/46">{budget.resumo}</p>
+                            <p className="line-clamp-1 max-w-[62%] text-right text-xs text-[var(--cliente-card-text-soft)]">{budget.resumo}</p>
                           ) : null}
                         </div>
                       </div>
@@ -1962,22 +1962,22 @@ export default function ClienteInboxPage() {
                   )}
                 </div>
 
-                <div className="mt-4 space-y-3 border-t border-white/8 pt-4">
+                <div className="mt-4 space-y-3 border-t border-[var(--cliente-border)] pt-4">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-white/38">Financeiro recente</p>
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Financeiro recente</p>
                     <StateBadge label={`${leadFinance.length}`} tone="neutral" />
                   </div>
                   {leadFinance.length === 0 ? (
-                    <p className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-3 text-sm text-white/48">
+                    <p className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 text-sm text-[var(--cliente-card-text-soft)]">
                       Nenhum lancamento comercial associado a este lead.
                     </p>
                   ) : (
                     leadFinance.map((item) => (
-                      <div key={item.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                      <div key={item.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-sm font-semibold text-white/88">{item.descricao || "Lancamento"}</p>
-                            <p className="mt-1 text-xs text-white/46">
+                            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.descricao || "Lancamento"}</p>
+                            <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                               {item.categoria || item.tipo || "Comercial"} / vencimento {formatDate(item.vencimento)}
                             </p>
                           </div>
@@ -1987,8 +1987,8 @@ export default function ClienteInboxPage() {
                           />
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                          <p className="font-semibold text-white">{formatMoney(Number(item.valor || 0))}</p>
-                          <p className="text-xs text-white/46">{item.meioPagamento || "Sem meio de pagamento"}</p>
+                          <p className="font-semibold text-[var(--cliente-card-text)]">{formatMoney(Number(item.valor || 0))}</p>
+                          <p className="text-xs text-[var(--cliente-card-text-soft)]">{item.meioPagamento || "Sem meio de pagamento"}</p>
                         </div>
                       </div>
                     ))
@@ -1996,7 +1996,7 @@ export default function ClienteInboxPage() {
                 </div>
               </>
             ) : (
-              <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-sm text-white/52">
+              <div className="mt-4 rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
                 Vincule um lead a conversa para enxergar propostas, receita e pendencias financeiras aqui.
               </div>
             )}
@@ -2013,13 +2013,13 @@ export default function ClienteInboxPage() {
 
             <div className="mt-4 space-y-3">
               {leadTasks.length === 0 ? (
-                <p className="text-sm text-white/48">Nenhuma tarefa criada para este lead ainda.</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhuma tarefa criada para este lead ainda.</p>
               ) : (
                 leadTasks.map((task) => (
-                  <div key={task.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                  <div key={task.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-white/88">{task.title || "Tarefa"}</p>
+                        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{task.title || "Tarefa"}</p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           <StateBadge label={formatTaskType(task.type)} tone="neutral" />
                           <StateBadge label={formatPriorityLabel(task.priority)} tone={getTaskTone(task)} />
@@ -2033,7 +2033,7 @@ export default function ClienteInboxPage() {
                         type="button"
                         onClick={() => void handleToggleLeadTask(task)}
                         disabled={!canOperate || updatingTaskId === task.id}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08] disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
                       >
                         {updatingTaskId === task.id ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2045,7 +2045,7 @@ export default function ClienteInboxPage() {
                         {task.status === "done" ? "Reabrir" : "Concluir"}
                       </button>
                     </div>
-                    <p className="mt-2 text-xs uppercase tracking-[0.14em] text-white/38">
+                    <p className="mt-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                       prazo {formatDateTime(task.dueAt || task.createdAt)}
                     </p>
                   </div>
@@ -2053,13 +2053,13 @@ export default function ClienteInboxPage() {
               )}
             </div>
             {activeLead ? (
-              <form onSubmit={handleCreateLeadTask} className="mt-4 space-y-3 border-t border-white/8 pt-4">
+              <form onSubmit={handleCreateLeadTask} className="mt-4 space-y-3 border-t border-[var(--cliente-border)] pt-4">
                 <input
                   value={leadTaskTitle}
                   onChange={(event) => setLeadTaskTitle(event.target.value)}
                   placeholder="Ex: Retornar proposta ainda hoje"
                   disabled={!canOperate}
-                  className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-white/28"
+                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
                 />
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <input
@@ -2067,13 +2067,13 @@ export default function ClienteInboxPage() {
                     value={leadTaskDueAt}
                     onChange={(event) => setLeadTaskDueAt(event.target.value)}
                     disabled={!canOperate}
-                    className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                    className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
                   />
                   <select
                     value={leadTaskType}
                     onChange={(event) => setLeadTaskType(event.target.value as (typeof TASK_TYPES)[number])}
                     disabled={!canOperate}
-                    className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                    className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
                   >
                     {TASK_TYPES.map((taskType) => (
                       <option key={taskType} value={taskType}>
@@ -2087,7 +2087,7 @@ export default function ClienteInboxPage() {
                       setLeadTaskPriority(event.target.value as (typeof TASK_PRIORITIES)[number])
                     }
                     disabled={!canOperate}
-                    className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                    className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
                   >
                     {TASK_PRIORITIES.map((taskPriority) => (
                       <option key={taskPriority} value={taskPriority}>
@@ -2099,7 +2099,7 @@ export default function ClienteInboxPage() {
                 <button
                   type="submit"
                   disabled={!canOperate || savingLeadTask || !leadTaskTitle.trim()}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-white/82 transition hover:bg-white/[0.08] disabled:opacity-50"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
                 >
                   {savingLeadTask ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -2125,12 +2125,12 @@ export default function ClienteInboxPage() {
                 placeholder="Registrar contexto interno desta conversa"
                 disabled={!canOperate}
                 rows={3}
-                className="w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/28"
+                className="client-input w-full rounded-2xl border px-3 py-3 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
               />
               <button
                 type="submit"
                 disabled={!canOperate || savingNote || !internalNoteText.trim()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-white/82 transition hover:bg-white/[0.08] disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
               >
                 {savingNote ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -2142,19 +2142,19 @@ export default function ClienteInboxPage() {
             </form>
 
             {activeLead ? (
-              <form onSubmit={handleCreateLeadNote} className="mt-4 space-y-3 border-t border-white/8 pt-4">
+              <form onSubmit={handleCreateLeadNote} className="mt-4 space-y-3 border-t border-[var(--cliente-border)] pt-4">
                 <textarea
                   value={leadNoteText}
                   onChange={(event) => setLeadNoteText(event.target.value)}
                   placeholder="Registrar nota comercial no perfil do lead"
                   disabled={!canOperate}
                   rows={3}
-                  className="w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/28"
+                  className="client-input w-full rounded-2xl border px-3 py-3 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
                 />
                 <button
                   type="submit"
                   disabled={!canOperate || savingLeadNote || !leadNoteText.trim()}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-white/82 transition hover:bg-white/[0.08] disabled:opacity-50"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
                 >
                   {savingLeadNote ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -2189,17 +2189,17 @@ export default function ClienteInboxPage() {
 
             <div className="mt-4 space-y-3">
               {timeline.length === 0 ? (
-                <p className="text-sm text-white/48">Nenhum evento recente no lead.</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhum evento recente no lead.</p>
               ) : (
                 timeline.slice(0, 8).map((event) => (
-                  <div key={event.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                  <div key={event.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-white/86">{event.title || "Evento"}</p>
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-white/36">
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{event.title || "Evento"}</p>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                         {formatDateTime(event.createdAt)}
                       </p>
                     </div>
-                    {event.detail ? <p className="mt-2 text-sm leading-6 text-white/62">{event.detail}</p> : null}
+                    {event.detail ? <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{event.detail}</p> : null}
                   </div>
                 ))
               )}

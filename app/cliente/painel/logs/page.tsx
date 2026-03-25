@@ -337,7 +337,7 @@ export default function ClienteLogsPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[45vh] items-center justify-center text-white/60">
+      <div className="flex min-h-[45vh] items-center justify-center text-[var(--cliente-card-text-muted)]">
         <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     );
@@ -352,7 +352,7 @@ export default function ClienteLogsPage() {
           <button
             type="button"
             onClick={() => void loadData()}
-            className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-white transition hover:bg-white/[0.08]"
+            className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
           >
             Tentar novamente
           </button>
@@ -372,7 +372,7 @@ export default function ClienteLogsPage() {
               <button
                 type="button"
                 onClick={() => void loadData()}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/76 transition hover:bg-white/[0.08]"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <RefreshCcw className="h-4 w-4" />
                 Atualizar
@@ -393,12 +393,12 @@ export default function ClienteLogsPage() {
               <Link
                 key={item.id}
                 href={item.href}
-                className="block rounded-2xl border border-white/10 bg-black/25 p-4 transition hover:border-white/15 hover:bg-white/[0.04]"
+                className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:bg-[var(--cliente-panel-soft)]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-white">{item.title}</p>
-                    <p className="mt-1 text-xs text-white/50">{item.detail}</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.detail}</p>
                   </div>
                   <StateBadge label={item.badge} tone={item.tone} />
                 </div>
@@ -421,13 +421,13 @@ export default function ClienteLogsPage() {
 
       <PanelCard className="p-5 md:p-6">
         <SectionHeader title="Filtro unico" subtitle="Use a mesma busca para cruzar IA, automacoes e fila." />
-        <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#111111] px-3 py-2 text-sm text-white/70">
+        <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
           <Search className="h-4 w-4" />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar motivo, automacao, trigger, erro ou chat"
-            className="w-full bg-transparent text-sm outline-none placeholder:text-white/40"
+            className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
           />
         </label>
       </PanelCard>
@@ -443,18 +443,18 @@ export default function ClienteLogsPage() {
           <div className="space-y-3">
             {filteredAiLogs.length ? (
               filteredAiLogs.slice(0, 10).map((item) => (
-                <article key={item.id} className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                <article key={item.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <StateBadge label={item.decision || "respond"} tone={decisionTone(item.decision)} />
                         <StateBadge label={`conf. ${confidenceLabel(item.confidence)}`} tone={decisionTone(item.decision)} />
                       </div>
-                      <p className="mt-2 text-sm text-white/84">{item.reason || item.input || "Log sem detalhe"}</p>
-                      <p className="mt-1 text-xs text-white/46">{formatDateTime(item.createdAt)}</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{item.reason || item.input || "Log sem detalhe"}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDateTime(item.createdAt)}</p>
                     </div>
                     {item.chatId ? (
-                      <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.chatId)}`} className="text-xs text-blue-200 hover:text-blue-100">
+                      <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.chatId)}`} className="text-xs text-[var(--cliente-accent)] hover:brightness-110">
                         Inbox
                       </Link>
                     ) : null}
@@ -478,23 +478,23 @@ export default function ClienteLogsPage() {
           <div className="space-y-3">
             {filteredExecutions.length ? (
               filteredExecutions.map((item) => (
-                <article key={item.id} className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                <article key={item.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <StateBadge label={item.status || "pending"} tone={executionTone(item.status)} />
                         <StateBadge label={item.trigger || "trigger"} tone="neutral" />
                       </div>
-                      <p className="mt-2 text-sm text-white/84">{item.automationName || "Automacao"}</p>
-                      <p className="mt-1 text-xs text-white/46">{item.detail || item.lastError || "Sem detalhe"}</p>
-                      <p className="mt-1 text-xs text-white/38">{formatDateTime(item.updatedAt)}</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{item.automationName || "Automacao"}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.detail || item.lastError || "Sem detalhe"}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDateTime(item.updatedAt)}</p>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <Link href="/cliente/painel/automacoes" className="text-xs text-blue-200 hover:text-blue-100">
+                      <Link href="/cliente/painel/automacoes" className="text-xs text-[var(--cliente-accent)] hover:brightness-110">
                         Automacoes
                       </Link>
                       {item.chatId ? (
-                        <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.chatId)}`} className="text-xs text-blue-200 hover:text-blue-100">
+                        <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.chatId)}`} className="text-xs text-[var(--cliente-accent)] hover:brightness-110">
                           Inbox
                         </Link>
                       ) : null}
@@ -520,18 +520,18 @@ export default function ClienteLogsPage() {
           <div className="space-y-3">
             {filteredQueue.length ? (
               filteredQueue.map((item) => (
-                <article key={item.id} className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                <article key={item.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <StateBadge label={item.status} tone={queueTone(item.status)} />
                         <StateBadge label={`${item.attempts} tentativa(s)`} tone="neutral" />
                       </div>
-                      <p className="mt-2 text-sm text-white/84">Chat {item.chatId.slice(0, 12)}</p>
-                      <p className="mt-1 text-xs text-white/46">{item.lastError || "Sem erro registrado"}</p>
-                      <p className="mt-1 text-xs text-white/38">{formatDateTime(item.updatedAt)}</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text)]">Chat {item.chatId.slice(0, 12)}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.lastError || "Sem erro registrado"}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDateTime(item.updatedAt)}</p>
                     </div>
-                    <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.chatId)}`} className="text-xs text-blue-200 hover:text-blue-100">
+                    <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.chatId)}`} className="text-xs text-[var(--cliente-accent)] hover:brightness-110">
                       Inbox
                     </Link>
                   </div>
@@ -559,8 +559,8 @@ export default function ClienteLogsPage() {
 
 function HealthRow({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
-      <span className="text-sm text-white/68">{label}</span>
+    <div className="flex items-center justify-between rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3">
+      <span className="text-sm text-[var(--cliente-card-text-muted)]">{label}</span>
       <StateBadge label={value} tone={danger ? "danger" : "neutral"} />
     </div>
   );
@@ -572,7 +572,9 @@ function FilterButton({ label, active, onClick }: { label: string; active?: bool
       type="button"
       onClick={onClick}
       className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
-        active ? "border-blue-500/25 bg-blue-600/10 text-blue-100" : "border-white/10 bg-white/[0.03] text-white/62 hover:bg-white/[0.06]"
+        active
+          ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+          : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)]"
       }`}
     >
       {label}
@@ -584,10 +586,10 @@ function QuickLink({ href, title, description }: { href: string; title: string; 
   return (
     <Link
       href={href}
-      className="block rounded-2xl border border-white/10 bg-black/25 p-4 transition hover:border-white/15 hover:bg-white/[0.04]"
+      className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:bg-[var(--cliente-panel-soft)]"
     >
       <p className="text-sm font-medium text-white">{title}</p>
-      <p className="mt-2 text-xs text-white/48">{description}</p>
+      <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{description}</p>
     </Link>
   );
 }

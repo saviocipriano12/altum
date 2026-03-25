@@ -6,57 +6,61 @@
 }
 
 [data-client-theme="dark"] {
-  --cliente-bg: #07111f;
-  --cliente-bg-elevated: #0d1728;
-  --cliente-panel: rgba(14, 24, 40, 0.82);
-  --cliente-panel-solid: #0f1a2d;
-  --cliente-panel-soft: rgba(17, 28, 45, 0.76);
-  --cliente-card: rgba(14, 24, 40, 0.82);
-  --cliente-card-text: #f8fbff;
-  --cliente-card-text-muted: rgba(226, 232, 240, 0.76);
-  --cliente-card-text-soft: rgba(203, 213, 225, 0.54);
-  --cliente-sidebar: rgba(8, 15, 28, 0.94);
-  --cliente-sidebar-card: rgba(16, 28, 48, 0.78);
-  --cliente-topbar: rgba(7, 13, 24, 0.82);
-  --cliente-border: rgba(148, 163, 184, 0.16);
-  --cliente-border-strong: rgba(96, 165, 250, 0.26);
-  --cliente-text: #f8fbff;
-  --cliente-text-muted: rgba(226, 232, 240, 0.76);
-  --cliente-text-soft: rgba(203, 213, 225, 0.54);
-  --cliente-accent: #68a8ff;
-  --cliente-accent-strong: #3b82f6;
-  --cliente-accent-soft: rgba(59, 130, 246, 0.16);
-  --cliente-accent-glow: rgba(59, 130, 246, 0.24);
-  --cliente-accent-secondary-glow: rgba(34, 211, 238, 0.14);
-  --cliente-shadow-soft: 0 24px 80px rgba(0, 0, 0, 0.26);
-  --cliente-shadow-hard: 0 32px 90px rgba(3, 7, 18, 0.42);
+  --cliente-bg: #050505;
+  --cliente-bg-elevated: #0b0b0b;
+  --cliente-panel: rgba(14, 14, 14, 0.86);
+  --cliente-panel-solid: #111111;
+  --cliente-panel-soft: rgba(22, 22, 22, 0.88);
+  --cliente-card: rgba(16, 16, 16, 0.92);
+  --cliente-card-text: #f9f9f9;
+  --cliente-card-text-muted: rgba(249, 249, 249, 0.82);
+  --cliente-card-text-soft: rgba(167, 167, 167, 0.78);
+  --cliente-sidebar: rgba(8, 8, 8, 0.95);
+  --cliente-sidebar-card: rgba(20, 20, 20, 0.92);
+  --cliente-topbar: rgba(9, 9, 9, 0.84);
+  --cliente-border: rgba(249, 249, 249, 0.1);
+  --cliente-border-strong: rgba(232, 80, 2, 0.34);
+  --cliente-text: #f9f9f9;
+  --cliente-text-muted: rgba(249, 249, 249, 0.82);
+  --cliente-text-soft: rgba(167, 167, 167, 0.78);
+  --cliente-accent: #e85002;
+  --cliente-accent-strong: #c10801;
+  --cliente-accent-soft: rgba(232, 80, 2, 0.14);
+  --cliente-accent-glow: rgba(232, 80, 2, 0.2);
+  --cliente-accent-secondary-glow: rgba(217, 12, 58, 0.12);
+  --cliente-input-bg: rgba(0, 0, 0, 0.28);
+  --cliente-surface-muted: rgba(255, 255, 255, 0.03);
+  --cliente-shadow-soft: 0 20px 50px rgba(0, 0, 0, 0.26);
+  --cliente-shadow-hard: 0 28px 80px rgba(0, 0, 0, 0.44);
 }
 
 [data-client-theme="light"] {
-  --cliente-bg: #f5f8fc;
+  --cliente-bg: #f9f9f9;
   --cliente-bg-elevated: #ffffff;
-  --cliente-panel: rgba(255, 255, 255, 0.82);
+  --cliente-panel: rgba(255, 255, 255, 0.9);
   --cliente-panel-solid: #ffffff;
-  --cliente-panel-soft: rgba(248, 250, 252, 0.92);
-  --cliente-card: rgba(15, 23, 42, 0.84);
-  --cliente-card-text: #f8fbff;
-  --cliente-card-text-muted: rgba(226, 232, 240, 0.78);
-  --cliente-card-text-soft: rgba(203, 213, 225, 0.56);
-  --cliente-sidebar: rgba(247, 250, 255, 0.96);
-  --cliente-sidebar-card: rgba(255, 255, 255, 0.92);
-  --cliente-topbar: rgba(247, 250, 255, 0.82);
-  --cliente-border: rgba(15, 23, 42, 0.08);
-  --cliente-border-strong: rgba(59, 130, 246, 0.24);
-  --cliente-text: #0f172a;
-  --cliente-text-muted: rgba(15, 23, 42, 0.76);
-  --cliente-text-soft: rgba(51, 65, 85, 0.6);
-  --cliente-accent: #2563eb;
-  --cliente-accent-strong: #1d4ed8;
-  --cliente-accent-soft: rgba(37, 99, 235, 0.12);
-  --cliente-accent-glow: rgba(59, 130, 246, 0.14);
-  --cliente-accent-secondary-glow: rgba(14, 165, 233, 0.1);
-  --cliente-shadow-soft: 0 18px 48px rgba(15, 23, 42, 0.08);
-  --cliente-shadow-hard: 0 24px 60px rgba(15, 23, 42, 0.12);
+  --cliente-panel-soft: rgba(255, 255, 255, 0.92);
+  --cliente-card: rgba(255, 255, 255, 0.94);
+  --cliente-card-text: #000000;
+  --cliente-card-text-muted: rgba(0, 0, 0, 0.84);
+  --cliente-card-text-soft: rgba(100, 100, 100, 0.9);
+  --cliente-sidebar: rgba(249, 249, 249, 0.97);
+  --cliente-sidebar-card: rgba(255, 255, 255, 0.94);
+  --cliente-topbar: rgba(249, 249, 249, 0.9);
+  --cliente-border: rgba(100, 100, 100, 0.18);
+  --cliente-border-strong: rgba(232, 80, 2, 0.32);
+  --cliente-text: #000000;
+  --cliente-text-muted: rgba(0, 0, 0, 0.8);
+  --cliente-text-soft: rgba(100, 100, 100, 0.88);
+  --cliente-accent: #e85002;
+  --cliente-accent-strong: #c10801;
+  --cliente-accent-soft: rgba(232, 80, 2, 0.1);
+  --cliente-accent-glow: rgba(232, 80, 2, 0.12);
+  --cliente-accent-secondary-glow: rgba(217, 12, 58, 0.08);
+  --cliente-input-bg: rgba(255, 255, 255, 0.94);
+  --cliente-surface-muted: rgba(0, 0, 0, 0.025);
+  --cliente-shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.06);
+  --cliente-shadow-hard: 0 24px 54px rgba(0, 0, 0, 0.1);
 }
 
 @theme inline {
@@ -78,7 +82,7 @@ img[alt="ALTUM"] { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.35)); }
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
 [data-client-theme] * {
@@ -109,6 +113,21 @@ body {
 
 .client-glass {
   backdrop-filter: blur(18px);
+}
+
+.client-surface-muted {
+  background: var(--cliente-surface-muted);
+  border-color: var(--cliente-border);
+}
+
+.client-input {
+  background: var(--cliente-input-bg);
+  border-color: var(--cliente-border);
+  color: var(--cliente-card-text);
+}
+
+.client-input::placeholder {
+  color: var(--cliente-card-text-soft);
 }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {

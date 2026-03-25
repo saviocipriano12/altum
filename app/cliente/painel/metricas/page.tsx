@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -387,7 +387,7 @@ export default function ClienteMetricasPage() {
   if (loading) {
     return (
       <div className="flex min-h-[45vh] items-center justify-center">
-        <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+        <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
@@ -410,8 +410,8 @@ export default function ClienteMetricasPage() {
                 onClick={() => handleRangeChange(option)}
                 className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${
                   rangeDays === option
-                    ? "border-blue-400/30 bg-blue-500/15 text-blue-100"
-                    : "border-white/10 bg-white/[0.03] text-white/72 hover:bg-white/[0.06]"
+                    ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+                    : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-panel-soft)]"
                 }`}
               >
                 {option} dias
@@ -422,7 +422,7 @@ export default function ClienteMetricasPage() {
                 type="button"
                 onClick={handleSyncCampaigns}
                 disabled={syncing}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-medium text-white/72 transition hover:bg-white/[0.06] disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
               >
                 {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 Sync campanha
@@ -492,12 +492,12 @@ export default function ClienteMetricasPage() {
                 <Link
                   key={item.id}
                   href={item.href}
-                  className="block rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                  className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{item.title}</p>
-                      <p className="mt-1 text-sm text-white/60">{item.detail}</p>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
                     </div>
                     <StateBadge label={item.badge} tone={item.tone} />
                   </div>
@@ -541,23 +541,23 @@ export default function ClienteMetricasPage() {
       <section className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
         <PanelCard className="p-5">
           <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Leitura operacional do tenant para contextualizar os KPIs desta janela." />
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-white">{businessProfile.description}</p>
-                <p className="mt-2 text-sm text-white/58">Movimento central: {businessProfile.commercialMotion}</p>
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{businessProfile.description}</p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">Movimento central: {businessProfile.commercialMotion}</p>
               </div>
               <StateBadge label={businessProfile.id} tone="info" />
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Metricas naturais</p>
-                <p className="mt-2 text-sm text-white/72">{businessProfile.metrics.join(" · ")}</p>
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Metricas naturais</p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.metrics.join(" Â· ")}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Campos que mais pesam no CRM</p>
-                <p className="mt-2 text-sm text-white/72">{businessProfile.crm.leadFields.join(" · ")}</p>
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Campos que mais pesam no CRM</p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.crm.leadFields.join(" Â· ")}</p>
               </div>
             </div>
           </div>
@@ -565,10 +565,10 @@ export default function ClienteMetricasPage() {
 
         <PanelCard className="p-5">
           <CardTitle title="Leitura executiva do modo" subtitle="Como interpretar desempenho deste tenant a partir do perfil operacional ativo." />
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <ul className="space-y-2 text-sm text-white/68">
+          <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+            <ul className="space-y-2 text-sm text-[var(--cliente-card-text-muted)]">
               <li>Olhe primeiro para: {businessProfile.metrics.slice(0, 2).join(" e ")}.</li>
-              <li>O atendimento deve conduzir o lead para: {businessProfile.pipeline.stages.slice(1, 3).join(" → ")}.</li>
+              <li>O atendimento deve conduzir o lead para: {businessProfile.pipeline.stages.slice(1, 3).join(" â†’ ")}.</li>
               <li>O CRM precisa capturar contexto em: {businessProfile.crm.leadFields.slice(0, 3).join(", ")}.</li>
             </ul>
           </div>
@@ -624,13 +624,13 @@ export default function ClienteMetricasPage() {
                 <Link
                   key={owner.ownerId}
                   href={`/cliente/painel/inbox?assignedUser=${encodeURIComponent(owner.ownerId)}`}
-                  className="block rounded-2xl border border-white/10 bg-black/30 px-4 py-3 transition hover:bg-white/[0.04]"
+                  className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{owner.ownerName}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-white/40">
-                        {owner.activeChats} chats ativos • {owner.totalLeads} leads no periodo
+                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                        {owner.activeChats} chats ativos â€¢ {owner.totalLeads} leads no periodo
                       </p>
                     </div>
                     <StateBadge
@@ -638,7 +638,7 @@ export default function ClienteMetricasPage() {
                       tone={owner.winRate >= 20 ? "success" : owner.winRate > 0 ? "info" : "neutral"}
                     />
                   </div>
-                  <div className="mt-3 grid gap-2 text-sm text-white/62 sm:grid-cols-3">
+                  <div className="mt-3 grid gap-2 text-sm text-[var(--cliente-card-text-muted)] sm:grid-cols-3">
                     <div>
                       Ganhos: <span className="text-white">{owner.wonLeads}</span>
                     </div>
@@ -649,7 +649,7 @@ export default function ClienteMetricasPage() {
                       SLA vencido: <span className="text-white">{owner.overdueChats}</span>
                     </div>
                   </div>
-                  <div className="mt-2 text-xs text-white/48">
+                  <div className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
                     Handoffs: <span className="text-white">{owner.handoffChats}</span>
                   </div>
                 </Link>
@@ -669,14 +669,18 @@ export default function ClienteMetricasPage() {
           <CardTitle title="Canais de atendimento" subtitle="Distribuicao atual das conversas por canal" />
           <div className="mt-4 space-y-2">
             {channelOperations.length === 0 ? (
-              <p className="text-sm text-white/55">Nenhum canal conversacional encontrado.</p>
+              <p className="text-sm text-[var(--cliente-card-text-muted)]">Nenhum canal conversacional encontrado.</p>
             ) : (
               channelOperations.map((channel) => (
-                <Link key={channel.channel} href={`/cliente/painel/inbox?channel=${encodeURIComponent(channel.channel)}`} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 transition hover:bg-white/[0.06]">
+                <Link
+                  key={channel.channel}
+                  href={`/cliente/painel/inbox?channel=${encodeURIComponent(channel.channel)}`}
+                  className="flex items-center justify-between rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
+                >
                   <div>
                     <p className="text-sm font-medium text-white">{channelLabel(channel.channel)}</p>
-                    <p className="text-xs text-white/48">
-                      {channel.activeChats} ativos • {channel.unassignedChats} sem dono • {channel.overdueChats} em SLA
+                    <p className="text-xs text-[var(--cliente-card-text-soft)]">
+                      {channel.activeChats} ativos â€¢ {channel.unassignedChats} sem dono â€¢ {channel.overdueChats} em SLA
                     </p>
                   </div>
                   <StateBadge
@@ -699,9 +703,9 @@ export default function ClienteMetricasPage() {
               <MetricTile label="Handoffs" value={String(metrics.handoffChats || 0)} tone="warning" />
             </Link>
           </div>
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-xs uppercase tracking-[0.14em] text-white/50">Leitura rapida</p>
-            <p className="mt-2 text-sm text-white/68">
+          <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+            <p className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Leitura rapida</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
               {Number(metrics.siteChatConversations || 0) > 0
                 ? "O site chat ja participa da operacao e deve entrar na rotina de monitoramento do inbox."
                 : "Ainda nao ha conversas de site chat ativas nesta base."}
@@ -719,18 +723,18 @@ export default function ClienteMetricasPage() {
 
           <div className="mt-4 space-y-3">
             {trafficSeries.length === 0 ? (
-              <p className="text-sm text-white/55">Sem serie para o periodo selecionado.</p>
+              <p className="text-sm text-[var(--cliente-card-text-muted)]">Sem serie para o periodo selecionado.</p>
             ) : (
               trafficSeries.map((point) => (
                 <div key={point.key} className="grid grid-cols-[60px_1fr_auto] items-center gap-3">
-                  <span className="text-xs text-white/45">{point.label}</span>
-                  <div className="h-2 rounded-full bg-white/10">
+                  <span className="text-xs text-[var(--cliente-card-text-soft)]">{point.label}</span>
+                  <div className="h-2 rounded-full bg-[var(--cliente-border)]">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"
+                      className="h-full rounded-full bg-gradient-to-r from-[var(--cliente-accent)] to-[#f16001]"
                       style={{ width: `${Math.max(4, (point.spend / maxSpend) * 100)}%` }}
                     />
                   </div>
-                  <span className="text-xs text-white/65">
+                  <span className="text-xs text-[var(--cliente-card-text-muted)]">
                     {currency(point.spend)} | {point.leads} leads
                   </span>
                 </div>
@@ -741,7 +745,7 @@ export default function ClienteMetricasPage() {
 
         <PanelCard className="p-5">
           <CardTitle title="Performance de trafego" subtitle="Resumo consolidado da janela selecionada" />
-          <div className="mt-4 overflow-hidden rounded-xl border border-white/10">
+          <div className="mt-4 overflow-hidden rounded-xl border border-[var(--cliente-border)]">
             <table className="w-full text-sm">
               <tbody>
                 <Row label="Impressoes" value={String(traffic.impressions || 0)} />
@@ -773,21 +777,25 @@ export default function ClienteMetricasPage() {
           <CardTitle title="Funil comercial" subtitle="Distribuicao por etapa e valor potencial" />
           <div className="mt-4 space-y-3">
             {funnel.length === 0 ? (
-              <p className="text-sm text-white/55">Sem dados de funil para este tenant.</p>
+              <p className="text-sm text-[var(--cliente-card-text-muted)]">Sem dados de funil para este tenant.</p>
             ) : (
               funnel.map((stage) => (
-                <Link key={stage.stage} href={`/cliente/painel/crm?stage=${encodeURIComponent(stage.stage)}`} className="block rounded-2xl border border-white/10 bg-white/[0.03] p-3 transition hover:bg-white/[0.06]">
+                <Link
+                  key={stage.stage}
+                  href={`/cliente/painel/crm?stage=${encodeURIComponent(stage.stage)}`}
+                  className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
+                >
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="font-medium text-white">{stage.label}</span>
-                    <span className="text-white/60">{stage.total} leads</span>
+                    <span className="text-[var(--cliente-card-text-muted)]">{stage.total} leads</span>
                   </div>
-                  <div className="mt-2 h-2 rounded-full bg-white/10">
+                  <div className="mt-2 h-2 rounded-full bg-[var(--cliente-border)]">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-300"
+                      className="h-full rounded-full bg-gradient-to-r from-[var(--cliente-accent)] to-[#f59d6d]"
                       style={{ width: `${Math.max(4, (stage.total / maxFunnel) * 100)}%` }}
                     />
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-xs text-white/52">
+                  <div className="mt-2 flex items-center justify-between text-xs text-[var(--cliente-card-text-soft)]">
                     <span>Volume relativo do funil</span>
                     <span>{currency(Number(stage.value || 0))}</span>
                   </div>
@@ -801,14 +809,18 @@ export default function ClienteMetricasPage() {
           <CardTitle title="Canais com retorno" subtitle="Origem, volume e taxa de ganho" />
           <div className="mt-4 space-y-2">
             {channels.length === 0 ? (
-              <p className="text-sm text-white/55">Ainda nao ha canais suficientes para comparacao.</p>
+              <p className="text-sm text-[var(--cliente-card-text-muted)]">Ainda nao ha canais suficientes para comparacao.</p>
             ) : (
               channels.map((channel) => (
-                <Link key={channel.channel} href={`/cliente/painel/inbox?channel=${encodeURIComponent(channel.channel)}`} className="block rounded-2xl border border-white/10 bg-white/[0.03] p-3 transition hover:bg-white/[0.06]">
+                <Link
+                  key={channel.channel}
+                  href={`/cliente/painel/inbox?channel=${encodeURIComponent(channel.channel)}`}
+                  className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
+                >
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium text-white">{channelLabel(channel.channel)}</p>
-                      <p className="text-xs text-white/48">{channel.total} leads na janela atual</p>
+                      <p className="text-xs text-[var(--cliente-card-text-soft)]">{channel.total} leads na janela atual</p>
                     </div>
                     <StateBadge
                       label={`${channel.won} ganhos`}
@@ -844,7 +856,7 @@ export default function ClienteMetricasPage() {
             </Link>
           </div>
 
-          <div className="mt-4 overflow-hidden rounded-xl border border-white/10">
+          <div className="mt-4 overflow-hidden rounded-xl border border-[var(--cliente-border)]">
             <table className="w-full text-sm">
               <tbody>
                 <Row label="Confianca media" value={percent(Number((ai.avgConfidence || 0) * 100))} />
@@ -858,9 +870,9 @@ export default function ClienteMetricasPage() {
 
         <PanelCard className="p-5">
           <CardTitle title="Leitura executiva" subtitle="Resumo para gestor em uma unica vista" />
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-xs uppercase tracking-[0.14em] text-white/50">Diagnostico rapido</p>
-            <ul className="mt-3 space-y-2 text-sm text-white/68">
+          <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+            <p className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Diagnostico rapido</p>
+            <ul className="mt-3 space-y-2 text-sm text-[var(--cliente-card-text-muted)]">
               <li>
                 {Number(metrics.conversionRate || 0) >= 15
                   ? "Conversao do funil acima da linha minima esperada."
@@ -886,9 +898,9 @@ export default function ClienteMetricasPage() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <tr className="border-b border-white/10 last:border-none">
-      <td className="px-3 py-2 text-white/58">{label}</td>
-      <td className="px-3 py-2 text-right font-medium text-white/92">{value}</td>
+    <tr className="border-b border-[var(--cliente-border)] last:border-none">
+      <td className="px-3 py-2 text-[var(--cliente-card-text-muted)]">{label}</td>
+      <td className="px-3 py-2 text-right font-medium text-[var(--cliente-card-text)]">{value}</td>
     </tr>
   );
 }
@@ -905,10 +917,10 @@ function InsightCard({
   detail: string;
 }) {
   const content = (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]">
-      <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">{title}</p>
-      <p className="mt-2 text-sm font-semibold text-white">{value}</p>
-      <p className="mt-1 text-xs text-white/52">{detail}</p>
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]">
+      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{title}</p>
+      <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">{value}</p>
+      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
     </div>
   );
 
@@ -918,9 +930,9 @@ function InsightCard({
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-      <p className="text-[11px] uppercase tracking-[0.14em] text-white/44">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-white">{value}</p>
+    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-[var(--cliente-card-text)]">{value}</p>
     </div>
   );
 }
@@ -935,12 +947,14 @@ function MetricTile({
   tone: "neutral" | "success" | "warning" | "danger" | "info";
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-white">{label}</p>
+        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{label}</p>
         <StateBadge label={label} tone={tone} />
       </div>
-      <p className="mt-3 text-2xl font-semibold text-white">{value}</p>
+      <p className="mt-3 text-2xl font-semibold text-[var(--cliente-card-text)]">{value}</p>
     </div>
   );
 }
+
+

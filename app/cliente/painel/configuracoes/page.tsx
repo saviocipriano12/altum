@@ -425,7 +425,7 @@ export default function ClienteConfiguracoesPage() {
 
       {loading ? (
         <div className="flex min-h-[30vh] items-center justify-center">
-          <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+          <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
         </div>
       ) : null}
 
@@ -438,11 +438,11 @@ export default function ClienteConfiguracoesPage() {
           <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
             <PanelCard className="p-5">
               <CardTitle title="Prontidao do tenant" subtitle="Checklist rapido para operar CRM, inbox, IA e automacoes." />
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Score de prontidao</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">{effectiveReadinessScore}%</p>
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Score de prontidao</p>
+                    <p className="mt-2 text-2xl font-semibold text-[var(--cliente-card-text)]">{effectiveReadinessScore}%</p>
                   </div>
                   <StateBadge
                     label={
@@ -465,9 +465,9 @@ export default function ClienteConfiguracoesPage() {
                     }
                   />
                 </div>
-                <div className="mt-3 h-2 rounded-full bg-white/10">
+                <div className="mt-3 h-2 rounded-full bg-[var(--cliente-border)]">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"
+                    className="h-full rounded-full bg-gradient-to-r from-[var(--cliente-accent)] to-[var(--cliente-accent-strong)]"
                     style={{ width: `${Math.max(6, effectiveReadinessScore)}%` }}
                   />
                 </div>
@@ -484,9 +484,9 @@ export default function ClienteConfiguracoesPage() {
                 <ReadinessRow label="Usuarios online" value={String(summary.onlineUsers)} tone={summary.onlineUsers > 0 ? "success" : "warning"} />
                 <ReadinessRow label="Times configurados" value={String(summary.managedTeams || summary.teamsConfigured)} tone={(summary.managedTeams || summary.teamsConfigured) > 0 ? "info" : "warning"} />
               </div>
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Sinal de go-live</p>
-                <p className="mt-2 text-sm text-white/68">
+              <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Sinal de go-live</p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
                   {effectivePilotReady
                     ? "Este tenant ja atingiu o minimo seguro para entrar em piloto com cliente real."
                     : "Ainda faltam alguns pontos minimos para colocar o tenant em piloto com seguranca."}
@@ -545,12 +545,12 @@ export default function ClienteConfiguracoesPage() {
                   <Link
                     key={item.id}
                     href={item.href}
-                    className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                    className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-white">{item.title}</p>
-                        <p className="mt-1 text-sm text-white/58">{item.description}</p>
+                        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                        <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.description}</p>
                       </div>
                       <StateBadge label={item.badge} tone={item.tone} />
                     </div>
@@ -572,12 +572,12 @@ export default function ClienteConfiguracoesPage() {
                     <Link
                       key={item.id}
                       href={item.href}
-                      className="block rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                      className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-white">{item.title}</p>
-                          <p className="mt-1 text-sm text-white/60">{item.description}</p>
+                          <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                          <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.description}</p>
                         </div>
                         <StateBadge label={item.badge} tone={item.tone} />
                       </div>
@@ -594,12 +594,12 @@ export default function ClienteConfiguracoesPage() {
                   <Link
                     key={item.id}
                     href={item.href}
-                    className="block rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                    className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-white">{item.title}</p>
-                        <p className="mt-1 text-sm text-white/60">{item.description}</p>
+                        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                        <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.description}</p>
                       </div>
                       <StateBadge label={item.badge} tone={item.tone} />
                     </div>
@@ -649,26 +649,26 @@ export default function ClienteConfiguracoesPage() {
                   href={item.href}
                   className={`rounded-2xl border p-4 transition ${
                     item.featured
-                      ? "border-blue-500/20 bg-blue-600/10 hover:bg-blue-600/14"
-                      : "border-white/10 bg-[#0E0E0E] hover:bg-white/[0.05]"
+                      ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] hover:brightness-95"
+                      : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] hover:bg-[var(--cliente-panel-soft)]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div
                       className={`inline-flex rounded-lg border p-2 ${
                         item.featured
-                          ? "border-blue-200/40 bg-blue-200/10 text-blue-100"
-                          : "border-white/10 bg-black/40 text-white/80"
+                          ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)] text-white"
+                          : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)]"
                       }`}
                     >
                       <Icon className="h-4 w-4" />
                     </div>
                     <StateBadge label={item.badge} tone={item.tone} />
                   </div>
-                  <h3 className={`mt-3 text-base font-semibold ${item.featured ? "text-blue-50" : "text-white"}`}>
+                  <h3 className={`mt-3 text-base font-semibold ${item.featured ? "text-[var(--cliente-accent)]" : "text-[var(--cliente-card-text)]"}`}>
                     {item.title}
                   </h3>
-                  <p className={`mt-1 text-sm ${item.featured ? "text-blue-100/80" : "text-white/60"}`}>
+                  <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
                     {item.description}
                   </p>
                 </Link>
@@ -691,9 +691,9 @@ function ReadinessRow({
   tone: "neutral" | "success" | "warning" | "danger" | "info";
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-white/68">{label}</p>
+        <p className="text-sm text-[var(--cliente-card-text-muted)]">{label}</p>
         <StateBadge label={value} tone={tone} />
       </div>
     </div>
@@ -702,9 +702,9 @@ function ReadinessRow({
 
 function Insight({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="mt-2 text-sm text-white/58">{description}</p>
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
+      <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{description}</p>
     </div>
   );
 }
@@ -721,10 +721,10 @@ function ShortcutCard({
   return (
     <Link
       href={href}
-      className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+      className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
     >
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="mt-2 text-sm text-white/58">{detail}</p>
+      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
+      <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{detail}</p>
     </Link>
   );
 }

@@ -6,9 +6,9 @@ import { LucideIcon } from "lucide-react";
 type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
 
 const BADGE_TONE: Record<BadgeTone, string> = {
-  neutral: "border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-card-text-muted)]",
-  success: "border-emerald-400/20 bg-emerald-500/10 text-emerald-500 dark:text-emerald-100",
-  warning: "border-amber-400/20 bg-amber-500/10 text-amber-600 dark:text-amber-100",
+  neutral: "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)]",
+  success: "border-emerald-400/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-100",
+  warning: "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]",
   danger: "border-rose-400/20 bg-rose-500/10 text-rose-600 dark:text-rose-100",
   info: "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]",
 };
@@ -36,7 +36,7 @@ export function SectionHeader({
     <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 className="text-lg font-semibold tracking-tight text-[var(--cliente-card-text)] md:text-xl">{title}</h2>
-        {subtitle ? <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
+        {subtitle ? <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
       </div>
       {action ? <div>{action}</div> : null}
     </header>

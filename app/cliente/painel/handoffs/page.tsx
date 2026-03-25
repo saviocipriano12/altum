@@ -511,7 +511,7 @@ export default function ClienteHandoffsPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[45vh] items-center justify-center text-white/60">
+      <div className="flex min-h-[45vh] items-center justify-center text-[var(--cliente-card-text-muted)]">
         <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     );
@@ -526,7 +526,7 @@ export default function ClienteHandoffsPage() {
           <button
             type="button"
             onClick={() => void loadData()}
-            className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-white transition hover:bg-white/[0.08]"
+            className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
           >
             Tentar novamente
           </button>
@@ -551,12 +551,12 @@ export default function ClienteHandoffsPage() {
                 key={item.id}
                 type="button"
                 onClick={item.action}
-                className="rounded-2xl border border-white/10 bg-black/30 p-4 text-left transition hover:border-white/15 hover:bg-white/[0.04]"
+                className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 text-left transition hover:bg-[var(--cliente-panel-soft)]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-white">{item.title}</p>
-                    <p className="mt-1 text-xs text-white/50">{item.detail}</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.detail}</p>
                   </div>
                   <StateBadge label={item.badge} tone={item.tone} />
                 </div>
@@ -585,34 +585,34 @@ export default function ClienteHandoffsPage() {
           />
 
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Movimento comercial</p>
-              <p className="mt-2 text-sm text-white/84">{businessProfile.commercialMotion}</p>
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Movimento comercial</p>
+              <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{businessProfile.commercialMotion}</p>
 
-              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Ao assumir, preserve</p>
+              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Ao assumir, preserve</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {businessProfile.ai.mandatoryQuestions.slice(0, 4).map((question) => (
-                  <span key={question} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/70">
+                  <span key={question} className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-1 text-xs text-[var(--cliente-card-text-muted)]">
                     {question}
                   </span>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Campos de CRM criticos</p>
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Campos de CRM criticos</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {businessProfile.crm.leadFields.slice(0, 6).map((field) => (
-                  <span key={field} className="rounded-full border border-blue-300/20 bg-blue-500/10 px-3 py-1 text-xs text-blue-100">
+                  <span key={field} className="rounded-full border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-1 text-xs text-[var(--cliente-accent)]">
                     {field}
                   </span>
                 ))}
               </div>
 
-              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Escalar sem perder contexto</p>
+              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Escalar sem perder contexto</p>
               <div className="mt-2 space-y-2">
                 {businessProfile.ai.escalationTopics.slice(0, 3).map((topic) => (
-                  <div key={topic} className="rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2 text-xs text-white/64">
+                  <div key={topic} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text-muted)]">
                     {topic}
                   </div>
                 ))}
@@ -625,12 +625,12 @@ export default function ClienteHandoffsPage() {
           <SectionHeader title="Playbook de takeover" subtitle="Cenas e ofertas que ajudam o humano a retomar a conversa sem parecer ruptura." />
           <div className="space-y-3">
             {playbookPreset.scripts.slice(0, 2).map((script) => (
-              <div key={`${script.situation}-${script.goal}`} className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <div key={`${script.situation}-${script.goal}`} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-medium text-white">{script.situation}</p>
                   <StateBadge label={script.goal} tone="info" />
                 </div>
-                <p className="mt-2 text-xs leading-6 text-white/58">{script.script}</p>
+                <p className="mt-2 text-xs leading-6 text-[var(--cliente-card-text-muted)]">{script.script}</p>
               </div>
             ))}
 
@@ -659,13 +659,13 @@ export default function ClienteHandoffsPage() {
           />
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <label className="xl:col-span-2 flex items-center gap-2 rounded-xl border border-white/10 bg-[#111111] px-3 py-2 text-sm text-white/70">
+            <label className="xl:col-span-2 flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
               <Search className="h-4 w-4" />
               <input
                 value={q}
                 onChange={(event) => updateQuery("q", event.target.value)}
                 placeholder="Buscar contato, motivo ou responsavel"
-                className="w-full bg-transparent text-sm outline-none placeholder:text-white/40"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
               />
             </label>
 
@@ -709,7 +709,7 @@ export default function ClienteHandoffsPage() {
                 <article
                   key={row.chatId}
                   className={`rounded-2xl border p-4 transition ${
-                    chatId === row.chatId ? "border-blue-500/25 bg-blue-600/10" : "border-white/10 bg-black/25 hover:bg-white/[0.04]"
+                    chatId === row.chatId ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]" : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] hover:bg-[var(--cliente-panel-soft)]"
                   }`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -720,7 +720,7 @@ export default function ClienteHandoffsPage() {
                         <StateBadge label={row.queueStatus} tone={row.queueStatus === "sla estourado" ? "danger" : "neutral"} />
                         <StateBadge label={row.priority} tone={row.priority === "alta" ? "warning" : "neutral"} />
                       </div>
-                      <p className="mt-1 text-xs text-white/46">
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                         {row.contactPhone || "Sem telefone"} {row.leadId ? `| lead ${row.leadId.slice(0, 8)}` : ""} | ultimo handoff {formatRelative(row.handoffTime)}
                       </p>
                     </div>
@@ -728,7 +728,7 @@ export default function ClienteHandoffsPage() {
                     <div className="flex flex-wrap gap-2">
                       <Link
                         href={`/cliente/painel/inbox?chatId=${encodeURIComponent(row.chatId)}&leadId=${encodeURIComponent(row.leadId || "")}`}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/84 transition hover:bg-white/[0.08]"
+                        className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                       >
                         <Inbox className="h-4 w-4" />
                         Abrir inbox
@@ -736,7 +736,7 @@ export default function ClienteHandoffsPage() {
                       <button
                         type="button"
                         onClick={() => updateQuery("chatId", chatId === row.chatId ? null : row.chatId)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-xs font-medium text-white/70 transition hover:bg-white/[0.08]"
+                        className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)]"
                       >
                         Focar
                       </button>
@@ -744,18 +744,18 @@ export default function ClienteHandoffsPage() {
                   </div>
 
                   <div className="mt-3 grid gap-3 lg:grid-cols-[1.4fr_1fr]">
-                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Motivo do handoff</p>
-                      <p className="mt-2 text-sm text-white/84">{row.handoffReason}</p>
-                      <p className="mt-2 line-clamp-2 text-xs text-white/46">{row.preview || "Sem preview recente da conversa."}</p>
+                    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Motivo do handoff</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{row.handoffReason}</p>
+                      <p className="mt-2 line-clamp-2 text-xs text-[var(--cliente-card-text-soft)]">{row.preview || "Sem preview recente da conversa."}</p>
                     </div>
 
-                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Owner humano</p>
+                    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Owner humano</p>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <div>
                           <p className="text-sm font-medium text-white">{row.humanOwnerName}</p>
-                          <p className="mt-1 text-xs text-white/46">
+                          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                             {row.humanOwnerTeam
                               ? `${row.humanOwnerTeam}${row.assignedUserId && row.assignedUserId !== row.humanOwnerUserId ? " • fila atribuida para outro owner" : ""}`
                               : row.assignedUserId && row.assignedUserId !== row.humanOwnerUserId
@@ -774,7 +774,7 @@ export default function ClienteHandoffsPage() {
                     </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-white/42">
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--cliente-card-text-soft)]">
                     <span>Ultima atividade {formatDateTime(row.lastMessageTime || row.handoffTime)}</span>
                     <span>{row.unreadCount ? `${row.unreadCount} nao lidas` : "sem backlog de leitura"}</span>
                   </div>
@@ -820,9 +820,9 @@ export default function ClienteHandoffsPage() {
             <div className="space-y-3">
               {handoffReasons.length ? (
                 handoffReasons.map((item) => (
-                  <div key={item.reason} className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                  <div key={item.reason} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm text-white/84">{item.reason}</p>
+                      <p className="text-sm text-[var(--cliente-card-text)]">{item.reason}</p>
                       <StateBadge label={String(item.total)} tone="warning" />
                     </div>
                   </div>
@@ -842,12 +842,12 @@ export default function ClienteHandoffsPage() {
                     key={item.id}
                     type="button"
                     onClick={() => updateQuery("owner", item.id === "unassigned" ? null : item.id)}
-                    className="w-full rounded-2xl border border-white/10 bg-black/25 p-3 text-left transition hover:bg-white/[0.04]"
+                    className="w-full rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-left transition hover:bg-[var(--cliente-panel-soft)]"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-white">{item.name}</p>
-                        <p className="mt-1 text-xs text-white/46">
+                        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                           {item.id === "unassigned" ? "precisa de distribuicao" : `${item.urgent} prioritarios em aberto`}
                         </p>
                       </div>
@@ -920,7 +920,7 @@ function FilterSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="rounded-xl border border-white/10 bg-[#111111] px-3 py-2 text-xs text-white/45">
+    <label className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text-soft)]">
       <span className="block uppercase tracking-[0.16em]">{label}</span>
       <select
         value={value}
@@ -951,7 +951,9 @@ function FilterPill({
       type="button"
       onClick={onClick}
       className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
-        active ? "border-blue-500/25 bg-blue-600/10 text-blue-100" : "border-white/10 bg-white/[0.03] text-white/62 hover:bg-white/[0.06]"
+        active
+          ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+          : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)]"
       }`}
     >
       {label}
@@ -973,14 +975,14 @@ function QuickLink({
   return (
     <Link
       href={href}
-      className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/25 p-3 transition hover:bg-white/[0.04]"
+      className="flex items-start gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:bg-[var(--cliente-panel-soft)]"
     >
-      <span className="inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-2 text-white/76">
+      <span className="inline-flex rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-card-text)]">
         <Icon className="h-4 w-4" />
       </span>
       <span className="min-w-0">
         <span className="block text-sm font-medium text-white">{title}</span>
-        <span className="mt-1 block text-xs text-white/50">{description}</span>
+        <span className="mt-1 block text-xs text-[var(--cliente-card-text-soft)]">{description}</span>
       </span>
     </Link>
   );
@@ -1001,9 +1003,9 @@ function RiskRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-left transition hover:bg-white/[0.04]"
+      className="flex w-full items-center justify-between rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 text-left transition hover:bg-[var(--cliente-panel-soft)]"
     >
-      <span className="text-sm text-white/68">{label}</span>
+      <span className="text-sm text-[var(--cliente-card-text-muted)]">{label}</span>
       <StateBadge label={value} tone={tone} />
     </button>
   );

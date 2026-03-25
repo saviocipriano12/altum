@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -613,7 +613,7 @@ export default function ClienteCaptacaoPage() {
   if (loading) {
     return (
       <div className="flex min-h-[45vh] items-center justify-center">
-        <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+        <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
@@ -637,7 +637,7 @@ export default function ClienteCaptacaoPage() {
         {focusSignals.length === 0 ? (
           <PanelCard className="p-4 xl:col-span-4">
             <p className="text-sm font-semibold text-white">Captacao sem alertas criticos</p>
-            <p className="mt-2 text-sm text-white/58">
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
               Os formularios e canais principais ja estao em um estado razoavel para operacao.
             </p>
           </PanelCard>
@@ -649,12 +649,12 @@ export default function ClienteCaptacaoPage() {
                 href={item.href}
                 target="_blank"
                 rel="noreferrer"
-                className="block rounded-2xl border border-white/10 bg-[#0E0E0E] p-4 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-white">{item.title}</p>
-                    <p className="mt-2 text-sm text-white/58">{item.detail}</p>
+                    <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
                   </div>
                   <StateBadge label={item.badge} tone={item.tone} />
                 </div>
@@ -663,12 +663,12 @@ export default function ClienteCaptacaoPage() {
               <Link
                 key={item.id}
                 href={item.href}
-                className="block rounded-2xl border border-white/10 bg-[#0E0E0E] p-4 transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-white">{item.title}</p>
-                    <p className="mt-2 text-sm text-white/58">{item.detail}</p>
+                    <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
                   </div>
                   <StateBadge label={item.badge} tone={item.tone} />
                 </div>
@@ -690,7 +690,7 @@ export default function ClienteCaptacaoPage() {
               <button
                 type="button"
                 onClick={applyBusinessPreset}
-                className="inline-flex items-center gap-2 rounded-xl border border-blue-400/25 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/15"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
               >
                 <Save className="h-3.5 w-3.5" />
                 Aplicar preset do modo
@@ -699,7 +699,7 @@ export default function ClienteCaptacaoPage() {
           </div>
         </div>
         <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_1fr]">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
             <p className="text-sm font-semibold text-white">Campos sugeridos para intake</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {businessProfile.crm.leadFields.map((field) => (
@@ -707,9 +707,9 @@ export default function ClienteCaptacaoPage() {
               ))}
             </div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
             <p className="text-sm font-semibold text-white">Movimento comercial esperado</p>
-            <p className="mt-3 text-sm text-white/60">{businessProfile.commercialMotion}</p>
+            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.commercialMotion}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {businessProfile.metrics.map((metric) => (
                 <StateBadge key={metric} label={metric} tone="info" />
@@ -727,7 +727,7 @@ export default function ClienteCaptacaoPage() {
               <button
                 type="button"
                 onClick={handleCreate}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/80 transition hover:bg-white/[0.08]"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Novo
@@ -746,18 +746,18 @@ export default function ClienteCaptacaoPage() {
                   onClick={() => setSelectedFormId(form.id)}
                   className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
                     selectedFormId === form.id
-                      ? "border-blue-300/35 bg-blue-400/10"
-                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                      ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
+                      : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] hover:bg-[var(--cliente-surface-muted)]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{form.name}</p>
-                      <p className="mt-1 text-xs text-white/52">{form.sourceLabel || "Formulario"}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{form.sourceLabel || "Formulario"}</p>
                     </div>
                     <StateBadge label={form.status || "draft"} tone={form.status === "active" ? "success" : form.status === "inactive" ? "warning" : "neutral"} />
                   </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-white/48">
+                  <div className="mt-3 flex items-center justify-between text-xs text-[var(--cliente-card-text-soft)]">
                     <span>{form.submissionsCount || 0} envios</span>
                     <span>{formatDate(form.lastSubmissionAt)}</span>
                   </div>
@@ -778,12 +778,12 @@ export default function ClienteCaptacaoPage() {
               <Field label="Nome" value={formState.name} onChange={(value) => setFormState((current) => ({ ...current, name: value }))} placeholder="Formulario principal" disabled={!canManage} />
               <Field label="Origem" value={formState.sourceLabel} onChange={(value) => setFormState((current) => ({ ...current, sourceLabel: value }))} placeholder="Landing page" disabled={!canManage} />
               <label className="block space-y-1">
-                <span className="text-xs uppercase tracking-[0.14em] text-white/55">Stage inicial</span>
+                <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Stage inicial</span>
                 <select
                   value={formState.defaultPipelineStage}
                   onChange={(event) => setFormState((current) => ({ ...current, defaultPipelineStage: event.target.value }))}
                   disabled={!canManage}
-                  className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                  className="client-input w-full rounded-xl px-3 py-2.5 text-sm"
                 >
                   {pipelineStages.map((stage) => (
                     <option key={stage.id} value={stage.id}>
@@ -793,12 +793,12 @@ export default function ClienteCaptacaoPage() {
                 </select>
               </label>
               <label className="block space-y-1">
-                <span className="text-xs uppercase tracking-[0.14em] text-white/55">Responsavel padrao</span>
+                <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Responsavel padrao</span>
                 <select
                   value={formState.defaultOwnerId}
                   onChange={(event) => setFormState((current) => ({ ...current, defaultOwnerId: event.target.value }))}
                   disabled={!canManage}
-                  className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                  className="client-input w-full rounded-xl px-3 py-2.5 text-sm"
                 >
                   <option value="">Distribuicao livre</option>
                   {users.map((user) => (
@@ -809,23 +809,23 @@ export default function ClienteCaptacaoPage() {
                 </select>
               </label>
               <label className="block space-y-1 md:col-span-2">
-                <span className="text-xs uppercase tracking-[0.14em] text-white/55">Descricao</span>
+                <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Descricao</span>
                 <textarea
                   value={formState.description}
                   onChange={(event) => setFormState((current) => ({ ...current, description: event.target.value }))}
                   disabled={!canManage}
                   placeholder="Explique onde este formulario sera usado e qual campanha alimenta este intake."
-                  className="min-h-[96px] w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                  className="client-input min-h-[96px] w-full rounded-2xl px-3 py-3 text-sm"
                 />
               </label>
               <Field label="Tags iniciais" value={formState.tagsInput} onChange={(value) => setFormState((current) => ({ ...current, tagsInput: value }))} placeholder="lp, meta_ads, topo_funil" disabled={!canManage} />
               <label className="block space-y-1">
-                <span className="text-xs uppercase tracking-[0.14em] text-white/55">Status</span>
+                <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Status</span>
                 <select
                   value={formState.status}
                   onChange={(event) => setFormState((current) => ({ ...current, status: event.target.value }))}
                   disabled={!canManage}
-                  className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                  className="client-input w-full rounded-xl px-3 py-2.5 text-sm"
                 >
                   {STATUS_OPTIONS.map((status) => (
                     <option key={status} value={status}>
@@ -838,13 +838,13 @@ export default function ClienteCaptacaoPage() {
               <Field label="CTA do formulario" value={formState.submitLabel} onChange={(value) => setFormState((current) => ({ ...current, submitLabel: value }))} placeholder="Enviar" disabled={!canManage} />
               <Field label="Rotulo do launcher" value={formState.widgetLauncherLabel} onChange={(value) => setFormState((current) => ({ ...current, widgetLauncherLabel: value }))} placeholder="Abrir chat" disabled={!canManage} />
               <label className="block space-y-1 md:col-span-2">
-                <span className="text-xs uppercase tracking-[0.14em] text-white/55">Mensagem inicial do widget</span>
+                <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Mensagem inicial do widget</span>
                 <textarea
                   value={formState.widgetGreeting}
                   onChange={(event) => setFormState((current) => ({ ...current, widgetGreeting: event.target.value }))}
                   disabled={!canManage}
                   placeholder="Digite sua mensagem para iniciar o atendimento."
-                  className="min-h-[96px] w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/35 disabled:opacity-60"
+                  className="client-input min-h-[96px] w-full rounded-2xl px-3 py-3 text-sm disabled:opacity-60"
                 />
               </label>
             </div>
@@ -880,11 +880,11 @@ export default function ClienteCaptacaoPage() {
               />
             </div>
 
-            <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="mt-5 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-white">Schema avancado do formulario</p>
-                  <p className="mt-1 text-sm text-white/56">
+                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
                     Crie etapas de qualificacao, campos condicionais e perguntas customizadas para cada tenant.
                   </p>
                 </div>
@@ -892,7 +892,7 @@ export default function ClienteCaptacaoPage() {
                   <button
                     type="button"
                     onClick={addField}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Novo campo
@@ -930,11 +930,11 @@ export default function ClienteCaptacaoPage() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="mt-5 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-white">Landing builder</p>
-                  <p className="mt-1 text-sm text-white/56">
+                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
                     Monte a narrativa da pagina publica com hero, prova, depoimentos e FAQ, mantendo o mesmo formulario.
                   </p>
                 </div>
@@ -974,7 +974,7 @@ export default function ClienteCaptacaoPage() {
                   disabled={!canManage}
                 />
                 <label className="block space-y-1 md:col-span-2">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Descricao do hero</span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Descricao do hero</span>
                   <textarea
                     value={formState.landing.heroDescription}
                     onChange={(event) =>
@@ -985,7 +985,7 @@ export default function ClienteCaptacaoPage() {
                     }
                     disabled={!canManage}
                     placeholder="Explique a proposta de valor da campanha e como o lead sera atendido."
-                    className="min-h-[110px] w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                    className="client-input min-h-[110px] w-full rounded-2xl px-3 py-3 text-sm placeholder:text-[var(--cliente-card-text-soft)]"
                   />
                 </label>
                 <Field
@@ -1013,7 +1013,7 @@ export default function ClienteCaptacaoPage() {
                   disabled={!canManage}
                 />
                 <label className="block space-y-1 md:col-span-2">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Descricao do card do formulario</span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Descricao do card do formulario</span>
                   <textarea
                     value={formState.landing.formCardDescription}
                     onChange={(event) =>
@@ -1024,14 +1024,14 @@ export default function ClienteCaptacaoPage() {
                     }
                     disabled={!canManage}
                     placeholder="Oriente o lead sobre o que acontece depois do envio."
-                    className="min-h-[96px] w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                    className="client-input min-h-[96px] w-full rounded-2xl px-3 py-3 text-sm placeholder:text-[var(--cliente-card-text-soft)]"
                   />
                 </label>
               </div>
 
               <div className="mt-4 grid gap-3 xl:grid-cols-2">
                 <label className="block space-y-1">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Highlights da oferta</span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Highlights da oferta</span>
                   <textarea
                     value={formState.landing.highlights.join("\n")}
                     onChange={(event) =>
@@ -1042,12 +1042,12 @@ export default function ClienteCaptacaoPage() {
                     }
                     disabled={!canManage}
                     placeholder={"Linha por linha.\nEx: Atendimento consultivo em minutos"}
-                    className="min-h-[150px] w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                    className="client-input min-h-[150px] w-full rounded-2xl px-3 py-3 text-sm placeholder:text-[var(--cliente-card-text-soft)]"
                   />
                 </label>
 
                 <label className="block space-y-1">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Metricas do hero</span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Metricas do hero</span>
                   <textarea
                     value={metricsToText(formState.landing.metrics)}
                     onChange={(event) =>
@@ -1058,12 +1058,12 @@ export default function ClienteCaptacaoPage() {
                     }
                     disabled={!canManage}
                     placeholder={"Uma por linha.\nFluxo: Site -> CRM -> Inbox"}
-                    className="min-h-[150px] w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                    className="client-input min-h-[150px] w-full rounded-2xl px-3 py-3 text-sm placeholder:text-[var(--cliente-card-text-soft)]"
                   />
                 </label>
 
                 <label className="block space-y-1">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Depoimentos</span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Depoimentos</span>
                   <textarea
                     value={testimonialsToText(formState.landing.testimonials)}
                     onChange={(event) =>
@@ -1074,12 +1074,12 @@ export default function ClienteCaptacaoPage() {
                     }
                     disabled={!canManage}
                     placeholder={'Uma por linha. Formato: "Quote" | Nome | Cargo'}
-                    className="min-h-[150px] w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                    className="client-input min-h-[150px] w-full rounded-2xl px-3 py-3 text-sm placeholder:text-[var(--cliente-card-text-soft)]"
                   />
                 </label>
 
                 <label className="block space-y-1">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">FAQ</span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">FAQ</span>
                   <textarea
                     value={faqToText(formState.landing.faq)}
                     onChange={(event) =>
@@ -1090,63 +1090,63 @@ export default function ClienteCaptacaoPage() {
                     }
                     disabled={!canManage}
                     placeholder={"Uma por linha. Formato: Pergunta | Resposta"}
-                    className="min-h-[150px] w-full rounded-2xl border border-white/12 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                    className="client-input min-h-[150px] w-full rounded-2xl px-3 py-3 text-sm placeholder:text-[var(--cliente-card-text-soft)]"
                   />
                 </label>
               </div>
 
-              <div className="mt-4 rounded-2xl border border-blue-400/15 bg-blue-500/[0.05] p-4">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-blue-100/72">Preview estrutural</p>
+              <div className="mt-4 rounded-2xl border border-[var(--cliente-accent)]/15 bg-[var(--cliente-accent-soft)] p-4">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-accent)]/80">Preview estrutural</p>
                 <div className="mt-3 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0f18] p-5">
-                    <p className="inline-flex rounded-full border border-blue-300/20 bg-blue-500/10 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-blue-100">
+                  <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel)] p-5">
+                    <p className="inline-flex rounded-full border border-[var(--cliente-accent)]/20 bg-[var(--cliente-accent-soft)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-accent)]">
                       {formState.landing.badge || "Lead intake premium"}
                     </p>
-                    <h3 className="mt-4 text-2xl font-semibold text-white">
-                      {formState.landing.heroTitle || formState.name || "Sua landing de captação"}
+                    <h3 className="mt-4 text-2xl font-semibold text-[var(--cliente-card-text)]">
+                      {formState.landing.heroTitle || formState.name || "Sua landing de captacao"}
                     </h3>
-                    <p className="mt-3 max-w-xl text-sm leading-6 text-white/64">
-                      {formState.landing.heroDescription || formState.description || "A narrativa da página pública aparecerá aqui."}
+                    <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                      {formState.landing.heroDescription || formState.description || "A narrativa da pagina publica aparecera aqui."}
                     </p>
                     <div className="mt-5 grid gap-3 md:grid-cols-3">
                       {formState.landing.metrics.map((metric, index) => (
-                        <div key={`${metric.label}_${index}`} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-                          <p className="text-[11px] uppercase tracking-[0.14em] text-white/42">{metric.label}</p>
-                          <p className="mt-2 text-sm font-medium text-white">{metric.value}</p>
+                        <div key={`${metric.label}_${index}`} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{metric.label}</p>
+                          <p className="mt-2 text-sm font-medium text-[var(--cliente-card-text)]">{metric.value}</p>
                         </div>
                       ))}
                     </div>
                     {formState.landing.highlights.length ? (
                       <div className="mt-5 grid gap-3 md:grid-cols-2">
                         {formState.landing.highlights.slice(0, 4).map((item) => (
-                          <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-sm text-white/74">
+                          <div key={item} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-sm text-[var(--cliente-card-text)]/84">
                             {item}
                           </div>
                         ))}
                       </div>
                     ) : null}
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-white/42">
+                  <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                       {formState.landing.formCardTitle || "Solicite um contato"}
                     </p>
-                    <p className="mt-3 text-sm leading-6 text-white/62">
-                      {formState.landing.formCardDescription || "O card do formulário aparecerá aqui."}
+                    <p className="mt-3 text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                      {formState.landing.formCardDescription || "O card do formulario aparecera aqui."}
                     </p>
                     <div className="mt-5 space-y-2">
                       {formState.landing.testimonials.slice(0, 2).map((item) => (
-                        <div key={`${item.author}_${item.quote}`} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-                          <p className="text-sm text-white/74">&ldquo;{item.quote}&rdquo;</p>
-                          <p className="mt-2 text-xs uppercase tracking-[0.14em] text-white/42">
+                        <div key={`${item.author}_${item.quote}`} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                          <p className="text-sm text-[var(--cliente-card-text)]/84">&ldquo;{item.quote}&rdquo;</p>
+                          <p className="mt-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                             {item.author}
                             {item.role ? ` · ${item.role}` : ""}
                           </p>
                         </div>
                       ))}
                       {formState.landing.faq.slice(0, 2).map((item) => (
-                        <div key={item.question} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-                          <p className="text-sm font-medium text-white">{item.question}</p>
-                          <p className="mt-2 text-sm text-white/58">{item.answer}</p>
+                        <div key={item.question} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                          <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.question}</p>
+                          <p className="mt-2 text-sm text-[var(--cliente-card-text-soft)]">{item.answer}</p>
                         </div>
                       ))}
                     </div>
@@ -1155,12 +1155,12 @@ export default function ClienteCaptacaoPage() {
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Pagina publica</p>
-              <p className="mt-2 break-all text-sm text-white/80">
+            <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Pagina publica</p>
+              <p className="mt-2 break-all text-sm text-[var(--cliente-card-text)]/90">
                 {publicUrl || "Salve o formulario para gerar a URL publica de captura."}
               </p>
-              <p className="mt-2 text-xs text-white/52">
+              <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
                 Use essa URL como landing direta. O envio publica no endpoint interno e entra no CRM com tenant isolado.
               </p>
               {publicUrl ? (
@@ -1168,7 +1168,7 @@ export default function ClienteCaptacaoPage() {
                   <button
                     type="button"
                     onClick={() => void copyValue("public", publicUrl)}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                   >
                     <Copy className="h-3.5 w-3.5" />
                     {copiedKey === "public" ? "Copiado" : "Copiar URL"}
@@ -1177,67 +1177,67 @@ export default function ClienteCaptacaoPage() {
                     href={publicUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     Abrir
                   </a>
                 </div>
               ) : null}
-              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-white/45">Embed iframe</p>
-              <pre className="mt-2 overflow-x-auto rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-white/72">
+              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Embed iframe</p>
+              <pre className="mt-2 overflow-x-auto rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-xs text-[var(--cliente-card-text)]/80">
                 {embedCode || "Salve o formulario para gerar o embed."}
               </pre>
               {embedCode ? (
                 <button
                   type="button"
                   onClick={() => void copyValue("embed", embedCode)}
-                  className="mt-2 inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                  className="mt-2 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   {copiedKey === "embed" ? "Copiado" : "Copiar embed"}
                 </button>
               ) : null}
-              <p className="mt-2 text-xs text-white/52">
+              <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
                 A pagina publica aceita UTMs, campos base e qualquer schema customizado salvo neste formulario.
               </p>
-              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-white/45">Launcher popup</p>
-              <pre className="mt-2 overflow-x-auto rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-white/72">
+              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Launcher popup</p>
+              <pre className="mt-2 overflow-x-auto rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-xs text-[var(--cliente-card-text)]/80">
                 {launcherCode || "Salve o formulario para gerar o launcher popup."}
               </pre>
               {launcherCode ? (
                 <button
                   type="button"
                   onClick={() => void copyValue("launcher", launcherCode)}
-                  className="mt-2 inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                  className="mt-2 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   {copiedKey === "launcher" ? "Copiado" : "Copiar launcher"}
                 </button>
               ) : null}
-              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-white/45">Widget iframe</p>
-              <pre className="mt-2 overflow-x-auto rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-white/72">
+              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Widget iframe</p>
+              <pre className="mt-2 overflow-x-auto rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-xs text-[var(--cliente-card-text)]/80">
                 {widgetCode || "Salve o formulario para gerar o widget."}
               </pre>
               {widgetCode ? (
                 <button
                   type="button"
                   onClick={() => void copyValue("widget", widgetCode)}
-                  className="mt-2 inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                  className="mt-2 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   {copiedKey === "widget" ? "Copiado" : "Copiar widget"}
                 </button>
               ) : null}
-              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-white/45">Botao WhatsApp</p>
-              <pre className="mt-2 overflow-x-auto rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-white/72">
+              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Botao WhatsApp</p>
+              <pre className="mt-2 overflow-x-auto rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-xs text-[var(--cliente-card-text)]/80">
                 {whatsappCode || "Configure um canal WhatsApp ativo para gerar o botao direto."}
               </pre>
               {whatsappCode ? (
                 <button
                   type="button"
                   onClick={() => void copyValue("whatsapp", whatsappCode)}
-                  className="mt-2 inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                  className="mt-2 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   {copiedKey === "whatsapp" ? "Copiado" : "Copiar botao"}
@@ -1251,7 +1251,7 @@ export default function ClienteCaptacaoPage() {
                   type="button"
                   onClick={() => void handleSave()}
                   disabled={saving || !formState.name.trim()}
-                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-55"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-55"
                 >
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Salvar formulario
@@ -1279,29 +1279,29 @@ export default function ClienteCaptacaoPage() {
 
             <div className="mt-4 space-y-2">
               {submissions.length === 0 ? (
-                <p className="text-sm text-white/52">Ainda nao ha envios recentes para exibir.</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Ainda nao ha envios recentes para exibir.</p>
               ) : (
                 submissions.map((submission) => (
-                  <div key={submission.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                  <div key={submission.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-white">{submission.leadName}</p>
-                        <p className="mt-1 text-xs text-white/52">{submission.email || submission.phone || "Sem contato"}</p>
+                        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{submission.email || submission.phone || "Sem contato"}</p>
                       </div>
                       <StateBadge label={submission.sourceLabel || submission.formName} tone="neutral" />
                     </div>
-                    <p className="mt-2 text-xs text-white/48">{submission.formName}</p>
-                    <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-white/34">{formatDate(submission.createdAt)}</p>
+                    <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{submission.formName}</p>
+                    <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]/80">{formatDate(submission.createdAt)}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Link
                         href={`/cliente/painel/crm?leadId=${encodeURIComponent(submission.leadId)}`}
-                        className="rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                        className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                       >
                         Abrir CRM
                       </Link>
                       <Link
                         href={`/cliente/painel/inbox?leadId=${encodeURIComponent(submission.leadId)}`}
-                        className="rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                        className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                       >
                         Abrir Inbox
                       </Link>
@@ -1317,15 +1317,15 @@ export default function ClienteCaptacaoPage() {
               <CardTitle title="Top origens" subtitle="UTM source ou origem declarada do formulario" />
               <div className="mt-4 space-y-2">
                 {topSources.length === 0 ? (
-                  <p className="text-sm text-white/52">Sem atribuicao de origem ainda.</p>
+                  <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem atribuicao de origem ainda.</p>
                 ) : (
                   topSources.map((item) => (
                     <Link
                       key={item.label}
                       href={`/cliente/painel/crm?source=${encodeURIComponent(item.label)}`}
-                      className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:bg-white/[0.06]"
+                      className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 transition hover:bg-[var(--cliente-surface-hover)]"
                     >
-                      <span className="text-sm text-white/78">{item.label}</span>
+                      <span className="text-sm text-[var(--cliente-card-text)]/84">{item.label}</span>
                       <StateBadge label={`${item.total} leads`} tone="neutral" />
                     </Link>
                   ))
@@ -1337,11 +1337,11 @@ export default function ClienteCaptacaoPage() {
               <CardTitle title="Top campanhas" subtitle="UTM campaign mais recorrentes na captura" />
               <div className="mt-4 space-y-2">
                 {topCampaigns.length === 0 ? (
-                  <p className="text-sm text-white/52">Sem campanhas identificadas ainda.</p>
+                  <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem campanhas identificadas ainda.</p>
                 ) : (
                   topCampaigns.map((item) => (
-                    <div key={item.label} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-                      <span className="text-sm text-white/78">{item.label}</span>
+                    <div key={item.label} className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
+                      <span className="text-sm text-[var(--cliente-card-text)]/84">{item.label}</span>
                       <StateBadge label={`${item.total} entradas`} tone="info" />
                     </div>
                   ))
@@ -1353,20 +1353,20 @@ export default function ClienteCaptacaoPage() {
               <CardTitle title="Performance por formulario" subtitle="Quais assets estao puxando mais entrada" />
               <div className="mt-4 space-y-2">
                 {formPerformance.length === 0 ? (
-                  <p className="text-sm text-white/52">Sem performance registrada ainda.</p>
+                  <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem performance registrada ainda.</p>
                 ) : (
                   formPerformance.map((item) => (
-                    <div key={item.id} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+                    <div key={item.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2.5">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-medium text-white">{item.name}</p>
                         <StateBadge label={`${item.total} envios`} tone="success" />
                       </div>
-                      <p className="mt-1 text-xs text-white/48">{formatDate(item.lastSubmissionAt)}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDate(item.lastSubmissionAt)}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => setSelectedFormId(item.id)}
-                          className="rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                          className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                         >
                           Editar formulario
                         </button>
@@ -1375,7 +1375,7 @@ export default function ClienteCaptacaoPage() {
                             href={`${siteOrigin}/f/${item.id}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/82 transition hover:bg-white/[0.08]"
+                            className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                           >
                             Abrir pagina publica
                           </a>
@@ -1409,13 +1409,13 @@ function Field(props: {
 }) {
   return (
     <label className="block space-y-1">
-      <span className="text-xs uppercase tracking-[0.14em] text-white/55">{props.label}</span>
+      <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{props.label}</span>
       <input
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
         disabled={props.disabled}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-blue-300/35 focus:bg-black/45 disabled:opacity-60"
+        className="client-input w-full rounded-xl px-3 py-2.5 text-sm placeholder:text-[var(--cliente-card-text-soft)] disabled:opacity-60"
       />
     </label>
   );
@@ -1442,14 +1442,14 @@ function CaptureFieldCard(props: {
   const availableDependencies = props.fields.filter((item) => item.id !== props.field.id);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-white">
             Campo {props.index + 1}: {props.field.label}
           </p>
-          <p className="mt-1 text-xs text-white/48">
-            ID: {props.field.id} • etapa {props.field.step || 1}
+          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+            ID: {props.field.id} · etapa {props.field.step || 1}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1457,7 +1457,7 @@ function CaptureFieldCard(props: {
             type="button"
             onClick={() => props.onMove(props.field.id, "up")}
             disabled={props.disabled || props.index === 0}
-            className="rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/78 transition hover:bg-white/[0.08] disabled:opacity-50"
+            className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)]/84 transition hover:bg-[var(--cliente-surface-hover)] disabled:opacity-50"
           >
             Subir
           </button>
@@ -1465,7 +1465,7 @@ function CaptureFieldCard(props: {
             type="button"
             onClick={() => props.onMove(props.field.id, "down")}
             disabled={props.disabled || props.index === props.fields.length - 1}
-            className="rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/78 transition hover:bg-white/[0.08] disabled:opacity-50"
+            className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)]/84 transition hover:bg-[var(--cliente-surface-hover)] disabled:opacity-50"
           >
             Descer
           </button>
@@ -1500,12 +1500,12 @@ function CaptureFieldCard(props: {
           disabled={props.disabled}
         />
         <label className="block space-y-1">
-          <span className="text-xs uppercase tracking-[0.14em] text-white/55">Tipo</span>
+          <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Tipo</span>
           <select
             value={props.field.type}
             onChange={(event) => props.onUpdate(props.field.id, { type: event.target.value as CaptureFieldType })}
             disabled={props.disabled}
-            className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+            className="client-input w-full rounded-xl px-3 py-2.5 text-sm"
           >
             {FIELD_TYPE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -1536,7 +1536,7 @@ function CaptureFieldCard(props: {
           disabled={props.disabled}
         />
         <label className="block space-y-1">
-          <span className="text-xs uppercase tracking-[0.14em] text-white/55">Dependencia</span>
+          <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Dependencia</span>
           <select
             value={props.field.showWhenFieldId || ""}
             onChange={(event) =>
@@ -1546,7 +1546,7 @@ function CaptureFieldCard(props: {
               })
             }
             disabled={props.disabled}
-            className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+            className="client-input w-full rounded-xl px-3 py-2.5 text-sm"
           >
             <option value="">Sempre visivel</option>
             {availableDependencies.map((option) => (
@@ -1611,17 +1611,18 @@ function ToggleTile(props: {
       onClick={() => !props.disabled && props.onChange(!props.checked)}
       disabled={props.disabled}
       className={`rounded-2xl border p-4 text-left transition ${
-        props.checked ? "border-blue-300/30 bg-blue-400/[0.08]" : "border-white/10 bg-white/[0.03]"
+        props.checked ? "border-[var(--cliente-accent)]/25 bg-[var(--cliente-accent-soft)]" : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)]"
       } disabled:opacity-60`}
     >
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-white">{props.label}</p>
-          <p className="mt-2 text-xs leading-5 text-white/56">{props.description}</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{props.description}</p>
         </div>
         <StateBadge label={props.checked ? "ativo" : "desligado"} tone={props.checked ? "success" : "neutral"} />
       </div>
     </button>
   );
 }
+
 

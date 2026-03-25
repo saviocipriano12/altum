@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { CheckCircle2, CircleDashed, Loader2, Rocket, ShieldCheck, TriangleAlert } from "lucide-react";
@@ -38,7 +38,7 @@ export default function ClienteGoLivePage() {
     {
       id: "capture",
       title: "Publicar uma entrada real",
-      description: "Abra a landing ou formulÃƒÂ¡rio pÃƒÂºblico, envie um lead teste e confirme a entrada no CRM.",
+      description: "Abra a landing ou formulÃƒÆ’Ã‚Â¡rio pÃƒÆ’Ã‚Âºblico, envie um lead teste e confirme a entrada no CRM.",
       href: "/cliente/painel/captacao",
       done: Number(readiness?.summary?.activeForms || 0) > 0 || Number(readiness?.summary?.activeChannels || 0) > 0,
     },
@@ -52,7 +52,7 @@ export default function ClienteGoLivePage() {
     {
       id: "ai",
       title: "Revisar cobertura do agente",
-      description: "Confirmar handoff, responsÃƒÂ¡vel e base de conhecimento antes do primeiro lead real.",
+      description: "Confirmar handoff, responsÃƒÆ’Ã‚Â¡vel e base de conhecimento antes do primeiro lead real.",
       href: "/cliente/painel/ia",
       done:
         readiness?.summary?.pilotReady === true ||
@@ -61,7 +61,7 @@ export default function ClienteGoLivePage() {
     {
       id: "commercial",
       title: "Fechar o ciclo comercial",
-      description: "Mover lead no pipeline, gerar proposta, cobranÃƒÂ§a e registrar follow-up.",
+      description: "Mover lead no pipeline, gerar proposta, cobranÃƒÆ’Ã‚Â§a e registrar follow-up.",
       href: "/cliente/painel/comercial",
       done: readyModules >= 6,
     },
@@ -70,7 +70,7 @@ export default function ClienteGoLivePage() {
   if (loading && !readiness) {
     return (
       <div className="flex min-h-[45vh] items-center justify-center">
-        <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+        <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
@@ -79,19 +79,19 @@ export default function ClienteGoLivePage() {
     <div className="space-y-4">
       <SectionHeader
         title="Go-live"
-        subtitle="Checklist de prontidÃƒÂ£o, roteiro de piloto e mapa operacional para colocar o tenant em produÃƒÂ§ÃƒÂ£o com seguranÃƒÂ§a."
+        subtitle="Checklist de prontidÃƒÆ’Ã‚Â£o, roteiro de piloto e mapa operacional para colocar o tenant em produÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o com seguranÃƒÆ’Ã‚Â§a."
         action={<StateBadge label={pilotReady ? "piloto liberado" : `${blockerCount} pendencias`} tone={pilotReady ? "success" : toneForCount(blockerCount)} />}
       />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="ProntidÃƒÂ£o" value={`${readinessScore}%`} icon={Rocket} trend={pilotReady ? "tenant apto para piloto" : "fechamento antes do go-live"} />
+        <MetricCard label="ProntidÃƒÆ’Ã‚Â£o" value={`${readinessScore}%`} icon={Rocket} trend={pilotReady ? "tenant apto para piloto" : "fechamento antes do go-live"} />
         <MetricCard label="Bloqueios" value={String(blockerCount)} icon={TriangleAlert} trend={pilotReady ? "sem bloqueios criticos" : "itens impedindo lancamento"} />
-        <MetricCard label="Modulos prontos" value={String(readyModules)} icon={ShieldCheck} trend={`${partialModules} parciais Ã‚Â· ${pendingModules} pendentes`} />
+        <MetricCard label="Modulos prontos" value={String(readyModules)} icon={ShieldCheck} trend={`${partialModules} parciais Ãƒâ€šÃ‚Â· ${pendingModules} pendentes`} />
         <MetricCard
           label="Operacao"
           value={`${readiness?.summary?.activeUsers || 0} users`}
           icon={CheckCircle2}
-          trend={`SLA ${inboxRules?.defaultResponseSlaMinutes || 15} min Â· ${businessProfile.label}`}
+          trend={`SLA ${inboxRules?.defaultResponseSlaMinutes || 15} min Ã‚Â· ${businessProfile.label}`}
         />
       </section>
 
@@ -119,16 +119,16 @@ export default function ClienteGoLivePage() {
                 <Link
                   key={item.id}
                   href={item.href}
-                  className="block rounded-2xl border border-white/10 bg-black/30 p-4 transition hover:border-blue-300/25 hover:bg-white/[0.04]"
+                  className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <div className="mt-1 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/72">
+                      <div className="mt-1 flex h-7 w-7 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-xs font-semibold text-[var(--cliente-card-text-muted)]">
                         {index + 1}
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-white">{item.title}</p>
-                        <p className="mt-2 text-sm text-white/58">{item.description}</p>
+                        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                        <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.description}</p>
                       </div>
                     </div>
                     <StateBadge label={item.badge} tone={item.tone} />
@@ -149,7 +149,7 @@ export default function ClienteGoLivePage() {
                 className={`block rounded-2xl border p-4 transition ${
                   item.done
                     ? "border-emerald-400/18 bg-emerald-500/10 hover:bg-emerald-500/14"
-                    : "border-white/10 bg-black/30 hover:bg-white/[0.04]"
+                    : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] hover:bg-[var(--cliente-surface-muted)]"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -158,14 +158,14 @@ export default function ClienteGoLivePage() {
                       {item.done ? (
                         <CheckCircle2 className="h-5 w-5 text-emerald-200" />
                       ) : (
-                        <CircleDashed className="h-5 w-5 text-white/35" />
+                        <CircleDashed className="h-5 w-5 text-[var(--cliente-card-text-soft)]" />
                       )}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-white">
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">
                         {index + 1}. {item.title}
                       </p>
-                      <p className="mt-2 text-sm text-white/58">{item.description}</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.description}</p>
                     </div>
                   </div>
                   <StateBadge label={item.done ? "ok" : "validar"} tone={item.done ? "success" : "info"} />
@@ -187,12 +187,12 @@ export default function ClienteGoLivePage() {
               <Link
                 key={item.id}
                 href={item.href}
-                className="block rounded-2xl border border-white/10 bg-black/30 p-4 transition hover:border-blue-300/25 hover:bg-white/[0.04]"
+                className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-white">{item.title}</p>
-                    <p className="mt-2 text-sm text-white/58">{item.description}</p>
+                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                    <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.description}</p>
                   </div>
                   <StateBadge label={item.badge} tone={item.tone} />
                 </div>
@@ -203,32 +203,32 @@ export default function ClienteGoLivePage() {
 
         <div className="space-y-4">
           <PanelCard className="p-5">
-            <CardTitle title="Modo operacional" subtitle="Perfil vertical que orienta IA, CRM, pipeline, métricas e captação deste tenant." />
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
+            <CardTitle title="Modo operacional" subtitle="Perfil vertical que orienta IA, CRM, pipeline, mÃ©tricas e captaÃ§Ã£o deste tenant." />
+            <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-white">{businessProfile.label}</p>
-                  <p className="mt-2 text-sm text-white/58">{businessProfile.description}</p>
+                  <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{businessProfile.label}</p>
+                  <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.description}</p>
                 </div>
                 <StateBadge label={readiness?.settings?.businessProfileId || "generic"} tone="info" />
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Movimento comercial</p>
-                  <p className="mt-2 text-sm text-white/72">{businessProfile.commercialMotion}</p>
+                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Movimento comercial</p>
+                  <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.commercialMotion}</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Métricas naturais</p>
-                  <p className="mt-2 text-sm text-white/72">{businessProfile.metrics.join(" · ")}</p>
+                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">MÃ©tricas naturais</p>
+                  <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.metrics.join(" Â· ")}</p>
                 </div>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-3 text-xs">
-                <Link href="/cliente/painel/configuracoes/empresa" className="text-blue-200 transition hover:text-blue-100">
-                  Revisar modo do negócio
+                <Link href="/cliente/painel/configuracoes/empresa" className="text-[var(--cliente-accent)] transition hover:brightness-95">
+                  Revisar modo do negÃ³cio
                 </Link>
-                <Link href="/cliente/painel/ia" className="text-white/58 transition hover:text-white/82">
+                <Link href="/cliente/painel/ia" className="text-[var(--cliente-card-text-soft)] transition hover:text-[var(--cliente-card-text)]">
                   Ajustar agente para este modo
                 </Link>
               </div>
@@ -241,9 +241,12 @@ export default function ClienteGoLivePage() {
                 <EmptyState title="Sem insights" description="Quando o tenant tiver mais contexto operacional, os alertas aparecem aqui." />
               ) : (
                 insights.map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                    <p className="text-sm font-semibold text-white">{item.title}</p>
-                    <p className="mt-2 text-sm text-white/58">{item.description}</p>
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4"
+                  >
+                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                    <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.description}</p>
                   </div>
                 ))
               )}
@@ -254,16 +257,20 @@ export default function ClienteGoLivePage() {
             <CardTitle title="Proxima fase" subtitle="Itens que ainda valem aprofundamento depois do piloto." />
             {nextBuildItems.length === 0 ? (
               <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-                Nenhum bloco estrutural grande pendente neste momento. O foco agora pode ser piloto, refinamento e integraÃƒÂ§ÃƒÂµes futuras.
+                Nenhum bloco estrutural grande pendente neste momento. O foco agora pode ser piloto, refinamento e integraÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes futuras.
               </div>
             ) : (
               <div className="mt-4 space-y-3">
                 {nextBuildItems.map((item) => (
-                  <Link key={item.id} href={item.href} className="block rounded-2xl border border-white/10 bg-black/30 p-4 transition hover:bg-white/[0.04]">
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-white">{item.title}</p>
-                        <p className="mt-2 text-sm text-white/58">{item.description}</p>
+                        <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.description}</p>
                       </div>
                       <StateBadge label={item.badge} tone={item.tone} />
                     </div>
@@ -277,5 +284,6 @@ export default function ClienteGoLivePage() {
     </div>
   );
 }
+
 
 

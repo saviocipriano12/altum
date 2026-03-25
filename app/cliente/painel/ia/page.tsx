@@ -601,8 +601,8 @@ export default function ClienteIaPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[45vh] items-center justify-center text-white">
-        <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+      <div className="flex min-h-[45vh] items-center justify-center text-[var(--cliente-card-text)]">
+        <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
@@ -611,8 +611,8 @@ export default function ClienteIaPage() {
     <div className="space-y-4">
       <SectionHeader
         title="IA"
-        subtitle="Console de governanca, conhecimento e rastreabilidade do agente por tenant."
-        action={<StateBadge label={settings.enabled ? "autopilot ativo" : "autopilot pausado"} tone={settings.enabled ? "success" : "warning"} />}
+        subtitle="Configure o agente, revise a base comercial e acompanhe como ele esta decidindo na pratica."
+        action={<StateBadge label={settings.enabled ? "IA automatica ativa" : "IA automatica pausada"} tone={settings.enabled ? "success" : "warning"} />}
       />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -642,29 +642,29 @@ export default function ClienteIaPage() {
               <button
                 type="button"
                 onClick={applyBusinessProfileDefaults}
-                className="inline-flex items-center gap-2 rounded-xl border border-blue-400/25 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/15"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:bg-[var(--cliente-accent-soft)]"
               >
                 <Save className="h-3.5 w-3.5" />
-                Aplicar defaults do modo
+                Aplicar sugestoes do modo
               </button>
             ) : null}
           </div>
         </div>
         <div className="mt-4 grid gap-3 xl:grid-cols-4">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 xl:col-span-2">
-            <p className="text-sm font-semibold text-white">Objetivo sugerido</p>
-            <p className="mt-2 text-sm text-white/64">{businessProfile.ai.objective}</p>
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 xl:col-span-2">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Objetivo sugerido</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.ai.objective}</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-sm font-semibold text-white">Perguntas obrigatorias</p>
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Perguntas obrigatorias</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {businessProfile.ai.mandatoryQuestions.slice(0, 4).map((question) => (
                 <StateBadge key={question} label={question} tone="neutral" />
               ))}
             </div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-sm font-semibold text-white">Guardrails centrais</p>
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Guardrails centrais</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {businessProfile.ai.guardrails.slice(0, 3).map((rule) => (
                 <StateBadge key={rule} label={rule} tone="warning" />
@@ -674,25 +674,25 @@ export default function ClienteIaPage() {
         </div>
 
         <div className="mt-3 grid gap-3 xl:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-sm font-semibold text-white">Cenas de conversa sugeridas</p>
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Cenas de conversa sugeridas</p>
             <div className="mt-3 space-y-2">
               {playbookPreset.scripts.slice(0, 3).map((item) => (
-                <div key={item.situation} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                  <p className="text-sm font-medium text-white">{item.situation}</p>
-                  <p className="mt-1 text-xs text-white/55">{item.goal}</p>
+                <div key={item.situation} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                  <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.situation}</p>
+                  <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">{item.goal}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-sm font-semibold text-white">Ofertas que o agente deve preparar</p>
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Ofertas que o agente deve preparar</p>
             <div className="mt-3 space-y-2">
               {playbookPreset.offers.slice(0, 3).map((item) => (
-                <div key={item.title} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                  <p className="text-sm font-medium text-white">{item.title}</p>
-                  <p className="mt-1 text-xs text-white/55">{item.category} · {item.targetProfile}</p>
+                <div key={item.title} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                  <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.title}</p>
+                  <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">{item.category} · {item.targetProfile}</p>
                 </div>
               ))}
             </div>
@@ -702,12 +702,12 @@ export default function ClienteIaPage() {
 
       <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PanelCard className="p-5">
-          <CardTitle title="Centro de acoes" subtitle="Ajustes rapidos guiados pelo comportamento atual do agente" />
+          <CardTitle title="Ajustes rapidos" subtitle="Sinais que pedem atencao antes de continuar refinando o agente" />
           <div className="mt-4 space-y-3">
             {actionSignals.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <p className="text-sm font-semibold text-white">Sem alertas criticos no console</p>
-                <p className="mt-2 text-sm text-white/58">
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Sem alertas criticos no console</p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
                   O agente esta sem sinais relevantes de risco, base ociosa ou handoff excessivo nesta leitura.
                 </p>
               </div>
@@ -717,12 +717,12 @@ export default function ClienteIaPage() {
                   key={item.id}
                   type="button"
                   onClick={item.action}
-                  className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition hover:border-blue-300/25 hover:bg-blue-400/[0.06]"
+                  className="w-full rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 text-left transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{item.title}</p>
-                      <p className="mt-1 text-sm text-white/60">{item.detail}</p>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
                     </div>
                     <StateBadge label={item.badge} tone={item.tone} />
                   </div>
@@ -733,7 +733,7 @@ export default function ClienteIaPage() {
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Contexto aplicado" subtitle="Filtros e governanca ativos nesta revisao" />
+          <CardTitle title="Contexto desta leitura" subtitle="Recortes e filtros ativos nesta revisao" />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <IaContext title="Filtro de logs" value={decisionFilter === "all" ? "Todos" : decisionLabel(decisionFilter)} detail="decisao observada" />
             <IaContext title="Risco" value={logRiskFilter === "all" ? "Todos" : logRiskFilter} detail="recorte analitico" />
@@ -745,7 +745,7 @@ export default function ClienteIaPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <PanelCard className="p-5">
-          <CardTitle title="Saude do agente" subtitle="Leitura executiva do autopilot por tenant" />
+          <CardTitle title="Saude do agente" subtitle="Leitura executiva do comportamento atual da IA no tenant" />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <HealthTile
               label="Modo operacional"
@@ -781,23 +781,23 @@ export default function ClienteIaPage() {
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             <Link
               href="/cliente/painel/inbox"
-              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+              className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
               <span>Ir para inbox operacional</span>
-              <span className="text-white/40">→</span>
+              <span className="text-[var(--cliente-card-text-soft)]">→</span>
             </Link>
             <Link
               href="/cliente/painel/automacoes"
-              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/82 transition hover:bg-white/[0.06]"
+              className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
               <span>Revisar automacoes</span>
-              <span className="text-white/40">→</span>
+              <span className="text-[var(--cliente-card-text-soft)]">→</span>
             </Link>
           </div>
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Leitura de decisao" subtitle="Como o agente tem decidido na pratica" />
+          <CardTitle title="Leitura de decisao" subtitle="Como a IA esta respondendo, pedindo contexto e escalando para humano" />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <HealthTile label="Respondeu" value={String(logSummary.responded)} detail="respostas enviadas" tone="success" />
             <HealthTile label="Pediu contexto" value={String(logSummary.askMore)} detail="qualificacao adicional" tone="info" />
@@ -825,21 +825,21 @@ export default function ClienteIaPage() {
         <PanelCard className="p-5">
           <form onSubmit={handleSaveSettings} className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/65">Governanca da IA</h3>
-              <span className="inline-flex items-center gap-1 text-xs text-white/60">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Configuracao essencial da IA</h3>
+              <span className="inline-flex items-center gap-1 text-xs text-[var(--cliente-card-text-soft)]">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                Configuracao viva
+                Configuracao ativa
               </span>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              <label className="block text-xs text-white/70">
-                Nivel de IA
+              <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+                Nivel de autonomia da IA
                 <select
                   value={settings.tier || "growth"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, tier: event.target.value as AiSettings["tier"] }))}
                   disabled={!canManage}
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none disabled:opacity-60"
+                  className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 >
                   <option value="essential">Essential</option>
                   <option value="growth">Growth</option>
@@ -849,13 +849,13 @@ export default function ClienteIaPage() {
                 </select>
               </label>
 
-              <label className="block text-xs text-white/70">
+              <label className="block text-xs text-[var(--cliente-card-text-soft)]">
                 Autonomia
                 <select
                   value={settings.autonomyMode || "hybrid"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, autonomyMode: event.target.value as AiSettings["autonomyMode"] }))}
                   disabled={!canManage}
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none disabled:opacity-60"
+                  className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 >
                   <option value="copilot">Copilot</option>
                   <option value="hybrid">Hybrid</option>
@@ -865,13 +865,13 @@ export default function ClienteIaPage() {
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              <label className="block text-xs text-white/70">
-                Nivel de raciocinio
+              <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+                Profundidade de raciocinio
                 <select
                   value={settings.reasoningLevel || "balanced"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, reasoningLevel: event.target.value as AiSettings["reasoningLevel"] }))}
                   disabled={!canManage}
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none disabled:opacity-60"
+                  className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 >
                   <option value="fast">Fast</option>
                   <option value="balanced">Balanced</option>
@@ -879,13 +879,13 @@ export default function ClienteIaPage() {
                 </select>
               </label>
 
-              <label className="block text-xs text-white/70">
+              <label className="block text-xs text-[var(--cliente-card-text-soft)]">
                 Estilo de resposta
                 <select
                   value={settings.responseStyle || "consultative"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, responseStyle: event.target.value as AiSettings["responseStyle"] }))}
                   disabled={!canManage}
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none disabled:opacity-60"
+                  className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 >
                   <option value="concise">Concise</option>
                   <option value="consultative">Consultative</option>
@@ -897,14 +897,14 @@ export default function ClienteIaPage() {
 
             <div className="grid gap-3 md:grid-cols-2">
               <Field
-                label="Budget mensal IA (USD)"
+                label="Orcamento mensal da IA (USD)"
                 value={String(settings.monthlyBudgetUsd || 100)}
                 onChange={(value) => setSettings((prev) => ({ ...prev, monthlyBudgetUsd: Number(value) || 0 }))}
                 placeholder="100"
                 disabled={!canManage}
               />
               <Field
-                label="Limite mensal de uso"
+                label="Limite mensal de execucoes"
                 value={String(settings.monthlyUsageCap || 1500)}
                 onChange={(value) => setSettings((prev) => ({ ...prev, monthlyUsageCap: Number(value) || 0 }))}
                 placeholder="1500"
@@ -912,8 +912,8 @@ export default function ClienteIaPage() {
               />
             </div>
 
-            <label className="block text-xs text-white/70">
-              Providers preferidos
+            <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+              Motores preferidos
               <div className="mt-2 flex flex-wrap gap-2">
                 {[
                   { id: "altum_rules", label: "ALTUM Rules" },
@@ -945,8 +945,8 @@ export default function ClienteIaPage() {
                       }
                       className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
                         active
-                          ? "border-blue-400/30 bg-blue-500/10 text-blue-100"
-                          : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
+                          ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+                          : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)]"
                       } disabled:opacity-60`}
                     >
                       {provider.label}
@@ -956,68 +956,68 @@ export default function ClienteIaPage() {
               </div>
             </label>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <StateBadge label={tierLabel(settings.tier)} tone="info" />
                 <StateBadge label={settings.autonomyMode || "hybrid"} tone="neutral" />
                 <StateBadge label={settings.reasoningLevel || "balanced"} tone="neutral" />
                 <StateBadge label={responseStyleLabel(settings.responseStyle)} tone="success" />
               </div>
-              <p className="mt-3 text-sm text-white/72">
-                Runtime atual: {settings.runtimePolicy?.primaryProvider || "altum_rules"} / {settings.runtimePolicy?.conversationModel || "altum_rules_v1"}.
+              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
+                Motor atual da IA: {settings.runtimePolicy?.primaryProvider || "altum_rules"} / {settings.runtimePolicy?.conversationModel || "altum_rules_v1"}.
               </p>
-              <p className="mt-1 text-xs text-white/52">
-                Retrieval {settings.runtimePolicy?.retrievalMode || "keyword"} • tool calling {settings.runtimePolicy?.supportsToolCalling ? "ligado" : "desligado"} • budget {settings.runtimePolicy?.budgetMode || "balanced"}.
+              <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                Busca {settings.runtimePolicy?.retrievalMode || "keyword"} • tool calling {settings.runtimePolicy?.supportsToolCalling ? "ligado" : "desligado"} • budget {settings.runtimePolicy?.budgetMode || "balanced"}.
               </p>
             </div>
 
-            <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+            <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
               <input
                 type="checkbox"
                 checked={settings.enabled}
                 onChange={(event) => setSettings((prev) => ({ ...prev, enabled: event.target.checked }))}
                 disabled={!canManage}
               />
-              IA habilitada para respostas automaticas
+              IA habilitada para responder automaticamente
             </label>
 
-            <Field label="Tom de voz" value={settings.toneOfVoice} onChange={(value) => setSettings((prev) => ({ ...prev, toneOfVoice: value }))} placeholder="consultivo e objetivo" disabled={!canManage} />
-            <Field label="Resumo do negocio" value={settings.businessSummary} onChange={(value) => setSettings((prev) => ({ ...prev, businessSummary: value }))} placeholder="o que a empresa vende e para quem" disabled={!canManage} />
-            <Field label="Objetivo da IA" value={settings.objective || ""} onChange={(value) => setSettings((prev) => ({ ...prev, objective: value }))} placeholder="qualificar, agendar, orientar, converter" disabled={!canManage} />
+            <Field label="Tom de voz" value={settings.toneOfVoice} onChange={(value) => setSettings((prev) => ({ ...prev, toneOfVoice: value }))} placeholder="consultivo, claro e humano" disabled={!canManage} />
+            <Field label="Resumo do negocio" value={settings.businessSummary} onChange={(value) => setSettings((prev) => ({ ...prev, businessSummary: value }))} placeholder="o que a empresa vende, para quem e com qual foco" disabled={!canManage} />
+            <Field label="Objetivo principal da IA" value={settings.objective || ""} onChange={(value) => setSettings((prev) => ({ ...prev, objective: value }))} placeholder="qualificar, orientar, vender e encaminhar" disabled={!canManage} />
             <Field label="WhatsApp responsavel (handoff)" value={settings.responsiblePhone} onChange={(value) => setSettings((prev) => ({ ...prev, responsiblePhone: value }))} placeholder="5511999999999" disabled={!canManage} />
 
-            <label className="block text-xs text-white/70">
+            <label className="block text-xs text-[var(--cliente-card-text-soft)]">
               Guardrails (uma regra por linha)
               <textarea
                 value={guardrailsText}
                 onChange={(event) => setGuardrailsText(event.target.value)}
                 rows={5}
                 disabled={!canManage}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-blue-300/45 focus:ring disabled:opacity-60"
+                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
                 placeholder="Nao conceder desconto sem aprovacao\nNao prometer prazo sem validar operacao"
               />
             </label>
 
-            <label className="block text-xs text-white/70">
+            <label className="block text-xs text-[var(--cliente-card-text-soft)]">
               Perguntas obrigatorias da IA
               <textarea
                 value={mandatoryQuestionsText}
                 onChange={(event) => setMandatoryQuestionsText(event.target.value)}
                 rows={4}
                 disabled={!canManage}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-blue-300/45 focus:ring disabled:opacity-60"
+                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
                 placeholder="Qual o servico desejado?\nQual prazo voce precisa?\nQual faixa de investimento?"
               />
             </label>
 
-            <label className="block text-xs text-white/70">
+            <label className="block text-xs text-[var(--cliente-card-text-soft)]">
               Assuntos que exigem handoff humano
               <textarea
                 value={escalationTopicsText}
                 onChange={(event) => setEscalationTopicsText(event.target.value)}
                 rows={4}
                 disabled={!canManage}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-blue-300/45 focus:ring disabled:opacity-60"
+                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
                 placeholder="pedido de desconto especial\ncliente irritado\nnegociacao fora da politica"
               />
             </label>
@@ -1026,7 +1026,7 @@ export default function ClienteIaPage() {
               <button
                 type="submit"
                 disabled={savingSettings}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
               >
                 {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Salvar configuracoes
@@ -1038,20 +1038,20 @@ export default function ClienteIaPage() {
         <PanelCard className="p-5">
           <form onSubmit={handleAddKbDoc} className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/65">Base de conhecimento</h3>
-              <span className="inline-flex items-center gap-1 text-xs text-white/60">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Base de conhecimento</h3>
+              <span className="inline-flex items-center gap-1 text-xs text-[var(--cliente-card-text-soft)]">
                 <Sparkles className="h-3.5 w-3.5" />
                 {editingDocId ? "Editando documento" : "Conteudo vivo"}
               </span>
             </div>
 
-            <label className="block text-xs text-white/70">
+            <label className="block text-xs text-[var(--cliente-card-text-soft)]">
               Tipo
               <select
                 value={docType}
                 onChange={(event) => setDocType(event.target.value as KbDoc["type"])}
                 disabled={!canEditKb}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none disabled:opacity-60"
+                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
               >
                 <option value="faq">FAQ</option>
                 <option value="catalog">Catalogo</option>
@@ -1059,14 +1059,14 @@ export default function ClienteIaPage() {
               </select>
             </label>
 
-            <label className="block text-xs text-white/70">
+            <label className="block text-xs text-[var(--cliente-card-text-soft)]">
               Conteudo
               <textarea
                 value={docContent}
                 onChange={(event) => setDocContent(event.target.value)}
                 rows={6}
                 disabled={!canEditKb}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-blue-300/45 focus:ring disabled:opacity-60"
+                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
                 placeholder="Descreva produto, resposta pronta, politica ou informacoes comerciais"
               />
             </label>
@@ -1078,7 +1078,7 @@ export default function ClienteIaPage() {
                 <button
                   type="submit"
                   disabled={savingDoc || !docContent.trim()}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
                 >
                   {savingDoc ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {editingDocId ? "Atualizar documento" : "Adicionar documento"}
@@ -1092,7 +1092,7 @@ export default function ClienteIaPage() {
                       setDocContent("");
                       setDocTags("");
                     }}
-                    className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/82 transition hover:bg-white/[0.06]"
+                    className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
                   >
                     Cancelar edicao
                   </button>
@@ -1110,19 +1110,19 @@ export default function ClienteIaPage() {
             <StateBadge label={`${filteredDocs.length}/${kbDocs.length}`} tone="info" />
           </div>
           <div className="mt-4 grid gap-2 md:grid-cols-[minmax(0,1fr)_180px_180px]">
-            <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/72">
-              <Search className="h-4 w-4 text-white/40" />
+            <label className="client-input flex items-center gap-2 rounded-xl border px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
               <input
                 value={kbSearch}
                 onChange={(event) => setKbSearch(event.target.value)}
                 placeholder="Buscar por conteudo, tag ou tipo..."
-                className="w-full bg-transparent outline-none placeholder:text-white/30"
+                className="w-full bg-transparent outline-none placeholder:text-[var(--cliente-card-text-soft)]"
               />
             </label>
             <select
               value={kbTypeFilter}
               onChange={(event) => setKbTypeFilter(event.target.value as typeof kbTypeFilter)}
-              className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
             >
               <option value="all">Todos os tipos</option>
               <option value="faq">FAQ</option>
@@ -1132,7 +1132,7 @@ export default function ClienteIaPage() {
             <select
               value={kbUsageFilter}
               onChange={(event) => setKbUsageFilter(event.target.value as typeof kbUsageFilter)}
-              className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
             >
               <option value="all">Todos os docs</option>
               <option value="used">Em uso</option>
@@ -1192,14 +1192,14 @@ export default function ClienteIaPage() {
           </div>
           <div className="mt-4 space-y-2">
             {kbUsage.length === 0 ? (
-              <p className="text-sm text-white/45">Ainda nao ha dados de uso da base.</p>
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Ainda nao ha dados de uso da base.</p>
             ) : (
               kbUsage.map((item) => (
-                <div key={item.id} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                <div key={item.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-white">{item.type.toUpperCase()}</p>
-                      <p className="mt-1 text-xs text-white/50">{item.preview || "Documento sem preview."}</p>
+                      <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.type.toUpperCase()}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.preview || "Documento sem preview."}</p>
                     </div>
                     <StateBadge label={`${item.total} usos`} tone={item.total > 0 ? "success" : "neutral"} />
                   </div>
@@ -1218,12 +1218,12 @@ export default function ClienteIaPage() {
           </div>
           <div className="mt-4 space-y-2">
             {handoffReasons.length === 0 ? (
-              <p className="text-sm text-white/45">Ainda nao houve handoffs recentes com motivo consolidado.</p>
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Ainda nao houve handoffs recentes com motivo consolidado.</p>
             ) : (
               handoffReasons.map((item) => (
-                <div key={item.reason} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                <div key={item.reason} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm text-white/84">{item.reason}</p>
+                    <p className="text-sm text-[var(--cliente-card-text-muted)]">{item.reason}</p>
                     <StateBadge label={`${item.total}x`} tone="warning" />
                   </div>
                 </div>
@@ -1238,19 +1238,19 @@ export default function ClienteIaPage() {
             <StateBadge label={`${filteredLogs.length}/${logs.length} registros`} tone="info" />
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_220px_220px]">
-            <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/72">
-              <Search className="h-4 w-4 text-white/40" />
+            <label className="client-input flex items-center gap-2 rounded-xl border px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
               <input
                 value={logSearch}
                 onChange={(event) => setLogSearch(event.target.value)}
                 placeholder="Buscar por chat, motivo ou resposta..."
-                className="w-full bg-transparent outline-none placeholder:text-white/30"
+                className="w-full bg-transparent outline-none placeholder:text-[var(--cliente-card-text-soft)]"
               />
             </label>
             <select
               value={decisionFilter}
               onChange={(event) => setDecisionFilter(event.target.value as typeof decisionFilter)}
-              className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
             >
               <option value="all">Todas as decisoes</option>
               <option value="respond">Responder</option>
@@ -1261,7 +1261,7 @@ export default function ClienteIaPage() {
             <select
               value={logRiskFilter}
               onChange={(event) => setLogRiskFilter(event.target.value as typeof logRiskFilter)}
-              className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
             >
               <option value="all">Todos os riscos</option>
               <option value="low_confidence">Baixa confianca</option>
@@ -1270,14 +1270,14 @@ export default function ClienteIaPage() {
           </div>
           <div className="mt-3 space-y-2">
             {filteredLogs.length === 0 ? (
-              <p className="text-sm text-white/45">Nenhum log recente encontrado.</p>
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhum log recente encontrado.</p>
             ) : (
               filteredLogs.map((log) => (
-                <article key={log.id} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                <article key={log.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm font-medium text-white">Chat {log.chatId || "-"}</p>
-                      <p className="text-xs text-white/45">{formatDateTime(log.createdAt)} | motivo {log.reason || "-"}</p>
+                      <p className="text-sm font-medium text-[var(--cliente-card-text)]">Chat {log.chatId || "-"}</p>
+                      <p className="text-xs text-[var(--cliente-card-text-soft)]">{formatDateTime(log.createdAt)} | motivo {log.reason || "-"}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <StateBadge label={decisionLabel(log.decision)} tone={decisionTone(log.decision)} />
@@ -1286,56 +1286,56 @@ export default function ClienteIaPage() {
                   </div>
 
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
-                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Entrada</p>
-                      <p className="mt-2 text-sm text-white/80">{log.input || "Sem entrada registrada."}</p>
+                    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Entrada</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{log.input || "Sem entrada registrada."}</p>
                     </div>
-                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Saida</p>
-                      <p className="mt-2 text-sm text-white/80">{log.output || "Sem resposta enviada."}</p>
+                    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Saida</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{log.output || "Sem resposta enviada."}</p>
                     </div>
                   </div>
 
                   {log.nextAction || (log.extractedFields && Object.keys(log.extractedFields).length) ? (
                     <div className="mt-3 grid gap-2 md:grid-cols-[0.8fr_1.2fr]">
-                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                        <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Proximo passo sugerido</p>
-                        <p className="mt-2 text-sm text-white/80">{log.nextAction || "Sem sugestao operacional."}</p>
+                      <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Proximo passo sugerido</p>
+                        <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{log.nextAction || "Sem sugestao operacional."}</p>
                       </div>
-                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                        <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Campos extraidos</p>
+                      <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Campos extraidos</p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {Object.entries(log.extractedFields || {}).length ? (
                             Object.entries(log.extractedFields || {}).slice(0, 6).map(([field, value]) => (
-                              <span key={`${log.id}_${field}`} className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/70">
+                              <span key={`${log.id}_${field}`} className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]">
                                 {field}: {value}
                               </span>
                             ))
                           ) : (
-                            <span className="text-sm text-white/55">Sem estrutura extraida neste log.</span>
+                            <span className="text-sm text-[var(--cliente-card-text-soft)]">Sem estrutura extraida neste log.</span>
                           )}
                         </div>
                       </div>
                     </div>
                   ) : null}
 
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/50">
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--cliente-card-text-soft)]">
                     {log.chatId ? (
                       <Link
                         href={`/cliente/painel/inbox?chatId=${encodeURIComponent(log.chatId)}`}
-                        className="rounded-full border border-blue-400/20 bg-blue-500/10 px-2.5 py-1 text-blue-100 transition hover:bg-blue-500/15"
+                        className="rounded-full border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-2.5 py-1 text-[var(--cliente-accent)] transition hover:brightness-95"
                       >
                         abrir conversa
                       </Link>
                     ) : null}
-                    <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1">latencia {latencyLabel(log.latencyMs)}</span>
+                    <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1">latencia {latencyLabel(log.latencyMs)}</span>
                     {(log.matchedKbDocIds || []).slice(0, 3).map((docId) => (
-                      <span key={`${log.id}_${docId}`} className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1">
+                      <span key={`${log.id}_${docId}`} className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1">
                         kb {docId.slice(0, 10)}
                       </span>
                     ))}
                     {(log.toolCalls || []).slice(0, 3).map((tool) => (
-                      <span key={`${log.id}_${tool}`} className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1">
+                      <span key={`${log.id}_${tool}`} className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1">
                         {tool}
                       </span>
                     ))}
@@ -1365,13 +1365,13 @@ function HealthTile({
   tone: "neutral" | "success" | "warning" | "danger" | "info";
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-white">{label}</p>
+        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{label}</p>
         <StateBadge label={label} tone={tone} />
       </div>
-      <p className="mt-3 text-lg font-semibold text-white">{value}</p>
-      <p className="mt-1 text-xs text-white/52">{detail}</p>
+      <p className="mt-3 text-lg font-semibold text-[var(--cliente-card-text)]">{value}</p>
+      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
     </div>
   );
 }
@@ -1390,14 +1390,14 @@ function Field({
   disabled?: boolean;
 }) {
   return (
-    <label className="block text-xs text-white/70">
+    <label className="block text-xs text-[var(--cliente-card-text-soft)]">
       {label}
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none ring-blue-300/45 focus:ring disabled:opacity-60"
+        className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
       />
     </label>
   );
@@ -1413,10 +1413,10 @@ function IaContext({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-      <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">{title}</p>
-      <p className="mt-2 text-sm font-semibold text-white">{value}</p>
-      <p className="mt-1 text-xs text-white/52">{detail}</p>
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{title}</p>
+      <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">{value}</p>
+      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
     </div>
   );
 }
@@ -1439,21 +1439,21 @@ function DocColumn({
   onDelete: (docId: string) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-      <h4 className="text-xs uppercase tracking-wide text-white/60">{title}</h4>
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+      <h4 className="text-xs uppercase tracking-wide text-[var(--cliente-card-text-soft)]">{title}</h4>
       <div className="mt-2 space-y-2">
         {docs.map((doc) => (
-          <article key={doc.id} className="rounded-xl border border-white/10 bg-black/30 p-3">
-            <p className="line-clamp-4 text-xs text-white/85">{doc.content}</p>
-            <p className="mt-1 text-[10px] text-white/45">{doc.tags.join(", ") || "sem tags"}</p>
-            <p className="mt-1 text-[10px] text-white/35">{formatDateTime(doc.updatedAt || doc.createdAt)}</p>
+          <article key={doc.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+            <p className="line-clamp-4 text-xs text-[var(--cliente-card-text-muted)]">{doc.content}</p>
+            <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">{doc.tags.join(", ") || "sem tags"}</p>
+            <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">{formatDateTime(doc.updatedAt || doc.createdAt)}</p>
             {canEdit || canDelete ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {canEdit ? (
                   <button
                     type="button"
                     onClick={() => onEdit(doc)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-white/80 transition hover:bg-white/[0.06]"
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1.5 text-[11px] text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
                   >
                     <PencilLine className="h-3.5 w-3.5" />
                     Editar
@@ -1474,7 +1474,7 @@ function DocColumn({
             ) : null}
           </article>
         ))}
-        {docs.length === 0 ? <p className="text-xs text-white/45">Nenhum documento.</p> : null}
+        {docs.length === 0 ? <p className="text-xs text-[var(--cliente-card-text-soft)]">Nenhum documento.</p> : null}
       </div>
     </div>
   );
