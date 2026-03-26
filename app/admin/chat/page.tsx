@@ -1276,19 +1276,20 @@ export default function ChatPage() {
     const q = isAdmin
       ? query(ref, orderBy("lastMessageTime", "desc"), limit(300))
       : query(ref, where("ownerId", "==", profile.uid), orderBy("lastMessageTime", "desc"), limit(200));
-    return onSnapshot(q, (snap) => {
-      setAllChats(
-        snap.docs.map((d) => {
-          const data = d.data() as ChatDoc;
-          return {
-            id: d.id,
-            ...data,
-            priority: getSafePriority(data.priority),
-          } as ChatDoc;
-        })
-      );
-      setLoadingChats(false);
-    }, () => setLoadingChats(false));
+   return onSnapshot(q, (snap) => {
+  setAllChats(
+    snap.docs.map((d) => {
+      const data = d.data() as Omit<ChatDoc, "id"> & { id?: string };
+
+      return {
+        ...data,
+        id: d.id,
+        priority: getSafePriority(data.priority),
+      } as ChatDoc;
+    })
+  );
+  setLoadingChats(false);
+}, () => setLoadingChats(false));
   }, [authLoading, profile, isAdmin]);
 
   // ── Team users ────────────────────────────────────────────────
