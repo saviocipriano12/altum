@@ -8,6 +8,34 @@ type AdminChatMessageItem = {
   [key: string]: unknown;
 };
 
+function normalizeReactionUsers(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return [value.trim()];
+  }
+  return [] as string[];
+}
+
+function normalizeMessageItem(input: AdminChatMessageItem): AdminChatMessageItem {
+  const rawReactions = input.reactions;
+  const normalizedReactions =
+    rawReactions && typeof rawReactions === "object" && !Array.isArray(rawReactions)
+      ? Object.fromEntries(
+          Object.entries(rawReactions as Record<string, unknown>).map(([emoji, users]) => [
+            emoji,
+            normalizeReactionUsers(users),
+          ])
+        )
+      : {};
+
+  return {
+    ...input,
+    reactions: normalizedReactions,
+  };
+}
+
 function toMillis(value: unknown) {
   if (!value) return 0;
   if (typeof value === "number") return value;
@@ -48,6 +76,7 @@ export async function GET(req: Request, context: { params: Promise<{ chatId: str
         id: doc.id,
         ...(doc.data() as Record<string, unknown>),
       }))
+      .map((item) => normalizeMessageItem(item))
       .sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt));
 
     return NextResponse.json({

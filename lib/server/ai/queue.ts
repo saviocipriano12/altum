@@ -447,10 +447,8 @@ export async function processAiQueue(options?: { limit?: number }): Promise<Proc
 }
 
 export function triggerAiQueueWorker(options?: { limit?: number }) {
-  setImmediate(() => {
-    void processAiQueue(options).catch((error) => {
-      console.error("Erro no worker assincrono da fila de IA:", error);
-    });
+  void processAiQueue(options).catch((error) => {
+    console.error("Erro no worker assincrono local da fila de IA:", error);
   });
 
   const baseUrl =
@@ -463,17 +461,15 @@ export function triggerAiQueueWorker(options?: { limit?: number }) {
   const limit = Math.min(100, Math.max(1, options?.limit || DEFAULT_BATCH_LIMIT));
   const url = `${baseUrl.replace(/\/$/, "")}/api/internal/jobs/ai/process?limit=${limit}`;
 
-  setImmediate(() => {
-    void fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    }).catch((error) => {
-      console.error("Erro ao acionar endpoint interno da fila de IA:", error);
-    });
+  void fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    cache: "no-store",
+  }).catch((error) => {
+    console.error("Erro ao acionar endpoint interno da fila de IA:", error);
   });
 }
 

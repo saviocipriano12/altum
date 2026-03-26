@@ -85,6 +85,26 @@ function sortByCreatedAtDesc<T extends { createdAt?: TimestampLike }>(items: T[]
   return [...items].sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
 }
 
+function normalizeReactionUsers(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return [value.trim()];
+  }
+  return [] as string[];
+}
+
+function normalizeReactionMap(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {} as Record<string, string[]>;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([emoji, users]) => [emoji, normalizeReactionUsers(users)])
+  );
+}
+
 // ============================================================
 //  HOOKS
 // ============================================================
@@ -637,7 +657,7 @@ function MessageBubble({
   const isNote = message.type === "internal_note" || message.internal;
   const isTemplate = message.type === "template";
   const deleted = message.deleted;
-  const reactions = message.reactions || {};
+  const reactions = normalizeReactionMap(message.reactions);
   const reactionEntries = Object.entries(reactions).filter(([, users]) => users.length > 0);
   const myReactions = new Set(Object.entries(reactions).filter(([, u]) => u.includes(meUid || "")).map(([e]) => e));
 
@@ -1415,7 +1435,8 @@ export default function ChatPage() {
   async function toggleReaction(msgId: string, emoji: string) {
     if (!profile) return;
     const msg = messages.find((m) => m.id === msgId);
-    const has = !!msg?.reactions?.[emoji]?.includes(profile.uid);
+    const currentUsers = normalizeReactionUsers(msg?.reactions?.[emoji]);
+    const has = currentUsers.includes(profile.uid);
     await updateDoc(doc(db, "messages", msgId), {
       [`reactions.${emoji}`]: has ? arrayRemove(profile.uid) : arrayUnion(profile.uid),
     });
