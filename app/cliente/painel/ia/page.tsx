@@ -7,6 +7,7 @@ import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
 import { getBusinessProfile, getBusinessProfilePlaybookPreset, type BusinessProfileId } from "@/lib/business-profiles";
+import { DEFAULT_AI_PROVIDERS } from "@/lib/server/ai/operating-layer";
 
 type AiSettings = {
   enabled: boolean;
@@ -99,7 +100,7 @@ const EMPTY_SETTINGS: AiSettings = {
   autonomyMode: "hybrid",
   reasoningLevel: "balanced",
   responseStyle: "consultative",
-  preferredProviders: ["altum_rules"],
+  preferredProviders: [...DEFAULT_AI_PROVIDERS],
   monthlyBudgetUsd: 100,
   monthlyUsageCap: 1500,
 };
@@ -163,18 +164,40 @@ function latencyLabel(value?: number | null) {
 }
 
 function tierLabel(value?: string) {
-  if (value === "essential") return "Essential";
+  if (value === "essential") return "Essencial";
   if (value === "premium") return "Premium";
   if (value === "elite") return "Elite";
   if (value === "enterprise") return "Enterprise";
-  return "Growth";
+  return "Crescimento";
 }
 
 function responseStyleLabel(value?: string) {
-  if (value === "concise") return "Concise";
+  if (value === "concise") return "Direto";
   if (value === "premium_sales") return "Premium Sales";
   if (value === "closer") return "Closer";
-  return "Consultative";
+  return "Consultivo";
+}
+
+function reorderProviders(
+  currentProviders: NonNullable<AiSettings["preferredProviders"]>,
+  providerId: NonNullable<AiSettings["preferredProviders"]>[number],
+  active: boolean
+): NonNullable<AiSettings["preferredProviders"]> {
+  const current = currentProviders.filter(Boolean);
+  const without = current.filter((item) => item !== providerId);
+
+  if (!active) {
+    return without.length ? without : [...DEFAULT_AI_PROVIDERS];
+  }
+
+  if (providerId === "altum_rules") {
+    return [...without.filter((item) => item !== "altum_rules"), "altum_rules"];
+  }
+
+  const primary = providerId;
+  const fallback = without.filter((item) => item !== primary && item !== "altum_rules");
+  const rules = without.includes("altum_rules") ? ["altum_rules" as const] : [];
+  return [primary, ...fallback, ...rules];
 }
 
 export default function ClienteIaPage() {
@@ -238,7 +261,17 @@ export default function ClienteIaPage() {
       setBusinessProfileId((tenantSettingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
 
       if (settingsRes.ok) {
-        const nextSettings = { ...EMPTY_SETTINGS, ...(settingsPayload.ai || {}) };
+        const rawSettings = { ...EMPTY_SETTINGS, ...(settingsPayload.ai || {}) };
+        const normalizedPreferredProviders =
+          rawSettings.preferredProviders?.length === 1 && rawSettings.preferredProviders[0] === "altum_rules"
+            ? [...DEFAULT_AI_PROVIDERS]
+            : rawSettings.preferredProviders?.length
+              ? rawSettings.preferredProviders
+              : [...DEFAULT_AI_PROVIDERS];
+        const nextSettings = {
+          ...rawSettings,
+          preferredProviders: normalizedPreferredProviders,
+        };
         setSettings(nextSettings);
         setGuardrailsText((nextSettings.guardrails || []).join("\n"));
         setMandatoryQuestionsText((nextSettings.mandatoryQuestions || []).join("\n"));
@@ -624,11 +657,38 @@ export default function ClienteIaPage() {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Plano IA" value={tierLabel(settings.tier)} icon={Sparkles} trend={settings.runtimePolicy?.conversationModel || "runtime base"} />
+        <MetricCard label="Plano IA" value={tierLabel(settings.tier)} icon={Sparkles} trend={settings.runtimePolicy?.conversationModel || "motor base"} />
         <MetricCard label="Autonomia" value={settings.autonomyMode || "hybrid"} icon={ShieldCheck} trend={responseStyleLabel(settings.responseStyle)} />
         <MetricCard label="Budget IA" value={`$${Number(settings.monthlyBudgetUsd || 0).toFixed(0)}`} icon={Bot} trend={`${usageSummary.total} execucoes registradas`} />
         <MetricCard label="Lane premium" value={String(usageSummary.premiumLane)} icon={Waypoints} trend={`${usageSummary.rulesLane} em rules lane`} />
       </section>
+
+      <PanelCard className="p-5">
+        <CardTitle
+          title="Como configurar sem se perder"
+          subtitle="Pense nesta pagina em tres blocos: motor, comportamento e base de conhecimento."
+        />
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Motor</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
+              Escolha OpenAI como motor principal e mantenha ALTUM Rules como reserva para nao deixar o tenant sem resposta.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Comportamento</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
+              Ajuste tom, objetivo, guardrails e handoff. Isso define como a IA conversa e quando ela chama o humano.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Base</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
+              Cadastre FAQ, ofertas e politicas curtas. A IA responde melhor quando a base esta escrita como conversa, nao como documento interno.
+            </p>
+          </div>
+        </div>
+      </PanelCard>
 
       <PanelCard className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -790,10 +850,10 @@ export default function ClienteIaPage() {
               href="/cliente/painel/automacoes"
               className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
-              <span>Revisar automacoes</span>
-              <span className="text-[var(--cliente-card-text-soft)]">→</span>
-            </Link>
-          </div>
+                <span>Revisar automacoes</span>
+                <span className="text-[var(--cliente-card-text-soft)]">→</span>
+              </Link>
+            </div>
         </PanelCard>
 
         <PanelCard className="p-5">
@@ -834,15 +894,15 @@ export default function ClienteIaPage() {
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-                Nivel de autonomia da IA
+                Nivel de IA
                 <select
                   value={settings.tier || "growth"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, tier: event.target.value as AiSettings["tier"] }))}
                   disabled={!canManage}
                   className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 >
-                  <option value="essential">Essential</option>
-                  <option value="growth">Growth</option>
+                  <option value="essential">Essencial</option>
+                  <option value="growth">Crescimento</option>
                   <option value="premium">Premium</option>
                   <option value="elite">Elite</option>
                   <option value="enterprise">Enterprise</option>
@@ -850,7 +910,7 @@ export default function ClienteIaPage() {
               </label>
 
               <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-                Autonomia
+                Grau de autonomia
                 <select
                   value={settings.autonomyMode || "hybrid"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, autonomyMode: event.target.value as AiSettings["autonomyMode"] }))}
@@ -858,37 +918,37 @@ export default function ClienteIaPage() {
                   className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 >
                   <option value="copilot">Copilot</option>
-                  <option value="hybrid">Hybrid</option>
-                  <option value="autonomous">Autonomous</option>
+                  <option value="hybrid">Hibrido</option>
+                  <option value="autonomous">Autonomo</option>
                 </select>
               </label>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-                Profundidade de raciocinio
+                Nivel de raciocinio
                 <select
                   value={settings.reasoningLevel || "balanced"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, reasoningLevel: event.target.value as AiSettings["reasoningLevel"] }))}
                   disabled={!canManage}
                   className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 >
-                  <option value="fast">Fast</option>
-                  <option value="balanced">Balanced</option>
-                  <option value="deep">Deep</option>
+                  <option value="fast">Rapido</option>
+                  <option value="balanced">Equilibrado</option>
+                  <option value="deep">Profundo</option>
                 </select>
               </label>
 
               <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-                Estilo de resposta
+                Estilo de conversa
                 <select
                   value={settings.responseStyle || "consultative"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, responseStyle: event.target.value as AiSettings["responseStyle"] }))}
                   disabled={!canManage}
                   className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 >
-                  <option value="concise">Concise</option>
-                  <option value="consultative">Consultative</option>
+                  <option value="concise">Direto</option>
+                  <option value="consultative">Consultivo</option>
                   <option value="premium_sales">Premium Sales</option>
                   <option value="closer">Closer</option>
                 </select>
@@ -916,11 +976,11 @@ export default function ClienteIaPage() {
               Motores preferidos
               <div className="mt-2 flex flex-wrap gap-2">
                 {[
-                  { id: "altum_rules", label: "ALTUM Rules" },
                   { id: "openai", label: "OpenAI" },
                   { id: "anthropic", label: "Anthropic" },
                   { id: "gemini", label: "Gemini" },
                   { id: "mistral", label: "Mistral" },
+                  { id: "altum_rules", label: "ALTUM Rules" },
                 ].map((provider) => {
                   const active = (settings.preferredProviders || []).includes(provider.id as NonNullable<AiSettings["preferredProviders"]>[number]);
                   return (
@@ -930,16 +990,14 @@ export default function ClienteIaPage() {
                       disabled={!canManage}
                       onClick={() =>
                         setSettings((prev) => {
-                          const current = new Set(prev.preferredProviders || []);
-                          if (current.has(provider.id as NonNullable<AiSettings["preferredProviders"]>[number])) {
-                            current.delete(provider.id as NonNullable<AiSettings["preferredProviders"]>[number]);
-                          } else {
-                            current.add(provider.id as NonNullable<AiSettings["preferredProviders"]>[number]);
-                          }
-                          const nextProviders = Array.from(current);
+                          const nextProviders = reorderProviders(
+                            prev.preferredProviders || [...DEFAULT_AI_PROVIDERS],
+                            provider.id as NonNullable<AiSettings["preferredProviders"]>[number],
+                            !active
+                          );
                           return {
                             ...prev,
-                            preferredProviders: nextProviders.length ? nextProviders : ["altum_rules"],
+                            preferredProviders: nextProviders,
                           };
                         })
                       }
@@ -964,10 +1022,10 @@ export default function ClienteIaPage() {
                 <StateBadge label={responseStyleLabel(settings.responseStyle)} tone="success" />
               </div>
               <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
-                Motor atual da IA: {settings.runtimePolicy?.primaryProvider || "altum_rules"} / {settings.runtimePolicy?.conversationModel || "altum_rules_v1"}.
+                Motor atual da IA: {settings.runtimePolicy?.primaryProvider || "openai"} / {settings.runtimePolicy?.conversationModel || "gpt-5-mini"}.
               </p>
               <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                Busca {settings.runtimePolicy?.retrievalMode || "keyword"} • tool calling {settings.runtimePolicy?.supportsToolCalling ? "ligado" : "desligado"} • budget {settings.runtimePolicy?.budgetMode || "balanced"}.
+                Busca {settings.runtimePolicy?.retrievalMode || "keyword"} • ferramentas {settings.runtimePolicy?.supportsToolCalling ? "ligadas" : "desligadas"} • budget {settings.runtimePolicy?.budgetMode || "balanced"}.
               </p>
             </div>
 

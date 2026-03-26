@@ -54,6 +54,9 @@ export type ConversationAgentResult = {
   model: string;
   fallbackUsed: boolean;
   extractedFields?: Record<string, string>;
+  inputTokens?: number;
+  outputTokens?: number;
+  estimatedCostUsd?: number;
 };
 
 type RuntimePolicy = {
@@ -118,7 +121,12 @@ function normalizeAgentResult(
   payload: Record<string, unknown> | null,
   provider: AltumAiProvider,
   model: string,
-  fallbackUsed: boolean
+  fallbackUsed: boolean,
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    estimatedCostUsd: number;
+  }
 ): ConversationAgentResult | null {
   if (!payload) return null;
 
@@ -132,6 +140,9 @@ function normalizeAgentResult(
     model,
     fallbackUsed,
     extractedFields: normalizeExtractedFields(payload.extractedFields),
+    inputTokens: usage?.inputTokens,
+    outputTokens: usage?.outputTokens,
+    estimatedCostUsd: usage?.estimatedCostUsd,
   };
 }
 
@@ -212,6 +223,10 @@ function buildPrompt(input: ConversationAgentInput) {
     "Nunca copie documentos brutos para o lead. Sempre sintetize em linguagem natural.",
     "Se faltar contexto, faca somente 1 pergunta por vez.",
     "Se o lead apenas cumprimentar, responda de forma humana e avance com uma pergunta simples.",
+    "Se o lead respondeu a uma pergunta anterior, reconheca essa resposta e siga para a proxima etapa sem reiniciar a conversa.",
+    "Nao fale de preco, faixa, investimento ou proposta se o lead nao tocou nesse assunto.",
+    "Nao explique o processo comercial completo da ALTUM se o lead ainda so estiver cumprimentando ou respondendo algo curto.",
+    "Nunca repita exatamente a mesma pergunta em mensagens consecutivas.",
     "Prefira respostas curtas, normalmente de 2 a 4 frases.",
     "Voce deve responder somente com JSON valido.",
     "Campos obrigatorios do JSON: decision, reason, confidence, responseText, extractedFields, nextAction.",
@@ -242,6 +257,58 @@ function buildPrompt(input: ConversationAgentInput) {
     .join("\n\n");
 
   return { systemPrompt, userPrompt };
+}
+
+function estimateTokens(text: string) {
+  const clean = sanitizeText(text, 12000);
+  if (!clean) return 0;
+  return Math.max(1, Math.ceil(clean.length / 4));
+}
+
+function pricingFor(provider: AltumAiProvider, model: string) {
+  if (provider === "openai") {
+    if (model.includes("gpt-5.4")) {
+      return { inputPer1k: 0.01, outputPer1k: 0.03 };
+    }
+    return { inputPer1k: 0.002, outputPer1k: 0.008 };
+  }
+
+  if (provider === "anthropic") {
+    if (model.includes("opus")) {
+      return { inputPer1k: 0.015, outputPer1k: 0.075 };
+    }
+    return { inputPer1k: 0.003, outputPer1k: 0.015 };
+  }
+
+  if (provider === "gemini") {
+    if (model.includes("pro")) {
+      return { inputPer1k: 0.0025, outputPer1k: 0.01 };
+    }
+    return { inputPer1k: 0.0005, outputPer1k: 0.002 };
+  }
+
+  if (provider === "mistral") {
+    if (model.includes("large")) {
+      return { inputPer1k: 0.002, outputPer1k: 0.006 };
+    }
+    return { inputPer1k: 0.001, outputPer1k: 0.003 };
+  }
+
+  return { inputPer1k: 0, outputPer1k: 0 };
+}
+
+function estimateUsage(provider: AltumAiProvider, model: string, prompts: string[], responseText: string) {
+  const inputTokens = prompts.reduce((sum, item) => sum + estimateTokens(item), 0);
+  const outputTokens = estimateTokens(responseText);
+  const pricing = pricingFor(provider, model);
+  const estimatedCostUsd = Number(
+    (((inputTokens / 1000) * pricing.inputPer1k) + ((outputTokens / 1000) * pricing.outputPer1k)).toFixed(6)
+  );
+  return {
+    inputTokens,
+    outputTokens,
+    estimatedCostUsd,
+  };
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 18000) {
@@ -280,7 +347,10 @@ async function callOpenAI(input: ConversationAgentInput, model: string) {
   }
 
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return normalizeAgentResult(parseJsonPayload(data.choices?.[0]?.message?.content || ""), "openai", model, false);
+  const raw = data.choices?.[0]?.message?.content || "";
+  const payload = parseJsonPayload(raw);
+  const usage = estimateUsage("openai", model, [systemPrompt, userPrompt], sanitizeText(raw, 1800));
+  return normalizeAgentResult(payload, "openai", model, false, usage);
 }
 
 async function callAnthropic(input: ConversationAgentInput, model: string) {
@@ -309,7 +379,8 @@ async function callAnthropic(input: ConversationAgentInput, model: string) {
 
   const data = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
   const text = data.content?.find((item) => item.type === "text")?.text || "";
-  return normalizeAgentResult(parseJsonPayload(text), "anthropic", model, false);
+  const usage = estimateUsage("anthropic", model, [systemPrompt, userPrompt], text);
+  return normalizeAgentResult(parseJsonPayload(text), "anthropic", model, false, usage);
 }
 
 async function callGemini(input: ConversationAgentInput, model: string) {
@@ -340,7 +411,8 @@ async function callGemini(input: ConversationAgentInput, model: string) {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
   const text = data.candidates?.[0]?.content?.parts?.map((item) => item.text || "").join("") || "";
-  return normalizeAgentResult(parseJsonPayload(text), "gemini", model, false);
+  const usage = estimateUsage("gemini", model, [systemPrompt, userPrompt], text);
+  return normalizeAgentResult(parseJsonPayload(text), "gemini", model, false, usage);
 }
 
 async function callMistral(input: ConversationAgentInput, model: string) {
@@ -369,7 +441,10 @@ async function callMistral(input: ConversationAgentInput, model: string) {
   }
 
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return normalizeAgentResult(parseJsonPayload(data.choices?.[0]?.message?.content || ""), "mistral", model, false);
+  const raw = data.choices?.[0]?.message?.content || "";
+  const payload = parseJsonPayload(raw);
+  const usage = estimateUsage("mistral", model, [systemPrompt, userPrompt], sanitizeText(raw, 1800));
+  return normalizeAgentResult(payload, "mistral", model, false, usage);
 }
 
 function modelForProvider(provider: AltumAiProvider, policy: RuntimePolicy, tier: AltumAiTier) {

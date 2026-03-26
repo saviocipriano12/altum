@@ -25,11 +25,11 @@ export type TenantAiRuntimePolicy = {
   budgetMode: "conservative" | "balanced" | "premium";
 };
 
-const PROVIDERS: AltumAiProvider[] = ["altum_rules", "openai", "anthropic", "gemini", "mistral"];
+const PROVIDERS: AltumAiProvider[] = ["openai", "anthropic", "gemini", "mistral", "altum_rules"];
 
 export const AI_TIER_LABELS: Record<AltumAiTier, string> = {
-  essential: "Essential",
-  growth: "Growth",
+  essential: "Essencial",
+  growth: "Crescimento",
   premium: "Premium",
   elite: "Elite",
   enterprise: "Enterprise",
@@ -37,22 +37,24 @@ export const AI_TIER_LABELS: Record<AltumAiTier, string> = {
 
 export const AI_AUTONOMY_LABELS: Record<AltumAiAutonomyMode, string> = {
   copilot: "Copilot",
-  hybrid: "Hybrid",
-  autonomous: "Autonomous",
+  hybrid: "Hibrido",
+  autonomous: "Autonomo",
 };
 
 export const AI_REASONING_LABELS: Record<AltumAiReasoningLevel, string> = {
-  fast: "Fast",
-  balanced: "Balanced",
-  deep: "Deep",
+  fast: "Rapido",
+  balanced: "Equilibrado",
+  deep: "Profundo",
 };
 
 export const AI_RESPONSE_STYLE_LABELS: Record<AltumAiResponseStyle, string> = {
-  concise: "Concise",
-  consultative: "Consultative",
+  concise: "Direto",
+  consultative: "Consultivo",
   premium_sales: "Premium Sales",
   closer: "Closer",
 };
+
+export const DEFAULT_AI_PROVIDERS: AltumAiProvider[] = ["openai", "altum_rules"];
 
 function cleanString(value: unknown, max = 80) {
   if (typeof value !== "string") return "";
@@ -79,7 +81,7 @@ function normalizeProviders(value: unknown): AltumAiProvider[] {
     )
   );
 
-  return parsed.length ? parsed : ["altum_rules"];
+  return parsed.length ? parsed : [...DEFAULT_AI_PROVIDERS];
 }
 
 function normalizePositiveNumber(value: unknown, fallback: number, max: number) {
@@ -103,7 +105,9 @@ export function normalizeTenantAiOperatingProfile(value: unknown): TenantAiOpera
 }
 
 export function buildAiRuntimePolicy(profile: TenantAiOperatingProfile): TenantAiRuntimePolicy {
-  const providers: AltumAiProvider[] = profile.preferredProviders.length ? [...profile.preferredProviders] : ["altum_rules"];
+  const providers: AltumAiProvider[] = profile.preferredProviders.length
+    ? [...profile.preferredProviders]
+    : [...DEFAULT_AI_PROVIDERS];
   const primaryProvider = providers[0];
   const fallbackProviders: AltumAiProvider[] = providers.slice(1);
 

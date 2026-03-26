@@ -90,6 +90,59 @@ type AdminAiSignalsResponse = {
   }>;
 };
 
+type AdminAiUsageSummaryResponse = {
+  currentMonth?: {
+    runs?: number;
+    estimatedCostUsd?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    avgLatencyMs?: number;
+    failures?: number;
+    fallbacks?: number;
+  };
+  last7Days?: {
+    runs?: number;
+    estimatedCostUsd?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    avgLatencyMs?: number;
+    failures?: number;
+    fallbacks?: number;
+  };
+  last30Days?: {
+    runs?: number;
+    estimatedCostUsd?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    avgLatencyMs?: number;
+    failures?: number;
+    fallbacks?: number;
+  };
+  providers?: Array<{
+    provider: string;
+    runs: number;
+    estimatedCostUsd: number;
+  }>;
+  topTenants?: Array<{
+    tenantId: string;
+    tenantName: string;
+    runs: number;
+    estimatedCostUsd: number;
+  }>;
+  expensiveRuns?: Array<{
+    id: string;
+    tenantName: string;
+    provider: string;
+    model: string;
+    scope: string;
+    estimatedCostUsd: number;
+    inputTokens: number;
+    outputTokens: number;
+    latencyMs: number;
+    createdAt?: unknown;
+  }>;
+};
+
 const SUGGESTIONS = [
   "Como esta o cliente Vitta Prime?",
   "Me de um resumo geral da empresa hoje.",
@@ -105,6 +158,7 @@ export default function AdminIAPage() {
   const [signalsLoading, setSignalsLoading] = useState(true);
   const [signalsError, setSignalsError] = useState<string | null>(null);
   const [signals, setSignals] = useState<AdminAiSignalsResponse>({});
+  const [usage, setUsage] = useState<AdminAiUsageSummaryResponse>({});
   const [selectedTenantId, setSelectedTenantId] = useState("all");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -133,13 +187,21 @@ export default function AdminIAPage() {
         setSignalsLoading(true);
         setSignalsError(null);
 
-        const response = await authedFetch("/api/admin/ai/signals");
-        const data = (await response.json().catch(() => ({}))) as AdminAiSignalsResponse & { error?: string };
-        if (!response.ok) {
-          throw new Error(data.error || "Falha ao carregar sinais da IA.");
+        const [signalsResponse, usageResponse] = await Promise.all([
+          authedFetch("/api/admin/ai/signals"),
+          authedFetch("/api/admin/ai/usage-summary"),
+        ]);
+        const signalsData = (await signalsResponse.json().catch(() => ({}))) as AdminAiSignalsResponse & { error?: string };
+        const usageData = (await usageResponse.json().catch(() => ({}))) as AdminAiUsageSummaryResponse & { error?: string };
+        if (!signalsResponse.ok) {
+          throw new Error(signalsData.error || "Falha ao carregar sinais da IA.");
+        }
+        if (!usageResponse.ok) {
+          throw new Error(usageData.error || "Falha ao carregar custos da IA.");
         }
 
-        setSignals(data);
+        setSignals(signalsData);
+        setUsage(usageData);
       } catch (error) {
         setSignalsError(error instanceof Error ? error.message : "Falha ao carregar sinais da IA.");
       } finally {
@@ -151,6 +213,8 @@ export default function AdminIAPage() {
   }, []);
 
   const signalSummary = useMemo(() => signals.summary || {}, [signals.summary]);
+  const usageCurrentMonth = useMemo(() => usage.currentMonth || {}, [usage.currentMonth]);
+  const usageLast7Days = useMemo(() => usage.last7Days || {}, [usage.last7Days]);
   const tenantSignals = useMemo(() => signals.tenants || [], [signals.tenants]);
   const recentSignals = useMemo(() => signals.recent || [], [signals.recent]);
   const filteredRecentSignals = useMemo(
@@ -310,6 +374,13 @@ export default function AdminIAPage() {
         <SignalMetric label="Tenants ativos" value={String(signalSummary.activeTenants || 0)} icon={Sparkles} />
       </section>
 
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <SignalMetric label="Custo estimado no mes" value={`US$ ${Number(usageCurrentMonth.estimatedCostUsd || 0).toFixed(2)}`} icon={HandCoins} />
+        <SignalMetric label="Execucoes no mes" value={String(usageCurrentMonth.runs || 0)} icon={Bot} />
+        <SignalMetric label="Custo ultimos 7 dias" value={`US$ ${Number(usageLast7Days.estimatedCostUsd || 0).toFixed(2)}`} icon={Activity} />
+        <SignalMetric label="Tokens ultimos 7 dias" value={String((Number(usageLast7Days.inputTokens || 0) + Number(usageLast7Days.outputTokens || 0)).toLocaleString("pt-BR"))} icon={BrainCircuit} />
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
           <div className="flex items-center justify-between gap-3">
@@ -454,6 +525,46 @@ export default function AdminIAPage() {
                 ))
               )}
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Custos e provedores</p>
+            <h2 className="mt-1 text-lg font-semibold text-white">O que esta gerando uso de IA</h2>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {(usage.providers || []).slice(0, 6).map((item) => (
+              <div key={item.provider} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <p className="text-sm font-semibold text-white">{item.provider}</p>
+                <p className="mt-1 text-xs text-white/55">{item.runs} execucao(oes)</p>
+                <p className="mt-2 text-sm text-emerald-200">US$ {Number(item.estimatedCostUsd || 0).toFixed(4)}</p>
+              </div>
+            ))}
+            {!(usage.providers || []).length ? (
+              <p className="text-sm text-white/55">Sem dados de custo suficientes ainda. As novas execucoes vao alimentar este painel.</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-[#111] p-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Tenants com maior consumo</p>
+            <h2 className="mt-1 text-lg font-semibold text-white">Onde a IA esta pesando mais</h2>
+          </div>
+          <div className="mt-4 space-y-3">
+            {(usage.topTenants || []).slice(0, 8).map((item) => (
+              <div key={item.tenantId} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <p className="text-sm font-semibold text-white">{item.tenantName}</p>
+                <p className="mt-1 text-xs text-white/55">{item.runs} execucao(oes)</p>
+                <p className="mt-2 text-sm text-amber-200">US$ {Number(item.estimatedCostUsd || 0).toFixed(4)}</p>
+              </div>
+            ))}
+            {!(usage.topTenants || []).length ? (
+              <p className="text-sm text-white/55">Ainda nao ha volume suficiente para ranquear tenants por custo.</p>
+            ) : null}
           </div>
         </div>
       </section>

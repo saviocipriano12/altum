@@ -618,11 +618,14 @@ export default function ClienteInboxPage() {
   const canOperate = hasCapability("respond_inbox");
   const canManageQueue = hasCapability("manage_settings") || hasCapability("manage_users");
 
-  const loadChats = useCallback(async () => {
+  const loadChats = useCallback(async (options?: { silent?: boolean }) => {
     if (!tenant?.tenantId) return [] as ChatItem[];
+    const silent = options?.silent ?? false;
 
-    setLoadingChats(true);
-    setError(null);
+    if (!silent) {
+      setLoadingChats(true);
+      setError(null);
+    }
     try {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats`);
       const payload = (await res.json()) as ChatListPayload;
@@ -646,21 +649,26 @@ export default function ClienteInboxPage() {
       });
       return nextChats;
     } catch {
-      setError("Falha ao carregar conversas.");
-      setChats([]);
+      if (!silent) {
+        setError("Falha ao carregar conversas.");
+        setChats([]);
+      }
       return [];
     } finally {
-      setLoadingChats(false);
+      if (!silent) setLoadingChats(false);
     }
   }, [tenant?.tenantId, initialChatId, leadIdFromQuery]);
 
   const loadSelectedChat = useCallback(
-    async (chatId: string, options?: { withMessages?: boolean }) => {
+    async (chatId: string, options?: { withMessages?: boolean; silent?: boolean }) => {
       if (!tenant?.tenantId) return;
       const withMessages = options?.withMessages ?? true;
+      const silent = options?.silent ?? false;
 
-      setLoadingDetail(true);
-      if (withMessages) setLoadingMessages(true);
+      if (!silent) {
+        setLoadingDetail(true);
+        if (withMessages) setLoadingMessages(true);
+      }
 
       try {
         const requests: Promise<Response>[] = [authedFetch(`/api/tenant/${tenant.tenantId}/chats/${chatId}`)];
@@ -672,9 +680,11 @@ export default function ClienteInboxPage() {
         const detailPayload = (await detailRes.json()) as ChatDetailPayload;
 
         if (!detailRes.ok) {
-          setError(detailPayload.error || "Falha ao carregar detalhe da conversa.");
-          setDetail(null);
-          if (withMessages) setMessages([]);
+          if (!silent) {
+            setError(detailPayload.error || "Falha ao carregar detalhe da conversa.");
+            setDetail(null);
+            if (withMessages) setMessages([]);
+          }
           return;
         }
 
@@ -694,17 +704,21 @@ export default function ClienteInboxPage() {
         if (withMessages && messagesRes) {
           const messagesPayload = (await messagesRes.json()) as MessageListPayload;
           if (!messagesRes.ok) {
-            setError(messagesPayload.error || "Falha ao carregar mensagens.");
-            setMessages([]);
+            if (!silent) {
+              setError(messagesPayload.error || "Falha ao carregar mensagens.");
+              setMessages([]);
+            }
             return;
           }
           setMessages(messagesPayload.items || []);
         }
       } catch {
-        setError("Falha ao carregar detalhe da conversa.");
+        if (!silent) setError("Falha ao carregar detalhe da conversa.");
       } finally {
-        setLoadingDetail(false);
-        if (withMessages) setLoadingMessages(false);
+        if (!silent) {
+          setLoadingDetail(false);
+          if (withMessages) setLoadingMessages(false);
+        }
       }
     },
     [tenant?.tenantId]
@@ -787,7 +801,7 @@ export default function ClienteInboxPage() {
 
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void loadSelectedChat(selectedChatId, { withMessages: true });
+      void loadSelectedChat(selectedChatId, { withMessages: true, silent: true });
     }, 4000);
 
     return () => window.clearInterval(interval);
@@ -798,7 +812,7 @@ export default function ClienteInboxPage() {
 
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void loadChats();
+      void loadChats({ silent: true });
     }, 15000);
 
     return () => window.clearInterval(interval);

@@ -1198,6 +1198,31 @@ export default function ChatPage() {
   const selectedChatTenantId = useMemo(() => String(selectedChat?.tenantId || "").trim(), [selectedChat?.tenantId]);
   const selectedContactPhone = useMemo(() => normalizePhone(selectedChat?.contactPhone), [selectedChat?.contactPhone]);
 
+  const loadAdminMessages = useCallback(async (chatId: string, silent = false) => {
+    if (!chatId) {
+      setMessages([]);
+      return;
+    }
+
+    if (!silent) {
+      setLoadingMessages(true);
+      setMessages([]);
+    }
+
+    try {
+      const res = await authedFetch(`/api/admin/chats/${encodeURIComponent(chatId)}/messages`);
+      const data = (await res.json().catch(() => ({}))) as { items?: MessageDoc[]; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || "Falha ao carregar mensagens.");
+      }
+      setMessages(sortByCreatedAtAsc((data.items || []) as MessageDoc[]));
+    } catch {
+      if (!silent) setMessages([]);
+    } finally {
+      if (!silent) setLoadingMessages(false);
+    }
+  }, []);
+
   // ── Keyboard shortcuts ───────────────────────────────────────
   useKeyboardShortcut("k", true, () => { document.querySelector<HTMLInputElement>("[data-search]")?.focus(); });
   useKeyboardShortcut("e", true, () => { if (selectedChatId) handleChangeStatus("resolved"); });
@@ -1238,20 +1263,21 @@ export default function ChatPage() {
 
   // ── Messages subscription ─────────────────────────────────────
   useEffect(() => {
-    if (!selectedChatId) { setMessages([]); return; }
-    setLoadingMessages(true);
-    setMessages([]);
+    if (!selectedChatId) {
+      setMessages([]);
+      return;
+    }
+
     setHasMoreMessages(false);
-    const q = query(
-      collection(db, "messages"),
-      where("chatId", "==", selectedChatId)
-    );
-    return onSnapshot(q, (snap) => {
-      const nextMessages = snap.docs.map((d) => ({ id: d.id, ...d.data() } as MessageDoc));
-      setMessages(sortByCreatedAtAsc(nextMessages));
-      setLoadingMessages(false);
-    }, () => setLoadingMessages(false));
-  }, [selectedChatId]);
+    void loadAdminMessages(selectedChatId);
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void loadAdminMessages(selectedChatId, true);
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [loadAdminMessages, selectedChatId]);
 
   // ── Auto-scroll ───────────────────────────────────────────────
   useEffect(() => {

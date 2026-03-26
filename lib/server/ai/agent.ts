@@ -257,14 +257,105 @@ function shouldAskMore(text: string) {
   if (!normalized) return true;
 
   const words = normalizeWords(normalized);
-  if (words.length <= 2) return true;
+  if (words.length <= 1) return true;
 
-  const genericOpeners = ["oi", "ola", "bom dia", "boa tarde", "boa noite", "preco", "valor"];
+  const genericOpeners = ["oi", "ola", "bom dia", "boa tarde", "boa noite"];
   if (textHasAny(normalized, genericOpeners) && words.length < 5) {
     return true;
   }
 
   return false;
+}
+
+function isGreetingLike(text: string) {
+  const normalized = sanitizeText(text, 240);
+  if (!normalized) return false;
+  const words = normalizeWords(normalized);
+  if (words.length > 4) return false;
+  return textHasAny(normalized, ["oi", "ola", "bom dia", "boa tarde", "boa noite", "tudo bem"]);
+}
+
+function isClarificationRequest(text: string) {
+  return textHasAny(text, [
+    "o que voces fazem",
+    "o que fazem",
+    "como funciona",
+    "nao entendi",
+    "me explica",
+    "explica melhor",
+  ]);
+}
+
+function pickNextMandatoryQuestion(messages: ConversationMessage[], questions: string[]) {
+  if (!questions.length) return "";
+
+  const clientCorpus = messages
+    .filter((item) => item.sender === "client")
+    .map((item) => sanitizeText(item.text, 240))
+    .join(" ");
+
+  const budgetRegex = /\b\d[\d\.\,]*\s?(?:k|mil|reais|real)?\b/i;
+
+  const isQuestionCovered = (question: string) => {
+    const normalizedQuestion = sanitizeText(question, 200).toLowerCase();
+
+    if (textHasAny(normalizedQuestion, ["nicho", "empresa", "tipo de empresa", "negocio"])) {
+      return (
+        /\b(sou|somos|tenho|atuo|trabalho)\b/i.test(clientCorpus) ||
+        textHasAny(clientCorpus, [
+          "imobiliaria",
+          "clinica",
+          "agencia",
+          "advocacia",
+          "restaurante",
+          "ecommerce",
+          "loja",
+          "consultoria",
+          "construtora",
+          "industria",
+          "escola",
+        ])
+      );
+    }
+
+    if (textHasAny(normalizedQuestion, ["objetivo", "meta", "resultado", "quer", "foco"])) {
+      return textHasAny(clientCorpus, [
+        "quero",
+        "preciso",
+        "busco",
+        "objetivo",
+        "meta",
+        "vender",
+        "captar",
+        "gerar demanda",
+        "organizar atendimento",
+        "converter",
+      ]);
+    }
+
+    if (textHasAny(normalizedQuestion, ["orcamento", "budget", "investimento", "faixa", "valor"])) {
+      return budgetRegex.test(clientCorpus) || textHasAny(clientCorpus, ["orcamento", "budget", "investimento", "nao tenho"]);
+    }
+
+    if (textHasAny(normalizedQuestion, ["urgencia", "prazo", "quando", "rapido"])) {
+      return textHasAny(clientCorpus, ["hoje", "urgente", "essa semana", "este mes", "proximo mes", "imediato"]);
+    }
+
+    if (textHasAny(normalizedQuestion, ["trafego", "crm", "canal", "anuncia"])) {
+      return textHasAny(clientCorpus, ["trafego", "crm", "google", "meta", "instagram", "whatsapp", "anuncio", "anuncio"]);
+    }
+
+    const keywords = normalizeWords(question);
+    return keywords.length ? textHasAny(clientCorpus, keywords) : false;
+  };
+
+  for (const question of questions) {
+    if (!isQuestionCovered(question)) {
+      return question;
+    }
+  }
+
+  return questions[0] || "";
 }
 
 function scoreKbDoc(messageWords: string[], doc: KbDoc) {
@@ -288,6 +379,7 @@ function makeLeadFacingReply(input: {
   decision: Exclude<Decision, "skip" | "handoff">;
   inboundText: string;
   kbDocs: KbDoc[];
+  conversation: ConversationMessage[];
 }) {
   const inboundHasPriceSignal = textHasAny(input.inboundText, ["preco", "valor", "plano", "orcamento", "investimento"]);
   const leadFacingKbDocs = input.kbDocs.filter((doc) => doc.type !== "policy");
@@ -303,32 +395,37 @@ function makeLeadFacingReply(input: {
         220
       )
     : "";
+  const nextMandatoryQuestion =
+    pickNextMandatoryQuestion(input.conversation, input.tenantAi.mandatoryQuestions) ||
+    "Me conta rapidinho qual e o seu contexto hoje?";
+  const playbookScript = findRelevantPlaybookScript(input.inboundText, input.tenantAi.playbookScripts);
+
+  if (isGreetingLike(input.inboundText)) {
+    return "Oi! Tudo bem? Me conta rapidinho o que voce esta buscando hoje para eu te orientar sem te enrolar.";
+  }
+
+  if (isClarificationRequest(input.inboundText)) {
+    return [
+      "Claro. A ALTUM ajuda empresas a vender mais com IA, estrutura comercial, marketing e ativos digitais como site e landing page.",
+      "Para eu te orientar no caminho certo, me diz so uma coisa: hoje o foco maior esta em gerar demanda, organizar atendimento ou converter melhor?",
+    ].join("\n");
+  }
 
   if (input.decision === "ask_more") {
-    const prompts = input.tenantAi.mandatoryQuestions.slice(0, 3);
-    const playbookScript = findRelevantPlaybookScript(input.inboundText, input.tenantAi.playbookScripts);
-    const firstQuestion =
-      inboundHasPriceSignal
-        ? prompts[0] || "Qual e o nicho da sua empresa?"
-        : prompts[1] || prompts[0] || "Qual e o principal objetivo agora?";
-
     return [
       playbookScript
         ? sanitizeText(playbookScript.script, 220)
         : inboundHasPriceSignal
           ? "Consigo te passar uma faixa, sim. So prefiro entender seu momento antes para te orientar sem te empurrar algo errado."
           : "Perfeito. Me passa so um ponto rapido para eu te orientar melhor.",
-      firstQuestion,
+      nextMandatoryQuestion,
     ].join("\n");
   }
 
   const playbookOffer = findRelevantPlaybookOffer(input.inboundText, input.tenantAi.playbookOffers);
-  const playbookScript = findRelevantPlaybookScript(input.inboundText, input.tenantAi.playbookScripts);
   const leadSignal = inboundHasPriceSignal
     ? "Se fizer sentido, eu te explico qual formato tende a encaixar melhor no seu caso."
     : "Se fizer sentido, te mostro o proximo passo mais aderente para avancarmos.";
-  const qualifyingQuestion =
-    input.tenantAi.mandatoryQuestions[0] || "Qual e o contexto do seu negocio hoje?";
 
   return [
     primaryKbSnippet
@@ -337,7 +434,7 @@ function makeLeadFacingReply(input: {
     playbookScript ? sanitizeText(playbookScript.script, 220) : "",
     playbookOffer ? `O caminho que mais faz sentido aqui tende a ser ${sanitizeText(playbookOffer.title, 120)}.` : "",
     leadSignal,
-    qualifyingQuestion,
+    nextMandatoryQuestion,
   ]
     .filter(Boolean)
     .join("\n");
@@ -1139,8 +1236,8 @@ export async function handleIncomingMessage(
       confidence: choice.confidence,
       matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
       latencyMs: Date.now() - startedAt,
-      provider: runtimeProvider,
-      model: runtimeModel,
+      provider: effectiveProvider,
+      model: effectiveModel,
       tier: aiConfig.tier,
       autonomyMode: aiConfig.autonomyMode,
       reasoningLevel: aiConfig.reasoningLevel,
@@ -1149,8 +1246,8 @@ export async function handleIncomingMessage(
     await logAiUsage({
       tenantId,
       scope: "conversation",
-      provider: runtimeProvider,
-      model: runtimeModel,
+      provider: effectiveProvider,
+      model: effectiveModel,
       agentId: "sales_autopilot_v1",
       chatId,
       leadId,
@@ -1159,7 +1256,9 @@ export async function handleIncomingMessage(
       decision: "handoff",
       confidence: choice.confidence,
       latencyMs: Date.now() - startedAt,
-      estimatedCostUsd: 0,
+      inputTokens: llmResult?.inputTokens ?? 0,
+      outputTokens: llmResult?.outputTokens ?? 0,
+      estimatedCostUsd: llmResult?.estimatedCostUsd ?? 0,
       tier: aiConfig.tier,
       autonomyMode: aiConfig.autonomyMode,
       reasoningLevel: aiConfig.reasoningLevel,
@@ -1199,6 +1298,7 @@ export async function handleIncomingMessage(
       decision: choice.decision,
       inboundText,
       kbDocs,
+      conversation,
     });
 
   if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
@@ -1266,7 +1366,9 @@ export async function handleIncomingMessage(
     decision: choice.decision,
     confidence: choice.confidence,
     latencyMs: Date.now() - startedAt,
-    estimatedCostUsd: 0,
+    inputTokens: llmResult?.inputTokens ?? 0,
+    outputTokens: llmResult?.outputTokens ?? 0,
+    estimatedCostUsd: llmResult?.estimatedCostUsd ?? 0,
     tier: aiConfig.tier,
     autonomyMode: aiConfig.autonomyMode,
     reasoningLevel: aiConfig.reasoningLevel,
