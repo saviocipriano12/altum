@@ -105,6 +105,18 @@ function normalizeReactionMap(value: unknown) {
   );
 }
 
+const VALID_CHAT_PRIORITIES = ["urgent", "high", "normal", "low"] as const;
+
+function getSafePriority(priority: unknown): ChatPriority {
+  return VALID_CHAT_PRIORITIES.includes(priority as ChatPriority)
+    ? (priority as ChatPriority)
+    : "normal";
+}
+
+function getPriorityConfigSafe(priority: unknown) {
+  return PRIORITY_CONFIG[getSafePriority(priority)];
+}
+
 // ============================================================
 //  HOOKS
 // ============================================================
@@ -222,8 +234,9 @@ function Badge({ label, color = "zinc" }: { label: string; color?: string }) {
 
 // ── Priority dot ──────────────────────────────────────────────
 function PriorityDot({ priority }: { priority?: ChatPriority }) {
-  if (!priority || priority === "normal") return null;
-  const c = PRIORITY_CONFIG[priority];
+  const safePriority = getSafePriority(priority);
+  if (safePriority === "normal") return null;
+  const c = getPriorityConfigSafe(priority);
   return <span className={`h-1.5 w-1.5 rounded-full ${c.bg.replace("bg-", "bg-").replace("/15", "")} inline-block`} title={c.label} />;
 }
 
@@ -1067,6 +1080,9 @@ function ChatItem({
   chat: ChatDoc; selected: boolean; onClick: () => void;
 }) {
   const unread = (chat.unreadCount || 0) > 0;
+  const safePriority = getSafePriority(chat.priority);
+  const priorityCfg = getPriorityConfigSafe(chat.priority);
+
   return (
     <button
       onClick={onClick}
@@ -1075,8 +1091,8 @@ function ChatItem({
       }`}
     >
       {/* Priority stripe */}
-      {chat.priority && chat.priority !== "normal" && (
-        <span className={`absolute left-0 top-2 bottom-2 w-0.5 rounded-r-full ${PRIORITY_CONFIG[chat.priority].bg.replace("/15","")}`} />
+      {safePriority !== "normal" && (
+        <span className={`absolute left-0 top-2 bottom-2 w-0.5 rounded-r-full ${priorityCfg.bg.replace("/15","")}`} />
       )}
 
       <div className="relative flex-shrink-0">
@@ -1215,6 +1231,8 @@ export default function ChatPage() {
   const callTimerRef = useRef<number>(0);
 
   const selectedChat = useMemo(() => allChats.find((c) => c.id === selectedChatId) || null, [allChats, selectedChatId]);
+  const selectedChatPriority = useMemo(() => getSafePriority(selectedChat?.priority), [selectedChat?.priority]);
+  const selectedChatPriorityConfig = useMemo(() => getPriorityConfigSafe(selectedChat?.priority), [selectedChat?.priority]);
   const selectedChatTenantId = useMemo(() => String(selectedChat?.tenantId || "").trim(), [selectedChat?.tenantId]);
   const selectedContactPhone = useMemo(() => normalizePhone(selectedChat?.contactPhone), [selectedChat?.contactPhone]);
 
@@ -1259,7 +1277,16 @@ export default function ChatPage() {
       ? query(ref, orderBy("lastMessageTime", "desc"), limit(300))
       : query(ref, where("ownerId", "==", profile.uid), orderBy("lastMessageTime", "desc"), limit(200));
     return onSnapshot(q, (snap) => {
-      setAllChats(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatDoc)));
+      setAllChats(
+        snap.docs.map((d) => {
+          const data = d.data() as ChatDoc;
+          return {
+            id: d.id,
+            ...data,
+            priority: getSafePriority(data.priority),
+          } as ChatDoc;
+        })
+      );
       setLoadingChats(false);
     }, () => setLoadingChats(false));
   }, [authLoading, profile, isAdmin]);
@@ -1835,9 +1862,9 @@ export default function ChatPage() {
                       {contactDisplayName}
                     </span>
                     {selectedChat?.channel && <ChannelIcon channel={selectedChat.channel} size={13} />}
-                    {selectedChat?.priority && selectedChat.priority !== "normal" && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${PRIORITY_CONFIG[selectedChat.priority].bg} ${PRIORITY_CONFIG[selectedChat.priority].border} ${PRIORITY_CONFIG[selectedChat.priority].color}`}>
-                        {PRIORITY_CONFIG[selectedChat.priority].label}
+                    {selectedChatPriority !== "normal" && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${selectedChatPriorityConfig.bg} ${selectedChatPriorityConfig.border} ${selectedChatPriorityConfig.color}`}>
+                        {selectedChatPriorityConfig.label}
                       </span>
                     )}
                   </div>
