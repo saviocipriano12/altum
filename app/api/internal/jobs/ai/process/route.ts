@@ -7,7 +7,10 @@ function readToken(req: Request) {
     return bearer.slice(7).trim();
   }
 
-  return String(req.headers.get("x-ai-jobs-token") || "").trim();
+  return (
+    String(req.headers.get("x-ai-jobs-token") || "").trim() ||
+    String(req.headers.get("x-cron-secret") || "").trim()
+  );
 }
 
 function getLimit(req: Request) {
@@ -17,11 +20,19 @@ function getLimit(req: Request) {
   return Math.min(100, Math.max(1, Math.round(raw)));
 }
 
+function shouldDrain(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const raw = String(searchParams.get("drain") || "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 async function handle(req: Request) {
-  const expectedToken = String(process.env.AI_JOBS_PROCESS_TOKEN || "").trim();
+  const expectedToken =
+    String(process.env.AI_JOBS_PROCESS_TOKEN || "").trim() ||
+    String(process.env.CRON_SECRET || "").trim();
   if (!expectedToken) {
     return NextResponse.json(
-      { error: "AI_JOBS_PROCESS_TOKEN nao configurado." },
+      { error: "AI_JOBS_PROCESS_TOKEN ou CRON_SECRET nao configurado." },
       { status: 503 }
     );
   }
@@ -31,7 +42,7 @@ async function handle(req: Request) {
     return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
   }
 
-  const result = await processAiQueue({ limit: getLimit(req) });
+  const result = await processAiQueue({ limit: getLimit(req), drain: shouldDrain(req) });
   return NextResponse.json({ ok: true, result });
 }
 

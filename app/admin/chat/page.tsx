@@ -1233,6 +1233,7 @@ export default function ChatPage() {
   const selectedChat = useMemo(() => allChats.find((c) => c.id === selectedChatId) || null, [allChats, selectedChatId]);
   const selectedChatPriority = useMemo(() => getSafePriority(selectedChat?.priority), [selectedChat?.priority]);
   const selectedChatPriorityConfig = useMemo(() => getPriorityConfigSafe(selectedChat?.priority), [selectedChat?.priority]);
+  const activePriorityFilterConfig = useMemo(() => (priorityFilter ? getPriorityConfigSafe(priorityFilter) : null), [priorityFilter]);
   const selectedChatTenantId = useMemo(() => String(selectedChat?.tenantId || "").trim(), [selectedChat?.tenantId]);
   const selectedContactPhone = useMemo(() => normalizePhone(selectedChat?.contactPhone), [selectedChat?.contactPhone]);
 
@@ -1504,7 +1505,7 @@ export default function ChatPage() {
   async function handleChangePriority(priority: ChatPriority) {
     if (!selectedChatId) return;
     await updateDoc(doc(db, "chats", selectedChatId), { priority });
-    showToast("ok", `Prioridade: ${PRIORITY_CONFIG[priority].label}`);
+    showToast("ok", `Prioridade: ${getPriorityConfigSafe(priority).label}`);
   }
 
   async function handleTransfer() {
@@ -1731,10 +1732,10 @@ export default function ChatPage() {
                     className={`flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg transition-colors ${showQuickFilters ? "bg-sky-500/15 text-sky-400" : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"}`}>
                     <Filter className="h-3 w-3" /> Filtros
                   </button>
-                  {priorityFilter && (
+                  {priorityFilter && activePriorityFilterConfig && (
                     <button onClick={() => setPriorityFilter("")}
-                      className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border ${PRIORITY_CONFIG[priorityFilter].bg} ${PRIORITY_CONFIG[priorityFilter].border} ${PRIORITY_CONFIG[priorityFilter].color}`}>
-                      {PRIORITY_CONFIG[priorityFilter].label} <X className="h-3 w-3" />
+                      className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border ${activePriorityFilterConfig.bg} ${activePriorityFilterConfig.border} ${activePriorityFilterConfig.color}`}>
+                      {activePriorityFilterConfig.label} <X className="h-3 w-3" />
                     </button>
                   )}
                 </div>
@@ -1743,12 +1744,15 @@ export default function ChatPage() {
                   <div className="mt-2 p-2 bg-black/20 rounded-xl border border-white/6 space-y-2">
                     <div className="text-[10px] text-zinc-600 uppercase tracking-wider px-1">Prioridade</div>
                     <div className="flex gap-1 flex-wrap">
-                      {(["urgent", "high", "normal", "low"] as ChatPriority[]).map((p) => (
-                        <button key={p} onClick={() => setPriorityFilter((v) => v === p ? "" : p)}
-                          className={`text-[11px] px-2 py-1 rounded-lg border transition-colors ${priorityFilter === p ? `${PRIORITY_CONFIG[p].bg} ${PRIORITY_CONFIG[p].border} ${PRIORITY_CONFIG[p].color}` : "text-zinc-500 border-white/6 hover:border-white/15"}`}>
-                          {PRIORITY_CONFIG[p].label}
-                        </button>
-                      ))}
+                      {(["urgent", "high", "normal", "low"] as ChatPriority[]).map((p) => {
+                        const cfg = getPriorityConfigSafe(p);
+                        return (
+                          <button key={p} onClick={() => setPriorityFilter((v) => v === p ? "" : p)}
+                            className={`text-[11px] px-2 py-1 rounded-lg border transition-colors ${priorityFilter === p ? `${cfg.bg} ${cfg.border} ${cfg.color}` : "text-zinc-500 border-white/6 hover:border-white/15"}`}>
+                            {cfg.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1925,13 +1929,16 @@ export default function ChatPage() {
                       </button>
                     </Tip>
                     <div className="absolute right-0 top-10 w-36 bg-[#131b2a] border border-white/10 rounded-xl shadow-2xl overflow-hidden hidden group-hover/prio:block z-30">
-                      {(["urgent", "high", "normal", "low"] as ChatPriority[]).map((p) => (
-                        <button key={p} onClick={() => handleChangePriority(p)}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors hover:bg-white/5 ${PRIORITY_CONFIG[p].color}`}>
-                          {PRIORITY_CONFIG[p].label}
-                          {selectedChat?.priority === p && <Check className="h-3 w-3 ml-auto" />}
-                        </button>
-                      ))}
+                      {(["urgent", "high", "normal", "low"] as ChatPriority[]).map((p) => {
+                        const cfg = getPriorityConfigSafe(p);
+                        return (
+                          <button key={p} onClick={() => handleChangePriority(p)}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors hover:bg-white/5 ${cfg.color}`}>
+                            {cfg.label}
+                            {selectedChat?.priority === p && <Check className="h-3 w-3 ml-auto" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 

@@ -59,6 +59,7 @@ export type ProcessAiQueueResult = {
   deadLetter: number;
   failed: number;
   skipped: number;
+  batches: number;
 };
 
 function toDate(value: unknown) {
@@ -408,8 +409,14 @@ async function processOneClaimedJob(job: ClaimedJob) {
   }
 }
 
-export async function processAiQueue(options?: { limit?: number }): Promise<ProcessAiQueueResult> {
+export async function processAiQueue(options?: {
+  limit?: number;
+  drain?: boolean;
+  maxBatches?: number;
+}): Promise<ProcessAiQueueResult> {
   const requested = Math.min(100, Math.max(1, options?.limit || DEFAULT_BATCH_LIMIT));
+  const drain = options?.drain === true;
+  const maxBatches = Math.min(12, Math.max(1, options?.maxBatches || 4));
 
   const result: ProcessAiQueueResult = {
     requested,
@@ -419,34 +426,43 @@ export async function processAiQueue(options?: { limit?: number }): Promise<Proc
     deadLetter: 0,
     failed: 0,
     skipped: 0,
+    batches: 0,
   };
 
-  for (let i = 0; i < requested; i += 1) {
-    const candidates = await listClaimableJobs(1);
-    const candidate = candidates[0];
-    if (!candidate) break;
+  for (let batch = 0; batch < maxBatches; batch += 1) {
+    let claimedInBatch = 0;
+    result.batches += 1;
 
-    const claimed = await claimJob(candidate.id);
-    if (!claimed) continue;
+    for (let i = 0; i < requested; i += 1) {
+      const candidates = await listClaimableJobs(1);
+      const candidate = candidates[0];
+      if (!candidate) break;
 
-    result.claimed += 1;
+      const claimed = await claimJob(candidate.id);
+      if (!claimed) continue;
 
-    const jobResult = await processOneClaimedJob(claimed);
-    if (jobResult.ok) {
-      result.processed += 1;
-      if (jobResult.skipped) result.skipped += 1;
-      continue;
+      claimedInBatch += 1;
+      result.claimed += 1;
+
+      const jobResult = await processOneClaimedJob(claimed);
+      if (jobResult.ok) {
+        result.processed += 1;
+        if (jobResult.skipped) result.skipped += 1;
+        continue;
+      }
+
+      result.failed += 1;
+      if (jobResult.retried) result.retried += 1;
+      if (jobResult.deadLetter) result.deadLetter += 1;
     }
 
-    result.failed += 1;
-    if (jobResult.retried) result.retried += 1;
-    if (jobResult.deadLetter) result.deadLetter += 1;
+    if (!drain || claimedInBatch === 0) break;
   }
 
   return result;
 }
 
-export function triggerAiQueueWorker(options?: { limit?: number }) {
+export function triggerAiQueueWorker(options?: { limit?: number; drain?: boolean }) {
   void processAiQueue(options).catch((error) => {
     console.error("Erro no worker assincrono local da fila de IA:", error);
   });
@@ -459,7 +475,8 @@ export function triggerAiQueueWorker(options?: { limit?: number }) {
   if (!baseUrl || !token) return;
 
   const limit = Math.min(100, Math.max(1, options?.limit || DEFAULT_BATCH_LIMIT));
-  const url = `${baseUrl.replace(/\/$/, "")}/api/internal/jobs/ai/process?limit=${limit}`;
+  const drain = options?.drain === true ? "&drain=1" : "";
+  const url = `${baseUrl.replace(/\/$/, "")}/api/internal/jobs/ai/process?limit=${limit}${drain}`;
 
   void fetch(url, {
     method: "POST",

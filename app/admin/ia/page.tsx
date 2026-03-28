@@ -55,6 +55,8 @@ type AdminAiSignalsResponse = {
     proposalSignals?: number;
     scheduleSignals?: number;
     qualificationSignals?: number;
+    recommendationSignals?: number;
+    objectionSignals?: number;
     activeTenants?: number;
   };
   tenants?: Array<{
@@ -67,6 +69,8 @@ type AdminAiSignalsResponse = {
     proposalSignals: number;
     scheduleSignals: number;
     qualificationSignals: number;
+    recommendationSignals?: number;
+    objectionSignals?: number;
     lastSignalAt?: unknown;
   }>;
   topActions?: Array<{
@@ -86,8 +90,23 @@ type AdminAiSignalsResponse = {
     provider: string;
     model: string;
     confidence: number | null;
+    plannerIntent?: string;
+    responseGoal?: string;
+    stateAfter?: string;
+    recommendedOffer?: string;
     createdAt?: unknown;
   }>;
+};
+
+type AdminAiJobsSummaryResponse = {
+  counts?: {
+    pending?: number;
+    processing?: number;
+    retrying?: number;
+    done?: number;
+    deadLetter?: number;
+  };
+  total?: number;
 };
 
 type AdminAiUsageSummaryResponse = {
@@ -159,6 +178,7 @@ export default function AdminIAPage() {
   const [signalsError, setSignalsError] = useState<string | null>(null);
   const [signals, setSignals] = useState<AdminAiSignalsResponse>({});
   const [usage, setUsage] = useState<AdminAiUsageSummaryResponse>({});
+  const [jobs, setJobs] = useState<AdminAiJobsSummaryResponse>({});
   const [selectedTenantId, setSelectedTenantId] = useState("all");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -187,21 +207,27 @@ export default function AdminIAPage() {
         setSignalsLoading(true);
         setSignalsError(null);
 
-        const [signalsResponse, usageResponse] = await Promise.all([
+        const [signalsResponse, usageResponse, jobsResponse] = await Promise.all([
           authedFetch("/api/admin/ai/signals"),
           authedFetch("/api/admin/ai/usage-summary"),
+          authedFetch("/api/admin/ai/jobs/summary"),
         ]);
         const signalsData = (await signalsResponse.json().catch(() => ({}))) as AdminAiSignalsResponse & { error?: string };
         const usageData = (await usageResponse.json().catch(() => ({}))) as AdminAiUsageSummaryResponse & { error?: string };
+        const jobsData = (await jobsResponse.json().catch(() => ({}))) as AdminAiJobsSummaryResponse & { error?: string };
         if (!signalsResponse.ok) {
           throw new Error(signalsData.error || "Falha ao carregar sinais da IA.");
         }
         if (!usageResponse.ok) {
           throw new Error(usageData.error || "Falha ao carregar custos da IA.");
         }
+        if (!jobsResponse.ok) {
+          throw new Error(jobsData.error || "Falha ao carregar fila da IA.");
+        }
 
         setSignals(signalsData);
         setUsage(usageData);
+        setJobs(jobsData);
       } catch (error) {
         setSignalsError(error instanceof Error ? error.message : "Falha ao carregar sinais da IA.");
       } finally {
@@ -215,6 +241,7 @@ export default function AdminIAPage() {
   const signalSummary = useMemo(() => signals.summary || {}, [signals.summary]);
   const usageCurrentMonth = useMemo(() => usage.currentMonth || {}, [usage.currentMonth]);
   const usageLast7Days = useMemo(() => usage.last7Days || {}, [usage.last7Days]);
+  const jobCounts = useMemo(() => jobs.counts || {}, [jobs.counts]);
   const tenantSignals = useMemo(() => signals.tenants || [], [signals.tenants]);
   const recentSignals = useMemo(() => signals.recent || [], [signals.recent]);
   const filteredRecentSignals = useMemo(
@@ -366,19 +393,22 @@ export default function AdminIAPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <SignalMetric label="Sinais recentes" value={String(signalSummary.totalSignals || 0)} icon={Activity} />
         <SignalMetric label="Handoffs" value={String(signalSummary.handoffs || 0)} icon={Handshake} />
         <SignalMetric label="Propostas" value={String(signalSummary.proposalSignals || 0)} icon={HandCoins} />
         <SignalMetric label="Agendamentos" value={String(signalSummary.scheduleSignals || 0)} icon={CalendarClock} />
+        <SignalMetric label="Recomendacoes" value={String(signalSummary.recommendationSignals || 0)} icon={Lightbulb} />
         <SignalMetric label="Tenants ativos" value={String(signalSummary.activeTenants || 0)} icon={Sparkles} />
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <SignalMetric label="Custo estimado no mes" value={`US$ ${Number(usageCurrentMonth.estimatedCostUsd || 0).toFixed(2)}`} icon={HandCoins} />
         <SignalMetric label="Execucoes no mes" value={String(usageCurrentMonth.runs || 0)} icon={Bot} />
         <SignalMetric label="Custo ultimos 7 dias" value={`US$ ${Number(usageLast7Days.estimatedCostUsd || 0).toFixed(2)}`} icon={Activity} />
         <SignalMetric label="Tokens ultimos 7 dias" value={String((Number(usageLast7Days.inputTokens || 0) + Number(usageLast7Days.outputTokens || 0)).toLocaleString("pt-BR"))} icon={BrainCircuit} />
+        <SignalMetric label="Fila pendente" value={String(jobCounts.pending || 0)} icon={Send} />
+        <SignalMetric label="Dead letters" value={String(jobCounts.deadLetter || 0)} icon={Loader2} />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
@@ -434,11 +464,13 @@ export default function AdminIAPage() {
                       <p>{formatDateTime(tenant.lastSignalAt)}</p>
                     </div>
                   </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                  <div className="mt-3 grid gap-2 sm:grid-cols-6">
                     <MiniPill label="handoff" value={tenant.handoffs} tone="amber" />
                     <MiniPill label="proposta" value={tenant.proposalSignals} tone="blue" />
                     <MiniPill label="agenda" value={tenant.scheduleSignals} tone="emerald" />
                     <MiniPill label="qualificacao" value={tenant.qualificationSignals} tone="violet" />
+                    <MiniPill label="recomendacao" value={tenant.recommendationSignals || 0} tone="emerald" />
+                    <MiniPill label="objecoes" value={tenant.objectionSignals || 0} tone="amber" />
                   </div>
                   {tenant.legacyClientId ? (
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -488,6 +520,22 @@ export default function AdminIAPage() {
                   <p className="mt-2 text-xs text-white/50">
                     lead {item.leadId || "-"} Â· chat {item.chatId || "-"} Â· {item.provider || "provider"} / {item.model || "model"}
                   </p>
+                  {item.plannerIntent || item.responseGoal || item.stateAfter || item.recommendedOffer ? (
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-white/65">
+                      {item.plannerIntent ? (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">intencao: {item.plannerIntent}</span>
+                      ) : null}
+                      {item.responseGoal ? (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">objetivo: {item.responseGoal}</span>
+                      ) : null}
+                      {item.stateAfter ? (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">estado: {item.stateAfter}</span>
+                      ) : null}
+                      {item.recommendedOffer ? (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">oferta: {item.recommendedOffer}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {item.legacyClientId ? (
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Link

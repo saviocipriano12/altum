@@ -667,7 +667,7 @@ export async function POST(req: Request) {
         dedupeKey: `${channel.tenantId}_${messageRef.id}`,
       });
 
-      triggerAiQueueWorker({ limit: 5 });
+      triggerAiQueueWorker({ limit: 5, drain: true });
 
       await claim.eventRef.set(
         {

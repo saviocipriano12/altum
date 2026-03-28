@@ -32,6 +32,9 @@ function serializeState(state: Awaited<ReturnType<typeof getChatState>>) {
     aiEnabled: state.aiEnabled,
     pausedUntil: state.pausedUntil ? state.pausedUntil.toISOString() : null,
     humanOwnerUserId: state.humanOwnerUserId,
+    updatedByName: state.updatedByName || null,
+    updatedAt: state.updatedAt ? state.updatedAt.toISOString() : null,
+    pauseReason: state.pauseReason || null,
   };
 }
 
@@ -132,6 +135,7 @@ export async function POST(
             aiEnabled: false,
             pausedUntil,
             humanOwnerUserId: targetOwner.userId,
+            pauseReason: action === "takeover" ? "human_takeover" : "manual_pause",
             updatedBy: user.uid,
             updatedByName: user.name,
             updatedAt: FieldValue.serverTimestamp(),
@@ -178,6 +182,7 @@ export async function POST(
             aiEnabled: true,
             pausedUntil: null,
             humanOwnerUserId: null,
+            pauseReason: null,
             updatedBy: user.uid,
             updatedByName: user.name,
             updatedAt: FieldValue.serverTimestamp(),

@@ -14,6 +14,13 @@ import {
 import { runConversationAgent } from "@/lib/server/ai/router";
 import { logAiUsage } from "@/lib/server/ai/usage-ledger";
 import {
+  getConversationRuntimeState,
+  getLeadMemory,
+  upsertConversationRuntimeState,
+  upsertLeadMemory,
+} from "@/lib/server/ai/runtime-state";
+import { planAltumAgentDecision, writeAltumAgentReply } from "@/lib/server/ai/altum-agent-v2";
+import {
   getMetaChannelForTenant,
   isMetaConversationChannelType,
   sendMetaConversationText,
@@ -23,12 +30,16 @@ import { getTenantSettings } from "@/lib/server/tenant";
 import {
   getBusinessProfile,
   getBusinessProfilePlaybookPreset,
+  getBusinessProfilePipelineStages,
   normalizeBusinessProfileId,
   type BusinessProfileId,
   type BusinessProfilePlaybookOffer,
   type BusinessProfilePlaybookScript,
 } from "@/lib/business-profiles";
 import { runLeadAutomations } from "@/lib/server/automations";
+import type { AltumPlannerDecision } from "@/lib/server/ai/altum-agent-v2";
+import type { AltumConversationRuntimeState } from "@/lib/server/ai/runtime-state";
+import { buildAiTaskPreset, suggestPipelineStageForAiAction } from "@/lib/ai-next-actions";
 
 const MAX_CONTEXT_MESSAGES = 24;
 const MAX_KB_DOCS = 50;
@@ -45,6 +56,9 @@ type ChatStateDoc = {
   aiEnabled?: boolean;
   pausedUntil?: unknown;
   humanOwnerUserId?: string | null;
+  updatedByName?: string | null;
+  updatedAt?: unknown;
+  pauseReason?: string | null;
 };
 
 type KbDoc = {
@@ -112,6 +126,9 @@ export type ChatState = {
   aiEnabled: boolean;
   pausedUntil: Date | null;
   humanOwnerUserId: string | null;
+  updatedByName?: string | null;
+  updatedAt?: Date | null;
+  pauseReason?: string | null;
 };
 
 export function getChatStateDocId(tenantId: string, chatId: string) {
@@ -536,6 +553,9 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
       aiEnabled: true,
       pausedUntil: null,
       humanOwnerUserId: null,
+      updatedByName: null,
+      updatedAt: null,
+      pauseReason: null,
     };
   }
 
@@ -548,6 +568,15 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
     humanOwnerUserId:
       typeof data.humanOwnerUserId === "string" && data.humanOwnerUserId.trim()
         ? data.humanOwnerUserId.trim()
+        : null,
+    updatedByName:
+      typeof data.updatedByName === "string" && data.updatedByName.trim()
+        ? data.updatedByName.trim()
+        : null,
+    updatedAt: toDate(data.updatedAt),
+    pauseReason:
+      typeof data.pauseReason === "string" && data.pauseReason.trim()
+        ? data.pauseReason.trim()
         : null,
   };
 }
@@ -574,6 +603,11 @@ async function saveAiLog(input: {
   autonomyMode?: AltumAiAutonomyMode;
   reasoningLevel?: AltumAiReasoningLevel;
   responseStyle?: AltumAiResponseStyle;
+  plannerIntent?: string | null;
+  stateBefore?: string | null;
+  stateAfter?: string | null;
+  responseGoal?: string | null;
+  recommendedOffer?: string | null;
 }) {
   await adminDb.collection("ai_logs").doc(input.logDocId).set(
     {
@@ -597,10 +631,202 @@ async function saveAiLog(input: {
       autonomyMode: input.autonomyMode || null,
       reasoningLevel: input.reasoningLevel || null,
       responseStyle: input.responseStyle || null,
+      plannerIntent: input.plannerIntent || null,
+      stateBefore: input.stateBefore || null,
+      stateAfter: input.stateAfter || null,
+      responseGoal: input.responseGoal || null,
+      recommendedOffer: input.recommendedOffer || null,
       createdAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
+}
+
+function addHours(base: Date, hours: number) {
+  return new Date(base.getTime() + hours * 60 * 60 * 1000);
+}
+
+async function executeAltumAgentActions(input: {
+  tenantId: string;
+  chatId: string;
+  leadId?: string | null;
+  plan: AltumPlannerDecision;
+  runtimeState: AltumConversationRuntimeState | null;
+  extractedFields?: Record<string, string> | null;
+  inboundText: string;
+  businessProfileId: BusinessProfileId;
+  leadName?: string | null;
+}) {
+  const leadId = sanitizeText(input.leadId, 160);
+  if (!leadId) return [] as string[];
+
+  const actions: string[] = [];
+  const leadRef = adminDb.collection("leads").doc(leadId);
+  const now = new Date();
+  const aiMemory = {
+    businessType: sanitizeText(
+      input.extractedFields?.businessType || input.extractedFields?.niche || input.extractedFields?.segment,
+      120
+    ) || null,
+    primaryGoal: sanitizeText(
+      input.extractedFields?.primaryGoal || input.extractedFields?.goal || input.extractedFields?.objective,
+      180
+    ) || null,
+    urgency: sanitizeText(input.extractedFields?.urgency, 120) || null,
+    budgetBand: sanitizeText(input.extractedFields?.budgetBand || input.extractedFields?.budget, 120) || null,
+    serviceInterest:
+      sanitizeText(input.extractedFields?.serviceInterest || input.extractedFields?.offer, 160) ||
+      input.plan.recommendedOffer ||
+      null,
+  };
+
+  const leadPatch: Record<string, unknown> = {
+    tenantId: input.tenantId,
+    aiConversationStage: input.plan.stateAfter,
+    aiLastIntent: input.plan.intent,
+    aiNextAction: input.plan.nextAction || null,
+    aiRecommendedOffer: input.plan.recommendedOffer || null,
+    aiLastInboundText: sanitizeText(input.inboundText, 500) || null,
+    aiMemory,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  const suggestedStage = suggestPipelineStageForAiAction(
+    input.plan.nextAction,
+    getBusinessProfilePipelineStages(input.businessProfileId).map((stage) => stage.id)
+  );
+  if (suggestedStage) {
+    leadPatch.pipelineStage = suggestedStage;
+    leadPatch.stage = suggestedStage;
+    leadPatch.stageUpdatedAt = FieldValue.serverTimestamp();
+  }
+
+  if (input.plan.stateAfter === "recommendation") {
+    leadPatch.priority = "high";
+    leadPatch.heat = "hot";
+  }
+
+  await leadRef.set(leadPatch, { merge: true });
+  actions.push("update_lead_memory");
+
+  const stageChanged = input.runtimeState?.stage !== input.plan.stateAfter;
+  const nextActionChanged = input.runtimeState?.nextAction !== (input.plan.nextAction || null);
+
+  if (stageChanged && input.plan.stateAfter === "recommendation") {
+    const note = [
+      "IA identificou contexto suficiente para recomendacao comercial.",
+      input.plan.recommendedOffer ? `Oferta sugerida: ${input.plan.recommendedOffer}.` : "",
+      input.plan.nextAction ? `Proximo passo sugerido: ${input.plan.nextAction}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    await Promise.all([
+      adminDb.collection("lead_notes").add({
+        tenantId: input.tenantId,
+        leadId,
+        text: note,
+        authorId: "ai_sales_agent",
+        authorName: "AI Sales Agent",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }),
+      leadRef.collection("events").add({
+        type: "ai_recommendation",
+        title: "IA sinalizou recomendacao comercial",
+        detail: note.slice(0, 240),
+        actorId: "ai_sales_agent",
+        actorName: "AI Sales Agent",
+        createdAt: FieldValue.serverTimestamp(),
+      }),
+    ]);
+    actions.push("add_lead_note");
+  }
+
+  if (
+    nextActionChanged &&
+    input.plan.nextAction &&
+    (input.plan.nextAction.includes("diagnostico") || input.plan.nextAction.includes("reuniao"))
+  ) {
+    const taskPreset = buildAiTaskPreset(input.plan.nextAction, input.leadName);
+    await Promise.all([
+      adminDb.collection("lead_tasks").add({
+        tenantId: input.tenantId,
+        leadId,
+        title: taskPreset.title,
+        type: taskPreset.type,
+        priority: taskPreset.priority,
+        dueAt: addHours(now, 2),
+        status: "pending",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: "ai_sales_agent",
+        createdByName: "AI Sales Agent",
+      }),
+      leadRef.collection("events").add({
+        type: "ai_followup_task_created",
+        title: "IA criou tarefa de follow-up",
+        detail: input.plan.nextAction.slice(0, 240),
+        actorId: "ai_sales_agent",
+        actorName: "AI Sales Agent",
+        createdAt: FieldValue.serverTimestamp(),
+      }),
+    ]);
+    actions.push("create_followup_task");
+  }
+
+  if (input.plan.stateAfter === "objection_handling" && stageChanged) {
+    const objection = sanitizeText(input.inboundText, 220);
+    await Promise.all([
+      adminDb.collection("lead_notes").add({
+        tenantId: input.tenantId,
+        leadId,
+        text: `IA registrou objecao/comentario do lead: ${objection}`,
+        authorId: "ai_sales_agent",
+        authorName: "AI Sales Agent",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }),
+      leadRef.collection("events").add({
+        type: "ai_objection_detected",
+        title: "IA detectou objecao",
+        detail: objection,
+        actorId: "ai_sales_agent",
+        actorName: "AI Sales Agent",
+        createdAt: FieldValue.serverTimestamp(),
+      }),
+    ]);
+    actions.push("register_objection");
+  }
+
+  if (input.plan.decision === "handoff") {
+    await Promise.all([
+      adminDb.collection("lead_tasks").add({
+        tenantId: input.tenantId,
+        leadId,
+        title: "Assumir handoff solicitado pela IA",
+        type: "handoff",
+        priority: "high",
+        dueAt: addHours(now, 1),
+        status: "pending",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: "ai_sales_agent",
+        createdByName: "AI Sales Agent",
+      }),
+      leadRef.collection("events").add({
+        type: "ai_handoff_requested",
+        title: "IA solicitou handoff",
+        detail: sanitizeText(input.plan.reason, 220),
+        actorId: "ai_sales_agent",
+        actorName: "AI Sales Agent",
+        createdAt: FieldValue.serverTimestamp(),
+      }),
+    ]);
+    actions.push("handoff_to_human");
+  }
+
+  return actions;
 }
 
 async function upsertChatState(input: {
@@ -609,6 +835,8 @@ async function upsertChatState(input: {
   aiEnabled?: boolean;
   pausedUntil?: Date | null;
   humanOwnerUserId?: string | null;
+  updatedByName?: string | null;
+  pauseReason?: string | null;
 }) {
   const docId = getChatStateDocId(input.tenantId, input.chatId);
   await adminDb.collection("chat_state").doc(docId).set(
@@ -618,6 +846,8 @@ async function upsertChatState(input: {
       aiEnabled: input.aiEnabled,
       pausedUntil: input.pausedUntil || null,
       humanOwnerUserId: input.humanOwnerUserId || null,
+      updatedByName: input.updatedByName || null,
+      pauseReason: input.pauseReason || null,
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
@@ -979,9 +1209,11 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "human_takeover_active" };
   }
 
-  const [conversation, kbDocs] = await Promise.all([
+  const [conversation, kbDocs, runtimeState, leadMemory] = await Promise.all([
     fetchConversation(chatId, tenantId),
     fetchKbDocs(tenantId, inboundText),
+    getConversationRuntimeState(tenantId, chatId),
+    leadId ? getLeadMemory(tenantId, leadId) : Promise.resolve(null),
   ]);
 
   const llmResult =
@@ -1013,20 +1245,37 @@ export async function handleIncomingMessage(
         )
       : null;
 
-  const choice = llmResult
-    ? {
-        decision: llmResult.decision === "skip" ? "ask_more" : llmResult.decision,
-        reason: llmResult.reason,
-        confidence: llmResult.confidence,
-        responseText: llmResult.responseText,
-      }
-    : decide({ inboundText, kbDocs, tenantAi: aiConfig });
   const extractedFields = llmResult?.extractedFields || extractBusinessFields(inboundText, aiConfig) || null;
-  const nextAction = llmResult?.nextAction || choice.nextAction || suggestNextAction({
-    decision: choice.decision,
+  const plannerDecision = planAltumAgentDecision({
     inboundText,
+    runtimeState,
+    leadMemory,
+    extractedFields,
+    llmDecision: llmResult?.decision,
+    llmReason: llmResult?.reason || null,
+    llmConfidence: llmResult?.confidence ?? null,
+    mandatoryQuestions: aiConfig.mandatoryQuestions,
+    conversation,
+    kbDocs,
     tenantAi: aiConfig,
   });
+  const fallbackChoice = decide({ inboundText, kbDocs, tenantAi: aiConfig });
+  const choice = {
+    decision: plannerDecision.decision,
+    reason: plannerDecision.reason || fallbackChoice.reason,
+    confidence: plannerDecision.confidence || fallbackChoice.confidence,
+    nextAction:
+      plannerDecision.nextAction ||
+      llmResult?.nextAction ||
+      fallbackChoice.nextAction ||
+      suggestNextAction({
+        decision: plannerDecision.decision,
+        inboundText,
+        tenantAi: aiConfig,
+      }),
+    responseText: llmResult?.responseText,
+  };
+  const nextAction = choice.nextAction;
   const effectiveProvider = llmResult?.provider || runtimeProvider;
   const effectiveModel = llmResult?.model || runtimeModel;
 
@@ -1067,6 +1316,11 @@ export async function handleIncomingMessage(
       autonomyMode: aiConfig.autonomyMode,
       reasoningLevel: aiConfig.reasoningLevel,
       responseStyle: aiConfig.responseStyle,
+      plannerIntent: plannerDecision.intent,
+      stateBefore: plannerDecision.stateBefore,
+      stateAfter: plannerDecision.stateAfter,
+      responseGoal: plannerDecision.responseGoal,
+      recommendedOffer: plannerDecision.recommendedOffer || null,
     });
     return { decision: "skip", reason: "channel_not_found" };
   }
@@ -1214,6 +1468,20 @@ export async function handleIncomingMessage(
       aiEnabled: false,
       pausedUntil: new Date(Date.now() + 30 * 60 * 1000),
       humanOwnerUserId: String(chatData.ownerId || "") || null,
+      updatedByName: "AI Sales Agent",
+      pauseReason: "handoff_requested",
+    });
+
+    const executedActions = await executeAltumAgentActions({
+      tenantId,
+      chatId,
+      leadId,
+      plan: plannerDecision,
+      runtimeState,
+      extractedFields,
+      inboundText,
+      businessProfileId: aiConfig.businessProfileId,
+      leadName: sanitizeText(chatData.contactName, 120) || null,
     });
 
     await saveAiLog({
@@ -1242,6 +1510,11 @@ export async function handleIncomingMessage(
       autonomyMode: aiConfig.autonomyMode,
       reasoningLevel: aiConfig.reasoningLevel,
       responseStyle: aiConfig.responseStyle,
+      plannerIntent: plannerDecision.intent,
+      stateBefore: plannerDecision.stateBefore,
+      stateAfter: plannerDecision.stateAfter,
+      responseGoal: plannerDecision.responseGoal,
+      recommendedOffer: plannerDecision.recommendedOffer || null,
     });
     await logAiUsage({
       tenantId,
@@ -1271,6 +1544,12 @@ export async function handleIncomingMessage(
         matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
         extractedFields,
         nextAction,
+        plannerIntent: plannerDecision.intent,
+        stateBefore: plannerDecision.stateBefore,
+        stateAfter: plannerDecision.stateAfter,
+        responseGoal: plannerDecision.responseGoal,
+        recommendedOffer: plannerDecision.recommendedOffer || null,
+        executedActions,
       },
     });
 
@@ -1288,10 +1567,39 @@ export async function handleIncomingMessage(
       });
     }
 
+    await upsertConversationRuntimeState({
+      tenantId,
+      chatId,
+      leadId,
+      inboundText,
+      outboundText: leadAck,
+      decision: "handoff",
+      reason: choice.reason,
+      confidence: choice.confidence,
+      nextAction,
+      extractedFields,
+    });
+
+    if (leadId) {
+      await upsertLeadMemory({
+        tenantId,
+        leadId,
+        extractedFields,
+        nextAction,
+      });
+    }
+
     return { decision: "handoff", reason: choice.reason };
   }
 
   const responseText =
+    writeAltumAgentReply({
+      plan: plannerDecision,
+      tenantAi: aiConfig,
+      runtimeState,
+      leadMemory,
+      inboundText,
+    }) ||
     choice.responseText ||
     makeLeadFacingReply({
       tenantAi: aiConfig,
@@ -1325,6 +1633,18 @@ export async function handleIncomingMessage(
     senderName: "AI Sales Agent",
   });
 
+  const executedActions = await executeAltumAgentActions({
+    tenantId,
+    chatId,
+    leadId,
+    plan: plannerDecision,
+    runtimeState,
+    extractedFields,
+    inboundText,
+    businessProfileId: aiConfig.businessProfileId,
+    leadName: sanitizeText(chatData.contactName, 120) || null,
+  });
+
   await saveAiLog({
     logDocId,
       tenantId,
@@ -1352,6 +1672,11 @@ export async function handleIncomingMessage(
     autonomyMode: aiConfig.autonomyMode,
     reasoningLevel: aiConfig.reasoningLevel,
     responseStyle: aiConfig.responseStyle,
+    plannerIntent: plannerDecision.intent,
+    stateBefore: plannerDecision.stateBefore,
+    stateAfter: plannerDecision.stateAfter,
+    responseGoal: plannerDecision.responseGoal,
+    recommendedOffer: plannerDecision.recommendedOffer || null,
   });
   await logAiUsage({
     tenantId,
@@ -1381,6 +1706,12 @@ export async function handleIncomingMessage(
       matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
       extractedFields,
       nextAction,
+      plannerIntent: plannerDecision.intent,
+      stateBefore: plannerDecision.stateBefore,
+      stateAfter: plannerDecision.stateAfter,
+      responseGoal: plannerDecision.responseGoal,
+      recommendedOffer: plannerDecision.recommendedOffer || null,
+      executedActions,
     },
   });
 
@@ -1395,6 +1726,28 @@ export async function handleIncomingMessage(
       channel: chatChannel,
       messageText: inboundText,
       aiNextAction: nextAction,
+    });
+  }
+
+  await upsertConversationRuntimeState({
+    tenantId,
+    chatId,
+    leadId,
+    inboundText,
+    outboundText: responseText,
+    decision: choice.decision,
+    reason: choice.reason,
+    confidence: choice.confidence,
+    nextAction,
+    extractedFields,
+  });
+
+  if (leadId) {
+    await upsertLeadMemory({
+      tenantId,
+      leadId,
+      extractedFields,
+      nextAction,
     });
   }
 

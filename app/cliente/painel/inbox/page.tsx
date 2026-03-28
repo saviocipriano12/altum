@@ -44,6 +44,9 @@ type ChatAiState = {
   aiEnabled?: boolean;
   pausedUntil?: unknown;
   humanOwnerUserId?: string | null;
+  updatedByName?: string | null;
+  updatedAt?: unknown;
+  pauseReason?: string | null;
 } | null;
 
 type ChatItem = {
@@ -373,6 +376,24 @@ function isAiPaused(chat: Pick<ChatItem, "aiState"> | null | undefined) {
   if (chat.aiState.aiEnabled === false) return true;
   const pausedUntil = toDate(chat.aiState.pausedUntil);
   return Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
+}
+
+function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefined) {
+  if (!chat?.aiState) return "IA pronta para respostas automaticas nesta conversa.";
+  const updatedByName = String(chat.aiState.updatedByName || "").trim();
+  const pausedUntil = toDate(chat.aiState.pausedUntil);
+
+  if (chat.aiState.humanOwnerUserId) {
+    const suffix = pausedUntil ? ` ate ${formatDateTime(pausedUntil)}` : "";
+    return `Takeover humano ativo${updatedByName ? ` por ${updatedByName}` : ""}${suffix}.`;
+  }
+
+  if (chat.aiState.aiEnabled === false || (pausedUntil && pausedUntil.getTime() > Date.now())) {
+    const suffix = pausedUntil ? ` ate ${formatDateTime(pausedUntil)}` : "";
+    return `IA pausada${updatedByName ? ` por ${updatedByName}` : ""}${suffix}.`;
+  }
+
+  return "IA pronta para respostas automaticas nesta conversa.";
 }
 
 function getSlaState(chat: ChatItem) {
@@ -825,6 +846,7 @@ export default function ClienteInboxPage() {
 
   const activeChat = detail?.chat?.id === selectedChat?.id ? (detail?.chat ?? null) : selectedChat;
   const aiPaused = useMemo(() => isAiPaused(activeChat), [activeChat]);
+  const aiStateDescription = useMemo(() => getAiStateDescription(activeChat), [activeChat]);
 
   const filteredChats = useMemo(() => {
     return chats.filter((chat) => {
@@ -1401,6 +1423,19 @@ export default function ClienteInboxPage() {
           {error}
         </PanelCard>
       ) : null}
+
+      <PanelCard className="p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Estado operacional da IA nesta conversa</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{aiStateDescription}</p>
+          </div>
+          <StateBadge
+            label={activeChat?.aiState?.humanOwnerUserId ? "Takeover humano" : aiPaused ? "IA pausada" : "IA pronta"}
+            tone={activeChat?.aiState?.humanOwnerUserId ? "warning" : aiPaused ? "warning" : "success"}
+          />
+        </div>
+      </PanelCard>
 
       <section className="grid min-h-[80vh] grid-cols-1 gap-4 2xl:grid-cols-[340px_minmax(0,1fr)_360px]">
         <PanelCard className="flex min-h-0 flex-col overflow-hidden">

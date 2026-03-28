@@ -450,7 +450,7 @@ export async function POST(req: Request) {
       dedupeKey: `${tenantId}_${incomingMessageRef.id}`,
     });
 
-    triggerAiQueueWorker({ limit: 5 });
+    triggerAiQueueWorker({ limit: 5, drain: true });
 
     if (eventRef) {
       await eventRef.set(

@@ -7,6 +7,8 @@ type ChatStateItem = {
   aiEnabled: boolean;
   pausedUntil: unknown;
   humanOwnerUserId: string | null;
+  updatedByName: string | null;
+  pauseReason: string | null;
   updatedAt: unknown;
 };
 
@@ -70,6 +72,10 @@ export async function GET(
             pausedUntil: data.pausedUntil || null,
             humanOwnerUserId:
               typeof data.humanOwnerUserId === "string" ? data.humanOwnerUserId : null,
+            updatedByName:
+              typeof data.updatedByName === "string" ? data.updatedByName : null,
+            pauseReason:
+              typeof data.pauseReason === "string" ? data.pauseReason : null,
             updatedAt: data.updatedAt || null,
           },
         ];

@@ -17,6 +17,10 @@ type AiSignalItem = {
   provider: string;
   model: string;
   confidence: number | null;
+  plannerIntent: string;
+  responseGoal: string;
+  stateAfter: string;
+  recommendedOffer: string;
   createdAt: unknown;
 };
 
@@ -72,6 +76,14 @@ function isQualificationSignal(action: string) {
   ].includes(action);
 }
 
+function isRecommendationSignal(goal: string) {
+  return goal === "recommend" || goal === "move_to_next_step";
+}
+
+function isObjectionSignal(stateAfter: string, goal: string) {
+  return stateAfter === "objection_handling" || goal === "handle_objection";
+}
+
 export async function GET(req: Request) {
   try {
     await requireRequestUser(req, {
@@ -97,6 +109,10 @@ export async function GET(req: Request) {
         provider: cleanText(data.provider, 80),
         model: cleanText(data.model, 80),
         confidence: typeof data.confidence === "number" ? data.confidence : null,
+        plannerIntent: cleanText(data.plannerIntent, 80).toLowerCase(),
+        responseGoal: cleanText(data.responseGoal, 80).toLowerCase(),
+        stateAfter: cleanText(data.stateAfter, 80).toLowerCase(),
+        recommendedOffer: cleanText(data.recommendedOffer, 160),
         createdAt: data.createdAt || null,
       };
     });
@@ -143,6 +159,8 @@ export async function GET(req: Request) {
           proposalSignals: 0,
           scheduleSignals: 0,
           qualificationSignals: 0,
+          recommendationSignals: 0,
+          objectionSignals: 0,
           lastSignalAt: item.createdAt,
         };
 
@@ -151,6 +169,8 @@ export async function GET(req: Request) {
         if (isProposalSignal(item.nextAction)) current.proposalSignals += 1;
         if (isScheduleSignal(item.nextAction)) current.scheduleSignals += 1;
         if (isQualificationSignal(item.nextAction)) current.qualificationSignals += 1;
+        if (isRecommendationSignal(item.responseGoal)) current.recommendationSignals += 1;
+        if (isObjectionSignal(item.stateAfter, item.responseGoal)) current.objectionSignals += 1;
         if (toTime(item.createdAt) > toTime(current.lastSignalAt)) current.lastSignalAt = item.createdAt;
 
         acc.set(item.tenantId, current);
@@ -165,6 +185,8 @@ export async function GET(req: Request) {
         proposalSignals: number;
         scheduleSignals: number;
         qualificationSignals: number;
+        recommendationSignals: number;
+        objectionSignals: number;
         lastSignalAt: unknown;
       }>());
 
@@ -193,6 +215,8 @@ export async function GET(req: Request) {
       proposalSignals: normalizedItems.filter((item) => isProposalSignal(item.nextAction)).length,
       scheduleSignals: normalizedItems.filter((item) => isScheduleSignal(item.nextAction)).length,
       qualificationSignals: normalizedItems.filter((item) => isQualificationSignal(item.nextAction)).length,
+      recommendationSignals: normalizedItems.filter((item) => isRecommendationSignal(item.responseGoal)).length,
+      objectionSignals: normalizedItems.filter((item) => isObjectionSignal(item.stateAfter, item.responseGoal)).length,
       activeTenants: tenants.length,
     };
 

@@ -192,7 +192,7 @@ export async function POST(
       source: "site_chat_widget",
       dedupeKey: `${tenantId}_${messageRef.id}`,
     });
-    triggerAiQueueWorker({ limit: 1 });
+    triggerAiQueueWorker({ limit: 5, drain: true });
 
     return NextResponse.json({ ok: true, chatId });
   } catch (error) {

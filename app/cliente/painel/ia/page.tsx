@@ -59,6 +59,11 @@ type AiLog = {
   matchedKbDocIds?: string[];
   extractedFields?: Record<string, string> | null;
   nextAction?: string | null;
+  plannerIntent?: string | null;
+  stateBefore?: string | null;
+  stateAfter?: string | null;
+  responseGoal?: string | null;
+  recommendedOffer?: string | null;
   latencyMs?: number | null;
   createdAt?: unknown;
 };
@@ -326,6 +331,8 @@ export default function ClienteIaPage() {
       responded: logs.filter((log) => log.decision === "respond").length,
       handoff: logs.filter((log) => log.decision === "handoff").length,
       askMore: logs.filter((log) => log.decision === "ask_more").length,
+      recommendationReady: logs.filter((log) => ["recommend", "move_to_next_step"].includes(String(log.responseGoal || ""))).length,
+      objectionHandling: logs.filter((log) => String(log.stateAfter || "") === "objection_handling").length,
       lowConfidence,
       avgLatency,
     };
@@ -1353,6 +1360,42 @@ export default function ClienteIaPage() {
                       <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{log.output || "Sem resposta enviada."}</p>
                     </div>
                   </div>
+
+                  {log.plannerIntent || log.responseGoal || log.stateBefore || log.stateAfter || log.recommendedOffer ? (
+                    <div className="mt-3 grid gap-2 md:grid-cols-[0.95fr_1.05fr]">
+                      <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Decisao do agente</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {log.plannerIntent ? (
+                            <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]">
+                              intencao: {log.plannerIntent}
+                            </span>
+                          ) : null}
+                          {log.responseGoal ? (
+                            <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]">
+                              objetivo: {log.responseGoal}
+                            </span>
+                          ) : null}
+                          {log.stateBefore ? (
+                            <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]">
+                              antes: {log.stateBefore}
+                            </span>
+                          ) : null}
+                          {log.stateAfter ? (
+                            <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]">
+                              depois: {log.stateAfter}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Oferta sugerida</p>
+                        <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
+                          {log.recommendedOffer || "Sem oferta dominante neste ponto da conversa."}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {log.nextAction || (log.extractedFields && Object.keys(log.extractedFields).length) ? (
                     <div className="mt-3 grid gap-2 md:grid-cols-[0.8fr_1.2fr]">

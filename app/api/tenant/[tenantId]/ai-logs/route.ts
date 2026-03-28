@@ -59,6 +59,10 @@ export async function GET(
       handoff: items.filter((item) => item.decision === "handoff").length,
       skipped: items.filter((item) => item.decision === "skip").length,
       lowConfidence: items.filter((item) => typeof item.confidence === "number" && item.confidence < 0.55).length,
+      recommendationReady: items.filter((item) =>
+        ["recommend", "move_to_next_step"].includes(String(item.responseGoal || ""))
+      ).length,
+      objectionHandling: items.filter((item) => String(item.stateAfter || "") === "objection_handling").length,
     };
 
     return NextResponse.json({ ok: true, tenantId, summary, items });

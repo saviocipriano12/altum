@@ -122,6 +122,9 @@ function serializeAiState(state: Awaited<ReturnType<typeof getChatState>>) {
     aiEnabled: state.aiEnabled,
     pausedUntil: state.pausedUntil ? state.pausedUntil.toISOString() : null,
     humanOwnerUserId: state.humanOwnerUserId,
+    updatedByName: state.updatedByName || null,
+    updatedAt: state.updatedAt ? state.updatedAt.toISOString() : null,
+    pauseReason: state.pauseReason || null,
   };
 }
 
