@@ -166,6 +166,7 @@ type LeadSummary = {
 
 type ChatDetailPayload = {
   chat: ChatItem;
+  aiState?: ChatAiState;
   lead?: LeadSummary | null;
   leadTasks?: LeadTask[];
   leadNotes?: LeadNote[];
@@ -760,7 +761,13 @@ export default function ClienteInboxPage() {
           return;
         }
 
-        setDetail(detailPayload);
+        setDetail({
+          ...detailPayload,
+          chat: {
+            ...detailPayload.chat,
+            aiState: detailPayload.aiState ?? detailPayload.chat.aiState ?? null,
+          },
+        });
         setMetaForm({
           status: detailPayload.chat.status || "open",
           priority: detailPayload.chat.priority || "medium",
