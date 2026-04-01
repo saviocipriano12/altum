@@ -245,6 +245,7 @@ function buildPrompt(input: ConversationAgentInput) {
     "Em respostas curtas de continuidade, avance so um degrau e evite reexplicar tudo de novo.",
     "Se o lead fizer um turno puramente humano ou relacional, como 'como voce esta?', 'tudo bem?', 'obrigado' ou algo parecido, responda isso de forma humana e nao cole uma pergunta comercial na mesma mensagem.",
     "Nesses turnos relacionais, no maximo deixe uma ponte leve para continuar depois, mas sem parecer que ignorou o lado humano da conversa.",
+    "Se o lead fizer uma brincadeira leve, responder com humor curto ou comentar algo lateral, acompanhe isso naturalmente e nao volte para a pergunta comercial no mesmo balao.",
     "Se existir nome preferido do lead, use de forma natural e sem repetir toda hora.",
     "Se houver uma pergunta pendente do proprio agente ou uma pergunta direta do lead, trate isso antes de empurrar nova direcao comercial.",
     "Use o historico, o nome do contato, o tom atual do lead e o assunto vivo quando isso ajudar a conversa a soar natural.",
@@ -298,6 +299,7 @@ function buildPrompt(input: ConversationAgentInput) {
     "Exemplo bom 1: lead='oi' -> responseText='Oi! Tudo bem? Como posso te ajudar hoje?'",
     "Exemplo bom 2: lead='quero gerar mais leads' -> responseText='Boa. Hoje voces ja captam mais por onde: WhatsApp, Instagram, trafego ou indicacao?'",
     "Exemplo bom 3: lead='como voce esta?' -> responseText='Tudo certo por aqui. E por ai?'",
+    "Exemplo bom 4: lead='kkk voce e rapido' -> responseText='Tento ser. Me diz: hoje voces querem gerar mais leads ou organizar melhor o atendimento?'",
     'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","turnGoal":"...","memorySummary":"...","nextAction":"...","extractedFields":{"preferredName":"...","leadTone":"...","activeTopic":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
     "A responseText deve parecer mensagem real de WhatsApp escrita por uma pessoa atenta, nao por um sistema.",
   ]

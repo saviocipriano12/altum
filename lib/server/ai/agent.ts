@@ -140,14 +140,17 @@ function classifyLeadTurn(value: string) {
       normalized
     );
   const isThanks = /\b(obrigad|valeu|show|top|perfeito, obrigad)\b/.test(normalized);
+  const isLightSmallTalk =
+    /\b(rs|kkk|haha|hehe|entao ta|entao tá|blz|beleza|show de bola|massa)\b/.test(normalized) ||
+    /\b(voce e rapido|você é rapido|você é rápida|voce e rapida)\b/.test(normalized);
   const hasBusinessTerms =
     /\b(nicho|empresa|lead|leads|venda|vendas|whatsapp|objetivo|comercial|site|trafego|tr[aá]fego|crm|pipeline|proposta|diagnostico|diagn[oó]stico)\b/.test(
       normalized
     );
-  const isPureRelational = (isWellbeing || isThanks) && !hasBusinessTerms;
+  const isPureRelational = (isWellbeing || isThanks || isLightSmallTalk) && !hasBusinessTerms;
   const isDirectQuestion = normalized.includes("?");
 
-  return { isGreeting, isPureRelational, isDirectQuestion, hasBusinessTerms };
+  return { isGreeting, isPureRelational, isDirectQuestion, hasBusinessTerms, isLightSmallTalk };
 }
 
 function chooseConversationalReply(input: {
