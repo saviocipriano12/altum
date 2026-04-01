@@ -1892,6 +1892,90 @@ export function hardenPlannerDecision(input: {
   };
 }
 
+function mapTurnGoalToResponseGoal(
+  turnGoal: string,
+  fallback: AltumPlannerDecision["responseGoal"]
+): AltumPlannerDecision["responseGoal"] {
+  if (/(handoff|escalar|humano)/i.test(turnGoal)) return "handoff";
+  if (/(acolher|boas vindas|welcome)/i.test(turnGoal)) return "welcome";
+  if (/(aprofundar|investigar|entender|qualify|discovery)/i.test(turnGoal)) return "qualify";
+  if (/(objecao|objeção|objection)/i.test(turnGoal)) return "handle_objection";
+  if (/(proposta|agendar|fechar|avancar|avançar|proximo passo|next step)/i.test(turnGoal)) {
+    return "move_to_next_step";
+  }
+  if (/(responder|esclarecer|clarify|orientar|explicar|resumir)/i.test(turnGoal)) return "clarify";
+  return fallback;
+}
+
+function mapResponseGoalToStage(
+  responseGoal: AltumPlannerDecision["responseGoal"],
+  currentStage: AltumConversationRuntimeState["stage"] | null | undefined,
+  fallback: AltumPlannerDecision["stateAfter"]
+): AltumPlannerDecision["stateAfter"] {
+  if (responseGoal === "handoff") return "handoff";
+  if (responseGoal === "welcome") return currentStage === "greeting" || !currentStage ? "greeting" : fallback;
+  if (responseGoal === "qualify") {
+    if (!currentStage || currentStage === "greeting" || currentStage === "discovery") return "qualification";
+    return currentStage as AltumPlannerDecision["stateAfter"];
+  }
+  if (responseGoal === "clarify") {
+    if (!currentStage || currentStage === "greeting") return "discovery";
+    return currentStage as AltumPlannerDecision["stateAfter"];
+  }
+  if (responseGoal === "handle_objection") return "objection_handling";
+  if (responseGoal === "move_to_next_step") return fallback;
+  return fallback;
+}
+
+function buildOperationalPlan(input: {
+  plannerDecision: AltumPlannerDecision;
+  choice: {
+    decision: "respond" | "ask_more" | "handoff";
+    reason: string;
+    confidence: number;
+    nextAction: string;
+    ledBy: "llm" | "fallback";
+  };
+  llmTurnGoal?: string | null;
+  runtimeState: AltumConversationRuntimeState | null;
+}) {
+  if (input.choice.decision === "handoff") {
+    return {
+      ...input.plannerDecision,
+      decision: "handoff" as const,
+      reason: input.choice.reason || input.plannerDecision.reason,
+      confidence: Math.max(input.choice.confidence, input.plannerDecision.confidence || 0),
+      stateAfter: "handoff" as const,
+      responseGoal: "handoff" as const,
+      nextAction: input.choice.nextAction || input.plannerDecision.nextAction,
+    };
+  }
+
+  if (input.choice.ledBy === "llm") {
+    const normalizedTurnGoal = sanitizeText(input.llmTurnGoal || "", 120).toLowerCase();
+    const responseGoal = mapTurnGoalToResponseGoal(normalizedTurnGoal, input.plannerDecision.responseGoal);
+    const stateAfter = mapResponseGoalToStage(responseGoal, input.runtimeState?.stage, input.plannerDecision.stateAfter);
+
+    return {
+      ...input.plannerDecision,
+      decision: input.choice.decision,
+      reason: input.choice.reason || input.plannerDecision.reason,
+      confidence: Math.max(input.choice.confidence, input.plannerDecision.confidence || 0),
+      responseGoal,
+      stateAfter,
+      nextAction: input.choice.nextAction || input.plannerDecision.nextAction,
+    };
+  }
+
+  return {
+    ...input.plannerDecision,
+    decision: input.choice.decision,
+    reason: input.choice.reason || input.plannerDecision.reason,
+    confidence: Math.max(input.choice.confidence, input.plannerDecision.confidence || 0),
+    nextAction: input.choice.nextAction || input.plannerDecision.nextAction,
+  };
+}
+
 export function extractBusinessFields(inboundText: string, tenantAi: TenantAiConfig) {
   const normalizedText = sanitizeText(inboundText, 1000);
   if (!normalizedText) return undefined;
@@ -2231,7 +2315,7 @@ export async function handleIncomingMessage(
       learningHints,
     },
   });
-  const plannerDecision = hardenPlannerDecision({
+  const hardenedPlannerDecision = hardenPlannerDecision({
     plannerDecision: rawPlannerDecision,
     extractedFields,
     leadMemory,
@@ -2240,7 +2324,13 @@ export async function handleIncomingMessage(
     llmConfidence: choice.confidence ?? llmResult?.confidence ?? null,
     llmTurnGoal: llmResult?.turnGoal || null,
   });
-  const nextAction = choice.nextAction;
+  const plannerDecision = buildOperationalPlan({
+    plannerDecision: hardenedPlannerDecision,
+    choice,
+    llmTurnGoal: llmResult?.turnGoal || null,
+    runtimeState,
+  });
+  const nextAction = plannerDecision.nextAction || choice.nextAction;
   const effectiveProvider = llmResult?.provider || runtimeProvider;
   const effectiveModel = llmResult?.model || runtimeModel;
 
