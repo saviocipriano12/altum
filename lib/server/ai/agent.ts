@@ -223,19 +223,14 @@ function buildAgentChoice(input: {
 function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeState | null) {
   if (!runtimeState) return "";
   return [
-    runtimeState.stage ? `estagio: ${runtimeState.stage}` : "",
-    runtimeState.intent ? `ultima intencao: ${runtimeState.intent}` : "",
     runtimeState.preferredName ? `nome preferido do lead: ${runtimeState.preferredName}` : "",
     runtimeState.leadTone ? `tom atual do lead: ${runtimeState.leadTone}` : "",
     runtimeState.activeTopic ? `assunto vivo da conversa: ${runtimeState.activeTopic}` : "",
     runtimeState.turnGoal ? `objetivo recente do turno: ${runtimeState.turnGoal}` : "",
     runtimeState.memorySummary ? `memoria recente: ${runtimeState.memorySummary}` : "",
-    runtimeState.responseGoal ? `objetivo recente: ${runtimeState.responseGoal}` : "",
     runtimeState.pendingQuestion ? `ultima pergunta feita e ainda viva: ${runtimeState.pendingQuestion}` : "",
     runtimeState.lastLeadQuestion ? `ultima pergunta do lead: ${runtimeState.lastLeadQuestion}` : "",
-    runtimeState.nextAction ? `proximo passo sugerido: ${runtimeState.nextAction}` : "",
-    runtimeState.summary ? `resumo: ${runtimeState.summary}` : "",
-    runtimeState.lastReason ? `motivo anterior: ${runtimeState.lastReason}` : "",
+    runtimeState.summary ? `resumo curto do que ja ficou claro: ${runtimeState.summary}` : "",
   ]
     .filter(Boolean)
     .join(" | ");
@@ -255,7 +250,6 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
     leadMemory.decisionMaker ? `decisor: ${leadMemory.decisionMaker}` : "",
     leadMemory.digitalMaturity ? `maturidade: ${leadMemory.digitalMaturity}` : "",
     leadMemory.dominantObjection ? `objecao dominante: ${leadMemory.dominantObjection}` : "",
-    leadMemory.recommendedOffer ? `oferta ja considerada: ${leadMemory.recommendedOffer}` : "",
     leadMemory.summary ? `resumo: ${leadMemory.summary}` : "",
   ]
     .filter(Boolean)
