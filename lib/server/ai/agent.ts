@@ -134,6 +134,7 @@ function classifyLeadTurn(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
+  const isGreeting = /^(oi|ola|olá|bom dia|boa tarde|boa noite)\b/.test(normalized);
   const isWellbeing =
     /\b(como voce esta|como voce ta|como c[eê] esta|como vai|tudo bem|tudo certo|como estao voces)\b/.test(
       normalized
@@ -146,7 +147,7 @@ function classifyLeadTurn(value: string) {
   const isPureRelational = (isWellbeing || isThanks) && !hasBusinessTerms;
   const isDirectQuestion = normalized.includes("?");
 
-  return { isPureRelational, isDirectQuestion, hasBusinessTerms };
+  return { isGreeting, isPureRelational, isDirectQuestion, hasBusinessTerms };
 }
 
 function chooseConversationalReply(input: {
@@ -175,6 +176,21 @@ function chooseConversationalReply(input: {
       .replace(/\s{2,}/g, " ")
       .trim();
 
+  const normalizeGreetingMenuResponse = (value: string, inboundText: string) => {
+    const turn = classifyLeadTurn(inboundText);
+    const clean = sanitizeText(value, 1600);
+    if (!turn.isGreeting || turn.hasBusinessTerms) return clean;
+
+    if (
+      /\b(o que voce quer melhorar hoje|como posso te ajudar hoje)\b/i.test(clean) &&
+      /\b(gerar mais leads|organizar atendimento|vender melhor)\b/i.test(clean)
+    ) {
+      return "Oi! Tudo bem? Como posso te ajudar hoje?";
+    }
+
+    return clean;
+  };
+
   const trimBusinessPushOnHumanTurn = (value: string, inboundText: string) => {
     const turn = classifyLeadTurn(inboundText);
     if (!turn.isPureRelational && !turn.isDirectQuestion) return sanitizeText(value, 1600);
@@ -197,11 +213,11 @@ function chooseConversationalReply(input: {
   };
 
   const llmResponse = trimBusinessPushOnHumanTurn(
-    softenRigidPhrases(input.llmResponseText || ""),
+    normalizeGreetingMenuResponse(softenRigidPhrases(input.llmResponseText || ""), input.inboundText || ""),
     input.inboundText || ""
   );
   const fallbackResponse = trimBusinessPushOnHumanTurn(
-    softenRigidPhrases(input.fallbackWriterText || ""),
+    normalizeGreetingMenuResponse(softenRigidPhrases(input.fallbackWriterText || ""), input.inboundText || ""),
     input.inboundText || ""
   );
   const previousResponse = normalizeComparable(String(input.previousOutboundText || ""));
