@@ -128,6 +128,15 @@ type AgentDecision = {
   nextAction?: string;
 };
 
+function chooseConversationalReply(input: {
+  llmResponseText?: string | null;
+  fallbackWriterText?: string | null;
+}) {
+  const llmResponse = sanitizeText(input.llmResponseText, 1600);
+  if (llmResponse) return llmResponse;
+  return sanitizeText(input.fallbackWriterText, 1600);
+}
+
 export type HandleIncomingMessageInput = {
   tenantId: string;
   chatId: string;
@@ -2315,22 +2324,25 @@ export async function handleIncomingMessage(
   }
 
   const responseText =
-    writeAltumAgentReply({
-      plan: plannerDecision,
-      tenantAi: aiConfig,
-      runtimeState,
-      leadMemory,
-      contactName: sanitizeText(chatData.contactName, 120) || null,
-      inboundText,
-    }) ||
-    choice.responseText ||
-    makeLeadFacingReply({
-      tenantAi: aiConfig,
-      decision: choice.decision,
-      inboundText,
-      kbDocs,
-      conversation,
-    });
+    chooseConversationalReply({
+      llmResponseText: llmResult?.responseText || choice.responseText || "",
+      fallbackWriterText:
+        writeAltumAgentReply({
+          plan: plannerDecision,
+          tenantAi: aiConfig,
+          runtimeState,
+          leadMemory,
+          contactName: sanitizeText(chatData.contactName, 120) || null,
+          inboundText,
+        }) ||
+        makeLeadFacingReply({
+          tenantAi: aiConfig,
+          decision: choice.decision,
+          inboundText,
+          kbDocs,
+          conversation,
+        }),
+    }) || "Perfeito. Me conta so mais um ponto rapido para eu te orientar melhor.";
   const quality = scoreAltumConversationQuality({
     inboundText,
     outboundText: responseText,

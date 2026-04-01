@@ -257,14 +257,19 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     });
 
     const responseText =
-      writeAltumAgentReply({
-        plan: plannerDecision,
-        tenantAi: tenantAiConfig,
-        runtimeState: null,
-        leadMemory: (body.leadMemory || null) as AltumLeadMemory | null,
-        contactName: typeof body.contactName === "string" ? body.contactName : null,
-        inboundText,
-      }) || llmResult?.responseText || "";
+      clean(
+        llmResult?.responseText ||
+          writeAltumAgentReply({
+            plan: plannerDecision,
+            tenantAi: tenantAiConfig,
+            runtimeState: null,
+            leadMemory: (body.leadMemory || null) as AltumLeadMemory | null,
+            contactName: typeof body.contactName === "string" ? body.contactName : null,
+            inboundText,
+          }) ||
+          "",
+        1600
+      ) || "";
 
     const quality = scoreAltumConversationQuality({
       inboundText,
@@ -277,6 +282,8 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       ok: true,
       preview: {
         plannerDecision,
+        llmTurnGoal: llmResult?.turnGoal || null,
+        llmMemorySummary: llmResult?.memorySummary || null,
         extractedFields: extractedFields || null,
         responseText,
         quality,

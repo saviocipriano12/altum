@@ -50,6 +50,8 @@ export type ConversationAgentResult = {
   confidence: number;
   responseText?: string;
   nextAction?: string;
+  turnGoal?: string;
+  memorySummary?: string;
   provider: AltumAiProvider;
   model: string;
   fallbackUsed: boolean;
@@ -136,6 +138,8 @@ function normalizeAgentResult(
     confidence: normalizeConfidence(payload.confidence),
     responseText: sanitizeText(payload.responseText, 1600) || undefined,
     nextAction: sanitizeText(payload.nextAction, 140) || undefined,
+    turnGoal: sanitizeText(payload.turnGoal, 120) || undefined,
+    memorySummary: sanitizeText(payload.memorySummary, 220) || undefined,
     provider,
     model,
     fallbackUsed,
@@ -217,26 +221,27 @@ function buildPrompt(input: ConversationAgentInput) {
     .join("\n");
 
   const systemPrompt = [
-    "Voce e um agente comercial da ALTUM operando em portugues do Brasil.",
-    "Sua resposta deve ser extremamente humana, objetiva, comercial e segura.",
+    "Voce e o agente conversacional comercial da ALTUM operando em portugues do Brasil.",
+    "Seu trabalho nao e seguir roteiro nem parecer chatbot. Seu trabalho e entender o lead, responder ao que ele acabou de dizer e conduzir a conversa com naturalidade.",
+    "Sempre responda primeiro ao humano e ao contexto imediato. So depois conduza a conversa para o proximo passo quando isso fizer sentido.",
+    "Use o historico e o nome do contato quando natural. Se o lead mudar de assunto, responder algo curto ou fizer uma pergunta sobre voce, trate isso normalmente e depois retome a conversa sem parecer scriptado.",
+    "Evite interrogatorio. Quando faltar contexto, faca apenas uma pergunta curta e realmente util, que destrave a proxima camada de entendimento.",
+    "Nao empurre oferta cedo demais. Antes de recomendar algo, procure entender negocio, objetivo, canal atual, urgencia ou outro dado realmente relevante.",
     "Nunca exponha rotulos internos como FAQ, POLICY, POLITICA, PLAYBOOK, CATALOGO, GUARDRAIL ou nomes de documentos.",
     "Nunca copie documentos brutos para o lead. Sempre sintetize em linguagem natural.",
     "Nunca invente servico, oferta, preco, prazo, prova social ou promessa que nao estejam sustentados pelo contexto recebido.",
     "So recomende ofertas que existam nas ofertas sugeridas da vertical ou que estejam claramente suportadas pela base relevante.",
-    "Se faltar contexto, faca somente 1 pergunta por vez.",
-    "Se o lead apenas cumprimentar, responda de forma humana e avance com uma pergunta simples.",
-    "Se o lead respondeu a uma pergunta anterior, reconheca essa resposta e siga para a proxima etapa sem reiniciar a conversa.",
     "Nao fale de preco, faixa, investimento ou proposta se o lead nao tocou nesse assunto.",
-    "Nao explique o processo comercial completo da ALTUM se o lead ainda so estiver cumprimentando ou respondendo algo curto.",
+    "Nao explique o processo comercial completo da ALTUM se o lead ainda so estiver no inicio ou respondendo algo curto.",
     "Nunca repita exatamente a mesma pergunta em mensagens consecutivas.",
-    "Prefira respostas curtas, normalmente de 2 a 4 frases.",
+    "Prefira respostas curtas, normalmente de 2 a 5 frases, mas soando humanas e naturais.",
     "Voce deve responder somente com JSON valido.",
     "Campos obrigatorios do JSON: decision, reason, confidence, responseText, extractedFields, nextAction.",
+    "Campos opcionais recomendados: turnGoal, memorySummary.",
     "decision deve ser um de: respond, ask_more, handoff, skip.",
-    "Se houver risco, falta de contexto sensivel, pedido explicito de humano ou baixa seguranca, use handoff.",
-    "Se faltarem dados minimos para qualificar, use ask_more.",
-    "Se tiver contexto suficiente, responda de forma natural, comercial e precisa.",
-    "Quando existir playbook da vertical, use-o para guiar a conversa sem parecer scriptado.",
+    "Use handoff apenas se houver risco, tema sensivel, pedido claro de humano ou baixa seguranca real.",
+    "Use ask_more quando faltar contexto importante; mesmo assim, a responseText deve soar como conversa real, nao como formulario.",
+    "Quando existir playbook da vertical, use-o para orientar a conversa sem soar scriptado.",
   ].join(" ");
 
   const userPrompt = [
@@ -253,7 +258,7 @@ function buildPrompt(input: ConversationAgentInput) {
     conversation ? `Historico recente:\n${conversation}` : "",
     kb ? `Base relevante:\n${kb}` : "Base relevante: sem documentos relevantes.",
     `Mensagem atual do lead: ${sanitizeText(input.inboundText, 700)}`,
-    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","nextAction":"...","extractedFields":{"businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
+    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"turnGoal":"...","memorySummary":"...","responseText":"...","nextAction":"...","extractedFields":{"businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
   ]
     .filter(Boolean)
     .join("\n\n");
