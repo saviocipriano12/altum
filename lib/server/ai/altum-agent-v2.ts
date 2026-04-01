@@ -236,6 +236,10 @@ function matchesEscalationTopic(text: string, escalationTopics?: string[]) {
   });
 }
 
+function llmPrefersConversationalReply(decision?: "respond" | "ask_more" | "handoff" | "skip", confidence?: number | null) {
+  return decision === "respond" && (confidence || 0) >= 0.72;
+}
+
 function chooseNextQuestion(input: {
   messages: ConversationMessage[];
   mandatoryQuestions: string[];
@@ -518,6 +522,23 @@ export function planAltumAgentDecision(input: {
   }
 
   if (intent === "send_image") {
+    if (hasContext && llmPrefersConversationalReply(input.llmDecision, input.llmConfidence)) {
+      return {
+        decision: "respond",
+        reason: "image_contextual_response",
+        confidence: Math.max(0.74, input.llmConfidence || 0.74),
+        stateBefore,
+        stateAfter: stateBefore === "greeting" ? "discovery" : stateBefore,
+        responseGoal: "clarify",
+        intent,
+        objectionType,
+        commercialTemperature,
+        nextQuestion: "Se fizer sentido, me diz o que voce quer que eu observe de principal nessa imagem.",
+        nextAction: "esclarecer_oferta_e_mapear_foco",
+        recommendedOffer,
+      };
+    }
+
     return {
       decision: "ask_more",
       reason: hasContext ? "image_needs_focus" : "image_needs_context",
@@ -537,6 +558,23 @@ export function planAltumAgentDecision(input: {
   }
 
   if (intent === "send_document") {
+    if (hasContext && llmPrefersConversationalReply(input.llmDecision, input.llmConfidence)) {
+      return {
+        decision: "respond",
+        reason: "document_contextual_response",
+        confidence: Math.max(0.74, input.llmConfidence || 0.74),
+        stateBefore,
+        stateAfter: stateBefore === "greeting" ? "discovery" : stateBefore,
+        responseGoal: "clarify",
+        intent,
+        objectionType,
+        commercialTemperature,
+        nextQuestion: "Se fizer sentido, me diz o que voce quer que eu extraia ou avalie de principal nesse arquivo.",
+        nextAction: "esclarecer_oferta_e_mapear_foco",
+        recommendedOffer,
+      };
+    }
+
     return {
       decision: "ask_more",
       reason: hasContext ? "document_needs_focus" : "document_needs_context",
@@ -769,6 +807,31 @@ export function planAltumAgentDecision(input: {
   }
 
   if (intent === "affirmative" && stateBefore === "recommendation") {
+    if (llmPrefersConversationalReply(input.llmDecision, input.llmConfidence)) {
+      return {
+        decision: "respond",
+        reason: "affirmative_followup_contextual",
+        confidence: Math.max(0.82, input.llmConfidence || 0.82),
+        stateBefore,
+        stateAfter: "qualification",
+        responseGoal: "clarify",
+        intent,
+        objectionType,
+        commercialTemperature,
+        nextQuestion: chooseNextQuestion({
+          messages: input.conversation,
+          mandatoryQuestions: input.mandatoryQuestions,
+          businessType: known.businessType,
+          primaryGoal: known.primaryGoal,
+          currentChannels: known.currentChannels,
+          budgetBand: known.budgetBand,
+          urgency: known.urgency,
+        }),
+        nextAction: "aprofundar_contexto_sem_repetir_bloco",
+        recommendedOffer,
+      };
+    }
+
     return {
       decision: "respond",
       reason: "affirmative_after_recommendation",

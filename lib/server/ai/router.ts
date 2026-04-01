@@ -239,9 +239,10 @@ function buildPrompt(input: ConversationAgentInput) {
     "Nao explique o processo comercial completo da ALTUM se o lead ainda so estiver no inicio ou respondendo algo curto.",
     "Nunca repita exatamente a mesma pergunta em mensagens consecutivas.",
     "Prefira respostas curtas, normalmente de 2 a 5 frases, mas soando humanas e naturais.",
+    "Perguntas obrigatorias, ofertas e scripts servem como apoio de contexto. Nao use isso como checklist nem como roteiro duro.",
     "Voce deve responder somente com JSON valido.",
-    "Campos obrigatorios do JSON: decision, reason, confidence, responseText, extractedFields, nextAction.",
-    "Campos opcionais recomendados: turnGoal, memorySummary.",
+    "Campos obrigatorios do JSON: decision, reason, confidence, responseText.",
+    "Campos opcionais recomendados: extractedFields, nextAction, turnGoal, memorySummary.",
     "decision deve ser um de: respond, ask_more, handoff, skip.",
     "Use handoff apenas se houver risco, tema sensivel, pedido claro de humano ou baixa seguranca real.",
     "Use ask_more quando faltar contexto importante; mesmo assim, a responseText deve soar como conversa real, nao como formulario.",
@@ -264,7 +265,7 @@ function buildPrompt(input: ConversationAgentInput) {
     conversation ? `Historico recente:\n${conversation}` : "",
     kb ? `Base relevante:\n${kb}` : "Base relevante: sem documentos relevantes.",
     `Mensagem atual do lead: ${sanitizeText(input.inboundText, 700)}`,
-    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"turnGoal":"...","memorySummary":"...","responseText":"...","nextAction":"...","extractedFields":{"preferredName":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
+    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","turnGoal":"...","memorySummary":"...","nextAction":"...","extractedFields":{"preferredName":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
   ]
     .filter(Boolean)
     .join("\n\n");
