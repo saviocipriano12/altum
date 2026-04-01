@@ -23,6 +23,8 @@ export type AltumConversationRuntimeState = {
   recommendedOffer?: string | null;
   responseGoal?: string | null;
   objectionType?: string | null;
+  turnGoal?: string | null;
+  memorySummary?: string | null;
   summary?: string | null;
   lastDecision?: string | null;
   lastReason?: string | null;
@@ -120,6 +122,8 @@ export async function upsertConversationRuntimeState(input: {
   responseGoal?: string | null;
   recommendedOffer?: string | null;
   objectionType?: string | null;
+  turnGoal?: string | null;
+  memorySummary?: string | null;
   summary?: string | null;
   extractedFields?: Record<string, string> | null;
 }) {
@@ -156,6 +160,8 @@ export async function upsertConversationRuntimeState(input: {
     recommendedOffer: recommendedOffer || null,
     responseGoal: cleanText(input.responseGoal, 80) || null,
     objectionType: cleanText(input.objectionType, 80) || null,
+    turnGoal: cleanText(input.turnGoal, 140) || null,
+    memorySummary: cleanText(input.memorySummary, 260) || null,
     summary: cleanText(input.summary, 260) || null,
     lastDecision: input.decision,
     lastReason: cleanText(input.reason, 180) || null,
@@ -256,6 +262,8 @@ export async function getConversationRuntimeState(tenantId: string, chatId: stri
     recommendedOffer: cleanText(data.recommendedOffer, 180) || null,
     responseGoal: cleanText(data.responseGoal, 80) || null,
     objectionType: cleanText(data.objectionType, 80) || null,
+    turnGoal: cleanText(data.turnGoal, 140) || null,
+    memorySummary: cleanText(data.memorySummary, 260) || null,
     summary: cleanText(data.summary, 260) || null,
     lastDecision: cleanText(data.lastDecision, 80) || null,
     lastReason: cleanText(data.lastReason, 180) || null,

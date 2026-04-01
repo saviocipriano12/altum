@@ -137,6 +137,40 @@ function chooseConversationalReply(input: {
   return sanitizeText(input.fallbackWriterText, 1600);
 }
 
+function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeState | null) {
+  if (!runtimeState) return "";
+  return [
+    runtimeState.stage ? `estagio: ${runtimeState.stage}` : "",
+    runtimeState.intent ? `ultima intencao: ${runtimeState.intent}` : "",
+    runtimeState.turnGoal ? `objetivo recente do turno: ${runtimeState.turnGoal}` : "",
+    runtimeState.memorySummary ? `memoria recente: ${runtimeState.memorySummary}` : "",
+    runtimeState.responseGoal ? `objetivo recente: ${runtimeState.responseGoal}` : "",
+    runtimeState.nextAction ? `proximo passo sugerido: ${runtimeState.nextAction}` : "",
+    runtimeState.summary ? `resumo: ${runtimeState.summary}` : "",
+    runtimeState.lastReason ? `motivo anterior: ${runtimeState.lastReason}` : "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
+  if (!leadMemory) return "";
+  return [
+    leadMemory.businessType ? `negocio: ${leadMemory.businessType}` : "",
+    leadMemory.primaryGoal ? `objetivo: ${leadMemory.primaryGoal}` : "",
+    leadMemory.currentChannels ? `canais atuais: ${leadMemory.currentChannels}` : "",
+    leadMemory.budgetBand ? `orcamento: ${leadMemory.budgetBand}` : "",
+    leadMemory.urgency ? `urgencia: ${leadMemory.urgency}` : "",
+    leadMemory.decisionMaker ? `decisor: ${leadMemory.decisionMaker}` : "",
+    leadMemory.digitalMaturity ? `maturidade: ${leadMemory.digitalMaturity}` : "",
+    leadMemory.dominantObjection ? `objecao dominante: ${leadMemory.dominantObjection}` : "",
+    leadMemory.recommendedOffer ? `oferta ja considerada: ${leadMemory.recommendedOffer}` : "",
+    leadMemory.summary ? `resumo: ${leadMemory.summary}` : "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}
+
 export type HandleIncomingMessageInput = {
   tenantId: string;
   chatId: string;
@@ -704,6 +738,8 @@ async function saveAiLog(input: {
   recommendedOffer?: string | null;
   objectionType?: string | null;
   commercialTemperature?: string | null;
+  llmTurnGoal?: string | null;
+  llmMemorySummary?: string | null;
   qualityScore?: number | null;
   qualityNotes?: string[] | null;
 }) {
@@ -736,6 +772,8 @@ async function saveAiLog(input: {
       recommendedOffer: input.recommendedOffer || null,
       objectionType: input.objectionType || null,
       commercialTemperature: input.commercialTemperature || null,
+      llmTurnGoal: input.llmTurnGoal || null,
+      llmMemorySummary: input.llmMemorySummary || null,
       qualityScore: typeof input.qualityScore === "number" ? input.qualityScore : null,
       qualityNotes: input.qualityNotes || [],
       createdAt: FieldValue.serverTimestamp(),
@@ -1881,6 +1919,9 @@ export async function handleIncomingMessage(
     getTenantLearningHints(tenantId),
   ]);
 
+  const runtimeStateSummary = summarizeRuntimeStateForAgent(runtimeState);
+  const leadMemorySummary = summarizeLeadMemoryForAgent(leadMemory);
+
   const llmResult =
     runtimeProvider !== "altum_rules"
       ? await runConversationAgent(
@@ -1890,6 +1931,8 @@ export async function handleIncomingMessage(
             inboundText,
             channel: chatChannel,
             contactName: sanitizeText(chatData.contactName, 120) || undefined,
+            runtimeStateSummary: runtimeStateSummary || undefined,
+            leadMemorySummary: leadMemorySummary || undefined,
             toneOfVoice: aiConfig.toneOfVoice,
             businessSummary: aiConfig.businessSummary,
             objective: aiConfig.objective,
@@ -1909,7 +1952,6 @@ export async function handleIncomingMessage(
           aiConfig.runtimePolicy
         )
       : null;
-
   const heuristicExtractedFields = extractBusinessFields(inboundText, aiConfig) || null;
   const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields) || null;
   const rawPlannerDecision = planAltumAgentDecision({
@@ -2201,6 +2243,8 @@ export async function handleIncomingMessage(
       recommendedOffer: plannerDecision.recommendedOffer || null,
       objectionType: plannerDecision.objectionType || null,
       commercialTemperature: plannerDecision.commercialTemperature || null,
+      llmTurnGoal: llmResult?.turnGoal || null,
+      llmMemorySummary: llmResult?.memorySummary || null,
       qualityScore: quality.score,
       qualityNotes: quality.notes,
     });
@@ -2291,10 +2335,14 @@ export async function handleIncomingMessage(
       responseGoal: plannerDecision.responseGoal,
       recommendedOffer: plannerDecision.recommendedOffer || null,
       objectionType: plannerDecision.objectionType || null,
+      turnGoal: llmResult?.turnGoal || null,
+      memorySummary: llmResult?.memorySummary || null,
       summary: [
+        llmResult?.turnGoal ? `Objetivo do turno: ${llmResult.turnGoal}` : "",
         plannerDecision.intent ? `Intencao: ${plannerDecision.intent}` : "",
         plannerDecision.recommendedOffer ? `Oferta: ${plannerDecision.recommendedOffer}` : "",
         plannerDecision.nextAction ? `Acao: ${plannerDecision.nextAction}` : "",
+        llmResult?.memorySummary ? `Memoria: ${llmResult.memorySummary}` : "",
       ]
         .filter(Boolean)
         .join(" | "),
@@ -2457,6 +2505,8 @@ export async function handleIncomingMessage(
     recommendedOffer: plannerDecision.recommendedOffer || null,
     objectionType: plannerDecision.objectionType || null,
     commercialTemperature: plannerDecision.commercialTemperature || null,
+    llmTurnGoal: llmResult?.turnGoal || null,
+    llmMemorySummary: llmResult?.memorySummary || null,
     qualityScore: quality.score,
     qualityNotes: quality.notes,
   });
@@ -2548,6 +2598,8 @@ export async function handleIncomingMessage(
     responseGoal: plannerDecision.responseGoal,
     recommendedOffer: plannerDecision.recommendedOffer || null,
     objectionType: plannerDecision.objectionType || null,
+    turnGoal: llmResult?.turnGoal || null,
+    memorySummary: llmResult?.memorySummary || null,
     summary: [
       plannerDecision.intent ? `Intencao: ${plannerDecision.intent}` : "",
       plannerDecision.recommendedOffer ? `Oferta: ${plannerDecision.recommendedOffer}` : "",
@@ -2568,6 +2620,7 @@ export async function handleIncomingMessage(
       dominantIntent: plannerDecision.intent,
       dominantObjection: plannerDecision.objectionType || null,
       summary: [
+        llmResult?.memorySummary || "",
         extractedFields?.businessType || extractedFields?.niche || leadMemory?.businessType || "",
         extractedFields?.primaryGoal || extractedFields?.goal || leadMemory?.primaryGoal || "",
         plannerDecision.recommendedOffer || "",

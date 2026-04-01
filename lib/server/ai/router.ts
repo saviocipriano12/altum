@@ -27,6 +27,8 @@ export type ConversationAgentInput = {
   inboundText: string;
   channel: string;
   contactName?: string;
+  runtimeStateSummary?: string;
+  leadMemorySummary?: string;
   toneOfVoice: string;
   businessSummary: string;
   objective?: string;
@@ -250,6 +252,8 @@ function buildPrompt(input: ConversationAgentInput) {
     `Tom de voz: ${sanitizeText(input.toneOfVoice, 120)}.`,
     `Tier: ${input.tier}. Autonomia: ${input.autonomyMode}. Raciocinio: ${input.reasoningLevel}. Estilo: ${input.responseStyle}.`,
     `Canal: ${input.channel}. Contato: ${sanitizeText(input.contactName, 120) || "lead"}.`,
+    input.runtimeStateSummary ? `Estado atual da conversa:\n${sanitizeText(input.runtimeStateSummary, 320)}` : "",
+    input.leadMemorySummary ? `Memoria relevante do lead:\n${sanitizeText(input.leadMemorySummary, 360)}` : "",
     guardrails ? `Guardrails:\n${guardrails}` : "",
     questions ? `Perguntas obrigatorias:\n${questions}` : "",
     escalations ? `Topicos de escalada:\n${escalations}` : "",

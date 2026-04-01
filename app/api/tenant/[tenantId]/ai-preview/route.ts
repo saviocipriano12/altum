@@ -42,8 +42,23 @@ type Body = {
   messageType?: string;
   history?: PreviewMessage[];
   contactName?: string;
+  runtimeStateSummary?: string;
   leadMemory?: Partial<AltumLeadMemory> | null;
 };
+
+function summarizeLeadMemoryForPreview(leadMemory: Partial<AltumLeadMemory> | null | undefined) {
+  if (!leadMemory) return "";
+  return [
+    clean(leadMemory.businessType, 120) ? `negocio: ${clean(leadMemory.businessType, 120)}` : "",
+    clean(leadMemory.primaryGoal, 180) ? `objetivo: ${clean(leadMemory.primaryGoal, 180)}` : "",
+    clean(leadMemory.currentChannels, 180) ? `canais atuais: ${clean(leadMemory.currentChannels, 180)}` : "",
+    clean(leadMemory.urgency, 120) ? `urgencia: ${clean(leadMemory.urgency, 120)}` : "",
+    clean(leadMemory.dominantObjection, 120) ? `objecao: ${clean(leadMemory.dominantObjection, 120)}` : "",
+    clean(leadMemory.summary, 220) ? `resumo: ${clean(leadMemory.summary, 220)}` : "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}
 
 function clean(value: unknown, max = 900) {
   if (typeof value !== "string") return "";
@@ -172,6 +187,9 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
               chatId: "preview_chat",
               inboundText,
               channel: "whatsapp",
+              contactName: typeof body.contactName === "string" ? body.contactName : undefined,
+              runtimeStateSummary: clean(body.runtimeStateSummary, 320) || undefined,
+              leadMemorySummary: summarizeLeadMemoryForPreview(body.leadMemory || null) || undefined,
               toneOfVoice: clean(ai.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
               businessSummary: clean(ai.businessSummary, 360) || clean(settings?.name, 120) || businessProfile.description,
               objective: clean(ai.objective, 200) || businessProfile.ai.objective,
