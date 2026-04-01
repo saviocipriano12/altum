@@ -30,6 +30,9 @@ export type AltumConversationRuntimeState = {
   lastReason?: string | null;
   lastInboundText?: string | null;
   lastOutboundText?: string | null;
+  pendingQuestion?: string | null;
+  lastLeadQuestion?: string | null;
+  preferredName?: string | null;
 };
 
 export type AltumLeadMemory = {
@@ -49,6 +52,7 @@ export type AltumLeadMemory = {
   recommendedOffer?: string | null;
   nextBestAction?: string | null;
   summary?: string | null;
+  preferredName?: string | null;
   fields?: Record<string, string>;
 };
 
@@ -59,6 +63,34 @@ function cleanText(value: unknown, max = 220) {
 
 function hasKeyword(text: string, words: string[]) {
   return words.some((word) => text.includes(word));
+}
+
+function extractQuestion(text: string) {
+  const clean = cleanText(text, 400);
+  if (!clean || !clean.includes("?")) return "";
+  const match = clean.match(/([^?]+\?)/);
+  return cleanText(match?.[1] || clean, 220);
+}
+
+function extractPreferredName(inboundText: string, extractedFields?: Record<string, string> | null) {
+  const explicit = cleanText(
+    extractedFields?.preferredName || extractedFields?.name || extractedFields?.contactName,
+    80
+  );
+  if (explicit) return explicit;
+
+  const clean = cleanText(inboundText, 220);
+  const patterns = [
+    /(?:meu nome e|meu nome é)\s+([A-Za-zÀ-ÿ]{2,}(?:\s+[A-Za-zÀ-ÿ]{2,})?)/i,
+    /(?:pode me chamar de|me chama de)\s+([A-Za-zÀ-ÿ]{2,}(?:\s+[A-Za-zÀ-ÿ]{2,})?)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = clean.match(pattern);
+    if (match?.[1]) return cleanText(match[1], 80);
+  }
+
+  return "";
 }
 
 export function getConversationRuntimeDocId(tenantId: string, chatId: string) {
@@ -167,6 +199,9 @@ export async function upsertConversationRuntimeState(input: {
     lastReason: cleanText(input.reason, 180) || null,
     lastInboundText: cleanText(input.inboundText, 800) || null,
     lastOutboundText: cleanText(input.outboundText, 800) || null,
+    pendingQuestion: extractQuestion(input.outboundText || "") || null,
+    lastLeadQuestion: extractQuestion(input.inboundText) || null,
+    preferredName: extractPreferredName(input.inboundText, input.extractedFields) || null,
     lastLeadMessageAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -209,6 +244,7 @@ export async function upsertLeadMemory(input: {
   const currentChannels = cleanText(fields.currentChannels || fields.channels, 220);
   const teamSize = cleanText(fields.teamSize || fields.team || fields.staffSize, 80);
   const summary = cleanText(input.summary, 260);
+  const preferredName = extractPreferredName("", fields);
 
   const normalizedFields = Object.fromEntries(
     Object.entries(fields)
@@ -237,6 +273,7 @@ export async function upsertLeadMemory(input: {
   if (teamSize) payload.teamSize = teamSize;
   if (recommendedOffer) payload.recommendedOffer = recommendedOffer;
   if (summary) payload.summary = summary;
+  if (preferredName) payload.preferredName = preferredName;
 
   const nextAction = cleanText(input.nextAction, 160);
   if (nextAction) payload.nextBestAction = nextAction;
@@ -269,6 +306,9 @@ export async function getConversationRuntimeState(tenantId: string, chatId: stri
     lastReason: cleanText(data.lastReason, 180) || null,
     lastInboundText: cleanText(data.lastInboundText, 800) || null,
     lastOutboundText: cleanText(data.lastOutboundText, 800) || null,
+    pendingQuestion: cleanText(data.pendingQuestion, 220) || null,
+    lastLeadQuestion: cleanText(data.lastLeadQuestion, 220) || null,
+    preferredName: cleanText(data.preferredName, 80) || null,
   };
 }
 
@@ -302,6 +342,7 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     recommendedOffer: cleanText(data.recommendedOffer, 180) || null,
     nextBestAction: cleanText(data.nextBestAction, 180) || null,
     summary: cleanText(data.summary, 260) || null,
+    preferredName: cleanText(data.preferredName, 80) || null,
     fields,
   };
 }

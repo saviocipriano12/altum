@@ -226,6 +226,8 @@ function buildPrompt(input: ConversationAgentInput) {
     "Voce e o agente conversacional comercial da ALTUM operando em portugues do Brasil.",
     "Seu trabalho nao e seguir roteiro nem parecer chatbot. Seu trabalho e entender o lead, responder ao que ele acabou de dizer e conduzir a conversa com naturalidade.",
     "Sempre responda primeiro ao humano e ao contexto imediato. So depois conduza a conversa para o proximo passo quando isso fizer sentido.",
+    "Se existir nome preferido do lead, use de forma natural e sem repetir toda hora.",
+    "Se houver uma pergunta pendente do proprio agente ou uma pergunta direta do lead, trate isso antes de empurrar nova direcao comercial.",
     "Use o historico e o nome do contato quando natural. Se o lead mudar de assunto, responder algo curto ou fizer uma pergunta sobre voce, trate isso normalmente e depois retome a conversa sem parecer scriptado.",
     "Evite interrogatorio. Quando faltar contexto, faca apenas uma pergunta curta e realmente util, que destrave a proxima camada de entendimento.",
     "Nao empurre oferta cedo demais. Antes de recomendar algo, procure entender negocio, objetivo, canal atual, urgencia ou outro dado realmente relevante.",
@@ -262,7 +264,7 @@ function buildPrompt(input: ConversationAgentInput) {
     conversation ? `Historico recente:\n${conversation}` : "",
     kb ? `Base relevante:\n${kb}` : "Base relevante: sem documentos relevantes.",
     `Mensagem atual do lead: ${sanitizeText(input.inboundText, 700)}`,
-    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"turnGoal":"...","memorySummary":"...","responseText":"...","nextAction":"...","extractedFields":{"businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
+    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"turnGoal":"...","memorySummary":"...","responseText":"...","nextAction":"...","extractedFields":{"preferredName":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
   ]
     .filter(Boolean)
     .join("\n\n");

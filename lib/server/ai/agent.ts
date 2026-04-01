@@ -142,9 +142,12 @@ function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeSta
   return [
     runtimeState.stage ? `estagio: ${runtimeState.stage}` : "",
     runtimeState.intent ? `ultima intencao: ${runtimeState.intent}` : "",
+    runtimeState.preferredName ? `nome preferido do lead: ${runtimeState.preferredName}` : "",
     runtimeState.turnGoal ? `objetivo recente do turno: ${runtimeState.turnGoal}` : "",
     runtimeState.memorySummary ? `memoria recente: ${runtimeState.memorySummary}` : "",
     runtimeState.responseGoal ? `objetivo recente: ${runtimeState.responseGoal}` : "",
+    runtimeState.pendingQuestion ? `ultima pergunta feita e ainda viva: ${runtimeState.pendingQuestion}` : "",
+    runtimeState.lastLeadQuestion ? `ultima pergunta do lead: ${runtimeState.lastLeadQuestion}` : "",
     runtimeState.nextAction ? `proximo passo sugerido: ${runtimeState.nextAction}` : "",
     runtimeState.summary ? `resumo: ${runtimeState.summary}` : "",
     runtimeState.lastReason ? `motivo anterior: ${runtimeState.lastReason}` : "",
@@ -156,6 +159,7 @@ function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeSta
 function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
   if (!leadMemory) return "";
   return [
+    leadMemory.preferredName ? `nome preferido: ${leadMemory.preferredName}` : "",
     leadMemory.businessType ? `negocio: ${leadMemory.businessType}` : "",
     leadMemory.primaryGoal ? `objetivo: ${leadMemory.primaryGoal}` : "",
     leadMemory.currentChannels ? `canais atuais: ${leadMemory.currentChannels}` : "",
@@ -938,6 +942,11 @@ async function executeAltumAgentActions(input: {
   const leadData = leadSnap.exists ? (leadSnap.data() as Record<string, unknown>) : {};
   const now = new Date();
   const aiMemory = {
+    preferredName:
+      sanitizeText(
+        input.extractedFields?.preferredName || input.extractedFields?.name || input.extractedFields?.contactName,
+        80
+      ) || null,
     businessType: sanitizeText(
       input.extractedFields?.businessType || input.extractedFields?.niche || input.extractedFields?.segment,
       120
@@ -986,7 +995,9 @@ async function executeAltumAgentActions(input: {
     aiCurrentChannels: aiMemory.currentChannels,
     aiCity: aiMemory.city,
     aiTeamSize: aiMemory.teamSize,
+    aiPreferredName: aiMemory.preferredName,
     aiLeadSummary: [
+      aiMemory.preferredName ? `Nome: ${aiMemory.preferredName}` : "",
       aiMemory.businessType ? `Negocio: ${aiMemory.businessType}` : "",
       aiMemory.primaryGoal ? `Objetivo: ${aiMemory.primaryGoal}` : "",
       aiMemory.currentChannels ? `Canais: ${aiMemory.currentChannels}` : "",
@@ -1524,6 +1535,12 @@ export function normalizeExtractedFieldsForCrm(extracted?: Record<string, string
     team: "teamSize",
     team_size: "teamSize",
     staff_size: "teamSize",
+    preferredname: "preferredName",
+    preferred_name: "preferredName",
+    name: "preferredName",
+    nome: "preferredName",
+    contactname: "preferredName",
+    contact_name: "preferredName",
   };
 
   const normalized = Object.entries(extracted).reduce<Record<string, string>>((acc, [key, value]) => {
@@ -1604,9 +1621,23 @@ export function hardenPlannerDecision(input: {
     tenantAi: input.tenantAi,
   });
 
+  const isClosingPush =
+    input.plannerDecision.responseGoal === "recommend" ||
+    input.plannerDecision.responseGoal === "move_to_next_step" ||
+    /proposta|reuniao|diagnostico|agendar/i.test(String(input.plannerDecision.nextAction || ""));
+  const shouldKeepConversationalFreedom = [
+    "greeting",
+    "ask_agent_identity",
+    "ask_services",
+    "send_audio",
+    "send_image",
+    "send_document",
+  ].includes(String(input.plannerDecision.intent || ""));
+
   if (
     !hasCommercialContext &&
-    (input.plannerDecision.responseGoal === "recommend" || input.plannerDecision.responseGoal === "move_to_next_step")
+    isClosingPush &&
+    !shouldKeepConversationalFreedom
   ) {
     return {
       ...input.plannerDecision,
@@ -1921,6 +1952,11 @@ export async function handleIncomingMessage(
 
   const runtimeStateSummary = summarizeRuntimeStateForAgent(runtimeState);
   const leadMemorySummary = summarizeLeadMemoryForAgent(leadMemory);
+  const preferredContactName =
+    sanitizeText(chatData.contactName, 120) ||
+    sanitizeText(leadMemory?.preferredName, 80) ||
+    sanitizeText(runtimeState?.preferredName, 80) ||
+    undefined;
 
   const llmResult =
     runtimeProvider !== "altum_rules"
@@ -1930,7 +1966,7 @@ export async function handleIncomingMessage(
             chatId,
             inboundText,
             channel: chatChannel,
-            contactName: sanitizeText(chatData.contactName, 120) || undefined,
+            contactName: preferredContactName,
             runtimeStateSummary: runtimeStateSummary || undefined,
             leadMemorySummary: leadMemorySummary || undefined,
             toneOfVoice: aiConfig.toneOfVoice,
