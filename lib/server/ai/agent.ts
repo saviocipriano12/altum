@@ -176,6 +176,41 @@ function chooseConversationalReply(input: {
       .replace(/\s{2,}/g, " ")
       .trim();
 
+  const removeAutoPilotOpeners = (value: string, inboundText: string) => {
+    const clean = sanitizeText(value, 1600);
+    const turn = classifyLeadTurn(inboundText);
+    if (!clean) return clean;
+
+    if (turn.isGreeting || turn.isDirectQuestion || turn.isPureRelational) {
+      return clean.replace(/^(perfeito|entendi|boa|claro|fechado)\.\s+/i, "");
+    }
+
+    return clean;
+  };
+
+  const keepAtMostOneUsefulQuestion = (value: string, inboundText: string) => {
+    const clean = sanitizeText(value, 1600);
+    if (!clean) return clean;
+
+    const turn = classifyLeadTurn(inboundText);
+    const questionMatches = clean.match(/\?/g) || [];
+    if (questionMatches.length <= 1) return clean;
+    if (!turn.isGreeting && !turn.isDirectQuestion && !turn.isPureRelational) return clean;
+
+    const segments = (clean.match(/[^.!?]+[.!?]?/g) || []).map((item) => item.trim()).filter(Boolean);
+    const kept: string[] = [];
+    let keptQuestion = false;
+
+    for (const segment of segments) {
+      const hasQuestion = segment.includes("?");
+      if (hasQuestion && keptQuestion) continue;
+      kept.push(segment);
+      if (hasQuestion) keptQuestion = true;
+    }
+
+    return sanitizeText(kept.join(" "), 1600) || clean;
+  };
+
   const normalizeGreetingMenuResponse = (value: string, inboundText: string) => {
     const turn = classifyLeadTurn(inboundText);
     const clean = sanitizeText(value, 1600);
@@ -213,11 +248,23 @@ function chooseConversationalReply(input: {
   };
 
   const llmResponse = trimBusinessPushOnHumanTurn(
-    normalizeGreetingMenuResponse(softenRigidPhrases(input.llmResponseText || ""), input.inboundText || ""),
+    keepAtMostOneUsefulQuestion(
+      removeAutoPilotOpeners(
+        normalizeGreetingMenuResponse(softenRigidPhrases(input.llmResponseText || ""), input.inboundText || ""),
+        input.inboundText || ""
+      ),
+      input.inboundText || ""
+    ),
     input.inboundText || ""
   );
   const fallbackResponse = trimBusinessPushOnHumanTurn(
-    normalizeGreetingMenuResponse(softenRigidPhrases(input.fallbackWriterText || ""), input.inboundText || ""),
+    keepAtMostOneUsefulQuestion(
+      removeAutoPilotOpeners(
+        normalizeGreetingMenuResponse(softenRigidPhrases(input.fallbackWriterText || ""), input.inboundText || ""),
+        input.inboundText || ""
+      ),
+      input.inboundText || ""
+    ),
     input.inboundText || ""
   );
   const previousResponse = normalizeComparable(String(input.previousOutboundText || ""));
