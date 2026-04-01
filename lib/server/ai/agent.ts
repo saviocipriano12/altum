@@ -12,6 +12,7 @@ import {
   type AltumAiTier,
 } from "@/lib/server/ai/operating-layer";
 import { runConversationAgent } from "@/lib/server/ai/router";
+import { resolveConversationalChoice } from "@/lib/server/ai/conversation-core";
 import { logAiUsage } from "@/lib/server/ai/usage-ledger";
 import { trackAltumAgentLearning } from "@/lib/server/ai/learning-loop";
 import {
@@ -312,93 +313,6 @@ function chooseConversationalReply(input: {
   if (llmResponse && !llmLooksRepeated) return llmResponse;
   if (fallbackResponse && fallbackComparable !== previousResponse) return fallbackResponse;
   return llmResponse || fallbackResponse;
-}
-
-function llmShouldLeadConversation(input: {
-  llmDecision?: "respond" | "ask_more" | "handoff" | "skip" | null;
-  llmConfidence?: number | null;
-  llmResponseText?: string | null;
-  llmTurnGoal?: string | null;
-  plannerDecision: AltumPlannerDecision;
-  inboundText: string;
-}) {
-  const turn = classifyLeadTurn(input.inboundText);
-  const hasUsableResponse = Boolean(sanitizeText(input.llmResponseText, 1600));
-  const turnGoal = sanitizeText(input.llmTurnGoal || "", 120).toLowerCase();
-  const plannerIsClosingPush =
-    input.plannerDecision.responseGoal === "recommend" ||
-    input.plannerDecision.responseGoal === "move_to_next_step" ||
-    /proposta|reuniao|diagnostico|agendar/i.test(String(input.plannerDecision.nextAction || ""));
-
-  if (!hasUsableResponse) return false;
-  if (input.plannerDecision.decision === "handoff") return false;
-  if (input.llmDecision !== "respond") return false;
-  if (!turn.isPureRelational && !turn.isDirectQuestion && (input.llmConfidence || 0) < 0.72) return false;
-  if (plannerIsClosingPush) return false;
-  if (turn.isPureRelational || turn.isDirectQuestion) return true;
-
-  return (
-    ["welcome", "clarify", "qualify"].includes(String(input.plannerDecision.responseGoal || "")) ||
-    /(acolher|boas vindas|welcome|clarify|esclarecer|aprofundar|investigar|entender|qualify|discovery|orientar|responder)/i.test(
-      turnGoal
-    )
-  );
-}
-
-function buildAgentChoice(input: {
-  plannerDecision: AltumPlannerDecision;
-  fallbackChoice: ReturnType<typeof decide>;
-  llmDecision?: "respond" | "ask_more" | "handoff" | "skip" | null;
-  llmReason?: string | null;
-  llmConfidence?: number | null;
-  llmNextAction?: string | null;
-  llmResponseText?: string | null;
-  llmTurnGoal?: string | null;
-  tenantAi: TenantAiConfig;
-  inboundText: string;
-}): {
-  decision: "respond" | "ask_more" | "handoff";
-  reason: string;
-  confidence: number;
-  nextAction: string;
-  responseText: string | null;
-} {
-  const llmLeads = llmShouldLeadConversation({
-    llmDecision: input.llmDecision,
-    llmConfidence: input.llmConfidence,
-    llmResponseText: input.llmResponseText,
-    llmTurnGoal: input.llmTurnGoal,
-    plannerDecision: input.plannerDecision,
-    inboundText: input.inboundText,
-  });
-
-  const decision: "respond" | "ask_more" | "handoff" =
-    input.plannerDecision.decision === "handoff"
-      ? "handoff"
-      : llmLeads
-        ? "respond"
-        : input.plannerDecision.decision;
-
-  return {
-    decision,
-    reason:
-      (llmLeads ? sanitizeText(input.llmReason, 180) : "") ||
-      input.plannerDecision.reason ||
-      input.fallbackChoice.reason,
-    confidence: llmLeads
-      ? Math.max(input.plannerDecision.confidence || 0, Math.min(input.llmConfidence || 0, 0.94))
-      : input.plannerDecision.confidence || input.fallbackChoice.confidence,
-    nextAction:
-      sanitizeText(input.llmNextAction, 160) ||
-      input.plannerDecision.nextAction ||
-      input.fallbackChoice.nextAction ||
-      suggestNextAction({
-        decision,
-        inboundText: input.inboundText,
-        tenantAi: input.tenantAi,
-      }),
-    responseText: input.llmResponseText || null,
-  };
 }
 
 function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeState | null) {
@@ -2079,25 +1993,6 @@ export function extractBusinessFields(inboundText: string, tenantAi: TenantAiCon
   return Object.keys(extracted).length ? extracted : undefined;
 }
 
-function suggestNextAction(input: {
-  decision: Exclude<Decision, "skip">;
-  inboundText: string;
-  tenantAi: TenantAiConfig;
-}) {
-  if (input.decision === "handoff") return "assumir_handoff_humano";
-  if (input.decision === "ask_more") return "coletar_campos_obrigatorios";
-  if (textHasAny(input.inboundText, ["preco", "valor", "orcamento", "proposta"])) {
-    return "preparar_proposta_comercial";
-  }
-  if (textHasAny(input.inboundText, ["visita", "agendar", "consulta", "reuniao", "diagnostico"])) {
-    return "agendar_proximo_passo";
-  }
-  if (input.tenantAi.playbookOffers.length) {
-    return `sugerir_oferta_${normalizeFieldKey(input.tenantAi.playbookOffers[0].title)}`;
-  }
-  return "aprofundar_oportunidade";
-}
-
 function buildConversationLink(tenantId: string, chatId: string) {
   const explicitBase =
     String(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "").trim() ||
@@ -2333,7 +2228,7 @@ export async function handleIncomingMessage(
     llmTurnGoal: llmResult?.turnGoal || null,
   });
   const fallbackChoice = decide({ inboundText, kbDocs, tenantAi: aiConfig });
-  const choice = buildAgentChoice({
+  const choice = resolveConversationalChoice({
     plannerDecision,
     fallbackChoice,
     llmDecision: llmResult?.decision,
@@ -2342,7 +2237,6 @@ export async function handleIncomingMessage(
     llmNextAction: llmResult?.nextAction || null,
     llmResponseText: llmResult?.responseText || null,
     llmTurnGoal: llmResult?.turnGoal || null,
-    tenantAi: aiConfig,
     inboundText,
   });
   const nextAction = choice.nextAction;
