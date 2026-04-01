@@ -700,7 +700,15 @@ function makeLeadFacingReply(input: {
   kbDocs: KbDoc[];
   conversation: ConversationMessage[];
 }) {
+  const normalizedInbound = sanitizeText(input.inboundText, 500);
+  const turn = classifyLeadTurn(normalizedInbound);
   const inboundHasPriceSignal = textHasAny(input.inboundText, ["preco", "valor", "plano", "orcamento", "investimento"]);
+  const asksIdentity = textHasAny(normalizedInbound, ["qual e o seu nome", "qual seu nome", "quem e voce", "quem é você"]);
+  const asksWellbeing = textHasAny(normalizedInbound, ["como voce esta", "como voce ta", "como vai", "tudo bem"]);
+  const thanks = textHasAny(normalizedInbound, ["obrigado", "obrigada", "valeu"]);
+  const nextMandatoryQuestion =
+    pickNextMandatoryQuestion(input.conversation, input.tenantAi.mandatoryQuestions) ||
+    "Hoje o foco maior está em gerar demanda, organizar atendimento ou converter melhor?";
   const leadFacingKbDocs = input.kbDocs.filter((doc) => doc.type !== "policy");
   const primaryKbDoc = leadFacingKbDocs[0] || input.kbDocs[0] || null;
   const primaryKbSnippet = primaryKbDoc
@@ -714,19 +722,32 @@ function makeLeadFacingReply(input: {
         220
       )
     : "";
-  const nextMandatoryQuestion =
-    pickNextMandatoryQuestion(input.conversation, input.tenantAi.mandatoryQuestions) ||
-    "Me conta rapidinho qual e o seu contexto hoje?";
   const playbookScript = findRelevantPlaybookScript(input.inboundText, input.tenantAi.playbookScripts);
 
+  if (asksIdentity) {
+    return "Eu sou a assistente comercial da ALTUM. Se quiser, eu posso te ajudar a entender o melhor caminho para o seu caso.";
+  }
+
+  if (asksWellbeing && !turn.hasBusinessTerms) {
+    return "Tudo certo por aqui. E por aí?";
+  }
+
+  if (thanks && !turn.hasBusinessTerms) {
+    return "Imagina. Tô por aqui.";
+  }
+
+  if (turn.isLightSmallTalk && !turn.hasBusinessTerms) {
+    return "Hahaha, tento ajudar rápido mesmo.";
+  }
+
   if (isGreetingLike(input.inboundText)) {
-    return "Oi! Tudo bem? Me conta rapidinho o que voce esta buscando hoje para eu te orientar sem te enrolar.";
+    return "Oi! Tudo bem? Como posso te ajudar hoje?";
   }
 
   if (isClarificationRequest(input.inboundText)) {
     return [
-      "Claro. A ALTUM ajuda empresas a vender mais com IA, estrutura comercial, marketing e ativos digitais como site e landing page.",
-      "Para eu te orientar no caminho certo, me diz so uma coisa: hoje o foco maior esta em gerar demanda, organizar atendimento ou converter melhor?",
+      "A ALTUM ajuda empresas a vender mais com IA, estrutura comercial, marketing e ativos digitais como site e landing page.",
+      nextMandatoryQuestion,
     ].join("\n");
   }
 
@@ -735,16 +756,16 @@ function makeLeadFacingReply(input: {
       playbookScript
         ? sanitizeText(playbookScript.script, 220)
         : inboundHasPriceSignal
-          ? "Consigo te passar uma faixa, sim. So prefiro entender seu momento antes para te orientar sem te empurrar algo errado."
-          : "Perfeito. Me passa so um ponto rapido para eu te orientar melhor.",
+          ? "Consigo te passar isso, sim. Antes, só quero entender seu momento para não te falar algo fora do seu caso."
+          : "Me ajuda com só mais um ponto para eu te orientar melhor.",
       nextMandatoryQuestion,
     ].join("\n");
   }
 
   const playbookOffer = findRelevantPlaybookOffer(input.inboundText, input.tenantAi.playbookOffers);
   const leadSignal = inboundHasPriceSignal
-    ? "Se fizer sentido, eu te explico qual formato tende a encaixar melhor no seu caso."
-    : "Se fizer sentido, te mostro o proximo passo mais aderente para avancarmos.";
+    ? "Se quiser, eu te explico qual formato tende a encaixar melhor no seu caso."
+    : "Se quiser, eu te mostro o próximo passo que faz mais sentido aqui.";
 
   return [
     primaryKbSnippet
@@ -1587,6 +1608,8 @@ function decide(input: {
   kbDocs: KbDoc[];
   tenantAi: TenantAiConfig;
 }): AgentDecision {
+  const turn = classifyLeadTurn(input.inboundText);
+
   if (shouldHandoff(input.inboundText)) {
     return {
       decision: "handoff",
@@ -1596,11 +1619,20 @@ function decide(input: {
     };
   }
 
+  if (turn.isGreeting || turn.isPureRelational || turn.isDirectQuestion) {
+    return {
+      decision: "respond",
+      reason: "human_turn_fallback",
+      confidence: 0.52,
+      nextAction: "aprofundar_oportunidade",
+    };
+  }
+
   if (shouldAskMore(input.inboundText)) {
     return {
-      decision: "ask_more",
-      reason: "need_more_context",
-      confidence: 0.42,
+      decision: "respond",
+      reason: "light_context_probe",
+      confidence: 0.44,
       nextAction: "qualificar_contexto_minimo",
     };
   }
@@ -1616,10 +1648,10 @@ function decide(input: {
     }
 
     return {
-      decision: "ask_more",
-      reason: "kb_not_found",
-      confidence: 0.38,
-      nextAction: "coletar_campos_obrigatorios",
+      decision: "respond",
+      reason: "conversational_fallback_without_kb",
+      confidence: 0.4,
+      nextAction: "aprofundar_oportunidade",
     };
   }
 
