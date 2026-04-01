@@ -11,7 +11,7 @@ import {
   type MetaWebhookChannelType,
 } from "@/app/lib/server/meta-channel";
 import { verifyMetaSignature } from "@/app/lib/server/whatsapp-channel";
-import { enqueueIncomingMessageJob, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+import { enqueueIncomingMessageJob, kickAiQueueNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
@@ -716,6 +716,7 @@ export async function POST(req: Request) {
         dedupeKey: `${channel.tenantId}_${messageRef.id}`,
       });
 
+      await kickAiQueueNow({ limit: 5, drain: true, maxBatches: 4, timeoutMs: 12000 });
       triggerAiQueueWorker({ limit: 5, drain: true });
 
       await claim.eventRef.set(

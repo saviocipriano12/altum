@@ -62,6 +62,13 @@ export type ProcessAiQueueResult = {
   batches: number;
 };
 
+type KickAiQueueNowOptions = {
+  limit?: number;
+  drain?: boolean;
+  maxBatches?: number;
+  timeoutMs?: number;
+};
+
 function toDate(value: unknown) {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -460,6 +467,32 @@ export async function processAiQueue(options?: {
   }
 
   return result;
+}
+
+export async function kickAiQueueNow(options?: KickAiQueueNowOptions) {
+  const timeoutMs = Math.min(20_000, Math.max(2_000, options?.timeoutMs || 12_000));
+
+  try {
+    let timeoutId: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise<ProcessAiQueueResult>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error("Timeout ao tentar processar fila de IA inline."));
+      }, timeoutMs);
+    });
+
+    const queuePromise = processAiQueue({
+      limit: options?.limit,
+      drain: options?.drain,
+      maxBatches: options?.maxBatches,
+    });
+
+    const result = await Promise.race([queuePromise, timeoutPromise]);
+    if (timeoutId) clearTimeout(timeoutId);
+    return result;
+  } catch (error) {
+    console.error("Erro ao processar fila de IA inline:", error);
+    return null;
+  }
 }
 
 export function triggerAiQueueWorker(options?: { limit?: number; drain?: boolean }) {

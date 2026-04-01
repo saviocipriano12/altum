@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { enqueueIncomingMessageJob, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+import { enqueueIncomingMessageJob, kickAiQueueNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { getTenantSettings } from "@/lib/server/tenant";
@@ -192,6 +192,7 @@ export async function POST(
       source: "site_chat_widget",
       dedupeKey: `${tenantId}_${messageRef.id}`,
     });
+    await kickAiQueueNow({ limit: 5, drain: true, maxBatches: 4, timeoutMs: 12000 });
     triggerAiQueueWorker({ limit: 5, drain: true });
 
     return NextResponse.json({ ok: true, chatId });
