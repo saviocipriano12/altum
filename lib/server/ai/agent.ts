@@ -131,10 +131,45 @@ type AgentDecision = {
 function chooseConversationalReply(input: {
   llmResponseText?: string | null;
   fallbackWriterText?: string | null;
+  previousOutboundText?: string | null;
 }) {
-  const llmResponse = sanitizeText(input.llmResponseText, 1600);
-  if (llmResponse) return llmResponse;
-  return sanitizeText(input.fallbackWriterText, 1600);
+  const normalizeComparable = (value: string) =>
+    sanitizeText(value, 1600)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s?]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const softenRigidPhrases = (value: string) =>
+    sanitizeText(value, 1600)
+      .replace(/\bme conta em uma linha\b/gi, "me conta rapidinho")
+      .replace(/\bse fizer sentido\b/gi, "se quiser")
+      .replace(/\bmais aderente\b/gi, "mais indicado")
+      .replace(/\bsem empurrar escopo errado\b/gi, "")
+      .replace(/\bquero te orientar do jeito certo\b/gi, "quero entender melhor")
+      .replace(/\bretomando de onde paramos,\s*/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+
+  const llmResponse = softenRigidPhrases(input.llmResponseText || "");
+  const fallbackResponse = softenRigidPhrases(input.fallbackWriterText || "");
+  const previousResponse = normalizeComparable(String(input.previousOutboundText || ""));
+
+  const llmComparable = normalizeComparable(llmResponse);
+  const fallbackComparable = normalizeComparable(fallbackResponse);
+
+  const llmLooksRepeated =
+    Boolean(llmComparable) &&
+    Boolean(previousResponse) &&
+    (llmComparable === previousResponse ||
+      llmComparable.includes(previousResponse) ||
+      previousResponse.includes(llmComparable));
+
+  if (llmResponse && !llmLooksRepeated) return llmResponse;
+  if (fallbackResponse && fallbackComparable !== previousResponse) return fallbackResponse;
+  return llmResponse || fallbackResponse;
 }
 
 function llmShouldLeadConversation(input: {
@@ -2543,6 +2578,7 @@ export async function handleIncomingMessage(
   const responseText =
     chooseConversationalReply({
       llmResponseText: llmResult?.responseText || choice.responseText || "",
+      previousOutboundText: runtimeState?.lastOutboundText || null,
       fallbackWriterText:
         writeAltumAgentReply({
           plan: plannerDecision,
