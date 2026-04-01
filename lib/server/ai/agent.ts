@@ -261,6 +261,8 @@ function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeSta
     runtimeState.preferredName ? `nome preferido do lead: ${runtimeState.preferredName}` : "",
     runtimeState.leadTone ? `tom atual do lead: ${runtimeState.leadTone}` : "",
     runtimeState.activeTopic ? `assunto vivo da conversa: ${runtimeState.activeTopic}` : "",
+    runtimeState.lastOutboundText ? `sua ultima fala ao lead foi: ${sanitizeText(runtimeState.lastOutboundText, 180)}` : "",
+    runtimeState.lastInboundText ? `ultima fala do lead antes desta foi: ${sanitizeText(runtimeState.lastInboundText, 180)}` : "",
     runtimeState.turnGoal ? `objetivo recente do turno: ${runtimeState.turnGoal}` : "",
     runtimeState.memorySummary ? `memoria recente: ${runtimeState.memorySummary}` : "",
     runtimeState.pendingQuestion ? `ultima pergunta feita e ainda viva: ${runtimeState.pendingQuestion}` : "",

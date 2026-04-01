@@ -186,6 +186,12 @@ function getProviderEnv(provider: AltumAiProvider) {
 }
 
 function buildPrompt(input: ConversationAgentInput) {
+  const normalizedInbound = sanitizeText(input.inboundText, 260).toLowerCase();
+  const isShortFollowup =
+    normalizedInbound.length > 0 &&
+    normalizedInbound.length <= 20 &&
+    /^(sim|s|ok|okay|beleza|entendi|claro|isso|pode|quero|show|perfeito|certo)\b/.test(normalizedInbound);
+  const isDirectQuestion = normalizedInbound.includes("?");
   const conversation = input.conversation
     .slice(-16)
     .map((item) => `${item.sender}: ${sanitizeText(item.text, 300)}`)
@@ -232,6 +238,8 @@ function buildPrompt(input: ConversationAgentInput) {
     "Prefira uma resposta curta, natural e especifica ao que foi dito. Quando perguntar algo, faca apenas uma pergunta realmente util.",
     "Se o lead fizer uma pergunta direta, responda com clareza antes de conduzir qualquer outra coisa.",
     "Se o lead responder curto, nao reinicie a conversa nem repita bloco anterior. Continue de onde a conversa estava.",
+    "Se o lead responder algo curto como 'sim', 'ok', 'entendi' ou 'claro', trate isso como continuidade da ultima pergunta ou do ultimo ponto vivo da conversa.",
+    "Em respostas curtas de continuidade, avance so um degrau e evite reexplicar tudo de novo.",
     "Se existir nome preferido do lead, use de forma natural e sem repetir toda hora.",
     "Se houver uma pergunta pendente do proprio agente ou uma pergunta direta do lead, trate isso antes de empurrar nova direcao comercial.",
     "Use o historico, o nome do contato, o tom atual do lead e o assunto vivo quando isso ajudar a conversa a soar natural.",
@@ -265,6 +273,12 @@ function buildPrompt(input: ConversationAgentInput) {
     `Canal: ${input.channel}. Contato: ${sanitizeText(input.contactName, 120) || "lead"}.`,
     input.runtimeStateSummary ? `Estado atual da conversa:\n${sanitizeText(input.runtimeStateSummary, 320)}` : "",
     input.leadMemorySummary ? `Memoria relevante do lead:\n${sanitizeText(input.leadMemorySummary, 360)}` : "",
+    isShortFollowup
+      ? "Leitura da mensagem atual: o lead respondeu de forma curta e provavelmente esta continuando o assunto anterior. Nao reinicie a conversa."
+      : "",
+    isDirectQuestion
+      ? "Leitura da mensagem atual: existe uma pergunta direta do lead. Responda essa pergunta primeiro."
+      : "",
     guardrails ? `Guardrails:\n${guardrails}` : "",
     questions ? `Perguntas obrigatorias:\n${questions}` : "",
     escalations ? `Topicos de escalada:\n${escalations}` : "",
