@@ -125,6 +125,10 @@ function mergeKnownFields(memory: AltumLeadMemory | null, extracted?: Record<str
     primaryGoal: sanitizeText(extracted?.primaryGoal || extracted?.goal || extracted?.objective, 180) || memory?.primaryGoal || "",
     budgetBand: sanitizeText(extracted?.budgetBand || extracted?.budget, 120) || memory?.budgetBand || "",
     urgency: sanitizeText(extracted?.urgency, 120) || memory?.urgency || "",
+    currentChannels:
+      sanitizeText(extracted?.currentChannels || extracted?.channels || extracted?.canais, 180) ||
+      memory?.currentChannels ||
+      "",
     digitalMaturity:
       sanitizeText(extracted?.digitalMaturity || extracted?.maturity || extracted?.structure, 160) ||
       memory?.digitalMaturity ||
@@ -144,6 +148,8 @@ function detectIntent(text: string) {
   const raw = sanitizeText(text, 260).toLowerCase();
   if (/^(oi|ola|olá|bom dia|boa tarde|boa noite)\b/.test(raw)) return "greeting";
   if (/\b(quanto custa|custa quanto|qual o preco|qual o preço|qual valor)\b/.test(raw)) return "ask_price";
+  if (/\b(qual e o seu nome|qual é o seu nome|quem e voce|quem é você|seu nome)\b/.test(raw)) return "ask_agent_identity";
+  if (/^(sim|claro|pode|quero|ok|beleza|isso)\b/.test(raw)) return "affirmative";
   if (textHasAny(text, ["[audio recebido]", "[audio enviado]", "[voz recebida]"])) return "send_audio";
   if (textHasAny(text, ["[imagem recebida]", "[foto recebida]", "[print recebido]"])) return "send_image";
   if (textHasAny(text, ["[arquivo recebido]", "[documento recebido]", "[pdf recebido]"])) return "send_document";
@@ -235,6 +241,7 @@ function chooseNextQuestion(input: {
   mandatoryQuestions: string[];
   businessType?: string;
   primaryGoal?: string;
+  currentChannels?: string;
   budgetBand?: string;
   urgency?: string;
 }) {
@@ -248,6 +255,9 @@ function chooseNextQuestion(input: {
   }
   if (!input.primaryGoal) {
     return "Hoje qual e o principal objetivo comercial que voce quer destravar primeiro?";
+  }
+  if (!input.currentChannels) {
+    return "Hoje os leads de voces entram mais por onde: WhatsApp, Instagram, trafego, site ou indicacao?";
   }
   if (!input.budgetBand && !textHasAny(clientCorpus, ["orcamento", "investimento", "nao tenho"])) {
     return "Hoje voces ja pensam em alguma faixa de investimento para isso ou ainda estao entendendo o caminho?";
@@ -345,6 +355,20 @@ function buildRecommendationBridge(known: {
   return "Pelo que voce trouxe,";
 }
 
+function hasKnownLeadName(contactName?: string | null) {
+  const clean = sanitizeText(contactName, 80);
+  if (!clean) return false;
+  if (/\d{6,}/.test(clean)) return false;
+  if (["lead", "contato", "cliente"].includes(clean.toLowerCase())) return false;
+  return true;
+}
+
+function firstName(contactName?: string | null) {
+  const clean = sanitizeText(contactName, 80);
+  if (!hasKnownLeadName(clean)) return "";
+  return clean.split(/\s+/)[0] || clean;
+}
+
 function scoreCommercialReadiness(known: {
   businessType?: string;
   primaryGoal?: string;
@@ -382,6 +406,7 @@ export function planAltumAgentDecision(input: {
   inboundText: string;
   runtimeState: AltumConversationRuntimeState | null;
   leadMemory: AltumLeadMemory | null;
+  contactName?: string | null;
   extractedFields?: Record<string, string> | null;
   llmDecision?: "respond" | "ask_more" | "handoff" | "skip";
   llmReason?: string | null;
@@ -618,6 +643,7 @@ export function planAltumAgentDecision(input: {
         mandatoryQuestions: input.mandatoryQuestions,
         businessType: known.businessType,
         primaryGoal: known.primaryGoal,
+        currentChannels: known.currentChannels,
         budgetBand: known.budgetBand,
         urgency: known.urgency,
       }),
@@ -637,7 +663,9 @@ export function planAltumAgentDecision(input: {
       intent,
       objectionType,
       commercialTemperature,
-      nextQuestion: "Me conta em uma linha o que voce quer melhorar hoje: gerar mais leads, organizar atendimento ou vender melhor?",
+      nextQuestion: hasKnownLeadName(input.contactName)
+        ? "Me conta em uma linha o que voce quer melhorar hoje: gerar mais leads, organizar atendimento ou vender melhor?"
+        : "Antes de tudo, como voce prefere que eu te chame?",
       nextAction: "abrir_descoberta_comercial",
       recommendedOffer,
     };
@@ -662,6 +690,7 @@ export function planAltumAgentDecision(input: {
             mandatoryQuestions: input.mandatoryQuestions,
             businessType: known.businessType,
             primaryGoal: known.primaryGoal,
+            currentChannels: known.currentChannels,
             budgetBand: known.budgetBand,
             urgency: known.urgency,
           })
@@ -710,6 +739,60 @@ export function planAltumAgentDecision(input: {
     };
   }
 
+  if (intent === "ask_agent_identity") {
+    return {
+      decision: "respond",
+      reason: "agent_identity_requested",
+      confidence: Math.max(0.86, input.llmConfidence || 0.86),
+      stateBefore,
+      stateAfter: hasContext ? stateBefore : "discovery",
+      responseGoal: hasContext ? "clarify" : "welcome",
+      intent,
+      objectionType,
+      commercialTemperature,
+      nextQuestion: hasContext
+        ? chooseNextQuestion({
+            messages: input.conversation,
+            mandatoryQuestions: input.mandatoryQuestions,
+            businessType: known.businessType,
+            primaryGoal: known.primaryGoal,
+            currentChannels: known.currentChannels,
+            budgetBand: known.budgetBand,
+            urgency: known.urgency,
+          })
+        : hasKnownLeadName(input.contactName)
+          ? "E me conta: o que voce quer melhorar primeiro hoje no comercial?"
+          : "Antes de avancarmos, como voce prefere que eu te chame?",
+      nextAction: hasContext ? "retomar_descoberta_com_contexto" : "acolher_e_personalizar_conversa",
+      recommendedOffer,
+    };
+  }
+
+  if (intent === "affirmative" && stateBefore === "recommendation") {
+    return {
+      decision: "respond",
+      reason: "affirmative_after_recommendation",
+      confidence: Math.max(0.84, input.llmConfidence || 0.84),
+      stateBefore,
+      stateAfter: "qualification",
+      responseGoal: "qualify",
+      intent,
+      objectionType,
+      commercialTemperature,
+      nextQuestion: chooseNextQuestion({
+        messages: input.conversation,
+        mandatoryQuestions: input.mandatoryQuestions,
+        businessType: known.businessType,
+        primaryGoal: known.primaryGoal,
+        currentChannels: known.currentChannels,
+        budgetBand: known.budgetBand,
+        urgency: known.urgency,
+      }),
+      nextAction: "aprofundar_contexto_antes_do_proximo_passo",
+      recommendedOffer,
+    };
+  }
+
   if (intent === "budget_objection" || intent === "timing_objection" || intent === "trust_objection") {
     return {
       decision: "respond",
@@ -753,10 +836,61 @@ export function planAltumAgentDecision(input: {
         mandatoryQuestions: input.mandatoryQuestions,
         businessType: known.businessType,
         primaryGoal: known.primaryGoal,
+        currentChannels: known.currentChannels,
         budgetBand: known.budgetBand,
         urgency: known.urgency,
       }),
       nextAction: "coletar_contexto_comercial_minimo",
+      recommendedOffer,
+    };
+  }
+
+  if (!readyForClosingStep && !known.currentChannels) {
+    return {
+      decision: "ask_more",
+      reason: "needs_channel_context_before_recommendation",
+      confidence: Math.max(0.79, input.llmConfidence || 0.79),
+      stateBefore,
+      stateAfter: "qualification",
+      responseGoal: "qualify",
+      intent,
+      objectionType,
+      commercialTemperature,
+      nextQuestion: chooseNextQuestion({
+        messages: input.conversation,
+        mandatoryQuestions: input.mandatoryQuestions,
+        businessType: known.businessType,
+        primaryGoal: known.primaryGoal,
+        currentChannels: known.currentChannels,
+        budgetBand: known.budgetBand,
+        urgency: known.urgency,
+      }),
+      nextAction: "aprofundar_contexto_comercial",
+      recommendedOffer,
+    };
+  }
+
+  if (!readyForClosingStep && intent !== "ask_price") {
+    return {
+      decision: "respond",
+      reason: "qualify_more_before_recommendation",
+      confidence: Math.max(0.8, input.llmConfidence || 0.8),
+      stateBefore,
+      stateAfter: "qualification",
+      responseGoal: "qualify",
+      intent,
+      objectionType,
+      commercialTemperature,
+      nextQuestion: chooseNextQuestion({
+        messages: input.conversation,
+        mandatoryQuestions: input.mandatoryQuestions,
+        businessType: known.businessType,
+        primaryGoal: known.primaryGoal,
+        currentChannels: known.currentChannels,
+        budgetBand: known.budgetBand,
+        urgency: known.urgency,
+      }),
+      nextAction: "aprofundar_contexto_antes_do_proximo_passo",
       recommendedOffer,
     };
   }
@@ -822,7 +956,11 @@ export function planAltumAgentDecision(input: {
 
 function buildShortBusinessSummary(summary: string) {
   const clean = sanitizeText(summary, 180);
-  return clean || "IA, estrutura comercial, marketing e ativos digitais para vender melhor.";
+  if (!clean) return "IA, estrutura comercial, marketing e ativos digitais para vender melhor.";
+  return clean
+    .replace(/^a altum ajuda empresas a vender mais com\s*/i, "")
+    .replace(/^a altum ajuda\s*/i, "")
+    .replace(/^ajuda empresas a vender mais com\s*/i, "");
 }
 
 export function writeAltumAgentReply(input: {
@@ -830,12 +968,14 @@ export function writeAltumAgentReply(input: {
   tenantAi: TenantAiConfigLike;
   runtimeState: AltumConversationRuntimeState | null;
   leadMemory: AltumLeadMemory | null;
+  contactName?: string | null;
   inboundText: string;
 }) {
   const businessType = input.leadMemory?.businessType || "";
   const primaryGoal = input.leadMemory?.primaryGoal || "";
   const recommendedOffer = sanitizeText(input.plan.recommendedOffer, 160);
   const currentChannels = sanitizeText(input.leadMemory?.currentChannels, 180);
+  const leadFirstName = firstName(input.contactName);
   const bridge = buildRecommendationBridge({
     businessType,
     primaryGoal,
@@ -873,10 +1013,20 @@ export function writeAltumAgentReply(input: {
   }
 
   if (input.plan.responseGoal === "welcome") {
-    return `Oi! Tudo bem? ${input.plan.nextQuestion}`;
+    return `${leadFirstName ? `Oi, ${leadFirstName}!` : "Oi!"} Tudo bem? ${input.plan.nextQuestion}`;
   }
 
   if (input.plan.responseGoal === "clarify") {
+    if (input.plan.reason === "agent_identity_requested") {
+      return [
+        "Eu sou a IA comercial da equipe ALTUM.",
+        "Estou aqui para te orientar com clareza e sem te empurrar nada fora do seu momento.",
+        input.plan.nextQuestion || "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+
     const businessLine =
       businessType || currentChannels
         ? [
@@ -952,6 +1102,15 @@ export function writeAltumAgentReply(input: {
   }
 
   if (input.plan.responseGoal === "qualify") {
+    if (input.plan.reason === "affirmative_after_recommendation") {
+      return [
+        "Perfeito. Entao vamos deixar isso mais preciso antes de eu te sugerir o proximo passo.",
+        input.plan.nextQuestion || "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+
     const prefix =
       businessType && primaryGoal
         ? `Perfeito. Pelo que voce trouxe de ${businessType}, faz sentido aprofundar isso com um pouco mais de contexto.`

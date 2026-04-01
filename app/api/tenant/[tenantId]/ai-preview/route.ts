@@ -41,6 +41,7 @@ type Body = {
   message?: string;
   messageType?: string;
   history?: PreviewMessage[];
+  contactName?: string;
   leadMemory?: Partial<AltumLeadMemory> | null;
 };
 
@@ -237,6 +238,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       inboundText,
       runtimeState: null,
       leadMemory: (body.leadMemory || null) as AltumLeadMemory | null,
+      contactName: typeof body.contactName === "string" ? body.contactName : null,
       extractedFields,
       llmDecision: llmResult?.decision,
       llmReason: llmResult?.reason || null,
@@ -260,6 +262,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         tenantAi: tenantAiConfig,
         runtimeState: null,
         leadMemory: (body.leadMemory || null) as AltumLeadMemory | null,
+        contactName: typeof body.contactName === "string" ? body.contactName : null,
         inboundText,
       }) || llmResult?.responseText || "";
 

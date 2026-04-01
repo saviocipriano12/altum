@@ -1907,6 +1907,7 @@ export async function handleIncomingMessage(
     inboundText,
     runtimeState,
     leadMemory,
+    contactName: sanitizeText(chatData.contactName, 120) || null,
     extractedFields,
     llmDecision: llmResult?.decision,
     llmReason: llmResult?.reason || null,
@@ -2319,6 +2320,7 @@ export async function handleIncomingMessage(
       tenantAi: aiConfig,
       runtimeState,
       leadMemory,
+      contactName: sanitizeText(chatData.contactName, 120) || null,
       inboundText,
     }) ||
     choice.responseText ||
