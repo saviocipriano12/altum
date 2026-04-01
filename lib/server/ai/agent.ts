@@ -128,32 +128,33 @@ type AgentDecision = {
   nextAction?: string;
 };
 
+function classifyLeadTurn(value: string) {
+  const normalized = sanitizeText(value, 260)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  const isWellbeing =
+    /\b(como voce esta|como voce ta|como c[eê] esta|como vai|tudo bem|tudo certo|como estao voces)\b/.test(
+      normalized
+    );
+  const isThanks = /\b(obrigad|valeu|show|top|perfeito, obrigad)\b/.test(normalized);
+  const hasBusinessTerms =
+    /\b(nicho|empresa|lead|leads|venda|vendas|whatsapp|objetivo|comercial|site|trafego|tr[aá]fego|crm|pipeline|proposta|diagnostico|diagn[oó]stico)\b/.test(
+      normalized
+    );
+  const isPureRelational = (isWellbeing || isThanks) && !hasBusinessTerms;
+  const isDirectQuestion = normalized.includes("?");
+
+  return { isPureRelational, isDirectQuestion, hasBusinessTerms };
+}
+
 function chooseConversationalReply(input: {
   llmResponseText?: string | null;
   fallbackWriterText?: string | null;
   previousOutboundText?: string | null;
   inboundText?: string | null;
 }) {
-  const classifyLeadTurn = (value: string) => {
-    const normalized = sanitizeText(value, 260)
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase();
-
-    const isWellbeing =
-      /\b(como voce esta|como voce ta|como c[eê] esta|como vai|tudo bem|tudo certo|como estao voces)\b/.test(
-        normalized
-      );
-    const isThanks = /\b(obrigad|valeu|show|top|perfeito, obrigad)\b/.test(normalized);
-    const isPureRelational =
-      (isWellbeing || isThanks) &&
-      !/\b(nicho|empresa|lead|leads|venda|vendas|whatsapp|objetivo|comercial|site|trafego|tr[aá]fego|crm|pipeline|proposta|diagnostico|diagn[oó]stico)\b/.test(
-        normalized
-      );
-
-    return { isPureRelational };
-  };
-
   const normalizeComparable = (value: string) =>
     sanitizeText(value, 1600)
       .normalize("NFD")
@@ -174,8 +175,9 @@ function chooseConversationalReply(input: {
       .replace(/\s{2,}/g, " ")
       .trim();
 
-  const trimBusinessPushOnRelationalTurn = (value: string, inboundText: string) => {
-    if (!classifyLeadTurn(inboundText).isPureRelational) return sanitizeText(value, 1600);
+  const trimBusinessPushOnHumanTurn = (value: string, inboundText: string) => {
+    const turn = classifyLeadTurn(inboundText);
+    if (!turn.isPureRelational && !turn.isDirectQuestion) return sanitizeText(value, 1600);
 
     const segments = (sanitizeText(value, 1600).match(/[^.!?]+[.!?]?/g) || []).map((item) => item.trim()).filter(Boolean);
     if (!segments.length) return sanitizeText(value, 1600);
@@ -185,7 +187,8 @@ function chooseConversationalReply(input: {
 
     const kept: string[] = [];
     for (const segment of segments) {
-      if (businessPattern.test(segment) && kept.length > 0) break;
+      if (turn.isPureRelational && businessPattern.test(segment) && kept.length > 0) break;
+      if (turn.isDirectQuestion && /\?/.test(segment) && kept.length > 0) break;
       kept.push(segment);
       if (kept.length >= 2) break;
     }
@@ -193,11 +196,11 @@ function chooseConversationalReply(input: {
     return sanitizeText(kept.join(" "), 1600) || sanitizeText(value, 1600);
   };
 
-  const llmResponse = trimBusinessPushOnRelationalTurn(
+  const llmResponse = trimBusinessPushOnHumanTurn(
     softenRigidPhrases(input.llmResponseText || ""),
     input.inboundText || ""
   );
-  const fallbackResponse = trimBusinessPushOnRelationalTurn(
+  const fallbackResponse = trimBusinessPushOnHumanTurn(
     softenRigidPhrases(input.fallbackWriterText || ""),
     input.inboundText || ""
   );
@@ -226,30 +229,20 @@ function llmShouldLeadConversation(input: {
   plannerDecision: AltumPlannerDecision;
   inboundText: string;
 }) {
-  const normalizedInbound = sanitizeText(input.inboundText, 260)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+  const turn = classifyLeadTurn(input.inboundText);
   const hasUsableResponse = Boolean(sanitizeText(input.llmResponseText, 1600));
   const turnGoal = sanitizeText(input.llmTurnGoal || "", 120).toLowerCase();
   const plannerIsClosingPush =
     input.plannerDecision.responseGoal === "recommend" ||
     input.plannerDecision.responseGoal === "move_to_next_step" ||
     /proposta|reuniao|diagnostico|agendar/i.test(String(input.plannerDecision.nextAction || ""));
-  const isPureRelationalTurn =
-    /\b(como voce esta|como voce ta|como c[eê] esta|como vai|tudo bem|tudo certo|obrigad|valeu|show|top)\b/.test(
-      normalizedInbound
-    ) &&
-    !/\b(nicho|empresa|lead|leads|venda|vendas|whatsapp|objetivo|comercial|site|trafego|tr[aá]fego|crm|pipeline|proposta|diagnostico|diagn[oó]stico)\b/.test(
-      normalizedInbound
-    );
 
   if (!hasUsableResponse) return false;
   if (input.plannerDecision.decision === "handoff") return false;
   if (input.llmDecision !== "respond") return false;
-  if (!isPureRelationalTurn && (input.llmConfidence || 0) < 0.72) return false;
+  if (!turn.isPureRelational && !turn.isDirectQuestion && (input.llmConfidence || 0) < 0.72) return false;
   if (plannerIsClosingPush) return false;
-  if (isPureRelationalTurn) return true;
+  if (turn.isPureRelational || turn.isDirectQuestion) return true;
 
   return (
     ["welcome", "clarify", "qualify"].includes(String(input.plannerDecision.responseGoal || "")) ||

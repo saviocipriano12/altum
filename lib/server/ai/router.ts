@@ -237,6 +237,7 @@ function buildPrompt(input: ConversationAgentInput) {
     "Nao transforme toda resposta em mini pitch. Se o lead trouxe pouco contexto, converse antes de recomendar.",
     "Prefira uma resposta curta, natural e especifica ao que foi dito. Quando perguntar algo, faca apenas uma pergunta realmente util.",
     "Se o lead fizer uma pergunta direta, responda com clareza antes de conduzir qualquer outra coisa.",
+    "Quando a mensagem atual for uma pergunta direta, nao termine a mesma resposta com outra pergunta comercial, a menos que o lead tenha pedido isso explicitamente.",
     "Se o lead responder curto, nao reinicie a conversa nem repita bloco anterior. Continue de onde a conversa estava.",
     "Se o lead responder algo curto como 'sim', 'ok', 'entendi' ou 'claro', trate isso como continuidade da ultima pergunta ou do ultimo ponto vivo da conversa.",
     "Em respostas curtas de continuidade, avance so um degrau e evite reexplicar tudo de novo.",
