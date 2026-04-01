@@ -250,10 +250,34 @@ function chooseConversationalReply(input: {
     return sanitizeText(kept.join(" "), 1600) || sanitizeText(value, 1600);
   };
 
+  const holdSpaceForHumanTurn = (value: string, inboundText: string) => {
+    const clean = sanitizeText(value, 1600);
+    const turn = classifyLeadTurn(inboundText);
+    if ((!turn.isPureRelational && !turn.isDirectQuestion) || !clean) return clean;
+
+    const segments = (clean.match(/[^.!?]+[.!?]?/g) || []).map((item) => item.trim()).filter(Boolean);
+    if (!segments.length) return clean;
+
+    const businessPattern =
+      /\b(nicho|empresa|lead|leads|venda|vendas|whatsapp|objetivo|comercial|atendimento|site|trafego|tr[aá]fego|crm|pipeline|proposta|diagnostico|diagn[oó]stico)\b/i;
+
+    const kept: string[] = [];
+    for (const segment of segments) {
+      if (businessPattern.test(segment) && kept.length > 0) break;
+      kept.push(segment);
+      if (kept.length >= 2) break;
+    }
+
+    return sanitizeText(kept.join(" "), 1600) || clean;
+  };
+
   const llmResponse = trimBusinessPushOnHumanTurn(
-    keepAtMostOneUsefulQuestion(
-      removeAutoPilotOpeners(
-        normalizeGreetingMenuResponse(softenRigidPhrases(input.llmResponseText || ""), input.inboundText || ""),
+    holdSpaceForHumanTurn(
+      keepAtMostOneUsefulQuestion(
+        removeAutoPilotOpeners(
+          normalizeGreetingMenuResponse(softenRigidPhrases(input.llmResponseText || ""), input.inboundText || ""),
+          input.inboundText || ""
+        ),
         input.inboundText || ""
       ),
       input.inboundText || ""
@@ -261,9 +285,12 @@ function chooseConversationalReply(input: {
     input.inboundText || ""
   );
   const fallbackResponse = trimBusinessPushOnHumanTurn(
-    keepAtMostOneUsefulQuestion(
-      removeAutoPilotOpeners(
-        normalizeGreetingMenuResponse(softenRigidPhrases(input.fallbackWriterText || ""), input.inboundText || ""),
+    holdSpaceForHumanTurn(
+      keepAtMostOneUsefulQuestion(
+        removeAutoPilotOpeners(
+          normalizeGreetingMenuResponse(softenRigidPhrases(input.fallbackWriterText || ""), input.inboundText || ""),
+          input.inboundText || ""
+        ),
         input.inboundText || ""
       ),
       input.inboundText || ""
