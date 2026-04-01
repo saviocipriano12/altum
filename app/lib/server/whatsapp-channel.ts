@@ -214,6 +214,143 @@ export async function sendMetaTextMessage(input: {
   return payload;
 }
 
+export async function uploadWhatsAppMedia(input: {
+  channel: WhatsAppChannelConfig;
+  buffer: Buffer;
+  filename: string;
+  contentType: string;
+}) {
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", input.contentType);
+  form.append(
+    "file",
+    new Blob([new Uint8Array(input.buffer)], { type: input.contentType }),
+    input.filename
+  );
+
+  const response = await fetch(`https://graph.facebook.com/${VERSION}/${input.channel.phoneNumberId}/media`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.channel.accessToken}`,
+    },
+    body: form,
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    id?: string;
+    error?: { message?: string };
+  };
+
+  if (!response.ok) {
+    throw new Error(payload.error?.message || `whatsapp_media_upload_http_${response.status}`);
+  }
+
+  return {
+    mediaId: String(payload.id || "").trim(),
+  };
+}
+
+export async function sendMetaAudioMessage(input: {
+  channel: WhatsAppChannelConfig;
+  to: string;
+  mediaId: string;
+}) {
+  const response = await fetch(
+    `https://graph.facebook.com/${VERSION}/${input.channel.phoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.channel.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: input.to,
+        type: "audio",
+        audio: { id: input.mediaId },
+      }),
+    }
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errMessage =
+      (payload as { error?: { message?: string } })?.error?.message || "Erro na API da Meta ao enviar audio.";
+    throw new Error(errMessage);
+  }
+
+  return payload;
+}
+
+export async function fetchWhatsAppMediaMetadata(input: {
+  channel: WhatsAppChannelConfig;
+  mediaId: string;
+}) {
+  const mediaId = input.mediaId.trim();
+  if (!mediaId) {
+    throw new Error("whatsapp_media_id_missing");
+  }
+
+  const response = await fetch(`https://graph.facebook.com/${VERSION}/${mediaId}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${input.channel.accessToken}`,
+    },
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    url?: string;
+    mime_type?: string;
+    sha256?: string;
+    file_size?: number;
+    error?: { message?: string };
+  };
+
+  if (!response.ok) {
+    throw new Error(payload.error?.message || `whatsapp_media_metadata_http_${response.status}`);
+  }
+
+  return {
+    url: String(payload.url || "").trim(),
+    mimeType: String(payload.mime_type || "").trim() || "application/octet-stream",
+    sha256: String(payload.sha256 || "").trim() || null,
+    fileSize: typeof payload.file_size === "number" ? payload.file_size : null,
+  };
+}
+
+export async function downloadWhatsAppMedia(input: {
+  channel: WhatsAppChannelConfig;
+  mediaId: string;
+}) {
+  const meta = await fetchWhatsAppMediaMetadata(input);
+  if (!meta.url) {
+    throw new Error("whatsapp_media_url_missing");
+  }
+
+  const response = await fetch(meta.url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${input.channel.accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`whatsapp_media_download_http_${response.status}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    contentType: response.headers.get("content-type") || meta.mimeType || "application/octet-stream",
+    url: meta.url,
+    mimeType: meta.mimeType,
+    fileSize: meta.fileSize,
+    sha256: meta.sha256,
+  };
+}
+
 export function extractWebhookPhoneNumberId(body: Record<string, unknown>) {
   const entry = Array.isArray(body.entry) ? body.entry[0] : null;
   const changes = entry && typeof entry === "object" ? (entry as { changes?: unknown[] }).changes : null;

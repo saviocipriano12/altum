@@ -7,6 +7,7 @@ import {
   assertTenantCapability,
   TenantAccessError,
 } from "@/lib/server/tenant";
+import { trackAppointmentOutcome } from "@/lib/server/ai/learning-outcomes";
 
 type Body = {
   title?: string;
@@ -141,6 +142,15 @@ export async function PATCH(
         actorId: user.uid,
         actorName: user.name,
         createdAt: FieldValue.serverTimestamp(),
+      });
+
+      const nextStatus =
+        body.status !== undefined && VALID_STATUSES.has(status) ? status : clean(current.status, 40) || "scheduled";
+      await trackAppointmentOutcome({
+        tenantId,
+        leadId,
+        appointmentId,
+        status: nextStatus,
       });
     }
 

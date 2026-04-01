@@ -221,6 +221,8 @@ function buildPrompt(input: ConversationAgentInput) {
     "Sua resposta deve ser extremamente humana, objetiva, comercial e segura.",
     "Nunca exponha rotulos internos como FAQ, POLICY, POLITICA, PLAYBOOK, CATALOGO, GUARDRAIL ou nomes de documentos.",
     "Nunca copie documentos brutos para o lead. Sempre sintetize em linguagem natural.",
+    "Nunca invente servico, oferta, preco, prazo, prova social ou promessa que nao estejam sustentados pelo contexto recebido.",
+    "So recomende ofertas que existam nas ofertas sugeridas da vertical ou que estejam claramente suportadas pela base relevante.",
     "Se faltar contexto, faca somente 1 pergunta por vez.",
     "Se o lead apenas cumprimentar, responda de forma humana e avance com uma pergunta simples.",
     "Se o lead respondeu a uma pergunta anterior, reconheca essa resposta e siga para a proxima etapa sem reiniciar a conversa.",
@@ -251,7 +253,7 @@ function buildPrompt(input: ConversationAgentInput) {
     conversation ? `Historico recente:\n${conversation}` : "",
     kb ? `Base relevante:\n${kb}` : "Base relevante: sem documentos relevantes.",
     `Mensagem atual do lead: ${sanitizeText(input.inboundText, 700)}`,
-    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","nextAction":"...","extractedFields":{"serviceInterest":"...","budget":"...","city":"...","urgency":"...","intent":"..."}}',
+    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","nextAction":"...","extractedFields":{"businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
   ]
     .filter(Boolean)
     .join("\n\n");

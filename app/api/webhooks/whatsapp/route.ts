@@ -43,6 +43,47 @@ function toDate(value: unknown) {
   return null;
 }
 
+function normalizeInboundMessageType(value: unknown) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (["audio", "image", "video", "document", "sticker", "location", "contact", "interactive", "template", "text"].includes(raw)) {
+    return raw;
+  }
+  return "text";
+}
+
+function buildWhatsappMediaText(message: Record<string, unknown>, fallbackText: string) {
+  if (fallbackText) return fallbackText;
+  const type = normalizeInboundMessageType(message.type);
+  if (type === "audio") return "[Audio recebido]";
+  if (type === "image") return "[Imagem recebida]";
+  if (type === "video") return "[Video recebido]";
+  if (type === "document") return "[Arquivo recebido]";
+  if (type === "sticker") return "[Sticker recebido]";
+  if (type === "location") return "[Localizacao recebida]";
+  return "";
+}
+
+function extractWhatsappMediaMeta(message: Record<string, unknown>) {
+  const type = normalizeInboundMessageType(message.type);
+  const payload =
+    type !== "text" && message[type] && typeof message[type] === "object"
+      ? (message[type] as Record<string, unknown>)
+      : {};
+
+  return {
+    type,
+    text: buildWhatsappMediaText(message, String((message as { text?: { body?: unknown } }).text?.body || "").trim()),
+    mediaUrl: "",
+    mediaName: String(payload.filename || payload.caption || "").trim() || null,
+    mediaMimeType: String(payload.mime_type || "").trim() || null,
+    mediaDuration: typeof payload.voice === "boolean" ? null : null,
+    mediaWidth: null as number | null,
+    mediaHeight: null as number | null,
+    mediaThumbnail: null as string | null,
+    mediaId: String(payload.id || "").trim() || null,
+  };
+}
+
 async function resolveLeadOwner(phone: string, tenantId: string) {
   const scopedSnap = await adminDb
     .collection("leads")
@@ -250,7 +291,8 @@ export async function POST(req: Request) {
     eventRef = claim.eventRef;
 
     const from = normalizePhone(String((message as { from?: unknown }).from || ""));
-    const text = String((message as { text?: { body?: unknown } }).text?.body || "").trim();
+    const mediaMeta = extractWhatsappMediaMeta(message);
+    const text = mediaMeta.text;
     const contactName =
       String(
         (valueObj as { contacts?: Array<{ profile?: { name?: unknown } }> } | undefined)?.contacts?.[0]
@@ -405,12 +447,20 @@ export async function POST(req: Request) {
           chatId,
           text,
           sender: "client",
-          type: "text",
+          type: mediaMeta.type,
           ownerId: currentOwnerId,
           tenantId,
           channelPhoneNumberId: channel.phoneNumberId,
           inboundMetaMessageId,
           source: "whatsapp_webhook",
+          mediaUrl: mediaMeta.mediaUrl,
+          mediaName: mediaMeta.mediaName,
+          mediaMimeType: mediaMeta.mediaMimeType,
+          mediaDuration: mediaMeta.mediaDuration,
+          mediaWidth: mediaMeta.mediaWidth,
+          mediaHeight: mediaMeta.mediaHeight,
+          mediaThumbnail: mediaMeta.mediaThumbnail,
+          mediaId: mediaMeta.mediaId,
           createdAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -420,11 +470,19 @@ export async function POST(req: Request) {
         chatId,
         text,
         sender: "client",
-        type: "text",
+        type: mediaMeta.type,
         ownerId: currentOwnerId,
         tenantId,
         channelPhoneNumberId: channel.phoneNumberId,
         source: "whatsapp_webhook",
+        mediaUrl: mediaMeta.mediaUrl,
+        mediaName: mediaMeta.mediaName,
+        mediaMimeType: mediaMeta.mediaMimeType,
+        mediaDuration: mediaMeta.mediaDuration,
+        mediaWidth: mediaMeta.mediaWidth,
+        mediaHeight: mediaMeta.mediaHeight,
+        mediaThumbnail: mediaMeta.mediaThumbnail,
+        mediaId: mediaMeta.mediaId,
         createdAt: FieldValue.serverTimestamp(),
       });
     }

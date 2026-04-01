@@ -27,6 +27,11 @@ type ParsedMetaEvent = {
   recipientId: string;
   text: string;
   timestamp: number | null;
+  messageType: string;
+  mediaUrl?: string | null;
+  mediaName?: string | null;
+  mediaMimeType?: string | null;
+  mediaThumbnail?: string | null;
 };
 
 type ParsedLeadgenEvent = {
@@ -91,6 +96,40 @@ function buildAttachmentText(value: unknown) {
   return labels.join(" ");
 }
 
+function normalizeMetaMessageType(message: Record<string, unknown>) {
+  if (cleanString(message.text, 1500)) return "text";
+  const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+  const first = attachments[0];
+  const raw = first && typeof first === "object" ? cleanString((first as { type?: unknown }).type, 40).toLowerCase() : "";
+  if (raw === "image") return "image";
+  if (raw === "audio") return "audio";
+  if (raw === "video") return "video";
+  if (raw === "file") return "document";
+  return "text";
+}
+
+function extractMetaAttachmentMeta(message: Record<string, unknown>) {
+  const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+  const first = attachments[0];
+  const attachment = first && typeof first === "object" ? (first as Record<string, unknown>) : {};
+  const payload =
+    attachment.payload && typeof attachment.payload === "object"
+      ? (attachment.payload as Record<string, unknown>)
+      : {};
+
+  const type = normalizeMetaMessageType(message);
+  return {
+    type,
+    mediaUrl: cleanString(payload.url, 1200) || null,
+    mediaName: cleanString(attachment.title, 160) || cleanString(payload.title, 160) || null,
+    mediaMimeType: cleanString(payload.mime_type, 120) || null,
+    mediaDuration: null as number | null,
+    mediaWidth: null as number | null,
+    mediaHeight: null as number | null,
+    mediaThumbnail: cleanString(payload.preview_url, 1200) || null,
+  };
+}
+
 function extractTextFromMessage(message: Record<string, unknown>) {
   return cleanString(message.text, 1500) || buildAttachmentText(message.attachments);
 }
@@ -126,6 +165,7 @@ function parseMetaEvents(body: Record<string, unknown>) {
       const recipientId = cleanString(recipient.id, 180);
       const text = extractTextFromMessage(message);
       const messageId = cleanString(message.mid || message.id, 220);
+      const mediaMeta = extractMetaAttachmentMeta(message);
       const timestamp =
         typeof event.timestamp === "number"
           ? event.timestamp
@@ -142,6 +182,11 @@ function parseMetaEvents(body: Record<string, unknown>) {
         recipientId,
         text,
         timestamp,
+        messageType: mediaMeta.type,
+        mediaUrl: mediaMeta.mediaUrl,
+        mediaName: mediaMeta.mediaName,
+        mediaMimeType: mediaMeta.mediaMimeType,
+        mediaThumbnail: mediaMeta.mediaThumbnail,
       });
     }
   }
@@ -637,9 +682,13 @@ export async function POST(req: Request) {
           channelId: channel.id,
           text: event.text,
           sender: "client",
-          type: "text",
+          type: event.messageType,
           ownerId: chat.ownerId,
           metaMessageId: event.eventId,
+          mediaUrl: event.mediaUrl || null,
+          mediaName: event.mediaName || null,
+          mediaMimeType: event.mediaMimeType || null,
+          mediaThumbnail: event.mediaThumbnail || null,
           source: "meta_webhook",
           createdAt: FieldValue.serverTimestamp(),
         },

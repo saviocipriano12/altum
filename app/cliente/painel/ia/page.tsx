@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Loader2, PencilLine, Save, Search, ShieldCheck, Sparkles, Trash2, Waypoints } from "lucide-react";
+import { Bot, Loader2, PencilLine, RefreshCw, Save, Search, ShieldCheck, Sparkles, Trash2, Waypoints } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
@@ -64,6 +64,9 @@ type AiLog = {
   stateAfter?: string | null;
   responseGoal?: string | null;
   recommendedOffer?: string | null;
+  objectionType?: string | null;
+  commercialTemperature?: string | null;
+  qualityScore?: number | null;
   latencyMs?: number | null;
   createdAt?: unknown;
 };
@@ -85,6 +88,171 @@ type ActionSignal = {
   badge: string;
   action: () => void;
 };
+
+type PreviewScenario = {
+  id: string;
+  label: string;
+  message: string;
+  messageType?: string;
+  history?: Array<{ sender: "agent" | "client" | "system"; text: string; type?: string }>;
+  leadMemory?: Record<string, unknown>;
+  expected?: {
+    decisions?: string[];
+    responseGoals?: string[];
+    stateAfter?: string[];
+    extractedFields?: string[];
+    minQuality?: number;
+    forbiddenNotes?: string[];
+  };
+};
+
+type PreviewResult = {
+  plannerDecision?: {
+    decision?: string;
+    reason?: string;
+    confidence?: number;
+    stateBefore?: string;
+    stateAfter?: string;
+    responseGoal?: string;
+    intent?: string;
+    objectionType?: string | null;
+    commercialTemperature?: string | null;
+    nextQuestion?: string | null;
+    nextAction?: string | null;
+    recommendedOffer?: string | null;
+  };
+  extractedFields?: Record<string, string> | null;
+  responseText?: string;
+  quality?: { score?: number; notes?: string[] };
+  matchedKbDocs?: Array<{ id: string; type: string; score: number; preview: string }>;
+};
+
+type PreviewBatchRun = {
+  scenarioId: string;
+  label: string;
+  preview: PreviewResult | null;
+  error?: string | null;
+  verdict?: {
+    passed: boolean;
+    issues: string[];
+  };
+};
+
+const PREVIEW_SCENARIOS: PreviewScenario[] = [
+  {
+    id: "greeting",
+    label: "Saudacao fria",
+    message: "Oi",
+    expected: {
+      decisions: ["respond"],
+      responseGoals: ["welcome"],
+      stateAfter: ["discovery"],
+      minQuality: 0.7,
+      forbiddenNotes: ["vazou_jargao_interno", "resposta_longa"],
+    },
+  },
+  {
+    id: "price_early",
+    label: "Preco cedo demais",
+    message: "Quanto custa?",
+    expected: {
+      decisions: ["ask_more"],
+      responseGoals: ["handle_objection"],
+      stateAfter: ["qualification"],
+      minQuality: 0.7,
+      forbiddenNotes: ["vazou_jargao_interno"],
+    },
+  },
+  {
+    id: "ask_services",
+    label: "O que voces fazem",
+    message: "O que voces fazem?",
+    expected: {
+      decisions: ["respond"],
+      responseGoals: ["clarify"],
+      minQuality: 0.68,
+      forbiddenNotes: ["vazou_jargao_interno", "resposta_longa"],
+    },
+  },
+  {
+    id: "imobiliaria",
+    label: "Imobiliaria + dor",
+    message: "Sou uma imobiliaria e quero vender mais pelo WhatsApp",
+    expected: {
+      decisions: ["respond"],
+      responseGoals: ["recommend"],
+      stateAfter: ["recommendation"],
+      extractedFields: ["businessType", "primaryGoal"],
+      minQuality: 0.72,
+    },
+  },
+  {
+    id: "price_with_context",
+    label: "Preco com contexto",
+    message: "Sou uma clinica e quero organizar atendimento e vendas. Quanto custa?",
+    expected: {
+      decisions: ["respond"],
+      responseGoals: ["handle_objection"],
+      stateAfter: ["recommendation"],
+      extractedFields: ["businessType", "primaryGoal"],
+      minQuality: 0.72,
+    },
+  },
+  {
+    id: "soft_objection",
+    label: "Objecao suave",
+    message: "Entendi, mas vou pensar",
+    history: [
+      { sender: "agent", text: "Pelo seu contexto, o caminho mais aderente aqui tende a ser implantacao de IA para atendimento e comercial. Se fizer sentido, eu te mostro o proximo passo." },
+    ],
+    leadMemory: {
+      businessType: "imobiliaria",
+      primaryGoal: "aumentar vendas",
+      currentChannels: "whatsapp, instagram",
+      recommendedOffer: "implantacao de IA para atendimento e comercial",
+    },
+    expected: {
+      decisions: ["respond"],
+      responseGoals: ["handle_objection"],
+      stateAfter: ["objection_handling"],
+      minQuality: 0.7,
+    },
+  },
+  {
+    id: "proposal_too_early",
+    label: "Proposta cedo demais",
+    message: "Me manda uma proposta",
+    expected: {
+      decisions: ["ask_more"],
+      responseGoals: ["qualify"],
+      stateAfter: ["qualification"],
+      minQuality: 0.7,
+    },
+  },
+  {
+    id: "audio_context",
+    label: "Audio com contexto",
+    message: "Tenho uma loja, anuncio no Instagram e perco lead no atendimento",
+    messageType: "audio",
+    expected: {
+      decisions: ["ask_more", "respond"],
+      extractedFields: ["currentChannels"],
+      minQuality: 0.68,
+    },
+  },
+  {
+    id: "audio_unclear",
+    label: "Audio pouco claro",
+    message: "[Audio com fala pouco clara]",
+    messageType: "audio",
+    expected: {
+      decisions: ["ask_more"],
+      responseGoals: ["qualify"],
+      minQuality: 0.68,
+      forbiddenNotes: ["vazou_jargao_interno"],
+    },
+  },
+];
 
 type TenantSettingsPayload = {
   settings?: {
@@ -183,6 +351,51 @@ function responseStyleLabel(value?: string) {
   return "Consultivo";
 }
 
+function evaluatePreviewScenario(preview: PreviewResult | null, scenario: PreviewScenario) {
+  const issues: string[] = [];
+  const expected = scenario.expected;
+  if (!preview || !expected) {
+    return { passed: Boolean(preview), issues };
+  }
+
+  const decision = String(preview.plannerDecision?.decision || "");
+  const responseGoal = String(preview.plannerDecision?.responseGoal || "");
+  const stateAfter = String(preview.plannerDecision?.stateAfter || "");
+  const extractedFieldKeys = new Set(Object.keys(preview.extractedFields || {}));
+  const qualityScore = typeof preview.quality?.score === "number" ? preview.quality.score : 0;
+  const qualityNotes = new Set(preview.quality?.notes || []);
+
+  if (expected.decisions?.length && !expected.decisions.includes(decision)) {
+    issues.push(`decisao fora do esperado: ${decision || "sem decisao"}`);
+  }
+  if (expected.responseGoals?.length && !expected.responseGoals.includes(responseGoal)) {
+    issues.push(`objetivo fora do esperado: ${responseGoal || "sem objetivo"}`);
+  }
+  if (expected.stateAfter?.length && !expected.stateAfter.includes(stateAfter)) {
+    issues.push(`estado final fora do esperado: ${stateAfter || "sem estado"}`);
+  }
+  if (expected.extractedFields?.length) {
+    const missing = expected.extractedFields.filter((field) => !extractedFieldKeys.has(field));
+    if (missing.length) {
+      issues.push(`faltou CRM: ${missing.join(", ")}`);
+    }
+  }
+  if (typeof expected.minQuality === "number" && qualityScore < expected.minQuality) {
+    issues.push(`qualidade baixa: ${Math.round(qualityScore * 100)}%`);
+  }
+  if (expected.forbiddenNotes?.length) {
+    const forbiddenFound = expected.forbiddenNotes.filter((note) => qualityNotes.has(note));
+    if (forbiddenFound.length) {
+      issues.push(`sinais ruins: ${forbiddenFound.join(", ")}`);
+    }
+  }
+
+  return {
+    passed: issues.length === 0,
+    issues,
+  };
+}
+
 function reorderProviders(
   currentProviders: NonNullable<AiSettings["preferredProviders"]>,
   providerId: NonNullable<AiSettings["preferredProviders"]>[number],
@@ -239,6 +452,12 @@ export default function ClienteIaPage() {
   const [logSearch, setLogSearch] = useState("");
   const [decisionFilter, setDecisionFilter] = useState<"all" | "respond" | "ask_more" | "handoff" | "skip">("all");
   const [logRiskFilter, setLogRiskFilter] = useState<"all" | "low_confidence" | "handoff_only">("all");
+  const [previewScenarioId, setPreviewScenarioId] = useState(PREVIEW_SCENARIOS[0].id);
+  const [previewMessage, setPreviewMessage] = useState(PREVIEW_SCENARIOS[0].message);
+  const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
+  const [runningPreview, setRunningPreview] = useState(false);
+  const [runningPreviewBatch, setRunningPreviewBatch] = useState(false);
+  const [previewBatchResults, setPreviewBatchResults] = useState<PreviewBatchRun[]>([]);
 
   const canManage = hasCapability("manage_ai");
   const canEditKb = hasCapability("manage_ai");
@@ -335,6 +554,15 @@ export default function ClienteIaPage() {
       objectionHandling: logs.filter((log) => String(log.stateAfter || "") === "objection_handling").length,
       lowConfidence,
       avgLatency,
+      avgQuality:
+        logs.filter((log) => typeof log.qualityScore === "number").length > 0
+          ? Number(
+              (
+                logs.reduce((sum, item) => sum + (typeof item.qualityScore === "number" ? item.qualityScore : 0), 0) /
+                Math.max(1, logs.filter((log) => typeof log.qualityScore === "number").length)
+              ).toFixed(3)
+            )
+          : 0,
     };
   }, [logs]);
 
@@ -526,6 +754,93 @@ export default function ClienteIaPage() {
     setError(null);
   }
 
+  const selectedPreviewScenario = useMemo(
+    () => PREVIEW_SCENARIOS.find((item) => item.id === previewScenarioId) || PREVIEW_SCENARIOS[0],
+    [previewScenarioId]
+  );
+
+  const previewBatchSummary = useMemo(() => {
+    const total = previewBatchResults.length;
+    const approved = previewBatchResults.filter((item) => item.verdict?.passed).length;
+    const errors = previewBatchResults.filter((item) => item.error).length;
+    const adjustments = previewBatchResults.filter((item) => !item.error && item.verdict && !item.verdict.passed).length;
+    return { total, approved, errors, adjustments };
+  }, [previewBatchResults]);
+
+  function applyPreviewScenario(scenarioId: string) {
+    const scenario = PREVIEW_SCENARIOS.find((item) => item.id === scenarioId);
+    if (!scenario) return;
+    setPreviewScenarioId(scenario.id);
+    setPreviewMessage(scenario.message);
+    setPreviewResult(null);
+  }
+
+  async function runPreviewScenario(scenario: PreviewScenario, customMessage?: string) {
+    if (!tenant?.tenantId) {
+      return { error: "tenant_missing", preview: null } as const;
+    }
+
+    const res = await authedFetch(`/api/tenant/${tenant.tenantId}/ai-preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: (customMessage || scenario.message).trim(),
+        messageType: scenario.messageType || "text",
+        history: scenario.history || [],
+        leadMemory: scenario.leadMemory || null,
+      }),
+    });
+    const payload = (await res.json()) as { error?: string; preview?: PreviewResult };
+    if (!res.ok) {
+      return { error: payload.error || "Falha ao executar preview da IA.", preview: null } as const;
+    }
+    return { error: null, preview: payload.preview || null } as const;
+  }
+
+  async function handleRunPreview() {
+    if (!tenant?.tenantId || !previewMessage.trim()) return;
+
+    setRunningPreview(true);
+    setError(null);
+    try {
+      const result = await runPreviewScenario(selectedPreviewScenario, previewMessage.trim());
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setPreviewResult(result.preview || null);
+    } catch {
+      setError("Falha ao executar preview da IA.");
+    } finally {
+      setRunningPreview(false);
+    }
+  }
+
+  async function handleRunPreviewBatch() {
+    if (!tenant?.tenantId) return;
+
+    setRunningPreviewBatch(true);
+    setError(null);
+    try {
+      const results: PreviewBatchRun[] = [];
+      for (const scenario of PREVIEW_SCENARIOS) {
+        const result = await runPreviewScenario(scenario);
+        results.push({
+          scenarioId: scenario.id,
+          label: scenario.label,
+          preview: result.preview,
+          error: result.error,
+          verdict: result.preview ? evaluatePreviewScenario(result.preview, scenario) : undefined,
+        });
+      }
+      setPreviewBatchResults(results);
+    } catch {
+      setError("Falha ao executar bateria de cenarios da IA.");
+    } finally {
+      setRunningPreviewBatch(false);
+    }
+  }
+
   async function handleSaveSettings(event: FormEvent) {
     event.preventDefault();
     if (!tenant?.tenantId || !canManage) return;
@@ -661,6 +976,7 @@ export default function ClienteIaPage() {
         <MetricCard label="Respostas" value={String(logSummary.responded)} icon={Bot} trend="ultima janela" />
         <MetricCard label="Handoffs" value={String(logSummary.handoff)} icon={Waypoints} trend="transferencias humanas" />
         <MetricCard label="Baixa confianca" value={String(logSummary.lowConfidence)} icon={Bot} trend={`latencia media ${latencyLabel(logSummary.avgLatency)}`} />
+        <MetricCard label="Qualidade media" value={`${Math.round(logSummary.avgQuality * 100)}%`} icon={Sparkles} trend="curta, progressiva e sem vazamento" />
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -693,6 +1009,257 @@ export default function ClienteIaPage() {
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
               Cadastre FAQ, ofertas e politicas curtas. A IA responde melhor quando a base esta escrita como conversa, nao como documento interno.
             </p>
+          </div>
+        </div>
+      </PanelCard>
+
+      <PanelCard className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <CardTitle
+            title="Preview comercial do agente"
+            subtitle="Teste a IA com cenarios reais de SDR antes de publicar em producao."
+          />
+          <StateBadge
+            label={previewResult?.quality?.score ? `${Math.round((previewResult.quality.score || 0) * 100)}% de qualidade` : "simulador"}
+            tone={previewResult?.quality?.score && previewResult.quality.score < 0.7 ? "warning" : "info"}
+          />
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Cenario base</p>
+              <div className="mt-3 grid gap-2">
+                {PREVIEW_SCENARIOS.map((scenario) => (
+                  <button
+                    key={scenario.id}
+                    type="button"
+                    onClick={() => applyPreviewScenario(scenario.id)}
+                    className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
+                      scenario.id === previewScenarioId
+                        ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-card-text)]"
+                        : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-panel-soft)]"
+                    }`}
+                  >
+                    <p className="font-medium">{scenario.label}</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{scenario.message}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Mensagem de entrada</p>
+              <textarea
+                value={previewMessage}
+                onChange={(event) => setPreviewMessage(event.target.value)}
+                rows={5}
+                className="client-input mt-3 w-full rounded-2xl border p-3 text-sm outline-none"
+                placeholder="Digite uma mensagem para simular o lead"
+              />
+              <button
+                type="button"
+                onClick={() => void handleRunPreview()}
+                disabled={runningPreview || !previewMessage.trim()}
+                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
+              >
+                {runningPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Rodar preview
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRunPreviewBatch()}
+                disabled={runningPreviewBatch}
+                className="mt-3 ml-2 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
+              >
+                {runningPreviewBatch ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Rodar bateria base
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Resposta simulada</p>
+              <div className="mt-3 rounded-[20px] border border-[rgba(37,211,102,0.22)] bg-[linear-gradient(180deg,rgba(37,211,102,0.16),rgba(37,211,102,0.08))] p-4 text-sm leading-6 text-[var(--cliente-card-text)]">
+                {previewResult?.responseText || "Rode um cenario para ver como o Agent v2 responderia."}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Decisao</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <StateBadge label={previewResult?.plannerDecision?.decision || "sem preview"} tone="info" />
+                  <StateBadge label={previewResult?.plannerDecision?.stateAfter || "--"} tone="neutral" />
+                  <StateBadge label={previewResult?.plannerDecision?.responseGoal || "--"} tone="success" />
+                  {typeof previewResult?.plannerDecision?.confidence === "number" ? (
+                    <StateBadge
+                      label={`${Math.round((previewResult.plannerDecision.confidence || 0) * 100)}% de confianca`}
+                      tone={previewResult.plannerDecision.confidence >= 0.75 ? "success" : "warning"}
+                    />
+                  ) : null}
+                </div>
+                <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">
+                  Motivo: {previewResult?.plannerDecision?.reason || "--"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">CRM e proximo passo</p>
+                <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
+                  Oferta: {previewResult?.plannerDecision?.recommendedOffer || "--"}
+                </p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
+                  Next action: {previewResult?.plannerDecision?.nextAction || "--"}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Campos que iriam para o CRM</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {Object.entries(previewResult?.extractedFields || {}).length === 0 ? (
+                  <span className="text-sm text-[var(--cliente-card-text-soft)]">Sem campos extraidos neste preview.</span>
+                ) : (
+                  Object.entries(previewResult?.extractedFields || {}).map(([key, value]) => (
+                    <StateBadge key={key} label={`${key}: ${value}`} tone="neutral" />
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Leitura de qualidade</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(previewResult?.quality?.notes || []).length === 0 ? (
+                    <span className="text-sm text-[var(--cliente-card-text-soft)]">Ainda sem notas de qualidade.</span>
+                  ) : (
+                    (previewResult?.quality?.notes || []).map((note) => <StateBadge key={note} label={note} tone="neutral" />)
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Base usada no preview</p>
+                <div className="mt-3 space-y-2">
+                  {(previewResult?.matchedKbDocs || []).length === 0 ? (
+                    <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhum documento da base foi puxado para esta simulacao.</p>
+                  ) : (
+                    (previewResult?.matchedKbDocs || []).slice(0, 3).map((doc) => (
+                      <div
+                        key={doc.id}
+                        className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <StateBadge label={doc.type} tone="info" />
+                          <span className="text-xs text-[var(--cliente-card-text-soft)]">score {doc.score}</span>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text-muted)]">{doc.preview}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Bateria de cenarios SDR</p>
+                <StateBadge
+                  label={
+                    previewBatchResults.length
+                      ? `${previewBatchResults.filter((item) => item.verdict?.passed).length}/${previewBatchResults.length} aprovados`
+                      : "sem bateria"
+                  }
+                  tone={
+                    previewBatchResults.some((item) => item.error)
+                      ? "warning"
+                      : previewBatchResults.length && previewBatchResults.every((item) => item.verdict?.passed)
+                        ? "success"
+                        : "info"
+                  }
+                />
+              </div>
+              {previewBatchResults.length > 0 ? (
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Aprovados</p>
+                    <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{previewBatchSummary.approved}</p>
+                  </div>
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Ajustar</p>
+                    <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{previewBatchSummary.adjustments}</p>
+                  </div>
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Erros</p>
+                    <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{previewBatchSummary.errors}</p>
+                  </div>
+                </div>
+              ) : null}
+              <div className="mt-3 space-y-2">
+                {previewBatchResults.length === 0 ? (
+                  <p className="text-sm text-[var(--cliente-card-text-soft)]">
+                    Rode a bateria para validar saudacao, preco, objecao, proposta e audio de uma vez.
+                  </p>
+                ) : (
+                  previewBatchResults.map((item) => (
+                    <div
+                      key={item.scenarioId}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.label}</p>
+                        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                          {item.error
+                            ? item.error
+                            : item.preview?.plannerDecision?.reason || item.preview?.responseText || "sem detalhe"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {item.error ? (
+                          <StateBadge label="erro" tone="danger" />
+                        ) : (
+                          <>
+                            <StateBadge
+                              label={item.preview?.plannerDecision?.decision || "sem decisao"}
+                              tone={
+                                item.preview?.plannerDecision?.decision === "handoff"
+                                  ? "warning"
+                                  : item.preview?.plannerDecision?.decision === "ask_more"
+                                    ? "info"
+                                    : "success"
+                              }
+                            />
+                            <StateBadge
+                              label={
+                                typeof item.preview?.quality?.score === "number"
+                                  ? `${Math.round((item.preview?.quality?.score || 0) * 100)}%`
+                                  : "--"
+                              }
+                              tone={
+                                typeof item.preview?.quality?.score === "number" && item.preview.quality.score < 0.7
+                                  ? "warning"
+                                : "success"
+                              }
+                            />
+                            <StateBadge
+                              label={item.verdict?.passed ? "aprovado" : "ajustar"}
+                              tone={item.verdict?.passed ? "success" : "warning"}
+                            />
+                          </>
+                        )}
+                      </div>
+                      {!item.error && item.verdict && item.verdict.issues.length > 0 ? (
+                        <div className="w-full rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                          {item.verdict.issues.join(" | ")}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </PanelCard>
@@ -1361,7 +1928,7 @@ export default function ClienteIaPage() {
                     </div>
                   </div>
 
-                  {log.plannerIntent || log.responseGoal || log.stateBefore || log.stateAfter || log.recommendedOffer ? (
+                  {log.plannerIntent || log.responseGoal || log.stateBefore || log.stateAfter || log.recommendedOffer || log.objectionType || log.commercialTemperature ? (
                     <div className="mt-3 grid gap-2 md:grid-cols-[0.95fr_1.05fr]">
                       <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                         <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Decisao do agente</p>
@@ -1384,6 +1951,16 @@ export default function ClienteIaPage() {
                           {log.stateAfter ? (
                             <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]">
                               depois: {log.stateAfter}
+                            </span>
+                          ) : null}
+                          {log.objectionType ? (
+                            <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]">
+                              objecao: {log.objectionType}
+                            </span>
+                          ) : null}
+                          {log.commercialTemperature ? (
+                            <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]">
+                              temperatura: {log.commercialTemperature}
                             </span>
                           ) : null}
                         </div>

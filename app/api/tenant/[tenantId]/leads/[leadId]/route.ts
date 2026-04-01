@@ -5,6 +5,7 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
 
 type LeadDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -436,6 +437,13 @@ export async function PATCH(
         leadId,
         actorId: user.uid,
         actorName: user.name,
+        previousStage,
+        nextStage: pipelineStage,
+      });
+
+      await trackLeadStageOutcome({
+        tenantId,
+        leadId,
         previousStage,
         nextStage: pipelineStage,
       });

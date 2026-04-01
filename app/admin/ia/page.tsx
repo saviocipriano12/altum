@@ -94,6 +94,8 @@ type AdminAiSignalsResponse = {
     responseGoal?: string;
     stateAfter?: string;
     recommendedOffer?: string;
+    objectionType?: string;
+    commercialTemperature?: string;
     createdAt?: unknown;
   }>;
 };
@@ -162,6 +164,37 @@ type AdminAiUsageSummaryResponse = {
   }>;
 };
 
+type AdminAiLearningSummaryResponse = {
+  summary?: {
+    totalRuns?: number;
+    avgConfidence?: number;
+    lowConfidenceRuns?: number;
+    avgQualityScore?: number;
+    lowQualityRuns?: number;
+  };
+  topIntents?: Array<{ key: string; count: number }>;
+  topGoals?: Array<{ key: string; count: number }>;
+  topOffers?: Array<{ key: string; count: number }>;
+  topObjections?: Array<{ key: string; count: number }>;
+  topActions?: Array<{ key: string; count: number }>;
+  temperatures?: Array<{ key: string; count: number }>;
+};
+
+type AdminAiInternalNotificationsResponse = {
+  items?: Array<{
+    id: string;
+    tenantId: string;
+    chatId: string;
+    leadId: string;
+    type: string;
+    severity: string;
+    title: string;
+    detail: string;
+    status: string;
+    createdAt?: unknown;
+  }>;
+};
+
 const SUGGESTIONS = [
   "Como esta o cliente Vitta Prime?",
   "Me de um resumo geral da empresa hoje.",
@@ -179,6 +212,8 @@ export default function AdminIAPage() {
   const [signals, setSignals] = useState<AdminAiSignalsResponse>({});
   const [usage, setUsage] = useState<AdminAiUsageSummaryResponse>({});
   const [jobs, setJobs] = useState<AdminAiJobsSummaryResponse>({});
+  const [learning, setLearning] = useState<AdminAiLearningSummaryResponse>({});
+  const [internalNotifications, setInternalNotifications] = useState<AdminAiInternalNotificationsResponse>({});
   const [selectedTenantId, setSelectedTenantId] = useState("all");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -207,14 +242,18 @@ export default function AdminIAPage() {
         setSignalsLoading(true);
         setSignalsError(null);
 
-        const [signalsResponse, usageResponse, jobsResponse] = await Promise.all([
+        const [signalsResponse, usageResponse, jobsResponse, learningResponse, notificationsResponse] = await Promise.all([
           authedFetch("/api/admin/ai/signals"),
           authedFetch("/api/admin/ai/usage-summary"),
           authedFetch("/api/admin/ai/jobs/summary"),
+          authedFetch("/api/admin/ai/learning-summary"),
+          authedFetch("/api/admin/ai/internal-notifications"),
         ]);
         const signalsData = (await signalsResponse.json().catch(() => ({}))) as AdminAiSignalsResponse & { error?: string };
         const usageData = (await usageResponse.json().catch(() => ({}))) as AdminAiUsageSummaryResponse & { error?: string };
         const jobsData = (await jobsResponse.json().catch(() => ({}))) as AdminAiJobsSummaryResponse & { error?: string };
+        const learningData = (await learningResponse.json().catch(() => ({}))) as AdminAiLearningSummaryResponse & { error?: string };
+        const notificationsData = (await notificationsResponse.json().catch(() => ({}))) as AdminAiInternalNotificationsResponse & { error?: string };
         if (!signalsResponse.ok) {
           throw new Error(signalsData.error || "Falha ao carregar sinais da IA.");
         }
@@ -224,10 +263,18 @@ export default function AdminIAPage() {
         if (!jobsResponse.ok) {
           throw new Error(jobsData.error || "Falha ao carregar fila da IA.");
         }
+        if (!learningResponse.ok) {
+          throw new Error(learningData.error || "Falha ao carregar aprendizado da IA.");
+        }
+        if (!notificationsResponse.ok) {
+          throw new Error(notificationsData.error || "Falha ao carregar notificacoes internas da IA.");
+        }
 
         setSignals(signalsData);
         setUsage(usageData);
         setJobs(jobsData);
+        setLearning(learningData);
+        setInternalNotifications(notificationsData);
       } catch (error) {
         setSignalsError(error instanceof Error ? error.message : "Falha ao carregar sinais da IA.");
       } finally {
@@ -242,8 +289,12 @@ export default function AdminIAPage() {
   const usageCurrentMonth = useMemo(() => usage.currentMonth || {}, [usage.currentMonth]);
   const usageLast7Days = useMemo(() => usage.last7Days || {}, [usage.last7Days]);
   const jobCounts = useMemo(() => jobs.counts || {}, [jobs.counts]);
+  const learningSummary = useMemo(() => learning.summary || {}, [learning.summary]);
+  const topLearnedObjections = useMemo(() => learning.topObjections || [], [learning.topObjections]);
+  const topLearnedOffers = useMemo(() => learning.topOffers || [], [learning.topOffers]);
   const tenantSignals = useMemo(() => signals.tenants || [], [signals.tenants]);
   const recentSignals = useMemo(() => signals.recent || [], [signals.recent]);
+  const recentInternalNotifications = useMemo(() => internalNotifications.items || [], [internalNotifications.items]);
   const filteredRecentSignals = useMemo(
     () =>
       selectedTenantId === "all"
@@ -411,6 +462,84 @@ export default function AdminIAPage() {
         <SignalMetric label="Dead letters" value={String(jobCounts.deadLetter || 0)} icon={Loader2} />
       </section>
 
+      <section className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Learning loop</p>
+              <h2 className="mt-1 text-lg font-semibold text-white">O que a IA esta aprendendo</h2>
+            </div>
+            <div className="text-xs text-white/55">
+              ultimos 14 dias
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <MiniPill label="runs" value={learningSummary.totalRuns || 0} tone="blue" />
+            <MiniPill label="conf media" value={learningSummary.avgConfidence || 0} tone="emerald" />
+            <MiniPill label="baixa conf" value={learningSummary.lowConfidenceRuns || 0} tone="amber" />
+            <MiniPill label="qualidade" value={learningSummary.avgQualityScore || 0} tone="violet" />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-white/45">Objecoes dominantes</p>
+              <div className="mt-3 space-y-2">
+                {topLearnedObjections.length ? topLearnedObjections.map((item) => (
+                  <div key={`obj-${item.key}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-white/75">
+                    <span>{item.key}</span>
+                    <span className="text-white/45">{item.count}</span>
+                  </div>
+                )) : <p className="text-sm text-white/45">Sem objecoes dominantes ainda.</p>}
+              </div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-white/45">Ofertas mais sugeridas</p>
+              <div className="mt-3 space-y-2">
+                {topLearnedOffers.length ? topLearnedOffers.map((item) => (
+                  <div key={`offer-${item.key}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-white/75">
+                    <span>{item.key}</span>
+                    <span className="text-white/45">{item.count}</span>
+                  </div>
+                )) : <p className="text-sm text-white/45">Sem ofertas dominantes ainda.</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-[#111] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Sinais internos</p>
+              <h2 className="mt-1 text-lg font-semibold text-white">O que a IA pediu para o time</h2>
+            </div>
+            <div className="text-xs text-white/55">tempo real operacional</div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {recentInternalNotifications.length ? recentInternalNotifications.slice(0, 8).map((item) => (
+              <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{item.title}</p>
+                    <p className="mt-1 text-xs text-white/55">
+                      tenant {item.tenantId} · lead {item.leadId || "-"} · chat {item.chatId || "-"}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-[11px] ${
+                    item.severity === "high"
+                      ? "border border-rose-400/25 bg-rose-500/10 text-rose-100"
+                      : item.severity === "warning"
+                        ? "border border-amber-400/25 bg-amber-500/10 text-amber-100"
+                        : "border border-blue-400/25 bg-blue-500/10 text-blue-100"
+                  }`}>
+                    {item.severity}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm text-white/75">{item.detail}</p>
+                <p className="mt-2 text-[11px] text-white/40">{formatDateTime(item.createdAt)}</p>
+              </div>
+            )) : <p className="text-sm text-white/45">Sem notificacoes internas recentes.</p>}
+          </div>
+        </div>
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
           <div className="flex items-center justify-between gap-3">
@@ -520,7 +649,7 @@ export default function AdminIAPage() {
                   <p className="mt-2 text-xs text-white/50">
                     lead {item.leadId || "-"} Â· chat {item.chatId || "-"} Â· {item.provider || "provider"} / {item.model || "model"}
                   </p>
-                  {item.plannerIntent || item.responseGoal || item.stateAfter || item.recommendedOffer ? (
+                  {item.plannerIntent || item.responseGoal || item.stateAfter || item.recommendedOffer || item.objectionType || item.commercialTemperature ? (
                     <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-white/65">
                       {item.plannerIntent ? (
                         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">intencao: {item.plannerIntent}</span>
@@ -533,6 +662,12 @@ export default function AdminIAPage() {
                       ) : null}
                       {item.recommendedOffer ? (
                         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">oferta: {item.recommendedOffer}</span>
+                      ) : null}
+                      {item.objectionType ? (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">objecao: {item.objectionType}</span>
+                      ) : null}
+                      {item.commercialTemperature ? (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">temperatura: {item.commercialTemperature}</span>
                       ) : null}
                     </div>
                   ) : null}

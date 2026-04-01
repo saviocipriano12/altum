@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
 
 type Body = {
   stage?: string;
@@ -78,6 +79,13 @@ export async function POST(
       leadId,
       actorId: user.uid,
       actorName: user.name,
+      previousStage,
+      nextStage: stage,
+    });
+
+    await trackLeadStageOutcome({
+      tenantId,
+      leadId,
       previousStage,
       nextStage: stage,
     });

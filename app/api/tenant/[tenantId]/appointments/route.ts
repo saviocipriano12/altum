@@ -8,6 +8,7 @@ import {
   assertTenantRole,
   TenantAccessError,
 } from "@/lib/server/tenant";
+import { trackAppointmentOutcome } from "@/lib/server/ai/learning-outcomes";
 
 type Body = {
   leadId?: string | null;
@@ -137,6 +138,13 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         actorId: user.uid,
         actorName: user.name,
         createdAt: FieldValue.serverTimestamp(),
+      });
+
+      await trackAppointmentOutcome({
+        tenantId,
+        leadId,
+        appointmentId: ref.id,
+        status: VALID_STATUSES.has(status) ? status : "scheduled",
       });
     }
 

@@ -21,6 +21,8 @@ type AiSignalItem = {
   responseGoal: string;
   stateAfter: string;
   recommendedOffer: string;
+  objectionType: string;
+  commercialTemperature: string;
   createdAt: unknown;
 };
 
@@ -113,6 +115,8 @@ export async function GET(req: Request) {
         responseGoal: cleanText(data.responseGoal, 80).toLowerCase(),
         stateAfter: cleanText(data.stateAfter, 80).toLowerCase(),
         recommendedOffer: cleanText(data.recommendedOffer, 160),
+        objectionType: cleanText(data.objectionType, 80).toLowerCase(),
+        commercialTemperature: cleanText(data.commercialTemperature, 40).toLowerCase(),
         createdAt: data.createdAt || null,
       };
     });

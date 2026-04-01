@@ -9,6 +9,7 @@ import {
   TenantAccessError,
   getTenantSettings,
 } from "@/lib/server/tenant";
+import { trackLeadStageOutcome, trackProposalOutcome } from "@/lib/server/ai/learning-outcomes";
 
 type Body = {
   leadId?: string;
@@ -168,6 +169,22 @@ export async function POST(
         { merge: true }
       ),
     ]);
+
+    await trackProposalOutcome({
+      tenantId,
+      leadId,
+      budgetId: ref.id,
+      status,
+    });
+
+    if (status === "Enviado" && currentStage !== "proposta") {
+      await trackLeadStageOutcome({
+        tenantId,
+        leadId,
+        previousStage: currentStage,
+        nextStage: "proposta",
+      });
+    }
 
     return NextResponse.json({ ok: true, tenantId, id: ref.id });
   } catch (error) {

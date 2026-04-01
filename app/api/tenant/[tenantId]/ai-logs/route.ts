@@ -63,6 +63,14 @@ export async function GET(
         ["recommend", "move_to_next_step"].includes(String(item.responseGoal || ""))
       ).length,
       objectionHandling: items.filter((item) => String(item.stateAfter || "") === "objection_handling").length,
+      avgQualityScore: items.length
+        ? Number(
+            (
+              items.reduce((sum, item) => sum + (typeof item.qualityScore === "number" ? item.qualityScore : 0), 0) /
+              Math.max(1, items.filter((item) => typeof item.qualityScore === "number").length || 1)
+            ).toFixed(3)
+          )
+        : 0,
     };
 
     return NextResponse.json({ ok: true, tenantId, summary, items });

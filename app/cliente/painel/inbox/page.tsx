@@ -12,9 +12,12 @@ import {
   FileText,
   Flag,
   FolderKanban,
+  Image as ImageIcon,
   Loader2,
   MessageSquareText,
+  Mic,
   NotebookPen,
+  Paperclip,
   PauseCircle,
   PlayCircle,
   RefreshCw,
@@ -364,6 +367,26 @@ function getHeatTone(heat?: string) {
   return "neutral" as const;
 }
 
+function getInitials(value?: string) {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "LD";
+}
+
+function getMessagePreview(message: MessageItem | ChatItem) {
+  const type = String(("type" in message ? message.type : undefined) || "text").toLowerCase();
+  const text = String(("text" in message ? message.text : undefined) || ("lastMessage" in message ? message.lastMessage : undefined) || "").trim();
+
+  if (type === "audio") return text || "Audio recebido";
+  if (type === "image") return text || "Imagem recebida";
+  if (type === "document") return text || "Arquivo recebido";
+  if (type === "system") return text || "Atualizacao do sistema";
+  return text || "Sem mensagem registrada.";
+}
+
 function getTaskTone(task: LeadTask) {
   if (task.status === "done") return "success" as const;
   if (task.priority === "high") return "danger" as const;
@@ -437,46 +460,56 @@ function ConversationListItem({
       type="button"
       onClick={onSelect}
       className={cn(
-        "w-full rounded-2xl border p-3 text-left transition",
+        "w-full rounded-[24px] border p-3 text-left transition",
         active
-          ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] shadow-[0_0_0_1px_rgba(232,80,2,0.12)]"
-          : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+          ? "border-[rgba(37,211,102,0.28)] bg-[linear-gradient(180deg,rgba(37,211,102,0.12),rgba(255,255,255,0.02))] shadow-[0_0_0_1px_rgba(37,211,102,0.12)]"
+          : "border-[var(--cliente-border)] bg-[rgba(255,255,255,0.02)] hover:border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.045)]"
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">
-              {chat.contactName || chat.contactPhone || "Contato sem nome"}
-            </p>
-            <StateBadge label={formatPriorityLabel(chat.priority)} tone={getPriorityTone(chat.priority)} />
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(37,211,102,0.16),rgba(255,255,255,0.02))] text-sm font-semibold text-[var(--cliente-card-text)]">
+          {getInitials(chat.contactName || chat.contactPhone)}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">
+                  {chat.contactName || chat.contactPhone || "Contato sem nome"}
+                </p>
+                {chat.priority === "high" ? (
+                  <span className="h-2 w-2 rounded-full bg-[var(--cliente-accent)]" />
+                ) : null}
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
+                <span>{formatChannelLabel(chat.channel)}</span>
+                <span>•</span>
+                <span>{chat.assignedUserName || chat.ownerName || "Sem responsavel"}</span>
+              </div>
+            </div>
+
+            <div className="text-right text-[11px] text-[var(--cliente-card-text-soft)]">
+              <p>{formatTime(chat.lastMessageTime)}</p>
+              <p className="mt-1">{formatRelative(chat.lastMessageTime)}</p>
+            </div>
           </div>
-          <div className="mt-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-            <span>{formatChannelLabel(chat.channel)}</span>
-            <span>/</span>
+
+          <p className="mt-2 line-clamp-2 text-[13px] leading-5 text-[var(--cliente-card-text-muted)]">
+            {getMessagePreview(chat)}
+          </p>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <StateBadge label={formatQueueStatusLabel(chat.queueStatus)} tone={sla.breached ? "danger" : "neutral"} />
+            <StateBadge label={sla.label} tone={sla.breached ? "danger" : "info"} />
+            <StateBadge label={aiPaused ? "IA pausada" : "IA ativa"} tone={aiPaused ? "warning" : "success"} />
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-[var(--cliente-card-text-soft)]">
             <span>{formatStatusLabel(chat.status)}</span>
+            <span>{chat.tags?.slice(0, 2).join(" / ") || "sem tags"}</span>
           </div>
         </div>
-
-        <div className="text-right text-[11px] text-[var(--cliente-card-text-soft)]">
-          <p>{formatTime(chat.lastMessageTime)}</p>
-          <p className="mt-1">{formatRelative(chat.lastMessageTime)}</p>
-        </div>
-      </div>
-
-      <p className="mt-3 line-clamp-2 text-sm text-[var(--cliente-card-text-muted)]">
-        {chat.lastMessage || "Sem ultima mensagem registrada."}
-      </p>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <StateBadge label={formatQueueStatusLabel(chat.queueStatus)} tone={sla.breached ? "danger" : "neutral"} />
-        <StateBadge label={sla.label} tone={sla.breached ? "danger" : "info"} />
-        <StateBadge label={aiPaused ? "IA pausada" : "IA ativa"} tone={aiPaused ? "warning" : "success"} />
-      </div>
-
-      <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[var(--cliente-card-text-soft)]">
-        <span className="truncate">{chat.assignedUserName || chat.ownerName || "Sem responsavel"}</span>
-        <span>{chat.tags?.slice(0, 2).join(" / ") || "sem tags"}</span>
       </div>
     </button>
   );
@@ -485,27 +518,45 @@ function ConversationListItem({
 function MessageBubble({ message }: { message: MessageItem }) {
   const isAgent = message.sender === "agent";
   const isSystem = message.sender === "system";
+  const type = String(message.type || "text").toLowerCase();
+  const preview = getMessagePreview(message);
+
+  const mediaLabel =
+    type === "audio" ? "Audio" : type === "image" ? "Imagem" : type === "document" ? "Arquivo" : null;
+  const MediaIcon = type === "audio" ? Mic : type === "image" ? ImageIcon : type === "document" ? Paperclip : null;
 
   return (
     <div className={cn("flex", isAgent ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[84%] rounded-2xl border px-4 py-3 text-sm",
+          "max-w-[82%] rounded-[20px] border px-4 py-3 text-sm shadow-[0_10px_32px_rgba(0,0,0,0.16)]",
           isAgent
-            ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
+            ? "border-[rgba(37,211,102,0.22)] bg-[linear-gradient(180deg,rgba(37,211,102,0.16),rgba(37,211,102,0.08))]"
             : isSystem
               ? "border-amber-300/24 bg-amber-500/10"
-              : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"
+              : "border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.045)]"
         )}
       >
-        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-          <span>{isAgent ? "Time" : isSystem ? "Sistema" : "Lead"}</span>
-          <span>/</span>
-          <span>{formatDateTime(message.createdAt)}</span>
+        <div className="flex items-center gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
+          <span className="font-semibold uppercase tracking-[0.14em]">
+            {isAgent ? "Time" : isSystem ? "Sistema" : "Lead"}
+          </span>
+          {mediaLabel && MediaIcon ? (
+            <>
+              <span>•</span>
+              <span className="inline-flex items-center gap-1">
+                <MediaIcon className="h-3.5 w-3.5" />
+                {mediaLabel}
+              </span>
+            </>
+          ) : null}
         </div>
         <p className="mt-2 whitespace-pre-wrap text-[14px] leading-6 text-[var(--cliente-card-text)]">
-          {message.text || "-"}
+          {preview}
         </p>
+        <div className="mt-3 flex items-center justify-end gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
+          <span>{formatDateTime(message.createdAt)}</span>
+        </div>
       </div>
     </div>
   );
@@ -1437,11 +1488,11 @@ export default function ClienteInboxPage() {
         </div>
       </PanelCard>
 
-      <section className="grid min-h-[80vh] grid-cols-1 gap-4 2xl:grid-cols-[340px_minmax(0,1fr)_360px]">
-        <PanelCard className="flex min-h-0 flex-col overflow-hidden">
+      <section className="grid min-h-[82vh] grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)] 2xl:grid-cols-[330px_minmax(0,1fr)_360px]">
+        <PanelCard className="flex min-h-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)]">
           <div className="border-b border-[var(--cliente-border)] p-4">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle title="Fila de conversas" subtitle={`${filteredChats.length} visiveis agora`} />
+              <CardTitle title="Conversas" subtitle={`${filteredChats.length} visiveis agora`} />
               <StateBadge label={`${inboxStats.highPriority} prioritarias`} tone="danger" />
             </div>
 
@@ -1474,7 +1525,7 @@ export default function ClienteInboxPage() {
                 ))}
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 <select
                   value={priorityFilter}
                   onChange={(event) => setPriorityFilter(event.target.value as PriorityFilter)}
@@ -1488,7 +1539,7 @@ export default function ClienteInboxPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2">
                 <select
                   value={queueFilter}
                   onChange={(event) => setQueueFilter(event.target.value as QueueFilter)}
@@ -1545,7 +1596,7 @@ export default function ClienteInboxPage() {
               </div>
             </div>
           </div>
-          <div className="flex-1 space-y-3 overflow-y-auto p-3">
+          <div className="flex-1 space-y-2 overflow-y-auto p-3">
             {loadingChats ? (
               <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
@@ -1570,30 +1621,35 @@ export default function ClienteInboxPage() {
           </div>
         </PanelCard>
 
-        <PanelCard className="flex min-h-0 flex-col overflow-hidden">
-          <div className="border-b border-[var(--cliente-border)] bg-[radial-gradient(circle_at_top_left,_var(--cliente-accent-soft),_transparent_34%)] p-4">
+        <PanelCard className="flex min-h-0 flex-col overflow-hidden 2xl:col-start-2">
+          <div className="border-b border-[var(--cliente-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(37,211,102,0.18),rgba(255,255,255,0.02))] text-sm font-semibold text-[var(--cliente-card-text)]">
+                  {getInitials(activeChat?.contactName || activeChat?.contactPhone)}
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-xl font-semibold tracking-tight text-[var(--cliente-card-text)]">
                     {activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
                   </h3>
                   <StateBadge label={formatChannelLabel(activeChat?.channel)} tone="neutral" />
                   <StateBadge label={formatStatusLabel(activeChat?.status)} tone={getStatusTone(activeChat?.status)} />
                   <StateBadge label={activeSla.label} tone={activeSla.breached ? "danger" : "info"} />
-                </div>
-                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-                  {detail?.company?.name || tenant?.tenantName || "Cliente"}
-                  {detail?.company?.niche ? ` / ${detail.company.niche}` : ""}
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--cliente-card-text-soft)]">
-                  <span>
-                    Responsavel: {activeChat?.assignedUserName || activeChat?.ownerName || "Sem atribuicao"}
-                  </span>
-                  <span>/</span>
-                  <span>{formatQueueStatusLabel(activeChat?.queueStatus)}</span>
-                  <span>/</span>
-                  <span>Ultima atividade {formatRelative(activeChat?.lastMessageTime)}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
+                    {detail?.company?.name || tenant?.tenantName || "Cliente"}
+                    {detail?.company?.niche ? ` / ${detail.company.niche}` : ""}
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--cliente-card-text-soft)]">
+                    <span>
+                      Responsavel: {activeChat?.assignedUserName || activeChat?.ownerName || "Sem atribuicao"}
+                    </span>
+                    <span>•</span>
+                    <span>{formatQueueStatusLabel(activeChat?.queueStatus)}</span>
+                    <span>•</span>
+                    <span>Ultima atividade {formatRelative(activeChat?.lastMessageTime)}</span>
+                  </div>
                 </div>
               </div>
 
@@ -1670,7 +1726,7 @@ export default function ClienteInboxPage() {
             ) : null}
           </div>
 
-          <div className="min-h-[46vh] flex-1 space-y-4 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_28%)] p-4">
+          <div className="min-h-[50vh] flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(10,18,14,0.96),rgba(11,15,18,0.99)),radial-gradient(circle_at_top_left,rgba(37,211,102,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_26%)] p-4 xl:max-h-[calc(100vh-22rem)]">
             {loadingMessages ? (
               <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
@@ -1685,8 +1741,8 @@ export default function ClienteInboxPage() {
             )}
           </div>
 
-          <form onSubmit={handleSend} className="border-t border-[var(--cliente-border)] p-3">
-            <div className="flex gap-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2">
+          <form onSubmit={handleSend} className="border-t border-[var(--cliente-border)] bg-[rgba(255,255,255,0.02)] p-3">
+            <div className="flex gap-2 rounded-[20px] border border-[rgba(255,255,255,0.10)] bg-[rgba(12,18,16,0.96)] p-2">
               <input
                 value={messageText}
                 onChange={(event) => setMessageText(event.target.value)}
@@ -1697,7 +1753,7 @@ export default function ClienteInboxPage() {
               <button
                 type="submit"
                 disabled={!selectedChatId || sending || !messageText.trim() || !canOperate}
-                className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-55"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
               >
                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Enviar
@@ -1706,7 +1762,7 @@ export default function ClienteInboxPage() {
           </form>
         </PanelCard>
 
-        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto xl:col-start-2 2xl:col-start-3 2xl:max-h-[calc(100vh-8rem)]">
           <PanelCard className="p-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle

@@ -106,6 +106,7 @@ function normalizeReactionMap(value: unknown) {
 }
 
 const VALID_CHAT_PRIORITIES = ["urgent", "high", "normal", "low"] as const;
+const VALID_CHAT_STATUSES = new Set(["open", "pending", "resolved", "closed"]);
 
 function getSafePriority(priority: unknown): ChatPriority {
   return VALID_CHAT_PRIORITIES.includes(priority as ChatPriority)
@@ -115,6 +116,15 @@ function getSafePriority(priority: unknown): ChatPriority {
 
 function getPriorityConfigSafe(priority: unknown) {
   return PRIORITY_CONFIG[getSafePriority(priority)];
+}
+
+function getSafeStatus(status: unknown): ChatStatus {
+  const raw = typeof status === "string" ? status : "";
+  return VALID_CHAT_STATUSES.has(raw) ? (raw as ChatStatus) : "open";
+}
+
+function getStatusConfigSafe(status: unknown) {
+  return STATUS_CONFIG[getSafeStatus(status)];
 }
 
 // ============================================================
@@ -1498,7 +1508,7 @@ export default function ChatPage() {
         status,
         ...(status === "resolved" ? { resolvedAt: serverTimestamp() } : {}),
       });
-      showToast("ok", `Conversa ${STATUS_CONFIG[status].label.toLowerCase()}`);
+      showToast("ok", `Conversa ${getStatusConfigSafe(status).label.toLowerCase()}`);
     } catch { showToast("err", "Erro ao atualizar status"); }
   }
 
@@ -1904,9 +1914,9 @@ export default function ChatPage() {
 
                   {/* Status quick-change */}
                   <div className="relative group/status">
-                    <button className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-colors ${STATUS_CONFIG[selectedChat?.status || "open"].bg} ${STATUS_CONFIG[selectedChat?.status || "open"].border} ${STATUS_CONFIG[selectedChat?.status || "open"].color}`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${STATUS_CONFIG[selectedChat?.status || "open"].dot}`} />
-                      {STATUS_CONFIG[selectedChat?.status || "open"].label}
+                    <button className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-colors ${getStatusConfigSafe(selectedChat?.status).bg} ${getStatusConfigSafe(selectedChat?.status).border} ${getStatusConfigSafe(selectedChat?.status).color}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${getStatusConfigSafe(selectedChat?.status).dot}`} />
+                      {getStatusConfigSafe(selectedChat?.status).label}
                       <ChevronDown className="h-3 w-3" />
                     </button>
                     <div className="absolute right-0 top-10 w-40 bg-[#131b2a] border border-white/10 rounded-xl shadow-2xl overflow-hidden hidden group-hover/status:block z-30">
