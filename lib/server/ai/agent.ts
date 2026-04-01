@@ -31,7 +31,7 @@ import {
   upsertLeadMemory,
   type AltumLeadMemory,
 } from "@/lib/server/ai/runtime-state";
-import { planAltumAgentDecision, writeAltumAgentReply } from "@/lib/server/ai/altum-agent-v2";
+import { planAltumAgentDecision } from "@/lib/server/ai/altum-agent-v2";
 import {
   getMetaChannelForTenant,
   isMetaConversationChannelType,
@@ -922,6 +922,7 @@ async function saveAiLog(input: {
   commercialTemperature?: string | null;
   llmTurnGoal?: string | null;
   llmMemorySummary?: string | null;
+  conversationLedBy?: string | null;
   qualityScore?: number | null;
   qualityNotes?: string[] | null;
 }) {
@@ -956,6 +957,7 @@ async function saveAiLog(input: {
       commercialTemperature: input.commercialTemperature || null,
       llmTurnGoal: input.llmTurnGoal || null,
       llmMemorySummary: input.llmMemorySummary || null,
+      conversationLedBy: input.conversationLedBy || null,
       qualityScore: typeof input.qualityScore === "number" ? input.qualityScore : null,
       qualityNotes: input.qualityNotes || [],
       createdAt: FieldValue.serverTimestamp(),
@@ -2199,6 +2201,17 @@ export async function handleIncomingMessage(
           aiConfig.runtimePolicy
         )
       : null;
+  const fallbackChoice = decide({ inboundText, kbDocs, tenantAi: aiConfig });
+  const choice = resolveConversationalChoice({
+    fallbackChoice,
+    llmDecision: llmResult?.decision,
+    llmReason: llmResult?.reason || null,
+    llmConfidence: llmResult?.confidence ?? null,
+    llmNextAction: llmResult?.nextAction || null,
+    llmResponseText: llmResult?.responseText || null,
+    llmTurnGoal: llmResult?.turnGoal || null,
+    inboundText,
+  });
   const heuristicExtractedFields = extractBusinessFields(inboundText, aiConfig) || null;
   const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields) || null;
   const rawPlannerDecision = planAltumAgentDecision({
@@ -2207,9 +2220,9 @@ export async function handleIncomingMessage(
     leadMemory,
     contactName: sanitizeText(chatData.contactName, 120) || null,
     extractedFields,
-    llmDecision: llmResult?.decision,
-    llmReason: llmResult?.reason || null,
-    llmConfidence: llmResult?.confidence ?? null,
+    llmDecision: choice.decision === "handoff" ? "handoff" : llmResult?.decision,
+    llmReason: choice.reason || llmResult?.reason || null,
+    llmConfidence: choice.confidence ?? llmResult?.confidence ?? null,
     mandatoryQuestions: aiConfig.mandatoryQuestions,
     conversation,
     kbDocs,
@@ -2223,21 +2236,9 @@ export async function handleIncomingMessage(
     extractedFields,
     leadMemory,
     tenantAi: aiConfig,
-    llmDecision: llmResult?.decision,
-    llmConfidence: llmResult?.confidence ?? null,
+    llmDecision: choice.decision === "handoff" ? "handoff" : llmResult?.decision,
+    llmConfidence: choice.confidence ?? llmResult?.confidence ?? null,
     llmTurnGoal: llmResult?.turnGoal || null,
-  });
-  const fallbackChoice = decide({ inboundText, kbDocs, tenantAi: aiConfig });
-  const choice = resolveConversationalChoice({
-    plannerDecision,
-    fallbackChoice,
-    llmDecision: llmResult?.decision,
-    llmReason: llmResult?.reason || null,
-    llmConfidence: llmResult?.confidence ?? null,
-    llmNextAction: llmResult?.nextAction || null,
-    llmResponseText: llmResult?.responseText || null,
-    llmTurnGoal: llmResult?.turnGoal || null,
-    inboundText,
   });
   const nextAction = choice.nextAction;
   const effectiveProvider = llmResult?.provider || runtimeProvider;
@@ -2368,7 +2369,7 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "lead_external_id_missing" };
   }
 
-  if (choice.decision === "handoff") {
+  if (choice.decision === "handoff" || plannerDecision.decision === "handoff") {
     const conversationLink = buildConversationLink(tenantId, chatId);
     const summaryBullets = summarizeForResponsible(conversation);
 
@@ -2463,7 +2464,7 @@ export async function handleIncomingMessage(
       messageId,
       leadId,
       decision: "handoff",
-      reason: choice.reason,
+      reason: plannerDecision.reason || choice.reason,
       inboundText,
       outboundText: leadAck,
       toolCalls: [
@@ -2473,7 +2474,7 @@ export async function handleIncomingMessage(
         shouldUseWhatsApp ? "whatsapp_send" : isMetaConversation ? "meta_send" : "site_chat_reply",
         aiConfig.responsiblePhone && whatsappChannel ? "handoff_notify" : "handoff_log",
       ],
-      confidence: choice.confidence,
+      confidence: Math.max(choice.confidence, plannerDecision.confidence || 0),
       matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
       latencyMs: Date.now() - startedAt,
       provider: effectiveProvider,
@@ -2491,6 +2492,7 @@ export async function handleIncomingMessage(
       commercialTemperature: plannerDecision.commercialTemperature || null,
       llmTurnGoal: llmResult?.turnGoal || null,
       llmMemorySummary: llmResult?.memorySummary || null,
+      conversationLedBy: choice.ledBy,
       qualityScore: quality.score,
       qualityNotes: quality.notes,
     });
@@ -2505,7 +2507,7 @@ export async function handleIncomingMessage(
       messageId,
       aiLogId: logDocId,
       decision: "handoff",
-      confidence: choice.confidence,
+      confidence: Math.max(choice.confidence, plannerDecision.confidence || 0),
       latencyMs: Date.now() - startedAt,
       inputTokens: llmResult?.inputTokens ?? 0,
       outputTokens: llmResult?.outputTokens ?? 0,
@@ -2516,7 +2518,7 @@ export async function handleIncomingMessage(
       responseStyle: aiConfig.responseStyle,
       status: "success",
       metadata: {
-        reason: choice.reason,
+        reason: plannerDecision.reason || choice.reason,
         runtimePolicy: aiConfig.runtimePolicy,
         fallbackUsed: llmResult?.fallbackUsed || false,
         matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
@@ -2529,6 +2531,7 @@ export async function handleIncomingMessage(
         recommendedOffer: plannerDecision.recommendedOffer || null,
         objectionType: plannerDecision.objectionType || null,
         commercialTemperature: plannerDecision.commercialTemperature || null,
+        conversationLedBy: choice.ledBy,
         qualityScore: quality.score,
         qualityNotes: quality.notes,
         executedActions,
@@ -2547,7 +2550,7 @@ export async function handleIncomingMessage(
       recommendedOffer: plannerDecision.recommendedOffer || null,
       objectionType: plannerDecision.objectionType || null,
       nextAction,
-      confidence: choice.confidence,
+      confidence: Math.max(choice.confidence, plannerDecision.confidence || 0),
       commercialTemperature: plannerDecision.commercialTemperature || null,
       qualityScore: quality.score,
     });
@@ -2573,8 +2576,8 @@ export async function handleIncomingMessage(
       inboundText,
       outboundText: leadAck,
       decision: "handoff",
-      reason: choice.reason,
-      confidence: choice.confidence,
+      reason: plannerDecision.reason || choice.reason,
+      confidence: Math.max(choice.confidence, plannerDecision.confidence || 0),
       nextAction,
       stage: plannerDecision.stateAfter,
       intent: plannerDecision.intent,
@@ -2614,29 +2617,20 @@ export async function handleIncomingMessage(
       });
     }
 
-    return { decision: "handoff", reason: choice.reason };
+    return { decision: "handoff", reason: plannerDecision.reason || choice.reason };
   }
 
   const responseText =
     chooseConversationalReply({
       llmResponseText: llmResult?.responseText || choice.responseText || "",
       previousOutboundText: runtimeState?.lastOutboundText || null,
-      fallbackWriterText:
-        writeAltumAgentReply({
-          plan: plannerDecision,
-          tenantAi: aiConfig,
-          runtimeState,
-          leadMemory,
-          contactName: sanitizeText(chatData.contactName, 120) || null,
-          inboundText,
-        }) ||
-        makeLeadFacingReply({
-          tenantAi: aiConfig,
-          decision: choice.decision,
-          inboundText,
-          kbDocs,
-          conversation,
-        }),
+      fallbackWriterText: makeLeadFacingReply({
+        tenantAi: aiConfig,
+        decision: choice.decision,
+        inboundText,
+        kbDocs,
+        conversation,
+      }),
     }) || "Perfeito. Me conta so mais um ponto rapido para eu te orientar melhor.";
   const quality = scoreAltumConversationQuality({
     inboundText,
@@ -2674,7 +2668,7 @@ export async function handleIncomingMessage(
     shouldUseWhatsApp &&
     Boolean(whatsappChannel) &&
     Boolean(leadPhone) &&
-    plannerDecision.intent === "send_audio";
+    String(incomingMessage.type || "").toLowerCase() === "audio";
 
   if (shouldSendVoiceReply && whatsappChannel && leadPhone) {
     try {
@@ -2754,6 +2748,7 @@ export async function handleIncomingMessage(
     commercialTemperature: plannerDecision.commercialTemperature || null,
     llmTurnGoal: llmResult?.turnGoal || null,
     llmMemorySummary: llmResult?.memorySummary || null,
+    conversationLedBy: choice.ledBy,
     qualityScore: quality.score,
     qualityNotes: quality.notes,
   });
@@ -2792,6 +2787,7 @@ export async function handleIncomingMessage(
       recommendedOffer: plannerDecision.recommendedOffer || null,
       objectionType: plannerDecision.objectionType || null,
       commercialTemperature: plannerDecision.commercialTemperature || null,
+      conversationLedBy: choice.ledBy,
       qualityScore: quality.score,
       qualityNotes: quality.notes,
       executedActions,
