@@ -12,6 +12,7 @@ import {
 } from "@/app/lib/server/meta-channel";
 import { verifyMetaSignature } from "@/app/lib/server/whatsapp-channel";
 import { enqueueIncomingMessageJob, kickAiQueueNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+import { cacheInboundMessageMedia } from "@/lib/server/ai/multimodal";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
@@ -719,6 +720,21 @@ export async function POST(req: Request) {
       await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
       triggerAiQueueWorker({ limit: 8, drain: true });
       after(async () => {
+        if (["audio", "image", "video", "document"].includes(String(event.messageType || "").toLowerCase())) {
+          await cacheInboundMessageMedia({
+            tenantId: channel.tenantId,
+            chatId: chat.chatId,
+            messageId: messageRef.id,
+            message: {
+              type: event.messageType,
+              mediaUrl: event.mediaUrl || null,
+              mediaName: event.mediaName || null,
+              mediaMimeType: event.mediaMimeType || null,
+            },
+          }).catch((error) => {
+            console.error("Falha ao cachear midia inbound da Meta:", error);
+          });
+        }
         await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
         triggerAiQueueWorker({ limit: 8, drain: true });
       });

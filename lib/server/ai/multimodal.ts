@@ -25,6 +25,25 @@ function looksLikeHttpUrl(value: string) {
   return /^https?:\/\//i.test(value);
 }
 
+function storageBucketName() {
+  return String(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "").trim();
+}
+
+function extensionFromMimeType(mimeType: string) {
+  const normalized = cleanText(mimeType, 120).toLowerCase();
+  if (normalized.includes("jpeg")) return "jpg";
+  if (normalized.includes("png")) return "png";
+  if (normalized.includes("webp")) return "webp";
+  if (normalized.includes("gif")) return "gif";
+  if (normalized.includes("ogg")) return "ogg";
+  if (normalized.includes("mpeg")) return "mp3";
+  if (normalized.includes("wav")) return "wav";
+  if (normalized.includes("mp4")) return "mp4";
+  if (normalized.includes("pdf")) return "pdf";
+  if (normalized.includes("plain")) return "txt";
+  return "bin";
+}
+
 function looksLikeTextDocument(contentType: string) {
   const normalized = cleanText(contentType, 120).toLowerCase();
   return (
@@ -94,6 +113,74 @@ async function resolveInboundMedia(input: {
     channel,
     mediaId,
   });
+}
+
+async function persistInboundMediaToStorage(input: {
+  tenantId: string;
+  chatId: string;
+  messageId: string;
+  buffer: Buffer;
+  contentType: string;
+}) {
+  const bucketName = storageBucketName();
+  if (!bucketName) {
+    throw new Error("storage_bucket_missing");
+  }
+
+  const extension = extensionFromMimeType(input.contentType);
+  const path = `chat-media/${input.tenantId}/${input.chatId}/${input.messageId}.${extension}`;
+  const file = adminStorage.bucket(bucketName).file(path);
+  await file.save(input.buffer, {
+    metadata: {
+      contentType: input.contentType,
+      cacheControl: "public,max-age=31536000",
+    },
+    resumable: false,
+  });
+
+  return path;
+}
+
+export async function cacheInboundMessageMedia(input: {
+  tenantId: string;
+  chatId: string;
+  messageId: string;
+  message: Record<string, unknown>;
+}) {
+  const type = normalizeMessageType(input.message.type);
+  if (!["audio", "image", "video", "document"].includes(type)) {
+    return null;
+  }
+
+  const existingMediaUrl = cleanText(input.message.mediaUrl, 1400);
+  if (existingMediaUrl && !looksLikeHttpUrl(existingMediaUrl)) {
+    return existingMediaUrl;
+  }
+
+  const media = await resolveInboundMedia({
+    tenantId: input.tenantId,
+    message: input.message,
+  });
+
+  const storedPath = await persistInboundMediaToStorage({
+    tenantId: input.tenantId,
+    chatId: input.chatId,
+    messageId: input.messageId,
+    buffer: media.buffer,
+    contentType: media.contentType,
+  });
+
+  await adminDb.collection("messages").doc(input.messageId).set(
+    {
+      mediaUrl: storedPath,
+      mediaMimeType: cleanText(input.message.mediaMimeType, 180) || media.contentType || null,
+      mediaCachedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return storedPath;
 }
 
 async function transcribeAudio(buffer: Buffer, contentType: string) {

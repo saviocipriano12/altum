@@ -9,6 +9,7 @@ import {
 } from "@/app/lib/server/whatsapp-channel";
 import { normalizePhone } from "@/app/lib/server/phone";
 import { enqueueIncomingMessageJob, kickAiQueueNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+import { cacheInboundMessageMedia } from "@/lib/server/ai/multimodal";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
@@ -511,6 +512,23 @@ export async function POST(req: Request) {
     await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
     triggerAiQueueWorker({ limit: 8, drain: true });
     after(async () => {
+      if (["audio", "image", "video", "document"].includes(String(mediaMeta.type || "").toLowerCase())) {
+        await cacheInboundMessageMedia({
+          tenantId,
+          chatId,
+          messageId: incomingMessageRef.id,
+          message: {
+            type: mediaMeta.type,
+            mediaUrl: mediaMeta.mediaUrl,
+            mediaName: mediaMeta.mediaName,
+            mediaMimeType: mediaMeta.mediaMimeType,
+            mediaId: mediaMeta.mediaId,
+            channelPhoneNumberId: channel.phoneNumberId,
+          },
+        }).catch((error) => {
+          console.error("Falha ao cachear midia inbound do WhatsApp:", error);
+        });
+      }
       await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
       triggerAiQueueWorker({ limit: 8, drain: true });
     });
