@@ -1627,6 +1627,9 @@ export function hardenPlannerDecision(input: {
   extractedFields?: Record<string, string> | null;
   leadMemory: AltumLeadMemory | null;
   tenantAi: TenantAiConfig;
+  llmDecision?: "respond" | "ask_more" | "handoff" | "skip" | null;
+  llmConfidence?: number | null;
+  llmTurnGoal?: string | null;
 }) {
   const extractedFields = input.extractedFields || null;
   const hasCommercialContext = Boolean(
@@ -1649,6 +1652,12 @@ export function hardenPlannerDecision(input: {
     "greeting",
     "ask_agent_identity",
     "ask_services",
+    "affirmative",
+    "context_share",
+    "growth_goal",
+    "ops_or_ai",
+    "digital_assets",
+    "soft_objection",
     "send_audio",
     "send_image",
     "send_document",
@@ -1671,6 +1680,33 @@ export function hardenPlannerDecision(input: {
         "Antes de eu te indicar o melhor caminho, me diz rapidinho qual e o seu tipo de negocio e o principal objetivo hoje.",
       recommendedOffer: groundedOffer || null,
       confidence: Math.min(input.plannerDecision.confidence, 0.74),
+    };
+  }
+
+  const normalizedTurnGoal = sanitizeText(input.llmTurnGoal || "", 120).toLowerCase();
+  const llmWantsConversationalLead =
+    input.llmDecision === "respond" &&
+    (input.llmConfidence || 0) >= 0.72 &&
+    !isClosingPush &&
+    (
+      shouldKeepConversationalFreedom ||
+      input.plannerDecision.decision === "ask_more" ||
+      ["welcome", "clarify", "qualify"].includes(String(input.plannerDecision.responseGoal || "")) ||
+      /(acolher|boas vindas|welcome|clarify|esclarecer|aprofundar|investigar|entender|qualify|discovery)/i.test(
+        normalizedTurnGoal
+      )
+    );
+
+  if (llmWantsConversationalLead && input.plannerDecision.decision !== "handoff") {
+    return {
+      ...input.plannerDecision,
+      decision: "respond" as const,
+      reason:
+        input.plannerDecision.reason === "grounding_missing_context"
+          ? input.plannerDecision.reason
+          : "llm_conversational_lead",
+      confidence: Math.max(input.plannerDecision.confidence || 0, Math.min(input.llmConfidence || 0, 0.92)),
+      recommendedOffer: groundedOffer || null,
     };
   }
 
@@ -2032,6 +2068,9 @@ export async function handleIncomingMessage(
     extractedFields,
     leadMemory,
     tenantAi: aiConfig,
+    llmDecision: llmResult?.decision,
+    llmConfidence: llmResult?.confidence ?? null,
+    llmTurnGoal: llmResult?.turnGoal || null,
   });
   const fallbackChoice = decide({ inboundText, kbDocs, tenantAi: aiConfig });
   const choice = {
