@@ -240,6 +240,8 @@ function buildPrompt(input: ConversationAgentInput) {
     "Se o lead responder curto, nao reinicie a conversa nem repita bloco anterior. Continue de onde a conversa estava.",
     "Se o lead responder algo curto como 'sim', 'ok', 'entendi' ou 'claro', trate isso como continuidade da ultima pergunta ou do ultimo ponto vivo da conversa.",
     "Em respostas curtas de continuidade, avance so um degrau e evite reexplicar tudo de novo.",
+    "Se o lead fizer um turno puramente humano ou relacional, como 'como voce esta?', 'tudo bem?', 'obrigado' ou algo parecido, responda isso de forma humana e nao cole uma pergunta comercial na mesma mensagem.",
+    "Nesses turnos relacionais, no maximo deixe uma ponte leve para continuar depois, mas sem parecer que ignorou o lado humano da conversa.",
     "Se existir nome preferido do lead, use de forma natural e sem repetir toda hora.",
     "Se houver uma pergunta pendente do proprio agente ou uma pergunta direta do lead, trate isso antes de empurrar nova direcao comercial.",
     "Use o historico, o nome do contato, o tom atual do lead e o assunto vivo quando isso ajudar a conversa a soar natural.",
