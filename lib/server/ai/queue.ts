@@ -416,6 +416,28 @@ async function processOneClaimedJob(job: ClaimedJob) {
   }
 }
 
+export async function processAiJobNow(jobId: string) {
+  const normalizedJobId = String(jobId || "").trim();
+  if (!normalizedJobId) return null;
+
+  try {
+    const claimed = await claimJob(normalizedJobId);
+    if (!claimed) return null;
+
+    const result = await processOneClaimedJob(claimed);
+    return {
+      jobId: normalizedJobId,
+      ...result,
+    };
+  } catch (error) {
+    console.error("Erro ao processar job especifico de IA:", {
+      jobId: normalizedJobId,
+      error,
+    });
+    return null;
+  }
+}
+
 export async function processAiQueue(options?: {
   limit?: number;
   drain?: boolean;

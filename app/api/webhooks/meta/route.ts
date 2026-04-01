@@ -11,7 +11,7 @@ import {
   type MetaWebhookChannelType,
 } from "@/app/lib/server/meta-channel";
 import { verifyMetaSignature } from "@/app/lib/server/whatsapp-channel";
-import { enqueueIncomingMessageJob, kickAiQueueNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { cacheInboundMessageMedia } from "@/lib/server/ai/multimodal";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
@@ -717,6 +717,7 @@ export async function POST(req: Request) {
         dedupeKey: `${channel.tenantId}_${messageRef.id}`,
       });
 
+      await processAiJobNow(queue.jobId);
       await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
       triggerAiQueueWorker({ limit: 8, drain: true });
       after(async () => {
@@ -735,6 +736,7 @@ export async function POST(req: Request) {
             console.error("Falha ao cachear midia inbound da Meta:", error);
           });
         }
+        await processAiJobNow(queue.jobId);
         await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
         triggerAiQueueWorker({ limit: 8, drain: true });
       });

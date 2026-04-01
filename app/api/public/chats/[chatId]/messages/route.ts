@@ -1,7 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { enqueueIncomingMessageJob, kickAiQueueNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { getTenantSettings } from "@/lib/server/tenant";
@@ -185,16 +185,18 @@ export async function POST(
       });
     }
 
-    await enqueueIncomingMessageJob({
+    const queue = await enqueueIncomingMessageJob({
       tenantId,
       chatId,
       messageId: messageRef.id,
       source: "site_chat_widget",
       dedupeKey: `${tenantId}_${messageRef.id}`,
     });
+    await processAiJobNow(queue.jobId);
     await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
     triggerAiQueueWorker({ limit: 8, drain: true });
     after(async () => {
+      await processAiJobNow(queue.jobId);
       await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
       triggerAiQueueWorker({ limit: 8, drain: true });
     });
