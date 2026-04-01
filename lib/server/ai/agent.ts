@@ -137,6 +137,89 @@ function chooseConversationalReply(input: {
   return sanitizeText(input.fallbackWriterText, 1600);
 }
 
+function llmShouldLeadConversation(input: {
+  llmDecision?: "respond" | "ask_more" | "handoff" | "skip" | null;
+  llmConfidence?: number | null;
+  llmResponseText?: string | null;
+  llmTurnGoal?: string | null;
+  plannerDecision: AltumPlannerDecision;
+}) {
+  const hasUsableResponse = Boolean(sanitizeText(input.llmResponseText, 1600));
+  const turnGoal = sanitizeText(input.llmTurnGoal || "", 120).toLowerCase();
+  const plannerIsClosingPush =
+    input.plannerDecision.responseGoal === "recommend" ||
+    input.plannerDecision.responseGoal === "move_to_next_step" ||
+    /proposta|reuniao|diagnostico|agendar/i.test(String(input.plannerDecision.nextAction || ""));
+
+  if (!hasUsableResponse) return false;
+  if (input.plannerDecision.decision === "handoff") return false;
+  if (input.llmDecision !== "respond") return false;
+  if ((input.llmConfidence || 0) < 0.72) return false;
+  if (plannerIsClosingPush) return false;
+
+  return (
+    ["welcome", "clarify", "qualify"].includes(String(input.plannerDecision.responseGoal || "")) ||
+    /(acolher|boas vindas|welcome|clarify|esclarecer|aprofundar|investigar|entender|qualify|discovery|orientar|responder)/i.test(
+      turnGoal
+    )
+  );
+}
+
+function buildAgentChoice(input: {
+  plannerDecision: AltumPlannerDecision;
+  fallbackChoice: ReturnType<typeof decide>;
+  llmDecision?: "respond" | "ask_more" | "handoff" | "skip" | null;
+  llmReason?: string | null;
+  llmConfidence?: number | null;
+  llmNextAction?: string | null;
+  llmResponseText?: string | null;
+  llmTurnGoal?: string | null;
+  tenantAi: TenantAiConfig;
+  inboundText: string;
+}): {
+  decision: "respond" | "ask_more" | "handoff";
+  reason: string;
+  confidence: number;
+  nextAction: string;
+  responseText: string | null;
+} {
+  const llmLeads = llmShouldLeadConversation({
+    llmDecision: input.llmDecision,
+    llmConfidence: input.llmConfidence,
+    llmResponseText: input.llmResponseText,
+    llmTurnGoal: input.llmTurnGoal,
+    plannerDecision: input.plannerDecision,
+  });
+
+  const decision: "respond" | "ask_more" | "handoff" =
+    input.plannerDecision.decision === "handoff"
+      ? "handoff"
+      : llmLeads
+        ? "respond"
+        : input.plannerDecision.decision;
+
+  return {
+    decision,
+    reason:
+      (llmLeads ? sanitizeText(input.llmReason, 180) : "") ||
+      input.plannerDecision.reason ||
+      input.fallbackChoice.reason,
+    confidence: llmLeads
+      ? Math.max(input.plannerDecision.confidence || 0, Math.min(input.llmConfidence || 0, 0.94))
+      : input.plannerDecision.confidence || input.fallbackChoice.confidence,
+    nextAction:
+      sanitizeText(input.llmNextAction, 160) ||
+      input.plannerDecision.nextAction ||
+      input.fallbackChoice.nextAction ||
+      suggestNextAction({
+        decision,
+        inboundText: input.inboundText,
+        tenantAi: input.tenantAi,
+      }),
+    responseText: input.llmResponseText || null,
+  };
+}
+
 function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeState | null) {
   if (!runtimeState) return "";
   return [
@@ -2073,21 +2156,18 @@ export async function handleIncomingMessage(
     llmTurnGoal: llmResult?.turnGoal || null,
   });
   const fallbackChoice = decide({ inboundText, kbDocs, tenantAi: aiConfig });
-  const choice = {
-    decision: plannerDecision.decision,
-    reason: plannerDecision.reason || fallbackChoice.reason,
-    confidence: plannerDecision.confidence || fallbackChoice.confidence,
-    nextAction:
-      plannerDecision.nextAction ||
-      llmResult?.nextAction ||
-      fallbackChoice.nextAction ||
-      suggestNextAction({
-        decision: plannerDecision.decision,
-        inboundText,
-        tenantAi: aiConfig,
-      }),
-    responseText: llmResult?.responseText,
-  };
+  const choice = buildAgentChoice({
+    plannerDecision,
+    fallbackChoice,
+    llmDecision: llmResult?.decision,
+    llmReason: llmResult?.reason || null,
+    llmConfidence: llmResult?.confidence ?? null,
+    llmNextAction: llmResult?.nextAction || null,
+    llmResponseText: llmResult?.responseText || null,
+    llmTurnGoal: llmResult?.turnGoal || null,
+    tenantAi: aiConfig,
+    inboundText,
+  });
   const nextAction = choice.nextAction;
   const effectiveProvider = llmResult?.provider || runtimeProvider;
   const effectiveModel = llmResult?.model || runtimeModel;
