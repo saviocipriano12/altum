@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { enqueueIncomingMessageJob, kickAiQueueNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
@@ -194,6 +194,10 @@ export async function POST(
     });
     await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
     triggerAiQueueWorker({ limit: 8, drain: true });
+    after(async () => {
+      await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
+      triggerAiQueueWorker({ limit: 8, drain: true });
+    });
 
     return NextResponse.json({ ok: true, chatId });
   } catch (error) {
@@ -201,3 +205,4 @@ export async function POST(
     return NextResponse.json({ error: "Falha ao enviar mensagem." }, { status: 500 });
   }
 }
+

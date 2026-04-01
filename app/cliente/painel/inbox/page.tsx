@@ -83,6 +83,7 @@ type MessageItem = {
   mediaUrl?: string | null;
   mediaName?: string | null;
   mediaMimeType?: string | null;
+  mediaId?: string | null;
 };
 
 type TimelineEvent = {
@@ -519,12 +520,30 @@ function ConversationListItem({
   );
 }
 
-function MessageBubble({ message }: { message: MessageItem }) {
+function buildMessageMediaUrl(tenantId: string, chatId: string, message: MessageItem) {
+  const mediaUrl = String(message.mediaUrl || "").trim();
+  if (mediaUrl) return mediaUrl;
+
+  const type = String(message.type || "text").toLowerCase();
+  if (!["image", "audio", "document", "video"].includes(type)) return "";
+
+  return `/api/tenant/${tenantId}/chats/${chatId}/messages/${message.id}/media`;
+}
+
+function MessageBubble({
+  tenantId,
+  chatId,
+  message,
+}: {
+  tenantId: string;
+  chatId: string;
+  message: MessageItem;
+}) {
   const isAgent = message.sender === "agent";
   const isSystem = message.sender === "system";
   const type = String(message.type || "text").toLowerCase();
   const preview = getMessagePreview(message);
-  const mediaUrl = String(message.mediaUrl || "").trim();
+  const mediaUrl = buildMessageMediaUrl(tenantId, chatId, message);
 
   const mediaLabel =
     type === "audio" ? "Audio" : type === "image" ? "Imagem" : type === "document" ? "Arquivo" : null;
@@ -1802,7 +1821,14 @@ export default function ClienteInboxPage() {
                 description="Esta conversa ainda nao tem historico visivel no inbox."
               />
             ) : (
-              messages.map((message) => <MessageBubble key={message.id} message={message} />)
+              messages.map((message) => (
+                <MessageBubble
+                  key={message.id}
+                  tenantId={tenant!.tenantId}
+                  chatId={selectedChat!.id}
+                  message={message}
+                />
+              ))
             )}
           </div>
 

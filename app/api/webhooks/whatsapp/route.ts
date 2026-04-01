@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import {
@@ -510,6 +510,10 @@ export async function POST(req: Request) {
 
     await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
     triggerAiQueueWorker({ limit: 8, drain: true });
+    after(async () => {
+      await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
+      triggerAiQueueWorker({ limit: 8, drain: true });
+    });
 
     if (eventRef) {
       await eventRef.set(
@@ -553,4 +557,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Erro" }, { status: 500 });
   }
 }
+
 
