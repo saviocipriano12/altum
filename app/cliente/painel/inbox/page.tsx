@@ -465,7 +465,7 @@ function ConversationListItem({
       type="button"
       onClick={onSelect}
       className={cn(
-        "w-full rounded-[24px] border p-3 text-left transition",
+        "w-full rounded-[24px] border px-3 py-3.5 text-left transition",
         active
           ? "border-[rgba(37,211,102,0.28)] bg-[linear-gradient(180deg,rgba(37,211,102,0.12),rgba(255,255,255,0.02))] shadow-[0_0_0_1px_rgba(37,211,102,0.12)]"
           : "border-[var(--cliente-border)] bg-[rgba(255,255,255,0.02)] hover:border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.045)]"
@@ -512,7 +512,7 @@ function ConversationListItem({
 
           <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-[var(--cliente-card-text-soft)]">
             <span>{formatStatusLabel(chat.status)}</span>
-            <span>{chat.tags?.slice(0, 2).join(" / ") || "sem tags"}</span>
+            <span className="truncate text-right">{chat.tags?.slice(0, 2).join(" / ") || "sem tags"}</span>
           </div>
         </div>
       </div>
@@ -553,7 +553,7 @@ function MessageBubble({
     <div className={cn("flex", isAgent ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[82%] rounded-[20px] border px-4 py-3 text-sm shadow-[0_10px_32px_rgba(0,0,0,0.16)]",
+          "max-w-[88%] rounded-[20px] border px-4 py-3 text-sm shadow-[0_10px_32px_rgba(0,0,0,0.16)] sm:max-w-[84%] xl:max-w-[78%] 2xl:max-w-[74%]",
           isAgent
             ? "border-[rgba(37,211,102,0.22)] bg-[linear-gradient(180deg,rgba(37,211,102,0.16),rgba(37,211,102,0.08))]"
             : isSystem
@@ -1572,7 +1572,7 @@ export default function ClienteInboxPage() {
         </div>
       </PanelCard>
 
-      <section className="grid min-h-[82vh] grid-cols-1 gap-4 xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[400px_minmax(0,1fr)_360px]">
+      <section className="grid min-h-[82vh] grid-cols-1 gap-4 xl:grid-cols-[minmax(300px,340px)_minmax(0,1.55fr)] 2xl:grid-cols-[minmax(300px,340px)_minmax(0,1.85fr)_minmax(280px,320px)]">
         <PanelCard className="flex min-h-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)]">
           <div className="border-b border-[var(--cliente-border)] p-4">
             <div className="flex items-center justify-between gap-3">
@@ -1705,7 +1705,7 @@ export default function ClienteInboxPage() {
           </div>
         </PanelCard>
 
-        <PanelCard className="flex min-h-0 flex-col overflow-hidden 2xl:col-start-2">
+        <PanelCard className="flex min-h-0 flex-col overflow-hidden">
           <div className="border-b border-[var(--cliente-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-3">
@@ -1782,7 +1782,7 @@ export default function ClienteInboxPage() {
             </div>
 
             {activeLead ? (
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Lead</p>
                   <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">{activeLead.nome || "Lead"}</p>
@@ -1810,7 +1810,7 @@ export default function ClienteInboxPage() {
             ) : null}
           </div>
 
-          <div className="min-h-[50vh] flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(10,18,14,0.96),rgba(11,15,18,0.99)),radial-gradient(circle_at_top_left,rgba(37,211,102,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_26%)] p-4 xl:max-h-[calc(100vh-22rem)]">
+          <div className="min-h-[50vh] flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(10,18,14,0.96),rgba(11,15,18,0.99)),radial-gradient(circle_at_top_left,rgba(37,211,102,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_26%)] px-3 py-4 sm:px-4 lg:px-5 xl:max-h-[calc(100vh-22rem)]">
             {loadingMessages ? (
               <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
@@ -1853,7 +1853,7 @@ export default function ClienteInboxPage() {
           </form>
         </PanelCard>
 
-        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto xl:col-start-2 2xl:col-start-3 2xl:max-h-[calc(100vh-8rem)]">
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto 2xl:sticky 2xl:top-4 2xl:max-h-[calc(100vh-8rem)]">
           <PanelCard className="p-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle
