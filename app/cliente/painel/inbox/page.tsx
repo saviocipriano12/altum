@@ -80,6 +80,9 @@ type MessageItem = {
   sender?: "agent" | "client" | "system";
   createdAt?: unknown;
   type?: string;
+  mediaUrl?: string | null;
+  mediaName?: string | null;
+  mediaMimeType?: string | null;
 };
 
 type TimelineEvent = {
@@ -521,6 +524,7 @@ function MessageBubble({ message }: { message: MessageItem }) {
   const isSystem = message.sender === "system";
   const type = String(message.type || "text").toLowerCase();
   const preview = getMessagePreview(message);
+  const mediaUrl = String(message.mediaUrl || "").trim();
 
   const mediaLabel =
     type === "audio" ? "Audio" : type === "image" ? "Imagem" : type === "document" ? "Arquivo" : null;
@@ -552,6 +556,34 @@ function MessageBubble({ message }: { message: MessageItem }) {
             </>
           ) : null}
         </div>
+        {type === "image" && mediaUrl ? (
+          <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/10">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={mediaUrl}
+              alt={message.mediaName || "Imagem recebida"}
+              className="max-h-[340px] w-full object-cover"
+            />
+          </div>
+        ) : null}
+        {type === "audio" && mediaUrl ? (
+          <div className="mt-3 rounded-2xl border border-white/10 bg-black/10 p-3">
+            <audio controls preload="none" className="w-full">
+              <source src={mediaUrl} type={message.mediaMimeType || "audio/mpeg"} />
+            </audio>
+          </div>
+        ) : null}
+        {type === "document" && mediaUrl ? (
+          <a
+            href={mediaUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-[var(--cliente-card-text)] hover:bg-black/20"
+          >
+            <Paperclip className="h-4 w-4" />
+            {message.mediaName || "Abrir arquivo"}
+          </a>
+        ) : null}
         <p className="mt-2 whitespace-pre-wrap text-[14px] leading-6 text-[var(--cliente-card-text)]">
           {preview}
         </p>
@@ -1521,7 +1553,7 @@ export default function ClienteInboxPage() {
         </div>
       </PanelCard>
 
-      <section className="grid min-h-[82vh] grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)] 2xl:grid-cols-[330px_minmax(0,1fr)_360px]">
+      <section className="grid min-h-[82vh] grid-cols-1 gap-4 xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[400px_minmax(0,1fr)_360px]">
         <PanelCard className="flex min-h-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)]">
           <div className="border-b border-[var(--cliente-border)] p-4">
             <div className="flex items-center justify-between gap-3">

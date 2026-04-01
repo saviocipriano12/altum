@@ -226,8 +226,8 @@ export async function POST(
         source: "site_chat_widget",
         dedupeKey: `${tenantId}_${messageRef.id}`,
       });
-      await kickAiQueueNow({ limit: 5, drain: true, maxBatches: 4, timeoutMs: 12000 });
-      triggerAiQueueWorker({ limit: 5, drain: true });
+      await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
+      triggerAiQueueWorker({ limit: 8, drain: true });
     }
 
     return NextResponse.json({

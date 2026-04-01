@@ -470,7 +470,7 @@ export async function processAiQueue(options?: {
 }
 
 export async function kickAiQueueNow(options?: KickAiQueueNowOptions) {
-  const timeoutMs = Math.min(20_000, Math.max(2_000, options?.timeoutMs || 12_000));
+  const timeoutMs = Math.min(30_000, Math.max(2_000, options?.timeoutMs || 18_000));
 
   try {
     let timeoutId: NodeJS.Timeout | null = null;
@@ -499,6 +499,16 @@ export function triggerAiQueueWorker(options?: { limit?: number; drain?: boolean
   void processAiQueue(options).catch((error) => {
     console.error("Erro no worker assincrono local da fila de IA:", error);
   });
+
+  // Tenta mais de uma vez porque alguns providers/webhooks ainda chegam com consistencia eventual
+  // e uma segunda passada curta ajuda a capturar jobs que acabaram de ser gravados.
+  for (const delayMs of [1500, 5000]) {
+    setTimeout(() => {
+      void processAiQueue(options).catch((error) => {
+        console.error("Erro no retry local da fila de IA:", error);
+      });
+    }, delayMs);
+  }
 
   const baseUrl =
     String(process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "").trim() ||

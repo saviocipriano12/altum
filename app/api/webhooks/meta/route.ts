@@ -716,8 +716,8 @@ export async function POST(req: Request) {
         dedupeKey: `${channel.tenantId}_${messageRef.id}`,
       });
 
-      await kickAiQueueNow({ limit: 5, drain: true, maxBatches: 4, timeoutMs: 12000 });
-      triggerAiQueueWorker({ limit: 5, drain: true });
+      await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
+      triggerAiQueueWorker({ limit: 8, drain: true });
 
       await claim.eventRef.set(
         {
