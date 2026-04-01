@@ -33,6 +33,8 @@ export type AltumConversationRuntimeState = {
   pendingQuestion?: string | null;
   lastLeadQuestion?: string | null;
   preferredName?: string | null;
+  leadTone?: string | null;
+  activeTopic?: string | null;
 };
 
 export type AltumLeadMemory = {
@@ -53,6 +55,8 @@ export type AltumLeadMemory = {
   nextBestAction?: string | null;
   summary?: string | null;
   preferredName?: string | null;
+  leadTone?: string | null;
+  activeTopic?: string | null;
   fields?: Record<string, string>;
 };
 
@@ -90,6 +94,42 @@ function extractPreferredName(inboundText: string, extractedFields?: Record<stri
     if (match?.[1]) return cleanText(match[1], 80);
   }
 
+  return "";
+}
+
+function inferLeadTone(inboundText: string, extractedFields?: Record<string, string> | null) {
+  const explicit = cleanText(
+    extractedFields?.leadTone || extractedFields?.tone || extractedFields?.mood,
+    80
+  );
+  if (explicit) return explicit;
+
+  const clean = cleanText(inboundText, 260).toLowerCase();
+  if (!clean) return "";
+  if (/\b(urgente|urgencia|urgência|pra hoje|agora|o quanto antes)\b/.test(clean)) return "urgente";
+  if (/\b(nao entendi|não entendi|confuso|como assim|explica)\b/.test(clean)) return "confuso";
+  if (/\b(quanto custa|qual o preco|qual o preço|valor)\b/.test(clean)) return "objetivo";
+  if (/\b(quero|preciso|busco|me ajuda)\b/.test(clean)) return "aberto";
+  if (/\?$/.test(clean) || clean.includes("?")) return "curioso";
+  if (/^(sim|ok|beleza|claro|isso|entendi)\b/.test(clean)) return "receptivo";
+  return "";
+}
+
+function inferActiveTopic(inboundText: string, extractedFields?: Record<string, string> | null) {
+  const explicit = cleanText(
+    extractedFields?.activeTopic || extractedFields?.topic || extractedFields?.serviceInterest,
+    120
+  );
+  if (explicit) return explicit;
+
+  const clean = cleanText(inboundText, 260).toLowerCase();
+  if (!clean) return "";
+  if (/\b(whatsapp|atendimento|responder)\b/.test(clean)) return "atendimento_whatsapp";
+  if (/\b(lead|leads|captar|captacao|captação|trafego|tráfego)\b/.test(clean)) return "geracao_de_leads";
+  if (/\b(site|landing page|lp)\b/.test(clean)) return "ativos_digitais";
+  if (/\b(crm|pipeline|comercial|processo)\b/.test(clean)) return "operacao_comercial";
+  if (/\b(preco|preço|valor|orcamento|orçamento)\b/.test(clean)) return "preco";
+  if (/\b(proposta|reuniao|reunião|agendar|diagnostico|diagnóstico)\b/.test(clean)) return "fechamento";
   return "";
 }
 
@@ -202,6 +242,8 @@ export async function upsertConversationRuntimeState(input: {
     pendingQuestion: extractQuestion(input.outboundText || "") || null,
     lastLeadQuestion: extractQuestion(input.inboundText) || null,
     preferredName: extractPreferredName(input.inboundText, input.extractedFields) || null,
+    leadTone: inferLeadTone(input.inboundText, input.extractedFields) || null,
+    activeTopic: inferActiveTopic(input.inboundText, input.extractedFields) || null,
     lastLeadMessageAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -245,6 +287,8 @@ export async function upsertLeadMemory(input: {
   const teamSize = cleanText(fields.teamSize || fields.team || fields.staffSize, 80);
   const summary = cleanText(input.summary, 260);
   const preferredName = extractPreferredName("", fields);
+  const leadTone = inferLeadTone("", fields);
+  const activeTopic = inferActiveTopic("", fields);
 
   const normalizedFields = Object.fromEntries(
     Object.entries(fields)
@@ -274,6 +318,8 @@ export async function upsertLeadMemory(input: {
   if (recommendedOffer) payload.recommendedOffer = recommendedOffer;
   if (summary) payload.summary = summary;
   if (preferredName) payload.preferredName = preferredName;
+  if (leadTone) payload.leadTone = leadTone;
+  if (activeTopic) payload.activeTopic = activeTopic;
 
   const nextAction = cleanText(input.nextAction, 160);
   if (nextAction) payload.nextBestAction = nextAction;
@@ -309,6 +355,8 @@ export async function getConversationRuntimeState(tenantId: string, chatId: stri
     pendingQuestion: cleanText(data.pendingQuestion, 220) || null,
     lastLeadQuestion: cleanText(data.lastLeadQuestion, 220) || null,
     preferredName: cleanText(data.preferredName, 80) || null,
+    leadTone: cleanText(data.leadTone, 80) || null,
+    activeTopic: cleanText(data.activeTopic, 120) || null,
   };
 }
 
@@ -343,6 +391,8 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     nextBestAction: cleanText(data.nextBestAction, 180) || null,
     summary: cleanText(data.summary, 260) || null,
     preferredName: cleanText(data.preferredName, 80) || null,
+    leadTone: cleanText(data.leadTone, 80) || null,
+    activeTopic: cleanText(data.activeTopic, 120) || null,
     fields,
   };
 }

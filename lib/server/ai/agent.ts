@@ -143,6 +143,8 @@ function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeSta
     runtimeState.stage ? `estagio: ${runtimeState.stage}` : "",
     runtimeState.intent ? `ultima intencao: ${runtimeState.intent}` : "",
     runtimeState.preferredName ? `nome preferido do lead: ${runtimeState.preferredName}` : "",
+    runtimeState.leadTone ? `tom atual do lead: ${runtimeState.leadTone}` : "",
+    runtimeState.activeTopic ? `assunto vivo da conversa: ${runtimeState.activeTopic}` : "",
     runtimeState.turnGoal ? `objetivo recente do turno: ${runtimeState.turnGoal}` : "",
     runtimeState.memorySummary ? `memoria recente: ${runtimeState.memorySummary}` : "",
     runtimeState.responseGoal ? `objetivo recente: ${runtimeState.responseGoal}` : "",
@@ -160,6 +162,8 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
   if (!leadMemory) return "";
   return [
     leadMemory.preferredName ? `nome preferido: ${leadMemory.preferredName}` : "",
+    leadMemory.leadTone ? `tom mais recorrente: ${leadMemory.leadTone}` : "",
+    leadMemory.activeTopic ? `assunto principal recente: ${leadMemory.activeTopic}` : "",
     leadMemory.businessType ? `negocio: ${leadMemory.businessType}` : "",
     leadMemory.primaryGoal ? `objetivo: ${leadMemory.primaryGoal}` : "",
     leadMemory.currentChannels ? `canais atuais: ${leadMemory.currentChannels}` : "",
@@ -967,6 +971,11 @@ async function executeAltumAgentActions(input: {
     currentChannels:
       sanitizeText(input.extractedFields?.currentChannels || input.extractedFields?.channels, 220) || null,
     teamSize: sanitizeText(input.extractedFields?.teamSize || input.extractedFields?.team || input.extractedFields?.staffSize, 80) || null,
+    leadTone:
+      sanitizeText(input.extractedFields?.leadTone || input.extractedFields?.tone || input.extractedFields?.mood, 80) ||
+      null,
+    activeTopic:
+      sanitizeText(input.extractedFields?.activeTopic || input.extractedFields?.topic, 120) || null,
     dominantObjection:
       sanitizeText(input.extractedFields?.objectionType || input.extractedFields?.objection, 120) ||
       input.plan.objectionType ||
@@ -996,8 +1005,12 @@ async function executeAltumAgentActions(input: {
     aiCity: aiMemory.city,
     aiTeamSize: aiMemory.teamSize,
     aiPreferredName: aiMemory.preferredName,
+    aiLeadTone: aiMemory.leadTone,
+    aiActiveTopic: aiMemory.activeTopic,
     aiLeadSummary: [
       aiMemory.preferredName ? `Nome: ${aiMemory.preferredName}` : "",
+      aiMemory.leadTone ? `Tom: ${aiMemory.leadTone}` : "",
+      aiMemory.activeTopic ? `Assunto: ${aiMemory.activeTopic}` : "",
       aiMemory.businessType ? `Negocio: ${aiMemory.businessType}` : "",
       aiMemory.primaryGoal ? `Objetivo: ${aiMemory.primaryGoal}` : "",
       aiMemory.currentChannels ? `Canais: ${aiMemory.currentChannels}` : "",
@@ -1525,6 +1538,13 @@ export function normalizeExtractedFieldsForCrm(extracted?: Record<string, string
     oferta: "serviceInterest",
     objection: "objectionType",
     objection_type: "objectionType",
+    leadtone: "leadTone",
+    lead_tone: "leadTone",
+    tone: "leadTone",
+    mood: "leadTone",
+    activetopic: "activeTopic",
+    active_topic: "activeTopic",
+    topic: "activeTopic",
     cidade: "city",
     city: "city",
     currentchannels: "currentChannels",

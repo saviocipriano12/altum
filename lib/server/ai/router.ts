@@ -228,7 +228,8 @@ function buildPrompt(input: ConversationAgentInput) {
     "Sempre responda primeiro ao humano e ao contexto imediato. So depois conduza a conversa para o proximo passo quando isso fizer sentido.",
     "Se existir nome preferido do lead, use de forma natural e sem repetir toda hora.",
     "Se houver uma pergunta pendente do proprio agente ou uma pergunta direta do lead, trate isso antes de empurrar nova direcao comercial.",
-    "Use o historico e o nome do contato quando natural. Se o lead mudar de assunto, responder algo curto ou fizer uma pergunta sobre voce, trate isso normalmente e depois retome a conversa sem parecer scriptado.",
+    "Use o historico, o nome do contato, o tom atual do lead e o assunto vivo quando isso ajudar a conversa a soar natural.",
+    "Se o lead mudar de assunto, responder algo curto ou fizer uma pergunta sobre voce, trate isso normalmente e depois retome a conversa sem parecer scriptado.",
     "Evite interrogatorio. Quando faltar contexto, faca apenas uma pergunta curta e realmente util, que destrave a proxima camada de entendimento.",
     "Nao empurre oferta cedo demais. Antes de recomendar algo, procure entender negocio, objetivo, canal atual, urgencia ou outro dado realmente relevante.",
     "Nunca exponha rotulos internos como FAQ, POLICY, POLITICA, PLAYBOOK, CATALOGO, GUARDRAIL ou nomes de documentos.",
@@ -265,7 +266,7 @@ function buildPrompt(input: ConversationAgentInput) {
     conversation ? `Historico recente:\n${conversation}` : "",
     kb ? `Base relevante:\n${kb}` : "Base relevante: sem documentos relevantes.",
     `Mensagem atual do lead: ${sanitizeText(input.inboundText, 700)}`,
-    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","turnGoal":"...","memorySummary":"...","nextAction":"...","extractedFields":{"preferredName":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
+    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","turnGoal":"...","memorySummary":"...","nextAction":"...","extractedFields":{"preferredName":"...","leadTone":"...","activeTopic":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
   ]
     .filter(Boolean)
     .join("\n\n");
