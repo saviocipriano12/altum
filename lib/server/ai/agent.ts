@@ -172,10 +172,7 @@ function chooseConversationalReply(input: {
   const softenRigidPhrases = (value: string) =>
     sanitizeText(value, 1600)
       .replace(/\bme conta em uma linha\b/gi, "me conta rapidinho")
-      .replace(/\bse fizer sentido\b/gi, "se quiser")
       .replace(/\bmais aderente\b/gi, "mais indicado")
-      .replace(/\bsem empurrar escopo errado\b/gi, "")
-      .replace(/\bquero te orientar do jeito certo\b/gi, "quero entender melhor")
       .replace(/\bretomando de onde paramos,\s*/gi, "")
       .replace(/\s{2,}/g, " ")
       .trim();
@@ -199,7 +196,7 @@ function chooseConversationalReply(input: {
     const turn = classifyLeadTurn(inboundText);
     const questionMatches = clean.match(/\?/g) || [];
     if (questionMatches.length <= 1) return clean;
-    if (!turn.isGreeting && !turn.isDirectQuestion && !turn.isPureRelational) return clean;
+    if (!turn.isGreeting && !turn.isPureRelational) return clean;
 
     const segments = (clean.match(/[^.!?]+[.!?]?/g) || []).map((item) => item.trim()).filter(Boolean);
     const kept: string[] = [];
@@ -253,10 +250,7 @@ function chooseConversationalReply(input: {
 
   const llmResponse = trimBusinessPushOnHumanTurn(
     keepAtMostOneUsefulQuestion(
-      removeAutoPilotOpeners(
-        normalizeGreetingMenuResponse(softenRigidPhrases(input.llmResponseText || ""), input.inboundText || ""),
-        input.inboundText || ""
-      ),
+      normalizeGreetingMenuResponse(softenRigidPhrases(input.llmResponseText || ""), input.inboundText || ""),
       input.inboundText || ""
     ),
     input.inboundText || ""

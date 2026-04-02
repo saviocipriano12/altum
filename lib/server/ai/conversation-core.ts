@@ -39,17 +39,32 @@ function classifyTurn(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-  const isGreeting = /^(oi|ola|olá|bom dia|boa tarde|boa noite)\b/.test(normalized);
+  const isGreeting = /^(oi|ola|bom dia|boa tarde|boa noite)\b/.test(normalized);
   const isDirectQuestion = normalized.includes("?");
   const isRelational =
     /\b(como voce esta|como voce ta|como vai|tudo bem|tudo certo|obrigad|valeu)\b/.test(normalized) ||
     /\b(rs|kkk|haha|hehe|blz|beleza|show|massa)\b/.test(normalized) ||
-    /\b(voce e rapido|voce e rapida|você é rapido|você é rápida)\b/.test(normalized);
+    /\b(voce e rapido|voce e rapida)\b/.test(normalized);
+
   return { isGreeting, isDirectQuestion, isRelational };
 }
 
+function looksLikeTemplate(value: string) {
+  const normalized = sanitizeText(value, 500)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (!normalized) return true;
+
+  return (
+    /\b(o que voce quer melhorar hoje|como posso te ajudar hoje)\b/.test(normalized) &&
+    /\b(gerar mais leads|organizar atendimento|vender melhor)\b/.test(normalized)
+  );
+}
+
 function shouldTrustLlm(input: ResolveConversationalChoiceInput) {
-  const usableResponse = sanitizeText(input.llmResponseText, 1600);
+  const usableResponse = sanitizeText(input.llmResponseText, 1800);
   if (!usableResponse) return false;
   if (input.llmDecision === "skip" || !input.llmDecision) return false;
 
@@ -58,9 +73,10 @@ function shouldTrustLlm(input: ResolveConversationalChoiceInput) {
   const confidence = input.llmConfidence || 0;
 
   if (turn.isGreeting || turn.isDirectQuestion || turn.isRelational) return true;
-  if (confidence >= 0.56) return true;
+  if (confidence >= 0.38) return true;
+  if (usableResponse.length >= 24 && !looksLikeTemplate(usableResponse)) return true;
 
-  return /(acolher|boas vindas|welcome|clarify|esclarecer|aprofundar|investigar|entender|qualify|discovery|responder|conversar)/i.test(
+  return /(acolher|boas vindas|esclarecer|aprofundar|investigar|entender|qualify|discovery|responder|conversar)/i.test(
     turnGoal
   );
 }
@@ -77,12 +93,12 @@ export function resolveConversationalChoice(input: ResolveConversationalChoiceIn
     return {
       decision: llmDecision,
       reason: sanitizeText(input.llmReason, 180) || input.fallbackChoice.reason,
-      confidence: Math.max(0.6, Math.min(input.llmConfidence || 0.6, 0.96)),
+      confidence: Math.max(0.52, Math.min(input.llmConfidence || 0.6, 0.96)),
       nextAction:
         sanitizeText(input.llmNextAction, 160) ||
         sanitizeText(input.fallbackChoice.nextAction, 160) ||
         "aprofundar_oportunidade",
-      responseText: sanitizeText(input.llmResponseText, 1600) || null,
+      responseText: sanitizeText(input.llmResponseText, 1800) || null,
       ledBy: "llm",
     };
   }
@@ -92,7 +108,7 @@ export function resolveConversationalChoice(input: ResolveConversationalChoiceIn
     reason: input.fallbackChoice.reason,
     confidence: input.fallbackChoice.confidence,
     nextAction: sanitizeText(input.fallbackChoice.nextAction, 160) || "aprofundar_oportunidade",
-    responseText: sanitizeText(input.fallbackChoice.responseText, 1600) || null,
+    responseText: sanitizeText(input.fallbackChoice.responseText, 1800) || null,
     ledBy: "fallback",
   };
 }
