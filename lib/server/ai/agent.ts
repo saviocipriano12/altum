@@ -251,13 +251,12 @@ function chooseConversationalReply(input: {
     return sanitizeText(kept.join(" "), 1600) || sanitizeText(value, 1600);
   };
 
-  const llmResponse = trimBusinessPushOnHumanTurn(
-    keepAtMostOneUsefulQuestion(
-      normalizeGreetingMenuResponse(sanitizeText(input.llmResponseText || "", 1600), input.inboundText || ""),
-      input.inboundText || ""
-    ),
-    input.inboundText || ""
-  );
+  const llmBaseResponse = normalizeGreetingMenuResponse(sanitizeText(input.llmResponseText || "", 1600), input.inboundText || "");
+  const llmTurn = classifyLeadTurn(input.inboundText || "");
+  const llmResponse =
+    llmTurn.isGreeting || llmTurn.isPureRelational || llmTurn.isDirectQuestion
+      ? trimBusinessPushOnHumanTurn(llmBaseResponse, input.inboundText || "")
+      : llmBaseResponse;
   const fallbackResponse = trimBusinessPushOnHumanTurn(
     keepAtMostOneUsefulQuestion(
       removeAutoPilotOpeners(
@@ -276,9 +275,9 @@ function chooseConversationalReply(input: {
   const llmLooksRepeated =
     Boolean(llmComparable) &&
     Boolean(previousResponse) &&
-    (llmComparable === previousResponse ||
-      llmComparable.includes(previousResponse) ||
-      previousResponse.includes(llmComparable));
+    llmComparable.length >= 20 &&
+    previousResponse.length >= 20 &&
+    llmComparable === previousResponse;
 
   if (llmResponse && !llmLooksRepeated) return llmResponse;
   if (fallbackResponse && fallbackComparable !== previousResponse) return fallbackResponse;
