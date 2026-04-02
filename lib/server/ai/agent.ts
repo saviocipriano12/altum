@@ -173,6 +173,9 @@ function chooseConversationalReply(input: {
     sanitizeText(value, 1600)
       .replace(/\bme conta em uma linha\b/gi, "me conta rapidinho")
       .replace(/\bmais aderente\b/gi, "mais indicado")
+      .replace(/\bnormalmente comecamos entendendo o momento da empresa, os gargalos e o objetivo principal\.?\b/gi, "o primeiro passo aqui e entender seu momento e o que voce quer destravar primeiro.")
+      .replace(/\ba partir disso, conduzimos um diagnostico estrategico para identificar o servico ou combina pelo que voce trouxe, faz sentido uma conversa mais estrategica para destravar esse ponto com clareza\.?\b/gi, "com isso, a gente consegue te indicar o caminho mais simples e mais util para o seu caso.")
+      .replace(/\bse topar, eu organizo um diagnostico rapido para entendermos meta, canal, budget e gargalos atuais\.?\b/gi, "se quiser, eu te explico o melhor proximo passo sem complicar.")
       .replace(/\bretomando de onde paramos,\s*/gi, "")
       .replace(/\s{2,}/g, " ")
       .trim();
@@ -313,6 +316,34 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
     .filter(Boolean)
     .slice(0, 6)
     .join(" | ");
+}
+
+function looksLikeHumanName(value: unknown) {
+  const clean = sanitizeText(value, 80);
+  if (!clean) return false;
+  if (/\d{5,}|@/.test(clean)) return false;
+
+  const normalized = clean
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (["lead", "contato", "cliente", "visitante"].includes(normalized)) return false;
+  if (
+    /\b(empresa|suplementos|odontologia|imobiliaria|agencia|consultoria|clinica|marketing|studio|loja|comercio|ltda|eireli|me)\b/.test(
+      normalized
+    )
+  ) {
+    return false;
+  }
+
+  return normalized.split(/\s+/).length <= 4;
+}
+
+function leadFirstName(value: unknown) {
+  const clean = sanitizeText(value, 80);
+  if (!looksLikeHumanName(clean)) return "";
+  return clean.split(/\s+/)[0] || clean;
 }
 
 export type HandleIncomingMessageInput = {
@@ -661,9 +692,11 @@ function makeLeadFacingReply(input: {
   inboundText: string;
   kbDocs: KbDoc[];
   conversation: ConversationMessage[];
+  contactName?: string | null;
 }) {
   const normalizedInbound = sanitizeText(input.inboundText, 500);
   const turn = classifyLeadTurn(normalizedInbound);
+  const knownFirstName = leadFirstName(input.contactName);
   const inboundHasPriceSignal = textHasAny(input.inboundText, ["preco", "valor", "plano", "orcamento", "investimento"]);
   const asksIdentity = textHasAny(normalizedInbound, ["qual e o seu nome", "qual seu nome", "quem e voce", "quem é você"]);
   const asksWellbeing = textHasAny(normalizedInbound, ["como voce esta", "como voce ta", "como vai", "tudo bem"]);
@@ -703,7 +736,9 @@ function makeLeadFacingReply(input: {
   }
 
   if (isGreetingLike(input.inboundText)) {
-    return "Oi! Tudo bem? Como posso te ajudar hoje?";
+    return knownFirstName
+      ? `Oi, ${knownFirstName}! Tudo bem? Como posso te ajudar hoje?`
+      : "Oi! Tudo bem? Como posso te ajudar hoje?";
   }
 
   if (isClarificationRequest(input.inboundText)) {
@@ -2244,9 +2279,9 @@ export async function handleIncomingMessage(
   const runtimeStateSummary = summarizeRuntimeStateForAgent(runtimeState);
   const leadMemorySummary = summarizeLeadMemoryForAgent(leadMemory);
   const preferredContactName =
-    sanitizeText(chatData.contactName, 120) ||
     sanitizeText(leadMemory?.preferredName, 80) ||
     sanitizeText(runtimeState?.preferredName, 80) ||
+    (looksLikeHumanName(chatData.contactName) ? sanitizeText(chatData.contactName, 120) : "") ||
     undefined;
 
   const llmResult =
@@ -2714,6 +2749,7 @@ export async function handleIncomingMessage(
         inboundText,
         kbDocs,
         conversation,
+        contactName: preferredContactName || null,
       }),
     }) || "Perfeito. Me conta so mais um ponto rapido para eu te orientar melhor.";
   const quality = scoreAltumConversationQuality({

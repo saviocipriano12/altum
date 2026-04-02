@@ -87,6 +87,7 @@ function extractPreferredName(inboundText: string, extractedFields?: Record<stri
   const patterns = [
     /(?:meu nome e|meu nome é)\s+([A-Za-zÀ-ÿ]{2,}(?:\s+[A-Za-zÀ-ÿ]{2,})?)/i,
     /(?:pode me chamar de|me chama de)\s+([A-Za-zÀ-ÿ]{2,}(?:\s+[A-Za-zÀ-ÿ]{2,})?)/i,
+    /(?:sou|aqui e|aqui é)\s+(?!uma\b|um\b|o\b|a\b)([A-Za-zÀ-ÿ]{2,}(?:\s+[A-Za-zÀ-ÿ]{2,})?)/i,
   ];
 
   for (const pattern of patterns) {
