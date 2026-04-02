@@ -251,34 +251,10 @@ function chooseConversationalReply(input: {
     return sanitizeText(kept.join(" "), 1600) || sanitizeText(value, 1600);
   };
 
-  const holdSpaceForHumanTurn = (value: string, inboundText: string) => {
-    const clean = sanitizeText(value, 1600);
-    const turn = classifyLeadTurn(inboundText);
-    if ((!turn.isPureRelational && !turn.isDirectQuestion) || !clean) return clean;
-
-    const segments = (clean.match(/[^.!?]+[.!?]?/g) || []).map((item) => item.trim()).filter(Boolean);
-    if (!segments.length) return clean;
-
-    const businessPattern =
-      /\b(nicho|empresa|lead|leads|venda|vendas|whatsapp|objetivo|comercial|atendimento|site|trafego|tr[aá]fego|crm|pipeline|proposta|diagnostico|diagn[oó]stico)\b/i;
-
-    const kept: string[] = [];
-    for (const segment of segments) {
-      if (businessPattern.test(segment) && kept.length > 0) break;
-      kept.push(segment);
-      if (kept.length >= 2) break;
-    }
-
-    return sanitizeText(kept.join(" "), 1600) || clean;
-  };
-
   const llmResponse = trimBusinessPushOnHumanTurn(
-    holdSpaceForHumanTurn(
-      keepAtMostOneUsefulQuestion(
-        removeAutoPilotOpeners(
-          normalizeGreetingMenuResponse(softenRigidPhrases(input.llmResponseText || ""), input.inboundText || ""),
-          input.inboundText || ""
-        ),
+    keepAtMostOneUsefulQuestion(
+      removeAutoPilotOpeners(
+        normalizeGreetingMenuResponse(softenRigidPhrases(input.llmResponseText || ""), input.inboundText || ""),
         input.inboundText || ""
       ),
       input.inboundText || ""
@@ -286,12 +262,9 @@ function chooseConversationalReply(input: {
     input.inboundText || ""
   );
   const fallbackResponse = trimBusinessPushOnHumanTurn(
-    holdSpaceForHumanTurn(
-      keepAtMostOneUsefulQuestion(
-        removeAutoPilotOpeners(
-          normalizeGreetingMenuResponse(softenRigidPhrases(input.fallbackWriterText || ""), input.inboundText || ""),
-          input.inboundText || ""
-        ),
+    keepAtMostOneUsefulQuestion(
+      removeAutoPilotOpeners(
+        normalizeGreetingMenuResponse(softenRigidPhrases(input.fallbackWriterText || ""), input.inboundText || ""),
         input.inboundText || ""
       ),
       input.inboundText || ""
@@ -321,15 +294,13 @@ function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeSta
     runtimeState.preferredName ? `nome preferido do lead: ${runtimeState.preferredName}` : "",
     runtimeState.leadTone ? `tom atual do lead: ${runtimeState.leadTone}` : "",
     runtimeState.activeTopic ? `assunto vivo da conversa: ${runtimeState.activeTopic}` : "",
-    runtimeState.lastOutboundText ? `sua ultima fala ao lead foi: ${sanitizeText(runtimeState.lastOutboundText, 180)}` : "",
-    runtimeState.lastInboundText ? `ultima fala do lead antes desta foi: ${sanitizeText(runtimeState.lastInboundText, 180)}` : "",
-    runtimeState.turnGoal ? `objetivo recente do turno: ${runtimeState.turnGoal}` : "",
-    runtimeState.memorySummary ? `memoria recente: ${runtimeState.memorySummary}` : "",
+    runtimeState.lastOutboundText ? `sua ultima fala foi: ${sanitizeText(runtimeState.lastOutboundText, 120)}` : "",
     runtimeState.pendingQuestion ? `ultima pergunta feita e ainda viva: ${runtimeState.pendingQuestion}` : "",
     runtimeState.lastLeadQuestion ? `ultima pergunta do lead: ${runtimeState.lastLeadQuestion}` : "",
     runtimeState.summary ? `resumo curto do que ja ficou claro: ${runtimeState.summary}` : "",
   ]
     .filter(Boolean)
+    .slice(0, 6)
     .join(" | ");
 }
 
@@ -342,14 +313,11 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
     leadMemory.businessType ? `negocio: ${leadMemory.businessType}` : "",
     leadMemory.primaryGoal ? `objetivo: ${leadMemory.primaryGoal}` : "",
     leadMemory.currentChannels ? `canais atuais: ${leadMemory.currentChannels}` : "",
-    leadMemory.budgetBand ? `orcamento: ${leadMemory.budgetBand}` : "",
-    leadMemory.urgency ? `urgencia: ${leadMemory.urgency}` : "",
-    leadMemory.decisionMaker ? `decisor: ${leadMemory.decisionMaker}` : "",
-    leadMemory.digitalMaturity ? `maturidade: ${leadMemory.digitalMaturity}` : "",
     leadMemory.dominantObjection ? `objecao dominante: ${leadMemory.dominantObjection}` : "",
     leadMemory.summary ? `resumo: ${leadMemory.summary}` : "",
   ]
     .filter(Boolean)
+    .slice(0, 6)
     .join(" | ");
 }
 
