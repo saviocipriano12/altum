@@ -186,122 +186,81 @@ function getProviderEnv(provider: AltumAiProvider) {
 }
 
 function buildPrompt(input: ConversationAgentInput) {
-  const normalizedInbound = sanitizeText(input.inboundText, 260).toLowerCase();
+  const inboundText = sanitizeText(input.inboundText, 700);
+  const normalizedInbound = inboundText.toLowerCase();
   const isShortFollowup =
     normalizedInbound.length > 0 &&
     normalizedInbound.length <= 20 &&
     /^(sim|s|ok|okay|beleza|entendi|claro|isso|pode|quero|show|perfeito|certo)\b/.test(normalizedInbound);
   const isDirectQuestion = normalizedInbound.includes("?");
+  const isGreetingOnly = /^(oi|ola|bom dia|boa tarde|boa noite)\\W*$/i.test(inboundText);
+
   const conversation = input.conversation
-    .slice(-16)
-    .map((item) => `${item.sender}: ${sanitizeText(item.text, 300)}`)
+    .slice(-10)
+    .map((item) => `${item.sender}: ${sanitizeText(item.text, 220)}`)
     .join("\n");
 
   const kb = input.kbDocs
-    .slice(0, 8)
-    .map((doc, index) => {
-      const label =
-        doc.type === "policy"
-          ? "POLITICA_INTERNA_NAO_CITAR"
-          : doc.type === "catalog"
-            ? "BASE_COMERCIAL"
-            : "FAQ_COMERCIAL";
-      return `${index + 1}. [${label}] ${sanitizeText(doc.content, 260)}`;
-    })
+    .slice(0, 4)
+    .map((doc, index) => `${index + 1}. ${sanitizeText(doc.content, 220)}`)
     .join("\n");
 
-  const guardrails = (input.guardrails || []).slice(0, 12).map((item) => `- ${sanitizeText(item, 180)}`).join("\n");
-  const questions = (input.mandatoryQuestions || []).slice(0, 10).map((item) => `- ${sanitizeText(item, 120)}`).join("\n");
-  const escalations = (input.escalationTopics || []).slice(0, 10).map((item) => `- ${sanitizeText(item, 120)}`).join("\n");
-  const playbookOffers = (input.playbookOffers || [])
-    .slice(0, 4)
-    .map(
-      (offer, index) =>
-        `${index + 1}. ${sanitizeText(offer.title, 120)} | ${sanitizeText(offer.targetProfile, 180)} | quando usar: ${sanitizeText(offer.whenToOffer, 220)}`
-    )
+  const guardrails = (input.guardrails || [])
+    .slice(0, 8)
+    .map((item) => `- ${sanitizeText(item, 140)}`)
     .join("\n");
-  const playbookScripts = (input.playbookScripts || [])
-    .slice(0, 4)
-    .map(
-      (script, index) =>
-        `${index + 1}. situacao: ${sanitizeText(script.situation, 120)} | objetivo: ${sanitizeText(script.goal, 120)} | script: ${sanitizeText(script.script, 260)}`
-    )
+
+  const escalations = (input.escalationTopics || [])
+    .slice(0, 8)
+    .map((item) => `- ${sanitizeText(item, 100)}`)
+    .join("\n");
+
+  const playbookOffers = (input.playbookOffers || [])
+    .slice(0, 3)
+    .map((offer, index) => `${index + 1}. ${sanitizeText(offer.title, 80)} | ${sanitizeText(offer.targetProfile, 140)}`)
     .join("\n");
 
   const systemPrompt = [
-    "Voce e o agente conversacional comercial da ALTUM operando em portugues do Brasil.",
-    "Seu trabalho nao e seguir roteiro nem parecer chatbot. Seu trabalho e entender o lead, responder ao que ele acabou de dizer e conduzir a conversa com naturalidade.",
-    "Sempre responda primeiro ao humano e ao contexto imediato. So depois conduza a conversa para o proximo passo quando isso fizer sentido.",
-    "Soe como uma pessoa comercial inteligente e objetiva, nao como assistente institucional.",
-    "Em uma saudacao simples como 'oi', nao responda com menu de opcoes. Acolha com naturalidade e convide o lead a dizer o que precisa.",
-    "Evite frases prontas de vendedor, bordoes e construcoes repetitivas como 'se fizer sentido', 'sem empurrar escopo' e resumos genericos demais.",
-    "Nao abra toda mensagem com 'Perfeito', 'Boa', 'Entendi' ou 'Claro'. So use essas aberturas quando fizerem sentido de verdade.",
-    "Nao transforme toda resposta em mini pitch. Se o lead trouxe pouco contexto, converse antes de recomendar.",
-    "Prefira uma resposta curta, natural e especifica ao que foi dito. Quando perguntar algo, faca apenas uma pergunta realmente util.",
+    "Voce e um agente conversacional comercial da ALTUM.",
+    "Converse em portugues do Brasil como uma pessoa atenta, clara e natural no WhatsApp.",
+    "Entenda o que o lead acabou de dizer e responda isso primeiro.",
+    "Nao siga roteiro, nao soe como chatbot e nao transforme cada turno em qualificacao forcada.",
     "Se o lead fizer uma pergunta direta, responda com clareza antes de conduzir qualquer outra coisa.",
-    "Quando a mensagem atual for uma pergunta direta, nao termine a mesma resposta com outra pergunta comercial, a menos que o lead tenha pedido isso explicitamente.",
-    "Se o lead responder curto, nao reinicie a conversa nem repita bloco anterior. Continue de onde a conversa estava.",
-    "Se o lead responder algo curto como 'sim', 'ok', 'entendi' ou 'claro', trate isso como continuidade da ultima pergunta ou do ultimo ponto vivo da conversa.",
-    "Em respostas curtas de continuidade, avance so um degrau e evite reexplicar tudo de novo.",
-    "Se o lead fizer um turno puramente humano ou relacional, como 'como voce esta?', 'tudo bem?', 'obrigado' ou algo parecido, responda isso de forma humana e nao cole uma pergunta comercial na mesma mensagem.",
-    "Nesses turnos relacionais, responda o lado humano primeiro e deixe a retomada comercial para o proximo turno sempre que possivel.",
-    "Se o lead fizer uma brincadeira leve, responder com humor curto ou comentar algo lateral, acompanhe isso naturalmente e nao volte para a pergunta comercial no mesmo balao.",
-    "Se existir nome preferido do lead, use de forma natural e sem repetir toda hora.",
-    "Se houver uma pergunta pendente do proprio agente ou uma pergunta direta do lead, trate isso antes de empurrar nova direcao comercial.",
-    "Use o historico, o nome do contato, o tom atual do lead e o assunto vivo quando isso ajudar a conversa a soar natural.",
-    "Se o lead mudar de assunto, responder algo curto ou fizer uma pergunta sobre voce, trate isso normalmente e depois retome a conversa sem parecer scriptado.",
-    "Evite interrogatorio. Quando faltar contexto, faca apenas uma pergunta curta e realmente util, que destrave a proxima camada de entendimento.",
-    "Nao empurre oferta cedo demais. Antes de recomendar algo, procure entender negocio, objetivo, canal atual, urgencia ou outro dado realmente relevante.",
-    "Nunca exponha rotulos internos como FAQ, POLICY, POLITICA, PLAYBOOK, CATALOGO, GUARDRAIL ou nomes de documentos.",
-    "Nunca copie documentos brutos para o lead. Sempre sintetize em linguagem natural.",
-    "Nunca invente servico, oferta, preco, prazo, prova social ou promessa que nao estejam sustentados pelo contexto recebido.",
-    "So recomende ofertas que existam nas ofertas sugeridas da vertical ou que estejam claramente suportadas pela base relevante.",
-    "Nao fale de preco, faixa, investimento ou proposta se o lead nao tocou nesse assunto.",
-    "Nao explique o processo comercial completo da ALTUM se o lead ainda so estiver no inicio ou respondendo algo curto.",
-    "Nunca repita exatamente a mesma pergunta em mensagens consecutivas.",
-    "Prefira respostas curtas, normalmente de 1 a 4 frases, mas soando humanas e naturais.",
-    "Evite listas e excesso de explicacao, a menos que o lead peca claramente.",
-    "Perguntas obrigatorias, ofertas e scripts servem como apoio de contexto. Nao use isso como checklist nem como roteiro duro.",
-    "Voce deve responder somente com JSON valido.",
-    "Campos obrigatorios do JSON: decision, reason, confidence, responseText.",
-    "Campos opcionais recomendados: extractedFields, nextAction, turnGoal, memorySummary.",
+    "Se o lead fizer um turno humano ou relacional, responda de forma humana e nao cole pergunta comercial na mesma mensagem sem necessidade.",
+    "Se o lead responder curto, trate como continuidade do assunto vivo. Nao reinicie nem repita bloco.",
+    "Quando faltar contexto, faca no maximo uma pergunta curta e realmente util.",
+    "Nao use menu de opcoes em saudacao simples.",
+    "Nao use bordoes de vendedor nem frases institucionais repetitivas.",
+    "Nao invente oferta, preco, prazo, prova social ou promessa.",
+    "Use a base e as ofertas apenas como apoio silencioso.",
+    "Responda com JSON valido.",
+    "Campos obrigatorios: decision, reason, confidence, responseText.",
+    "Campos opcionais: extractedFields, nextAction, turnGoal, memorySummary.",
     "decision deve ser um de: respond, ask_more, handoff, skip.",
-    "Use handoff apenas se houver risco, tema sensivel, pedido claro de humano ou baixa seguranca real.",
-    "Use ask_more quando faltar contexto importante; mesmo assim, a responseText deve soar como conversa real, nao como formulario.",
-    "Quando existir playbook da vertical, use-o para orientar a conversa sem soar scriptado.",
+    "Use handoff apenas em risco real, tema sensivel ou pedido claro por humano.",
   ].join(" ");
 
   const userPrompt = [
-    `Contexto do negocio: ${sanitizeText(input.businessSummary, 360)}.`,
-    `Objetivo da IA: ${sanitizeText(input.objective, 220) || "qualificar, orientar e avancar a venda"}.`,
-    `Tom de voz: ${sanitizeText(input.toneOfVoice, 120)}.`,
-    `Tier: ${input.tier}. Autonomia: ${input.autonomyMode}. Raciocinio: ${input.reasoningLevel}. Estilo: ${input.responseStyle}.`,
-    `Canal: ${input.channel}. Contato: ${sanitizeText(input.contactName, 120) || "lead"}.`,
-    input.runtimeStateSummary ? `Estado atual da conversa:\n${sanitizeText(input.runtimeStateSummary, 320)}` : "",
-    input.leadMemorySummary ? `Memoria relevante do lead:\n${sanitizeText(input.leadMemorySummary, 360)}` : "",
-    isShortFollowup
-      ? "Leitura da mensagem atual: o lead respondeu de forma curta e provavelmente esta continuando o assunto anterior. Nao reinicie a conversa."
-      : "",
-    isDirectQuestion
-      ? "Leitura da mensagem atual: existe uma pergunta direta do lead. Responda essa pergunta primeiro."
-      : "",
-    /^oi|^ola|^olá|^bom dia|^boa tarde|^boa noite/i.test(sanitizeText(input.inboundText, 80))
-      ? "Se esta for so uma saudacao, responda como conversa normal. Nao use menu de opcoes."
-      : "",
-    guardrails ? `Guardrails:\n${guardrails}` : "",
-    questions ? `Perguntas obrigatorias:\n${questions}` : "",
-    escalations ? `Topicos de escalada:\n${escalations}` : "",
-    playbookOffers ? `Ofertas disponiveis da vertical, apenas como referencia:\n${playbookOffers}` : "",
-    playbookScripts ? `Exemplos de conversa da vertical, apenas como inspiracao:\n${playbookScripts}` : "",
+    `Negocio: ${sanitizeText(input.businessSummary, 240) || "empresa cliente da ALTUM"}.`,
+    `Objetivo da IA: ${sanitizeText(input.objective, 140) || "entender o lead, orientar bem e avancar a conversa"}.`,
+    `Tom esperado: ${sanitizeText(input.toneOfVoice, 80) || "claro e humano"}.`,
+    `Canal: ${input.channel}. Nome do contato: ${sanitizeText(input.contactName, 80) || "lead"}.`,
+    input.runtimeStateSummary ? `Contexto vivo da conversa:\n${sanitizeText(input.runtimeStateSummary, 220)}` : "",
+    input.leadMemorySummary ? `Memoria relevante:\n${sanitizeText(input.leadMemorySummary, 220)}` : "",
+    isShortFollowup ? "A mensagem atual parece uma continuidade curta. Continue do ponto vivo da conversa." : "",
+    isDirectQuestion ? "A mensagem atual contem uma pergunta direta. Responda essa pergunta primeiro." : "",
+    isGreetingOnly ? "A mensagem atual e apenas uma saudacao. Responda como conversa normal, sem menu." : "",
+    escalations ? `Temas sensiveis para escalar:\n${escalations}` : "",
+    guardrails ? `Limites importantes:\n${guardrails}` : "",
+    playbookOffers ? `Ofertas disponiveis como referencia:\n${playbookOffers}` : "",
     conversation ? `Historico recente:\n${conversation}` : "",
-    kb ? `Base relevante:\n${kb}` : "Base relevante: sem documentos relevantes.",
-    `Mensagem atual do lead: ${sanitizeText(input.inboundText, 700)}`,
-    "Exemplo bom 1: lead='oi' -> responseText='Oi! Tudo bem? Como posso te ajudar hoje?'",
-    "Exemplo bom 2: lead='quero gerar mais leads' -> responseText='Boa. Hoje voces ja captam mais por onde: WhatsApp, Instagram, trafego ou indicacao?'",
-    "Exemplo bom 3: lead='como voce esta?' -> responseText='Tudo certo por aqui. E por ai?'",
-    "Exemplo bom 4: lead='kkk voce e rapido' -> responseText='Tento ser. Me diz: hoje voces querem gerar mais leads ou organizar melhor o atendimento?'",
+    kb ? `Base relevante:\n${kb}` : "",
+    `Mensagem atual do lead: ${inboundText}`,
+    "Exemplo bom 1: lead='oi' -> responseText='Oi! Tudo bem? Como posso te ajudar?'",
+    "Exemplo bom 2: lead='como voce esta?' -> responseText='Tudo certo por aqui. E por ai?'",
+    "Exemplo bom 3: lead='quero gerar mais leads' -> responseText='Boa. Hoje voces captam mais por onde?'",
     'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","turnGoal":"...","memorySummary":"...","nextAction":"...","extractedFields":{"preferredName":"...","leadTone":"...","activeTopic":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
-    "A responseText deve parecer mensagem real de WhatsApp escrita por uma pessoa atenta, nao por um sistema.",
+    "A responseText deve parecer mensagem real de WhatsApp escrita por uma pessoa, nao por um sistema.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -569,3 +528,4 @@ export async function runConversationAgent(
 
   return null;
 }
+
