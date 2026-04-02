@@ -717,7 +717,6 @@ function makeLeadFacingReply(input: {
         220
       )
     : "";
-  const playbookScript = findRelevantPlaybookScript(input.inboundText, input.tenantAi.playbookScripts);
 
   if (asksIdentity) {
     return "Eu sou a assistente comercial da ALTUM. Se quiser, eu posso te ajudar a entender o melhor caminho para o seu caso.";
@@ -742,39 +741,24 @@ function makeLeadFacingReply(input: {
   }
 
   if (isClarificationRequest(input.inboundText)) {
-    return [
-      "A ALTUM ajuda empresas a vender mais com IA, estrutura comercial, marketing e ativos digitais como site e landing page.",
-      nextMandatoryQuestion,
-    ].join("\n");
+    return "A ALTUM ajuda empresas a vender mais e organizar a operacao comercial com IA, marketing e estrutura digital. Se quiser, eu te explico por onde faz mais sentido comecar no seu caso.";
   }
 
   if (input.decision === "ask_more") {
-    return [
-      playbookScript
-        ? sanitizeText(playbookScript.script, 220)
-        : inboundHasPriceSignal
-          ? "Consigo te passar isso, sim. Antes, só quero entender seu momento para não te falar algo fora do seu caso."
-          : "Me ajuda com só mais um ponto para eu te orientar melhor.",
-      nextMandatoryQuestion,
-    ].join("\n");
+    return inboundHasPriceSignal
+      ? "Consigo te passar isso, sim. Antes, me conta rapidinho seu momento para eu nao te falar algo fora do seu caso."
+      : `Me ajuda com so mais um ponto: ${nextMandatoryQuestion}`;
   }
 
-  const playbookOffer = findRelevantPlaybookOffer(input.inboundText, input.tenantAi.playbookOffers);
-  const leadSignal = inboundHasPriceSignal
-    ? "Se quiser, eu te explico qual formato tende a encaixar melhor no seu caso."
-    : "Se quiser, eu te mostro o próximo passo que faz mais sentido aqui.";
+  if (primaryKbSnippet) {
+    return `Entendi. ${primaryKbSnippet}`;
+  }
 
-  return [
-    primaryKbSnippet
-      ? `Entendi. ${primaryKbSnippet}`
-      : `Entendi. A ALTUM atua com ${input.tenantAi.businessSummary}.`,
-    playbookScript ? sanitizeText(playbookScript.script, 220) : "",
-    playbookOffer ? `O caminho que mais faz sentido aqui tende a ser ${sanitizeText(playbookOffer.title, 120)}.` : "",
-    leadSignal,
-    nextMandatoryQuestion,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  if (inboundHasPriceSignal) {
+    return "Entendi. Consigo te orientar nisso, sim. Se quiser, eu te explico o formato que tende a fazer mais sentido para o seu momento.";
+  }
+
+  return "Entendi. Me conta so mais um ponto e eu sigo com voce daqui.";
 }
 
 function summarizeForResponsible(messages: ConversationMessage[]) {
@@ -1680,19 +1664,6 @@ function findRelevantPlaybookScript(inboundText: string, scripts: BusinessProfil
     .sort((a, b) => b.score - a.score);
 
   return ranked[0]?.score ? ranked[0].script : null;
-}
-
-function findRelevantPlaybookOffer(inboundText: string, offers: BusinessProfilePlaybookOffer[]) {
-  const priceSignal = textHasAny(inboundText, ["preco", "valor", "orcamento", "plano", "investimento"]);
-  const ranked = [...offers]
-    .map((offer) => ({
-      offer,
-      score:
-        scorePlaybookText(inboundText, [offer.title, offer.category, offer.targetProfile, offer.whenToOffer]) +
-        (priceSignal ? 1 : 0),
-    }))
-    .sort((a, b) => b.score - a.score);
-  return ranked[0]?.score ? ranked[0].offer : priceSignal ? offers[0] : null;
 }
 
 function normalizeFieldKey(value: string) {

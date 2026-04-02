@@ -58,8 +58,9 @@ function looksLikeTemplate(value: string) {
   if (!normalized) return true;
 
   return (
-    /\b(o que voce quer melhorar hoje|como posso te ajudar hoje)\b/.test(normalized) &&
-    /\b(gerar mais leads|organizar atendimento|vender melhor)\b/.test(normalized)
+    (/\b(o que voce quer melhorar hoje|como posso te ajudar hoje)\b/.test(normalized) &&
+      /\b(gerar mais leads|organizar atendimento|vender melhor)\b/.test(normalized)) ||
+    /\b(a altum atua com|o caminho que mais faz sentido aqui tende a ser|me ajuda com so mais um ponto)\b/.test(normalized)
   );
 }
 
@@ -70,11 +71,9 @@ function shouldTrustLlm(input: ResolveConversationalChoiceInput) {
 
   const turn = classifyTurn(input.inboundText);
   const turnGoal = sanitizeText(input.llmTurnGoal || "", 140).toLowerCase();
-  const confidence = input.llmConfidence || 0;
 
   if (turn.isGreeting || turn.isDirectQuestion || turn.isRelational) return true;
-  if (confidence >= 0.38) return true;
-  if (usableResponse.length >= 24 && !looksLikeTemplate(usableResponse)) return true;
+  if (!looksLikeTemplate(usableResponse) && usableResponse.length >= 12) return true;
 
   return /(acolher|boas vindas|esclarecer|aprofundar|investigar|entender|qualify|discovery|responder|conversar)/i.test(
     turnGoal
