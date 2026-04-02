@@ -253,7 +253,7 @@ function chooseConversationalReply(input: {
 
   const llmResponse = trimBusinessPushOnHumanTurn(
     keepAtMostOneUsefulQuestion(
-      normalizeGreetingMenuResponse(softenRigidPhrases(input.llmResponseText || ""), input.inboundText || ""),
+      normalizeGreetingMenuResponse(sanitizeText(input.llmResponseText || "", 1600), input.inboundText || ""),
       input.inboundText || ""
     ),
     input.inboundText || ""
@@ -741,13 +741,13 @@ function makeLeadFacingReply(input: {
   }
 
   if (isClarificationRequest(input.inboundText)) {
-    return "A ALTUM ajuda empresas a vender mais e organizar a operacao comercial com IA, marketing e estrutura digital. Se quiser, eu te explico por onde faz mais sentido comecar no seu caso.";
+    return "A ALTUM ajuda empresas a vender mais e organizar melhor a operacao comercial. Se quiser, eu te explico por onde faz mais sentido comecar no seu caso.";
   }
 
   if (input.decision === "ask_more") {
     return inboundHasPriceSignal
       ? "Consigo te passar isso, sim. Antes, me conta rapidinho seu momento para eu nao te falar algo fora do seu caso."
-      : `Me ajuda com so mais um ponto: ${nextMandatoryQuestion}`;
+      : `Me ajuda com mais um ponto so: ${nextMandatoryQuestion}`;
   }
 
   if (primaryKbSnippet) {
@@ -758,7 +758,7 @@ function makeLeadFacingReply(input: {
     return "Entendi. Consigo te orientar nisso, sim. Se quiser, eu te explico o formato que tende a fazer mais sentido para o seu momento.";
   }
 
-  return "Entendi. Me conta so mais um ponto e eu sigo com voce daqui.";
+  return "Entendi. Me conta um pouco melhor o teu momento hoje.";
 }
 
 function summarizeForResponsible(messages: ConversationMessage[]) {
