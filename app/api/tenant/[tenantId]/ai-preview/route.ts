@@ -13,13 +13,13 @@ import {
 } from "@/lib/server/ai/operating-layer";
 import { getTenantLearningHints } from "@/lib/server/ai/tenant-learning";
 import { runConversationAgent } from "@/lib/server/ai/router";
-import { planAltumAgentDecision, writeAltumAgentReply } from "@/lib/server/ai/altum-agent-v2";
+import { resolveConversationalChoice } from "@/lib/server/ai/conversation-core";
+import { deriveOperationalPlan } from "@/lib/server/ai/operational-plan";
 import { scoreAltumConversationQuality } from "@/lib/server/ai/quality-score";
 import { getBusinessProfile, getBusinessProfilePlaybookPreset, normalizeBusinessProfileId } from "@/lib/business-profiles";
 import type { AltumLeadMemory } from "@/lib/server/ai/runtime-state";
 import {
   extractBusinessFields,
-  hardenPlannerDecision,
   normalizeExtractedFieldsForCrm,
 } from "@/lib/server/ai/agent";
 
@@ -114,6 +114,29 @@ function scoreKbDoc(messageWords: string[], doc: { content: string; tags: string
     if (docWords.has(word)) score += 1;
   }
   return score;
+}
+
+function buildPreviewFallbackChoice(input: { inboundText: string; responseText?: string | null }) {
+  const inbound = clean(input.inboundText, 400).toLowerCase();
+  const responseText = clean(input.responseText, 1600) || undefined;
+  const isGreeting = /^(oi|ola|olá|bom dia|boa tarde|boa noite)\b/.test(inbound);
+  const isDirectQuestion = inbound.includes("?");
+  const isHumanTurn =
+    /\b(como voce esta|como você está|tudo bem|obrigad|valeu|kkk|haha|beleza|show)\b/.test(inbound) || isGreeting;
+
+  return {
+    decision: isGreeting || isHumanTurn || isDirectQuestion ? ("respond" as const) : ("ask_more" as const),
+    reason: isHumanTurn ? "preview_human_turn" : "preview_conversation_turn",
+    confidence: isHumanTurn ? 0.54 : 0.42,
+    nextAction: isHumanTurn ? "aprofundar_oportunidade" : "qualificar_contexto_minimo",
+    responseText:
+      responseText ||
+      (isGreeting
+        ? "Oi! Tudo bem? Como posso te ajudar?"
+        : isHumanTurn
+          ? "Tudo certo por aqui. E por aí?"
+          : "Me conta um pouco melhor o teu momento hoje."),
+  };
 }
 
 export async function POST(req: Request, context: { params: Promise<{ tenantId: string }> }) {
@@ -252,42 +275,37 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const heuristicExtractedFields = extractBusinessFields(inboundText, tenantAiConfig);
     const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields);
 
-    const rawPlannerDecision = planAltumAgentDecision({
+    const fallbackChoice = buildPreviewFallbackChoice({
       inboundText,
-      runtimeState: null,
-      leadMemory: (body.leadMemory || null) as AltumLeadMemory | null,
-      contactName: typeof body.contactName === "string" ? body.contactName : null,
-      extractedFields,
+      responseText: llmResult?.responseText || null,
+    });
+    const choice = resolveConversationalChoice({
+      fallbackChoice,
       llmDecision: llmResult?.decision,
       llmReason: llmResult?.reason || null,
       llmConfidence: llmResult?.confidence ?? null,
-      mandatoryQuestions: parseLines(ai.mandatoryQuestions, 12),
+      llmNextAction: llmResult?.nextAction || null,
+      llmResponseText: llmResult?.responseText || null,
+      llmTurnGoal: llmResult?.turnGoal || null,
+      inboundText,
+    });
+    const plannerDecision = deriveOperationalPlan({
+      inboundText,
+      messageType: clean(body.messageType, 40) || "text",
+      choice,
+      llmDecision: llmResult?.decision,
+      llmReason: llmResult?.reason || null,
+      llmConfidence: llmResult?.confidence ?? null,
+      llmTurnGoal: llmResult?.turnGoal || null,
+      runtimeState: null,
+      leadMemory: (body.leadMemory || null) as AltumLeadMemory | null,
+      extractedFields,
       conversation,
       kbDocs,
       tenantAi: tenantAiConfig,
     });
 
-    const plannerDecision = hardenPlannerDecision({
-      plannerDecision: rawPlannerDecision,
-      extractedFields,
-      leadMemory: (body.leadMemory || null) as AltumLeadMemory | null,
-      tenantAi: tenantAiConfig,
-    });
-
-    const responseText =
-      clean(
-        llmResult?.responseText ||
-          writeAltumAgentReply({
-            plan: plannerDecision,
-            tenantAi: tenantAiConfig,
-            runtimeState: null,
-            leadMemory: (body.leadMemory || null) as AltumLeadMemory | null,
-            contactName: typeof body.contactName === "string" ? body.contactName : null,
-            inboundText,
-          }) ||
-          "",
-        1600
-      ) || "";
+    const responseText = clean(choice.responseText || fallbackChoice.responseText || "", 1600) || "";
 
     const quality = scoreAltumConversationQuality({
       inboundText,
@@ -299,6 +317,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     return NextResponse.json({
       ok: true,
       preview: {
+        conversationalChoice: choice,
         plannerDecision,
         llmTurnGoal: llmResult?.turnGoal || null,
         llmMemorySummary: llmResult?.memorySummary || null,

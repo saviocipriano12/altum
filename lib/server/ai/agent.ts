@@ -20,7 +20,6 @@ import {
   trackLeadStageOutcome,
   trackProposalOutcome,
 } from "@/lib/server/ai/learning-outcomes";
-import { getTenantLearningHints } from "@/lib/server/ai/tenant-learning";
 import { enrichInboundMessageForAgent } from "@/lib/server/ai/multimodal";
 import { scoreAltumConversationQuality } from "@/lib/server/ai/quality-score";
 import { sendAltumVoiceReply } from "@/lib/server/ai/voice";
@@ -31,7 +30,7 @@ import {
   upsertLeadMemory,
   type AltumLeadMemory,
 } from "@/lib/server/ai/runtime-state";
-import { planAltumAgentDecision } from "@/lib/server/ai/altum-agent-v2";
+import { deriveOperationalPlan } from "@/lib/server/ai/operational-plan";
 import {
   getMetaChannelForTenant,
   isMetaConversationChannelType,
@@ -1926,7 +1925,7 @@ function mapResponseGoalToStage(
   return fallback;
 }
 
-function buildOperationalPlan(input: {
+export function buildOperationalPlan(input: {
   plannerDecision: AltumPlannerDecision;
   choice: {
     decision: "respond" | "ask_more" | "handoff";
@@ -2238,12 +2237,11 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "human_takeover_active" };
   }
 
-  const [conversation, kbDocs, runtimeState, leadMemory, learningHints] = await Promise.all([
+  const [conversation, kbDocs, runtimeState, leadMemory] = await Promise.all([
     fetchConversation(chatId, tenantId),
     fetchKbDocs(tenantId, inboundText),
     getConversationRuntimeState(tenantId, chatId),
     leadId ? getLeadMemory(tenantId, leadId) : Promise.resolve(null),
-    getTenantLearningHints(tenantId),
   ]);
 
   const runtimeStateSummary = summarizeRuntimeStateForAgent(runtimeState);
@@ -2297,37 +2295,23 @@ export async function handleIncomingMessage(
   });
   const heuristicExtractedFields = extractBusinessFields(inboundText, aiConfig) || null;
   const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields) || null;
-  const rawPlannerDecision = planAltumAgentDecision({
+  const plannerDecision = deriveOperationalPlan({
     inboundText,
-    runtimeState,
-    leadMemory,
-    contactName: sanitizeText(chatData.contactName, 120) || null,
-    extractedFields,
+    messageType: sanitizeText(incomingMessage.type, 40) || null,
+    choice,
     llmDecision: choice.decision === "handoff" ? "handoff" : llmResult?.decision,
     llmReason: choice.reason || llmResult?.reason || null,
     llmConfidence: choice.confidence ?? llmResult?.confidence ?? null,
-    mandatoryQuestions: aiConfig.mandatoryQuestions,
+    llmTurnGoal: llmResult?.turnGoal || null,
+    runtimeState,
+    leadMemory,
+    extractedFields,
     conversation,
     kbDocs,
     tenantAi: {
-      ...aiConfig,
-      learningHints,
+      escalationTopics: aiConfig.escalationTopics,
+      playbookOffers: aiConfig.playbookOffers,
     },
-  });
-  const hardenedPlannerDecision = hardenPlannerDecision({
-    plannerDecision: rawPlannerDecision,
-    extractedFields,
-    leadMemory,
-    tenantAi: aiConfig,
-    llmDecision: choice.decision === "handoff" ? "handoff" : llmResult?.decision,
-    llmConfidence: choice.confidence ?? llmResult?.confidence ?? null,
-    llmTurnGoal: llmResult?.turnGoal || null,
-  });
-  const plannerDecision = buildOperationalPlan({
-    plannerDecision: hardenedPlannerDecision,
-    choice,
-    llmTurnGoal: llmResult?.turnGoal || null,
-    runtimeState,
   });
   const nextAction = plannerDecision.nextAction || choice.nextAction;
   const effectiveProvider = llmResult?.provider || runtimeProvider;
