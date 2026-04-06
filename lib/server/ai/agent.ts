@@ -320,6 +320,47 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
     .join(" | ");
 }
 
+function buildPersistentConversationSummary(input: {
+  llmMemorySummary?: string | null;
+  preferredName?: string | null;
+  leadTone?: string | null;
+  activeTopic?: string | null;
+  conversationMaturity?: string | null;
+  businessType?: string | null;
+  primaryGoal?: string | null;
+  currentChannels?: string | null;
+  dominantObjection?: string | null;
+  openQuestion?: string | null;
+  recommendedOffer?: string | null;
+  nextAction?: string | null;
+}) {
+  return [
+    sanitizeText(input.llmMemorySummary, 220)
+      ? `Memoria viva: ${sanitizeText(input.llmMemorySummary, 220)}`
+      : "",
+    sanitizeText(input.preferredName, 80) ? `Nome: ${sanitizeText(input.preferredName, 80)}` : "",
+    sanitizeText(input.leadTone, 80) ? `Tom: ${sanitizeText(input.leadTone, 80)}` : "",
+    sanitizeText(input.activeTopic, 120) ? `Assunto: ${sanitizeText(input.activeTopic, 120)}` : "",
+    sanitizeText(input.conversationMaturity, 80)
+      ? `Momento: ${sanitizeText(input.conversationMaturity, 80)}`
+      : "",
+    sanitizeText(input.businessType, 120) ? `Negocio: ${sanitizeText(input.businessType, 120)}` : "",
+    sanitizeText(input.primaryGoal, 180) ? `Objetivo: ${sanitizeText(input.primaryGoal, 180)}` : "",
+    sanitizeText(input.currentChannels, 220) ? `Canais: ${sanitizeText(input.currentChannels, 220)}` : "",
+    sanitizeText(input.dominantObjection, 120)
+      ? `Objecao: ${sanitizeText(input.dominantObjection, 120)}`
+      : "",
+    sanitizeText(input.openQuestion, 180) ? `Pergunta em aberto: ${sanitizeText(input.openQuestion, 180)}` : "",
+    sanitizeText(input.recommendedOffer, 160)
+      ? `Oferta sugerida: ${sanitizeText(input.recommendedOffer, 160)}`
+      : "",
+    sanitizeText(input.nextAction, 160) ? `Proximo passo: ${sanitizeText(input.nextAction, 160)}` : "",
+  ]
+    .filter(Boolean)
+    .slice(0, 7)
+    .join(" | ");
+}
+
 function looksLikeHumanName(value: unknown) {
   const clean = sanitizeText(value, 80);
   if (!clean) return false;
@@ -1165,6 +1206,18 @@ async function executeAltumAgentActions(input: {
       input.plan.recommendedOffer ||
       null,
   };
+  const aiLeadSummary = buildPersistentConversationSummary({
+    preferredName: aiMemory.preferredName,
+    leadTone: aiMemory.leadTone,
+    activeTopic: aiMemory.activeTopic,
+    conversationMaturity: input.plan.stateAfter,
+    businessType: aiMemory.businessType,
+    primaryGoal: aiMemory.primaryGoal,
+    currentChannels: aiMemory.currentChannels,
+    dominantObjection: aiMemory.dominantObjection,
+    recommendedOffer: input.plan.recommendedOffer || aiMemory.serviceInterest,
+    nextAction: input.plan.nextAction || null,
+  });
 
   const leadPatch: Record<string, unknown> = {
     tenantId: input.tenantId,
@@ -1187,19 +1240,7 @@ async function executeAltumAgentActions(input: {
     aiPreferredName: aiMemory.preferredName,
     aiLeadTone: aiMemory.leadTone,
     aiActiveTopic: aiMemory.activeTopic,
-    aiLeadSummary: [
-      aiMemory.preferredName ? `Nome: ${aiMemory.preferredName}` : "",
-      aiMemory.leadTone ? `Tom: ${aiMemory.leadTone}` : "",
-      aiMemory.activeTopic ? `Assunto: ${aiMemory.activeTopic}` : "",
-      aiMemory.businessType ? `Negocio: ${aiMemory.businessType}` : "",
-      aiMemory.primaryGoal ? `Objetivo: ${aiMemory.primaryGoal}` : "",
-      aiMemory.currentChannels ? `Canais: ${aiMemory.currentChannels}` : "",
-      aiMemory.city ? `Cidade: ${aiMemory.city}` : "",
-      input.plan.recommendedOffer ? `Oferta sugerida: ${input.plan.recommendedOffer}` : "",
-      input.plan.nextAction ? `Proximo passo: ${input.plan.nextAction}` : "",
-    ]
-      .filter(Boolean)
-      .join(" | "),
+    aiLeadSummary,
     aiLastInboundText: sanitizeText(input.inboundText, 500) || null,
     aiMemory,
     updatedAt: FieldValue.serverTimestamp(),
@@ -2645,6 +2686,20 @@ export async function handleIncomingMessage(
         aiNextAction: nextAction,
       });
     }
+    const handoffSummary = buildPersistentConversationSummary({
+      llmMemorySummary: llmResult?.memorySummary || null,
+      preferredName: preferredContactName || null,
+      leadTone: extractedFields?.leadTone || runtimeState?.leadTone || leadMemory?.leadTone || null,
+      activeTopic: extractedFields?.activeTopic || runtimeState?.activeTopic || leadMemory?.activeTopic || null,
+      conversationMaturity: plannerDecision.stateAfter,
+      businessType: extractedFields?.businessType || extractedFields?.niche || leadMemory?.businessType || null,
+      primaryGoal: extractedFields?.primaryGoal || extractedFields?.goal || leadMemory?.primaryGoal || null,
+      currentChannels: extractedFields?.currentChannels || leadMemory?.currentChannels || null,
+      dominantObjection: plannerDecision.objectionType || leadMemory?.dominantObjection || null,
+      openQuestion: leadAck,
+      recommendedOffer: plannerDecision.recommendedOffer || null,
+      nextAction,
+    });
 
     await upsertConversationRuntimeState({
       tenantId,
@@ -2663,15 +2718,7 @@ export async function handleIncomingMessage(
       objectionType: plannerDecision.objectionType || null,
       turnGoal: llmResult?.turnGoal || null,
       memorySummary: llmResult?.memorySummary || null,
-      summary: [
-        llmResult?.turnGoal ? `Objetivo do turno: ${llmResult.turnGoal}` : "",
-        plannerDecision.intent ? `Intencao: ${plannerDecision.intent}` : "",
-        plannerDecision.recommendedOffer ? `Oferta: ${plannerDecision.recommendedOffer}` : "",
-        plannerDecision.nextAction ? `Acao: ${plannerDecision.nextAction}` : "",
-        llmResult?.memorySummary ? `Memoria: ${llmResult.memorySummary}` : "",
-      ]
-        .filter(Boolean)
-        .join(" | "),
+      summary: handoffSummary,
       extractedFields,
     });
 
@@ -2690,14 +2737,7 @@ export async function handleIncomingMessage(
         openQuestion: leadAck,
         conversationMaturity: plannerDecision.stateAfter,
         memorySummary: llmResult?.memorySummary || null,
-        summary: [
-          llmResult?.memorySummary || "",
-          extractedFields?.businessType || extractedFields?.niche || leadMemory?.businessType || "",
-          extractedFields?.primaryGoal || extractedFields?.goal || leadMemory?.primaryGoal || "",
-          plannerDecision.recommendedOffer || "",
-        ]
-          .filter(Boolean)
-          .join(" | "),
+        summary: handoffSummary,
       });
     }
 
@@ -2717,6 +2757,20 @@ export async function handleIncomingMessage(
         contactName: preferredContactName || null,
       }),
     }) || "Perfeito. Me conta so mais um ponto rapido para eu te orientar melhor.";
+  const conversationSummary = buildPersistentConversationSummary({
+    llmMemorySummary: llmResult?.memorySummary || null,
+    preferredName: preferredContactName || null,
+    leadTone: extractedFields?.leadTone || runtimeState?.leadTone || leadMemory?.leadTone || null,
+    activeTopic: extractedFields?.activeTopic || runtimeState?.activeTopic || leadMemory?.activeTopic || null,
+    conversationMaturity: plannerDecision.stateAfter,
+    businessType: extractedFields?.businessType || extractedFields?.niche || leadMemory?.businessType || null,
+    primaryGoal: extractedFields?.primaryGoal || extractedFields?.goal || leadMemory?.primaryGoal || null,
+    currentChannels: extractedFields?.currentChannels || leadMemory?.currentChannels || null,
+    dominantObjection: plannerDecision.objectionType || leadMemory?.dominantObjection || null,
+    openQuestion: responseText,
+    recommendedOffer: plannerDecision.recommendedOffer || null,
+    nextAction,
+  });
   const quality = scoreAltumConversationQuality({
     inboundText,
     outboundText: responseText,
@@ -2928,13 +2982,7 @@ export async function handleIncomingMessage(
     objectionType: plannerDecision.objectionType || null,
     turnGoal: llmResult?.turnGoal || null,
     memorySummary: llmResult?.memorySummary || null,
-    summary: [
-      plannerDecision.intent ? `Intencao: ${plannerDecision.intent}` : "",
-      plannerDecision.recommendedOffer ? `Oferta: ${plannerDecision.recommendedOffer}` : "",
-      plannerDecision.nextAction ? `Acao: ${plannerDecision.nextAction}` : "",
-    ]
-      .filter(Boolean)
-      .join(" | "),
+    summary: conversationSummary,
     extractedFields,
   });
 
@@ -2953,14 +3001,7 @@ export async function handleIncomingMessage(
       openQuestion: responseText,
       conversationMaturity: plannerDecision.stateAfter,
       memorySummary: llmResult?.memorySummary || null,
-      summary: [
-        llmResult?.memorySummary || "",
-        extractedFields?.businessType || extractedFields?.niche || leadMemory?.businessType || "",
-        extractedFields?.primaryGoal || extractedFields?.goal || leadMemory?.primaryGoal || "",
-        plannerDecision.recommendedOffer || "",
-      ]
-        .filter(Boolean)
-        .join(" | "),
+      summary: conversationSummary,
     });
   }
 
