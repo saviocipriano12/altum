@@ -96,7 +96,10 @@ function extractPreferredName(inboundText: string, extractedFields?: Record<stri
 
   for (const pattern of patterns) {
     const match = clean.match(pattern);
-    if (match?.[1]) return cleanText(match[1], 80);
+    if (match?.[1]) {
+      const candidate = cleanText(match[1], 80);
+      return looksLikeHumanName(candidate) ? candidate : "";
+    }
   }
 
   return "";
@@ -154,6 +157,25 @@ function inferConversationMaturity(stage?: AltumConversationStage | null, nextAc
   if (/objecao|obje/.test(normalizedAction)) return "objection";
   if (/qualificar|coletar_contexto/.test(normalizedAction)) return "qualification";
   return "";
+}
+
+function looksLikeHumanName(value: string) {
+  const clean = cleanText(value, 80);
+  if (!clean) return false;
+  if (/\d{4,}|@/.test(clean)) return false;
+  const normalized = clean
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (["lead", "contato", "cliente"].includes(normalized)) return false;
+  if (
+    /\b(empresa|suplementos|odontologia|imobiliaria|agencia|consultoria|clinica|marketing|studio|loja|comercio|comercial|ltda|eireli|me|sa|grupo|laboratorio)\b/.test(
+      normalized
+    )
+  ) {
+    return false;
+  }
+  return normalized.split(/\s+/).length <= 4;
 }
 
 export function getConversationRuntimeDocId(tenantId: string, chatId: string) {
@@ -316,7 +338,8 @@ export async function upsertLeadMemory(input: {
   const currentChannels = cleanText(safeFields.currentChannels || safeFields.channels, 220);
   const teamSize = cleanText(safeFields.teamSize || safeFields.team || safeFields.staffSize, 80);
   const summary = cleanText(input.summary, 260);
-  const preferredName = cleanText(input.preferredName, 80) || extractPreferredName("", fields);
+  const preferredNameRaw = cleanText(input.preferredName, 80) || extractPreferredName("", fields);
+  const preferredName = looksLikeHumanName(preferredNameRaw) ? preferredNameRaw : "";
   const leadTone = cleanText(input.leadTone, 80) || inferLeadTone("", fields);
   const activeTopic = cleanText(input.activeTopic, 120) || inferActiveTopic("", fields);
   const openQuestion = extractQuestion(input.openQuestion || "");

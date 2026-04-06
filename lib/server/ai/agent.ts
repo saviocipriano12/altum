@@ -740,6 +740,13 @@ function makeLeadFacingReply(input: {
   const normalizedInbound = sanitizeText(input.inboundText, 500);
   const turn = classifyLeadTurn(normalizedInbound);
   const knownFirstName = leadFirstName(input.contactName);
+  const hasAskedName = input.conversation.some(
+    (item) =>
+      item.sender === "agent" &&
+      /\b(posso te chamar de|como voce prefere que eu te chame|qual e o seu nome|qual é o seu nome|seu nome)\b/i.test(
+        item.text || ""
+      )
+  );
   const inboundHasPriceSignal = textHasAny(input.inboundText, ["preco", "valor", "plano", "orcamento", "investimento"]);
   const asksIdentity = textHasAny(normalizedInbound, ["qual e o seu nome", "qual seu nome", "quem e voce", "quem é você"]);
   const asksWellbeing = textHasAny(normalizedInbound, ["como voce esta", "como voce ta", "como vai", "tudo bem"]);
@@ -778,6 +785,9 @@ function makeLeadFacingReply(input: {
   }
 
   if (isGreetingLike(input.inboundText)) {
+    if (!knownFirstName && !hasAskedName) {
+      return "Oi! Tudo bem? Posso te chamar de como?";
+    }
     return knownFirstName
       ? `Oi, ${knownFirstName}! Tudo bem? Como posso te ajudar hoje?`
       : "Oi! Tudo bem? Como posso te ajudar hoje?";
@@ -1166,12 +1176,12 @@ async function executeAltumAgentActions(input: {
   const leadSnap = await leadRef.get();
   const leadData = leadSnap.exists ? (leadSnap.data() as Record<string, unknown>) : {};
   const now = new Date();
+  const rawPreferredName = sanitizeText(
+    input.extractedFields?.preferredName || input.extractedFields?.name || input.extractedFields?.contactName,
+    80
+  );
   const aiMemory = {
-    preferredName:
-      sanitizeText(
-        input.extractedFields?.preferredName || input.extractedFields?.name || input.extractedFields?.contactName,
-        80
-      ) || null,
+    preferredName: looksLikeHumanName(rawPreferredName) ? rawPreferredName : null,
     businessType: sanitizeText(
       input.extractedFields?.businessType || input.extractedFields?.niche || input.extractedFields?.segment,
       120

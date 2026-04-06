@@ -359,17 +359,35 @@ function buildRecommendationBridge(known: {
   return "Pelo que voce trouxe,";
 }
 
-function hasKnownLeadName(contactName?: string | null) {
-  const clean = sanitizeText(contactName, 80);
+function looksLikeHumanName(value?: string | null) {
+  const clean = sanitizeText(value, 80);
   if (!clean) return false;
-  if (/\d{6,}/.test(clean)) return false;
-  if (["lead", "contato", "cliente"].includes(clean.toLowerCase())) return false;
-  return true;
+  if (/\d{4,}|@/.test(clean)) return false;
+
+  const normalized = clean
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (["lead", "contato", "cliente"].includes(normalized)) return false;
+  if (
+    /\b(empresa|suplementos|odontologia|imobiliaria|imobiliaria|agencia|consultoria|clinica|marketing|studio|loja|comercio|comercial|ltda|eireli|me|sa|grupo|laboratorio|odontologia)\b/.test(
+      normalized
+    )
+  ) {
+    return false;
+  }
+
+  return normalized.split(/\s+/).length <= 4;
+}
+
+function hasKnownLeadName(contactName?: string | null) {
+  return looksLikeHumanName(contactName);
 }
 
 function firstName(contactName?: string | null) {
   const clean = sanitizeText(contactName, 80);
-  if (!hasKnownLeadName(clean)) return "";
+  if (!looksLikeHumanName(clean)) return "";
   return clean.split(/\s+/)[0] || clean;
 }
 
