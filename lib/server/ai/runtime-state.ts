@@ -35,6 +35,7 @@ export type AltumConversationRuntimeState = {
   preferredName?: string | null;
   leadTone?: string | null;
   activeTopic?: string | null;
+  conversationMaturity?: string | null;
 };
 
 export type AltumLeadMemory = {
@@ -53,10 +54,13 @@ export type AltumLeadMemory = {
   teamSize?: string | null;
   recommendedOffer?: string | null;
   nextBestAction?: string | null;
+  memorySummary?: string | null;
   summary?: string | null;
   preferredName?: string | null;
   leadTone?: string | null;
   activeTopic?: string | null;
+  openQuestion?: string | null;
+  conversationMaturity?: string | null;
   fields?: Record<string, string>;
 };
 
@@ -131,6 +135,24 @@ function inferActiveTopic(inboundText: string, extractedFields?: Record<string, 
   if (/\b(crm|pipeline|comercial|processo)\b/.test(clean)) return "operacao_comercial";
   if (/\b(preco|preço|valor|orcamento|orçamento)\b/.test(clean)) return "preco";
   if (/\b(proposta|reuniao|reunião|agendar|diagnostico|diagnóstico)\b/.test(clean)) return "fechamento";
+  return "";
+}
+
+function inferConversationMaturity(stage?: AltumConversationStage | null, nextAction?: string | null) {
+  const normalizedStage = cleanText(stage, 60).toLowerCase();
+  const normalizedAction = cleanText(nextAction, 160).toLowerCase();
+
+  if (normalizedStage === "handoff") return "handoff";
+  if (normalizedStage === "proposal_path" || normalizedStage === "scheduling") return "advance";
+  if (normalizedStage === "recommendation") return "recommendation";
+  if (normalizedStage === "objection_handling") return "objection";
+  if (normalizedStage === "qualification") return "qualification";
+  if (normalizedStage === "discovery") return "discovery";
+  if (normalizedStage === "greeting") return "opening";
+
+  if (/proposta|agendar|reuniao|diagnostico/.test(normalizedAction)) return "advance";
+  if (/objecao|obje/.test(normalizedAction)) return "objection";
+  if (/qualificar|coletar_contexto/.test(normalizedAction)) return "qualification";
   return "";
 }
 
@@ -245,6 +267,7 @@ export async function upsertConversationRuntimeState(input: {
     preferredName: extractPreferredName(input.inboundText, input.extractedFields) || null,
     leadTone: inferLeadTone(input.inboundText, input.extractedFields) || null,
     activeTopic: inferActiveTopic(input.inboundText, input.extractedFields) || null,
+    conversationMaturity: inferConversationMaturity(stage, input.nextAction || null) || null,
     lastLeadMessageAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -268,31 +291,41 @@ export async function upsertLeadMemory(input: {
   dominantIntent?: string | null;
   dominantObjection?: string | null;
   summary?: string | null;
+  preferredName?: string | null;
+  leadTone?: string | null;
+  activeTopic?: string | null;
+  openQuestion?: string | null;
+  conversationMaturity?: string | null;
+  memorySummary?: string | null;
 }) {
   const fields = input.extractedFields || null;
-  if (!fields) return;
+  const safeFields = fields || {};
 
-  const businessType = cleanText(fields.businessType || fields.niche || fields.segment, 120);
-  const primaryGoal = cleanText(fields.primaryGoal || fields.goal || fields.objective, 180);
-  const budgetBand = cleanText(fields.budget || fields.budgetBand, 120);
-  const urgency = cleanText(fields.urgency, 120);
-  const dominantIntent = cleanText(input.dominantIntent, 120) || cleanText(fields.intent, 120);
+  const businessType = cleanText(safeFields.businessType || safeFields.niche || safeFields.segment, 120);
+  const primaryGoal = cleanText(safeFields.primaryGoal || safeFields.goal || safeFields.objective, 180);
+  const budgetBand = cleanText(safeFields.budget || safeFields.budgetBand, 120);
+  const urgency = cleanText(safeFields.urgency, 120);
+  const dominantIntent = cleanText(input.dominantIntent, 120) || cleanText(safeFields.intent, 120);
   const recommendedOffer =
-    cleanText(input.recommendedOffer, 160) || cleanText(fields.serviceInterest || fields.offer, 160);
+    cleanText(input.recommendedOffer, 160) || cleanText(safeFields.serviceInterest || safeFields.offer, 160);
   const dominantObjection =
-    cleanText(input.dominantObjection, 120) || cleanText(fields.objectionType || fields.objection, 120);
-  const decisionMaker = cleanText(fields.decisionMaker || fields.decisor || fields.owner, 160);
-  const digitalMaturity = cleanText(fields.digitalMaturity || fields.maturity || fields.structure, 160);
-  const city = cleanText(fields.city || fields.region, 120);
-  const currentChannels = cleanText(fields.currentChannels || fields.channels, 220);
-  const teamSize = cleanText(fields.teamSize || fields.team || fields.staffSize, 80);
+    cleanText(input.dominantObjection, 120) || cleanText(safeFields.objectionType || safeFields.objection, 120);
+  const decisionMaker = cleanText(safeFields.decisionMaker || safeFields.decisor || safeFields.owner, 160);
+  const digitalMaturity = cleanText(safeFields.digitalMaturity || safeFields.maturity || safeFields.structure, 160);
+  const city = cleanText(safeFields.city || safeFields.region, 120);
+  const currentChannels = cleanText(safeFields.currentChannels || safeFields.channels, 220);
+  const teamSize = cleanText(safeFields.teamSize || safeFields.team || safeFields.staffSize, 80);
   const summary = cleanText(input.summary, 260);
-  const preferredName = extractPreferredName("", fields);
-  const leadTone = inferLeadTone("", fields);
-  const activeTopic = inferActiveTopic("", fields);
+  const preferredName = cleanText(input.preferredName, 80) || extractPreferredName("", fields);
+  const leadTone = cleanText(input.leadTone, 80) || inferLeadTone("", fields);
+  const activeTopic = cleanText(input.activeTopic, 120) || inferActiveTopic("", fields);
+  const openQuestion = extractQuestion(input.openQuestion || "");
+  const conversationMaturity =
+    cleanText(input.conversationMaturity, 80) || inferConversationMaturity(undefined, input.nextAction || null);
+  const memorySummary = cleanText(input.memorySummary, 260);
 
   const normalizedFields = Object.fromEntries(
-    Object.entries(fields)
+    Object.entries(safeFields)
       .map(([key, value]) => [cleanText(key, 60), cleanText(value, 180)] as const)
       .filter(([key, value]) => key && value)
   );
@@ -300,10 +333,13 @@ export async function upsertLeadMemory(input: {
   const payload: Record<string, unknown> = {
     tenantId: input.tenantId,
     leadId: input.leadId,
-    fields: normalizedFields,
     updatedAt: FieldValue.serverTimestamp(),
     createdAt: FieldValue.serverTimestamp(),
   };
+
+  if (Object.keys(normalizedFields).length) {
+    payload.fields = normalizedFields;
+  }
 
   if (businessType) payload.businessType = businessType;
   if (primaryGoal) payload.primaryGoal = primaryGoal;
@@ -321,6 +357,9 @@ export async function upsertLeadMemory(input: {
   if (preferredName) payload.preferredName = preferredName;
   if (leadTone) payload.leadTone = leadTone;
   if (activeTopic) payload.activeTopic = activeTopic;
+  if (openQuestion) payload.openQuestion = openQuestion;
+  if (conversationMaturity) payload.conversationMaturity = conversationMaturity;
+  if (memorySummary) payload.memorySummary = memorySummary;
 
   const nextAction = cleanText(input.nextAction, 160);
   if (nextAction) payload.nextBestAction = nextAction;
@@ -358,6 +397,7 @@ export async function getConversationRuntimeState(tenantId: string, chatId: stri
     preferredName: cleanText(data.preferredName, 80) || null,
     leadTone: cleanText(data.leadTone, 80) || null,
     activeTopic: cleanText(data.activeTopic, 120) || null,
+    conversationMaturity: cleanText(data.conversationMaturity, 80) || null,
   };
 }
 
@@ -390,10 +430,13 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     teamSize: cleanText(data.teamSize, 80) || null,
     recommendedOffer: cleanText(data.recommendedOffer, 180) || null,
     nextBestAction: cleanText(data.nextBestAction, 180) || null,
+    memorySummary: cleanText(data.memorySummary, 260) || null,
     summary: cleanText(data.summary, 260) || null,
     preferredName: cleanText(data.preferredName, 80) || null,
     leadTone: cleanText(data.leadTone, 80) || null,
     activeTopic: cleanText(data.activeTopic, 120) || null,
+    openQuestion: cleanText(data.openQuestion, 220) || null,
+    conversationMaturity: cleanText(data.conversationMaturity, 80) || null,
     fields,
   };
 }

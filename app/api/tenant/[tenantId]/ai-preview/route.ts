@@ -49,11 +49,17 @@ type Body = {
 function summarizeLeadMemoryForPreview(leadMemory: Partial<AltumLeadMemory> | null | undefined) {
   if (!leadMemory) return "";
   return [
+    clean(leadMemory.preferredName, 120) ? `nome preferido: ${clean(leadMemory.preferredName, 120)}` : "",
+    clean(leadMemory.leadTone, 120) ? `tom: ${clean(leadMemory.leadTone, 120)}` : "",
+    clean(leadMemory.activeTopic, 120) ? `assunto vivo: ${clean(leadMemory.activeTopic, 120)}` : "",
+    clean(leadMemory.conversationMaturity, 120) ? `momento: ${clean(leadMemory.conversationMaturity, 120)}` : "",
+    clean(leadMemory.openQuestion, 180) ? `pergunta em aberto: ${clean(leadMemory.openQuestion, 180)}` : "",
     clean(leadMemory.businessType, 120) ? `negocio: ${clean(leadMemory.businessType, 120)}` : "",
     clean(leadMemory.primaryGoal, 180) ? `objetivo: ${clean(leadMemory.primaryGoal, 180)}` : "",
     clean(leadMemory.currentChannels, 180) ? `canais atuais: ${clean(leadMemory.currentChannels, 180)}` : "",
     clean(leadMemory.urgency, 120) ? `urgencia: ${clean(leadMemory.urgency, 120)}` : "",
     clean(leadMemory.dominantObjection, 120) ? `objecao: ${clean(leadMemory.dominantObjection, 120)}` : "",
+    clean(leadMemory.memorySummary, 220) ? `memoria viva: ${clean(leadMemory.memorySummary, 220)}` : "",
     clean(leadMemory.summary, 220) ? `resumo: ${clean(leadMemory.summary, 220)}` : "",
   ]
     .filter(Boolean)
