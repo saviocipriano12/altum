@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { motion } from "framer-motion";
+import { motion, useScroll, useSpring, useTransform } from "framer-motion";
 import {
   ArrowRight,
   MessageCircle,
@@ -23,79 +23,79 @@ const whatsappLink =
 
 const projects = [
   {
-    name: "Clínica Estética Premium",
-    niche: "Clínica • Landing Page",
-    result: "+120 leads/mês",
+    name: "Clinica Estetica Premium",
+    niche: "Clinica • Landing Page",
+    result: "+120 leads/mes",
     description:
-      "Landing page criada para fortalecer autoridade, transmitir percepção premium e facilitar o agendamento comercial.",
+      "Landing page criada para fortalecer autoridade, transmitir percepcao premium e facilitar o agendamento comercial.",
     image: "/images/portfolio/clinica.jpg",
     href: "#",
     featured: true,
   },
   {
     name: "Advocacia Empresarial",
-    niche: "Jurídico • Institucional",
+    niche: "Juridico • Institucional",
     result: "Mais autoridade e contatos",
     description:
-      "Projeto focado em credibilidade, clareza dos serviços e geração de contatos qualificados para reuniões.",
+      "Projeto focado em credibilidade, clareza dos servicos e geracao de contatos qualificados para reunioes.",
     image: "/images/portfolio/advogado.jpg",
     href: "#",
   },
   {
     name: "Energia Solar B2B",
     niche: "B2B • Funil Comercial",
-    result: "Pipeline mais previsível",
+    result: "Pipeline mais previsivel",
     description:
-      "Estrutura digital desenhada para captação, organização do processo comercial e avanço do lead no funil.",
+      "Estrutura digital desenhada para captacao, organizacao do processo comercial e avanco do lead no funil.",
     image: "/images/portfolio/solar.jpg",
     href: "#",
   },
 ];
 
 const stats = [
-  { value: "+120", label: "Leads/mês em estruturas bem desenhadas" },
-  { value: "24/7", label: "Operação preparada para crescer com IA" },
-  { value: "Premium", label: "Design, copy e percepção de alto nível" },
+  { value: "+120", label: "Leads/mes em estruturas bem desenhadas" },
+  { value: "24/7", label: "Operacao preparada para crescer com IA" },
+  { value: "Premium", label: "Design, copy e percepcao de alto nivel" },
 ];
 
 const proof = [
   {
     value: "+300%",
-    label: "Potencial de aumento em geração de oportunidades com uma estrutura mais forte",
+    label: "Potencial de aumento em geracao de oportunidades com uma estrutura mais forte",
   },
   {
-    value: "Alta percepção",
-    label: "Projetos construídos para elevar a marca e gerar mais confiança comercial",
+    value: "Alta percepcao",
+    label: "Projetos construidos para elevar a marca e gerar mais confianca comercial",
   },
   {
     value: "1 ecossistema",
-    label: "Site hoje. Tráfego, CRM, automação e IA amanhã",
+    label: "Site hoje. Trafego, CRM, automacao e IA amanha",
   },
 ];
 
 const steps = [
   {
-    title: "Diagnóstico",
+    title: "Diagnostico",
     description:
-      "Entendemos nicho, posicionamento, objetivo comercial e o nível de presença digital que sua empresa precisa.",
+      "Entendemos nicho, posicionamento, objetivo comercial e o nivel de presenca digital que sua empresa precisa.",
     icon: Target,
   },
   {
-    title: "Direção",
+    title: "Direcao",
     description:
-      "Definimos copy, arquitetura visual, hierarquia da informação e pontos de conversão.",
+      "Definimos copy, arquitetura visual, hierarquia da informacao e pontos de conversao.",
     icon: Sparkles,
   },
   {
-    title: "Construção",
+    title: "Construcao",
     description:
-      "Desenvolvemos a experiência com design premium, clareza comercial e identidade forte.",
+      "Desenvolvemos a experiencia com design premium, clareza comercial e identidade forte.",
     icon: LayoutTemplate,
   },
   {
     title: "Escala",
     description:
-      "Depois do projeto, evoluímos para tráfego, CRM, automações, atendimento e IA.",
+      "Depois do projeto, evoluimos para trafego, CRM, automacoes, atendimento e IA.",
     icon: Bot,
   },
 ];
@@ -103,22 +103,22 @@ const steps = [
 const ecosystem = [
   {
     title: "Sites premium",
-    description: "Projetos pensados para autoridade, posicionamento e conversão.",
+    description: "Projetos pensados para autoridade, posicionamento e conversao.",
     icon: LayoutTemplate,
   },
   {
     title: "CRM e pipeline",
-    description: "Organização comercial para não perder oportunidade e acelerar fechamento.",
+    description: "Organizacao comercial para nao perder oportunidade e acelerar fechamento.",
     icon: Target,
   },
   {
-    title: "Tráfego pago",
+    title: "Trafego pago",
     description: "Google Ads e Meta Ads conectados ao ecossistema para gerar leads.",
     icon: Zap,
   },
   {
-    title: "IA e automação",
-    description: "Atendimento, triagem e próximos passos dentro de uma operação centralizada.",
+    title: "IA e automacao",
+    description: "Atendimento, triagem e proximos passos dentro de uma operacao centralizada.",
     icon: Bot,
   },
 ];
@@ -136,6 +136,42 @@ const stagger = {
     },
   },
 };
+
+function ScrollProgress() {
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, {
+    stiffness: 140,
+    damping: 28,
+    mass: 0.22,
+  });
+
+  return (
+    <motion.div
+      style={{ scaleX, transformOrigin: "0%" }}
+      className="fixed inset-x-0 top-0 z-[80] h-[3px] bg-gradient-to-r from-[#F56E0F] via-[#ffb067] to-white"
+    />
+  );
+}
+
+function AmbientStage() {
+  return (
+    <>
+      <div className="pointer-events-none fixed inset-0 z-0 bg-[#060608]" />
+      <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_10%_0%,rgba(245,110,15,.10),transparent_26%),radial-gradient(circle_at_90%_8%,rgba(124,58,237,.08),transparent_24%),radial-gradient(circle_at_50%_100%,rgba(245,110,15,.05),transparent_28%)]" />
+      <div className="pointer-events-none fixed inset-0 z-0 opacity-[0.03] [background-image:radial-gradient(circle_at_center,white_0.6px,transparent_0.6px)] [background-size:18px_18px]" />
+      <motion.div
+        animate={{ opacity: [0.08, 0.14, 0.08], scale: [1, 1.08, 1] }}
+        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+        className="pointer-events-none fixed left-[-10rem] top-20 z-0 h-[28rem] w-[28rem] rounded-full bg-[#F56E0F]/10 blur-[150px]"
+      />
+      <motion.div
+        animate={{ opacity: [0.06, 0.12, 0.06], x: [0, 22, 0] }}
+        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+        className="pointer-events-none fixed right-[-8rem] top-0 z-0 h-[24rem] w-[24rem] rounded-full bg-violet-500/10 blur-[150px]"
+      />
+    </>
+  );
+}
 
 function SectionTitle({
   eyebrow,
@@ -236,6 +272,10 @@ function TopNav() {
 }
 
 function Hero() {
+  const { scrollYProgress } = useScroll();
+  const cardRotate = useTransform(scrollYProgress, [0, 0.18], [0, -2.5]);
+  const cardY = useTransform(scrollYProgress, [0, 0.18], [0, -18]);
+
   return (
     <section className="relative overflow-hidden border-b border-white/10">
       <BackgroundSystem />
@@ -261,10 +301,10 @@ function Hero() {
               transition={{ duration: 0.65 }}
               className="mt-6 text-5xl font-extrabold tracking-tight leading-[0.9] text-white md:text-7xl"
             >
-              Presença digital no
+              Presenca digital no
               <br />
               <span className="bg-gradient-to-r from-white via-[#ffbc7c] to-[#F56E0F] bg-clip-text text-transparent">
-                nível da sua empresa
+                nivel da sua empresa
               </span>
             </motion.h1>
 
@@ -273,7 +313,7 @@ function Hero() {
               transition={{ duration: 0.65 }}
               className="mt-6 max-w-2xl text-lg leading-8 text-white/60 md:text-xl"
             >
-              A ALTUM cria experiências digitais para empresas que precisam
+              A ALTUM cria experiencias digitais para empresas que precisam
               transmitir mais autoridade, gerar mais oportunidades e crescer
               com uma estrutura visual e comercial muito mais forte.
             </motion.p>
@@ -294,7 +334,7 @@ function Hero() {
                 href={whatsappLink}
                 className="rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-4 font-bold text-white transition hover:bg-white/[0.08]"
               >
-                Solicitar análise
+                Solicitar analise
               </a>
             </motion.div>
 
@@ -323,6 +363,7 @@ function Hero() {
             initial={{ opacity: 0, scale: 0.96, y: 28 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.75, delay: 0.15 }}
+            style={{ rotate: cardRotate, y: cardY }}
             className="relative"
           >
             <div className="absolute inset-0 rounded-[2.8rem] bg-[radial-gradient(circle_at_20%_0%,rgba(245,110,15,.18),transparent_40%)] blur-2xl" />
@@ -355,8 +396,8 @@ function Hero() {
                   </h3>
 
                   <p className="mt-3 max-w-md leading-7 text-white/60">
-                    Design refinado, copy estratégica e uma presença digital
-                    preparada para gerar confiança desde os primeiros segundos.
+                    Design refinado, copy estrategica e uma presenca digital
+                    preparada para gerar confianca desde os primeiros segundos.
                   </p>
 
                   <div className="mt-10 grid grid-cols-6 items-end gap-2">
@@ -399,7 +440,7 @@ function Hero() {
                       Mais autoridade
                     </div>
                     <p className="mt-2 text-sm text-black/65">
-                      Uma presença digital que valoriza a marca e acelera o contato.
+                      Uma presenca digital que valoriza a marca e acelera o contato.
                     </p>
                   </motion.div>
 
@@ -409,10 +450,10 @@ function Hero() {
                     className="absolute bottom-28 right-10 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 backdrop-blur-md"
                   >
                     <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
-                      UX + Estratégia
+                      UX + Estrategia
                     </div>
                     <div className="mt-1 text-sm font-semibold text-white">
-                      Percepção premium
+                      Percepcao premium
                     </div>
                   </motion.div>
                 </div>
@@ -433,8 +474,8 @@ function ProjectsShowcase() {
     <section id="projetos" className="mx-auto max-w-7xl px-6 py-24">
       <SectionTitle
         eyebrow="Projetos"
-        title="Projetos que mostram o padrão visual e estratégico da ALTUM"
-        subtitle="Não se trata apenas de design. Cada projeto é construído para fortalecer marca, facilitar o contato e preparar o crescimento digital da empresa."
+        title="Projetos que mostram o padrao visual e estrategico da ALTUM"
+        subtitle="Nao se trata apenas de design. Cada projeto e construido para fortalecer marca, facilitar o contato e preparar o crescimento digital da empresa."
       />
 
       {/* mobile carousel */}
@@ -588,17 +629,17 @@ function ImpactSection() {
     <section id="resultados" className="mx-auto max-w-7xl px-6 py-10">
       <SectionTitle
         eyebrow="Impacto"
-        title="O que realmente importa é resultado percebido"
-        subtitle="A ALTUM não constrói páginas para apenas existir. Cada projeto precisa fortalecer a marca, elevar percepção e facilitar novas oportunidades."
+        title="O que realmente importa e resultado percebido"
+        subtitle="A ALTUM nao constroi paginas para apenas existir. Cada projeto precisa fortalecer a marca, elevar percepcao e facilitar novas oportunidades."
       />
 
-      <div className="mt-12 grid gap-6 lg:grid-cols-12">
+      <div className="mt-12 grid gap-8 lg:grid-cols-[0.92fr_1.08fr]">
         <motion.div
           initial="hidden"
           whileInView="show"
           variants={fadeUp}
           viewport={{ once: true, margin: "-80px" }}
-          className="rounded-[2.2rem] border border-white/10 bg-[#131318] p-8 lg:col-span-5"
+          className="rounded-[2.2rem] border border-white/10 bg-[#131318] p-8 lg:sticky lg:top-28 lg:self-start"
         >
           <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/35">
             Valor percebido
@@ -607,13 +648,13 @@ function ImpactSection() {
             +300%
           </div>
           <p className="mt-5 max-w-md text-base leading-8 text-white/60">
-            Potencial de aumento em geração de oportunidades quando a presença
-            digital deixa de ser comum e passa a transmitir mais nível, mais
-            clareza e mais confiança.
+            Potencial de aumento em geracao de oportunidades quando a presenca
+            digital deixa de ser comum e passa a transmitir mais nivel, mais
+            clareza e mais confianca.
           </p>
         </motion.div>
 
-        <div className="grid gap-6 lg:col-span-7 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2">
           {proof.map((item) => (
             <motion.div
               key={item.value}
@@ -621,7 +662,7 @@ function ImpactSection() {
               whileInView="show"
               variants={fadeUp}
               viewport={{ once: true, margin: "-80px" }}
-              className="rounded-[2rem] border border-white/10 bg-[#18181d] p-6"
+              className="rounded-[2rem] border border-white/10 bg-[#18181d] p-6 even:md:translate-y-10"
             >
               <div className="text-3xl font-extrabold text-white">
                 {item.value}
@@ -642,8 +683,8 @@ function ProcessTimeline() {
     <section id="como-funciona" className="mx-auto max-w-7xl px-6 py-24">
       <SectionTitle
         eyebrow="Processo"
-        title="Como a ALTUM desenvolve um projeto no nível certo"
-        subtitle="Mais do que layout bonito: existe estratégia, direção e uma lógica de crescimento por trás de cada decisão."
+        title="Como a ALTUM desenvolve um projeto no nivel certo"
+        subtitle="Mais do que layout bonito: existe estrategia, direcao e uma logica de crescimento por tras de cada decisao."
       />
 
       <div className="relative mt-14">
@@ -693,8 +734,8 @@ function EcosystemSection() {
     <section id="ecossistema" className="mx-auto max-w-7xl px-6 py-10">
       <SectionTitle
         eyebrow="Ecossistema"
-        title="Mais do que um site: uma base para crescer com consistência"
-        subtitle="Seu projeto pode começar como presença digital premium e evoluir para uma operação muito mais inteligente, com tráfego, CRM, automação e IA."
+        title="Mais do que um site: uma base para crescer com consistencia"
+        subtitle="Seu projeto pode comecar como presenca digital premium e evoluir para uma operacao muito mais inteligente, com trafego, CRM, automacao e IA."
       />
 
       <div className="mt-12 grid gap-6 lg:grid-cols-12">
@@ -715,15 +756,15 @@ function EcosystemSection() {
             </div>
 
             <h3 className="mt-6 max-w-2xl text-3xl md:text-4xl font-extrabold leading-[1.02] text-white">
-              Hoje você entra por um projeto premium.
+              Hoje voce entra por um projeto premium.
               <br />
-              Amanhã pode operar com um sistema inteiro.
+              Amanha pode operar com um sistema inteiro.
             </h3>
 
             <p className="mt-4 max-w-2xl text-base md:text-lg leading-8 text-white/60">
-              A ALTUM constrói a base visual e comercial agora — e deixa o
-              caminho pronto para evoluir com tráfego pago, CRM, automações,
-              atendimento estruturado e inteligência artificial.
+              A ALTUM constroi a base visual e comercial agora - e deixa o
+              caminho pronto para evoluir com trafego pago, CRM, automacoes,
+              atendimento estruturado e inteligencia artificial.
             </p>
 
             <motion.div
@@ -775,15 +816,15 @@ function EcosystemSection() {
             </div>
 
             <h3 className="mt-6 text-3xl font-extrabold leading-[1.04] text-white">
-              Um projeto bonito não basta.
+              Um projeto bonito nao basta.
               <br />
-              Sua presença digital precisa gerar movimento no negócio.
+              Sua presenca digital precisa gerar movimento no negocio.
             </h3>
 
             <p className="mt-4 text-base leading-8 text-white/60">
               A ALTUM desenvolve projetos com foco em posicionamento,
-              autoridade e geração de oportunidades reais. O objetivo não é só
-              colocar sua empresa no ar — é criar uma presença que valorize sua
+              autoridade e geracao de oportunidades reais. O objetivo nao e so
+              colocar sua empresa no ar - e criar uma presenca que valorize sua
               marca e facilite novas vendas.
             </p>
 
@@ -792,17 +833,17 @@ function EcosystemSection() {
                 {
                   title: "Mais autoridade",
                   description:
-                    "Seu negócio passa a transmitir mais nível, mais confiança e mais valor desde o primeiro acesso.",
+                    "Seu negocio passa a transmitir mais nivel, mais confianca e mais valor desde o primeiro acesso.",
                 },
                 {
                   title: "Mais oportunidades",
                   description:
-                    "A estrutura é pensada para facilitar contato, captar interesse e transformar visitas em oportunidades reais.",
+                    "A estrutura e pensada para facilitar contato, captar interesse e transformar visitas em oportunidades reais.",
                 },
                 {
                   title: "Base para crescer",
                   description:
-                    "Depois do projeto, sua empresa já fica pronta para evoluir com tráfego, CRM, automação e IA.",
+                    "Depois do projeto, sua empresa ja fica pronta para evoluir com trafego, CRM, automacao e IA.",
                 },
               ].map((item) => (
                 <div
@@ -828,8 +869,8 @@ function TrustBand() {
     <section className="mx-auto max-w-7xl px-6 py-24">
       <SectionTitle
         eyebrow="Valor percebido"
-        title="Por que esse tipo de projeto muda a percepção do cliente"
-        subtitle="Empresas não crescem só com presença online. Crescem quando a presença transmite força, clareza e confiança comercial."
+        title="Por que esse tipo de projeto muda a percepcao do cliente"
+        subtitle="Empresas nao crescem so com presenca online. Crescem quando a presenca transmite forca, clareza e confianca comercial."
       />
 
       <motion.div
@@ -841,18 +882,18 @@ function TrustBand() {
       >
         {[
           {
-            title: "Percepção premium",
-            text: "Design e posicionamento para negócios que precisam transmitir nível, segurança e autoridade.",
+            title: "Percepcao premium",
+            text: "Design e posicionamento para negocios que precisam transmitir nivel, seguranca e autoridade.",
             icon: ShieldCheck,
           },
           {
-            title: "Estratégia comercial",
-            text: "Cada página é pensada para facilitar contato, aumentar conversão e preparar crescimento.",
+            title: "Estrategia comercial",
+            text: "Cada pagina e pensada para facilitar contato, aumentar conversao e preparar crescimento.",
             icon: BarChart3,
           },
           {
             title: "Pronto para evoluir",
-            text: "A base certa hoje permite escalar para tráfego, CRM, automação e IA amanhã.",
+            text: "A base certa hoje permite escalar para trafego, CRM, automacao e IA amanha.",
             icon: CheckCircle2,
           },
         ].map((item) => {
@@ -904,15 +945,15 @@ function StatementSection() {
           </div>
 
           <h2 className="mt-6 text-4xl md:text-6xl font-extrabold leading-[0.96] tracking-tight text-white">
-            Não é só um site.
+            Nao e so um site.
             <br />
-            É uma base de crescimento para a sua empresa.
+            E uma base de crescimento para a sua empresa.
           </h2>
 
           <p className="mx-auto mt-6 max-w-3xl text-base md:text-lg leading-8 text-white/60">
-            A ALTUM combina design, clareza comercial e visão estratégica para
-            transformar presença digital em percepção de valor, confiança e
-            geração de oportunidades.
+            A ALTUM combina design, clareza comercial e visao estrategica para
+            transformar presenca digital em percepcao de valor, confianca e
+            geracao de oportunidades.
           </p>
         </div>
       </motion.div>
@@ -937,16 +978,16 @@ function FinalCTA() {
         <div className="relative mx-auto max-w-4xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/75">
             <span className="h-2 w-2 rounded-full bg-[#F56E0F]" />
-            Próximo passo
+            Proximo passo
           </div>
 
           <h2 className="mt-6 text-4xl md:text-6xl font-extrabold tracking-tight leading-[0.96] text-white">
-            Quer um projeto no nível real do seu negócio?
+            Quer um projeto no nivel real do seu negocio?
           </h2>
 
           <p className="mx-auto mt-5 max-w-3xl text-base md:text-lg leading-8 text-white/60">
-            A ALTUM cria páginas premium com foco em percepção, posicionamento
-            e conversão — e prepara a estrutura para sua empresa crescer com mais
+            A ALTUM cria paginas premium com foco em percepcao, posicionamento
+            e conversao - e prepara a estrutura para sua empresa crescer com mais
             clareza, mais autoridade e mais resultado.
           </p>
 
@@ -957,7 +998,7 @@ function FinalCTA() {
             >
               <span className="relative z-10 flex items-center gap-2">
                 <MessageCircle className="h-5 w-5" />
-                Solicitar análise
+                Solicitar analise
               </span>
               <div className="absolute inset-0 bg-black/5 opacity-0 transition group-hover:opacity-100" />
             </a>
@@ -980,8 +1021,8 @@ function Footer() {
   return (
     <footer className="border-t border-white/10">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-sm text-white/45 md:flex-row md:items-center md:justify-between">
-        <div>ALTUM — Projetos digitais, operação e crescimento.</div>
-        <div>Portfólio premium</div>
+        <div>ALTUM - Projetos digitais, operacao e crescimento.</div>
+        <div>Portfolio premium</div>
       </div>
     </footer>
   );
@@ -989,17 +1030,22 @@ function Footer() {
 
 export default function PortfolioPage() {
   return (
-    <main className="min-h-screen bg-[#060608] text-white">
-      <TopNav />
-      <Hero />
-      <ProjectsShowcase />
-      <ImpactSection />
-      <ProcessTimeline />
-      <EcosystemSection />
-      <TrustBand />
-      <StatementSection />
-      <FinalCTA />
-      <Footer />
+    <main className="relative min-h-screen overflow-x-hidden bg-[#060608] text-white">
+      <ScrollProgress />
+      <AmbientStage />
+      <div className="relative z-10">
+        <TopNav />
+        <Hero />
+        <ProjectsShowcase />
+        <ImpactSection />
+        <ProcessTimeline />
+        <EcosystemSection />
+        <TrustBand />
+        <StatementSection />
+        <FinalCTA />
+        <Footer />
+      </div>
     </main>
   );
 }
+
