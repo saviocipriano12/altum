@@ -810,97 +810,75 @@ function ProjectsShowcase() {
       cta: "Quero um site institucional premium",
       projects: [
         {
-          name: "Clinica Estetica Premium",
-          badge: "Projeto ALTUM",
-          niche: "Institucional - Clinica",
-          result: "Mais percepcao premium e mais agendamentos",
-          description:
-            "Projeto desenvolvido para fortalecer autoridade, elevar percepcao de valor e facilitar o contato comercial com mais clareza.",
-          image: "/images/portfolio/clinica.jpg",
-          href: "#",
-        },
-        {
-          name: "Advocacia Empresarial",
-          badge: "Projeto ALTUM",
-          niche: "Institucional - Juridico",
-          result: "Mais credibilidade e mais contatos",
-          description:
-            "Estrutura institucional focada em confianca, apresentacao de servicos e geracao de oportunidades qualificadas.",
-          image: "/images/portfolio/advogado.jpg",
-          href: "#",
-        },
-        {
-          name: "Energia Solar B2B",
-          badge: "Projeto ALTUM",
-          niche: "Institucional - B2B",
-          result: "Pipeline mais previsivel",
-          description:
-            "Ecossistema pensado para captacao, avanco no funil e organizacao comercial com mais consistencia.",
-          image: "/images/portfolio/solar.jpg",
-          href: "#",
-        },
-      ],
-    },
-    {
-      slug: "landing-pages",
-      label: "Landing Pages",
-      eyebrow: "Landing Pages",
-      title: "Landing pages feitas para captar, convencer e acelerar vendas",
-      subtitle:
-        "Paginas de alta conversao criadas para campanhas, trafego pago, lancamentos e geracao de leads com mais performance.",
-      benefits: [
-        "Mais leads",
-        "Mais performance",
-        "Mais velocidade comercial",
-      ],
-      cta: "Quero uma landing page de alta conversao",
-      projects: [
-        {
-          name: "LP Vitta Prime",
-          badge: "Projeto ALTUM",
-          niche: "Landing Page - Saude",
-          result: "+82% leads qualificados",
-          description:
-            "Landing page desenhada para capturar leads com design emocional, copy estrategica e foco total em conversao.",
-          image: "/cases/vittaprime-1600.jpg",
-          href: "#",
-        },
-        {
-          name: "LP Campanha Premium",
-          badge: "Projeto ALTUM",
-          niche: "Landing Page - Captacao",
-          result: "Mais interesse e mais contato",
-          description:
-            "Estrutura voltada para reduzir friccao, destacar proposta de valor e transformar clique em conversa comercial.",
-          image: "/images/portfolio/clinica.jpg",
-          href: "#",
-        },
-      ],
-    },
-    {
-      slug: "servicos",
-      label: "Servicos",
-      eyebrow: "Sites para Servicos",
-      title: "Sites pensados para negocios que vivem de orcamento, contato e confianca",
-      subtitle:
-        "Projetos ideais para empresas de servicos que precisam transmitir profissionalismo, facilitar WhatsApp e gerar mais pedidos.",
-      benefits: [
-        "Mais confianca",
-        "Mais pedidos de orcamento",
-        "Mais presenca local",
-      ],
-      cta: "Quero um site para servicos",
-      projects: [
-        {
-          name: "AJ Painting and Cleaning",
-          badge: "Projeto ALTUM",
-          niche: "Servicos - Internacional",
-          result: "+120% solicitacoes de orcamento",
-          description:
-            "Site bilingue otimizado para captacao de leads, SEO local e apresentacao premium de servicos residenciais nos EUA.",
-          image: "/cases/ajpainting-1600.jpg",
-          href: "https://ajpaintingandcleaning.com",
-        },
+  name: "Erika Viana Advocacia",
+  badge: "Projeto ALTUM",
+  niche: "Institucional - Jurídico",
+  result: "Mais autoridade e mais contatos qualificados",
+  description:
+    "Site institucional desenvolvido para posicionar a advogada como referência, com foco em autoridade, clareza na comunicação e geração de contatos diretos via WhatsApp.",
+  image: "/images/portfolio/erika.jpg",
+  href: "https://erikaviana.adv.br/",
+},
+{
+  name: "Brenda Prinsk Advocacia",
+  badge: "Projeto ALTUM",
+  niche: "Institucional - Jurídico",
+  result: "Mais percepção de valor e mais conversões",
+  description:
+    "Estrutura premium com foco em captação de leads, combinando design sofisticado, copy estratégica e formulário otimizado para geração de oportunidades.",
+  image: "/images/portfolio/brenda.jpg",
+  href: "https://brendaprinskadvogada.com/",
+},
+{
+  name: "Thaise Germano Advocacia",
+  badge: "Projeto ALTUM",
+  niche: "Institucional - Jurídico",
+  result: "Mais posicionamento e presença digital",
+  description:
+    "Projeto criado para fortalecer marca pessoal e transmitir excelência jurídica, com uma experiência visual elegante e comunicação focada em confiança.",
+  image: "/images/portfolio/thaise.jpg",
+  href: "https://thaisegermanoadvocacia.com.br/",
+},
+{
+  name: "Lumax Gessos e Ferragens",
+  badge: "Projeto ALTUM",
+  niche: "Institucional - Construção",
+  result: "Mais pedidos de orçamento e presença local",
+  description:
+    "Site estruturado para destacar produtos, fortalecer presença regional e facilitar solicitações de orçamento com clareza e rapidez.",
+  image: "/images/portfolio/lumax.jpg",
+  href: "https://lumax.acaos.com.br/",
+},
+{
+  name: "4D Soluções em TI",
+  badge: "Projeto ALTUM",
+  niche: "Institucional - Tecnologia",
+  result: "Mais geração de leads e autoridade técnica",
+  description:
+    "Projeto focado em posicionamento B2B, com comunicação clara, prova social e estrutura voltada para geração de oportunidades comerciais.",
+  image: "/images/portfolio/4d.jpg",
+  href: "https://sitev4.4d.bsb.br/",
+},
+{
+  name: "MOV Mobilidade Urbana",
+  badge: "Projeto ALTUM",
+  niche: "Institucional - Mobilidade",
+  result: "Mais engajamento e clareza de produto",
+  description:
+    "Plataforma desenvolvida para apresentar soluções de mobilidade urbana com linguagem acessível, design dinâmico e foco em experiência do usuário.",
+  image: "/images/portfolio/mov.jpg",
+  href: "https://mov1.com.br/",
+},
+{
+  name: "João Vitor Barbosa Psicologia",
+  badge: "Projeto ALTUM",
+  niche: "Institucional - Saúde",
+  result: "Mais agendamentos e conexão com pacientes",
+  description:
+    "Site pensado para transmitir acolhimento e profissionalismo, facilitando o agendamento e fortalecendo a confiança desde o primeiro contato.",
+  image: "/images/portfolio/psicologo.jpg",
+  href: "https://psijoaovitorbarbosa.com/",
+},
       ],
     },
   ];
