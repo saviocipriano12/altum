@@ -14,6 +14,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ElementType, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import {
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   MessageCircle,
   Sparkles,
   Target,
@@ -1027,43 +1029,43 @@ function OpenBookCarousel({
   const prev = () => setIndex((prev) => (prev - 1 + items.length) % items.length);
   const next = () => setIndex((prev) => (prev + 1) % items.length);
 
-if (isMobile) {
-  return (
-    <div className="md:hidden">
-      <div className="relative">
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-[#060608] to-transparent" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-[#060608] to-transparent" />
+  if (isMobile) {
+    return (
+      <div className="md:hidden">
+        <div className="relative">
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-[#060608] to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-[#060608] to-transparent" />
 
-        <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {items.map((item) => (
-            <div
-              key={item.name}
-              className="min-w-[86%] snap-center first:ml-2 last:mr-10"
-            >
-              <MobileCaseCard item={item} />
-            </div>
-          ))}
+          <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {items.map((item) => (
+              <div
+                key={item.name}
+                className="min-w-[86%] snap-center first:ml-2 last:mr-10"
+              >
+                <MobileCaseCard item={item} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-center gap-2">
+          {items.map((_, i) => {
+            const active = i === index;
+            return (
+              <button
+                key={i}
+                onClick={() => setIndex(i)}
+                aria-label={`Ir para o projeto ${i + 1}`}
+                className={`h-2.5 rounded-full transition-all ${
+                  active ? "w-8 bg-[#F56E0F]" : "w-2.5 bg-white/20 hover:bg-white/35"
+                }`}
+              />
+            );
+          })}
         </div>
       </div>
-
-      <div className="mt-5 flex justify-center gap-2">
-        {items.map((_, i) => {
-          const active = i === index;
-          return (
-            <button
-              key={i}
-              onClick={() => setIndex(i)}
-              aria-label={`Ir para o projeto ${i + 1}`}
-              className={`h-2.5 rounded-full transition-all ${
-                active ? "w-8 bg-[#F56E0F]" : "w-2.5 bg-white/20 hover:bg-white/35"
-              }`}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+    );
+  }
 
   const prevIndex = (index - 1 + items.length) % items.length;
   const nextIndex = (index + 1) % items.length;
@@ -1075,7 +1077,7 @@ if (isMobile) {
         onClick={prev}
         className="absolute left-0 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-white/[0.06] p-3 text-white backdrop-blur-md transition hover:bg-white/[0.12]"
       >
-        <
+        <ChevronLeft className="h-5 w-5" />
       </button>
 
       <button
@@ -1083,7 +1085,7 @@ if (isMobile) {
         onClick={next}
         className="absolute right-0 top-1/2 z-20 translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-white/[0.06] p-3 text-white backdrop-blur-md transition hover:bg-white/[0.12]"
       >
-        >
+        <ChevronRight className="h-5 w-5" />
       </button>
 
       <div className="relative h-[620px] overflow-hidden rounded-[2.6rem]">
