@@ -18,6 +18,14 @@ type ChatListItem = Record<string, unknown> & {
   aiState: ChatStateItem | null;
 };
 
+type ContactProfileItem = {
+  phone?: string;
+  leadId?: string;
+  name?: string;
+  company?: string;
+  photoUrl?: string;
+};
+
 function toTime(value: unknown) {
   if (!value) return 0;
   if (typeof value === "number") return value;
@@ -38,6 +46,38 @@ function toTime(value: unknown) {
     return (value as { _seconds: number })._seconds * 1000;
   }
   return 0;
+}
+
+function cleanString(value: unknown, max = 240) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, max);
+}
+
+async function listContactProfiles(tenantId: string) {
+  const snap = await adminDb
+    .collection("contacts")
+    .where("tenantId", "==", tenantId)
+    .limit(500)
+    .get();
+
+  const byPhone = new Map<string, ContactProfileItem>();
+  const byLeadId = new Map<string, ContactProfileItem>();
+
+  for (const doc of snap.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const item: ContactProfileItem = {
+      phone: cleanString(data.phone, 60),
+      leadId: cleanString(data.leadId, 180),
+      name: cleanString(data.name, 180),
+      company: cleanString(data.company, 180),
+      photoUrl: cleanString(data.photoUrl, 1000),
+    };
+
+    if (item.phone) byPhone.set(item.phone, item);
+    if (item.leadId) byLeadId.set(item.leadId, item);
+  }
+
+  return { byPhone, byLeadId };
 }
 
 export async function GET(
@@ -82,10 +122,33 @@ export async function GET(
       })
     );
 
+    const contacts = await listContactProfiles(tenantId);
+
     const items: ChatListItem[] = snap.docs
       .map((doc) => ({
         id: doc.id,
-        ...(doc.data() as Record<string, unknown>),
+        ...(() => {
+          const chat = doc.data() as Record<string, unknown>;
+          const contactPhone = cleanString(chat.contactPhone, 60);
+          const leadId = cleanString(chat.leadId, 180);
+          const profile = contacts.byPhone.get(contactPhone) || contacts.byLeadId.get(leadId);
+          return {
+            ...chat,
+            contactName:
+              cleanString(chat.contactName, 180) ||
+              profile?.name ||
+              cleanString(chat.contactPhone, 60) ||
+              "",
+            contactCompany:
+              cleanString(chat.contactCompany, 180) ||
+              profile?.company ||
+              "",
+            contactPhotoUrl:
+              cleanString(chat.contactPhotoUrl, 1000) ||
+              profile?.photoUrl ||
+              "",
+          };
+        })(),
         aiState: stateMap.get(doc.id) || null,
       }) as ChatListItem)
       .sort((a, b) => toTime(b.lastMessageTime) - toTime(a.lastMessageTime));

@@ -56,6 +56,8 @@ type ChatItem = {
   id: string;
   contactName?: string;
   contactPhone?: string;
+  contactCompany?: string;
+  contactPhotoUrl?: string;
   lastMessage?: string;
   lastMessageTime?: unknown;
   lastClientMessageAt?: unknown;
@@ -219,6 +221,41 @@ type AiFilter = (typeof AI_FILTERS)[number];
 
 function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
+}
+
+function ContactAvatar({
+  name,
+  phone,
+  photoUrl,
+  size = "md",
+}: {
+  name?: string;
+  phone?: string;
+  photoUrl?: string | null;
+  size?: "sm" | "md";
+}) {
+  const dimension = size === "sm" ? "h-11 w-11 text-sm" : "h-12 w-12 text-sm";
+  const src = String(photoUrl || "").trim();
+
+  if (src) {
+    return (
+      <div className={cn("shrink-0 overflow-hidden rounded-full border border-white/10 bg-black/20", dimension)}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={name || phone || "Contato"} className="h-full w-full object-cover" />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(37,211,102,0.16),rgba(255,255,255,0.02))] font-semibold text-[var(--cliente-card-text)]",
+        dimension
+      )}
+    >
+      {getInitials(name || phone)}
+    </div>
+  );
 }
 
 function toDate(value: unknown) {
@@ -472,9 +509,12 @@ function ConversationListItem({
       )}
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(37,211,102,0.16),rgba(255,255,255,0.02))] text-sm font-semibold text-[var(--cliente-card-text)]">
-          {getInitials(chat.contactName || chat.contactPhone)}
-        </div>
+        <ContactAvatar
+          name={chat.contactName}
+          phone={chat.contactPhone}
+          photoUrl={chat.contactPhotoUrl}
+          size="sm"
+        />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
@@ -491,6 +531,12 @@ function ConversationListItem({
                 <span>{formatChannelLabel(chat.channel)}</span>
                 <span>•</span>
                 <span>{chat.assignedUserName || chat.ownerName || "Sem responsavel"}</span>
+                {chat.contactCompany ? (
+                  <>
+                    <span>•</span>
+                    <span className="truncate">{chat.contactCompany}</span>
+                  </>
+                ) : null}
               </div>
             </div>
 
@@ -567,7 +613,7 @@ function MessageBubble({
           </span>
           {mediaLabel && MediaIcon ? (
             <>
-              <span>•</span>
+              <span>â€¢</span>
               <span className="inline-flex items-center gap-1">
                 <MediaIcon className="h-3.5 w-3.5" />
                 {mediaLabel}
@@ -1709,9 +1755,12 @@ export default function ClienteInboxPage() {
           <div className="border-b border-[var(--cliente-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(37,211,102,0.18),rgba(255,255,255,0.02))] text-sm font-semibold text-[var(--cliente-card-text)]">
-                  {getInitials(activeChat?.contactName || activeChat?.contactPhone)}
-                </div>
+                <ContactAvatar
+                  name={activeChat?.contactName}
+                  phone={activeChat?.contactPhone}
+                  photoUrl={activeChat?.contactPhotoUrl}
+                  size="md"
+                />
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-xl font-semibold tracking-tight text-[var(--cliente-card-text)]">
@@ -1729,9 +1778,9 @@ export default function ClienteInboxPage() {
                     <span>
                       Responsavel: {activeChat?.assignedUserName || activeChat?.ownerName || "Sem atribuicao"}
                     </span>
-                    <span>•</span>
+                    <span>â€¢</span>
                     <span>{formatQueueStatusLabel(activeChat?.queueStatus)}</span>
-                    <span>•</span>
+                    <span>â€¢</span>
                     <span>Ultima atividade {formatRelative(activeChat?.lastMessageTime)}</span>
                   </div>
                 </div>

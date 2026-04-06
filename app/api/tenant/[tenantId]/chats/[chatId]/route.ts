@@ -207,6 +207,38 @@ async function resolveLead(chat: ChatDoc, tenantId: string) {
   };
 }
 
+async function resolveContactProfile(chat: ChatDoc, tenantId: string) {
+  const phone = cleanString(chat.contactPhone, 60);
+  const leadId = cleanString(chat.leadId, 180);
+
+  let query = adminDb.collection("contacts").where("tenantId", "==", tenantId).limit(1);
+  if (phone) {
+    query = adminDb
+      .collection("contacts")
+      .where("tenantId", "==", tenantId)
+      .where("phone", "==", phone)
+      .limit(1);
+  } else if (leadId) {
+    query = adminDb
+      .collection("contacts")
+      .where("tenantId", "==", tenantId)
+      .where("leadId", "==", leadId)
+      .limit(1);
+  } else {
+    return null;
+  }
+
+  const snap = await query.get();
+  if (snap.empty) return null;
+
+  const data = snap.docs[0]?.data() as Record<string, unknown>;
+  return {
+    name: cleanString(data.name, 180),
+    company: cleanString(data.company, 180),
+    photoUrl: cleanString(data.photoUrl, 1000),
+  };
+}
+
 async function listChatNotes(tenantId: string, chatId: string) {
   const snap = await adminDb
     .collection("chat_notes")
@@ -371,12 +403,13 @@ export async function GET(
     assertTenantRole(membership, "client_viewer");
 
     const { chat } = await getChatSnapshot(chatId, tenantId);
-    const [lead, aiState, notes, teamMembers, settings] = await Promise.all([
+    const [lead, aiState, notes, teamMembers, settings, contactProfile] = await Promise.all([
       resolveLead(chat, tenantId),
       getChatState(tenantId, chatId),
       listChatNotes(tenantId, chatId),
       listTeamMembers(tenantId),
       getTenantSettings(tenantId),
+      resolveContactProfile(chat, tenantId),
     ]);
     const [leadTasks, leadNotes, leadBudgets, leadFinance] = lead
       ? await Promise.all([
@@ -394,6 +427,19 @@ export async function GET(
       chat: {
         id: chatId,
         ...chat,
+        contactName:
+          cleanString(chat.contactName, 180) ||
+          contactProfile?.name ||
+          cleanString(chat.contactPhone, 60) ||
+          "",
+        contactCompany:
+          cleanString((chat as Record<string, unknown>).contactCompany, 180) ||
+          contactProfile?.company ||
+          "",
+        contactPhotoUrl:
+          cleanString((chat as Record<string, unknown>).contactPhotoUrl, 1000) ||
+          contactProfile?.photoUrl ||
+          "",
         tags: parseTags(chat.tags),
       },
       lead,

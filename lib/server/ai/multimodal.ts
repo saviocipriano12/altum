@@ -236,12 +236,15 @@ async function analyzeImage(buffer: Buffer, contentType: string) {
         {
           role: "system",
           content:
-            "Voce descreve imagens recebidas em conversas comerciais. Responda em portugues do Brasil, em no maximo 2 frases, focando no que um agente comercial deve entender do contexto visual.",
+            "Voce ajuda um agente comercial a entender imagens recebidas por WhatsApp. Responda em portugues do Brasil, em ate 2 frases, dizendo o que aparece e qual parece ser o contexto comercial mais importante.",
         },
         {
           role: "user",
           content: [
-            { type: "text", text: "Descreva essa imagem de forma objetiva para ajudar um agente comercial a continuar a conversa." },
+            {
+              type: "text",
+              text: "Descreva essa imagem de forma objetiva para um agente comercial. Se houver anuncio, conversa, tela, oferta, marca, problema visual ou metrica relevante, cite isso.",
+            },
             { type: "image_url", image_url: { url: dataUrl } },
           ],
         },
@@ -259,6 +262,44 @@ async function analyzeImage(buffer: Buffer, contentType: string) {
   return cleanText(payload.choices?.[0]?.message?.content, 700);
 }
 
+async function summarizeTextDocument(text: string, mediaName: string) {
+  const apiKey = process.env.OPENAI_API_KEY || "";
+  const extracted = cleanText(text, 5000);
+  if (!apiKey || !extracted) return "";
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Voce resume documentos recebidos em conversas comerciais. Responda em portugues do Brasil, em no maximo 2 frases, destacando o tema principal e qualquer informacao util para o proximo passo comercial.",
+        },
+        {
+          role: "user",
+          content: `Documento: ${mediaName || "arquivo"}\n\nConteudo:\n${extracted}`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`document_summary_http_${response.status}`);
+  }
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  return cleanText(payload.choices?.[0]?.message?.content, 700);
+}
+
 async function summarizeDocument(buffer: Buffer, contentType: string, mediaName: string) {
   if (contentType.startsWith("image/")) {
     return analyzeImage(buffer, contentType);
@@ -267,7 +308,8 @@ async function summarizeDocument(buffer: Buffer, contentType: string, mediaName:
   if (looksLikeTextDocument(contentType)) {
     const extracted = cleanText(buffer.toString("utf-8"), 1200);
     if (extracted) {
-      return `Trecho do documento: ${extracted}`;
+      const llmSummary = await summarizeTextDocument(extracted, mediaName);
+      return llmSummary || `Trecho do documento: ${extracted}`;
     }
   }
 
