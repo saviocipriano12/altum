@@ -25,6 +25,8 @@ export type ConversationAgentInput = {
   tenantId: string;
   chatId: string;
   inboundText: string;
+  multimodalSummary?: string;
+  messageType?: string;
   channel: string;
   contactName?: string;
   runtimeStateSummary?: string;
@@ -187,6 +189,8 @@ function getProviderEnv(provider: AltumAiProvider) {
 
 function buildPrompt(input: ConversationAgentInput) {
   const inboundText = sanitizeText(input.inboundText, 700);
+  const multimodalSummary = sanitizeText(input.multimodalSummary, 280);
+  const messageType = sanitizeText(input.messageType, 40);
   const normalizedInbound = inboundText.toLowerCase();
   const isShortFollowup =
     normalizedInbound.length > 0 &&
@@ -245,6 +249,8 @@ function buildPrompt(input: ConversationAgentInput) {
     `Objetivo da IA: ${sanitizeText(input.objective, 140) || "entender o lead, orientar bem e avancar a conversa"}.`,
     `Tom esperado: ${sanitizeText(input.toneOfVoice, 80) || "claro e humano"}.`,
     `Canal: ${input.channel}. Nome do contato: ${sanitizeText(input.contactName, 80) || "lead"}.`,
+    multimodalSummary ? `Resumo multimodal: ${multimodalSummary}` : "",
+    messageType ? `Tipo de mensagem: ${messageType}` : "",
     input.runtimeStateSummary ? `Contexto vivo da conversa:\n${sanitizeText(input.runtimeStateSummary, 220)}` : "",
     input.leadMemorySummary ? `Memoria relevante:\n${sanitizeText(input.leadMemorySummary, 220)}` : "",
     isShortFollowup ? "A mensagem atual parece uma continuidade curta. Continue do ponto vivo da conversa." : "",

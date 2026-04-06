@@ -2183,6 +2183,7 @@ export async function handleIncomingMessage(
     message: incomingMessage,
   });
   const inboundText = sanitizeText(multimodal.normalizedText || summarizeMessageForAgent(incomingMessage), 1400);
+  const messageType = sanitizeText(incomingMessage.type, 40);
 
   const aiConfig = parseAiConfig(tenantSettings);
   const runtimeProvider = aiConfig.runtimePolicy.primaryProvider;
@@ -2304,6 +2305,8 @@ export async function handleIncomingMessage(
             tenantId,
             chatId,
             inboundText,
+            multimodalSummary: multimodal.summary || undefined,
+            messageType,
             channel: chatChannel,
             contactName: preferredContactName,
             runtimeStateSummary: runtimeStateSummary || undefined,
