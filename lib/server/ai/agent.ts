@@ -733,6 +733,8 @@ function makeLeadFacingReply(input: {
   tenantAi: TenantAiConfig;
   decision: Exclude<Decision, "skip" | "handoff">;
   inboundText: string;
+  messageType?: string | null;
+  multimodalSummary?: string | null;
   kbDocs: KbDoc[];
   conversation: ConversationMessage[];
   contactName?: string | null;
@@ -751,6 +753,10 @@ function makeLeadFacingReply(input: {
   const asksIdentity = textHasAny(normalizedInbound, ["qual e o seu nome", "qual seu nome", "quem e voce", "quem é você"]);
   const asksWellbeing = textHasAny(normalizedInbound, ["como voce esta", "como voce ta", "como vai", "tudo bem"]);
   const thanks = textHasAny(normalizedInbound, ["obrigado", "obrigada", "valeu"]);
+  const normalizedType = sanitizeText(input.messageType, 20).toLowerCase();
+  const multimodalNote = sanitizeText(input.multimodalSummary, 220);
+  const shouldAskNameLater =
+    !knownFirstName && !hasAskedName && input.conversation.filter((item) => item.sender === "client").length >= 2;
   const nextMandatoryQuestion =
     pickNextMandatoryQuestion(input.conversation, input.tenantAi.mandatoryQuestions) ||
     "Hoje o foco maior está em gerar demanda, organizar atendimento ou converter melhor?";
@@ -770,6 +776,21 @@ function makeLeadFacingReply(input: {
 
   if (asksIdentity) {
     return "Eu sou a assistente comercial da ALTUM. Se quiser, eu posso te ajudar a entender o melhor caminho para o seu caso.";
+  }
+
+  if (normalizedType === "audio" && multimodalNote) {
+    const tail = input.decision === "ask_more" ? ` ${nextMandatoryQuestion}` : "";
+    return `Perfeito, recebi seu audio. ${multimodalNote}${tail}`.trim();
+  }
+
+  if (normalizedType === "image" && multimodalNote) {
+    const tail = input.decision === "ask_more" ? ` ${nextMandatoryQuestion}` : "";
+    return `Perfeito, recebi a imagem. ${multimodalNote}${tail}`.trim();
+  }
+
+  if (normalizedType === "document" && multimodalNote) {
+    const tail = input.decision === "ask_more" ? ` ${nextMandatoryQuestion}` : "";
+    return `Perfeito, recebi o arquivo. ${multimodalNote}${tail}`.trim();
   }
 
   if (asksWellbeing && !turn.hasBusinessTerms) {
@@ -798,20 +819,37 @@ function makeLeadFacingReply(input: {
   }
 
   if (input.decision === "ask_more") {
-    return inboundHasPriceSignal
+    const base = inboundHasPriceSignal
       ? "Consigo te passar isso, sim. Antes, me conta rapidinho seu momento para eu nao te falar algo fora do seu caso."
       : `Me ajuda com mais um ponto so: ${nextMandatoryQuestion}`;
+    if (shouldAskNameLater && !base.includes("?")) {
+      return `${base} Posso te chamar de como?`;
+    }
+    return base;
   }
 
   if (primaryKbSnippet) {
-    return `Entendi. ${primaryKbSnippet}`;
+    const base = `Entendi. ${primaryKbSnippet}`;
+    if (shouldAskNameLater && !base.includes("?")) {
+      return `${base} Posso te chamar de como?`;
+    }
+    return base;
   }
 
   if (inboundHasPriceSignal) {
-    return "Entendi. Consigo te orientar nisso, sim. Se quiser, eu te explico o formato que tende a fazer mais sentido para o seu momento.";
+    const base =
+      "Entendi. Consigo te orientar nisso, sim. Se quiser, eu te explico o formato que tende a fazer mais sentido para o seu momento.";
+    if (shouldAskNameLater && !base.includes("?")) {
+      return `${base} Posso te chamar de como?`;
+    }
+    return base;
   }
 
-  return "Entendi. Me conta um pouco melhor o teu momento hoje.";
+  const defaultReply = "Entendi. Me conta um pouco melhor o teu momento hoje.";
+  if (shouldAskNameLater && !defaultReply.includes("?")) {
+    return `${defaultReply} Posso te chamar de como?`;
+  }
+  return defaultReply;
 }
 
 function summarizeForResponsible(messages: ConversationMessage[]) {
@@ -2765,6 +2803,8 @@ export async function handleIncomingMessage(
         tenantAi: aiConfig,
         decision: choice.decision,
         inboundText,
+        messageType: sanitizeText(incomingMessage.type, 40) || null,
+        multimodalSummary: multimodal.summary || null,
         kbDocs,
         conversation,
         contactName: preferredContactName || null,
