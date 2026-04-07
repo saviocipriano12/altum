@@ -255,26 +255,26 @@ function chooseNextQuestion(input: {
     .join(" ");
 
   if (!input.businessType) {
-    return "Qual e o nicho ou tipo de empresa de voces hoje?";
+    return "Qual e o tipo de negocio de voces?";
   }
   if (!input.primaryGoal) {
-    return "Hoje qual e o principal objetivo comercial que voce quer destravar primeiro?";
+    return "Qual e o principal resultado que voce quer destravar agora?";
   }
   if (!input.currentChannels) {
-    return "Hoje os leads de voces entram mais por onde: WhatsApp, Instagram, trafego, site ou indicacao?";
+    return "Hoje voces captam mais por onde?";
   }
   if (!input.budgetBand && !textHasAny(clientCorpus, ["orcamento", "investimento", "nao tenho"])) {
-    return "Hoje voces ja pensam em alguma faixa de investimento para isso ou ainda estao entendendo o caminho?";
+    return "Vocês ja tem uma faixa de investimento em mente ou ainda estao avaliando?";
   }
   if (!input.urgency) {
-    return "Isso e algo que voce quer colocar de pe ainda agora ou pode amadurecer um pouco?";
+    return "Isso e prioridade agora ou pode caminhar com mais calma?";
   }
 
   return (
     input.mandatoryQuestions.find((question) => {
       const normalized = sanitizeText(question, 200).toLowerCase();
       return !clientCorpus.includes(normalized.slice(0, 18));
-    }) || "Se fizer sentido, eu te mostro o proximo passo mais aderente para o seu caso."
+    }) || "Se fizer sentido, eu te explico o proximo passo para o seu caso."
   );
 }
 
@@ -677,7 +677,7 @@ export function planAltumAgentDecision(input: {
       objectionType,
       commercialTemperature,
       nextQuestion:
-        "Perfeito. Antes de eu te levar para reuniao sem contexto, me diz em uma linha o que voce quer resolver primeiro para eu te direcionar direito.",
+        "Perfeito. Antes de eu te levar para reuniao sem contexto, me diz rapidinho o que voce quer resolver primeiro para eu te direcionar direito.",
       nextAction: "coletar_contexto_comercial_minimo",
       recommendedOffer,
     };
@@ -720,7 +720,7 @@ export function planAltumAgentDecision(input: {
       objectionType,
       commercialTemperature,
       nextQuestion: hasKnownLeadName(input.contactName)
-        ? "Me conta em uma linha o que voce quer melhorar hoje: gerar mais leads, organizar atendimento ou vender melhor?"
+        ? "Me conta rapidinho o que voce quer melhorar hoje."
         : "Antes de tudo, como voce prefere que eu te chame?",
       nextAction: "abrir_descoberta_comercial",
       recommendedOffer,
@@ -739,7 +739,7 @@ export function planAltumAgentDecision(input: {
       objectionType,
       commercialTemperature,
       nextQuestion: hasContext
-        ? "Se fizer sentido, eu te mostro o proximo passo mais aderente para o seu caso sem empurrar escopo errado. Quer que eu te resuma isso?"
+        ? "Se fizer sentido, eu te mostro o proximo passo mais indicado para o seu caso, sem empurrar nada. Quer que eu te resuma?"
         : known.primaryGoal
         ? chooseNextQuestion({
             messages: input.conversation,
@@ -769,7 +769,7 @@ export function planAltumAgentDecision(input: {
       commercialTemperature,
       nextQuestion:
         known.budgetBand || known.urgency
-          ? "Se fizer sentido, eu te mostro o proximo passo mais aderente para isso sem te empurrar escopo errado. Quer que eu te resuma?"
+          ? "Se fizer sentido, eu te mostro o proximo passo mais indicado para isso, sem te empurrar nada. Quer que eu te resuma?"
           : "So para eu te orientar com responsabilidade: isso e algo urgente para agora ou ainda esta no momento de entender o caminho?",
       nextAction: "conduzir_para_diagnostico_ou_reuniao",
       recommendedOffer,
@@ -887,10 +887,10 @@ export function planAltumAgentDecision(input: {
       commercialTemperature,
       nextQuestion:
         intent === "budget_objection"
-          ? "Se fizer sentido, eu consigo te mostrar o caminho mais enxuto para validar isso sem dar um passo maior que o necessario. Quer que eu te resuma?"
+          ? "Se fizer sentido, eu consigo te mostrar um caminho mais enxuto para validar isso sem dar um passo maior que o necessario. Quer que eu te resuma?"
           : intent === "timing_objection"
             ? "Se te ajudar, eu te deixo isso em um proximo passo bem objetivo para voce avaliar sem perder tempo. Quer que eu te resuma?"
-            : "Se fizer sentido, eu te mostro em uma linha onde isso encaixa no seu caso para voce avaliar com mais criterio. Quer que eu faca isso?",
+            : "Se fizer sentido, eu te explico de forma direta onde isso encaixa no seu caso para voce avaliar com mais criterio. Quer que eu faca isso?",
       nextAction:
         intent === "budget_objection"
           ? "tratar_objecao_orcamento"
@@ -988,7 +988,7 @@ export function planAltumAgentDecision(input: {
       objectionType,
       commercialTemperature,
       nextQuestion: known.urgency
-        ? "Se fizer sentido, eu te mostro o proximo passo mais aderente para destravar isso no seu caso. Quer que eu te resuma?"
+        ? "Se fizer sentido, eu te mostro o proximo passo mais indicado para destravar isso no seu caso. Quer que eu te resuma?"
         : "Isso e uma prioridade para agora ou algo que voces querem estruturar nas proximas semanas?",
       nextAction:
         readyForClosingStep && preferredClosingMotion === "proposal"
@@ -1009,7 +1009,7 @@ export function planAltumAgentDecision(input: {
       intent,
       objectionType,
       commercialTemperature,
-      nextQuestion: "Se te ajudar, eu consigo resumir em uma linha o caminho mais aderente para o seu caso hoje. Quer que eu faca isso?",
+      nextQuestion: "Se te ajudar, eu consigo resumir de forma direta o caminho mais indicado para o seu caso hoje. Quer que eu faca isso?",
       nextAction: "tratar_objecao_suave",
       recommendedOffer,
     };
@@ -1026,7 +1026,7 @@ export function planAltumAgentDecision(input: {
     objectionType,
     commercialTemperature,
     nextQuestion:
-      "Se fizer sentido, eu te mostro o proximo passo mais aderente para o seu caso sem te empurrar escopo errado. Quer que eu te resuma isso?",
+      "Se fizer sentido, eu te mostro o proximo passo mais indicado para o seu caso, sem empurrar nada. Quer que eu te resuma?",
     nextAction:
       readyForClosingStep && preferredClosingMotion === "proposal"
         ? "preparar_proposta_comercial"
@@ -1149,7 +1149,7 @@ export function writeAltumAgentReply(input: {
 
     if (input.plan.objectionType === "timing") {
       return [
-        "Entendo. Para nao te tomar tempo, eu consigo resumir o caminho mais aderente em uma linha e voce avalia no seu ritmo.",
+        "Entendo. Para nao te tomar tempo, eu consigo resumir o caminho mais indicado de forma direta e voce avalia no seu ritmo.",
         input.plan.nextQuestion || "",
       ]
         .filter(Boolean)
@@ -1176,7 +1176,7 @@ export function writeAltumAgentReply(input: {
 
     return [
       "Faz sentido avaliar com calma.",
-      input.plan.nextQuestion || "Se quiser, eu te deixo isso bem mastigado em uma linha para voce decidir com calma.",
+      input.plan.nextQuestion || "Se quiser, eu te deixo isso bem claro e direto para voce decidir com calma.",
     ]
       .filter(Boolean)
       .join(" ");
@@ -1206,7 +1206,7 @@ export function writeAltumAgentReply(input: {
   if (input.plan.responseGoal === "recommend" || input.plan.responseGoal === "move_to_next_step") {
     if (input.plan.nextAction === "agendar_proximo_passo") {
       return [
-        `${bridge} o proximo passo mais aderente aqui e uma conversa curta para encaixar isso direito sem perder tempo.`,
+        `${bridge} o proximo passo mais indicado aqui e uma conversa curta para encaixar isso direito sem perder tempo.`,
         input.plan.nextQuestion || "Se fizer sentido, eu ja deixo esse caminho encaminhado com clareza.",
       ]
         .filter(Boolean)
@@ -1215,17 +1215,17 @@ export function writeAltumAgentReply(input: {
 
     if (input.plan.nextAction === "preparar_proposta_comercial") {
       return [
-        `${bridge} o caminho mais aderente aqui e organizar isso em uma proposta objetiva, sem inflar escopo nem te empurrar algo fora do momento.`,
+        `${bridge} o caminho mais indicado aqui e organizar isso em uma proposta objetiva, sem inflar escopo nem te empurrar algo fora do momento.`,
         input.plan.nextQuestion || "Se fizer sentido, eu sigo nessa linha e estruturo isso de um jeito bem claro.",
       ]
         .filter(Boolean)
         .join(" ");
     }
 
-    const intro = `${bridge} o caminho mais aderente aqui tende a ser ${recommendedOffer || "um diagnostico comercial rapido"}.`;
+    const intro = `${bridge} o caminho mais indicado aqui tende a ser ${recommendedOffer || "um diagnostico comercial rapido"}.`;
     return [
       intro,
-      input.plan.nextQuestion || "Se fizer sentido, eu te mostro o proximo passo mais aderente para avancarmos sem complicar.",
+      input.plan.nextQuestion || "Se fizer sentido, eu te mostro o proximo passo mais indicado para avancarmos sem complicar.",
     ]
       .filter(Boolean)
       .join(" ");
