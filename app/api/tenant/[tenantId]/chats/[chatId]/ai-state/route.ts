@@ -4,10 +4,11 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { getChatState, getChatStateDocId } from "@/lib/server/ai/agent";
+import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { buildManualQueuePatch } from "@/lib/server/chat-operations";
 
 type Body = {
-  action?: "pause" | "resume" | "takeover";
+  action?: "pause" | "resume" | "takeover" | "retry";
   pausedMinutes?: number;
   humanOwnerUserId?: string | null;
 };
@@ -23,6 +24,28 @@ type TenantChatRecord = {
 function clampMinutes(value: unknown, fallback = 240) {
   if (typeof value !== "number" || Number.isNaN(value)) return fallback;
   return Math.min(24 * 60, Math.max(15, Math.round(value)));
+}
+
+function toTime(value: unknown) {
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  if (
+    typeof value === "object" &&
+    value &&
+    "toDate" in value &&
+    typeof (value as { toDate?: () => Date }).toDate === "function"
+  ) {
+    return (value as { toDate: () => Date }).toDate().getTime();
+  }
+  if (
+    typeof value === "object" &&
+    value &&
+    "_seconds" in value &&
+    typeof (value as { _seconds?: number })._seconds === "number"
+  ) {
+    return (value as { _seconds: number })._seconds * 1000;
+  }
+  return 0;
 }
 
 function serializeState(state: Awaited<ReturnType<typeof getChatState>>) {
@@ -78,6 +101,24 @@ async function resolveTenantOwnerMeta(tenantId: string, requestedUserId: string,
   };
 }
 
+async function findLatestClientMessage(chatId: string) {
+  const messagesSnap = await adminDb
+    .collection("messages")
+    .where("chatId", "==", chatId)
+    .limit(200)
+    .get();
+
+  return (
+    messagesSnap.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as { sender?: string; createdAt?: unknown }),
+      }))
+      .filter((message) => String(message.sender || "").toLowerCase() === "client")
+      .sort((a, b) => toTime(b.createdAt) - toTime(a.createdAt))[0] || null
+  );
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string; chatId: string }> }
@@ -120,8 +161,8 @@ export async function POST(
 
     const body = (await req.json()) as Body;
     const action = body.action || "pause";
-    if (action !== "pause" && action !== "resume" && action !== "takeover") {
-      return NextResponse.json({ error: "Acao invalida. Use pause, resume ou takeover." }, { status: 400 });
+    if (action !== "pause" && action !== "resume" && action !== "takeover" && action !== "retry") {
+      return NextResponse.json({ error: "Acao invalida. Use pause, resume, takeover ou retry." }, { status: 400 });
     }
 
     const stateRef = adminDb.collection("chat_state").doc(getChatStateDocId(tenantId, chatId));
@@ -205,6 +246,65 @@ export async function POST(
           createdAt: FieldValue.serverTimestamp(),
         }),
       ]);
+    }
+
+    if (action === "retry") {
+      const currentState = await getChatState(tenantId, chatId);
+      const stillPaused =
+        currentState.aiEnabled === false ||
+        Boolean(currentState.pausedUntil && currentState.pausedUntil.getTime() > Date.now());
+
+      if (stillPaused) {
+        return NextResponse.json(
+          { error: "A IA esta pausada nesta conversa. Retome a IA antes de reprocessar." },
+          { status: 409 }
+        );
+      }
+
+      const latestClientMessage = await findLatestClientMessage(chatId);
+      if (!latestClientMessage?.id) {
+        return NextResponse.json(
+          { error: "Nao encontrei mensagem recente do lead para reprocessar." },
+          { status: 404 }
+        );
+      }
+
+      const queuedJob = await enqueueIncomingMessageJob({
+        tenantId,
+        chatId,
+        messageId: latestClientMessage.id,
+        source: "manual_retry",
+        dedupeKey: `${tenantId}_${latestClientMessage.id}_manual_retry_${Date.now()}`,
+        priority: 5,
+      });
+
+      await stateRef.set(
+        {
+          tenantId,
+          chatId,
+          lastJobStatus: "pending",
+          lastJobError: null,
+          lastDecision: null,
+          lastDecisionReason: "manual_retry_requested",
+          lastJobId: queuedJob.jobId,
+          lastMessageId: latestClientMessage.id,
+          updatedBy: user.uid,
+          updatedByName: user.name,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      const inlineResult = await processAiJobNow(queuedJob.jobId);
+      if (!inlineResult) {
+        await kickAiQueueNow({
+          limit: 2,
+          drain: true,
+          maxBatches: 2,
+          timeoutMs: 10_000,
+        });
+      }
+      triggerAiQueueWorker({ limit: 4, drain: true });
     }
 
     const updatedState = await getChatState(tenantId, chatId);

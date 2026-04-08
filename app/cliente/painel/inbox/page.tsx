@@ -468,6 +468,10 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
     return `IA pausada${updatedByName ? ` por ${updatedByName}` : ""}${suffix}.`;
   }
 
+  if (lastJobStatus === "pending" || lastJobStatus === "processing") {
+    return "IA reprocessando a ultima mensagem desta conversa.";
+  }
+
   if (lastJobStatus === "retrying") {
     return lastJobError
       ? `IA tentando novamente apos falha: ${lastJobError}.`
@@ -481,6 +485,12 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
   }
 
   return "IA pronta para respostas automaticas nesta conversa.";
+}
+
+function shouldOfferAiRetry(chat: Pick<ChatItem, "aiState"> | null | undefined) {
+  const lastJobStatus = String(chat?.aiState?.lastJobStatus || "").trim().toLowerCase();
+  const lastDecision = String(chat?.aiState?.lastDecision || "").trim().toLowerCase();
+  return lastJobStatus === "retrying" || lastJobStatus === "dead_letter" || lastDecision === "skip";
 }
 
 function getSlaState(chat: ChatItem) {
@@ -764,6 +774,7 @@ export default function ClienteInboxPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [sending, setSending] = useState(false);
   const [updatingAi, setUpdatingAi] = useState(false);
+  const [retryingAi, setRetryingAi] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [savingLeadNote, setSavingLeadNote] = useState(false);
@@ -1024,6 +1035,7 @@ export default function ClienteInboxPage() {
   const activeChat = detail?.chat?.id === selectedChat?.id ? (detail?.chat ?? null) : selectedChat;
   const aiPaused = useMemo(() => isAiPaused(activeChat), [activeChat]);
   const aiStateDescription = useMemo(() => getAiStateDescription(activeChat), [activeChat]);
+  const aiRetryAvailable = useMemo(() => shouldOfferAiRetry(activeChat), [activeChat]);
 
   const filteredChats = useMemo(() => {
     return chats.filter((chat) => {
@@ -1175,6 +1187,33 @@ export default function ClienteInboxPage() {
       setError("Falha ao assumir handoff.");
     } finally {
       setUpdatingAi(false);
+    }
+  }
+
+  async function handleRetryAi() {
+    if (!tenant?.tenantId || !selectedChatId || !canOperate) return;
+
+    setRetryingAi(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/ai-state`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "retry",
+        }),
+      });
+      const payload = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao reprocessar a ultima mensagem.");
+        return;
+      }
+
+      await refreshSelected(true);
+    } catch {
+      setError("Falha ao reprocessar a ultima mensagem.");
+    } finally {
+      setRetryingAi(false);
     }
   }
 
@@ -1606,6 +1645,25 @@ export default function ClienteInboxPage() {
           <div className="min-w-[260px] flex-1">
             <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Estado operacional da IA nesta conversa</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{aiStateDescription}</p>
+            {activeChat?.aiState?.lastProcessedAt || activeChat?.aiState?.lastDecision || activeChat?.aiState?.lastJobStatus ? (
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">
+                {activeChat?.aiState?.lastJobStatus ? (
+                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
+                    job {String(activeChat.aiState.lastJobStatus).replaceAll("_", " ")}
+                  </span>
+                ) : null}
+                {activeChat?.aiState?.lastDecision ? (
+                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
+                    decisao {String(activeChat.aiState.lastDecision).replaceAll("_", " ")}
+                  </span>
+                ) : null}
+                {activeChat?.aiState?.lastProcessedAt ? (
+                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
+                    ultimo ciclo {formatDateTime(activeChat.aiState.lastProcessedAt)}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
             <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
               Quando a conversa entra em handoff ou pausa manual, a IA para de responder ate ser retomada novamente.
             </p>
@@ -1636,6 +1694,17 @@ export default function ClienteInboxPage() {
                 Pausar IA agora
               </button>
             )}
+            {aiRetryAvailable ? (
+              <button
+                type="button"
+                onClick={() => void handleRetryAi()}
+                disabled={!selectedChatId || retryingAi || updatingAi || !canOperate || aiPaused}
+                className="inline-flex items-center gap-2 rounded-xl border border-sky-300/20 bg-sky-500/12 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/18 disabled:opacity-50"
+              >
+                {retryingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Reprocessar ultima mensagem
+              </button>
+            ) : null}
           </div>
         </div>
       </PanelCard>
