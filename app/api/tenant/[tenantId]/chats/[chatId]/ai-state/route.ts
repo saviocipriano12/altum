@@ -119,6 +119,63 @@ async function findLatestClientMessage(chatId: string) {
   );
 }
 
+async function queueLatestClientMessage(input: {
+  tenantId: string;
+  chatId: string;
+  stateRefPath: string;
+  userId: string;
+  userName: string;
+  source: "manual_retry" | "resume_pending";
+}) {
+  const latestClientMessage = await findLatestClientMessage(input.chatId);
+  if (!latestClientMessage?.id) {
+    return { queued: false as const, reason: "no_client_message" };
+  }
+
+  const queuedJob = await enqueueIncomingMessageJob({
+    tenantId: input.tenantId,
+    chatId: input.chatId,
+    messageId: latestClientMessage.id,
+    source: input.source,
+    dedupeKey: `${input.tenantId}_${latestClientMessage.id}_${input.source}_${Date.now()}`,
+    priority: input.source === "resume_pending" ? 15 : 5,
+  });
+
+  await adminDb.collection("chat_state").doc(input.stateRefPath).set(
+    {
+      tenantId: input.tenantId,
+      chatId: input.chatId,
+      lastJobStatus: "pending",
+      lastJobError: null,
+      lastDecision: null,
+      lastDecisionReason: input.source === "resume_pending" ? "resume_pending_message" : "manual_retry_requested",
+      lastJobId: queuedJob.jobId,
+      lastMessageId: latestClientMessage.id,
+      updatedBy: input.userId,
+      updatedByName: input.userName,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  const inlineResult = await processAiJobNow(queuedJob.jobId);
+  if (!inlineResult) {
+    await kickAiQueueNow({
+      limit: 2,
+      drain: true,
+      maxBatches: 2,
+      timeoutMs: 10_000,
+    });
+  }
+  triggerAiQueueWorker({ limit: 4, drain: true });
+
+  return {
+    queued: true as const,
+    jobId: queuedJob.jobId,
+    messageId: latestClientMessage.id,
+  };
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string; chatId: string }> }
@@ -221,6 +278,8 @@ export async function POST(
       ]);
     }
 
+    let resumedPendingMessage = false;
+
     if (action === "resume") {
       await Promise.all([
         stateRef.set(
@@ -246,6 +305,25 @@ export async function POST(
           createdAt: FieldValue.serverTimestamp(),
         }),
       ]);
+
+      const currentState = await getChatState(tenantId, chatId);
+      const hasPendingLeadTurn =
+        toTime(chat.lastClientMessageAt) > toTime(chat.lastAgentMessageAt) ||
+        String(currentState.lastJobStatus || "").toLowerCase() === "retrying" ||
+        String(currentState.lastJobStatus || "").toLowerCase() === "dead_letter" ||
+        String(currentState.lastDecision || "").toLowerCase() === "skip";
+
+      if (hasPendingLeadTurn) {
+        const resumeResult = await queueLatestClientMessage({
+          tenantId,
+          chatId,
+          stateRefPath: getChatStateDocId(tenantId, chatId),
+          userId: user.uid,
+          userName: user.name,
+          source: "resume_pending",
+        });
+        resumedPendingMessage = resumeResult.queued;
+      }
     }
 
     if (action === "retry") {
@@ -261,50 +339,21 @@ export async function POST(
         );
       }
 
-      const latestClientMessage = await findLatestClientMessage(chatId);
-      if (!latestClientMessage?.id) {
+      const retryResult = await queueLatestClientMessage({
+        tenantId,
+        chatId,
+        stateRefPath: getChatStateDocId(tenantId, chatId),
+        userId: user.uid,
+        userName: user.name,
+        source: "manual_retry",
+      });
+
+      if (!retryResult.queued) {
         return NextResponse.json(
           { error: "Nao encontrei mensagem recente do lead para reprocessar." },
           { status: 404 }
         );
       }
-
-      const queuedJob = await enqueueIncomingMessageJob({
-        tenantId,
-        chatId,
-        messageId: latestClientMessage.id,
-        source: "manual_retry",
-        dedupeKey: `${tenantId}_${latestClientMessage.id}_manual_retry_${Date.now()}`,
-        priority: 5,
-      });
-
-      await stateRef.set(
-        {
-          tenantId,
-          chatId,
-          lastJobStatus: "pending",
-          lastJobError: null,
-          lastDecision: null,
-          lastDecisionReason: "manual_retry_requested",
-          lastJobId: queuedJob.jobId,
-          lastMessageId: latestClientMessage.id,
-          updatedBy: user.uid,
-          updatedByName: user.name,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      const inlineResult = await processAiJobNow(queuedJob.jobId);
-      if (!inlineResult) {
-        await kickAiQueueNow({
-          limit: 2,
-          drain: true,
-          maxBatches: 2,
-          timeoutMs: 10_000,
-        });
-      }
-      triggerAiQueueWorker({ limit: 4, drain: true });
     }
 
     const updatedState = await getChatState(tenantId, chatId);
@@ -312,6 +361,7 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       action,
+      resumedPendingMessage,
       state: serializeState(updatedState),
     });
   } catch (error) {
