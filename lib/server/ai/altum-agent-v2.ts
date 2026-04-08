@@ -1044,6 +1044,12 @@ function buildShortBusinessSummary(summary: string) {
     .replace(/^ajuda empresas a vender mais com\s*/i, "");
 }
 
+function randomPick<T>(items: T[], fallback: T): T {
+  if (!items.length) return fallback;
+  const index = Math.floor(Math.random() * items.length);
+  return items[index] ?? fallback;
+}
+
 export function writeAltumAgentReply(input: {
   plan: AltumPlannerDecision;
   tenantAi: TenantAiConfigLike;
@@ -1094,7 +1100,8 @@ export function writeAltumAgentReply(input: {
   }
 
   if (input.plan.responseGoal === "welcome") {
-    return `${leadFirstName ? `Oi, ${leadFirstName}!` : "Oi!"} Tudo bem? ${input.plan.nextQuestion}`;
+    const greeting = leadFirstName ? `Oi, ${leadFirstName}!` : randomPick(["Oi!", "Opa!", "Hey!"], "Oi!");
+    return `${greeting} Tudo bem? ${input.plan.nextQuestion}`.trim();
   }
 
   if (input.plan.responseGoal === "clarify") {
@@ -1117,11 +1124,12 @@ export function writeAltumAgentReply(input: {
             .filter(Boolean)
             .join(" ")
         : "";
-    return [
-      businessLine ||
-        `A ALTUM ajuda empresas a vender mais com ${buildShortBusinessSummary(input.tenantAi.businessSummary).toLowerCase()}.`,
-      input.plan.nextQuestion || "",
-    ]
+    const clarifiers = [
+      `A ALTUM ajuda empresas a vender mais com ${buildShortBusinessSummary(input.tenantAi.businessSummary).toLowerCase()}.`,
+      "A ideia aqui e deixar o comercial rodando com mais clareza e mais conversao.",
+      "Nos cuidamos da estrutura digital e do caminho comercial para voce vender melhor.",
+    ];
+    return [businessLine || randomPick(clarifiers, clarifiers[0]), input.plan.nextQuestion || ""]
       .filter(Boolean)
       .join(" ");
   }
@@ -1139,8 +1147,15 @@ export function writeAltumAgentReply(input: {
   if (input.plan.responseGoal === "handle_objection") {
     if (input.plan.objectionType === "budget") {
       return [
-        "Sem problema. Nem sempre faz sentido comecar grande.",
-        "Se fizer sentido, eu te mostro o caminho mais enxuto para validar isso sem travar sua operacao nem te empurrar investimento fora de hora.",
+        randomPick(
+          [
+            "Sem problema. Nem sempre faz sentido comecar grande.",
+            "Faz total sentido cuidar disso com calma.",
+            "Tranquilo. Nao precisa comecar grande.",
+          ],
+          "Sem problema. Nem sempre faz sentido comecar grande."
+        ),
+        "Se fizer sentido, eu te mostro um caminho mais enxuto para validar isso sem travar sua operacao.",
         input.plan.nextQuestion || "",
       ]
         .filter(Boolean)
@@ -1149,7 +1164,15 @@ export function writeAltumAgentReply(input: {
 
     if (input.plan.objectionType === "timing") {
       return [
-        "Entendo. Para nao te tomar tempo, eu consigo resumir o caminho mais indicado de forma direta e voce avalia no seu ritmo.",
+        randomPick(
+          [
+            "Entendo. Vamos respeitar o seu tempo.",
+            "Beleza, faz sentido. A ideia e nao te sobrecarregar.",
+            "Entendo total. Sem pressa.",
+          ],
+          "Entendo. Vamos respeitar o seu tempo."
+        ),
+        "Se fizer sentido, eu te deixo um caminho direto para voce avaliar quando for melhor.",
         input.plan.nextQuestion || "",
       ]
         .filter(Boolean)
@@ -1158,7 +1181,14 @@ export function writeAltumAgentReply(input: {
 
     if (input.plan.objectionType === "trust") {
       return [
-        "Faz sentido ter esse cuidado.",
+        randomPick(
+          [
+            "Faz sentido ter esse cuidado.",
+            "Entendo. E normal querer clareza.",
+            "Boa. Ter criterio aqui e importante mesmo.",
+          ],
+          "Faz sentido ter esse cuidado."
+        ),
         "Meu papel aqui e te orientar com clareza, sem promessa solta e sem te empurrar algo errado.",
         input.plan.nextQuestion || "",
       ]
@@ -1185,7 +1215,14 @@ export function writeAltumAgentReply(input: {
   if (input.plan.responseGoal === "qualify") {
     if (input.plan.reason === "affirmative_after_recommendation") {
       return [
-        "Perfeito. Entao vamos deixar isso mais preciso antes de eu te sugerir o proximo passo.",
+        randomPick(
+          [
+            "Perfeito. Vamos deixar isso mais preciso antes do proximo passo.",
+            "Show. Vou alinhar so o essencial antes de seguir.",
+            "Boa. Quero so afinar o contexto antes de avancar.",
+          ],
+          "Perfeito. Vamos deixar isso mais preciso antes do proximo passo."
+        ),
         input.plan.nextQuestion || "",
       ]
         .filter(Boolean)
@@ -1198,8 +1235,22 @@ export function writeAltumAgentReply(input: {
         : businessType
           ? `Perfeito, sendo ${businessType}, eu consigo te orientar melhor sem te empurrar algo errado.`
           : input.runtimeState?.stage && input.runtimeState.stage !== "greeting"
-            ? "Perfeito. Retomando de onde paramos, quero te orientar do jeito certo sem resetar a conversa."
-            : "Perfeito. Quero te orientar do jeito certo, sem te enrolar.";
+            ? randomPick(
+                [
+                  "Perfeito. Retomando de onde paramos, quero te orientar do jeito certo.",
+                  "Perfeito. Seguindo daqui, eu te oriento do jeito certo.",
+                  "Perfeito. Vou seguir a conversa e te orientar direito.",
+                ],
+                "Perfeito. Retomando de onde paramos, quero te orientar do jeito certo."
+              )
+            : randomPick(
+                [
+                  "Perfeito. Quero te orientar do jeito certo, sem te enrolar.",
+                  "Perfeito. Quero te orientar direto ao ponto.",
+                  "Perfeito. Vou te orientar com clareza.",
+                ],
+                "Perfeito. Quero te orientar do jeito certo, sem te enrolar."
+              );
     return [prefix, input.plan.nextQuestion || ""].filter(Boolean).join(" ");
   }
 
@@ -1207,7 +1258,15 @@ export function writeAltumAgentReply(input: {
     if (input.plan.nextAction === "agendar_proximo_passo") {
       return [
         `${bridge} o proximo passo mais indicado aqui e uma conversa curta para encaixar isso direito sem perder tempo.`,
-        input.plan.nextQuestion || "Se fizer sentido, eu ja deixo esse caminho encaminhado com clareza.",
+        input.plan.nextQuestion ||
+          randomPick(
+            [
+              "Se fizer sentido, eu ja deixo esse caminho encaminhado com clareza.",
+              "Se fizer sentido, eu organizo esse proximo passo por aqui.",
+              "Se fizer sentido, eu ja deixo isso pronto para voce seguir.",
+            ],
+            "Se fizer sentido, eu ja deixo esse caminho encaminhado com clareza."
+          ),
       ]
         .filter(Boolean)
         .join(" ");
@@ -1216,7 +1275,15 @@ export function writeAltumAgentReply(input: {
     if (input.plan.nextAction === "preparar_proposta_comercial") {
       return [
         `${bridge} o caminho mais indicado aqui e organizar isso em uma proposta objetiva, sem inflar escopo nem te empurrar algo fora do momento.`,
-        input.plan.nextQuestion || "Se fizer sentido, eu sigo nessa linha e estruturo isso de um jeito bem claro.",
+        input.plan.nextQuestion ||
+          randomPick(
+            [
+              "Se fizer sentido, eu sigo nessa linha e estruturo isso de um jeito bem claro.",
+              "Se fizer sentido, eu organizo isso em uma proposta bem objetiva.",
+              "Se fizer sentido, eu monto isso de forma simples e transparente.",
+            ],
+            "Se fizer sentido, eu sigo nessa linha e estruturo isso de um jeito bem claro."
+          ),
       ]
         .filter(Boolean)
         .join(" ");
@@ -1225,7 +1292,15 @@ export function writeAltumAgentReply(input: {
     const intro = `${bridge} o caminho mais indicado aqui tende a ser ${recommendedOffer || "um diagnostico comercial rapido"}.`;
     return [
       intro,
-      input.plan.nextQuestion || "Se fizer sentido, eu te mostro o proximo passo mais indicado para avancarmos sem complicar.",
+      input.plan.nextQuestion ||
+        randomPick(
+          [
+            "Se fizer sentido, eu te mostro o proximo passo para avancarmos sem complicar.",
+            "Se fizer sentido, eu te explico o proximo passo de forma simples.",
+            "Se fizer sentido, eu te mostro o proximo passo com clareza.",
+          ],
+          "Se fizer sentido, eu te mostro o proximo passo para avancarmos sem complicar."
+        ),
     ]
       .filter(Boolean)
       .join(" ");
