@@ -91,8 +91,8 @@ function detectObjectionType(inboundText: string, extractedFields?: Record<strin
 
   const normalized = normalizeComparable(inboundText);
   if (!normalized) return null;
-  if (/\b(caro|caro demais|preco|preço|orcamento|orçamento|budget|valor)\b/.test(normalized)) return "budget";
-  if (/\b(agora nao|agora não|depois|mais pra frente|sem tempo|momento)\b/.test(normalized)) return "timing";
+  if (/\b(caro|caro demais|preco|orcamento|budget|valor)\b/.test(normalized)) return "budget";
+  if (/\b(agora nao|depois|mais pra frente|sem tempo|momento)\b/.test(normalized)) return "timing";
   if (/\b(confi|garantia|prova|resultado|funciona mesmo)\b/.test(normalized)) return "trust";
   return null;
 }
@@ -116,8 +116,8 @@ function detectIntent(input: {
   if (/\b(como voce esta|como voce ta|como vai|tudo bem|tudo certo)\b/.test(normalized)) return "relational";
   if (/\b(obrigad|valeu)\b/.test(normalized)) return "thanks";
   if (/\b(kkk|haha|hehe|beleza|show|massa)\b/.test(normalized)) return "light_small_talk";
-  if (/\b(proposta|orcamento|orçamento)\b/.test(normalized)) return "proposal_interest";
-  if (/\b(reuniao|reunião|agenda|agendar|call)\b/.test(normalized)) return "meeting_interest";
+  if (/\b(proposta|orcamento)\b/.test(normalized)) return "proposal_interest";
+  if (/\b(reuniao|agenda|agendar|call)\b/.test(normalized)) return "meeting_interest";
   if (detectObjectionType(input.inboundText, input.extractedFields)) return "objection";
   if (normalizeWords(sanitizeText(input.llmTurnGoal, 120)).some((word) => ["qualify", "discovery", "aprofundar", "investigar"].includes(word))) {
     return "qualification";
@@ -132,8 +132,8 @@ function mapTurnGoalToResponseGoal(
   if (/(handoff|escalar|humano)/i.test(turnGoal)) return "handoff";
   if (/(acolher|boas vindas|welcome)/i.test(turnGoal)) return "welcome";
   if (/(aprofundar|investigar|entender|qualify|discovery)/i.test(turnGoal)) return "qualify";
-  if (/(objecao|objeção|objection)/i.test(turnGoal)) return "handle_objection";
-  if (/(proposta|agendar|fechar|avancar|avançar|proximo passo|next step)/i.test(turnGoal)) {
+  if (/(objecao|objection)/i.test(turnGoal)) return "handle_objection";
+  if (/(proposta|agendar|fechar|avancar|proximo passo|next step)/i.test(turnGoal)) {
     return "move_to_next_step";
   }
   if (/(responder|esclarecer|clarify|orientar|explicar|resumir|conversar)/i.test(turnGoal)) return "clarify";
