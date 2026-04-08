@@ -755,6 +755,8 @@ function makeLeadFacingReply(input: {
   const thanks = textHasAny(normalizedInbound, ["obrigado", "obrigada", "valeu"]);
   const normalizedType = sanitizeText(input.messageType, 20).toLowerCase();
   const multimodalNote = sanitizeText(input.multimodalSummary, 220);
+  const lastAgentMessage = [...input.conversation].reverse().find((item) => item.sender === "agent");
+  const hasOpenAgentQuestion = Boolean(lastAgentMessage?.text && lastAgentMessage.text.includes("?"));
   const shouldAskNameLater =
     !knownFirstName && !hasAskedName && input.conversation.filter((item) => item.sender === "client").length >= 2;
   const nextMandatoryQuestion =
@@ -779,17 +781,32 @@ function makeLeadFacingReply(input: {
   }
 
   if (normalizedType === "audio" && multimodalNote) {
-    const tail = input.decision === "ask_more" ? ` ${nextMandatoryQuestion}` : "";
+    const tail =
+      input.decision === "ask_more"
+        ? ` ${nextMandatoryQuestion}`
+        : !hasOpenAgentQuestion
+          ? " Quer me contar o contexto por tras disso?"
+          : "";
     return `Perfeito, recebi seu audio. ${multimodalNote}${tail}`.trim();
   }
 
   if (normalizedType === "image" && multimodalNote) {
-    const tail = input.decision === "ask_more" ? ` ${nextMandatoryQuestion}` : "";
+    const tail =
+      input.decision === "ask_more"
+        ? ` ${nextMandatoryQuestion}`
+        : !hasOpenAgentQuestion
+          ? " Qual o contexto dessa imagem?"
+          : "";
     return `Perfeito, recebi a imagem. ${multimodalNote}${tail}`.trim();
   }
 
   if (normalizedType === "document" && multimodalNote) {
-    const tail = input.decision === "ask_more" ? ` ${nextMandatoryQuestion}` : "";
+    const tail =
+      input.decision === "ask_more"
+        ? ` ${nextMandatoryQuestion}`
+        : !hasOpenAgentQuestion
+          ? " Quer me contar o objetivo desse material?"
+          : "";
     return `Perfeito, recebi o arquivo. ${multimodalNote}${tail}`.trim();
   }
 
