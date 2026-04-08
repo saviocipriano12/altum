@@ -50,6 +50,13 @@ type ChatAiState = {
   updatedByName?: string | null;
   updatedAt?: unknown;
   pauseReason?: string | null;
+  lastJobStatus?: string | null;
+  lastJobError?: string | null;
+  lastDecision?: string | null;
+  lastDecisionReason?: string | null;
+  lastProcessedAt?: unknown;
+  lastJobId?: string | null;
+  lastMessageId?: string | null;
 } | null;
 
 type ChatItem = {
@@ -448,6 +455,8 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
   const updatedByName = String(chat.aiState.updatedByName || "").trim();
   const pausedUntil = toDate(chat.aiState.pausedUntil);
   const isStillPaused = Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
+  const lastJobStatus = String(chat.aiState.lastJobStatus || "").trim().toLowerCase();
+  const lastJobError = String(chat.aiState.lastJobError || "").trim();
 
   if (chat.aiState.humanOwnerUserId && isStillPaused) {
     const suffix = pausedUntil ? ` ate ${formatDateTime(pausedUntil)}` : "";
@@ -457,6 +466,18 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
   if (chat.aiState.aiEnabled === false || isStillPaused) {
     const suffix = pausedUntil ? ` ate ${formatDateTime(pausedUntil)}` : "";
     return `IA pausada${updatedByName ? ` por ${updatedByName}` : ""}${suffix}.`;
+  }
+
+  if (lastJobStatus === "retrying") {
+    return lastJobError
+      ? `IA tentando novamente apos falha: ${lastJobError}.`
+      : "IA tentando novamente apos uma falha recente.";
+  }
+
+  if (lastJobStatus === "dead_letter") {
+    return lastJobError
+      ? `Ultima tentativa da IA falhou: ${lastJobError}.`
+      : "Ultima tentativa da IA falhou e precisa de revisao.";
   }
 
   return "IA pronta para respostas automaticas nesta conversa.";

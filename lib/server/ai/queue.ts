@@ -35,6 +35,34 @@ type ClaimedJob = {
   maxAttempts: number;
 };
 
+async function updateChatStateProcessing(input: {
+  tenantId: string;
+  chatId: string;
+  jobId: string;
+  messageId: string;
+  jobStatus: JobStatus;
+  decision?: "respond" | "ask_more" | "handoff" | "skip";
+  decisionReason?: string;
+  lastError?: string | null;
+}) {
+  const chatStateId = `${input.tenantId.trim()}_${input.chatId.trim()}`;
+  await adminDb.collection("chat_state").doc(chatStateId).set(
+    {
+      tenantId: input.tenantId,
+      chatId: input.chatId,
+      lastJobStatus: input.jobStatus,
+      lastDecision: input.decision || null,
+      lastDecisionReason: input.decisionReason || null,
+      lastJobError: input.lastError || null,
+      lastProcessedAt: FieldValue.serverTimestamp(),
+      lastJobId: input.jobId,
+      lastMessageId: input.messageId,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
 export type EnqueueIncomingMessageJobInput = {
   tenantId: string;
   chatId: string;
@@ -347,6 +375,16 @@ async function finalizeSuccessfulJob(job: ClaimedJob, decision: "respond" | "ask
       decision,
       skipped: decision === "skip" ? 1 : 0,
     }),
+    updateChatStateProcessing({
+      tenantId: job.tenantId,
+      chatId: job.chatId,
+      jobId: job.id,
+      messageId: job.messageId,
+      jobStatus: "done",
+      decision,
+      decisionReason: reason,
+      lastError: null,
+    }),
   ]);
 }
 
@@ -377,6 +415,15 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
       failed: 1,
       retried: canRetry ? 1 : 0,
       deadLetter: canRetry ? 0 : 1,
+    }),
+    updateChatStateProcessing({
+      tenantId: job.tenantId,
+      chatId: job.chatId,
+      jobId: job.id,
+      messageId: job.messageId,
+      jobStatus: canRetry ? "retrying" : "dead_letter",
+      decisionReason: canRetry ? "job_retry_scheduled" : "job_failed_dead_letter",
+      lastError: message,
     }),
   ]);
 }

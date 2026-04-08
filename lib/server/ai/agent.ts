@@ -70,6 +70,13 @@ type ChatStateDoc = {
   updatedByName?: string | null;
   updatedAt?: unknown;
   pauseReason?: string | null;
+  lastJobStatus?: string | null;
+  lastJobError?: string | null;
+  lastDecision?: string | null;
+  lastDecisionReason?: string | null;
+  lastProcessedAt?: unknown;
+  lastJobId?: string | null;
+  lastMessageId?: string | null;
 };
 
 type KbDoc = {
@@ -409,6 +416,13 @@ export type ChatState = {
   updatedByName?: string | null;
   updatedAt?: Date | null;
   pauseReason?: string | null;
+  lastJobStatus?: string | null;
+  lastJobError?: string | null;
+  lastDecision?: string | null;
+  lastDecisionReason?: string | null;
+  lastProcessedAt?: Date | null;
+  lastJobId?: string | null;
+  lastMessageId?: string | null;
 };
 
 export function getChatStateDocId(tenantId: string, chatId: string) {
@@ -977,6 +991,13 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
       updatedByName: null,
       updatedAt: null,
       pauseReason: null,
+      lastJobStatus: null,
+      lastJobError: null,
+      lastDecision: null,
+      lastDecisionReason: null,
+      lastProcessedAt: null,
+      lastJobId: null,
+      lastMessageId: null,
     };
   }
 
@@ -1016,6 +1037,20 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
           : null,
       updatedAt: new Date(),
       pauseReason: null,
+      lastJobStatus:
+        typeof data.lastJobStatus === "string" && data.lastJobStatus.trim() ? data.lastJobStatus.trim() : null,
+      lastJobError:
+        typeof data.lastJobError === "string" && data.lastJobError.trim() ? data.lastJobError.trim() : null,
+      lastDecision:
+        typeof data.lastDecision === "string" && data.lastDecision.trim() ? data.lastDecision.trim() : null,
+      lastDecisionReason:
+        typeof data.lastDecisionReason === "string" && data.lastDecisionReason.trim()
+          ? data.lastDecisionReason.trim()
+          : null,
+      lastProcessedAt: toDate(data.lastProcessedAt),
+      lastJobId: typeof data.lastJobId === "string" && data.lastJobId.trim() ? data.lastJobId.trim() : null,
+      lastMessageId:
+        typeof data.lastMessageId === "string" && data.lastMessageId.trim() ? data.lastMessageId.trim() : null,
     };
   }
 
@@ -1034,6 +1069,20 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
       typeof data.pauseReason === "string" && data.pauseReason.trim()
         ? data.pauseReason.trim()
         : null,
+    lastJobStatus:
+      typeof data.lastJobStatus === "string" && data.lastJobStatus.trim() ? data.lastJobStatus.trim() : null,
+    lastJobError:
+      typeof data.lastJobError === "string" && data.lastJobError.trim() ? data.lastJobError.trim() : null,
+    lastDecision:
+      typeof data.lastDecision === "string" && data.lastDecision.trim() ? data.lastDecision.trim() : null,
+    lastDecisionReason:
+      typeof data.lastDecisionReason === "string" && data.lastDecisionReason.trim()
+        ? data.lastDecisionReason.trim()
+        : null,
+    lastProcessedAt: toDate(data.lastProcessedAt),
+    lastJobId: typeof data.lastJobId === "string" && data.lastJobId.trim() ? data.lastJobId.trim() : null,
+    lastMessageId:
+      typeof data.lastMessageId === "string" && data.lastMessageId.trim() ? data.lastMessageId.trim() : null,
   };
 }
 

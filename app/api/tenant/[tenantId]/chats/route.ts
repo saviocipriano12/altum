@@ -10,6 +10,13 @@ type ChatStateItem = {
   updatedByName: string | null;
   pauseReason: string | null;
   updatedAt: unknown;
+  lastJobStatus?: string | null;
+  lastJobError?: string | null;
+  lastDecision?: string | null;
+  lastDecisionReason?: string | null;
+  lastProcessedAt?: unknown;
+  lastJobId?: string | null;
+  lastMessageId?: string | null;
 };
 
 type ChatListItem = Record<string, unknown> & {
@@ -123,6 +130,13 @@ export async function GET(
             pauseReason:
               isFuture(data.pausedUntil) && typeof data.pauseReason === "string" ? data.pauseReason : null,
             updatedAt: data.updatedAt || null,
+            lastJobStatus: typeof data.lastJobStatus === "string" ? data.lastJobStatus : null,
+            lastJobError: typeof data.lastJobError === "string" ? data.lastJobError : null,
+            lastDecision: typeof data.lastDecision === "string" ? data.lastDecision : null,
+            lastDecisionReason: typeof data.lastDecisionReason === "string" ? data.lastDecisionReason : null,
+            lastProcessedAt: data.lastProcessedAt || null,
+            lastJobId: typeof data.lastJobId === "string" ? data.lastJobId : null,
+            lastMessageId: typeof data.lastMessageId === "string" ? data.lastMessageId : null,
           },
         ];
       })
