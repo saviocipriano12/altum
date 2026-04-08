@@ -447,13 +447,14 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
   if (!chat?.aiState) return "IA pronta para respostas automaticas nesta conversa.";
   const updatedByName = String(chat.aiState.updatedByName || "").trim();
   const pausedUntil = toDate(chat.aiState.pausedUntil);
+  const isStillPaused = Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
 
-  if (chat.aiState.humanOwnerUserId) {
+  if (chat.aiState.humanOwnerUserId && isStillPaused) {
     const suffix = pausedUntil ? ` ate ${formatDateTime(pausedUntil)}` : "";
     return `Takeover humano ativo${updatedByName ? ` por ${updatedByName}` : ""}${suffix}.`;
   }
 
-  if (chat.aiState.aiEnabled === false || (pausedUntil && pausedUntil.getTime() > Date.now())) {
+  if (chat.aiState.aiEnabled === false || isStillPaused) {
     const suffix = pausedUntil ? ` ate ${formatDateTime(pausedUntil)}` : "";
     return `IA pausada${updatedByName ? ` por ${updatedByName}` : ""}${suffix}.`;
   }

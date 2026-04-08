@@ -964,7 +964,8 @@ async function fetchConversation(chatId: string, tenantId: string) {
 
 export async function getChatState(tenantId: string, chatId: string): Promise<ChatState> {
   const docId = getChatStateDocId(tenantId, chatId);
-  const snap = await adminDb.collection("chat_state").doc(docId).get();
+  const ref = adminDb.collection("chat_state").doc(docId);
+  const snap = await ref.get();
 
   if (!snap.exists) {
     return {
@@ -980,15 +981,50 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
   }
 
   const data = snap.data() as ChatStateDoc;
+  const pausedUntil = toDate(data.pausedUntil);
+  const hasHumanOwner =
+    typeof data.humanOwnerUserId === "string" && data.humanOwnerUserId.trim()
+      ? data.humanOwnerUserId.trim()
+      : null;
+  const shouldAutoResume =
+    Boolean(pausedUntil && pausedUntil.getTime() <= Date.now()) &&
+    (data.aiEnabled === false || Boolean(hasHumanOwner) || Boolean(data.pauseReason));
+
+  if (shouldAutoResume) {
+    await ref.set(
+      {
+        tenantId,
+        chatId,
+        aiEnabled: true,
+        pausedUntil: null,
+        humanOwnerUserId: null,
+        pauseReason: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return {
+      tenantId,
+      chatId,
+      aiEnabled: true,
+      pausedUntil: null,
+      humanOwnerUserId: null,
+      updatedByName:
+        typeof data.updatedByName === "string" && data.updatedByName.trim()
+          ? data.updatedByName.trim()
+          : null,
+      updatedAt: new Date(),
+      pauseReason: null,
+    };
+  }
+
   return {
     tenantId,
     chatId,
     aiEnabled: data.aiEnabled !== false,
-    pausedUntil: toDate(data.pausedUntil),
-    humanOwnerUserId:
-      typeof data.humanOwnerUserId === "string" && data.humanOwnerUserId.trim()
-        ? data.humanOwnerUserId.trim()
-        : null,
+    pausedUntil,
+    humanOwnerUserId: hasHumanOwner,
     updatedByName:
       typeof data.updatedByName === "string" && data.updatedByName.trim()
         ? data.updatedByName.trim()

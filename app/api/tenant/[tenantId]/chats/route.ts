@@ -48,6 +48,10 @@ function toTime(value: unknown) {
   return 0;
 }
 
+function isFuture(value: unknown) {
+  return toTime(value) > Date.now();
+}
+
 function cleanString(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
@@ -108,14 +112,16 @@ export async function GET(
         return [
           String(data.chatId || ""),
           {
-            aiEnabled: data.aiEnabled !== false,
-            pausedUntil: data.pausedUntil || null,
+            aiEnabled: isFuture(data.pausedUntil) ? data.aiEnabled !== false : true,
+            pausedUntil: isFuture(data.pausedUntil) ? data.pausedUntil || null : null,
             humanOwnerUserId:
-              typeof data.humanOwnerUserId === "string" ? data.humanOwnerUserId : null,
+              isFuture(data.pausedUntil) && typeof data.humanOwnerUserId === "string"
+                ? data.humanOwnerUserId
+                : null,
             updatedByName:
               typeof data.updatedByName === "string" ? data.updatedByName : null,
             pauseReason:
-              typeof data.pauseReason === "string" ? data.pauseReason : null,
+              isFuture(data.pausedUntil) && typeof data.pauseReason === "string" ? data.pauseReason : null,
             updatedAt: data.updatedAt || null,
           },
         ];
