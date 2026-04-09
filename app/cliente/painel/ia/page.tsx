@@ -292,7 +292,9 @@ const PROVIDER_OPTIONS = [
 
 const CONVERSATION_MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
   openai: [
-    { value: "", label: "Padrao economico (gpt-5-mini)" },
+    { value: "", label: "Padrao economico (gpt-4.1-mini)" },
+    { value: "gpt-4o-mini", label: "gpt-4o-mini" },
+    { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
     { value: "gpt-5-mini", label: "gpt-5-mini" },
     { value: "gpt-5.4", label: "gpt-5.4" },
   ],
@@ -316,7 +318,9 @@ const CONVERSATION_MODEL_OPTIONS: Record<string, Array<{ value: string; label: s
 
 const EXTRACTION_MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
   openai: [
-    { value: "", label: "Padrao economico (gpt-5-mini)" },
+    { value: "", label: "Padrao economico (gpt-4.1-mini)" },
+    { value: "gpt-4o-mini", label: "gpt-4o-mini" },
+    { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
     { value: "gpt-5-mini", label: "gpt-5-mini" },
     { value: "gpt-5.4", label: "gpt-5.4" },
   ],
@@ -1702,16 +1706,16 @@ export default function ClienteIaPage() {
                 <StateBadge label={responseStyleLabel(settings.responseStyle)} tone="success" />
               </div>
               <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
-                Motor atual da IA: {settings.runtimePolicy?.primaryProvider || "openai"} / {settings.runtimePolicy?.conversationModel || "gpt-5-mini"}.
+                Motor atual da IA: {settings.runtimePolicy?.primaryProvider || "openai"} / {settings.runtimePolicy?.conversationModel || "gpt-4.1-mini"}.
               </p>
               <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
-                Extracao atual: {settings.runtimePolicy?.extractionModel || "gpt-5-mini"}.
+                Extracao atual: {settings.runtimePolicy?.extractionModel || "gpt-4.1-mini"}.
               </p>
               <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                 Busca {settings.runtimePolicy?.retrievalMode || "keyword"} • ferramentas {settings.runtimePolicy?.supportsToolCalling ? "ligadas" : "desligadas"} • budget {settings.runtimePolicy?.budgetMode || "balanced"}.
               </p>
               <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
-                Padrao novo: OpenAI usa `gpt-5-mini` por economia. Modelo caro so entra se voce escolher explicitamente aqui.
+                Padrao novo: OpenAI usa `gpt-4.1-mini` por economia. Modelo mais caro so entra se voce escolher explicitamente aqui.
               </p>
             </div>
 

@@ -483,7 +483,7 @@ async function callMistral(input: ConversationAgentInput, model: string) {
 function modelForProvider(provider: AltumAiProvider, policy: RuntimePolicy, tier: AltumAiTier) {
   if (provider === "openai") {
     if (policy.primaryProvider === "openai") return policy.conversationModel;
-    return tier === "elite" || tier === "enterprise" ? "gpt-5.4" : "gpt-5-mini";
+    return tier === "elite" || tier === "enterprise" ? "gpt-5.4" : "gpt-4.1-mini";
   }
 
   if (provider === "anthropic") {

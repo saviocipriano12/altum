@@ -123,7 +123,7 @@ export function buildAiRuntimePolicy(profile: TenantAiOperatingProfile): TenantA
   const conversationModel =
     profile.conversationModelOverride ||
     (primaryProvider === "openai"
-      ? "gpt-5-mini"
+      ? "gpt-4.1-mini"
       : primaryProvider === "anthropic"
         ? profile.tier === "elite" || profile.tier === "enterprise"
           ? "claude-opus-4"
@@ -137,7 +137,7 @@ export function buildAiRuntimePolicy(profile: TenantAiOperatingProfile): TenantA
   const extractionModel =
     profile.extractionModelOverride ||
     (primaryProvider === "openai"
-      ? "gpt-5-mini"
+      ? "gpt-4.1-mini"
       : primaryProvider === "anthropic"
         ? "claude-sonnet-4"
       : primaryProvider === "gemini"
