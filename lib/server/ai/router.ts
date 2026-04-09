@@ -360,7 +360,11 @@ async function callOpenAI(input: ConversationAgentInput, model: string) {
   });
 
   if (!response.ok) {
-    throw new Error(`openai_http_${response.status}`);
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: { message?: string; code?: string; type?: string };
+    };
+    const message = sanitizeText(payload.error?.message, 220) || `HTTP ${response.status}`;
+    throw new Error(`openai_auth_or_request_failed (${model}): ${message}`);
   }
 
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
@@ -391,7 +395,11 @@ async function callAnthropic(input: ConversationAgentInput, model: string) {
   });
 
   if (!response.ok) {
-    throw new Error(`anthropic_http_${response.status}`);
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: { message?: string; type?: string };
+    };
+    const message = sanitizeText(payload.error?.message, 220) || `HTTP ${response.status}`;
+    throw new Error(`anthropic_auth_or_request_failed (${model}): ${message}`);
   }
 
   const data = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
@@ -421,7 +429,11 @@ async function callGemini(input: ConversationAgentInput, model: string) {
   });
 
   if (!response.ok) {
-    throw new Error(`gemini_http_${response.status}`);
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: { message?: string; status?: string };
+    };
+    const message = sanitizeText(payload.error?.message, 220) || `HTTP ${response.status}`;
+    throw new Error(`gemini_auth_or_request_failed (${model}): ${message}`);
   }
 
   const data = (await response.json()) as {
@@ -454,7 +466,11 @@ async function callMistral(input: ConversationAgentInput, model: string) {
   });
 
   if (!response.ok) {
-    throw new Error(`mistral_http_${response.status}`);
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: { message?: string; type?: string };
+    };
+    const message = sanitizeText(payload.error?.message, 220) || `HTTP ${response.status}`;
+    throw new Error(`mistral_auth_or_request_failed (${model}): ${message}`);
   }
 
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
@@ -499,9 +515,13 @@ export async function runConversationAgent(
 ): Promise<ConversationAgentResult | null> {
   const providers = candidateProviders(policy, input.preferredProviders);
   let fallbackUsed = false;
+  let lastProviderError = "";
 
   for (const provider of providers) {
     if (provider === "altum_rules") {
+      if (lastProviderError) {
+        throw new Error(lastProviderError);
+      }
       return null;
     }
 
@@ -529,9 +549,17 @@ export async function runConversationAgent(
           fallbackUsed,
         };
       }
-    } catch {
+    } catch (error) {
+      lastProviderError =
+        error instanceof Error
+          ? `${provider}: ${sanitizeText(error.message, 280)}`
+          : `${provider}: provider_request_failed`;
       fallbackUsed = true;
     }
+  }
+
+  if (lastProviderError) {
+    throw new Error(lastProviderError);
   }
 
   return null;
