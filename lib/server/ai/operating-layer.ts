@@ -10,6 +10,8 @@ export type TenantAiOperatingProfile = {
   reasoningLevel: AltumAiReasoningLevel;
   responseStyle: AltumAiResponseStyle;
   preferredProviders: AltumAiProvider[];
+  conversationModelOverride?: string;
+  extractionModelOverride?: string;
   monthlyBudgetUsd: number;
   monthlyUsageCap: number;
 };
@@ -90,6 +92,11 @@ function normalizePositiveNumber(value: unknown, fallback: number, max: number) 
   return Math.min(max, Math.max(1, Math.round(numeric)));
 }
 
+function normalizeModelOverride(value: unknown) {
+  const normalized = cleanString(value, 120);
+  return normalized || undefined;
+}
+
 export function normalizeTenantAiOperatingProfile(value: unknown): TenantAiOperatingProfile {
   const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
@@ -99,6 +106,8 @@ export function normalizeTenantAiOperatingProfile(value: unknown): TenantAiOpera
     reasoningLevel: normalizeEnum(source.reasoningLevel, ["fast", "balanced", "deep"], "balanced"),
     responseStyle: normalizeEnum(source.responseStyle, ["concise", "consultative", "premium_sales", "closer"], "consultative"),
     preferredProviders: normalizeProviders(source.preferredProviders),
+    conversationModelOverride: normalizeModelOverride(source.conversationModelOverride),
+    extractionModelOverride: normalizeModelOverride(source.extractionModelOverride),
     monthlyBudgetUsd: normalizePositiveNumber(source.monthlyBudgetUsd, 100, 100000),
     monthlyUsageCap: normalizePositiveNumber(source.monthlyUsageCap, 1500, 1000000),
   };
@@ -112,10 +121,9 @@ export function buildAiRuntimePolicy(profile: TenantAiOperatingProfile): TenantA
   const fallbackProviders: AltumAiProvider[] = providers.slice(1);
 
   const conversationModel =
-    primaryProvider === "openai"
-      ? profile.reasoningLevel === "deep" && (profile.tier === "elite" || profile.tier === "enterprise")
-        ? "gpt-5.4"
-        : "gpt-5-mini"
+    profile.conversationModelOverride ||
+    (primaryProvider === "openai"
+      ? "gpt-5-mini"
       : primaryProvider === "anthropic"
         ? profile.tier === "elite" || profile.tier === "enterprise"
           ? "claude-opus-4"
@@ -124,18 +132,19 @@ export function buildAiRuntimePolicy(profile: TenantAiOperatingProfile): TenantA
           ? "gemini-2.5-pro"
           : primaryProvider === "mistral"
             ? "mistral-large"
-            : "altum_rules_v1";
+            : "altum_rules_v1");
 
   const extractionModel =
-    primaryProvider === "openai"
+    profile.extractionModelOverride ||
+    (primaryProvider === "openai"
       ? "gpt-5-mini"
       : primaryProvider === "anthropic"
         ? "claude-sonnet-4"
-        : primaryProvider === "gemini"
+      : primaryProvider === "gemini"
           ? "gemini-2.5-flash"
           : primaryProvider === "mistral"
             ? "mistral-small"
-            : "altum_rules_v1";
+            : "altum_rules_v1");
 
   const retrievalMode =
     profile.reasoningLevel === "deep" || profile.tier === "elite" || profile.tier === "enterprise"

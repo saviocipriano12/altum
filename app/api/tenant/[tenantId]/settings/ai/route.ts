@@ -28,6 +28,8 @@ type Body = {
   reasoningLevel?: AltumAiReasoningLevel;
   responseStyle?: AltumAiResponseStyle;
   preferredProviders?: AltumAiProvider[] | string;
+  conversationModelOverride?: string;
+  extractionModelOverride?: string;
   monthlyBudgetUsd?: number;
   monthlyUsageCap?: number;
 };
@@ -98,6 +100,8 @@ function normalizeAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings
     reasoningLevel: operatingProfile.reasoningLevel,
     responseStyle: operatingProfile.responseStyle,
     preferredProviders: operatingProfile.preferredProviders,
+    conversationModelOverride: operatingProfile.conversationModelOverride || "",
+    extractionModelOverride: operatingProfile.extractionModelOverride || "",
     monthlyBudgetUsd: operatingProfile.monthlyBudgetUsd,
     monthlyUsageCap: operatingProfile.monthlyUsageCap,
     runtimePolicy,
@@ -169,6 +173,8 @@ export async function POST(
         reasoningLevel: body.reasoningLevel ?? current.reasoningLevel,
         responseStyle: body.responseStyle ?? current.responseStyle,
         preferredProviders: body.preferredProviders ?? current.preferredProviders,
+        conversationModelOverride: body.conversationModelOverride ?? current.conversationModelOverride,
+        extractionModelOverride: body.extractionModelOverride ?? current.extractionModelOverride,
         monthlyBudgetUsd: body.monthlyBudgetUsd ?? current.monthlyBudgetUsd,
         monthlyUsageCap: body.monthlyUsageCap ?? current.monthlyUsageCap,
       }),

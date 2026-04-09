@@ -23,6 +23,8 @@ type AiSettings = {
   reasoningLevel?: "fast" | "balanced" | "deep";
   responseStyle?: "concise" | "consultative" | "premium_sales" | "closer";
   preferredProviders?: Array<"altum_rules" | "openai" | "anthropic" | "gemini" | "mistral">;
+  conversationModelOverride?: string;
+  extractionModelOverride?: string;
   monthlyBudgetUsd?: number;
   monthlyUsageCap?: number;
   runtimePolicy?: {
@@ -274,8 +276,66 @@ const EMPTY_SETTINGS: AiSettings = {
   reasoningLevel: "balanced",
   responseStyle: "consultative",
   preferredProviders: [...DEFAULT_AI_PROVIDERS],
+  conversationModelOverride: "",
+  extractionModelOverride: "",
   monthlyBudgetUsd: 100,
   monthlyUsageCap: 1500,
+};
+
+const PROVIDER_OPTIONS = [
+  { id: "openai", label: "OpenAI" },
+  { id: "anthropic", label: "Anthropic" },
+  { id: "gemini", label: "Gemini" },
+  { id: "mistral", label: "Mistral" },
+  { id: "altum_rules", label: "ALTUM Rules" },
+] as const;
+
+const CONVERSATION_MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+  openai: [
+    { value: "", label: "Padrao economico (gpt-5-mini)" },
+    { value: "gpt-5-mini", label: "gpt-5-mini" },
+    { value: "gpt-5.4", label: "gpt-5.4" },
+  ],
+  anthropic: [
+    { value: "", label: "Padrao automatico" },
+    { value: "claude-sonnet-4", label: "claude-sonnet-4" },
+    { value: "claude-opus-4", label: "claude-opus-4" },
+  ],
+  gemini: [
+    { value: "", label: "Padrao automatico" },
+    { value: "gemini-2.5-pro", label: "gemini-2.5-pro" },
+    { value: "gemini-2.5-flash", label: "gemini-2.5-flash" },
+  ],
+  mistral: [
+    { value: "", label: "Padrao automatico" },
+    { value: "mistral-small", label: "mistral-small" },
+    { value: "mistral-large", label: "mistral-large" },
+  ],
+  altum_rules: [{ value: "", label: "ALTUM Rules" }],
+};
+
+const EXTRACTION_MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+  openai: [
+    { value: "", label: "Padrao economico (gpt-5-mini)" },
+    { value: "gpt-5-mini", label: "gpt-5-mini" },
+    { value: "gpt-5.4", label: "gpt-5.4" },
+  ],
+  anthropic: [
+    { value: "", label: "Padrao automatico" },
+    { value: "claude-sonnet-4", label: "claude-sonnet-4" },
+    { value: "claude-opus-4", label: "claude-opus-4" },
+  ],
+  gemini: [
+    { value: "", label: "Padrao automatico" },
+    { value: "gemini-2.5-flash", label: "gemini-2.5-flash" },
+    { value: "gemini-2.5-pro", label: "gemini-2.5-pro" },
+  ],
+  mistral: [
+    { value: "", label: "Padrao automatico" },
+    { value: "mistral-small", label: "mistral-small" },
+    { value: "mistral-large", label: "mistral-large" },
+  ],
+  altum_rules: [{ value: "", label: "ALTUM Rules" }],
 };
 
 function toDate(value: unknown) {
@@ -416,6 +476,10 @@ function reorderProviders(
   const fallback = without.filter((item) => item !== primary && item !== "altum_rules");
   const rules = without.includes("altum_rules") ? ["altum_rules" as const] : [];
   return [primary, ...fallback, ...rules];
+}
+
+function getPrimaryProvider(settings: AiSettings) {
+  return settings.preferredProviders?.[0] || "openai";
 }
 
 export default function ClienteIaPage() {
@@ -766,6 +830,16 @@ export default function ClienteIaPage() {
     const adjustments = previewBatchResults.filter((item) => !item.error && item.verdict && !item.verdict.passed).length;
     return { total, approved, errors, adjustments };
   }, [previewBatchResults]);
+
+  const primaryProvider = useMemo(() => getPrimaryProvider(settings), [settings]);
+  const conversationModelOptions = useMemo(
+    () => CONVERSATION_MODEL_OPTIONS[primaryProvider] || CONVERSATION_MODEL_OPTIONS.openai,
+    [primaryProvider]
+  );
+  const extractionModelOptions = useMemo(
+    () => EXTRACTION_MODEL_OPTIONS[primaryProvider] || EXTRACTION_MODEL_OPTIONS.openai,
+    [primaryProvider]
+  );
 
   function applyPreviewScenario(scenarioId: string) {
     const scenario = PREVIEW_SCENARIOS.find((item) => item.id === scenarioId);
@@ -1549,13 +1623,7 @@ export default function ClienteIaPage() {
             <label className="block text-xs text-[var(--cliente-card-text-soft)]">
               Motores preferidos
               <div className="mt-2 flex flex-wrap gap-2">
-                {[
-                  { id: "openai", label: "OpenAI" },
-                  { id: "anthropic", label: "Anthropic" },
-                  { id: "gemini", label: "Gemini" },
-                  { id: "mistral", label: "Mistral" },
-                  { id: "altum_rules", label: "ALTUM Rules" },
-                ].map((provider) => {
+                {PROVIDER_OPTIONS.map((provider) => {
                   const active = (settings.preferredProviders || []).includes(provider.id as NonNullable<AiSettings["preferredProviders"]>[number]);
                   return (
                     <button
@@ -1588,6 +1656,44 @@ export default function ClienteIaPage() {
               </div>
             </label>
 
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+                Modelo principal da conversa
+                <select
+                  value={settings.conversationModelOverride || ""}
+                  onChange={(event) =>
+                    setSettings((prev) => ({ ...prev, conversationModelOverride: event.target.value }))
+                  }
+                  disabled={!canManage}
+                  className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
+                >
+                  {conversationModelOptions.map((option) => (
+                    <option key={option.value || "default"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+                Modelo de extracao
+                <select
+                  value={settings.extractionModelOverride || ""}
+                  onChange={(event) =>
+                    setSettings((prev) => ({ ...prev, extractionModelOverride: event.target.value }))
+                  }
+                  disabled={!canManage}
+                  className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
+                >
+                  {extractionModelOptions.map((option) => (
+                    <option key={option.value || "default"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
             <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <StateBadge label={tierLabel(settings.tier)} tone="info" />
@@ -1598,8 +1704,14 @@ export default function ClienteIaPage() {
               <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
                 Motor atual da IA: {settings.runtimePolicy?.primaryProvider || "openai"} / {settings.runtimePolicy?.conversationModel || "gpt-5-mini"}.
               </p>
+              <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
+                Extracao atual: {settings.runtimePolicy?.extractionModel || "gpt-5-mini"}.
+              </p>
               <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                 Busca {settings.runtimePolicy?.retrievalMode || "keyword"} • ferramentas {settings.runtimePolicy?.supportsToolCalling ? "ligadas" : "desligadas"} • budget {settings.runtimePolicy?.budgetMode || "balanced"}.
+              </p>
+              <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
+                Padrao novo: OpenAI usa `gpt-5-mini` por economia. Modelo caro so entra se voce escolher explicitamente aqui.
               </p>
             </div>
 

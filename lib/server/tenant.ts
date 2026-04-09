@@ -84,6 +84,8 @@ export type TenantSettings = {
       reasoningLevel?: "fast" | "balanced" | "deep";
       responseStyle?: "concise" | "consultative" | "premium_sales" | "closer";
       preferredProviders?: string[] | string;
+      conversationModelOverride?: string;
+      extractionModelOverride?: string;
       monthlyBudgetUsd?: number;
       monthlyUsageCap?: number;
     };
