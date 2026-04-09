@@ -37,6 +37,7 @@ type AiSettings = {
     supportsDeepReasoning?: boolean;
     budgetMode?: string;
   };
+  providerStatus?: Partial<Record<"altum_rules" | "openai" | "anthropic" | "gemini" | "mistral", { ready: boolean; label: string }>>;
 };
 
 type KbDoc = {
@@ -554,12 +555,9 @@ export default function ClienteIaPage() {
 
       if (settingsRes.ok) {
         const rawSettings = { ...EMPTY_SETTINGS, ...(settingsPayload.ai || {}) };
-        const normalizedPreferredProviders =
-          rawSettings.preferredProviders?.length === 1 && rawSettings.preferredProviders[0] === "altum_rules"
-            ? [...DEFAULT_AI_PROVIDERS]
-            : rawSettings.preferredProviders?.length
-              ? rawSettings.preferredProviders
-              : [...DEFAULT_AI_PROVIDERS];
+        const normalizedPreferredProviders = rawSettings.preferredProviders?.length
+          ? rawSettings.preferredProviders
+          : [...DEFAULT_AI_PROVIDERS];
         const nextSettings = {
           ...rawSettings,
           preferredProviders: normalizedPreferredProviders,
@@ -1655,6 +1653,23 @@ export default function ClienteIaPage() {
                     >
                       {provider.label}
                     </button>
+                  );
+                })}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                {PROVIDER_OPTIONS.map((provider) => {
+                  const status = settings.providerStatus?.[provider.id];
+                  return (
+                    <span
+                      key={`${provider.id}-status`}
+                      className={`rounded-full border px-2.5 py-1 ${
+                        status?.ready
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                          : "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                      }`}
+                    >
+                      {provider.label}: {status?.ready ? "pronto" : "sem chave"}
+                    </span>
                   );
                 })}
               </div>

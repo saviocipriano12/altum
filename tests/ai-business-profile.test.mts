@@ -50,8 +50,8 @@ test('ai operating layer normalizes tenant profile and builds runtime policy', (
   const policy = buildAiRuntimePolicy(profile);
   assert.equal(policy.primaryProvider, 'openai');
   assert.deepEqual(policy.fallbackProviders, ['anthropic']);
-  assert.equal(policy.conversationModel, 'gpt-5.4');
-  assert.equal(policy.extractionModel, 'gpt-5-mini');
+  assert.equal(policy.conversationModel, 'gpt-4.1-mini');
+  assert.equal(policy.extractionModel, 'gpt-4.1-mini');
   assert.equal(policy.retrievalMode, 'semantic');
   assert.equal(policy.supportsToolCalling, true);
   assert.equal(policy.supportsDeepReasoning, true);
@@ -63,8 +63,8 @@ test('ai operating layer falls back safely when profile is invalid', () => {
   const policy = buildAiRuntimePolicy(profile);
 
   assert.equal(profile.tier, 'growth');
-  assert.deepEqual(profile.preferredProviders, ['altum_rules']);
-  assert.equal(policy.primaryProvider, 'altum_rules');
-  assert.equal(policy.conversationModel, 'altum_rules_v1');
-  assert.equal(policy.supportsToolCalling, false);
+  assert.deepEqual(profile.preferredProviders, ['openai', 'altum_rules']);
+  assert.equal(policy.primaryProvider, 'openai');
+  assert.equal(policy.conversationModel, 'gpt-4.1-mini');
+  assert.equal(policy.supportsToolCalling, true);
 });

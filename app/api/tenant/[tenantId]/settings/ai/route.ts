@@ -34,6 +34,16 @@ type Body = {
   monthlyUsageCap?: number;
 };
 
+function providerStatus() {
+  return {
+    openai: { ready: Boolean(process.env.OPENAI_API_KEY), label: "OpenAI" },
+    anthropic: { ready: Boolean(process.env.ANTHROPIC_API_KEY), label: "Anthropic" },
+    gemini: { ready: Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY), label: "Gemini" },
+    mistral: { ready: Boolean(process.env.MISTRAL_API_KEY), label: "Mistral" },
+    altum_rules: { ready: true, label: "ALTUM Rules" },
+  } as const;
+}
+
 function clean(value: unknown, max = 300) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
@@ -105,6 +115,7 @@ function normalizeAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings
     monthlyBudgetUsd: operatingProfile.monthlyBudgetUsd,
     monthlyUsageCap: operatingProfile.monthlyUsageCap,
     runtimePolicy,
+    providerStatus: providerStatus(),
   };
 }
 

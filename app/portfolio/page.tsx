@@ -36,16 +36,6 @@ import {
 const whatsappLink =
   "https://wa.me/5531972545430?text=Ola%20ALTUM,%20quero%20um%20site%20em%20alto%20nivel%20para%20minha%20empresa.";
 
-type Project = {
-  name: string;
-  niche: string;
-  result: string;
-  description: string;
-  image: string;
-  href: string;
-  featured?: boolean;
-};
-
 type Metric = {
   value: string;
   label: string;
@@ -62,37 +52,6 @@ type Feature = {
   description: string;
   icon: ElementType;
 };
-
-const projects: Project[] = [
-  {
-    name: "Clinica Estetica Premium",
-    niche: "Clinica - Landing Page",
-    result: "+120 leads/mes",
-    description:
-      "Projeto construido para transmitir autoridade, elevar percepcao de valor e facilitar o agendamento comercial.",
-    image: "/images/portfolio/clinica.jpg",
-    href: "#",
-    featured: true,
-  },
-  {
-    name: "Advocacia Empresarial",
-    niche: "Juridico - Institucional",
-    result: "Mais autoridade e contatos",
-    description:
-      "Estrutura digital focada em credibilidade, clareza dos servicos e geracao de contatos qualificados.",
-    image: "/images/portfolio/advogado.jpg",
-    href: "#",
-  },
-  {
-    name: "Energia Solar B2B",
-    niche: "B2B - Funil Comercial",
-    result: "Pipeline mais previsivel",
-    description:
-      "Ecossistema pensado para captacao, avanco no funil e organizacao comercial com mais consistencia.",
-    image: "/images/portfolio/solar.jpg",
-    href: "#",
-  },
-];
 
 const stats: Metric[] = [
   { value: "+120", label: "Leads/mes em estruturas bem desenhadas" },
