@@ -196,6 +196,223 @@ function normalizeQueueStatus(value: unknown) {
   return "open";
 }
 
+function cleanText(value: unknown, max = 180) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, max);
+}
+
+function readObject(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function extractLeadTouch(lead: GenericRow, key: "first_touch" | "last_touch") {
+  const topLevel = readObject(lead[key]);
+  const attribution = readObject(lead.attribution);
+  const nested = readObject(key === "first_touch" ? attribution.firstTouch : attribution.lastTouch);
+  const touch = Object.keys(topLevel).length ? topLevel : nested;
+
+  return {
+    source: cleanText(touch.source || lead.utmSource, 120),
+    medium: cleanText(touch.medium || lead.utmMedium, 120),
+    campaign: cleanText(touch.campaign || lead.campaignName || lead.utmCampaign, 180),
+    sourceLabel: cleanText(touch.sourceLabel || lead.origem, 140),
+    channel: cleanText(touch.channel || lead.channel, 80),
+    campaignId: cleanText(touch.campaignId, 180),
+  };
+}
+
+function isQualifiedLead(lead: GenericRow) {
+  return ["qualificacao", "proposta", "fechamento", "ganho"].includes(
+    normalizePipelineStageId(lead.pipelineStage || lead.stage || "captado")
+  );
+}
+
+function isHotLead(lead: GenericRow) {
+  const heat = cleanText(lead.heat, 40).toLowerCase();
+  return heat === "hot" || heat.includes("quente");
+}
+
+function resolveCommercialChannelLabel(input: { source: string; sourceLabel: string; channel: string }) {
+  const candidates = [input.sourceLabel, input.source, input.channel].filter(Boolean).join(" ").toLowerCase();
+  if (candidates.includes("google")) return "Google Ads";
+  if (candidates.includes("meta") || candidates.includes("facebook") || candidates.includes("instagram")) return "Meta Ads";
+  if (candidates.includes("whatsapp")) return "WhatsApp";
+  if (candidates.includes("site_chat") || candidates.includes("site chat") || candidates === "chat") return "Site Chat";
+  if (candidates.includes("form")) return "Formulario";
+  if (input.sourceLabel) return input.sourceLabel;
+  if (input.source) return input.source;
+  if (input.channel) return input.channel;
+  return "Nao informado";
+}
+
+function resolveSnapshotChannelLabel(snapshot: GenericRow) {
+  return resolveCommercialChannelLabel({
+    source: cleanText(snapshot.platform, 80),
+    sourceLabel: cleanText(snapshot.accountLabel, 140),
+    channel: cleanText(snapshot.channelId || snapshot.adAccountId, 140),
+  });
+}
+
+function buildCommercialAttribution(leads: GenericRow[], snapshots: GenericRow[]) {
+  type Group = {
+    key: string;
+    label: string;
+    source?: string;
+    lastTouchLeads: number;
+    firstTouchLeads: number;
+    qualifiedLeads: number;
+    wonLeads: number;
+    hotLeads: number;
+    totalScore: number;
+    scoredLeads: number;
+    spend: number;
+    clicks: number;
+    impressions: number;
+    paidLeads: number;
+    campaignCount?: number;
+  };
+
+  const channelMap = new Map<string, Group>();
+  const campaignMap = new Map<string, Group>();
+
+  const getChannelGroup = (label: string) => {
+    const key = label.toLowerCase();
+    const current = channelMap.get(key) || {
+      key,
+      label,
+      lastTouchLeads: 0,
+      firstTouchLeads: 0,
+      qualifiedLeads: 0,
+      wonLeads: 0,
+      hotLeads: 0,
+      totalScore: 0,
+      scoredLeads: 0,
+      spend: 0,
+      clicks: 0,
+      impressions: 0,
+      paidLeads: 0,
+      campaignCount: 0,
+    };
+    channelMap.set(key, current);
+    return current;
+  };
+
+  const getCampaignGroup = (label: string, source: string) => {
+    const key = `${source.toLowerCase()}::${label.toLowerCase()}`;
+    const current = campaignMap.get(key) || {
+      key,
+      label,
+      source,
+      lastTouchLeads: 0,
+      firstTouchLeads: 0,
+      qualifiedLeads: 0,
+      wonLeads: 0,
+      hotLeads: 0,
+      totalScore: 0,
+      scoredLeads: 0,
+      spend: 0,
+      clicks: 0,
+      impressions: 0,
+      paidLeads: 0,
+    };
+    campaignMap.set(key, current);
+    return current;
+  };
+
+  for (const lead of leads) {
+    const lastTouch = extractLeadTouch(lead, "last_touch");
+    const firstTouch = extractLeadTouch(lead, "first_touch");
+    const lastChannelLabel = resolveCommercialChannelLabel(lastTouch);
+    const firstChannelLabel = resolveCommercialChannelLabel(firstTouch);
+    const lastCampaignLabel = lastTouch.campaign || cleanText(lead.campaignName || lead.utmCampaign, 180) || "Sem campanha";
+    const firstCampaignLabel = firstTouch.campaign || "Sem campanha";
+    const qualified = isQualifiedLead(lead);
+    const won = normalizePipelineStageId(lead.pipelineStage || lead.stage || "captado") === "ganho";
+    const hot = isHotLead(lead);
+    const score = typeof lead.score === "number" ? lead.score : null;
+
+    const lastChannel = getChannelGroup(lastChannelLabel);
+    lastChannel.lastTouchLeads += 1;
+    if (qualified) lastChannel.qualifiedLeads += 1;
+    if (won) lastChannel.wonLeads += 1;
+    if (hot) lastChannel.hotLeads += 1;
+    if (typeof score === "number") {
+      lastChannel.totalScore += score;
+      lastChannel.scoredLeads += 1;
+    }
+
+    const firstChannel = getChannelGroup(firstChannelLabel);
+    firstChannel.firstTouchLeads += 1;
+
+    const lastCampaign = getCampaignGroup(lastCampaignLabel, lastChannelLabel);
+    lastCampaign.lastTouchLeads += 1;
+    if (qualified) lastCampaign.qualifiedLeads += 1;
+    if (won) lastCampaign.wonLeads += 1;
+    if (hot) lastCampaign.hotLeads += 1;
+    if (typeof score === "number") {
+      lastCampaign.totalScore += score;
+      lastCampaign.scoredLeads += 1;
+    }
+
+    const firstCampaign = getCampaignGroup(firstCampaignLabel, firstChannelLabel);
+    firstCampaign.firstTouchLeads += 1;
+  }
+
+  for (const snapshot of snapshots) {
+    const channelLabel = resolveSnapshotChannelLabel(snapshot);
+    const channel = getChannelGroup(channelLabel);
+    channel.spend += toNumber(snapshot.spend);
+    channel.clicks += toNumber(snapshot.clicks);
+    channel.impressions += toNumber(snapshot.impressions);
+    channel.paidLeads += toNumber(snapshot.leads);
+    channel.campaignCount = (channel.campaignCount || 0) + (snapshot.campaignName || snapshot.campaignId ? 1 : 0);
+
+    const campaignLabel = cleanText(snapshot.campaignName || snapshot.campaignId, 180);
+    if (campaignLabel) {
+      const campaign = getCampaignGroup(campaignLabel, channelLabel);
+      campaign.spend += toNumber(snapshot.spend);
+      campaign.clicks += toNumber(snapshot.clicks);
+      campaign.impressions += toNumber(snapshot.impressions);
+      campaign.paidLeads += toNumber(snapshot.leads);
+    }
+  }
+
+  const formatGroup = (group: Group) => ({
+    key: group.key,
+    label: group.label,
+    source: group.source || null,
+    lastTouchLeads: group.lastTouchLeads,
+    firstTouchLeads: group.firstTouchLeads,
+    qualifiedLeads: group.qualifiedLeads,
+    wonLeads: group.wonLeads,
+    hotLeads: group.hotLeads,
+    avgScore: group.scoredLeads ? Number((group.totalScore / group.scoredLeads).toFixed(1)) : 0,
+    qualityRate: group.lastTouchLeads
+      ? Number(((group.qualifiedLeads / group.lastTouchLeads) * 100).toFixed(1))
+      : 0,
+    winRate: group.lastTouchLeads ? Number(((group.wonLeads / group.lastTouchLeads) * 100).toFixed(1)) : 0,
+    spend: Number(group.spend.toFixed(2)),
+    clicks: group.clicks,
+    impressions: group.impressions,
+    paidLeads: group.paidLeads,
+    cpl: group.paidLeads > 0 ? Number((group.spend / group.paidLeads).toFixed(2)) : 0,
+    campaignCount: group.campaignCount ?? null,
+  });
+
+  return {
+    byChannel: Array.from(channelMap.values())
+      .map(formatGroup)
+      .sort((a, b) => b.lastTouchLeads - a.lastTouchLeads || b.spend - a.spend)
+      .slice(0, 12),
+    byCampaign: Array.from(campaignMap.values())
+      .map(formatGroup)
+      .sort((a, b) => b.lastTouchLeads - a.lastTouchLeads || b.spend - a.spend)
+      .slice(0, 20),
+  };
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -350,6 +567,7 @@ export async function GET(
       ...item,
       spend: Number(item.spend.toFixed(2)),
     }));
+    const commercialAttribution = buildCommercialAttribution(currentLeads, currentSnapshots);
 
     const aiSummary = {
       responded: currentAiLogs.filter((item) => item.decision === "respond").length,
@@ -514,6 +732,7 @@ export async function GET(
       },
       funnel: funnelBase,
       channels,
+      commercialAttribution,
       conversationChannels,
       trafficSeries,
       ai: aiSummary,

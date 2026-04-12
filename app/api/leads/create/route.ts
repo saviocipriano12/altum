@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
 import { getTenantForCurrentUser } from "@/lib/server/tenant";
+import { buildLeadAttributionPatch } from "@/lib/server/lead-intake";
 import { runLeadAutomations } from "@/lib/server/automations";
 
 type Body = {
@@ -41,6 +42,15 @@ type Body = {
   photos?: string[];
   autoIntelligence?: boolean;
   tenantId?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+  gclid?: string;
+  fbclid?: string;
+  landingPage?: string;
+  referrer?: string;
 };
 
 function clean(value: unknown, max = 240) {
@@ -143,6 +153,28 @@ export async function POST(req: Request) {
       tenantId = (await getTenantForCurrentUser(tenantOwner)) || null;
     }
 
+    const existingData = existingSnap.exists ? (existingSnap.data() as Record<string, unknown>) : {};
+    const attributionState = buildLeadAttributionPatch({
+      existingData,
+      attribution: {
+        source: clean(body.utmSource, 120),
+        medium: clean(body.utmMedium, 120),
+        campaign: clean(body.utmCampaign, 180),
+        term: clean(body.utmTerm, 160),
+        content: clean(body.utmContent, 240),
+        gclid: clean(body.gclid, 240),
+        fbclid: clean(body.fbclid, 240),
+        landingPage: clean(body.landingPage, 500),
+        referrer: clean(body.referrer, 500),
+        sourceLabel: clean(body.origem, 140) || "manual",
+        sourceType,
+        channel: clean(body.sourceType, 80) || "manual",
+      },
+      sourceLabel: clean(body.origem, 140) || "manual",
+      channel: clean(body.sourceType, 80) || "manual",
+      sourceType,
+    });
+
     const payload: Record<string, unknown> = {
       nome: resolvedNome,
       email,
@@ -153,7 +185,7 @@ export async function POST(req: Request) {
       instagram: cleanOptional(body.instagram, 140),
       linkedin: cleanOptional(body.linkedin, 280),
       categoria: cleanOptional(body.categoria, 120),
-      origem: clean(body.origem, 140) || "manual",
+      origem: attributionState.originLabel || clean(body.origem, 140) || "manual",
       stage: cleanOptional(body.stage, 80),
       status: clean(body.status, 80) || "novo",
       pipelineStage: clean(body.pipelineStage, 80) || "captado",
@@ -181,6 +213,7 @@ export async function POST(req: Request) {
       owner: ownerId ? ownerName : null,
       tenantId,
       updatedAt: FieldValue.serverTimestamp(),
+      ...attributionState.patch,
     };
 
     if (!existingSnap.exists) {

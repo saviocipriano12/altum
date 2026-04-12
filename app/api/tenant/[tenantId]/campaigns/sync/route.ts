@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { upsertCampaignSnapshot } from "@/app/lib/server/campaign-sync";
 import { fetchGoogleAdsDailyMetrics } from "@/app/lib/server/google-ads";
 
 type Body = {
@@ -69,17 +70,6 @@ function sumLeadActions(actions: unknown) {
   return Math.max(0, Math.round(total));
 }
 
-function calcMetrics(input: { impressions: number; clicks: number; spend: number; leads: number }) {
-  const ctr = input.impressions > 0 ? (input.clicks / input.impressions) * 100 : 0;
-  const cpc = input.clicks > 0 ? input.spend / input.clicks : 0;
-  const cpl = input.leads > 0 ? input.spend / input.leads : 0;
-  return {
-    ctr: Number(ctr.toFixed(4)),
-    cpc: Number(cpc.toFixed(4)),
-    cpl: Number(cpl.toFixed(4)),
-  };
-}
-
 function buildDateRefs(days: number) {
   return Array.from({ length: days }, (_, index) => {
     const offset = days - index - 1;
@@ -135,29 +125,19 @@ async function syncMetaChannel(input: {
   const clicks = toInt(row?.clicks);
   const spend = Number(toNumber(row?.spend).toFixed(2));
   const leads = sumLeadActions(row?.actions);
-  const rates = calcMetrics({ impressions, clicks, spend, leads });
-
-  await adminDb.collection("campaign_snapshots").doc(`${input.tenantId}_${input.channelId}_${input.dateRef}`).set(
-    {
-      tenantId: input.tenantId,
-      clientId: input.tenantId,
-      adAccountId: input.channelId,
-      channelId: input.channelId,
-      platform: "meta_ads",
-      dateRef: input.dateRef,
-      impressions,
-      clicks,
-      spend,
-      leads,
-      ctr: rates.ctr,
-      cpc: rates.cpc,
-      cpl: rates.cpl,
-      source: "api",
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+  await upsertCampaignSnapshot({
+    tenantId: input.tenantId,
+    clientId: input.tenantId,
+    adAccountId: input.channelId,
+    channelId: input.channelId,
+    platform: "meta_ads",
+    dateRef: input.dateRef,
+    impressions,
+    clicks,
+    spend,
+    leads,
+    source: "api",
+  });
 }
 
 async function syncGoogleChannel(input: {
@@ -177,29 +157,19 @@ async function syncGoogleChannel(input: {
     loginCustomerId: input.loginCustomerId,
   });
 
-  const rates = calcMetrics(metrics);
-
-  await adminDb.collection("campaign_snapshots").doc(`${input.tenantId}_${input.channelId}_${input.dateRef}`).set(
-    {
-      tenantId: input.tenantId,
-      clientId: input.tenantId,
-      adAccountId: input.channelId,
-      channelId: input.channelId,
-      platform: "google_ads",
-      dateRef: input.dateRef,
-      impressions: metrics.impressions,
-      clicks: metrics.clicks,
-      spend: metrics.spend,
-      leads: metrics.leads,
-      ctr: rates.ctr,
-      cpc: rates.cpc,
-      cpl: rates.cpl,
-      source: "api",
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+  await upsertCampaignSnapshot({
+    tenantId: input.tenantId,
+    clientId: input.tenantId,
+    adAccountId: input.channelId,
+    channelId: input.channelId,
+    platform: "google_ads",
+    dateRef: input.dateRef,
+    impressions: metrics.impressions,
+    clicks: metrics.clicks,
+    spend: metrics.spend,
+    leads: metrics.leads,
+    source: "api",
+  });
 }
 
 export async function POST(

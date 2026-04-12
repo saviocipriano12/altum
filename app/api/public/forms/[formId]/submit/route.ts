@@ -18,6 +18,12 @@ type Body = {
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+  gclid?: string;
+  fbclid?: string;
+  landingPage?: string;
+  referrer?: string;
 };
 
 type CustomFieldMap = Record<string, string | number | boolean>;
@@ -56,9 +62,15 @@ export async function POST(
     const telefone = clean(body.telefone, 40);
     const empresa = clean(body.empresa, 180);
     const mensagem = clean(body.mensagem, 4000);
-    const utmSource = clean(body.utmSource, 120).toLowerCase();
-    const utmMedium = clean(body.utmMedium, 120).toLowerCase();
-    const utmCampaign = clean(body.utmCampaign, 120).toLowerCase();
+    const utmSource = clean(body.utmSource, 120);
+    const utmMedium = clean(body.utmMedium, 120);
+    const utmCampaign = clean(body.utmCampaign, 180);
+    const utmTerm = clean(body.utmTerm, 160);
+    const utmContent = clean(body.utmContent, 240);
+    const gclid = clean(body.gclid, 240);
+    const fbclid = clean(body.fbclid, 240);
+    const landingPage = clean(body.landingPage, 500);
+    const referrer = clean(body.referrer, 500);
 
     const customFieldEntries = fields
       .map((field) => [field.id, normalizeCaptureFieldValue(field, body.customFields?.[field.id])] as const)
@@ -110,8 +122,14 @@ export async function POST(
         source: utmSource || clean(form.sourceLabel, 120) || "formulario",
         medium: utmMedium || "form",
         campaign: utmCampaign || "",
+        term: utmTerm,
+        content: utmContent,
         formId,
         formName: clean(form.name, 140) || "Formulario",
+        landingPage,
+        referrer,
+        gclid,
+        fbclid,
       },
       submission: {
         formId,
@@ -120,6 +138,12 @@ export async function POST(
         utmSource,
         utmMedium,
         utmCampaign,
+        utmTerm,
+        utmContent,
+        gclid,
+        fbclid,
+        landingPage,
+        referrer,
       },
       automationActorId: "altum_capture_form",
       automationActorName: "ALTUM Capture",

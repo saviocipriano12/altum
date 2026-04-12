@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError, isAdmin } from "@/app/lib/server/route-auth";
+import { upsertCampaignSnapshot } from "@/app/lib/server/campaign-sync";
 
 type Body = {
   adAccountId?: string;
@@ -11,28 +11,15 @@ type Body = {
   spend?: number;
   leads?: number;
   roas?: number;
-  source?: "api" | "manual" | "import";
+  source?: "api" | "manual" | "import" | "webhook";
+  campaignId?: string;
+  campaignName?: string;
+  channelId?: string;
 };
-
-function toNumber(value: unknown) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
 
 function clean(value: unknown, max = 120) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
-}
-
-function calcMetrics(input: { impressions: number; clicks: number; spend: number; leads: number }) {
-  const ctr = input.impressions > 0 ? (input.clicks / input.impressions) * 100 : 0;
-  const cpc = input.clicks > 0 ? input.spend / input.clicks : 0;
-  const cpl = input.leads > 0 ? input.spend / input.leads : 0;
-  return {
-    ctr: Number(ctr.toFixed(4)),
-    cpc: Number(cpc.toFixed(4)),
-    cpl: Number(cpl.toFixed(4)),
-  };
 }
 
 export async function POST(req: Request) {
@@ -55,50 +42,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Conta de anuncio nao encontrada." }, { status: 404 });
     }
 
-    const adAccount = adAccountSnap.data() as { ownerId?: string; clientId?: string };
+    const adAccount = adAccountSnap.data() as {
+      ownerId?: string;
+      clientId?: string;
+      platform?: string;
+      accountLabel?: string;
+    };
     if (!isAdmin(user) && adAccount.ownerId && adAccount.ownerId !== user.uid) {
       return NextResponse.json({ error: "Sem permissao nesta conta." }, { status: 403 });
     }
 
-    const impressions = Math.max(0, Math.round(toNumber(body.impressions)));
-    const clicks = Math.max(0, Math.round(toNumber(body.clicks)));
-    const spend = Math.max(0, Number(toNumber(body.spend).toFixed(2)));
-    const leads = Math.max(0, Math.round(toNumber(body.leads)));
-    const roas = Number(toNumber(body.roas).toFixed(4));
-    const metrics = calcMetrics({ impressions, clicks, spend, leads });
-
-    const snapshotId = `${adAccountId}_${dateRef}`;
-    const snapRef = adminDb.collection("campaign_snapshots").doc(snapshotId);
-
-    await snapRef.set(
-      {
-        adAccountId,
-        clientId: adAccount.clientId || null,
-        dateRef,
-        impressions,
-        clicks,
-        spend,
-        leads,
-        ctr: metrics.ctr,
-        cpc: metrics.cpc,
-        cpl: metrics.cpl,
-        roas: Number.isFinite(roas) ? roas : 0,
-        source: body.source || "manual",
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: user.uid,
-      },
-      { merge: true }
-    );
+    const snapshot = await upsertCampaignSnapshot({
+      clientId: clean(adAccount.clientId, 120),
+      adAccountId,
+      channelId: clean(body.channelId, 180),
+      platform: clean(adAccount.platform, 40) as "meta_ads" | "google_ads" | "tiktok_ads" | "linkedin_ads",
+      dateRef,
+      impressions: body.impressions,
+      clicks: body.clicks,
+      spend: body.spend,
+      leads: body.leads,
+      roas: body.roas,
+      source: body.source || "manual",
+      campaignId: clean(body.campaignId, 180),
+      campaignName: clean(body.campaignName, 180),
+      updatedBy: user.uid,
+      updatedByName: user.name,
+      accountLabel: clean(adAccount.accountLabel, 180),
+    });
 
     await adAccountRef.set(
       {
-        lastSyncAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
+        lastSyncAt: new Date(),
+        updatedAt: new Date(),
+        lastConsistency: snapshot.consistency,
       },
       { merge: true }
     );
 
-    return NextResponse.json({ ok: true, id: snapshotId });
+    return NextResponse.json({ ok: true, id: snapshot.snapshotId, consistency: snapshot.consistency });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json(
