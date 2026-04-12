@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { sanitizeText, toTime } from "@/lib/server/ai/observability";
 
-function cleanText(value: unknown, max = 180) {
-  if (typeof value !== "string") return "";
-  return value.trim().slice(0, max);
+function severityWeight(value: string) {
+  if (value === "high") return 2;
+  if (value === "warning") return 1;
+  return 0;
 }
 
 export async function GET(req: Request) {
@@ -14,36 +16,74 @@ export async function GET(req: Request) {
     });
 
     const { searchParams } = new URL(req.url);
-    const tenantId = cleanText(searchParams.get("tenantId"), 140);
-    const limitRaw = Number(searchParams.get("limit") || 30);
-    const limit = Number.isFinite(limitRaw) ? Math.min(100, Math.max(10, Math.round(limitRaw))) : 30;
+    const tenantId = sanitizeText(searchParams.get("tenantId"), 140);
+    const statusFilter = sanitizeText(searchParams.get("status"), 40);
+    const limitRaw = Number(searchParams.get("limit") || 40);
+    const limit = Number.isFinite(limitRaw) ? Math.min(120, Math.max(10, Math.round(limitRaw))) : 40;
 
-    const base = adminDb.collection("ai_internal_notifications").orderBy("createdAt", "desc").limit(limit * 2);
-    const snap = await base.get();
+    const snap = await adminDb
+      .collection("ai_internal_notifications")
+      .orderBy("updatedAt", "desc")
+      .limit(limit * 3)
+      .get();
 
     const items = snap.docs
       .map((doc) => {
         const data = doc.data() as Record<string, unknown>;
         return {
           id: doc.id,
-          tenantId: cleanText(data.tenantId, 140),
-          chatId: cleanText(data.chatId, 160),
-          leadId: cleanText(data.leadId, 160),
-          type: cleanText(data.type, 80),
-          severity: cleanText(data.severity, 20),
-          title: cleanText(data.title, 180),
-          detail: cleanText(data.detail, 280),
-          status: cleanText(data.status, 40) || "open",
+          tenantId: sanitizeText(data.tenantId, 140),
+          chatId: sanitizeText(data.chatId, 160),
+          leadId: sanitizeText(data.leadId, 160),
+          type: sanitizeText(data.type, 80),
+          severity: sanitizeText(data.severity, 20) || "info",
+          title: sanitizeText(data.title, 180),
+          detail: sanitizeText(data.detail, 320),
+          status: sanitizeText(data.status, 40) || "open",
+          source: sanitizeText(data.source, 80),
+          category: sanitizeText(data.category, 40),
+          scope: sanitizeText(data.scope, 80),
+          errorCode: sanitizeText(data.errorCode, 80),
+          reasonCode: sanitizeText(data.reasonCode, 80),
+          occurrences: typeof data.occurrences === "number" ? data.occurrences : 1,
           createdAt: data.createdAt || null,
+          updatedAt: data.updatedAt || null,
+          firstOccurredAt: data.firstOccurredAt || data.createdAt || null,
+          lastOccurredAt: data.lastOccurredAt || data.updatedAt || data.createdAt || null,
+          resolvedAt: data.resolvedAt || null,
         };
       })
       .filter((item) => item.tenantId)
       .filter((item) => (tenantId ? item.tenantId === tenantId : true))
+      .filter((item) => (statusFilter ? item.status === statusFilter : true))
       .slice(0, limit);
+
+    const riskCards = items
+      .filter((item) => item.status !== "resolved")
+      .sort((a, b) => {
+        if (severityWeight(a.severity) !== severityWeight(b.severity)) {
+          return severityWeight(b.severity) - severityWeight(a.severity);
+        }
+        return toTime(b.lastOccurredAt) - toTime(a.lastOccurredAt);
+      })
+      .slice(0, 8)
+      .map((item) => ({
+        id: item.id,
+        tenantId: item.tenantId,
+        type: item.type,
+        severity: item.severity,
+        title: item.title,
+        detail: item.detail,
+        lastOccurredAt: item.lastOccurredAt,
+        occurrences: item.occurrences,
+        errorCode: item.errorCode,
+        reasonCode: item.reasonCode,
+      }));
 
     return NextResponse.json({
       ok: true,
       items,
+      riskCards,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {

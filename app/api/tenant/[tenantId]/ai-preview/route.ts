@@ -273,13 +273,17 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       autonomyMode: operatingProfile.autonomyMode,
       reasoningLevel: operatingProfile.reasoningLevel,
       responseStyle: operatingProfile.responseStyle,
+      allowPremiumModels: operatingProfile.allowPremiumModels,
       preferredProviders: operatingProfile.preferredProviders as AltumAiProvider[],
       monthlyBudgetUsd: Number(ai.monthlyBudgetUsd || 0) || 0,
       monthlyUsageCap: Number(ai.monthlyUsageCap || 0) || 0,
       runtimePolicy,
     };
 
-    const heuristicExtractedFields = extractBusinessFields(inboundText, tenantAiConfig);
+    const heuristicExtractedFields = extractBusinessFields(
+      inboundText,
+      tenantAiConfig as Parameters<typeof extractBusinessFields>[1]
+    );
     const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields);
 
     const fallbackChoice = buildPreviewFallbackChoice({
