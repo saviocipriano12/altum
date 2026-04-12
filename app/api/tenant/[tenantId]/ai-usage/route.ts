@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { getAiMonthlyUsageSnapshot } from "@/lib/server/ai/usage-ledger";
 
 type AiUsageItem = {
   id: string;
@@ -42,6 +43,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const membership = await assertTenantAccess(user.uid, tenantId);
     assertTenantRole(membership, "client_viewer");
 
+    const monthlySnapshot = await getAiMonthlyUsageSnapshot(tenantId);
     const snap = await adminDb.collection("ai_usage_ledger").where("tenantId", "==", tenantId).limit(200).get();
     const items: AiUsageItem[] = snap.docs
       .map((doc): AiUsageItem => ({
@@ -51,12 +53,13 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
 
     const summary = {
-      total: items.length,
-      estimatedCostUsd: items.reduce((sum, item) => sum + Number(item.estimatedCostUsd || 0), 0),
+      total: monthlySnapshot.runs,
+      estimatedCostUsd: monthlySnapshot.estimatedCostUsd,
       rulesLane: items.filter((item) => String(item.provider || "") === "altum_rules").length,
       premiumLane: items.filter((item) => String(item.provider || "") !== "altum_rules").length,
-      conversationRuns: items.filter((item) => String(item.scope || "") === "conversation").length,
+      conversationRuns: monthlySnapshot.conversationRuns,
       fallbackRuns: items.filter((item) => String(item.status || "") === "fallback").length,
+      monthRef: monthlySnapshot.monthRef,
     };
 
     const providers = Array.from(

@@ -331,6 +331,8 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         extractedFields: extractedFields || null,
         responseText,
         quality,
+        providerFallbackTriggered: Boolean(llmRun?.providerFallbackTriggered || false),
+        providerChainError: llmRun?.providerChainError || null,
         matchedKbDocs: kbDocs.map((doc) => ({
           id: doc.id,
           type: doc.type,

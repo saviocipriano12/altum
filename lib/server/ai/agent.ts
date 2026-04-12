@@ -13,7 +13,7 @@ import {
 } from "@/lib/server/ai/operating-layer";
 import { runConversationAgent } from "@/lib/server/ai/router";
 import { resolveConversationalChoice } from "@/lib/server/ai/conversation-core";
-import { logAiUsage } from "@/lib/server/ai/usage-ledger";
+import { getAiMonthlyUsageSnapshot, logAiUsage } from "@/lib/server/ai/usage-ledger";
 import { trackAltumAgentLearning } from "@/lib/server/ai/learning-loop";
 import {
   trackAppointmentOutcome,
@@ -1216,6 +1216,66 @@ async function createAiInternalNotification(input: {
   });
 }
 
+async function createAiInternalNotificationOnce(input: {
+  tenantId: string;
+  chatId: string;
+  leadId: string;
+  type: string;
+  severity: "info" | "warning" | "high";
+  title: string;
+  detail: string;
+  dedupeWindowMinutes?: number;
+}) {
+  const dedupeWindowMinutes = Math.min(24 * 60, Math.max(15, input.dedupeWindowMinutes || 180));
+  const lockId = [
+    sanitizeText(input.tenantId, 120),
+    sanitizeText(input.chatId, 120),
+    sanitizeText(input.type, 80),
+  ]
+    .join("_")
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 220);
+  const lockRef = adminDb.collection("ai_internal_notification_locks").doc(lockId);
+
+  let shouldCreate = false;
+  await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(lockRef);
+    const lastNotifiedAt = toDate((snap.data() as { lastNotifiedAt?: unknown } | undefined)?.lastNotifiedAt);
+    const now = Date.now();
+    if (lastNotifiedAt && now - lastNotifiedAt.getTime() < dedupeWindowMinutes * 60 * 1000) {
+      return;
+    }
+
+    tx.set(
+      lockRef,
+      {
+        tenantId: input.tenantId,
+        chatId: input.chatId,
+        type: sanitizeText(input.type, 80),
+        lastNotifiedAt: new Date(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    shouldCreate = true;
+  });
+
+  if (!shouldCreate) return false;
+
+  await createAiInternalNotification({
+    tenantId: input.tenantId,
+    chatId: input.chatId,
+    leadId: input.leadId,
+    type: input.type,
+    severity: input.severity,
+    title: input.title,
+    detail: input.detail,
+  });
+
+  return true;
+}
+
 async function createAiProposalDraft(input: {
   tenantId: string;
   leadId: string;
@@ -2338,8 +2398,32 @@ export async function handleIncomingMessage(
   const aiConfig = parseAiConfig(tenantSettings);
   const runtimeProvider = aiConfig.runtimePolicy.primaryProvider;
   const runtimeModel = aiConfig.runtimePolicy.conversationModel;
+  const monthlyUsage = await getAiMonthlyUsageSnapshot(tenantId);
+  const usageCapExceeded =
+    Number(aiConfig.monthlyUsageCap || 0) > 0 &&
+    Number(monthlyUsage.conversationRuns || 0) >= Number(aiConfig.monthlyUsageCap || 0);
+  const budgetCapExceeded =
+    Number(aiConfig.monthlyBudgetUsd || 0) > 0 &&
+    Number(monthlyUsage.estimatedCostUsd || 0) >= Number(aiConfig.monthlyBudgetUsd || 0);
+  const usageGuardTriggered = usageCapExceeded || budgetCapExceeded;
+  const shouldUseProviderLlm = runtimeProvider !== "altum_rules" && !usageGuardTriggered;
   const chatChannel = String(chatData.channel || "whatsapp").trim().toLowerCase() || "whatsapp";
   const isMetaConversation = isMetaConversationChannelType(chatChannel);
+
+  if (usageGuardTriggered && leadId) {
+    await createAiInternalNotificationOnce({
+      tenantId,
+      chatId,
+      leadId,
+      type: usageCapExceeded ? "ai_usage_cap_reached" : "ai_budget_cap_reached",
+      severity: "high",
+      title: usageCapExceeded ? "Limite mensal de execucoes da IA atingido" : "Budget mensal da IA atingido",
+      detail: usageCapExceeded
+        ? `A IA entrou em contingencia. Execucoes no mes: ${monthlyUsage.conversationRuns}/${aiConfig.monthlyUsageCap}.`
+        : `A IA entrou em contingencia. Custo estimado no mes: US$ ${Number(monthlyUsage.estimatedCostUsd || 0).toFixed(2)} / US$ ${Number(aiConfig.monthlyBudgetUsd || 0).toFixed(2)}.`,
+      dedupeWindowMinutes: 360,
+    });
+  }
 
   if (!aiConfig.enabled) {
     await saveAiLog({
@@ -2449,7 +2533,7 @@ export async function handleIncomingMessage(
     undefined;
 
   const llmRun =
-    runtimeProvider !== "altum_rules"
+    shouldUseProviderLlm
       ? await runConversationAgent(
           {
             tenantId,
@@ -2518,10 +2602,28 @@ export async function handleIncomingMessage(
   const effectiveProvider = llmResult?.provider || runtimeProvider;
   const effectiveModel = llmResult?.model || runtimeModel;
   const decisionReasonForQueue =
-    providerChainError && choice.reason
+    usageGuardTriggered && choice.reason
+      ? `usage_cap_contingency:${sanitizeText(choice.reason, 140)}`
+      : providerChainError && choice.reason
       ? `provider_fallback_contingency:${sanitizeText(choice.reason, 140)}`
       : choice.reason;
-  const providerFallbackToolCalls = providerChainError ? ["provider_fallback_contingency"] : [];
+  const providerFallbackToolCalls = [
+    ...(usageGuardTriggered ? ["usage_cap_contingency"] : []),
+    ...(providerChainError ? ["provider_fallback_contingency"] : []),
+  ];
+
+  if (providerChainError && leadId) {
+    await createAiInternalNotificationOnce({
+      tenantId,
+      chatId,
+      leadId,
+      type: "ai_provider_contingency",
+      severity: "warning",
+      title: "IA em contingencia por falha de provider",
+      detail: `A conversa seguiu em modo de contingencia. Motivo tecnico: ${sanitizeText(providerChainError, 220)}.`,
+      dedupeWindowMinutes: 180,
+    });
+  }
 
   const shouldUseWhatsApp = chatChannel === "whatsapp";
   const whatsappChannel = shouldUseWhatsApp
@@ -2802,6 +2904,12 @@ export async function handleIncomingMessage(
         runtimePolicy: aiConfig.runtimePolicy,
         fallbackUsed: providerFallbackTriggered,
         providerChainError,
+        usageGuardTriggered,
+        usageCapExceeded,
+        budgetCapExceeded,
+        usageMonthRef: monthlyUsage.monthRef,
+        usageConversationRuns: monthlyUsage.conversationRuns,
+        usageEstimatedCostUsd: Number(monthlyUsage.estimatedCostUsd || 0),
         matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
         extractedFields,
         nextAction,
@@ -3083,6 +3191,12 @@ export async function handleIncomingMessage(
       runtimePolicy: aiConfig.runtimePolicy,
       fallbackUsed: providerFallbackTriggered,
       providerChainError,
+      usageGuardTriggered,
+      usageCapExceeded,
+      budgetCapExceeded,
+      usageMonthRef: monthlyUsage.monthRef,
+      usageConversationRuns: monthlyUsage.conversationRuns,
+      usageEstimatedCostUsd: Number(monthlyUsage.estimatedCostUsd || 0),
       matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
       extractedFields,
       nextAction,

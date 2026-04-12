@@ -489,6 +489,10 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
     return "IA operando em contingencia por falha temporaria do provider. A conversa segue ativa.";
   }
 
+  if (lastJobStatus === "done" && lastDecisionReason.includes("usage_cap_contingency")) {
+    return "IA operando em contingencia por limite mensal (uso/custo). Atualize o budget para voltar ao modo completo.";
+  }
+
   return "IA pronta para respostas automaticas nesta conversa.";
 }
 
