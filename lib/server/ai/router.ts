@@ -520,7 +520,9 @@ export async function runConversationAgent(
   for (const provider of providers) {
     if (provider === "altum_rules") {
       if (lastProviderError) {
-        throw new Error(lastProviderError);
+        console.warn(
+          `[ai-router] providers unavailable for tenant ${sanitizeText(input.tenantId, 80)} chat ${sanitizeText(input.chatId, 80)}; using altum_rules fallback: ${lastProviderError}`
+        );
       }
       return null;
     }
@@ -559,7 +561,9 @@ export async function runConversationAgent(
   }
 
   if (lastProviderError) {
-    throw new Error(lastProviderError);
+    console.warn(
+      `[ai-router] provider chain failed without explicit altum_rules candidate; falling back to null result: ${lastProviderError}`
+    );
   }
 
   return null;
