@@ -457,6 +457,7 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
   const isStillPaused = Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
   const lastJobStatus = String(chat.aiState.lastJobStatus || "").trim().toLowerCase();
   const lastJobError = String(chat.aiState.lastJobError || "").trim();
+  const lastDecisionReason = String(chat.aiState.lastDecisionReason || "").trim().toLowerCase();
 
   if (chat.aiState.humanOwnerUserId && isStillPaused) {
     const suffix = pausedUntil ? ` ate ${formatDateTime(pausedUntil)}` : "";
@@ -482,6 +483,10 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
     return lastJobError
       ? `Ultima tentativa da IA falhou: ${lastJobError}.`
       : "Ultima tentativa da IA falhou e precisa de revisao.";
+  }
+
+  if (lastJobStatus === "done" && lastDecisionReason.includes("provider_fallback_contingency")) {
+    return "IA operando em contingencia por falha temporaria do provider. A conversa segue ativa.";
   }
 
   return "IA pronta para respostas automaticas nesta conversa.";

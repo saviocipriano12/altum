@@ -65,6 +65,12 @@ export type ConversationAgentResult = {
   estimatedCostUsd?: number;
 };
 
+export type ConversationAgentRunResult = {
+  result: ConversationAgentResult | null;
+  providerChainError?: string;
+  providerFallbackTriggered: boolean;
+};
+
 type RuntimePolicy = {
   primaryProvider: AltumAiProvider;
   fallbackProviders: AltumAiProvider[];
@@ -509,10 +515,23 @@ function candidateProviders(policy: RuntimePolicy, preferred: AltumAiProvider[])
   return Array.from(new Set(ordered));
 }
 
+function shouldTryOpenAIEconomyFallback(provider: AltumAiProvider, model: string, errorMessage: string) {
+  if (provider !== "openai") return false;
+  if (model === "gpt-4.1-mini" || model === "gpt-4o-mini") return false;
+
+  const normalized = sanitizeText(errorMessage, 280).toLowerCase();
+  return (
+    normalized.includes("exceeded your current quota") ||
+    normalized.includes("insufficient_quota") ||
+    normalized.includes("billing") ||
+    normalized.includes("openai_auth_or_request_failed")
+  );
+}
+
 export async function runConversationAgent(
   input: ConversationAgentInput,
   policy: RuntimePolicy
-): Promise<ConversationAgentResult | null> {
+): Promise<ConversationAgentRunResult> {
   const providers = candidateProviders(policy, input.preferredProviders);
   let fallbackUsed = false;
   let lastProviderError = "";
@@ -524,7 +543,11 @@ export async function runConversationAgent(
           `[ai-router] providers unavailable for tenant ${sanitizeText(input.tenantId, 80)} chat ${sanitizeText(input.chatId, 80)}; using altum_rules fallback: ${lastProviderError}`
         );
       }
-      return null;
+      return {
+        result: null,
+        providerChainError: lastProviderError || undefined,
+        providerFallbackTriggered: fallbackUsed || Boolean(lastProviderError),
+      };
     }
 
     const env = getProviderEnv(provider);
@@ -547,15 +570,42 @@ export async function runConversationAgent(
 
       if (result) {
         return {
-          ...result,
-          fallbackUsed,
+          result: {
+            ...result,
+            fallbackUsed,
+          },
+          providerChainError: lastProviderError || undefined,
+          providerFallbackTriggered: fallbackUsed || Boolean(lastProviderError),
         };
       }
     } catch (error) {
-      lastProviderError =
-        error instanceof Error
-          ? `${provider}: ${sanitizeText(error.message, 280)}`
-          : `${provider}: provider_request_failed`;
+      const providerErrorMessage =
+        error instanceof Error ? sanitizeText(error.message, 280) : "provider_request_failed";
+
+      if (shouldTryOpenAIEconomyFallback(provider, model, providerErrorMessage)) {
+        fallbackUsed = true;
+        try {
+          const economyResult = await callOpenAI(input, "gpt-4.1-mini");
+          if (economyResult) {
+            return {
+              result: {
+                ...economyResult,
+                fallbackUsed: true,
+              },
+              providerChainError: `${provider}: ${providerErrorMessage}`,
+              providerFallbackTriggered: true,
+            };
+          }
+        } catch (economyError) {
+          const economyMessage =
+            economyError instanceof Error ? sanitizeText(economyError.message, 280) : "provider_request_failed";
+          lastProviderError = `${provider}: ${providerErrorMessage} | economy_fallback_failed: ${economyMessage}`;
+          fallbackUsed = true;
+          continue;
+        }
+      }
+
+      lastProviderError = `${provider}: ${providerErrorMessage}`;
       fallbackUsed = true;
     }
   }
@@ -566,6 +616,10 @@ export async function runConversationAgent(
     );
   }
 
-  return null;
+  return {
+    result: null,
+    providerChainError: lastProviderError || undefined,
+    providerFallbackTriggered: fallbackUsed || Boolean(lastProviderError),
+  };
 }
 

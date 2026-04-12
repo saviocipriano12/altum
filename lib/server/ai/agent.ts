@@ -2448,7 +2448,7 @@ export async function handleIncomingMessage(
     (looksLikeHumanName(chatData.contactName) ? sanitizeText(chatData.contactName, 120) : "") ||
     undefined;
 
-  const llmResult =
+  const llmRun =
     runtimeProvider !== "altum_rules"
       ? await runConversationAgent(
           {
@@ -2480,6 +2480,9 @@ export async function handleIncomingMessage(
           aiConfig.runtimePolicy
         )
       : null;
+  const llmResult = llmRun?.result || null;
+  const providerChainError = llmRun?.providerChainError || null;
+  const providerFallbackTriggered = Boolean(llmRun?.providerFallbackTriggered || llmResult?.fallbackUsed);
   const fallbackChoice = decide({ inboundText, kbDocs, tenantAi: aiConfig });
   const choice = resolveConversationalChoice({
     fallbackChoice,
@@ -2514,6 +2517,11 @@ export async function handleIncomingMessage(
   const nextAction = plannerDecision.nextAction || choice.nextAction;
   const effectiveProvider = llmResult?.provider || runtimeProvider;
   const effectiveModel = llmResult?.model || runtimeModel;
+  const decisionReasonForQueue =
+    providerChainError && choice.reason
+      ? `provider_fallback_contingency:${sanitizeText(choice.reason, 140)}`
+      : choice.reason;
+  const providerFallbackToolCalls = providerChainError ? ["provider_fallback_contingency"] : [];
 
   const shouldUseWhatsApp = chatChannel === "whatsapp";
   const whatsappChannel = shouldUseWhatsApp
@@ -2744,6 +2752,7 @@ export async function handleIncomingMessage(
         "tenant_settings.ai",
         shouldUseWhatsApp ? "whatsapp_send" : isMetaConversation ? "meta_send" : "site_chat_reply",
         aiConfig.responsiblePhone && whatsappChannel ? "handoff_notify" : "handoff_log",
+        ...providerFallbackToolCalls,
       ],
       confidence: Math.max(choice.confidence, plannerDecision.confidence || 0),
       matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
@@ -2791,7 +2800,8 @@ export async function handleIncomingMessage(
       metadata: {
         reason: plannerDecision.reason || choice.reason,
         runtimePolicy: aiConfig.runtimePolicy,
-        fallbackUsed: llmResult?.fallbackUsed || false,
+        fallbackUsed: providerFallbackTriggered,
+        providerChainError,
         matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
         extractedFields,
         nextAction,
@@ -2894,7 +2904,7 @@ export async function handleIncomingMessage(
       });
     }
 
-    return { decision: "handoff", reason: plannerDecision.reason || choice.reason };
+    return { decision: "handoff", reason: decisionReasonForQueue };
   }
 
   const responseText =
@@ -3021,6 +3031,7 @@ export async function handleIncomingMessage(
       "chat_state",
       "tenant_settings.ai",
       shouldUseWhatsApp ? "whatsapp_send" : isMetaConversation ? "meta_send" : "site_chat_reply",
+      ...providerFallbackToolCalls,
     ],
     confidence: choice.confidence,
     matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
@@ -3070,7 +3081,8 @@ export async function handleIncomingMessage(
     metadata: {
       reason: choice.reason,
       runtimePolicy: aiConfig.runtimePolicy,
-      fallbackUsed: llmResult?.fallbackUsed || false,
+      fallbackUsed: providerFallbackTriggered,
+      providerChainError,
       matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
       extractedFields,
       nextAction,
@@ -3162,7 +3174,7 @@ export async function handleIncomingMessage(
 
   return {
     decision: choice.decision,
-    reason: choice.reason,
+    reason: decisionReasonForQueue,
   };
 }
 

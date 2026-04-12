@@ -208,7 +208,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     };
     const conversation = [...history, currentMessage];
 
-    const llmResult =
+    const llmRun =
       runtimePolicy.primaryProvider !== "altum_rules"
         ? await runConversationAgent(
             {
@@ -253,6 +253,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
             runtimePolicy
           )
         : null;
+    const llmResult = llmRun?.result || null;
 
     const tenantAiConfig = {
       enabled: true,
