@@ -32,7 +32,12 @@ type ParsedMetaEvent = {
   mediaUrl?: string | null;
   mediaName?: string | null;
   mediaMimeType?: string | null;
+  mediaDuration?: number | null;
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
+  mediaSize?: number | null;
   mediaThumbnail?: string | null;
+  contactPhotoUrl?: string | null;
 };
 
 type ParsedLeadgenEvent = {
@@ -55,6 +60,10 @@ function sanitizeId(value: string, max = 220) {
 function cleanString(value: unknown, max = 320) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+function cleanNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function toDate(value: unknown) {
@@ -124,11 +133,36 @@ function extractMetaAttachmentMeta(message: Record<string, unknown>) {
     mediaUrl: cleanString(payload.url, 1200) || null,
     mediaName: cleanString(attachment.title, 160) || cleanString(payload.title, 160) || null,
     mediaMimeType: cleanString(payload.mime_type, 120) || null,
-    mediaDuration: null as number | null,
-    mediaWidth: null as number | null,
-    mediaHeight: null as number | null,
+    mediaDuration:
+      cleanNumber(payload.duration_ms) ??
+      cleanNumber(payload.duration) ??
+      cleanNumber(attachment.duration_ms) ??
+      cleanNumber(attachment.duration),
+    mediaWidth: cleanNumber(payload.width) ?? cleanNumber(attachment.width),
+    mediaHeight: cleanNumber(payload.height) ?? cleanNumber(attachment.height),
+    mediaSize: cleanNumber(payload.file_size) ?? cleanNumber(attachment.file_size),
     mediaThumbnail: cleanString(payload.preview_url, 1200) || null,
   };
+}
+
+function extractMetaProfilePhoto(
+  event: Record<string, unknown>,
+  sender: Record<string, unknown>,
+  recipient: Record<string, unknown>
+) {
+  return (
+    cleanString(sender.profile_pic_url, 1200) ||
+    cleanString(sender.profile_pic, 1200) ||
+    cleanString(sender.avatar_url, 1200) ||
+    cleanString(recipient.profile_pic_url, 1200) ||
+    cleanString(
+      event.contact && typeof event.contact === "object"
+        ? (event.contact as Record<string, unknown>).profile_pic_url
+        : "",
+      1200
+    ) ||
+    null
+  );
 }
 
 function extractTextFromMessage(message: Record<string, unknown>) {
@@ -167,6 +201,7 @@ function parseMetaEvents(body: Record<string, unknown>) {
       const text = extractTextFromMessage(message);
       const messageId = cleanString(message.mid || message.id, 220);
       const mediaMeta = extractMetaAttachmentMeta(message);
+      const contactPhotoUrl = extractMetaProfilePhoto(event, sender, recipient);
       const timestamp =
         typeof event.timestamp === "number"
           ? event.timestamp
@@ -187,7 +222,12 @@ function parseMetaEvents(body: Record<string, unknown>) {
         mediaUrl: mediaMeta.mediaUrl,
         mediaName: mediaMeta.mediaName,
         mediaMimeType: mediaMeta.mediaMimeType,
+        mediaDuration: mediaMeta.mediaDuration,
+        mediaWidth: mediaMeta.mediaWidth,
+        mediaHeight: mediaMeta.mediaHeight,
+        mediaSize: mediaMeta.mediaSize,
         mediaThumbnail: mediaMeta.mediaThumbnail,
+        contactPhotoUrl,
       });
     }
   }
@@ -667,6 +707,7 @@ export async function POST(req: Request) {
         name: contactName,
         email: leadEmail,
         company: leadCompany,
+        photoUrl: event.contactPhotoUrl || null,
       });
 
       const messageDocId = sanitizeId(
@@ -689,6 +730,10 @@ export async function POST(req: Request) {
           mediaUrl: event.mediaUrl || null,
           mediaName: event.mediaName || null,
           mediaMimeType: event.mediaMimeType || null,
+          mediaDuration: event.mediaDuration ?? null,
+          mediaWidth: event.mediaWidth ?? null,
+          mediaHeight: event.mediaHeight ?? null,
+          mediaSize: event.mediaSize ?? null,
           mediaThumbnail: event.mediaThumbnail || null,
           source: "meta_webhook",
           createdAt: FieldValue.serverTimestamp(),
@@ -731,6 +776,10 @@ export async function POST(req: Request) {
               mediaUrl: event.mediaUrl || null,
               mediaName: event.mediaName || null,
               mediaMimeType: event.mediaMimeType || null,
+              mediaDuration: event.mediaDuration ?? null,
+              mediaWidth: event.mediaWidth ?? null,
+              mediaHeight: event.mediaHeight ?? null,
+              mediaSize: event.mediaSize ?? null,
             },
           }).catch((error) => {
             console.error("Falha ao cachear midia inbound da Meta:", error);

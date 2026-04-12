@@ -4,8 +4,11 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  AlertCircle,
   ArrowRight,
   BadgeDollarSign,
+  Download,
+  ExternalLink,
   CheckCircle2,
   CircleDashed,
   Clock3,
@@ -17,7 +20,6 @@ import {
   MessageSquareText,
   Mic,
   NotebookPen,
-  Paperclip,
   PauseCircle,
   PlayCircle,
   RefreshCw,
@@ -86,13 +88,20 @@ type ChatItem = {
 type MessageItem = {
   id: string;
   text?: string;
-  sender?: "agent" | "client" | "system";
+  sender?: "agent" | "client" | "system" | "bot";
   createdAt?: unknown;
   type?: string;
   mediaUrl?: string | null;
+  mediaDownloadUrl?: string | null;
   mediaName?: string | null;
   mediaMimeType?: string | null;
   mediaId?: string | null;
+  mediaDuration?: number | null;
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
+  mediaSize?: number | null;
+  mediaStatus?: "ready" | "missing" | "not_applicable";
+  mediaUnavailableReason?: string | null;
 };
 
 type TimelineEvent = {
@@ -198,6 +207,7 @@ type ChatDetailPayload = {
   company?: {
     name?: string;
     niche?: string;
+    photoUrl?: string | null;
   };
   error?: string;
 };
@@ -241,14 +251,26 @@ function ContactAvatar({
   photoUrl?: string | null;
   size?: "sm" | "md";
 }) {
+  const [imageFailed, setImageFailed] = useState(false);
   const dimension = size === "sm" ? "h-11 w-11 text-sm" : "h-12 w-12 text-sm";
   const src = String(photoUrl || "").trim();
+  const canRenderImage = src && !imageFailed;
 
-  if (src) {
+  useEffect(() => {
+    setImageFailed(false);
+  }, [src]);
+
+  if (canRenderImage) {
     return (
       <div className={cn("shrink-0 overflow-hidden rounded-full border border-white/10 bg-black/20", dimension)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={name || phone || "Contato"} className="h-full w-full object-cover" />
+        <img
+          src={src}
+          alt={name || phone || "Contato"}
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setImageFailed(true)}
+        />
       </div>
     );
   }
@@ -324,6 +346,50 @@ function formatDate(value?: string) {
   if (!value) return "--";
   const parsed = new Date(`${value}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString("pt-BR");
+}
+
+function formatDuration(seconds?: number | null) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) return "--:--";
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function formatFileSize(bytes?: number | null) {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatMimeType(mimeType?: string | null) {
+  const value = String(mimeType || "").trim().toLowerCase();
+  if (!value) return "arquivo seguro";
+  if (value === "application/pdf") return "PDF";
+  if (value.startsWith("image/")) return value.replace("image/", "").toUpperCase();
+  if (value.startsWith("audio/")) return value.replace("audio/", "").toUpperCase();
+  if (value.startsWith("video/")) return value.replace("video/", "").toUpperCase();
+  if (value.includes("/")) return value.split("/")[1]?.toUpperCase() || value.toUpperCase();
+  return value.toUpperCase();
+}
+
+function normalizePlainText(value?: string | null) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[\[\]]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isGeneratedMediaPlaceholder(type: string, text?: string | null) {
+  const normalized = normalizePlainText(text);
+  if (!normalized) return true;
+  if (type === "image") return normalized === "imagem recebida";
+  if (type === "audio") return normalized === "audio recebido";
+  if (type === "document") return normalized === "arquivo recebido";
+  if (type === "video") return normalized === "video recebido";
+  return false;
 }
 
 function normalizeTags(value: string) {
@@ -543,7 +609,7 @@ function ConversationListItem({
       type="button"
       onClick={onSelect}
       className={cn(
-        "w-full rounded-[24px] border px-3 py-3.5 text-left transition",
+        "w-full min-w-0 rounded-[24px] border px-3 py-3.5 text-left transition",
         active
           ? "border-[rgba(37,211,102,0.28)] bg-[linear-gradient(180deg,rgba(37,211,102,0.12),rgba(255,255,255,0.02))] shadow-[0_0_0_1px_rgba(37,211,102,0.12)]"
           : "border-[var(--cliente-border)] bg-[rgba(255,255,255,0.02)] hover:border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.045)]"
@@ -607,40 +673,211 @@ function ConversationListItem({
   );
 }
 
-function buildMessageMediaUrl(tenantId: string, chatId: string, message: MessageItem) {
-  const mediaUrl = String(message.mediaUrl || "").trim();
-  if (mediaUrl) return mediaUrl;
+function buildMessageMediaUrl(message: MessageItem) {
+  return String(message.mediaUrl || "").trim();
+}
+
+function buildMessageDownloadUrl(message: MessageItem) {
+  return String(message.mediaDownloadUrl || message.mediaUrl || "").trim();
+}
+
+function getMessageMediaUnavailableReason(message: MessageItem) {
+  const explicitReason = String(message.mediaUnavailableReason || "").trim();
+  if (explicitReason) return explicitReason;
 
   const type = String(message.type || "text").toLowerCase();
-  if (!["image", "audio", "document", "video"].includes(type)) return "";
+  if (!buildMessageMediaUrl(message)) {
+    if (type === "image") return "Imagem protegida indisponivel no momento.";
+    if (type === "audio") return "Audio protegido indisponivel no momento.";
+    if (type === "document") return "Documento protegido indisponivel no momento.";
+    if (type === "video") return "Video protegido indisponivel no momento.";
+  }
 
-  return `/api/tenant/${tenantId}/chats/${chatId}/messages/${message.id}/media`;
+  return "Midia indisponivel com seguranca para esta mensagem.";
+}
+
+function MessageMediaFallback({
+  type,
+  reason,
+}: {
+  type: string;
+  reason: string;
+}) {
+  const label =
+    type === "image"
+      ? "Imagem indisponivel"
+      : type === "audio"
+        ? "Audio indisponivel"
+        : type === "document"
+          ? "Documento indisponivel"
+          : "Midia indisponivel";
+
+  return (
+    <div className="mt-3 rounded-[22px] border border-dashed border-white/12 bg-[rgba(8,12,11,0.45)] p-4 text-[var(--cliente-card-text-soft)]">
+      <div className="flex items-start gap-3">
+        <div className="rounded-2xl border border-amber-300/18 bg-amber-500/12 p-2 text-amber-100">
+          <AlertCircle className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{label}</p>
+          <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">{reason}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImageAttachment({ message }: { message: MessageItem }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const mediaUrl = buildMessageMediaUrl(message);
+  const unavailableReason = getMessageMediaUnavailableReason(message);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [mediaUrl]);
+
+  if (!mediaUrl || message.mediaStatus === "missing" || imageFailed) {
+    return (
+      <MessageMediaFallback
+        type="image"
+        reason={imageFailed ? "Nao foi possivel carregar a imagem protegida." : unavailableReason}
+      />
+    );
+  }
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-[22px] border border-white/10 bg-black/20">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={mediaUrl}
+        alt={message.mediaName || "Imagem recebida"}
+        className="max-h-[360px] w-full object-cover"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setImageFailed(true)}
+      />
+      {message.mediaWidth && message.mediaHeight ? (
+        <div className="border-t border-white/10 px-3 py-2 text-[11px] text-[var(--cliente-card-text-soft)]">
+          {message.mediaWidth} x {message.mediaHeight} px
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AudioAttachment({ message }: { message: MessageItem }) {
+  const [duration, setDuration] = useState<number | null>(message.mediaDuration ?? null);
+  const [audioFailed, setAudioFailed] = useState(false);
+  const mediaUrl = buildMessageMediaUrl(message);
+  const unavailableReason = getMessageMediaUnavailableReason(message);
+
+  useEffect(() => {
+    setDuration(message.mediaDuration ?? null);
+    setAudioFailed(false);
+  }, [message.id, message.mediaDuration, mediaUrl]);
+
+  if (!mediaUrl || message.mediaStatus === "missing" || audioFailed) {
+    return (
+      <MessageMediaFallback
+        type="audio"
+        reason={audioFailed ? "Nao foi possivel carregar o audio protegido." : unavailableReason}
+      />
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-[22px] border border-white/10 bg-[rgba(8,12,11,0.45)] p-3">
+      <div className="mb-2 flex items-center justify-between gap-3 text-xs text-[var(--cliente-card-text-soft)]">
+        <span className="inline-flex items-center gap-2">
+          <Mic className="h-4 w-4" />
+          {message.mediaName || "Audio protegido"}
+        </span>
+        <span>{formatDuration(duration)}</span>
+      </div>
+      <audio
+        controls
+        preload="metadata"
+        className="w-full"
+        onLoadedMetadata={(event) => {
+          const nextDuration = event.currentTarget.duration;
+          if (Number.isFinite(nextDuration) && nextDuration > 0) {
+            setDuration(Math.round(nextDuration));
+          }
+        }}
+        onError={() => setAudioFailed(true)}
+      >
+        <source src={mediaUrl} type={message.mediaMimeType || "audio/mpeg"} />
+      </audio>
+    </div>
+  );
+}
+
+function DocumentAttachment({ message }: { message: MessageItem }) {
+  const mediaUrl = buildMessageMediaUrl(message);
+  const downloadUrl = buildMessageDownloadUrl(message);
+
+  if (!mediaUrl || message.mediaStatus === "missing") {
+    return <MessageMediaFallback type="document" reason={getMessageMediaUnavailableReason(message)} />;
+  }
+
+  const metaLine = [formatMimeType(message.mediaMimeType), formatFileSize(message.mediaSize)].filter(Boolean).join(" / ");
+
+  return (
+    <div className="mt-3 rounded-[22px] border border-white/10 bg-[rgba(8,12,11,0.45)] p-3">
+      <div className="flex items-start gap-3">
+        <div className="rounded-2xl border border-sky-300/18 bg-sky-500/12 p-2 text-sky-100">
+          <FileText className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">
+            {message.mediaName || "Documento protegido"}
+          </p>
+          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{metaLine || "Arquivo seguro para abertura"}</p>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a
+          href={mediaUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-black/20"
+        >
+          <ExternalLink className="h-4 w-4" />
+          Abrir com seguranca
+        </a>
+        <a
+          href={downloadUrl}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-black/20"
+          download
+        >
+          <Download className="h-4 w-4" />
+          Baixar
+        </a>
+      </div>
+    </div>
+  );
 }
 
 function MessageBubble({
-  tenantId,
-  chatId,
   message,
 }: {
-  tenantId: string;
-  chatId: string;
   message: MessageItem;
 }) {
   const isAgent = message.sender === "agent";
   const isSystem = message.sender === "system";
   const type = String(message.type || "text").toLowerCase();
   const preview = getMessagePreview(message);
-  const mediaUrl = buildMessageMediaUrl(tenantId, chatId, message);
+  const shouldRenderText = !["image", "audio", "document", "video"].includes(type) || !isGeneratedMediaPlaceholder(type, preview);
 
   const mediaLabel =
-    type === "audio" ? "Audio" : type === "image" ? "Imagem" : type === "document" ? "Arquivo" : null;
-  const MediaIcon = type === "audio" ? Mic : type === "image" ? ImageIcon : type === "document" ? Paperclip : null;
+    type === "audio" ? "Audio" : type === "image" ? "Imagem" : type === "document" ? "Documento" : null;
+  const MediaIcon = type === "audio" ? Mic : type === "image" ? ImageIcon : type === "document" ? FileText : null;
 
   return (
     <div className={cn("flex", isAgent ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[88%] rounded-[20px] border px-4 py-3 text-sm shadow-[0_10px_32px_rgba(0,0,0,0.16)] sm:max-w-[84%] xl:max-w-[78%] 2xl:max-w-[74%]",
+          "max-w-[92%] min-w-0 rounded-[20px] border px-4 py-3 text-sm shadow-[0_10px_32px_rgba(0,0,0,0.16)] sm:max-w-[86%] xl:max-w-[78%] 2xl:max-w-[74%]",
           isAgent
             ? "border-[rgba(37,211,102,0.22)] bg-[linear-gradient(180deg,rgba(37,211,102,0.16),rgba(37,211,102,0.08))]"
             : isSystem
@@ -662,37 +899,14 @@ function MessageBubble({
             </>
           ) : null}
         </div>
-        {type === "image" && mediaUrl ? (
-          <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/10">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={mediaUrl}
-              alt={message.mediaName || "Imagem recebida"}
-              className="max-h-[340px] w-full object-cover"
-            />
-          </div>
+        {type === "image" ? <ImageAttachment message={message} /> : null}
+        {type === "audio" ? <AudioAttachment message={message} /> : null}
+        {type === "document" ? <DocumentAttachment message={message} /> : null}
+        {shouldRenderText ? (
+          <p className="mt-2 whitespace-pre-wrap break-words text-[14px] leading-6 text-[var(--cliente-card-text)]">
+            {preview}
+          </p>
         ) : null}
-        {type === "audio" && mediaUrl ? (
-          <div className="mt-3 rounded-2xl border border-white/10 bg-black/10 p-3">
-            <audio controls preload="none" className="w-full">
-              <source src={mediaUrl} type={message.mediaMimeType || "audio/mpeg"} />
-            </audio>
-          </div>
-        ) : null}
-        {type === "document" && mediaUrl ? (
-          <a
-            href={mediaUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-[var(--cliente-card-text)] hover:bg-black/20"
-          >
-            <Paperclip className="h-4 w-4" />
-            {message.mediaName || "Abrir arquivo"}
-          </a>
-        ) : null}
-        <p className="mt-2 whitespace-pre-wrap text-[14px] leading-6 text-[var(--cliente-card-text)]">
-          {preview}
-        </p>
         <div className="mt-3 flex items-center justify-end gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
           <span>{formatDateTime(message.createdAt)}</span>
         </div>
@@ -1718,8 +1932,8 @@ export default function ClienteInboxPage() {
         </div>
       </PanelCard>
 
-      <section className="grid min-h-[82vh] grid-cols-1 gap-4 xl:grid-cols-[minmax(300px,340px)_minmax(0,1.55fr)] 2xl:grid-cols-[minmax(300px,340px)_minmax(0,1.85fr)_minmax(280px,320px)]">
-        <PanelCard className="flex min-h-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)]">
+      <section className="grid min-h-[82vh] min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,352px)_minmax(0,1.45fr)] 2xl:grid-cols-[minmax(0,352px)_minmax(0,1.62fr)_minmax(280px,332px)]">
+        <PanelCard className="flex min-h-0 min-w-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)]">
           <div className="border-b border-[var(--cliente-border)] p-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle title="Conversas" subtitle={`${filteredChats.length} visiveis agora`} />
@@ -1826,7 +2040,7 @@ export default function ClienteInboxPage() {
               </div>
             </div>
           </div>
-          <div className="flex-1 space-y-2 overflow-y-auto p-3">
+          <div className="flex-1 space-y-2 overflow-x-hidden overflow-y-auto px-2 pb-3 pt-2 sm:px-3">
             {loadingChats ? (
               <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
@@ -1851,29 +2065,43 @@ export default function ClienteInboxPage() {
           </div>
         </PanelCard>
 
-        <PanelCard className="flex min-h-0 flex-col overflow-hidden">
+        <PanelCard className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           <div className="border-b border-[var(--cliente-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
+              <div className="flex min-w-0 items-start gap-3">
                 <ContactAvatar
                   name={activeChat?.contactName}
                   phone={activeChat?.contactPhone}
                   photoUrl={activeChat?.contactPhotoUrl}
                   size="md"
                 />
-                <div>
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-semibold tracking-tight text-[var(--cliente-card-text)]">
-                    {activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
-                  </h3>
-                  <StateBadge label={formatChannelLabel(activeChat?.channel)} tone="neutral" />
-                  <StateBadge label={formatStatusLabel(activeChat?.status)} tone={getStatusTone(activeChat?.status)} />
-                  <StateBadge label={activeSla.label} tone={activeSla.breached ? "danger" : "info"} />
+                    <h3 className="truncate text-xl font-semibold tracking-tight text-[var(--cliente-card-text)]">
+                      {activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
+                    </h3>
+                    <StateBadge label={formatChannelLabel(activeChat?.channel)} tone="neutral" />
+                    <StateBadge label={formatStatusLabel(activeChat?.status)} tone={getStatusTone(activeChat?.status)} />
+                    <StateBadge label={activeSla.label} tone={activeSla.breached ? "danger" : "info"} />
                   </div>
-                  <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-                    {detail?.company?.name || tenant?.tenantName || "Cliente"}
-                    {detail?.company?.niche ? ` / ${detail.company.niche}` : ""}
-                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <div className="inline-flex min-w-0 items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1.5">
+                      <ContactAvatar
+                        name={detail?.company?.name || tenant?.tenantName || "Cliente"}
+                        photoUrl={detail?.company?.photoUrl || null}
+                        size="sm"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                          Empresa
+                        </p>
+                        <p className="truncate text-sm text-[var(--cliente-card-text-muted)]">
+                          {detail?.company?.name || tenant?.tenantName || "Cliente"}
+                          {detail?.company?.niche ? ` / ${detail.company.niche}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--cliente-card-text-soft)]">
                     <span>
                       Responsavel: {activeChat?.assignedUserName || activeChat?.ownerName || "Sem atribuicao"}
@@ -1959,7 +2187,7 @@ export default function ClienteInboxPage() {
             ) : null}
           </div>
 
-          <div className="min-h-[50vh] flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(10,18,14,0.96),rgba(11,15,18,0.99)),radial-gradient(circle_at_top_left,rgba(37,211,102,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_26%)] px-3 py-4 sm:px-4 lg:px-5 xl:max-h-[calc(100vh-22rem)]">
+          <div className="min-h-[50vh] flex-1 space-y-4 overflow-x-hidden overflow-y-auto bg-[linear-gradient(180deg,rgba(10,18,14,0.96),rgba(11,15,18,0.99)),radial-gradient(circle_at_top_left,rgba(37,211,102,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_26%)] px-3 py-4 sm:px-4 lg:px-5 xl:max-h-[calc(100vh-22rem)]">
             {loadingMessages ? (
               <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
@@ -1971,12 +2199,7 @@ export default function ClienteInboxPage() {
               />
             ) : (
               messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  tenantId={tenant!.tenantId}
-                  chatId={selectedChat!.id}
-                  message={message}
-                />
+                <MessageBubble key={message.id} message={message} />
               ))
             )}
           </div>
@@ -2002,7 +2225,7 @@ export default function ClienteInboxPage() {
           </form>
         </PanelCard>
 
-        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto 2xl:sticky 2xl:top-4 2xl:max-h-[calc(100vh-8rem)]">
+        <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden overflow-y-auto 2xl:sticky 2xl:top-4 2xl:max-h-[calc(100vh-8rem)]">
           <PanelCard className="p-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle
