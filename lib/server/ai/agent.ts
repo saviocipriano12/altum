@@ -72,8 +72,10 @@ type ChatStateDoc = {
   pauseReason?: string | null;
   lastJobStatus?: string | null;
   lastJobError?: string | null;
+  lastJobErrorCode?: string | null;
   lastDecision?: string | null;
   lastDecisionReason?: string | null;
+  lastDecisionReasonCode?: string | null;
   lastProcessedAt?: unknown;
   lastJobId?: string | null;
   lastMessageId?: string | null;
@@ -419,8 +421,10 @@ export type ChatState = {
   pauseReason?: string | null;
   lastJobStatus?: string | null;
   lastJobError?: string | null;
+  lastJobErrorCode?: string | null;
   lastDecision?: string | null;
   lastDecisionReason?: string | null;
+  lastDecisionReasonCode?: string | null;
   lastProcessedAt?: Date | null;
   lastJobId?: string | null;
   lastMessageId?: string | null;
@@ -994,8 +998,10 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
       pauseReason: null,
       lastJobStatus: null,
       lastJobError: null,
+      lastJobErrorCode: null,
       lastDecision: null,
       lastDecisionReason: null,
+      lastDecisionReasonCode: null,
       lastProcessedAt: null,
       lastJobId: null,
       lastMessageId: null,
@@ -1042,11 +1048,19 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
         typeof data.lastJobStatus === "string" && data.lastJobStatus.trim() ? data.lastJobStatus.trim() : null,
       lastJobError:
         typeof data.lastJobError === "string" && data.lastJobError.trim() ? data.lastJobError.trim() : null,
+      lastJobErrorCode:
+        typeof data.lastJobErrorCode === "string" && data.lastJobErrorCode.trim()
+          ? data.lastJobErrorCode.trim()
+          : null,
       lastDecision:
         typeof data.lastDecision === "string" && data.lastDecision.trim() ? data.lastDecision.trim() : null,
       lastDecisionReason:
         typeof data.lastDecisionReason === "string" && data.lastDecisionReason.trim()
           ? data.lastDecisionReason.trim()
+          : null,
+      lastDecisionReasonCode:
+        typeof data.lastDecisionReasonCode === "string" && data.lastDecisionReasonCode.trim()
+          ? data.lastDecisionReasonCode.trim()
           : null,
       lastProcessedAt: toDate(data.lastProcessedAt),
       lastJobId: typeof data.lastJobId === "string" && data.lastJobId.trim() ? data.lastJobId.trim() : null,
@@ -1074,11 +1088,19 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
       typeof data.lastJobStatus === "string" && data.lastJobStatus.trim() ? data.lastJobStatus.trim() : null,
     lastJobError:
       typeof data.lastJobError === "string" && data.lastJobError.trim() ? data.lastJobError.trim() : null,
+    lastJobErrorCode:
+      typeof data.lastJobErrorCode === "string" && data.lastJobErrorCode.trim()
+        ? data.lastJobErrorCode.trim()
+        : null,
     lastDecision:
       typeof data.lastDecision === "string" && data.lastDecision.trim() ? data.lastDecision.trim() : null,
     lastDecisionReason:
       typeof data.lastDecisionReason === "string" && data.lastDecisionReason.trim()
         ? data.lastDecisionReason.trim()
+        : null,
+    lastDecisionReasonCode:
+      typeof data.lastDecisionReasonCode === "string" && data.lastDecisionReasonCode.trim()
+        ? data.lastDecisionReasonCode.trim()
         : null,
     lastProcessedAt: toDate(data.lastProcessedAt),
     lastJobId: typeof data.lastJobId === "string" && data.lastJobId.trim() ? data.lastJobId.trim() : null,
