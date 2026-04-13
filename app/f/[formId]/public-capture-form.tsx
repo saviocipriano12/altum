@@ -55,6 +55,12 @@ export default function PublicCaptureForm({
       utmSource: searchParams.get("utm_source") || "",
       utmMedium: searchParams.get("utm_medium") || "",
       utmCampaign: searchParams.get("utm_campaign") || "",
+      utmTerm: searchParams.get("utm_term") || "",
+      utmContent: searchParams.get("utm_content") || "",
+      gclid: searchParams.get("gclid") || "",
+      fbclid: searchParams.get("fbclid") || "",
+      landingPage: typeof window !== "undefined" ? window.location.href : "",
+      referrer: typeof document !== "undefined" ? document.referrer : "",
     }),
     [searchParams]
   );

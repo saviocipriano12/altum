@@ -9,6 +9,7 @@ import {
   TenantAccessError,
 } from "@/lib/server/tenant";
 import { trackAppointmentOutcome } from "@/lib/server/ai/learning-outcomes";
+import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 
 type Body = {
   leadId?: string | null;
@@ -145,6 +146,15 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         leadId,
         appointmentId: ref.id,
         status: VALID_STATUSES.has(status) ? status : "scheduled",
+      });
+
+      await dispatchLeadConversionEvents({
+        tenantId,
+        leadId,
+        appointmentId: ref.id,
+        reason: "meeting_scheduled",
+      }).catch((error) => {
+        console.error("Falha ao disparar conversao de reuniao agendada:", error);
       });
     }
 

@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
+import { buildLeadAttributionPatch } from "@/lib/server/lead-intake";
 import { getTenantForCurrentUser } from "@/lib/server/tenant";
 
 function firstString(...values: unknown[]) {
@@ -24,11 +25,15 @@ export async function POST(req: Request) {
     const mensagem = firstString(body.mensagem, body.message);
 
     const utms = {
-      utm_source: firstString(body.utm_source),
-      utm_medium: firstString(body.utm_medium),
-      utm_campaign: firstString(body.utm_campaign),
-      utm_content: firstString(body.utm_content),
-      utm_term: firstString(body.utm_term),
+      utm_source: firstString(body.utm_source, body.utmSource),
+      utm_medium: firstString(body.utm_medium, body.utmMedium),
+      utm_campaign: firstString(body.utm_campaign, body.utmCampaign),
+      utm_content: firstString(body.utm_content, body.utmContent),
+      utm_term: firstString(body.utm_term, body.utmTerm),
+      gclid: firstString(body.gclid),
+      fbclid: firstString(body.fbclid),
+      landingPage: firstString(body.landingPage),
+      referrer: firstString(body.referrer),
     };
 
     const dadosExtras = { ...body };
@@ -43,6 +48,20 @@ export async function POST(req: Request) {
     delete dadosExtras.source;
     delete dadosExtras.mensagem;
     delete dadosExtras.ownerId;
+    delete dadosExtras.utm_source;
+    delete dadosExtras.utm_medium;
+    delete dadosExtras.utm_campaign;
+    delete dadosExtras.utm_content;
+    delete dadosExtras.utm_term;
+    delete dadosExtras.utmSource;
+    delete dadosExtras.utmMedium;
+    delete dadosExtras.utmCampaign;
+    delete dadosExtras.utmContent;
+    delete dadosExtras.utmTerm;
+    delete dadosExtras.gclid;
+    delete dadosExtras.fbclid;
+    delete dadosExtras.landingPage;
+    delete dadosExtras.referrer;
 
     if (!telefoneRaw && !email) {
       return NextResponse.json(
@@ -59,13 +78,14 @@ export async function POST(req: Request) {
     }
     let tenantId = await getTenantForCurrentUser(targetOwnerId || user.uid);
 
-    // dedupe by phone
+    // dedupe by phone scoped to tenant
     let existingId: string | null = null;
     let existingData: Record<string, unknown> | null = null;
 
     if (telefoneLimpo) {
       const snap = await adminDb
         .collection("leads")
+        .where("tenantId", "==", tenantId)
         .where("telefone", "==", telefoneLimpo)
         .limit(1)
         .get();
@@ -78,6 +98,7 @@ export async function POST(req: Request) {
     if (!existingId && email) {
       const snap = await adminDb
         .collection("leads")
+        .where("tenantId", "==", tenantId)
         .where("email", "==", email)
         .limit(1)
         .get();
@@ -101,12 +122,33 @@ export async function POST(req: Request) {
       const resolvedOwnerId = currentOwner || targetOwnerId;
       const resolvedTenantId =
         currentTenant || (await getTenantForCurrentUser(resolvedOwnerId || user.uid)) || tenantId || null;
+      const attributionState = buildLeadAttributionPatch({
+        existingData: existingData ?? {},
+        attribution: {
+          source: utms.utm_source || origem,
+          medium: utms.utm_medium,
+          campaign: utms.utm_campaign,
+          term: utms.utm_term,
+          content: utms.utm_content,
+          gclid: utms.gclid,
+          fbclid: utms.fbclid,
+          landingPage: utms.landingPage,
+          referrer: utms.referrer,
+          sourceLabel: origem,
+          sourceType: "webhook_generico",
+          channel: origem,
+        },
+        sourceLabel: origem,
+        channel: origem,
+        sourceType: "webhook_generico",
+      });
 
       await leadRef.set(
         {
           updatedAt: FieldValue.serverTimestamp(),
           ownerId: resolvedOwnerId,
           tenantId: resolvedTenantId,
+          origem: attributionState.originLabel || origem,
           owner: resolvedOwnerId
             ? (resolvedOwnerId === user.uid ? user.name : (existingData?.owner as string | undefined) || "Time")
             : null,
@@ -116,7 +158,7 @@ export async function POST(req: Request) {
               ? nome
               : (existingData?.nome as string | undefined) || nome,
           ...dadosExtras,
-          ...utms,
+          ...attributionState.patch,
           lastConversion: {
             origem,
             data: new Date().toISOString(),
@@ -147,11 +189,31 @@ export async function POST(req: Request) {
     }
 
     const leadRef = adminDb.collection("leads").doc();
+    const attributionState = buildLeadAttributionPatch({
+      existingData: {},
+      attribution: {
+        source: utms.utm_source || origem,
+        medium: utms.utm_medium,
+        campaign: utms.utm_campaign,
+        term: utms.utm_term,
+        content: utms.utm_content,
+        gclid: utms.gclid,
+        fbclid: utms.fbclid,
+        landingPage: utms.landingPage,
+        referrer: utms.referrer,
+        sourceLabel: origem,
+        sourceType: "webhook_generico",
+        channel: origem,
+      },
+      sourceLabel: origem,
+      channel: origem,
+      sourceType: "webhook_generico",
+    });
     await leadRef.set({
       nome,
       email,
       telefone: telefoneLimpo,
-      origem,
+      origem: attributionState.originLabel || origem,
       status: "novo",
       pipelineStage: "captado",
       kanbanIndex: 0,
@@ -159,7 +221,7 @@ export async function POST(req: Request) {
       tenantId: tenantId || null,
       owner: targetOwnerId ? user.name : null,
       ...dadosExtras,
-      ...utms,
+      ...attributionState.patch,
       notes: mensagem ? `Msg Inicial: ${mensagem}` : "",
       intelligence: {
         status: "pending",

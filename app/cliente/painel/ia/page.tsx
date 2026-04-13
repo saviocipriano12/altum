@@ -22,6 +22,7 @@ type AiSettings = {
   autonomyMode?: "copilot" | "hybrid" | "autonomous";
   reasoningLevel?: "fast" | "balanced" | "deep";
   responseStyle?: "concise" | "consultative" | "premium_sales" | "closer";
+  allowPremiumModels?: boolean;
   preferredProviders?: Array<"altum_rules" | "openai" | "anthropic" | "gemini" | "mistral">;
   conversationModelOverride?: string;
   extractionModelOverride?: string;
@@ -36,6 +37,8 @@ type AiSettings = {
     supportsToolCalling?: boolean;
     supportsDeepReasoning?: boolean;
     budgetMode?: string;
+    modelGuardrailApplied?: boolean;
+    modelGuardrailReason?: string | null;
   };
   providerStatus?: Partial<Record<"altum_rules" | "openai" | "anthropic" | "gemini" | "mistral", { ready: boolean; label: string }>>;
 };
@@ -276,6 +279,7 @@ const EMPTY_SETTINGS: AiSettings = {
   autonomyMode: "hybrid",
   reasoningLevel: "balanced",
   responseStyle: "consultative",
+  allowPremiumModels: false,
   preferredProviders: [...DEFAULT_AI_PROVIDERS],
   conversationModelOverride: "",
   extractionModelOverride: "",
@@ -1622,6 +1626,19 @@ export default function ClienteIaPage() {
               />
             </div>
 
+            <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text-soft)]">
+              <input
+                type="checkbox"
+                checked={Boolean(settings.allowPremiumModels)}
+                onChange={(event) =>
+                  setSettings((prev) => ({ ...prev, allowPremiumModels: event.target.checked }))
+                }
+                disabled={!canManage}
+                className="h-4 w-4 rounded border-[var(--cliente-border)] bg-transparent"
+              />
+              Permitir modelos premium (pode aumentar custo rapidamente)
+            </label>
+
             <label className="block text-xs text-[var(--cliente-card-text-soft)]">
               Motores preferidos
               <div className="mt-2 flex flex-wrap gap-2">
@@ -1729,9 +1746,19 @@ export default function ClienteIaPage() {
               <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                 Busca {settings.runtimePolicy?.retrievalMode || "keyword"} • ferramentas {settings.runtimePolicy?.supportsToolCalling ? "ligadas" : "desligadas"} • budget {settings.runtimePolicy?.budgetMode || "balanced"}.
               </p>
+              {settings.runtimePolicy?.modelGuardrailApplied ? (
+                <p className="mt-1 text-xs text-amber-300">
+                  Guardrail ativo: modelo premium reduzido automaticamente para modo economico.
+                </p>
+              ) : null}
               <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
                 Padrao novo: OpenAI usa `gpt-4.1-mini` por economia. Modelo mais caro so entra se voce escolher explicitamente aqui.
               </p>
+              {!settings.allowPremiumModels ? (
+                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                  Trava de custo ativa: modelos premium ficam bloqueados para este tenant.
+                </p>
+              ) : null}
             </div>
 
             <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">

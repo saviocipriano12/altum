@@ -1,6 +1,20 @@
 ﻿import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { handleIncomingMessage } from "@/lib/server/ai/agent";
+import {
+  AI_QUEUE_DEAD_LETTER_ALERT_THRESHOLD,
+  AI_QUEUE_RECURRING_AUTH_ALERT_THRESHOLD,
+  AI_QUEUE_RECURRING_QUOTA_ALERT_THRESHOLD,
+  classifyAiQueueError,
+  getAiQueueMetricDocId,
+  normalizeReasonCode,
+  readTodayAiQueueMetric,
+  resolveAiOperationalAlert,
+  sanitizeMetricKey,
+  toCounterMap,
+  updateAiWorkerHealth,
+  upsertAiOperationalAlert,
+} from "@/lib/server/ai/observability";
 
 const JOB_TYPE = "ai_incoming_message";
 const DEFAULT_MAX_ATTEMPTS = 6;
@@ -24,6 +38,8 @@ type AiJobDoc = {
   dedupeKey?: string;
   availableAt?: unknown;
   lockedAt?: unknown;
+  lastErrorCode?: string;
+  lastReasonCode?: string;
 };
 
 type ClaimedJob = {
@@ -43,7 +59,9 @@ async function updateChatStateProcessing(input: {
   jobStatus: JobStatus;
   decision?: "respond" | "ask_more" | "handoff" | "skip";
   decisionReason?: string;
+  decisionReasonCode?: string;
   lastError?: string | null;
+  lastErrorCode?: string | null;
 }) {
   const chatStateId = `${input.tenantId.trim()}_${input.chatId.trim()}`;
   await adminDb.collection("chat_state").doc(chatStateId).set(
@@ -53,7 +71,9 @@ async function updateChatStateProcessing(input: {
       lastJobStatus: input.jobStatus,
       lastDecision: input.decision || null,
       lastDecisionReason: input.decisionReason || null,
+      lastDecisionReasonCode: input.decisionReasonCode || null,
       lastJobError: input.lastError || null,
+      lastJobErrorCode: input.lastErrorCode || null,
       lastProcessedAt: FieldValue.serverTimestamp(),
       lastJobId: input.jobId,
       lastMessageId: input.messageId,
@@ -153,10 +173,10 @@ async function recordQueueMetrics(input: {
   deadLetter?: number;
   skipped?: number;
   decision?: "respond" | "ask_more" | "handoff" | "skip";
+  reasonCode?: string;
+  errorCode?: string;
 }) {
-  const metricRef = adminDb
-    .collection("metrics")
-    .doc(`${sanitizeId(input.tenantId, 120)}_ai_queue_${getTodayKey()}`);
+  const metricRef = adminDb.collection("metrics").doc(getAiQueueMetricDocId(input.tenantId));
 
   const counters: Record<string, unknown> = {};
   if (input.enqueued) counters.enqueued = FieldValue.increment(input.enqueued);
@@ -171,18 +191,105 @@ async function recordQueueMetrics(input: {
   const decisions: Record<string, unknown> = {};
   if (input.decision) decisions[input.decision] = FieldValue.increment(1);
 
-  await metricRef.set(
-    {
-      tenantId: input.tenantId,
-      type: "ai_queue_daily",
-      dateRef: getTodayKey(),
-      counters,
-      decisions,
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+  const reasonCounters: Record<string, unknown> = {};
+  if (input.reasonCode) {
+    reasonCounters[sanitizeMetricKey(input.reasonCode)] = FieldValue.increment(1);
+  }
+
+  const errorCounters: Record<string, unknown> = {};
+  if (input.errorCode) {
+    errorCounters[sanitizeMetricKey(input.errorCode)] = FieldValue.increment(1);
+  }
+
+  const payload: Record<string, unknown> = {
+    tenantId: input.tenantId,
+    type: "ai_queue_daily",
+    dateRef: getTodayKey(),
+    updatedAt: FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
+  };
+
+  if (Object.keys(counters).length > 0) payload.counters = counters;
+  if (Object.keys(decisions).length > 0) payload.decisions = decisions;
+  if (Object.keys(reasonCounters).length > 0) payload.reasonCounters = reasonCounters;
+  if (Object.keys(errorCounters).length > 0) payload.errorCounters = errorCounters;
+  if (input.enqueued) payload.lastEnqueuedAt = FieldValue.serverTimestamp();
+  if (input.claimed) payload.lastClaimedAt = FieldValue.serverTimestamp();
+  if (input.processed) payload.lastProcessedAt = FieldValue.serverTimestamp();
+  if (input.failed) payload.lastFailedAt = FieldValue.serverTimestamp();
+  if (input.retried) payload.lastRetriedAt = FieldValue.serverTimestamp();
+  if (input.deadLetter) payload.lastDeadLetterAt = FieldValue.serverTimestamp();
+  if (input.errorCode) payload.lastErrorCode = sanitizeMetricKey(input.errorCode);
+  if (input.reasonCode) payload.lastReasonCode = sanitizeMetricKey(input.reasonCode);
+
+  await metricRef.set(payload, { merge: true });
+}
+
+async function syncDeadLetterAlert(tenantId: string) {
+  const snap = await adminDb.collection("jobs").where("tenantId", "==", tenantId).limit(300).get();
+  const deadLetterCount = snap.docs.filter((doc) => {
+    const data = doc.data() as AiJobDoc;
+    return data.type === JOB_TYPE && normalizeStatus(data.status) === "dead_letter";
+  }).length;
+
+  if (deadLetterCount >= AI_QUEUE_DEAD_LETTER_ALERT_THRESHOLD) {
+    await upsertAiOperationalAlert({
+      tenantId,
+      type: "dead_letter_threshold",
+      scope: "queue",
+      severity: "high",
+      title: "Fila de IA com dead-letter acima do limiar",
+      detail: `${deadLetterCount} job(s) de IA estao em dead-letter para este tenant.`,
+      reasonCode: "dead_letter_threshold",
+      source: "ai_queue_worker",
+    });
+    return;
+  }
+
+  await resolveAiOperationalAlert({
+    tenantId,
+    type: "dead_letter_threshold",
+    scope: "queue",
+  });
+}
+
+async function syncRecurringProviderAlerts(tenantId: string, errorCode: string) {
+  const metrics = await readTodayAiQueueMetric(tenantId);
+  const counters = toCounterMap(metrics?.errorCounters);
+
+  if (
+    errorCode === "auth_invalid" &&
+    (counters.auth_invalid || 0) >= AI_QUEUE_RECURRING_AUTH_ALERT_THRESHOLD
+  ) {
+    await upsertAiOperationalAlert({
+      tenantId,
+      type: "recurring_auth_fail",
+      scope: "provider_auth",
+      severity: "high",
+      title: "Falha recorrente de autenticacao no provider de IA",
+      detail: `${counters.auth_invalid || 0} falha(s) de autenticacao registradas hoje para este tenant.`,
+      errorCode,
+      reasonCode: "auth_failed",
+      source: "ai_queue_worker",
+    });
+  }
+
+  if (
+    errorCode === "quota_exceeded" &&
+    (counters.quota_exceeded || 0) >= AI_QUEUE_RECURRING_QUOTA_ALERT_THRESHOLD
+  ) {
+    await upsertAiOperationalAlert({
+      tenantId,
+      type: "recurring_quota_fail",
+      scope: "provider_quota",
+      severity: "high",
+      title: "Quota da IA esgotando ou bloqueada",
+      detail: `${counters.quota_exceeded || 0} falha(s) de quota registradas hoje para este tenant.`,
+      errorCode,
+      reasonCode: "quota_exceeded",
+      source: "ai_queue_worker",
+    });
+  }
 }
 
 export async function enqueueIncomingMessageJob(
@@ -318,6 +425,8 @@ async function claimJob(jobId: string): Promise<ClaimedJob | null> {
           status: "dead_letter",
           lockedAt: null,
           lastError: "Payload do job invalido.",
+          lastErrorCode: "payload_invalid",
+          lastReasonCode: "invalid_job_payload",
           updatedAt: FieldValue.serverTimestamp(),
           finishedAt: FieldValue.serverTimestamp(),
         },
@@ -354,14 +463,21 @@ function computeRetryDelayMs(attempts: number) {
   return Math.min(MAX_RETRY_DELAY_MS, BASE_RETRY_DELAY_MS * multiplier);
 }
 
-async function finalizeSuccessfulJob(job: ClaimedJob, decision: "respond" | "ask_more" | "handoff" | "skip", reason: string) {
+async function finalizeSuccessfulJob(
+  job: ClaimedJob,
+  decision: "respond" | "ask_more" | "handoff" | "skip",
+  reason: string
+) {
   const jobRef = adminDb.collection("jobs").doc(job.id);
+  const reasonCode = normalizeReasonCode(reason, "decision_recorded");
   await Promise.all([
     jobRef.set(
       {
         status: "done",
         decision,
         decisionReason: reason,
+        lastReasonCode: reasonCode,
+        lastErrorCode: null,
         lockedAt: null,
         completedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -374,6 +490,7 @@ async function finalizeSuccessfulJob(job: ClaimedJob, decision: "respond" | "ask
       processed: 1,
       decision,
       skipped: decision === "skip" ? 1 : 0,
+      reasonCode,
     }),
     updateChatStateProcessing({
       tenantId: job.tenantId,
@@ -383,14 +500,16 @@ async function finalizeSuccessfulJob(job: ClaimedJob, decision: "respond" | "ask
       jobStatus: "done",
       decision,
       decisionReason: reason,
+      decisionReasonCode: reasonCode,
       lastError: null,
+      lastErrorCode: null,
     }),
   ]);
 }
 
 async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
-  const message =
-    error instanceof Error ? error.message.slice(0, 400) : "Erro desconhecido ao processar job de IA.";
+  const classification = classifyAiQueueError(error);
+  const message = classification.message;
 
   const canRetry = job.attempts < job.maxAttempts;
   const retryDelayMs = computeRetryDelayMs(job.attempts);
@@ -404,6 +523,8 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
         lockedAt: null,
         availableAt: canRetry ? new Date(Date.now() + retryDelayMs) : null,
         lastError: message,
+        lastErrorCode: classification.errorCode,
+        lastReasonCode: classification.reasonCode,
         failedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },
@@ -415,6 +536,8 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
       failed: 1,
       retried: canRetry ? 1 : 0,
       deadLetter: canRetry ? 0 : 1,
+      reasonCode: classification.reasonCode,
+      errorCode: classification.errorCode,
     }),
     updateChatStateProcessing({
       tenantId: job.tenantId,
@@ -423,12 +546,25 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
       messageId: job.messageId,
       jobStatus: canRetry ? "retrying" : "dead_letter",
       decisionReason: canRetry ? "job_retry_scheduled" : "job_failed_dead_letter",
+      decisionReasonCode: classification.reasonCode,
       lastError: message,
+      lastErrorCode: classification.errorCode,
     }),
   ]);
+
+  await Promise.all([
+    syncRecurringProviderAlerts(job.tenantId, classification.errorCode),
+    syncDeadLetterAlert(job.tenantId),
+  ]);
+
+  return {
+    canRetry,
+    classification,
+  };
 }
 
 async function processOneClaimedJob(job: ClaimedJob) {
+  const startedAt = Date.now();
   try {
     const result = await handleIncomingMessage({
       tenantId: job.tenantId,
@@ -437,6 +573,15 @@ async function processOneClaimedJob(job: ClaimedJob) {
     });
 
     await finalizeSuccessfulJob(job, result.decision, result.reason);
+    await updateAiWorkerHealth({
+      status: "healthy",
+      source: "process_one_claimed_job",
+      durationMs: Date.now() - startedAt,
+      claimed: 1,
+      processed: 1,
+      retried: 0,
+      deadLetter: 0,
+    });
 
     return {
       ok: true,
@@ -445,7 +590,20 @@ async function processOneClaimedJob(job: ClaimedJob) {
       skipped: result.decision === "skip",
     };
   } catch (error) {
-    await finalizeFailedJob(job, error);
+    const failed = await finalizeFailedJob(job, error);
+    await updateAiWorkerHealth({
+      status: failed.classification.errorCode === "auth_invalid" || failed.classification.errorCode === "quota_exceeded"
+        ? "degraded"
+        : "down",
+      source: "process_one_claimed_job",
+      durationMs: Date.now() - startedAt,
+      claimed: 1,
+      failed: 1,
+      retried: failed.canRetry ? 1 : 0,
+      deadLetter: failed.canRetry ? 0 : 1,
+      lastErrorCode: failed.classification.errorCode,
+      lastErrorMessage: failed.classification.message,
+    });
     console.error("Erro ao processar job de IA:", {
       jobId: job.id,
       tenantId: job.tenantId,
@@ -456,8 +614,8 @@ async function processOneClaimedJob(job: ClaimedJob) {
 
     return {
       ok: false,
-      retried: job.attempts < job.maxAttempts,
-      deadLetter: job.attempts >= job.maxAttempts,
+      retried: failed.canRetry,
+      deadLetter: !failed.canRetry,
       skipped: false,
     };
   }
@@ -490,6 +648,7 @@ export async function processAiQueue(options?: {
   drain?: boolean;
   maxBatches?: number;
 }): Promise<ProcessAiQueueResult> {
+  const startedAt = Date.now();
   const requested = Math.min(100, Math.max(1, options?.limit || DEFAULT_BATCH_LIMIT));
   const drain = options?.drain === true;
   const maxBatches = Math.min(12, Math.max(1, options?.maxBatches || 4));
@@ -505,37 +664,65 @@ export async function processAiQueue(options?: {
     batches: 0,
   };
 
-  for (let batch = 0; batch < maxBatches; batch += 1) {
-    let claimedInBatch = 0;
-    result.batches += 1;
+  try {
+    for (let batch = 0; batch < maxBatches; batch += 1) {
+      let claimedInBatch = 0;
+      result.batches += 1;
 
-    for (let i = 0; i < requested; i += 1) {
-      const candidates = await listClaimableJobs(1);
-      const candidate = candidates[0];
-      if (!candidate) break;
+      for (let i = 0; i < requested; i += 1) {
+        const candidates = await listClaimableJobs(1);
+        const candidate = candidates[0];
+        if (!candidate) break;
 
-      const claimed = await claimJob(candidate.id);
-      if (!claimed) continue;
+        const claimed = await claimJob(candidate.id);
+        if (!claimed) continue;
 
-      claimedInBatch += 1;
-      result.claimed += 1;
+        claimedInBatch += 1;
+        result.claimed += 1;
 
-      const jobResult = await processOneClaimedJob(claimed);
-      if (jobResult.ok) {
-        result.processed += 1;
-        if (jobResult.skipped) result.skipped += 1;
-        continue;
+        const jobResult = await processOneClaimedJob(claimed);
+        if (jobResult.ok) {
+          result.processed += 1;
+          if (jobResult.skipped) result.skipped += 1;
+          continue;
+        }
+
+        result.failed += 1;
+        if (jobResult.retried) result.retried += 1;
+        if (jobResult.deadLetter) result.deadLetter += 1;
       }
 
-      result.failed += 1;
-      if (jobResult.retried) result.retried += 1;
-      if (jobResult.deadLetter) result.deadLetter += 1;
+      if (!drain || claimedInBatch === 0) break;
     }
 
-    if (!drain || claimedInBatch === 0) break;
-  }
+    await updateAiWorkerHealth({
+      status: result.failed > 0 || result.deadLetter > 0 ? "degraded" : "healthy",
+      source: "process_ai_queue",
+      durationMs: Date.now() - startedAt,
+      claimed: result.claimed,
+      processed: result.processed,
+      failed: result.failed,
+      retried: result.retried,
+      deadLetter: result.deadLetter,
+    });
 
-  return result;
+    return result;
+  } catch (error) {
+    const classification = classifyAiQueueError(error);
+    await updateAiWorkerHealth({
+      status: "down",
+      source: "process_ai_queue",
+      durationMs: Date.now() - startedAt,
+      claimed: result.claimed,
+      processed: result.processed,
+      failed: result.failed + 1,
+      retried: result.retried,
+      deadLetter: result.deadLetter,
+      lastErrorCode: classification.errorCode,
+      lastErrorMessage: classification.message,
+    });
+    throw error;
+  }
 }
 
 export async function kickAiQueueNow(options?: KickAiQueueNowOptions) {

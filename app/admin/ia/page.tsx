@@ -109,6 +109,62 @@ type AdminAiJobsSummaryResponse = {
     deadLetter?: number;
   };
   total?: number;
+  worker?: {
+    status?: "healthy" | "degraded" | "down";
+    stale?: boolean;
+    lastHeartbeatAt?: unknown;
+    lastSuccessAt?: unknown;
+    lastFailureAt?: unknown;
+    lastProcessedAt?: unknown;
+    lastDurationMs?: number;
+    lastErrorCode?: string;
+    lastErrorMessage?: string;
+    lastResult?: {
+      processed?: number;
+      claimed?: number;
+      failed?: number;
+      retried?: number;
+      deadLetter?: number;
+      backlog?: number;
+    };
+  };
+  overview?: {
+    totalTenants?: number;
+    riskyTenants?: number;
+    highRiskTenants?: number;
+    staleTenants?: number;
+    backlog?: number;
+    throughputToday?: number;
+    retryRateToday?: number;
+    deadLetterRateToday?: number;
+  };
+  tenants?: Array<{
+    tenantId: string;
+    tenantName: string;
+    backlog: number;
+    throughputToday: number;
+    retryRateToday: number;
+    deadLetterRateToday: number;
+    staleQueue: boolean;
+    oldestReadyAgeMs: number;
+    lastOccurrenceAt?: unknown;
+    lastProcessedAt?: unknown;
+    lastFailedAt?: unknown;
+    lastActivityAt?: unknown;
+    lastErrorCode?: string;
+    dominantErrorCode?: string;
+    recurringAuthFailures?: number;
+    recurringQuotaFailures?: number;
+    riskLevel: "stable" | "warning" | "high";
+    riskReasons: string[];
+    counts?: {
+      pending?: number;
+      processing?: number;
+      retrying?: number;
+      done?: number;
+      deadLetter?: number;
+    };
+  }>;
 };
 
 type AdminAiUsageSummaryResponse = {
@@ -191,7 +247,24 @@ type AdminAiInternalNotificationsResponse = {
     title: string;
     detail: string;
     status: string;
+    occurrences?: number;
+    errorCode?: string;
+    reasonCode?: string;
     createdAt?: unknown;
+    updatedAt?: unknown;
+    lastOccurredAt?: unknown;
+  }>;
+  riskCards?: Array<{
+    id: string;
+    tenantId: string;
+    type: string;
+    severity: string;
+    title: string;
+    detail: string;
+    occurrences?: number;
+    errorCode?: string;
+    reasonCode?: string;
+    lastOccurredAt?: unknown;
   }>;
 };
 
@@ -288,13 +361,16 @@ export default function AdminIAPage() {
   const signalSummary = useMemo(() => signals.summary || {}, [signals.summary]);
   const usageCurrentMonth = useMemo(() => usage.currentMonth || {}, [usage.currentMonth]);
   const usageLast7Days = useMemo(() => usage.last7Days || {}, [usage.last7Days]);
-  const jobCounts = useMemo(() => jobs.counts || {}, [jobs.counts]);
+  const jobOverview = useMemo(() => jobs.overview || {}, [jobs.overview]);
+  const workerHealth = useMemo(() => jobs.worker || {}, [jobs.worker]);
+  const tenantJobHealth = useMemo(() => jobs.tenants || [], [jobs.tenants]);
   const learningSummary = useMemo(() => learning.summary || {}, [learning.summary]);
   const topLearnedObjections = useMemo(() => learning.topObjections || [], [learning.topObjections]);
   const topLearnedOffers = useMemo(() => learning.topOffers || [], [learning.topOffers]);
   const tenantSignals = useMemo(() => signals.tenants || [], [signals.tenants]);
   const recentSignals = useMemo(() => signals.recent || [], [signals.recent]);
   const recentInternalNotifications = useMemo(() => internalNotifications.items || [], [internalNotifications.items]);
+  const riskCards = useMemo(() => internalNotifications.riskCards || [], [internalNotifications.riskCards]);
   const filteredRecentSignals = useMemo(
     () =>
       selectedTenantId === "all"
@@ -306,6 +382,40 @@ export default function AdminIAPage() {
     () => tenantSignals.find((tenant) => tenant.tenantId === selectedTenantId) || null,
     [selectedTenantId, tenantSignals]
   );
+  const filteredInternalNotifications = useMemo(
+    () =>
+      selectedTenantId === "all"
+        ? recentInternalNotifications
+        : recentInternalNotifications.filter((item) => item.tenantId === selectedTenantId),
+    [recentInternalNotifications, selectedTenantId]
+  );
+  const filteredRiskCards = useMemo(
+    () =>
+      selectedTenantId === "all"
+        ? riskCards
+        : riskCards.filter((item) => item.tenantId === selectedTenantId),
+    [riskCards, selectedTenantId]
+  );
+  const filteredRiskTenants = useMemo(
+    () =>
+      (selectedTenantId === "all"
+        ? tenantJobHealth
+        : tenantJobHealth.filter((item) => item.tenantId === selectedTenantId)
+      ).filter((item) => item.riskLevel !== "stable"),
+    [selectedTenantId, tenantJobHealth]
+  );
+  const tenantOptions = useMemo(() => {
+    const map = new Map<string, { tenantId: string; tenantName: string }>();
+    for (const tenant of tenantSignals) {
+      map.set(tenant.tenantId, { tenantId: tenant.tenantId, tenantName: tenant.tenantName });
+    }
+    for (const tenant of tenantJobHealth) {
+      if (!map.has(tenant.tenantId)) {
+        map.set(tenant.tenantId, { tenantId: tenant.tenantId, tenantName: tenant.tenantName });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.tenantName.localeCompare(b.tenantName, "pt-BR"));
+  }, [tenantJobHealth, tenantSignals]);
   const topActions = useMemo(() => {
     const source = selectedTenantId === "all" ? recentSignals : filteredRecentSignals;
     return Array.from(
@@ -458,8 +568,154 @@ export default function AdminIAPage() {
         <SignalMetric label="Execucoes no mes" value={String(usageCurrentMonth.runs || 0)} icon={Bot} />
         <SignalMetric label="Custo ultimos 7 dias" value={`US$ ${Number(usageLast7Days.estimatedCostUsd || 0).toFixed(2)}`} icon={Activity} />
         <SignalMetric label="Tokens ultimos 7 dias" value={String((Number(usageLast7Days.inputTokens || 0) + Number(usageLast7Days.outputTokens || 0)).toLocaleString("pt-BR"))} icon={BrainCircuit} />
-        <SignalMetric label="Fila pendente" value={String(jobCounts.pending || 0)} icon={Send} />
-        <SignalMetric label="Dead letters" value={String(jobCounts.deadLetter || 0)} icon={Loader2} />
+        <SignalMetric label="Backlog IA" value={String(jobOverview.backlog || 0)} icon={Send} />
+        <SignalMetric label="Tenants em risco" value={String(jobOverview.highRiskTenants || 0)} icon={Loader2} />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Worker health</p>
+              <h2 className="mt-1 text-lg font-semibold text-white">Saude do worker de IA</h2>
+            </div>
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] ${
+              workerHealth.status === "healthy"
+                ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
+                : workerHealth.status === "degraded"
+                  ? "border-amber-400/25 bg-amber-500/10 text-amber-100"
+                  : "border-rose-400/25 bg-rose-500/10 text-rose-100"
+            }`}>
+              {humanizeWorkerStatus(workerHealth.status)}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <MiniPill label="backlog" value={jobOverview.backlog || 0} tone="blue" />
+            <MiniPill label="throughput hoje" value={jobOverview.throughputToday || 0} tone="emerald" />
+            <MiniPill label="retry hoje" value={toPercentNumber(jobOverview.retryRateToday)} tone="amber" />
+            <MiniPill label="dead letter" value={toPercentNumber(jobOverview.deadLetterRateToday)} tone="violet" />
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/75">
+              <p>Ultimo heartbeat: <span className="text-white">{formatDateTime(workerHealth.lastHeartbeatAt)}</span></p>
+              <p className="mt-2">Ultimo sucesso: <span className="text-white">{formatDateTime(workerHealth.lastSuccessAt)}</span></p>
+              <p className="mt-2">Ultima falha: <span className="text-white">{formatDateTime(workerHealth.lastFailureAt)}</span></p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/75">
+              <p>Ultima duracao: <span className="text-white">{formatDurationMs(workerHealth.lastDurationMs)}</span></p>
+              <p className="mt-2">Tenants stale: <span className="text-white">{jobOverview.staleTenants || 0}</span></p>
+              <p className="mt-2">Ultimo codigo: <span className="text-white">{workerHealth.lastErrorCode || "-"}</span></p>
+            </div>
+          </div>
+
+          {workerHealth.lastErrorMessage ? (
+            <div className="mt-4 rounded-xl border border-rose-400/20 bg-rose-500/10 p-3 text-sm text-rose-100">
+              {workerHealth.lastErrorMessage}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-[#111] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Risk cards</p>
+              <h2 className="mt-1 text-lg font-semibold text-white">Alertas operacionais acionaveis</h2>
+            </div>
+            <div className="text-xs text-white/55">{filteredRiskCards.length} alerta(s)</div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {filteredRiskCards.length ? filteredRiskCards.map((item) => (
+              <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{item.title}</p>
+                    <p className="mt-1 text-xs text-white/55">
+                      tenant {item.tenantId} · ultima ocorrencia {formatDateTime(item.lastOccurredAt)}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-[11px] ${severityBadgeClass(item.severity)}`}>
+                    {item.severity}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm text-white/75">{item.detail}</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-white/55">
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                    ocorrencias: {item.occurrences || 1}
+                  </span>
+                  {item.errorCode ? (
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                      error: {item.errorCode}
+                    </span>
+                  ) : null}
+                  {item.reasonCode ? (
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                      reason: {item.reasonCode}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            )) : (
+              <p className="text-sm text-white/45">Nenhum alerta aberto no recorte atual.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Tenants em risco</p>
+            <h2 className="mt-1 text-lg font-semibold text-white">Backlog, throughput e falhas por tenant</h2>
+          </div>
+          <div className="text-xs text-white/55">{filteredRiskTenants.length} tenant(s) critico(s)</div>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {filteredRiskTenants.length ? filteredRiskTenants.slice(0, 8).map((tenant) => (
+            <div key={tenant.tenantId} className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-white">{tenant.tenantName}</p>
+                    <span className={`rounded-full px-2 py-1 text-[11px] ${
+                      tenant.riskLevel === "high"
+                        ? "border border-rose-400/25 bg-rose-500/10 text-rose-100"
+                        : "border border-amber-400/25 bg-amber-500/10 text-amber-100"
+                    }`}>
+                      {tenant.riskLevel}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-white/55">
+                    tenant {tenant.tenantId} · ultima ocorrencia {formatDateTime(tenant.lastOccurrenceAt)}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <MiniPill label="backlog" value={tenant.backlog} tone="blue" />
+                  <MiniPill label="throughput" value={tenant.throughputToday} tone="emerald" />
+                  <MiniPill label="retry" value={toPercentNumber(tenant.retryRateToday)} tone="amber" />
+                  <MiniPill label="dead letter" value={toPercentNumber(tenant.deadLetterRateToday)} tone="violet" />
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-white/65">
+                {tenant.riskReasons.map((reason) => (
+                  <span key={`${tenant.tenantId}-${reason}`} className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                    {humanizeRiskReason(reason)}
+                  </span>
+                ))}
+                {tenant.lastErrorCode ? (
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                    erro dominante: {tenant.lastErrorCode}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          )) : (
+            <p className="text-sm text-white/45">Nenhum tenant com risco operacional elevado agora.</p>
+          )}
+        </div>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
@@ -513,7 +769,7 @@ export default function AdminIAPage() {
             <div className="text-xs text-white/55">tempo real operacional</div>
           </div>
           <div className="mt-4 space-y-3">
-            {recentInternalNotifications.length ? recentInternalNotifications.slice(0, 8).map((item) => (
+            {filteredInternalNotifications.length ? filteredInternalNotifications.slice(0, 8).map((item) => (
               <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -533,7 +789,11 @@ export default function AdminIAPage() {
                   </span>
                 </div>
                 <p className="mt-2 text-sm text-white/75">{item.detail}</p>
-                <p className="mt-2 text-[11px] text-white/40">{formatDateTime(item.createdAt)}</p>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-white/40">
+                  <span>{formatDateTime(item.lastOccurredAt || item.createdAt)}</span>
+                  {item.errorCode ? <span>error {item.errorCode}</span> : null}
+                  {item.reasonCode ? <span>reason {item.reasonCode}</span> : null}
+                </div>
               </div>
             )) : <p className="text-sm text-white/45">Sem notificacoes internas recentes.</p>}
           </div>
@@ -554,14 +814,14 @@ export default function AdminIAPage() {
                 className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/75 outline-none"
               >
                 <option value="all">Todos os tenants</option>
-                {tenantSignals.map((tenant) => (
+                {tenantOptions.map((tenant) => (
                   <option key={tenant.tenantId} value={tenant.tenantId}>
                     {tenant.tenantName}
                   </option>
                 ))}
               </select>
               <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/65">
-                {signalsLoading ? "Atualizando..." : `${tenantSignals.length} tenant(s) no radar`}
+                {signalsLoading ? "Atualizando..." : `${tenantOptions.length} tenant(s) no radar`}
               </div>
             </div>
           </div>
@@ -935,6 +1195,39 @@ function humanizeDecision(value: "respond" | "ask_more" | "handoff" | "skip") {
   if (value === "ask_more") return "qualificou";
   if (value === "handoff") return "escalou";
   return "ignorou";
+}
+
+function humanizeWorkerStatus(value?: "healthy" | "degraded" | "down") {
+  if (value === "healthy") return "operacional";
+  if (value === "degraded") return "degradado";
+  return "fora do ideal";
+}
+
+function humanizeRiskReason(value: string) {
+  if (value === "stale_queue") return "fila parada";
+  if (value === "dead_letter_threshold") return "dead-letter acima do limiar";
+  if (value === "recurring_auth_failures") return "falha recorrente de auth";
+  if (value === "recurring_quota_failures") return "falha recorrente de quota";
+  if (value === "retry_rate_elevated") return "retry rate elevado";
+  if (value === "dead_letter_rate_elevated") return "dead-letter rate elevado";
+  return value || "risco operacional";
+}
+
+function severityBadgeClass(value?: string) {
+  if (value === "high") return "border border-rose-400/25 bg-rose-500/10 text-rose-100";
+  if (value === "warning") return "border border-amber-400/25 bg-amber-500/10 text-amber-100";
+  return "border border-blue-400/25 bg-blue-500/10 text-blue-100";
+}
+
+function toPercentNumber(value?: number) {
+  return Math.round(Number(value || 0) * 100);
+}
+
+function formatDurationMs(value?: number) {
+  const durationMs = Number(value || 0);
+  if (!durationMs) return "-";
+  if (durationMs < 1000) return `${durationMs} ms`;
+  return `${(durationMs / 1000).toFixed(1)} s`;
 }
 
 function SignalMetric({

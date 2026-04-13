@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Loader2, Send, ShieldCheck } from "lucide-react";
 import {
   isCaptureFieldVisible,
@@ -48,6 +49,7 @@ export default function WidgetChatClient({
   collectMessage,
   fields = [],
 }: Props) {
+  const searchParams = useSearchParams();
   const [booting, setBooting] = useState(true);
   const [starting, setStarting] = useState(false);
   const [sending, setSending] = useState(false);
@@ -126,6 +128,20 @@ export default function WidgetChatClient({
       }) || null,
     [customFields, visibleFields]
   );
+  const attributionParams = useMemo(
+    () => ({
+      utmSource: searchParams.get("utm_source") || "",
+      utmMedium: searchParams.get("utm_medium") || "",
+      utmCampaign: searchParams.get("utm_campaign") || "",
+      utmTerm: searchParams.get("utm_term") || "",
+      utmContent: searchParams.get("utm_content") || "",
+      gclid: searchParams.get("gclid") || "",
+      fbclid: searchParams.get("fbclid") || "",
+      landingPage: typeof window !== "undefined" ? window.location.href : "",
+      referrer: typeof document !== "undefined" ? document.referrer : "",
+    }),
+    [searchParams]
+  );
 
   async function startChat(event: FormEvent) {
     event.preventDefault();
@@ -136,7 +152,7 @@ export default function WidgetChatClient({
       const res = await fetch(`/api/public/forms/${formId}/chat/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...identity, customFields }),
+        body: JSON.stringify({ ...identity, customFields, ...attributionParams }),
       });
       const payload = (await res.json()) as { error?: string; chatId?: string; token?: string };
       if (!res.ok || !payload.chatId || !payload.token) {

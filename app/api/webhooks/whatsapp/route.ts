@@ -44,6 +44,15 @@ function toDate(value: unknown) {
   return null;
 }
 
+function cleanString(value: unknown, max = 320) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, max);
+}
+
+function cleanNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function normalizeInboundMessageType(value: unknown) {
   const raw = String(value || "").trim().toLowerCase();
   if (["audio", "image", "video", "document", "sticker", "location", "contact", "interactive", "template", "text"].includes(raw)) {
@@ -76,13 +85,30 @@ function extractWhatsappMediaMeta(message: Record<string, unknown>) {
     text: buildWhatsappMediaText(message, String((message as { text?: { body?: unknown } }).text?.body || "").trim()),
     mediaUrl: "",
     mediaName: String(payload.filename || payload.caption || "").trim() || null,
-    mediaMimeType: String(payload.mime_type || "").trim() || null,
-    mediaDuration: typeof payload.voice === "boolean" ? null : null,
-    mediaWidth: null as number | null,
-    mediaHeight: null as number | null,
+    mediaMimeType: cleanString(payload.mime_type, 180) || null,
+    mediaDuration: cleanNumber(payload.duration) ?? cleanNumber(payload.duration_ms),
+    mediaWidth: cleanNumber(payload.width),
+    mediaHeight: cleanNumber(payload.height),
+    mediaSize: cleanNumber(payload.file_size),
     mediaThumbnail: null as string | null,
     mediaId: String(payload.id || "").trim() || null,
   };
+}
+
+function extractWhatsappProfilePhoto(valueObj: Record<string, unknown> | undefined) {
+  const contacts = Array.isArray(valueObj?.contacts) ? valueObj.contacts : [];
+  const firstContact = contacts[0] && typeof contacts[0] === "object" ? (contacts[0] as Record<string, unknown>) : {};
+  const profile =
+    firstContact.profile && typeof firstContact.profile === "object"
+      ? (firstContact.profile as Record<string, unknown>)
+      : {};
+
+  return (
+    cleanString(profile.photo_url, 1200) ||
+    cleanString(profile.avatar_url, 1200) ||
+    cleanString(profile.profile_pic_url, 1200) ||
+    null
+  );
 }
 
 async function resolveLeadOwner(phone: string, tenantId: string) {
@@ -301,6 +327,7 @@ export async function POST(req: Request) {
       ) ||
       from ||
       "Contato";
+    const contactPhotoUrl = extractWhatsappProfilePhoto(valueObj);
 
     if (!from) {
       return NextResponse.json({ status: "ignored_invalid_phone" });
@@ -435,6 +462,7 @@ export async function POST(req: Request) {
       name: contactName,
       email: leadEmail,
       company: leadCompany,
+      photoUrl: contactPhotoUrl,
     });
 
     let incomingMessageRef: DocumentReference;
@@ -460,6 +488,7 @@ export async function POST(req: Request) {
           mediaDuration: mediaMeta.mediaDuration,
           mediaWidth: mediaMeta.mediaWidth,
           mediaHeight: mediaMeta.mediaHeight,
+          mediaSize: mediaMeta.mediaSize,
           mediaThumbnail: mediaMeta.mediaThumbnail,
           mediaId: mediaMeta.mediaId,
           createdAt: FieldValue.serverTimestamp(),
@@ -482,6 +511,7 @@ export async function POST(req: Request) {
         mediaDuration: mediaMeta.mediaDuration,
         mediaWidth: mediaMeta.mediaWidth,
         mediaHeight: mediaMeta.mediaHeight,
+        mediaSize: mediaMeta.mediaSize,
         mediaThumbnail: mediaMeta.mediaThumbnail,
         mediaId: mediaMeta.mediaId,
         createdAt: FieldValue.serverTimestamp(),

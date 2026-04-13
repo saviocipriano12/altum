@@ -38,8 +38,12 @@ export async function POST(req: Request) {
     let accounts: Array<{
       id: string;
       clientId: string;
+      tenantId?: string;
       platform: "meta_ads" | "google_ads" | "tiktok_ads" | "linkedin_ads";
       externalAccountId?: string;
+      accessToken?: string;
+      refreshToken?: string;
+      loginCustomerId?: string;
       ownerId?: string;
     }> = [];
 
@@ -50,16 +54,24 @@ export async function POST(req: Request) {
       }
       const data = snap.data() as {
         clientId?: string;
+        tenantId?: string;
         platform?: "meta_ads" | "google_ads" | "tiktok_ads" | "linkedin_ads";
         externalAccountId?: string;
+        accessToken?: string;
+        refreshToken?: string;
+        metadata?: Record<string, unknown>;
         ownerId?: string;
       };
       accounts = [
         {
           id: snap.id,
           clientId: clean(data.clientId, 120),
+          tenantId: clean(data.tenantId, 120),
           platform: (data.platform || "meta_ads") as "meta_ads" | "google_ads" | "tiktok_ads" | "linkedin_ads",
           externalAccountId: clean(data.externalAccountId, 200),
+          accessToken: clean(data.accessToken, 4000),
+          refreshToken: clean(data.refreshToken, 4000),
+          loginCustomerId: clean(data.metadata?.loginCustomerId, 180),
           ownerId: clean(data.ownerId, 120),
         },
       ];
@@ -75,19 +87,27 @@ export async function POST(req: Request) {
       accounts = snap.docs.map((doc) => {
         const data = doc.data() as {
           clientId?: string;
+          tenantId?: string;
           platform?: "meta_ads" | "google_ads" | "tiktok_ads" | "linkedin_ads";
           externalAccountId?: string;
+          accessToken?: string;
+          refreshToken?: string;
+          metadata?: Record<string, unknown>;
           ownerId?: string;
         };
         return {
           id: doc.id,
           clientId: clean(data.clientId, 120),
+          tenantId: clean(data.tenantId, 120),
           platform: (data.platform || "meta_ads") as
             | "meta_ads"
             | "google_ads"
             | "tiktok_ads"
             | "linkedin_ads",
           externalAccountId: clean(data.externalAccountId, 200),
+          accessToken: clean(data.accessToken, 4000),
+          refreshToken: clean(data.refreshToken, 4000),
+          loginCustomerId: clean(data.metadata?.loginCustomerId, 180),
           ownerId: clean(data.ownerId, 120),
         };
       });
@@ -120,8 +140,12 @@ export async function POST(req: Request) {
       const result = await runSyncForAdAccount({
         adAccountId: account.id,
         clientId: account.clientId,
+        tenantId: account.tenantId,
         platform: account.platform,
         externalAccountId: account.externalAccountId,
+        accessToken: account.accessToken,
+        refreshToken: account.refreshToken,
+        loginCustomerId: account.loginCustomerId,
         dateRef,
       });
       results.push(result);

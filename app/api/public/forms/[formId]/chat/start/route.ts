@@ -12,6 +12,7 @@ import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQu
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
+import { recordInboundLead } from "@/lib/server/lead-intake";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
 
@@ -22,6 +23,15 @@ type Body = {
   empresa?: string;
   mensagem?: string;
   customFields?: Record<string, unknown>;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+  gclid?: string;
+  fbclid?: string;
+  landingPage?: string;
+  referrer?: string;
 };
 
 type CustomFieldMap = Record<string, string | number | boolean>;
@@ -29,30 +39,6 @@ type CustomFieldMap = Record<string, string | number | boolean>;
 function clean(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
-}
-
-async function findLead(tenantId: string, email: string, phone: string) {
-  if (phone) {
-    const phoneSnap = await adminDb
-      .collection("leads")
-      .where("tenantId", "==", tenantId)
-      .where("telefone", "==", phone)
-      .limit(1)
-      .get();
-    if (!phoneSnap.empty) return phoneSnap.docs[0];
-  }
-
-  if (email) {
-    const emailSnap = await adminDb
-      .collection("leads")
-      .where("tenantId", "==", tenantId)
-      .where("email", "==", email)
-      .limit(1)
-      .get();
-    if (!emailSnap.empty) return emailSnap.docs[0];
-  }
-
-  return null;
 }
 
 export async function POST(
@@ -82,6 +68,15 @@ export async function POST(
     const telefone = normalizePhoneBR(clean(body.telefone, 40));
     const empresa = clean(body.empresa, 180);
     const mensagem = clean(body.mensagem, 4000);
+    const utmSource = clean(body.utmSource, 120);
+    const utmMedium = clean(body.utmMedium, 120);
+    const utmCampaign = clean(body.utmCampaign, 180);
+    const utmTerm = clean(body.utmTerm, 160);
+    const utmContent = clean(body.utmContent, 240);
+    const gclid = clean(body.gclid, 240);
+    const fbclid = clean(body.fbclid, 240);
+    const landingPage = clean(body.landingPage, 500);
+    const referrer = clean(body.referrer, 500);
     const customFieldEntries = fields
       .map((field) => [field.id, normalizeCaptureFieldValue(field, body.customFields?.[field.id])] as const)
       .filter(
@@ -106,9 +101,18 @@ export async function POST(
       return NextResponse.json({ error: "Informe nome, telefone ou email." }, { status: 400 });
     }
 
-    const leadSnap = await findLead(tenantId, email, telefone);
-    const leadRef = leadSnap ? leadSnap.ref : adminDb.collection("leads").doc();
-    const existingLead = leadSnap ? (leadSnap.data() as Record<string, unknown>) : {};
+    const existingLeadSnap = telefone || email
+      ? await adminDb
+          .collection("leads")
+          .where("tenantId", "==", tenantId)
+          .where(telefone ? "telefone" : "email", "==", telefone || email)
+          .limit(1)
+          .get()
+      : null;
+    const existingLead =
+      existingLeadSnap && !existingLeadSnap.empty
+        ? (existingLeadSnap.docs[0].data() as Record<string, unknown>)
+        : {};
     let assignedUserId = clean(existingLead.ownerId, 140) || null;
     let assignedUserName = clean(existingLead.owner, 140) || null;
 
@@ -118,36 +122,65 @@ export async function POST(
       assignedUserName = inboundAssignee?.name || null;
     }
 
-    await leadRef.set(
-      {
-        tenantId,
-        nome: nome || clean(existingLead.nome, 180) || "Lead sem nome",
-        email: email || clean(existingLead.email, 180),
-        telefone: telefone || clean(existingLead.telefone, 40),
-        empresa: empresa || clean(existingLead.empresa, 180),
-        origem: clean(form.sourceLabel, 120) || "Site chat",
+    const intake = await recordInboundLead({
+      tenantId,
+      sourceType: "site_chat_widget",
+      sourceId: null,
+      sourceLabel: clean(form.sourceLabel, 120) || "Site chat",
+      channel: "site_chat",
+      nome,
+      email,
+      telefone,
+      empresa,
+      mensagem,
+      customFields: customFieldValues,
+      tags: ["site_chat", "captacao_widget"],
+      defaultOwnerId: assignedUserId,
+      defaultOwnerName: assignedUserName,
+      attribution: {
+        source: utmSource || clean(form.sourceLabel, 120) || "site_chat",
+        medium: utmMedium || "chat",
+        campaign: utmCampaign,
+        term: utmTerm,
+        content: utmContent,
+        formId,
+        formName: clean(form.name, 140) || "Widget chat",
+        landingPage,
+        referrer,
+        gclid,
+        fbclid,
         channel: "site_chat",
         sourceType: "site_chat_widget",
-        sourceId: formId,
-        ownerId: assignedUserId,
-        owner: assignedUserName,
-        tags: Array.from(new Set(["site_chat", "captacao_widget"])).slice(0, 8),
-        customFields: {
-          ...((existingLead.customFields && typeof existingLead.customFields === "object")
-            ? (existingLead.customFields as Record<string, unknown>)
-            : {}),
-          ...customFieldValues,
-        },
-        updatedAt: FieldValue.serverTimestamp(),
-        createdAt: leadSnap ? existingLead.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
+        sourceLabel: clean(form.sourceLabel, 120) || "Site chat",
       },
-      { merge: true }
-    );
+      submission: {
+        formId,
+        formName: clean(form.name, 140) || "Widget chat",
+        sourceLabel: clean(form.sourceLabel, 120) || "Site chat",
+        utmSource,
+        utmMedium,
+        utmCampaign,
+        utmTerm,
+        utmContent,
+        gclid,
+        fbclid,
+        landingPage,
+        referrer,
+      },
+      automationActorId: "site_chat_widget",
+      automationActorName: "Site Chat Widget",
+    });
+
+    const leadRef = adminDb.collection("leads").doc(intake.leadId);
+    const leadSnap = await leadRef.get();
+    const resolvedLead = leadSnap.exists ? (leadSnap.data() as Record<string, unknown>) : {};
+    assignedUserId = clean(resolvedLead.ownerId, 140) || assignedUserId;
+    assignedUserName = clean(resolvedLead.owner, 140) || assignedUserName;
 
     const existingChatSnap = await adminDb
       .collection("chats")
       .where("tenantId", "==", tenantId)
-      .where("leadId", "==", leadRef.id)
+      .where("leadId", "==", intake.leadId)
       .where("channel", "==", "site_chat")
       .limit(1)
       .get();
@@ -156,14 +189,14 @@ export async function POST(
     const chatRef = existingChatSnap.empty ? adminDb.collection("chats").doc() : existingChatSnap.docs[0].ref;
     const chatPayload: Record<string, unknown> = {
       tenantId,
-      leadId: leadRef.id,
+      leadId: intake.leadId,
       channel: "site_chat",
       sourceType: "site_chat_widget",
       sourceId: formId,
-      contactName: nome || clean(existingLead.nome, 180) || "Lead",
-      contactPhone: telefone || clean(existingLead.telefone, 40),
-      contactEmail: email || clean(existingLead.email, 180),
-      company: empresa || clean(existingLead.empresa, 180),
+      contactName: nome || clean(resolvedLead.nome, 180) || "Lead",
+      contactPhone: telefone || clean(resolvedLead.telefone, 40),
+      contactEmail: email || clean(resolvedLead.email, 180),
+      company: empresa || clean(resolvedLead.empresa, 180),
       priority: "medium",
       ownerId: assignedUserId,
       ownerName: assignedUserName,
@@ -187,19 +220,19 @@ export async function POST(
 
     await upsertContactProfile({
       tenantId,
-      phone: telefone || clean(existingLead.telefone, 40),
-      leadId: leadRef.id,
+      phone: telefone || clean(resolvedLead.telefone, 40),
+      leadId: intake.leadId,
       channel: "site_chat",
-      name: nome || clean(existingLead.nome, 180) || "Lead",
-      email: email || clean(existingLead.email, 180),
-      company: empresa || clean(existingLead.empresa, 180),
+      name: nome || clean(resolvedLead.nome, 180) || "Lead",
+      email: email || clean(resolvedLead.email, 180),
+      company: empresa || clean(resolvedLead.empresa, 180),
     });
 
     if (mensagem) {
       const messageRef = await adminDb.collection("messages").add({
         chatId: chatRef.id,
         tenantId,
-        leadId: leadRef.id,
+        leadId: intake.leadId,
         sender: "client",
         text: mensagem,
         type: "text",
@@ -211,7 +244,7 @@ export async function POST(
       await runLeadAutomations({
         tenantId,
         trigger: "message_received",
-        leadId: leadRef.id,
+        leadId: intake.leadId,
         chatId: chatRef.id,
         channel: "site_chat",
         messageText: mensagem,
@@ -239,7 +272,7 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       tenantId,
-      leadId: leadRef.id,
+      leadId: intake.leadId,
       chatId: chatRef.id,
       token: publicAccessToken,
     });

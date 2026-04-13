@@ -7,6 +7,7 @@ import {
   getMetaChannelByVerifyToken,
   getMetaChannelForTenant,
   isMetaConversationChannelType,
+  type MetaChannelConfig,
   type MetaConversationChannelType,
   type MetaWebhookChannelType,
 } from "@/app/lib/server/meta-channel";
@@ -17,6 +18,15 @@ import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { recordInboundLead } from "@/lib/server/lead-intake";
+import { parseMetaSocialEvents } from "@/lib/server/social/meta";
+import {
+  getSocialAutomationContactState,
+  getTenantSocialAutomationConfig,
+  handleMetaSocialEvent,
+  logSocialAutomationStatus,
+  setSocialAutomationContactOptOut,
+  shouldAutoReplyToDm,
+} from "@/lib/server/social/service";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
 
@@ -32,7 +42,12 @@ type ParsedMetaEvent = {
   mediaUrl?: string | null;
   mediaName?: string | null;
   mediaMimeType?: string | null;
+  mediaDuration?: number | null;
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
+  mediaSize?: number | null;
   mediaThumbnail?: string | null;
+  contactPhotoUrl?: string | null;
 };
 
 type ParsedLeadgenEvent = {
@@ -55,6 +70,10 @@ function sanitizeId(value: string, max = 220) {
 function cleanString(value: unknown, max = 320) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+function cleanNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function toDate(value: unknown) {
@@ -124,11 +143,36 @@ function extractMetaAttachmentMeta(message: Record<string, unknown>) {
     mediaUrl: cleanString(payload.url, 1200) || null,
     mediaName: cleanString(attachment.title, 160) || cleanString(payload.title, 160) || null,
     mediaMimeType: cleanString(payload.mime_type, 120) || null,
-    mediaDuration: null as number | null,
-    mediaWidth: null as number | null,
-    mediaHeight: null as number | null,
+    mediaDuration:
+      cleanNumber(payload.duration_ms) ??
+      cleanNumber(payload.duration) ??
+      cleanNumber(attachment.duration_ms) ??
+      cleanNumber(attachment.duration),
+    mediaWidth: cleanNumber(payload.width) ?? cleanNumber(attachment.width),
+    mediaHeight: cleanNumber(payload.height) ?? cleanNumber(attachment.height),
+    mediaSize: cleanNumber(payload.file_size) ?? cleanNumber(attachment.file_size),
     mediaThumbnail: cleanString(payload.preview_url, 1200) || null,
   };
+}
+
+function extractMetaProfilePhoto(
+  event: Record<string, unknown>,
+  sender: Record<string, unknown>,
+  recipient: Record<string, unknown>
+) {
+  return (
+    cleanString(sender.profile_pic_url, 1200) ||
+    cleanString(sender.profile_pic, 1200) ||
+    cleanString(sender.avatar_url, 1200) ||
+    cleanString(recipient.profile_pic_url, 1200) ||
+    cleanString(
+      event.contact && typeof event.contact === "object"
+        ? (event.contact as Record<string, unknown>).profile_pic_url
+        : "",
+      1200
+    ) ||
+    null
+  );
 }
 
 function extractTextFromMessage(message: Record<string, unknown>) {
@@ -167,6 +211,7 @@ function parseMetaEvents(body: Record<string, unknown>) {
       const text = extractTextFromMessage(message);
       const messageId = cleanString(message.mid || message.id, 220);
       const mediaMeta = extractMetaAttachmentMeta(message);
+      const contactPhotoUrl = extractMetaProfilePhoto(event, sender, recipient);
       const timestamp =
         typeof event.timestamp === "number"
           ? event.timestamp
@@ -187,7 +232,12 @@ function parseMetaEvents(body: Record<string, unknown>) {
         mediaUrl: mediaMeta.mediaUrl,
         mediaName: mediaMeta.mediaName,
         mediaMimeType: mediaMeta.mediaMimeType,
+        mediaDuration: mediaMeta.mediaDuration,
+        mediaWidth: mediaMeta.mediaWidth,
+        mediaHeight: mediaMeta.mediaHeight,
+        mediaSize: mediaMeta.mediaSize,
         mediaThumbnail: mediaMeta.mediaThumbnail,
+        contactPhotoUrl,
       });
     }
   }
@@ -554,13 +604,15 @@ export async function POST(req: Request) {
     const body = JSON.parse(rawBody) as Record<string, unknown>;
     const objectType = cleanString(body.object, 40).toLowerCase();
     const parsedEvents = parseMetaEvents(body);
+    const socialEvents = parseMetaSocialEvents(body);
     const leadgenEvents = parseLeadgenEvents(body);
 
-    if (parsedEvents.length === 0 && leadgenEvents.length === 0) {
+    if (parsedEvents.length === 0 && socialEvents.length === 0 && leadgenEvents.length === 0) {
       return NextResponse.json({ status: "ignored_no_message" });
     }
 
     const firstEvent = parsedEvents[0];
+    const firstSocialEvent = socialEvents[0];
     const firstLeadgen = leadgenEvents[0];
     const resolved = firstEvent
       ? await findMetaChannelForWebhook({
@@ -568,6 +620,12 @@ export async function POST(req: Request) {
           entryId: firstEvent.entryId,
           recipientId: firstEvent.recipientId,
         })
+      : firstSocialEvent
+        ? await findMetaChannelForWebhook({
+            objectType,
+            entryId: firstSocialEvent.entryId,
+            recipientId: firstSocialEvent.actorId,
+          })
       : await getMetaAdsChannelForLeadgen({
           entryId: firstLeadgen?.pageId,
           formId: firstLeadgen?.formId,
@@ -582,18 +640,30 @@ export async function POST(req: Request) {
     }
 
     const processed: Array<Record<string, unknown>> = [];
+    const socialConfigCache = new Map<string, Awaited<ReturnType<typeof getTenantSocialAutomationConfig>>>();
+
+    async function getCachedSocialConfig(tenantId: string) {
+      const cached = socialConfigCache.get(tenantId);
+      if (cached) return cached;
+      const config = await getTenantSocialAutomationConfig(tenantId);
+      socialConfigCache.set(tenantId, config);
+      return config;
+    }
 
     for (const event of parsedEvents) {
-      if (!isMetaConversationChannelType(resolved.type)) {
+      const resolvedConversationChannel = isMetaConversationChannelType(resolved.type)
+        ? (resolved as MetaChannelConfig)
+        : null;
+      if (!resolvedConversationChannel) {
         continue;
       }
 
-      const channel =
-        (await getMetaChannelForTenant(resolved.tenantId, resolved.type, {
-          channelId: resolved.id,
+      const channel: MetaChannelConfig =
+        (await getMetaChannelForTenant(resolvedConversationChannel.tenantId, resolvedConversationChannel.type, {
+          channelId: resolvedConversationChannel.id,
           externalAccountId: event.recipientId,
           pageId: event.entryId,
-        })) || resolved;
+        })) || resolvedConversationChannel;
 
       if (!channel || !isMetaConversationChannelType(channel.type)) {
         continue;
@@ -667,6 +737,7 @@ export async function POST(req: Request) {
         name: contactName,
         email: leadEmail,
         company: leadCompany,
+        photoUrl: event.contactPhotoUrl || null,
       });
 
       const messageDocId = sanitizeId(
@@ -689,6 +760,10 @@ export async function POST(req: Request) {
           mediaUrl: event.mediaUrl || null,
           mediaName: event.mediaName || null,
           mediaMimeType: event.mediaMimeType || null,
+          mediaDuration: event.mediaDuration ?? null,
+          mediaWidth: event.mediaWidth ?? null,
+          mediaHeight: event.mediaHeight ?? null,
+          mediaSize: event.mediaSize ?? null,
           mediaThumbnail: event.mediaThumbnail || null,
           source: "meta_webhook",
           createdAt: FieldValue.serverTimestamp(),
@@ -707,6 +782,76 @@ export async function POST(req: Request) {
           actorId: "meta_webhook",
           actorName: "Meta Webhook",
         });
+      }
+
+      const socialConfig = await getCachedSocialConfig(channel.tenantId);
+      const contactState = await getSocialAutomationContactState(channel.tenantId, channel.type, event.senderId);
+      const dmDecision = shouldAutoReplyToDm({
+        config: socialConfig,
+        text: event.text,
+        senderId: event.senderId,
+        channel,
+        contactState,
+      });
+
+      if (dmDecision.shouldPersistOptOut) {
+        await setSocialAutomationContactOptOut({
+          tenantId: channel.tenantId,
+          channelType: channel.type,
+          actorId: event.senderId,
+          actorName: contactName,
+          optedOut: true,
+          reason: event.text,
+        });
+      }
+
+      await logSocialAutomationStatus({
+        tenantId: channel.tenantId,
+        channelType: channel.type,
+        eventId: event.eventId,
+        eventType: "dm",
+        actorId: event.senderId,
+        actorName: contactName,
+        text: event.text,
+        status: dmDecision.reason,
+        reason:
+          dmDecision.reason === "processed"
+            ? "DM encaminhada para fila de IA."
+            : dmDecision.reason === "ignored_opt_out"
+              ? "DM sem resposta automatica por opt-out."
+              : dmDecision.reason === "ignored_inactive_hours"
+                ? "DM fora da janela ativa configurada."
+                : dmDecision.reason === "ignored_loop"
+                  ? "DM ignorada por anti-loop."
+                  : "DM sem auto reply pela configuracao.",
+        leadId: lead.leadId,
+        chatId: chat.chatId,
+      });
+
+      if (!dmDecision.allowed) {
+        await claim.eventRef.set(
+          {
+            status: "processed",
+            tenantId: channel.tenantId,
+            channelType: channel.type,
+            chatId: chat.chatId,
+            leadId: lead.leadId,
+            messageDocId: messageRef.id,
+            queueStatus: "skipped_social_automation",
+            processedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        processed.push({
+          tenantId: channel.tenantId,
+          channel: channel.type,
+          chatId: chat.chatId,
+          messageId: messageRef.id,
+          socialStatus: dmDecision.reason,
+        });
+        continue;
       }
 
       const queue = await enqueueIncomingMessageJob({
@@ -731,6 +876,10 @@ export async function POST(req: Request) {
               mediaUrl: event.mediaUrl || null,
               mediaName: event.mediaName || null,
               mediaMimeType: event.mediaMimeType || null,
+              mediaDuration: event.mediaDuration ?? null,
+              mediaWidth: event.mediaWidth ?? null,
+              mediaHeight: event.mediaHeight ?? null,
+              mediaSize: event.mediaSize ?? null,
             },
           }).catch((error) => {
             console.error("Falha ao cachear midia inbound da Meta:", error);
@@ -764,6 +913,44 @@ export async function POST(req: Request) {
         chatId: chat.chatId,
         messageId: messageRef.id,
       });
+    }
+
+    for (const event of socialEvents) {
+      const channel = await getMetaChannelForTenant(resolved.tenantId, event.channelType, {
+        channelId: resolved.id,
+        externalAccountId: resolved.externalAccountId || event.entryId,
+        pageId: event.entryId,
+      });
+
+      if (!channel || channel.type !== event.channelType) {
+        continue;
+      }
+
+      try {
+        const socialResult = await handleMetaSocialEvent({
+          tenantId: channel.tenantId,
+          channel,
+          event,
+        });
+
+        processed.push({
+          tenantId: channel.tenantId,
+          channel: channel.type,
+          socialEventType: event.eventType,
+          eventId: event.eventId,
+          status: socialResult.status,
+          leadId: "leadId" in socialResult ? socialResult.leadId : null,
+          chatId: "chatId" in socialResult ? socialResult.chatId : null,
+        });
+      } catch (error) {
+        console.error("Erro ao processar evento social da Meta:", {
+          tenantId: channel.tenantId,
+          channelType: channel.type,
+          eventType: event.eventType,
+          eventId: event.eventId,
+          error,
+        });
+      }
     }
 
     for (const event of leadgenEvents) {

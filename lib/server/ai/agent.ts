@@ -119,6 +119,7 @@ type TenantAiConfig = {
   autonomyMode: AltumAiAutonomyMode;
   reasoningLevel: AltumAiReasoningLevel;
   responseStyle: AltumAiResponseStyle;
+  allowPremiumModels: boolean;
   preferredProviders: AltumAiProvider[];
   monthlyBudgetUsd: number;
   monthlyUsageCap: number;

@@ -3,9 +3,14 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { AI_QUEUE_JOB_TYPE } from "@/lib/server/ai/queue";
 import { AUTOMATION_SCHEDULED_JOB_TYPE, normalizeAutomationDoc } from "@/lib/server/automations";
+import {
+  normalizeAiQueueStatus,
+  readAiWorkerHealth,
+  summarizeAiQueueObservability,
+  toCounter,
+} from "@/lib/server/ai/observability";
 import { assertTenantAccess, TenantAccessError, getTenantSettings } from "@/lib/server/tenant";
 
-type JobStatus = "pending" | "processing" | "retrying" | "done" | "dead_letter";
 type JobItem = {
   id: string;
   type?: string;
@@ -16,15 +21,6 @@ type JobItem = {
   lastError?: string;
   [key: string]: unknown;
 };
-
-function normalizeStatus(value: unknown): JobStatus {
-  const raw = String(value || "").toLowerCase();
-  if (raw === "processing") return "processing";
-  if (raw === "retrying") return "retrying";
-  if (raw === "done") return "done";
-  if (raw === "dead_letter") return "dead_letter";
-  return "pending";
-}
 
 function toDate(value: unknown) {
   if (!value) return null;
@@ -53,12 +49,6 @@ function toTime(value: unknown) {
   return toDate(value)?.getTime() || 0;
 }
 
-function toCounter(value: unknown, key: string) {
-  if (!value || typeof value !== "object") return 0;
-  const counter = (value as Record<string, unknown>)[key];
-  return typeof counter === "number" ? counter : 0;
-}
-
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -68,7 +58,7 @@ export async function GET(
     const { tenantId } = await context.params;
     await assertTenantAccess(user.uid, tenantId);
 
-    const [settings, kbSnap, chatStateSnap, chatsSnap, jobsSnap, automationsSnap, metricsSnap] =
+    const [settings, kbSnap, chatStateSnap, chatsSnap, jobsSnap, automationsSnap, metricsSnap, workerHealth] =
       await Promise.all([
         getTenantSettings(tenantId),
         adminDb.collection("kb_docs").where("tenantId", "==", tenantId).limit(200).get(),
@@ -77,6 +67,7 @@ export async function GET(
         adminDb.collection("jobs").where("tenantId", "==", tenantId).limit(300).get(),
         adminDb.collection("automations").where("tenantId", "==", tenantId).limit(100).get(),
         adminDb.collection("metrics").where("tenantId", "==", tenantId).limit(90).get(),
+        readAiWorkerHealth(),
       ]);
 
     const ai =
@@ -114,18 +105,18 @@ export async function GET(
       .slice(0, 12);
 
     const queueCounts = {
-      pending: queueJobs.filter((item) => normalizeStatus(item.status) === "pending").length,
-      processing: queueJobs.filter((item) => normalizeStatus(item.status) === "processing").length,
-      retrying: queueJobs.filter((item) => normalizeStatus(item.status) === "retrying").length,
-      done: queueJobs.filter((item) => normalizeStatus(item.status) === "done").length,
-      deadLetter: queueJobs.filter((item) => normalizeStatus(item.status) === "dead_letter").length,
+      pending: queueJobs.filter((item) => normalizeAiQueueStatus(item.status) === "pending").length,
+      processing: queueJobs.filter((item) => normalizeAiQueueStatus(item.status) === "processing").length,
+      retrying: queueJobs.filter((item) => normalizeAiQueueStatus(item.status) === "retrying").length,
+      done: queueJobs.filter((item) => normalizeAiQueueStatus(item.status) === "done").length,
+      deadLetter: queueJobs.filter((item) => normalizeAiQueueStatus(item.status) === "dead_letter").length,
     };
     const scheduledCounts = {
-      pending: scheduledJobs.filter((item) => normalizeStatus(item.status) === "pending").length,
-      processing: scheduledJobs.filter((item) => normalizeStatus(item.status) === "processing").length,
-      retrying: scheduledJobs.filter((item) => normalizeStatus(item.status) === "retrying").length,
-      done: scheduledJobs.filter((item) => normalizeStatus(item.status) === "done").length,
-      deadLetter: scheduledJobs.filter((item) => normalizeStatus(item.status) === "dead_letter").length,
+      pending: scheduledJobs.filter((item) => normalizeAiQueueStatus(item.status) === "pending").length,
+      processing: scheduledJobs.filter((item) => normalizeAiQueueStatus(item.status) === "processing").length,
+      retrying: scheduledJobs.filter((item) => normalizeAiQueueStatus(item.status) === "retrying").length,
+      done: scheduledJobs.filter((item) => normalizeAiQueueStatus(item.status) === "done").length,
+      deadLetter: scheduledJobs.filter((item) => normalizeAiQueueStatus(item.status) === "dead_letter").length,
     };
 
     const recentQueue = queueJobs
@@ -134,10 +125,12 @@ export async function GET(
       .map((item) => ({
         id: item.id as string,
         chatId: String(item.chatId || ""),
-        status: normalizeStatus(item.status),
+        status: normalizeAiQueueStatus(item.status),
         attempts: typeof item.attempts === "number" ? item.attempts : 0,
         updatedAt: item.updatedAt || null,
         lastError: String(item.lastError || ""),
+        lastErrorCode: String(item.lastErrorCode || ""),
+        lastReasonCode: String(item.lastReasonCode || ""),
       }));
 
     const queueMetrics = metricsSnap.docs
@@ -148,6 +141,45 @@ export async function GET(
       (sum, item) => sum + toCounter(item.counters, "processed"),
       0
     );
+    const observability = summarizeAiQueueObservability({
+      jobs: queueJobs.map((item) => ({
+        id: item.id,
+        tenantId,
+        status: item.status,
+        updatedAt: item.updatedAt,
+        availableAt: item.availableAt,
+        completedAt: item.completedAt,
+        failedAt: item.failedAt,
+      })),
+      metrics: queueMetrics,
+      workerHealth,
+    });
+    const aiHealth = observability.tenants[0] || {
+      tenantId,
+      counts: queueCounts,
+      backlog: (queueCounts.pending || 0) + (queueCounts.processing || 0) + (queueCounts.retrying || 0),
+      throughputToday: 0,
+      retryRateToday: 0,
+      deadLetterRateToday: 0,
+      claimedToday: 0,
+      failedToday: 0,
+      retriedToday: 0,
+      deadLetterToday: 0,
+      enqueuedToday: 0,
+      dedupedToday: 0,
+      staleQueue: false,
+      oldestReadyAgeMs: 0,
+      lastProcessedAt: null,
+      lastFailedAt: null,
+      lastActivityAt: null,
+      lastErrorCode: "",
+      lastReasonCode: "",
+      recurringAuthFailures: 0,
+      recurringQuotaFailures: 0,
+      dominantErrorCode: "",
+      riskLevel: "stable" as const,
+      riskReasons: [],
+    };
     const now = Date.now();
     const waitingReplyBacklog = chatsSnap.docs.filter((doc) => {
       const data = doc.data() as Record<string, unknown>;
@@ -187,6 +219,8 @@ export async function GET(
         queue: queueCounts,
         scheduled: scheduledCounts,
         processedTotal,
+        aiHealth,
+        workerHealth: observability.worker,
         aiEnabled,
         waitingReplyBacklog,
         slaBreached,

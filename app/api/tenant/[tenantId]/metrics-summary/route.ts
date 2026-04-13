@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePipelineStageId } from "@/lib/pipeline";
+import {
+  extractLeadAttributionSummary,
+  isMeetingStatusCountable,
+  isQualifiedLeadStage,
+  isWonLeadStage,
+} from "@/lib/server/attribution";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 
 type GenericRow = { id: string } & Record<string, unknown>;
@@ -196,6 +202,249 @@ function normalizeQueueStatus(value: unknown) {
   return "open";
 }
 
+function cleanText(value: unknown, max = 180) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, max);
+}
+
+function isHotLead(lead: GenericRow) {
+  const heat = cleanText(lead.heat, 40).toLowerCase();
+  return heat === "hot" || heat.includes("quente");
+}
+
+function resolveCommercialChannelLabel(input: { source: string; sourceLabel: string; channel: string }) {
+  const candidates = [input.sourceLabel, input.source, input.channel].filter(Boolean).join(" ").toLowerCase();
+  if (candidates.includes("google")) return "Google Ads";
+  if (candidates.includes("meta") || candidates.includes("facebook") || candidates.includes("instagram")) return "Meta Ads";
+  if (candidates.includes("whatsapp")) return "WhatsApp";
+  if (candidates.includes("site_chat") || candidates.includes("site chat") || candidates === "chat") return "Site Chat";
+  if (candidates.includes("form")) return "Formulario";
+  if (input.sourceLabel) return input.sourceLabel;
+  if (input.source) return input.source;
+  if (input.channel) return input.channel;
+  return "Nao informado";
+}
+
+function resolveSnapshotChannelLabel(snapshot: GenericRow) {
+  return resolveCommercialChannelLabel({
+    source: cleanText(snapshot.platform, 80),
+    sourceLabel: cleanText(snapshot.accountLabel, 140),
+    channel: cleanText(snapshot.channelId || snapshot.adAccountId, 140),
+  });
+}
+
+function buildCommercialAttribution(leads: GenericRow[], snapshots: GenericRow[], appointments: GenericRow[]) {
+  type Group = {
+    key: string;
+    label: string;
+    source?: string;
+    lastTouchLeads: number;
+    firstTouchLeads: number;
+    assistedLeads: number;
+    qualifiedLeads: number;
+    wonLeads: number;
+    meetings: number;
+    hotLeads: number;
+    totalScore: number;
+    scoredLeads: number;
+    spend: number;
+    clicks: number;
+    impressions: number;
+    paidLeads: number;
+    campaignCount?: number;
+  };
+
+  const channelMap = new Map<string, Group>();
+  const campaignMap = new Map<string, Group>();
+
+  const getChannelGroup = (label: string) => {
+    const key = label.toLowerCase();
+    const current = channelMap.get(key) || {
+      key,
+      label,
+      lastTouchLeads: 0,
+      firstTouchLeads: 0,
+      assistedLeads: 0,
+      qualifiedLeads: 0,
+      wonLeads: 0,
+      meetings: 0,
+      hotLeads: 0,
+      totalScore: 0,
+      scoredLeads: 0,
+      spend: 0,
+      clicks: 0,
+      impressions: 0,
+      paidLeads: 0,
+      campaignCount: 0,
+    };
+    channelMap.set(key, current);
+    return current;
+  };
+
+  const getCampaignGroup = (label: string, source: string) => {
+    const key = `${source.toLowerCase()}::${label.toLowerCase()}`;
+    const current = campaignMap.get(key) || {
+      key,
+      label,
+      source,
+      lastTouchLeads: 0,
+      firstTouchLeads: 0,
+      assistedLeads: 0,
+      qualifiedLeads: 0,
+      wonLeads: 0,
+      meetings: 0,
+      hotLeads: 0,
+      totalScore: 0,
+      scoredLeads: 0,
+      spend: 0,
+      clicks: 0,
+      impressions: 0,
+      paidLeads: 0,
+    };
+    campaignMap.set(key, current);
+    return current;
+  };
+
+  for (const lead of leads) {
+    const attribution = extractLeadAttributionSummary(lead);
+    const lastTouch = attribution.lastTouch;
+    const firstTouch = attribution.firstTouch;
+    const lastChannelLabel = resolveCommercialChannelLabel(lastTouch);
+    const firstChannelLabel = resolveCommercialChannelLabel(firstTouch);
+    const lastCampaignLabel =
+      lastTouch.campaign || cleanText(lead.campaignName || lead.utmCampaign, 180) || "Sem campanha";
+    const firstCampaignLabel = firstTouch.campaign || "Sem campanha";
+    const qualified = isQualifiedLeadStage(lead.pipelineStage || lead.stage);
+    const won = isWonLeadStage(lead.pipelineStage || lead.stage);
+    const hot = isHotLead(lead);
+    const score = typeof lead.score === "number" ? lead.score : null;
+
+    const lastChannel = getChannelGroup(lastChannelLabel);
+    lastChannel.lastTouchLeads += 1;
+    if (qualified) lastChannel.qualifiedLeads += 1;
+    if (won) lastChannel.wonLeads += 1;
+    if (hot) lastChannel.hotLeads += 1;
+    if (typeof score === "number") {
+      lastChannel.totalScore += score;
+      lastChannel.scoredLeads += 1;
+    }
+
+    const firstChannel = getChannelGroup(firstChannelLabel);
+    firstChannel.firstTouchLeads += 1;
+
+    const lastCampaign = getCampaignGroup(lastCampaignLabel, lastChannelLabel);
+    lastCampaign.lastTouchLeads += 1;
+    if (qualified) lastCampaign.qualifiedLeads += 1;
+    if (won) lastCampaign.wonLeads += 1;
+    if (hot) lastCampaign.hotLeads += 1;
+    if (typeof score === "number") {
+      lastCampaign.totalScore += score;
+      lastCampaign.scoredLeads += 1;
+    }
+
+    const firstCampaign = getCampaignGroup(firstCampaignLabel, firstChannelLabel);
+    firstCampaign.firstTouchLeads += 1;
+
+    const seenAssistChannels = new Set<string>();
+    const seenAssistCampaigns = new Set<string>();
+    for (const touch of attribution.assistedTouches) {
+      const assistChannelLabel = resolveCommercialChannelLabel(touch);
+      const assistCampaignLabel = touch.campaign || "Sem campanha";
+      const assistChannelKey = assistChannelLabel.toLowerCase();
+      const assistCampaignKey = `${assistChannelKey}::${assistCampaignLabel.toLowerCase()}`;
+
+      if (!seenAssistChannels.has(assistChannelKey)) {
+        getChannelGroup(assistChannelLabel).assistedLeads += 1;
+        seenAssistChannels.add(assistChannelKey);
+      }
+
+      if (!seenAssistCampaigns.has(assistCampaignKey)) {
+        getCampaignGroup(assistCampaignLabel, assistChannelLabel).assistedLeads += 1;
+        seenAssistCampaigns.add(assistCampaignKey);
+      }
+    }
+  }
+
+  for (const snapshot of snapshots) {
+    const channelLabel = resolveSnapshotChannelLabel(snapshot);
+    const channel = getChannelGroup(channelLabel);
+    channel.spend += toNumber(snapshot.spend);
+    channel.clicks += toNumber(snapshot.clicks);
+    channel.impressions += toNumber(snapshot.impressions);
+    channel.paidLeads += toNumber(snapshot.leads);
+    channel.campaignCount = (channel.campaignCount || 0) + (snapshot.campaignName || snapshot.campaignId ? 1 : 0);
+
+    const campaignLabel = cleanText(snapshot.campaignName || snapshot.campaignId, 180);
+    if (campaignLabel) {
+      const campaign = getCampaignGroup(campaignLabel, channelLabel);
+      campaign.spend += toNumber(snapshot.spend);
+      campaign.clicks += toNumber(snapshot.clicks);
+      campaign.impressions += toNumber(snapshot.impressions);
+      campaign.paidLeads += toNumber(snapshot.leads);
+    }
+  }
+
+  const leadsById = new Map(leads.map((lead) => [lead.id, lead]));
+  for (const appointment of appointments) {
+    if (!isMeetingStatusCountable(appointment.status)) continue;
+
+    const leadId = cleanText(appointment.leadId, 180);
+    if (!leadId) continue;
+
+    const lead = leadsById.get(leadId);
+    if (!lead) continue;
+
+    const attribution = extractLeadAttributionSummary(lead);
+    const channelLabel = resolveCommercialChannelLabel(attribution.lastTouch);
+    const campaignLabel =
+      attribution.lastTouch.campaign ||
+      attribution.campaign ||
+      cleanText(lead.campaignName || lead.utmCampaign, 180) ||
+      "Sem campanha";
+
+    getChannelGroup(channelLabel).meetings += 1;
+    getCampaignGroup(campaignLabel, channelLabel).meetings += 1;
+  }
+
+  const formatGroup = (group: Group) => ({
+    key: group.key,
+    label: group.label,
+    source: group.source || null,
+    lastTouchLeads: group.lastTouchLeads,
+    firstTouchLeads: group.firstTouchLeads,
+    assistedLeads: group.assistedLeads,
+    qualifiedLeads: group.qualifiedLeads,
+    wonLeads: group.wonLeads,
+    meetings: group.meetings,
+    hotLeads: group.hotLeads,
+    avgScore: group.scoredLeads ? Number((group.totalScore / group.scoredLeads).toFixed(1)) : 0,
+    qualityRate: group.lastTouchLeads
+      ? Number(((group.qualifiedLeads / group.lastTouchLeads) * 100).toFixed(1))
+      : 0,
+    winRate: group.lastTouchLeads ? Number(((group.wonLeads / group.lastTouchLeads) * 100).toFixed(1)) : 0,
+    spend: Number(group.spend.toFixed(2)),
+    clicks: group.clicks,
+    impressions: group.impressions,
+    paidLeads: group.paidLeads,
+    cpl: group.lastTouchLeads > 0 ? Number((group.spend / group.lastTouchLeads).toFixed(2)) : 0,
+    qualifiedCpl: group.qualifiedLeads > 0 ? Number((group.spend / group.qualifiedLeads).toFixed(2)) : 0,
+    costPerMeeting: group.meetings > 0 ? Number((group.spend / group.meetings).toFixed(2)) : 0,
+    costPerSale: group.wonLeads > 0 ? Number((group.spend / group.wonLeads).toFixed(2)) : 0,
+    campaignCount: group.campaignCount ?? null,
+  });
+
+  return {
+    byChannel: Array.from(channelMap.values())
+      .map(formatGroup)
+      .sort((a, b) => b.lastTouchLeads - a.lastTouchLeads || b.spend - a.spend)
+      .slice(0, 12),
+    byCampaign: Array.from(campaignMap.values())
+      .map(formatGroup)
+      .sort((a, b) => b.lastTouchLeads - a.lastTouchLeads || b.spend - a.spend)
+      .slice(0, 20),
+  };
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -219,11 +468,12 @@ export async function GET(
     const tenantData = tenantSnap.exists ? (tenantSnap.data() as Record<string, unknown>) : {};
     const clientId = String(tenantData.clientId || tenantData.legacyClientId || tenantId).trim();
 
-    const [leadsSnap, snapshotsSnap, financeSnap, chatsSnap, messagesSnap, chatStateSnap, aiLogsSnap] =
+    const [leadsSnap, snapshotsSnap, financeSnap, appointmentsSnap, chatsSnap, messagesSnap, chatStateSnap, aiLogsSnap] =
       await Promise.all([
         queryByTenantOrClient("leads", tenantId, clientId, 700),
         queryByTenantOrClient("campaign_snapshots", tenantId, clientId, 1800),
         queryByTenantOrClient("financeiro", tenantId, clientId, 400),
+        queryByTenantOrClient("appointments", tenantId, clientId, 500),
         adminDb.collection("chats").where("tenantId", "==", tenantId).limit(350).get(),
         adminDb.collection("messages").where("tenantId", "==", tenantId).limit(1800).get(),
         adminDb.collection("chat_state").where("tenantId", "==", tenantId).limit(350).get(),
@@ -239,6 +489,10 @@ export async function GET(
       ...(doc.data() as Record<string, unknown>),
     }));
     const finance: GenericRow[] = financeSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Record<string, unknown>),
+    }));
+    const appointments: GenericRow[] = appointmentsSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
@@ -264,6 +518,18 @@ export async function GET(
     const previousSnapshots = filterByWindow(snapshots, (item) => parseDateRef(item.dateRef), previousStart, previousEnd);
     const currentFinance = filterByWindow(finance, (item) => toDate(item.createdAt), currentStart, periodEnd);
     const previousFinance = filterByWindow(finance, (item) => toDate(item.createdAt), previousStart, previousEnd);
+    const currentAppointments = filterByWindow(
+      appointments,
+      (item) => toDate(item.startAt || item.createdAt || item.updatedAt),
+      currentStart,
+      periodEnd
+    );
+    const previousAppointments = filterByWindow(
+      appointments,
+      (item) => toDate(item.startAt || item.createdAt || item.updatedAt),
+      previousStart,
+      previousEnd
+    );
     const currentAiLogs = filterByWindow(aiLogs, (item) => toDate(item.createdAt), currentStart, periodEnd);
 
     const aggregateTraffic = (items: GenericRow[]) =>
@@ -290,11 +556,23 @@ export async function GET(
 
     const wonLeads = currentLeads.filter((item) => normalizePipelineStageId(item.pipelineStage || item.stage) === "ganho").length;
     const previousWonLeads = previousLeads.filter((item) => normalizePipelineStageId(item.pipelineStage || item.stage) === "ganho").length;
+    const qualifiedLeads = currentLeads.filter((item) => isQualifiedLeadStage(item.pipelineStage || item.stage)).length;
+    const previousQualifiedLeads = previousLeads.filter((item) => isQualifiedLeadStage(item.pipelineStage || item.stage)).length;
+    const meetings = currentAppointments.filter((item) => isMeetingStatusCountable(item.status)).length;
+    const previousMeetings = previousAppointments.filter((item) => isMeetingStatusCountable(item.status)).length;
     const conversionRate = currentLeads.length ? (wonLeads / currentLeads.length) * 100 : 0;
     const previousConversionRate = previousLeads.length ? (previousWonLeads / previousLeads.length) * 100 : 0;
     const avgFirstResponseMinutes = computeAverageFirstResponseMinutes(messages, currentStart, periodEnd);
     const roi = currentTraffic.spend > 0 ? currentPaid / currentTraffic.spend : 0;
     const previousRoi = previousTraffic.spend > 0 ? previousPaid / previousTraffic.spend : 0;
+    const cpl = currentLeads.length > 0 ? currentTraffic.spend / currentLeads.length : 0;
+    const previousCpl = previousLeads.length > 0 ? previousTraffic.spend / previousLeads.length : 0;
+    const qualifiedCpl = qualifiedLeads > 0 ? currentTraffic.spend / qualifiedLeads : 0;
+    const previousQualifiedCpl = previousQualifiedLeads > 0 ? previousTraffic.spend / previousQualifiedLeads : 0;
+    const costPerMeeting = meetings > 0 ? currentTraffic.spend / meetings : 0;
+    const previousCostPerMeeting = previousMeetings > 0 ? previousTraffic.spend / previousMeetings : 0;
+    const costPerSale = wonLeads > 0 ? currentTraffic.spend / wonLeads : 0;
+    const previousCostPerSale = previousWonLeads > 0 ? previousTraffic.spend / previousWonLeads : 0;
 
     const handoffChats = chatStateSnap.docs.filter((doc) => {
       const data = doc.data() as Record<string, unknown>;
@@ -350,6 +628,7 @@ export async function GET(
       ...item,
       spend: Number(item.spend.toFixed(2)),
     }));
+    const commercialAttribution = buildCommercialAttribution(currentLeads, currentSnapshots, currentAppointments);
 
     const aiSummary = {
       responded: currentAiLogs.filter((item) => item.decision === "respond").length,
@@ -489,11 +768,17 @@ export async function GET(
         conversionRate: Number(conversionRate.toFixed(2)),
         avgFirstResponseMinutes: Number(avgFirstResponseMinutes.toFixed(2)),
         roi: Number(roi.toFixed(2)),
+        cpl: Number(cpl.toFixed(2)),
+        qualifiedCpl: Number(qualifiedCpl.toFixed(2)),
+        costPerMeeting: Number(costPerMeeting.toFixed(2)),
+        costPerSale: Number(costPerSale.toFixed(2)),
         growth: Number(safePct(currentLeads.length, previousLeads.length).toFixed(2)),
         conversations: chatsSnap.size,
         handoffChats,
         siteChatConversations: conversationChannels.find((item) => item.channel === "site_chat")?.total || 0,
         wonLeads,
+        qualifiedLeads,
+        meetings,
         totalLeads: currentLeads.length,
         paidRevenue: Number(currentPaid.toFixed(2)),
       },
@@ -501,6 +786,12 @@ export async function GET(
         leadsDeltaPct: Number(safePct(currentLeads.length, previousLeads.length).toFixed(2)),
         conversionDeltaPct: Number(safePct(conversionRate, previousConversionRate).toFixed(2)),
         roiDeltaPct: Number(safePct(roi, previousRoi).toFixed(2)),
+        cplDeltaPct: Number(safePct(cpl, previousCpl).toFixed(2)),
+        qualifiedCplDeltaPct: Number(safePct(qualifiedCpl, previousQualifiedCpl).toFixed(2)),
+        meetingCostDeltaPct: Number(safePct(costPerMeeting, previousCostPerMeeting).toFixed(2)),
+        saleCostDeltaPct: Number(safePct(costPerSale, previousCostPerSale).toFixed(2)),
+        qualifiedLeadsDeltaPct: Number(safePct(qualifiedLeads, previousQualifiedLeads).toFixed(2)),
+        meetingsDeltaPct: Number(safePct(meetings, previousMeetings).toFixed(2)),
         spendDeltaPct: Number(safePct(currentTraffic.spend, previousTraffic.spend).toFixed(2)),
       },
       traffic: {
@@ -514,6 +805,7 @@ export async function GET(
       },
       funnel: funnelBase,
       channels,
+      commercialAttribution,
       conversationChannels,
       trafficSeries,
       ai: aiSummary,

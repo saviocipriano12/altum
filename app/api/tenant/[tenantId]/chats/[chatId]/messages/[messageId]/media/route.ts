@@ -12,6 +12,10 @@ function cleanText(value: unknown, max = 1800) {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
+function numericValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function storageBucketName() {
   return String(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "").trim();
 }
@@ -29,6 +33,7 @@ async function fetchRemoteMedia(url: string) {
   return {
     buffer: Buffer.from(arrayBuffer),
     contentType: response.headers.get("content-type") || "application/octet-stream",
+    size: Number(response.headers.get("content-length") || 0) || null,
   };
 }
 
@@ -40,11 +45,14 @@ async function fetchStorageMedia(path: string) {
 
   const file = adminStorage.bucket(bucketName).file(path);
   const [buffer] = await file.download();
-  const [metadata] = await file.getMetadata().catch(() => [{ contentType: "application/octet-stream" }]);
+  const [metadata] = await file
+    .getMetadata()
+    .catch(() => [{ contentType: "application/octet-stream", size: "0" }]);
 
   return {
     buffer,
     contentType: String(metadata.contentType || "application/octet-stream"),
+    size: Number(metadata.size || 0) || null,
   };
 }
 
@@ -61,6 +69,19 @@ function extensionFromMimeType(mimeType: string) {
   if (normalized.includes("pdf")) return "pdf";
   if (normalized.includes("plain")) return "txt";
   return "bin";
+}
+
+function safeFileName(value: unknown, fallback: string) {
+  const cleaned = cleanText(value, 140).replace(/[^\w.\- ]+/g, "_").trim();
+  return cleaned || fallback;
+}
+
+function buildDownloadName(messageId: string, mediaName: unknown, mimeType: string) {
+  const extension = extensionFromMimeType(mimeType);
+  const fallback = `midia-${messageId}.${extension}`;
+  const provided = safeFileName(mediaName, fallback);
+  if (/\.[a-z0-9]{2,6}$/i.test(provided)) return provided;
+  return `${provided}.${extension}`;
 }
 
 async function cacheMediaInStorage(input: {
@@ -94,6 +115,7 @@ export async function GET(
 ) {
   try {
     const user = await requireRequestUser(req);
+    const download = new URL(req.url).searchParams.get("download") === "1";
     const { tenantId, chatId, messageId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
     assertTenantRole(membership, "client_viewer");
@@ -129,6 +151,7 @@ export async function GET(
       | {
           buffer: Buffer;
           contentType: string;
+          size?: number | null;
         }
       | null = null;
 
@@ -166,6 +189,7 @@ export async function GET(
           {
             mediaUrl: cachedPath,
             mediaMimeType: media.contentType || contentTypeHint,
+            mediaSize: media.size ?? null,
             updatedAt: new Date(),
           },
           { merge: true }
@@ -177,12 +201,27 @@ export async function GET(
       return NextResponse.json({ error: "Falha ao carregar midia." }, { status: 500 });
     }
 
+    const fileName = buildDownloadName(messageId, messageData.mediaName, media.contentType || contentTypeHint);
+    const disposition = download ? "attachment" : "inline";
+
+    if ((media.size ?? null) && !numericValue(messageData.mediaSize)) {
+      await messageSnap.ref.set(
+        {
+          mediaSize: media.size,
+          mediaMimeType: media.contentType || contentTypeHint,
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
+    }
+
     return new NextResponse(new Uint8Array(media.buffer), {
       status: 200,
       headers: {
         "Content-Type": media.contentType || contentTypeHint,
         "Cache-Control": "private, max-age=3600",
-        "Content-Disposition": "inline",
+        "Content-Disposition": `${disposition}; filename="${fileName}"`,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {

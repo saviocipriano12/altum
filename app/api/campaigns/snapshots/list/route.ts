@@ -20,6 +20,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const adAccountId = clean(searchParams.get("adAccountId"), 120);
     const clientId = clean(searchParams.get("clientId"), 120);
+    const tenantId = clean(searchParams.get("tenantId"), 120);
     const rangeDays = Math.min(90, Math.max(7, Number(searchParams.get("rangeDays") || 30)));
     const minDate = new Date();
     minDate.setDate(minDate.getDate() - rangeDays);
@@ -40,6 +41,16 @@ export async function GET(req: Request) {
         .collection("campaign_snapshots")
         .where("adAccountId", "==", adAccountId)
         .limit(400)
+        .get();
+      docs = snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }));
+    } else if (tenantId) {
+      if (!isAdmin(user)) {
+        return NextResponse.json({ error: "Sem permissao neste tenant." }, { status: 403 });
+      }
+      const snap = await adminDb
+        .collection("campaign_snapshots")
+        .where("tenantId", "==", tenantId)
+        .limit(1000)
         .get();
       docs = snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }));
     } else if (clientId) {
@@ -84,6 +95,8 @@ export async function GET(req: Request) {
         const date = parseDateRef(item.dateRef);
         return date ? date >= minDate : false;
       })
+      .filter((item) => (tenantId ? clean(item.tenantId, 120) === tenantId : true))
+      .filter((item) => (clientId && !tenantId ? clean(item.clientId, 120) === clientId : true))
       .sort((a, b) => {
         const aTime = parseDateRef(a.dateRef)?.getTime() ?? 0;
         const bTime = parseDateRef(b.dateRef)?.getTime() ?? 0;

@@ -66,6 +66,42 @@ type ReadinessPayload = {
   summary?: {
     pilotReady?: boolean;
     readinessScore?: number;
+    criticalBlockers?: number;
+    knowledgeDocs?: number;
+    knowledgeDocsMinimum?: number;
+    aiMonthlyCostUsd?: number;
+    aiMonthlyRuns?: number;
+    aiMonthlyBudgetUsd?: number;
+    aiMonthlyUsageCap?: number;
+  };
+  checklist?: Array<{
+    id: string;
+    href: string;
+    title: string;
+    description: string;
+    status: "ready" | "warning" | "pending" | "blocked";
+    badge: string;
+    tone: "neutral" | "success" | "warning" | "danger" | "info";
+    blocking: boolean;
+    critical: boolean;
+    weight: number;
+    evidence: string;
+    target: string;
+  }>;
+  activation?: {
+    gateStatus?: "open" | "blocked";
+    status?: "approved" | "ready_to_activate" | "blocked";
+    title?: string;
+    description?: string;
+    readyForSale?: boolean;
+    blockingItems?: string[];
+    validation?: {
+      status?: "approved" | "blocked" | "not_checked";
+      checkedAt?: string | null;
+      checkedByName?: string;
+      approvedAt?: string | null;
+      approvedByName?: string;
+    };
   };
   blockers?: ActionItem[];
   modules?: Array<{
@@ -354,6 +390,16 @@ export default function ClienteConfiguracoesPage() {
 
   const effectivePilotReady = readiness?.summary?.pilotReady ?? summary.pilotReady;
   const effectiveReadinessScore = readiness?.summary?.readinessScore ?? summary.readinessScore;
+  const checklist = readiness?.checklist || [];
+  const criticalChecklist = checklist.filter((item) => item.critical);
+  const checklistPreview = criticalChecklist.slice(0, 4);
+  const validation = readiness?.activation?.validation;
+  const validationText =
+    validation?.status === "approved"
+      ? `Validado em ${validation.approvedAt || validation.checkedAt || "data indisponivel"} por ${validation.approvedByName || validation.checkedByName || "usuario nao identificado"}.`
+      : validation?.status === "blocked"
+        ? `Ultimo bloqueio em ${validation.checkedAt || "data indisponivel"} por ${validation.checkedByName || "usuario nao identificado"}.`
+        : "Ainda sem validacao definitiva registrada.";
 
   const links: SettingsLink[] = [
     {
@@ -394,6 +440,14 @@ export default function ClienteConfiguracoesPage() {
       badge: `${summary.activeChannels} ativos`,
       tone: summary.activeChannels > 0 ? ("success" as const) : ("warning" as const),
       featured: true,
+    },
+    {
+      href: "/cliente/painel/configuracoes/social",
+      title: "Automacoes sociais",
+      description: "Respostas de DM, comentario e novo seguidor com horario ativo, opt-out e logs por tenant.",
+      icon: Bot,
+      badge: "social",
+      tone: "info" as const,
     },
     {
       href: "/cliente/painel/ia",
@@ -437,29 +491,25 @@ export default function ClienteConfiguracoesPage() {
         <>
           <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
             <PanelCard className="p-5">
-              <CardTitle title="Prontidao do tenant" subtitle="Checklist rapido para operar CRM, inbox, IA e automacoes." />
+              <CardTitle title="Go-live definitivo" subtitle="Gate critico, score e evidencias para entender em 1 tela o que falta para vender e operar este tenant." />
               <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Score de prontidao</p>
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Score de go-live</p>
                     <p className="mt-2 text-2xl font-semibold text-[var(--cliente-card-text)]">{effectiveReadinessScore}%</p>
                   </div>
                   <StateBadge
                     label={
-                      effectivePilotReady
-                        ? "pronto para piloto"
-                        : effectiveReadinessScore >= 80
-                        ? "tenant pronto"
-                        : effectiveReadinessScore >= 60
-                          ? "quase pronto"
-                          : "ajustar setup"
+                      readiness?.activation?.status === "approved"
+                        ? "go-live validado"
+                        : effectivePilotReady
+                          ? "pronto para liberar"
+                          : `${readiness?.summary?.criticalBlockers || criticalChecklist.filter((item) => item.blocking).length} gate(s) bloqueando`
                     }
                     tone={
-                      effectivePilotReady
+                      readiness?.activation?.status === "approved"
                         ? "success"
-                        : effectiveReadinessScore >= 80
-                        ? "success"
-                        : effectiveReadinessScore >= 60
+                        : effectivePilotReady
                           ? "info"
                           : "warning"
                     }
@@ -473,24 +523,30 @@ export default function ClienteConfiguracoesPage() {
                 </div>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <ReadinessRow label="Perfil da empresa" value={summary.hasCompanyProfile ? "Pronto" : "Pendente"} tone={summary.hasCompanyProfile ? "success" : "warning"} />
-                <ReadinessRow label="Modo do negocio" value={summary.hasBusinessMode ? "Definido" : "Pendente"} tone={summary.hasBusinessMode ? "info" : "warning"} />
-                <ReadinessRow label="Usuarios ativos" value={String(summary.activeUsers)} tone={summary.activeUsers > 0 ? "info" : "warning"} />
-                <ReadinessRow label="Canais ativos" value={String(summary.activeChannels)} tone={summary.activeChannels > 0 ? "success" : "warning"} />
-                <ReadinessRow label="Formularios ativos" value={String(summary.activeForms)} tone={summary.activeForms > 0 ? "success" : "warning"} />
-                <ReadinessRow label="IA" value={summary.aiEnabled ? "Ativa" : "Pausada"} tone={summary.aiEnabled ? "success" : "warning"} />
-                <ReadinessRow label="Handoff" value={summary.hasAiOwner ? "Configurado" : "Pendente"} tone={summary.hasAiOwner ? "info" : "warning"} />
-                <ReadinessRow label="Guardrails" value={String(summary.guardrails)} tone={summary.guardrails > 0 ? "info" : "warning"} />
-                <ReadinessRow label="Usuarios online" value={String(summary.onlineUsers)} tone={summary.onlineUsers > 0 ? "success" : "warning"} />
-                <ReadinessRow label="Times configurados" value={String(summary.managedTeams || summary.teamsConfigured)} tone={(summary.managedTeams || summary.teamsConfigured) > 0 ? "info" : "warning"} />
+                {checklistPreview.length > 0 ? (
+                  checklistPreview.map((item) => (
+                    <ReadinessRow key={item.id} label={item.title} value={item.badge} tone={item.tone} />
+                  ))
+                ) : (
+                  <>
+                    <ReadinessRow label="Perfil da empresa" value={summary.hasCompanyProfile ? "Pronto" : "Pendente"} tone={summary.hasCompanyProfile ? "success" : "warning"} />
+                    <ReadinessRow label="Modo do negocio" value={summary.hasBusinessMode ? "Definido" : "Pendente"} tone={summary.hasBusinessMode ? "info" : "warning"} />
+                    <ReadinessRow label="Usuarios ativos" value={String(summary.activeUsers)} tone={summary.activeUsers > 0 ? "info" : "warning"} />
+                    <ReadinessRow label="Canais ativos" value={String(summary.activeChannels)} tone={summary.activeChannels > 0 ? "success" : "warning"} />
+                  </>
+                )}
               </div>
               <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Sinal de go-live</p>
-                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-                  {effectivePilotReady
-                    ? "Este tenant ja atingiu o minimo seguro para entrar em piloto com cliente real."
-                    : "Ainda faltam alguns pontos minimos para colocar o tenant em piloto com seguranca."}
-                </p>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Status de validacao</p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{validationText}</p>
+                <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                  <Link href="/cliente/painel/go-live" className="text-[var(--cliente-accent)] transition hover:brightness-95">
+                    Abrir checklist definitivo
+                  </Link>
+                  <span className="text-[var(--cliente-card-text-soft)]">
+                    IA no mes: US$ {Number(readiness?.summary?.aiMonthlyCostUsd || 0).toFixed(2)} · {Number(readiness?.summary?.aiMonthlyRuns || 0)} execucoes
+                  </span>
+                </div>
               </div>
             </PanelCard>
 

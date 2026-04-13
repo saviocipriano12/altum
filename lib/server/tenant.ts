@@ -83,6 +83,7 @@ export type TenantSettings = {
       autonomyMode?: "copilot" | "hybrid" | "autonomous";
       reasoningLevel?: "fast" | "balanced" | "deep";
       responseStyle?: "concise" | "consultative" | "premium_sales" | "closer";
+      allowPremiumModels?: boolean;
       preferredProviders?: string[] | string;
       conversationModelOverride?: string;
       extractionModelOverride?: string;
