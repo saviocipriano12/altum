@@ -60,6 +60,10 @@ type PipelineColumn = {
 type PipelineResponse = {
   stages?: PipelineStageDefinition[];
   columns?: PipelineColumn[];
+  owners?: Array<{
+    userId: string;
+    name: string;
+  }>;
   summary?: {
     totalLeads?: number;
     openCount?: number;
@@ -99,12 +103,14 @@ function toneFromHeat(value?: string) {
 
 function StageEditor({
   stages,
+  owners,
   onChange,
   onReset,
   onSave,
   saving,
 }: {
   stages: PipelineStageDefinition[];
+  owners: Array<{ userId: string; name: string }>;
   onChange: (index: number, field: keyof PipelineStageDefinition, value: string) => void;
   onReset: () => void;
   onSave: () => void;
@@ -161,6 +167,49 @@ function StageEditor({
                   onChange={(event) => onChange(index, "color", event.target.value)}
                   className="h-[42px] w-full rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1"
                 />
+              </label>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <label className="space-y-1 text-xs text-[var(--cliente-card-text-soft)]">
+                <span>SLA (h)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={720}
+                  value={stage.slaHours ?? ""}
+                  onChange={(event) => onChange(index, "slaHours", event.target.value)}
+                  className="w-full rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text)] outline-none"
+                />
+              </label>
+              <label className="space-y-1 text-xs text-[var(--cliente-card-text-soft)]">
+                <span>Follow-up (h)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={720}
+                  value={stage.followUpHours ?? ""}
+                  onChange={(event) => onChange(index, "followUpHours", event.target.value)}
+                  className="w-full rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text)] outline-none"
+                />
+              </label>
+              <label className="space-y-1 text-xs text-[var(--cliente-card-text-soft)]">
+                <span>Responsavel</span>
+                <select
+                  value={stage.ownerUserId || ""}
+                  onChange={(event) => {
+                    const owner = owners.find((item) => item.userId === event.target.value);
+                    onChange(index, "ownerUserId", event.target.value);
+                    onChange(index, "ownerName", owner?.name || "");
+                  }}
+                  className="w-full rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text)] outline-none"
+                >
+                  <option value="">Sem responsavel fixo</option>
+                  {owners.map((owner) => (
+                    <option key={owner.userId} value={owner.userId}>
+                      {owner.name}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
           </div>
@@ -226,6 +275,7 @@ export default function ClientePipelinePage() {
   }, [loadPipeline]);
 
   const stages = useMemo(() => data?.stages || getDefaultPipelineStages(), [data?.stages]);
+  const owners = useMemo(() => data?.owners || [], [data?.owners]);
   const businessProfile = useMemo(() => getBusinessProfile(businessProfileId), [businessProfileId]);
   const columns = useMemo(() => data?.columns || [], [data?.columns]);
   const summary = data?.summary;
@@ -302,9 +352,15 @@ export default function ClientePipelinePage() {
   }
 
   function updateDraft(index: number, field: keyof PipelineStageDefinition, value: string) {
+    const normalizedValue =
+      field === "slaHours" || field === "followUpHours"
+        ? value === ""
+          ? null
+          : Number(value)
+        : value;
     setStageDraft((current) =>
       current.map((stage, stageIndex) =>
-        stageIndex === index ? { ...stage, [field]: value } : stage
+        stageIndex === index ? { ...stage, [field]: normalizedValue } : stage
       )
     );
   }
@@ -435,7 +491,11 @@ export default function ClientePipelinePage() {
                   <span className="h-3 w-3 rounded-full" style={{ backgroundColor: stage.color }} />
                   <div>
                     <p className="text-sm font-medium text-[var(--cliente-card-text)]">{stage.label}</p>
-                    <p className="text-xs text-[var(--cliente-card-text-soft)]">{stage.description}</p>
+                    <p className="text-xs text-[var(--cliente-card-text-soft)]">
+                      {stage.description}
+                      {stage.slaHours ? ` · SLA ${stage.slaHours}h` : ""}
+                      {stage.ownerName ? ` · ${stage.ownerName}` : ""}
+                    </p>
                   </div>
                 </div>
                 <StateBadge label={stage.isTerminal ? "terminal" : "ativa"} tone={stage.isTerminal ? "neutral" : "info"} />
@@ -501,6 +561,7 @@ export default function ClientePipelinePage() {
       {settingsOpen && canManage ? (
         <StageEditor
           stages={stageDraft}
+          owners={owners}
           onChange={updateDraft}
           onReset={() => setStageDraft(getBusinessProfilePipelineStages(businessProfileId))}
           onSave={saveStages}

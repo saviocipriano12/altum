@@ -26,6 +26,9 @@ type LeadItem = {
   tags?: string[];
   notes?: string;
   customFields?: Record<string, string | number | boolean | null>;
+  qualification?: Record<string, unknown>;
+  handoff?: Record<string, unknown>;
+  commercialState?: Record<string, unknown>;
   createdAt?: unknown;
   updatedAt?: unknown;
   chatSummary?: {
@@ -132,6 +135,18 @@ export async function GET(
             data.customFields && typeof data.customFields === "object"
               ? (data.customFields as Record<string, string | number | boolean | null>)
               : {},
+          qualification:
+            data.qualification && typeof data.qualification === "object"
+              ? (data.qualification as Record<string, unknown>)
+              : undefined,
+          handoff:
+            data.handoff && typeof data.handoff === "object"
+              ? (data.handoff as Record<string, unknown>)
+              : undefined,
+          commercialState:
+            data.commercialState && typeof data.commercialState === "object"
+              ? (data.commercialState as Record<string, unknown>)
+              : undefined,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
           chatSummary: {
@@ -145,6 +160,15 @@ export async function GET(
           timeline: [],
         };
       })
+      .map((lead) => ({
+        ...lead,
+        score:
+          typeof lead.score === "number"
+            ? lead.score
+            : typeof lead.qualification?.score === "number"
+              ? (lead.qualification.score as number)
+              : null,
+      }))
       .sort((a, b) => toTime(b.updatedAt) - toTime(a.updatedAt));
 
     const chatRows: ChatRow[] = chatsSnap.docs.map((doc) => ({

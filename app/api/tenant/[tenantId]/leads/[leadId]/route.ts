@@ -228,6 +228,21 @@ async function listRelatedChats(tenantId: string, leadId: string, phone: string)
     }));
 }
 
+async function listAppointments(tenantId: string, leadId: string) {
+  const snap = await adminDb
+    .collection("appointments")
+    .where("tenantId", "==", tenantId)
+    .limit(60)
+    .get();
+
+  return snap.docs
+    .map((doc): Record<string, unknown> & { id: string; startAt?: unknown } => ({
+      id: doc.id,
+      ...(doc.data() as Record<string, unknown>),
+    }))
+    .filter((item) => cleanString(item.leadId, 140) === leadId)
+    .sort((a, b) => toSeconds(a.startAt) - toSeconds(b.startAt));
+}
 function buildConversationSummary(chats: Array<Record<string, unknown>>) {
   const open = chats.filter((item) => String(item.status || "open").toLowerCase() === "open").length;
   const pending = chats.filter((item) => String(item.status || "").toLowerCase() === "pending").length;

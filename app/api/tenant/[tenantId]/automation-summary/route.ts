@@ -58,7 +58,19 @@ export async function GET(
     const { tenantId } = await context.params;
     await assertTenantAccess(user.uid, tenantId);
 
-    const [settings, kbSnap, chatStateSnap, chatsSnap, jobsSnap, automationsSnap, metricsSnap, workerHealth] =
+    const [
+      settings,
+      kbSnap,
+      chatStateSnap,
+      chatsSnap,
+      jobsSnap,
+      automationsSnap,
+      metricsSnap,
+      workerHealth,
+      leadsSnap,
+      tasksSnap,
+      appointmentsSnap,
+    ] =
       await Promise.all([
         getTenantSettings(tenantId),
         adminDb.collection("kb_docs").where("tenantId", "==", tenantId).limit(200).get(),
@@ -68,6 +80,9 @@ export async function GET(
         adminDb.collection("automations").where("tenantId", "==", tenantId).limit(100).get(),
         adminDb.collection("metrics").where("tenantId", "==", tenantId).limit(90).get(),
         readAiWorkerHealth(),
+        adminDb.collection("leads").where("tenantId", "==", tenantId).limit(240).get(),
+        adminDb.collection("lead_tasks").where("tenantId", "==", tenantId).limit(320).get(),
+        adminDb.collection("appointments").where("tenantId", "==", tenantId).limit(180).get(),
       ]);
 
     const ai =
@@ -200,6 +215,35 @@ export async function GET(
     const automationItems = automationsSnap.docs
       .map((doc) => normalizeAutomationDoc(doc.id, doc.data() as Record<string, unknown>, tenantId))
       .sort((a, b) => toTime(b.updatedAt) - toTime(a.updatedAt));
+    const commercialLeads = leadsSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
+    const commercialTasks = tasksSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
+    const appointments = appointmentsSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
+    const overdueFollowUps = commercialTasks.filter((task) => {
+      const status = String(task.status || "pending").toLowerCase();
+      if (status === "done") return false;
+      const dueAt = toDate(task.dueAt);
+      return Boolean(dueAt && dueAt.getTime() < now);
+    }).length;
+    const handoffReady = commercialLeads.filter((lead) => {
+      const handoff =
+        lead.handoff && typeof lead.handoff === "object" ? (lead.handoff as Record<string, unknown>) : {};
+      return String(handoff.status || "") === "ready";
+    }).length;
+    const slaBreaches = commercialLeads.filter((lead) => {
+      const commercialState =
+        lead.commercialState && typeof lead.commercialState === "object"
+          ? (lead.commercialState as Record<string, unknown>)
+          : {};
+      const stagePolicy =
+        commercialState.stagePolicy && typeof commercialState.stagePolicy === "object"
+          ? (commercialState.stagePolicy as Record<string, unknown>)
+          : {};
+      return Boolean(stagePolicy.slaBreached);
+    }).length;
+    const meetingsScheduled = appointments.filter((item) => {
+      const status = String(item.status || "scheduled").toLowerCase();
+      return status === "scheduled" || status === "confirmed";
+    }).length;
 
     const activeAutomations = automationItems.length === 0
       ? aiEnabled
@@ -224,6 +268,12 @@ export async function GET(
         aiEnabled,
         waitingReplyBacklog,
         slaBreached,
+        commercial: {
+          overdueFollowUps,
+          handoffReady,
+          slaBreaches,
+          meetingsScheduled,
+        },
       },
       automations: automationItems,
       recentExecutions: automationExecutions,
