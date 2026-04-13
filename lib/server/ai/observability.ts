@@ -11,6 +11,7 @@ export type AiQueueJobStatus = "pending" | "processing" | "retrying" | "done" | 
 
 export type AiOperationalSeverity = "info" | "warning" | "high";
 export type AiWorkerStatus = "healthy" | "degraded" | "down";
+export type TenantOperationalStatus = "healthy" | "degraded" | "down";
 export type AiQueueErrorCode =
   | "auth_invalid"
   | "quota_exceeded"
@@ -111,6 +112,28 @@ export type AiTenantQueueSummary = {
   riskReasons: string[];
 };
 
+export type AiAlertType =
+  | "quota_exceeded"
+  | "auth_invalid"
+  | "channel_offline"
+  | "conversion_drop"
+  | "queue_degraded"
+  | "unknown";
+
+export type AiAlertGuidance = {
+  type: AiAlertType;
+  title: string;
+  probableCause: string;
+  recommendedAction: string;
+  href: string;
+};
+
+export type TenantOperationalSnapshot = {
+  status: TenantOperationalStatus;
+  label: string;
+  reason: string;
+};
+
 export function sanitizeText(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
@@ -167,6 +190,157 @@ export function normalizeReasonCode(value: unknown, fallback = "unspecified") {
 
 export function sanitizeMetricKey(value: unknown, fallback = "unknown") {
   return normalizeReasonCode(value, fallback).slice(0, 80);
+}
+
+function defaultAlertGuidance(type: AiAlertType): AiAlertGuidance {
+  if (type === "quota_exceeded") {
+    return {
+      type,
+      title: "Quota de IA estourada",
+      probableCause: "Budget mensal, credito ou limite de uso do provider foi atingido.",
+      recommendedAction: "Ajustar budget/cap no tenant e ativar contingencia ate normalizar.",
+      href: "/cliente/painel/ia",
+    };
+  }
+  if (type === "auth_invalid") {
+    return {
+      type,
+      title: "Autenticacao invalida do provider",
+      probableCause: "Token, chave de API ou credencial expirou, foi revogada ou esta incorreta.",
+      recommendedAction: "Revalidar credenciais do provider e executar novo teste de atendimento.",
+      href: "/cliente/painel/ia",
+    };
+  }
+  if (type === "channel_offline") {
+    return {
+      type,
+      title: "Canal fora de operacao",
+      probableCause: "Conector ativo sem webhook, roteamento ou token valido para inbound/outbound.",
+      recommendedAction: "Revisar configuracao do canal e confirmar evento de teste no inbox.",
+      href: "/cliente/painel/configuracoes/canais",
+    };
+  }
+  if (type === "conversion_drop") {
+    return {
+      type,
+      title: "Queda de conversao",
+      probableCause: "A qualidade de entrada, velocidade de resposta ou qualificacao caiu na janela recente.",
+      recommendedAction: "Revisar funil, SLA e handoffs para recuperar conversao nesta semana.",
+      href: "/cliente/painel/metricas",
+    };
+  }
+  if (type === "queue_degraded") {
+    return {
+      type,
+      title: "Fila da IA degradada",
+      probableCause: "A fila acumula backlog, retries ou dead letters acima da zona segura.",
+      recommendedAction: "Priorizar filas em retry/dead-letter e estabilizar worker antes de escalar volume.",
+      href: "/cliente/painel/logs",
+    };
+  }
+  return {
+    type: "unknown",
+    title: "Risco operacional",
+    probableCause: "Evento operacional nao classificado automaticamente.",
+    recommendedAction: "Investigar contexto do alerta e registrar acao corretiva.",
+    href: "/cliente/painel/logs",
+  };
+}
+
+export function resolveAiAlertType(input: {
+  type?: string;
+  errorCode?: string;
+  reasonCode?: string;
+  title?: string;
+  detail?: string;
+}) {
+  const haystack = [
+    sanitizeMetricKey(input.type, ""),
+    sanitizeMetricKey(input.errorCode, ""),
+    sanitizeMetricKey(input.reasonCode, ""),
+    sanitizeText(input.title, 180).toLowerCase(),
+    sanitizeText(input.detail, 220).toLowerCase(),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (haystack.includes("quota") || haystack.includes("insufficient_quota") || haystack.includes("billing")) {
+    return "quota_exceeded" as const;
+  }
+  if (haystack.includes("auth") || haystack.includes("token") || haystack.includes("credential")) {
+    return "auth_invalid" as const;
+  }
+  if (haystack.includes("channel") || haystack.includes("webhook") || haystack.includes("routing")) {
+    return "channel_offline" as const;
+  }
+  if (haystack.includes("conversion") || haystack.includes("conversao")) {
+    return "conversion_drop" as const;
+  }
+  if (haystack.includes("queue") || haystack.includes("dead_letter") || haystack.includes("retry")) {
+    return "queue_degraded" as const;
+  }
+  return "unknown" as const;
+}
+
+export function buildAiAlertGuidance(input: {
+  type?: string;
+  errorCode?: string;
+  reasonCode?: string;
+  title?: string;
+  detail?: string;
+}) {
+  const resolvedType = resolveAiAlertType(input);
+  return defaultAlertGuidance(resolvedType);
+}
+
+export function toTenantOperationalSnapshot(input: {
+  workerStatus?: AiWorkerStatus | null;
+  queueRiskLevel?: "stable" | "warning" | "high" | null;
+  hasHighSeverityAlert?: boolean;
+  hasWarningAlert?: boolean;
+  staleQueue?: boolean;
+  recurringAuthFailures?: number;
+  recurringQuotaFailures?: number;
+  deadLetterCount?: number;
+}) {
+  const workerStatus = input.workerStatus || "healthy";
+  const queueRiskLevel = input.queueRiskLevel || "stable";
+  const recurringAuth = Math.max(0, Number(input.recurringAuthFailures || 0));
+  const recurringQuota = Math.max(0, Number(input.recurringQuotaFailures || 0));
+  const deadLetterCount = Math.max(0, Number(input.deadLetterCount || 0));
+  const staleQueue = input.staleQueue === true;
+  const hasHighSeverityAlert = input.hasHighSeverityAlert === true;
+  const hasWarningAlert = input.hasWarningAlert === true;
+
+  if (
+    workerStatus === "down" ||
+    queueRiskLevel === "high" ||
+    staleQueue ||
+    hasHighSeverityAlert ||
+    recurringAuth >= AI_QUEUE_RECURRING_AUTH_ALERT_THRESHOLD ||
+    recurringQuota >= AI_QUEUE_RECURRING_QUOTA_ALERT_THRESHOLD ||
+    deadLetterCount >= AI_QUEUE_DEAD_LETTER_ALERT_THRESHOLD
+  ) {
+    return {
+      status: "down" as const,
+      label: "down",
+      reason: "Risco alto detectado: fila/credencial/quota com impacto direto na operacao.",
+    };
+  }
+
+  if (workerStatus === "degraded" || queueRiskLevel === "warning" || hasWarningAlert) {
+    return {
+      status: "degraded" as const,
+      label: "degraded",
+      reason: "Operacao com degradacao moderada, exige ajuste para evitar incidente.",
+    };
+  }
+
+  return {
+    status: "healthy" as const,
+    label: "healthy",
+    reason: "Operacao estavel sem sinais criticos de fila, quota ou autenticacao.",
+  };
 }
 
 function getTodayKey() {

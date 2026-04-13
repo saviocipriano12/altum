@@ -1,12 +1,22 @@
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { getBusinessProfile, normalizeBusinessProfileId, type BusinessProfileId } from "@/lib/business-profiles";
 import { getAiMonthlyUsageSnapshot } from "@/lib/server/ai/usage-ledger";
+import {
+  buildAiAlertGuidance,
+  readAiWorkerHealth,
+  summarizeAiQueueObservability,
+  toTenantOperationalSnapshot,
+  type AiOperationalSeverity,
+  type TenantOperationalStatus,
+} from "@/lib/server/ai/observability";
+import { AI_QUEUE_JOB_TYPE } from "@/lib/server/ai/queue";
 import { getTenantSettings } from "@/lib/server/tenant";
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 type ModuleStatus = "ready" | "partial" | "pending";
 type GoLiveCriterionStatus = "ready" | "warning" | "pending" | "blocked";
 type ValidationStatus = "approved" | "blocked" | "not_checked";
+type ReadinessDoc = { id: string } & Record<string, unknown>;
 
 const GO_LIVE_CHECKLIST_VERSION = "2026-04-definitive";
 const KNOWLEDGE_DOCS_MINIMUM = 3;
@@ -42,6 +52,7 @@ export type TenantReadinessSummary = {
   aiMonthlyRuns: number;
   aiBudgetExceeded: boolean;
   aiUsageCapExceeded: boolean;
+  operationalStatus: TenantOperationalStatus;
   criticalBlockers: number;
   pilotReady: boolean;
   readinessScore: number;
@@ -102,6 +113,25 @@ export type TenantGoLiveActivation = {
   validation: TenantGoLiveValidation;
 };
 
+export type TenantOperationalHealth = {
+  status: TenantOperationalStatus;
+  label: string;
+  reason: string;
+};
+
+export type TenantOperationalAlert = {
+  id: string;
+  type: string;
+  severity: AiOperationalSeverity;
+  title: string;
+  detail: string;
+  probableCause: string;
+  recommendedAction: string;
+  href: string;
+  source: string;
+  lastOccurredAt: string | null;
+};
+
 export type TenantReadinessSnapshot = {
   tenantId: string;
   settings: {
@@ -128,6 +158,8 @@ export type TenantReadinessSnapshot = {
     };
   };
   summary: TenantReadinessSummary;
+  operationalHealth: TenantOperationalHealth;
+  operationalAlerts: TenantOperationalAlert[];
   checklist: TenantGoLiveCriterion[];
   activation: TenantGoLiveActivation;
   blockers: TenantReadinessItem[];
@@ -266,6 +298,29 @@ function buildCriterion(input: Omit<TenantGoLiveCriterion, "tone">): TenantGoLiv
   };
 }
 
+function normalizeSeverity(value: unknown): AiOperationalSeverity {
+  const raw = clean(value, 40).toLowerCase();
+  if (raw === "high") return "high";
+  if (raw === "warning") return "warning";
+  return "info";
+}
+
+function scoreConversionByWindow(leads: Array<Record<string, unknown>>, startMs: number, endMs: number) {
+  const inWindow = leads.filter((item) => {
+    const createdAt = toIso(item.createdAt);
+    if (!createdAt) return false;
+    const time = new Date(createdAt).getTime();
+    return time >= startMs && time <= endMs;
+  });
+  const won = inWindow.filter((item) => clean(item.pipelineStage || item.stage, 40).toLowerCase() === "ganho").length;
+  const total = inWindow.length;
+  return {
+    total,
+    won,
+    conversion: total > 0 ? (won / total) * 100 : 0,
+  };
+}
+
 export async function getTenantReadinessSnapshot(tenantId: string): Promise<TenantReadinessSnapshot> {
   const settings = await getTenantSettings(tenantId);
   const inboxRules = parseInboxRules(settings?.rules);
@@ -281,6 +336,11 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
     chatsSnap,
     automationsSnap,
     kbDocsSnap,
+    jobsSnap,
+    metricsSnap,
+    notificationsSnap,
+    leadsSnap,
+    workerHealth,
     monthlyAiUsage,
   ] = await Promise.all([
     adminDb.collection("tenant_users").where("tenantId", "==", tenantId).where("status", "==", "active").limit(80).get(),
@@ -289,6 +349,11 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
     adminDb.collection("chats").where("tenantId", "==", tenantId).limit(300).get(),
     adminDb.collection("automations").where("tenantId", "==", tenantId).limit(120).get(),
     adminDb.collection("kb_docs").where("tenantId", "==", tenantId).limit(200).get(),
+    adminDb.collection("jobs").where("tenantId", "==", tenantId).limit(200).get(),
+    adminDb.collection("metrics").where("tenantId", "==", tenantId).limit(120).get(),
+    adminDb.collection("ai_internal_notifications").where("tenantId", "==", tenantId).limit(80).get(),
+    adminDb.collection("leads").where("tenantId", "==", tenantId).limit(700).get(),
+    readAiWorkerHealth(),
     getAiMonthlyUsageSnapshot(tenantId),
   ]);
 
@@ -298,6 +363,16 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
   const chats = chatsSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
   const automations = automationsSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
   const kbDocs = kbDocsSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
+  const jobs: ReadinessDoc[] = jobsSnap.docs.map((doc) => ({
+    id: doc.id,
+    ...(doc.data() as Record<string, unknown>),
+  })) as ReadinessDoc[];
+  const metrics = metricsSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
+  const notifications: ReadinessDoc[] = notificationsSnap.docs.map((doc) => ({
+    id: doc.id,
+    ...(doc.data() as Record<string, unknown>),
+  })) as ReadinessDoc[];
+  const leads = leadsSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
 
   const activeUsers = users.length;
   const onlineUsers = users.filter((item) => clean(item.availability, 40) === "online").length;
@@ -344,6 +419,124 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
   const hasUsageCapLimit = aiOperatingProfile.monthlyUsageCap > 0;
   const aiBudgetExceeded = hasUsageBudgetLimit && monthlyAiUsage.estimatedCostUsd >= aiOperatingProfile.monthlyBudgetUsd;
   const aiUsageCapExceeded = hasUsageCapLimit && monthlyAiUsage.conversationRuns >= aiOperatingProfile.monthlyUsageCap;
+  const queueJobs = jobs.filter((item) => clean(item.type, 80) === AI_QUEUE_JOB_TYPE);
+  const queueMetrics = metrics.filter((item) => clean(item.type, 80) === "ai_queue_daily");
+  const queueObservability = summarizeAiQueueObservability({
+    jobs: queueJobs.map((item) => ({
+      id: clean(item.id, 160),
+      tenantId,
+      status: item.status,
+      updatedAt: item.updatedAt,
+      availableAt: item.availableAt,
+      completedAt: item.completedAt,
+      failedAt: item.failedAt,
+      type: clean(item.type, 80),
+      lastError: clean(item.lastError, 280),
+      lastErrorCode: clean(item.lastErrorCode, 80),
+      lastReasonCode: clean(item.lastReasonCode, 80),
+    })),
+    metrics: queueMetrics,
+    workerHealth,
+  });
+  const queueHealth = queueObservability.tenants[0] || null;
+  const nowMs = Date.now();
+  const conversionCurrentStart = nowMs - 7 * 24 * 60 * 60 * 1000;
+  const conversionPreviousStart = nowMs - 14 * 24 * 60 * 60 * 1000;
+  const currentWindow = scoreConversionByWindow(leads, conversionCurrentStart, nowMs);
+  const previousWindow = scoreConversionByWindow(leads, conversionPreviousStart, conversionCurrentStart - 1);
+  const conversionDropDetected =
+    previousWindow.total >= 8 &&
+    currentWindow.total >= 8 &&
+    previousWindow.conversion - currentWindow.conversion >= 5;
+  const channelOfflineAlerts = channels
+    .filter((item) => clean(item.status, 40) === "active")
+    .filter((item) => {
+      const type = clean(item.type, 60);
+      if (!["whatsapp", "instagram", "messenger", "meta_ads"].includes(type)) return false;
+      return item.routingReady !== true && item.inboundReady !== true && item.outboundReady !== true;
+    })
+    .slice(0, 4)
+    .map((item) => {
+      const guidance = buildAiAlertGuidance({ type: "channel_offline" });
+      return {
+        id: `channel_offline_${clean(item.type, 60) || "canal"}`,
+        type: guidance.type,
+        severity: "high" as AiOperationalSeverity,
+        title: `${guidance.title}: ${clean(item.displayName || item.type, 120) || "Canal"}`,
+        detail: "Canal ativo sem sinal de roteamento/inbound/outbound pronto.",
+        probableCause: guidance.probableCause,
+        recommendedAction: guidance.recommendedAction,
+        href: guidance.href,
+        source: "tenant_channels",
+        lastOccurredAt: toIso(item.updatedAt),
+      };
+    });
+  const internalAlerts = notifications
+    .filter((item) => clean(item.status, 40) !== "resolved")
+    .slice(0, 12)
+    .map((item) => {
+      const guidance = buildAiAlertGuidance({
+        type: clean(item.type, 80),
+        errorCode: clean(item.errorCode, 80),
+        reasonCode: clean(item.reasonCode, 80),
+        title: clean(item.title, 180),
+        detail: clean(item.detail, 320),
+      });
+      return {
+        id: clean(item.id, 160),
+        type: guidance.type,
+        severity: normalizeSeverity(item.severity),
+        title: clean(item.title, 180) || guidance.title,
+        detail: clean(item.detail, 320) || guidance.probableCause,
+        probableCause: guidance.probableCause,
+        recommendedAction: guidance.recommendedAction,
+        href: guidance.href,
+        source: clean(item.source, 80) || "ai_internal_notifications",
+        lastOccurredAt: toIso(item.lastOccurredAt || item.updatedAt || item.createdAt),
+      };
+    });
+  const conversionAlert = conversionDropDetected
+    ? (() => {
+        const guidance = buildAiAlertGuidance({ type: "conversion_drop" });
+        return {
+          id: "conversion_drop_7d",
+          type: guidance.type,
+          severity: "warning" as AiOperationalSeverity,
+          title: guidance.title,
+          detail: `Conversao caiu de ${previousWindow.conversion.toFixed(1)}% para ${currentWindow.conversion.toFixed(1)}% na ultima semana.`,
+          probableCause: guidance.probableCause,
+          recommendedAction: guidance.recommendedAction,
+          href: guidance.href,
+          source: "leads_window_7d",
+          lastOccurredAt: new Date().toISOString(),
+        };
+      })()
+    : null;
+  const operationalAlerts: TenantOperationalAlert[] = [
+    ...internalAlerts,
+    ...channelOfflineAlerts,
+    ...(conversionAlert ? [conversionAlert] : []),
+  ]
+    .sort((a, b) => {
+      const severityWeight = (value: AiOperationalSeverity) => (value === "high" ? 2 : value === "warning" ? 1 : 0);
+      if (severityWeight(a.severity) !== severityWeight(b.severity)) {
+        return severityWeight(b.severity) - severityWeight(a.severity);
+      }
+      return (new Date(b.lastOccurredAt || 0).getTime() || 0) - (new Date(a.lastOccurredAt || 0).getTime() || 0);
+    })
+    .slice(0, 12);
+  const hasHighSeverityAlert = operationalAlerts.some((item) => item.severity === "high");
+  const hasWarningAlert = operationalAlerts.some((item) => item.severity === "warning");
+  const operationalSnapshot = toTenantOperationalSnapshot({
+    workerStatus: queueObservability.worker.status,
+    queueRiskLevel: queueHealth?.riskLevel || "stable",
+    staleQueue: queueHealth?.staleQueue === true,
+    recurringAuthFailures: queueHealth?.recurringAuthFailures || 0,
+    recurringQuotaFailures: queueHealth?.recurringQuotaFailures || 0,
+    deadLetterCount: queueHealth?.counts?.deadLetter || 0,
+    hasHighSeverityAlert,
+    hasWarningAlert,
+  });
 
   const checklist: TenantGoLiveCriterion[] = [
     buildCriterion({
@@ -572,6 +765,7 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
     aiMonthlyRuns: monthlyAiUsage.conversationRuns,
     aiBudgetExceeded,
     aiUsageCapExceeded,
+    operationalStatus: operationalSnapshot.status,
     criticalBlockers: blockingChecklist.length,
     pilotReady,
     readinessScore,
@@ -777,6 +971,11 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
             ? `Ultima aprovacao em ${activation.validation.checkedAt || activation.validation.approvedAt || "data indisponivel"} por ${activation.validation.checkedByName || activation.validation.approvedByName || "usuario nao identificado"}.`
             : `Ultimo bloqueio em ${activation.validation.checkedAt || "data indisponivel"} por ${activation.validation.checkedByName || "usuario nao identificado"}.`,
     },
+    {
+      id: "ops_health",
+      title: `Saude operacional ${operationalSnapshot.label}`,
+      description: operationalSnapshot.reason,
+    },
   ];
 
   const nextBuildItems: TenantReadinessItem[] = [];
@@ -801,6 +1000,8 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
       },
     },
     summary,
+    operationalHealth: operationalSnapshot,
+    operationalAlerts,
     checklist,
     activation,
     blockers: blockers.slice(0, 8),

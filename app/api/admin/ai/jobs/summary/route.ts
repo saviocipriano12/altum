@@ -3,10 +3,12 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { AI_QUEUE_JOB_TYPE } from "@/lib/server/ai/queue";
 import {
+  buildAiAlertGuidance,
   normalizeAiQueueStatus,
   readAiWorkerHealth,
   sanitizeText,
   summarizeAiQueueObservability,
+  toTenantOperationalSnapshot,
   toTime,
 } from "@/lib/server/ai/observability";
 
@@ -133,6 +135,29 @@ export async function GET(req: Request) {
       worker: summary.worker,
       overview: summary.overview,
       tenants: summary.tenants.map((tenant) => ({
+        ...(() => {
+          const operational = toTenantOperationalSnapshot({
+            workerStatus: summary.worker.status,
+            queueRiskLevel: tenant.riskLevel,
+            staleQueue: tenant.staleQueue,
+            recurringAuthFailures: tenant.recurringAuthFailures,
+            recurringQuotaFailures: tenant.recurringQuotaFailures,
+            deadLetterCount: tenant.counts.deadLetter,
+          });
+          const guidance = tenant.recurringQuotaFailures > 0
+            ? buildAiAlertGuidance({ errorCode: "quota_exceeded" })
+            : tenant.recurringAuthFailures > 0
+              ? buildAiAlertGuidance({ errorCode: "auth_invalid" })
+              : tenant.staleQueue || tenant.counts.deadLetter > 0
+                ? buildAiAlertGuidance({ type: "queue_degraded" })
+                : null;
+          return {
+            operationalStatus: operational.status,
+            operationalReason: operational.reason,
+            primaryRecommendedAction: guidance?.recommendedAction || "",
+            primaryActionHref: guidance?.href || "/cliente/painel/logs",
+          };
+        })(),
         ...tenant,
         tenantName: tenantNameMap.get(tenant.tenantId) || tenant.tenantId,
         lastOccurrenceAt: tenant.lastFailedAt || tenant.lastProcessedAt || tenant.lastActivityAt || null,

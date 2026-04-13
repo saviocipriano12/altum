@@ -8,6 +8,7 @@ import {
   BarChart3,
   ChartNoAxesCombined,
   CircleGauge,
+  Download,
   Loader2,
   Radar,
   RefreshCw,
@@ -134,6 +135,30 @@ type TenantSettingsResponse = {
   };
 };
 
+type ReadinessPayload = {
+  summary?: {
+    readinessScore?: number;
+    operationalStatus?: "healthy" | "degraded" | "down";
+  };
+  operationalHealth?: {
+    status?: "healthy" | "degraded" | "down";
+    label?: string;
+    reason?: string;
+  };
+  operationalAlerts?: Array<{
+    id: string;
+    type: string;
+    severity: "info" | "warning" | "high";
+    title: string;
+    detail: string;
+    probableCause: string;
+    recommendedAction: string;
+    href: string;
+    source: string;
+    lastOccurredAt?: string | null;
+  }>;
+};
+
 const RANGE_OPTIONS = [7, 30, 90] as const;
 
 type PrioritySignal = {
@@ -204,6 +229,7 @@ export default function ClienteMetricasPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [data, setData] = useState<MetricsSummaryResponse>({});
+  const [readiness, setReadiness] = useState<ReadinessPayload>({});
   const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
   const canSyncCampaigns = hasCapability("manage_channels");
 
@@ -214,12 +240,14 @@ export default function ClienteMetricasPage() {
       setLoading(true);
       setError(null);
 
-      const [res, settingsRes] = await Promise.all([
+      const [res, settingsRes, readinessRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/metrics-summary?rangeDays=${rangeDays}`),
         authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/readiness`),
       ]);
       const payload = (await res.json()) as MetricsSummaryResponse;
       const settingsPayload = (await settingsRes.json()) as TenantSettingsResponse;
+      const readinessPayload = (await readinessRes.json()) as ReadinessPayload;
 
       if (!res.ok) {
         setError(payload.error || "Falha ao carregar metricas.");
@@ -227,6 +255,7 @@ export default function ClienteMetricasPage() {
       }
 
       setData(payload);
+      setReadiness(readinessRes.ok ? readinessPayload : {});
       setBusinessProfileId((settingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
     } catch {
       setError("Falha ao carregar metricas.");
@@ -268,6 +297,54 @@ export default function ClienteMetricasPage() {
     }
   }
 
+  function exportCsv() {
+    const escapeCell = (value: unknown) => {
+      const text = String(value ?? "");
+      if (text.includes(",") || text.includes('"') || text.includes("\n")) {
+        return `"${text.replaceAll('"', '""')}"`;
+      }
+      return text;
+    };
+
+    const lines: string[] = [];
+    const pushRow = (...cols: unknown[]) => {
+      lines.push(cols.map((col) => escapeCell(col)).join(","));
+    };
+
+    pushRow("secao", "campo", "valor", "detalhe");
+    pushRow("operacao", "status_operacional", operationalStatus, operationalHealth.reason || "");
+    pushRow("operacao", "score_readiness", readiness.summary?.readinessScore || 0, "go-live");
+    pushRow("funil", "leads", metrics.totalLeads || 0, "");
+    pushRow("funil", "ganhos", metrics.wonLeads || 0, "");
+    pushRow("funil", "conversao_pct", Number(metrics.conversionRate || 0).toFixed(2), "");
+    pushRow("ia", "responded", ai.responded || 0, "");
+    pushRow("ia", "handoff", ai.handoff || 0, "");
+    pushRow("ia", "ask_more", ai.askMore || 0, "");
+    pushRow("ia", "falhas_skip", ai.skipped || 0, "");
+    pushRow("midia", "investimento", Number(traffic.spend || 0).toFixed(2), "BRL");
+    pushRow("midia", "leads", traffic.leads || 0, "");
+    pushRow("midia", "cpl", Number(traffic.cpl || 0).toFixed(2), "BRL");
+    pushRow("midia", "ctr_pct", Number(traffic.ctr || 0).toFixed(2), "");
+    pushRow("operacao", "sla_vencido", operations.overdueChats || 0, "");
+    pushRow("operacao", "sem_dono", operations.unassignedChats || 0, "");
+
+    for (const alert of todayActions) {
+      pushRow("alerta", alert.title, alert.detail, `${alert.cause} | Acao: ${alert.action}`);
+    }
+
+    const csvContent = `${lines.join("\n")}\n`;
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const tenantId = tenant?.tenantId || "tenant";
+    anchor.href = url;
+    anchor.download = `cockpit-executivo-${tenantId}-${rangeDays}d.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }
+
   const metrics = data.metrics || {};
   const traffic = data.traffic || {};
   const comparisons = data.comparisons || {};
@@ -280,6 +357,9 @@ export default function ClienteMetricasPage() {
   const aiBreakdown = operations.aiBreakdown || {};
   const channelOperations = operations.channelOperations || [];
   const windows = data.windows || {};
+  const operationalHealth = readiness.operationalHealth || {};
+  const operationalStatus = operationalHealth.status || readiness.summary?.operationalStatus || "healthy";
+  const operationalAlerts = useMemo(() => readiness.operationalAlerts || [], [readiness.operationalAlerts]);
   const businessProfile = useMemo(() => getBusinessProfile(businessProfileId), [businessProfileId]);
 
   const maxSpend = useMemo(() => Math.max(1, ...trafficSeries.map((item) => item.spend || 0)), [trafficSeries]);
@@ -288,6 +368,30 @@ export default function ClienteMetricasPage() {
     () => (ai.responded || 0) + (ai.askMore || 0) + (ai.handoff || 0) + (ai.skipped || 0),
     [ai.askMore, ai.handoff, ai.responded, ai.skipped]
   );
+  const goodSignals = useMemo(() => {
+    const items: string[] = [];
+    if (Number(metrics.conversionRate || 0) >= 15) items.push("Conversao acima da linha minima esperada.");
+    if (Number(metrics.avgFirstResponseMinutes || 0) > 0 && Number(metrics.avgFirstResponseMinutes || 0) <= 5) {
+      items.push("Tempo de resposta dentro da meta operacional.");
+    }
+    if (Number(ai.responded || 0) >= Number(ai.handoff || 0)) items.push("IA sustentando atendimento sem excesso de handoff.");
+    if (operationalStatus === "healthy") items.push("Saude operacional estavel para escalar operacao.");
+    return items.slice(0, 3);
+  }, [ai.handoff, ai.responded, metrics.avgFirstResponseMinutes, metrics.conversionRate, operationalStatus]);
+
+  const todayActions = useMemo(() => {
+    const mapped = operationalAlerts.map((item) => ({
+      id: item.id,
+      title: item.title,
+      detail: item.detail,
+      cause: item.probableCause,
+      action: item.recommendedAction,
+      href: item.href,
+      tone: item.severity === "high" ? ("danger" as const) : item.severity === "warning" ? ("warning" as const) : ("info" as const),
+      badge: item.type.replaceAll("_", " "),
+    }));
+    return mapped.slice(0, 5);
+  }, [operationalAlerts]);
   const prioritySignals = useMemo<PrioritySignal[]>(() => {
     const items: PrioritySignal[] = [];
 
@@ -399,8 +503,8 @@ export default function ClienteMetricasPage() {
   return (
     <div className="space-y-4">
       <SectionHeader
-        title="Metricas"
-        subtitle="BI operacional do tenant com comparacao de periodo, funil comercial, IA e atribuicao por canal."
+        title="Cockpit executivo"
+        subtitle="Leitura de funil, IA, mídia e saude operacional para decidir em 30 segundos o que manter e o que agir hoje."
         action={
           <div className="flex flex-wrap gap-2">
             {RANGE_OPTIONS.map((option) => (
@@ -428,14 +532,69 @@ export default function ClienteMetricasPage() {
                 Sync campanha
               </button>
             ) : null}
-            <StateBadge label="Analytics ao vivo" tone="success" />
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Exportar CSV
+            </button>
+            <StateBadge
+              label={`status ${operationalStatus}`}
+              tone={operationalStatus === "down" ? "danger" : operationalStatus === "degraded" ? "warning" : "success"}
+            />
           </div>
         }
       />
 
       {notice ? <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{notice}</div> : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <PanelCard className="p-5">
+          <CardTitle title="O que esta bom" subtitle="Sinais positivos para manter no plano de hoje." />
+          <div className="mt-4 space-y-3">
+            {goodSignals.length === 0 ? (
+              <EmptyState title="Sem sinais fortes nesta janela" description="A operacao esta mista; vale priorizar os alertas para recuperar ritmo." />
+            ) : (
+              goodSignals.map((signal, index) => (
+                <div key={`${signal}_${index}`} className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                  <p className="text-sm text-emerald-100">{signal}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </PanelCard>
+
+        <PanelCard className="p-5">
+          <CardTitle title="O que agir hoje" subtitle="Alertas com causa raiz e acao recomendada para destravar resultado." />
+          <div className="mt-4 space-y-3">
+            {todayActions.length === 0 ? (
+              <EmptyState title="Sem alertas criticos" description="Nenhum alerta de quota, auth, canal ou conversao na janela atual." />
+            ) : (
+              todayActions.map((item) => (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
+                      <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">Causa: {item.cause}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Acao recomendada: {item.action}</p>
+                    </div>
+                    <StateBadge label={item.badge} tone={item.tone} />
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        </PanelCard>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Link href="/cliente/painel/crm" className="block">
           <MetricCard
             label="Leads"
@@ -474,6 +633,14 @@ export default function ClienteMetricasPage() {
             value={currency(Number(metrics.paidRevenue || 0))}
             icon={BarChart3}
             trend={`midia ${currency(Number(traffic.spend || 0))}`}
+          />
+        </Link>
+        <Link href="/cliente/painel/logs" className="block">
+          <MetricCard
+            label="Operacao"
+            value={operationalStatus}
+            icon={ChartNoAxesCombined}
+            trend={operationalHealth.reason || "status operacional"}
           />
         </Link>
       </section>

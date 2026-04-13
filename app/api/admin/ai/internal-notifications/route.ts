@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { sanitizeText, toTime } from "@/lib/server/ai/observability";
+import { buildAiAlertGuidance, sanitizeText, toTenantOperationalSnapshot, toTime } from "@/lib/server/ai/observability";
 
 function severityWeight(value: string) {
   if (value === "high") return 2;
@@ -30,6 +30,13 @@ export async function GET(req: Request) {
     const items = snap.docs
       .map((doc) => {
         const data = doc.data() as Record<string, unknown>;
+        const guidance = buildAiAlertGuidance({
+          type: sanitizeText(data.type, 80),
+          errorCode: sanitizeText(data.errorCode, 80),
+          reasonCode: sanitizeText(data.reasonCode, 80),
+          title: sanitizeText(data.title, 180),
+          detail: sanitizeText(data.detail, 320),
+        });
         return {
           id: doc.id,
           tenantId: sanitizeText(data.tenantId, 140),
@@ -51,6 +58,10 @@ export async function GET(req: Request) {
           firstOccurredAt: data.firstOccurredAt || data.createdAt || null,
           lastOccurredAt: data.lastOccurredAt || data.updatedAt || data.createdAt || null,
           resolvedAt: data.resolvedAt || null,
+          alertType: guidance.type,
+          probableCause: guidance.probableCause,
+          recommendedAction: guidance.recommendedAction,
+          href: guidance.href,
         };
       })
       .filter((item) => item.tenantId)
@@ -78,12 +89,52 @@ export async function GET(req: Request) {
         occurrences: item.occurrences,
         errorCode: item.errorCode,
         reasonCode: item.reasonCode,
+        alertType: item.alertType,
+        probableCause: item.probableCause,
+        recommendedAction: item.recommendedAction,
+        href: item.href,
       }));
+
+    const summaryByType = items
+      .filter((item) => item.status !== "resolved")
+      .reduce<Record<string, number>>((acc, item) => {
+        const key = item.alertType || "unknown";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+    const tenantStatusMap = items
+      .filter((item) => item.status !== "resolved")
+      .reduce<Map<string, { high: boolean; warning: boolean; count: number }>>((acc, item) => {
+        const current = acc.get(item.tenantId) || { high: false, warning: false, count: 0 };
+        if (item.severity === "high") current.high = true;
+        if (item.severity === "warning") current.warning = true;
+        current.count += 1;
+        acc.set(item.tenantId, current);
+        return acc;
+      }, new Map());
+    const tenantOperational = Array.from(tenantStatusMap.entries()).map(([tenantId, signals]) => {
+      const operational = toTenantOperationalSnapshot({
+        hasHighSeverityAlert: signals.high,
+        hasWarningAlert: signals.warning,
+      });
+      return {
+        tenantId,
+        status: operational.status,
+        reason: operational.reason,
+        openAlerts: signals.count,
+      };
+    });
 
     return NextResponse.json({
       ok: true,
       items,
       riskCards,
+      summary: {
+        total: items.length,
+        open: items.filter((item) => item.status !== "resolved").length,
+        byType: summaryByType,
+      },
+      tenantOperational,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {
