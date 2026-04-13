@@ -2,6 +2,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { buildBasicAssistedTouches, readLeadAssistedTouches } from "@/lib/server/attribution";
+import { syncLeadCommercialState } from "@/lib/server/crm/operations";
+import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 
 export type LeadAttributionInput = {
@@ -102,6 +105,7 @@ type BuildLeadAttributionPatchResult = {
   patch: Record<string, unknown>;
   firstTouch: LeadTouchSnapshot;
   lastTouch: LeadTouchSnapshot;
+  assistedTouches: LeadTouchSnapshot[];
   originLabel: string;
   campaignLabel: string;
   sourceLabel: string;
@@ -316,6 +320,10 @@ export function buildLeadAttributionPatch(input: BuildLeadAttributionPatchInput)
   const currentTouch = buildTouch(input);
   const existingFirstTouch = buildTouchFromExisting(existingData, "first_touch");
   const existingLastTouch = buildTouchFromExisting(existingData, "last_touch");
+  const existingAssists = readLeadAssistedTouches(existingData).map((item) => ({
+    ...item,
+    clickIds: item.clickIds,
+  })) as LeadTouchSnapshot[];
 
   const firstTouch = hasTouchSignal(existingFirstTouch)
     ? existingFirstTouch
@@ -325,6 +333,11 @@ export function buildLeadAttributionPatch(input: BuildLeadAttributionPatchInput)
     : hasTouchSignal(existingLastTouch)
       ? existingLastTouch
       : buildTouchWriteSnapshot(currentTouch);
+  const assistedTouches = buildBasicAssistedTouches({
+    firstTouch,
+    lastTouch,
+    existingAssists,
+  }) as LeadTouchSnapshot[];
 
   const attributionSource = currentTouch.source || clean(existingData.utmSource, 120) || firstTouch.source;
   const attributionMedium = currentTouch.medium || clean(existingData.utmMedium, 120) || firstTouch.medium;
@@ -369,6 +382,7 @@ export function buildLeadAttributionPatch(input: BuildLeadAttributionPatchInput)
       fbclid,
       first_touch: firstTouch,
       last_touch: lastTouch,
+      assisted_touches: assistedTouches,
       attribution: {
         source: attributionSource,
         medium: attributionMedium,
@@ -393,11 +407,13 @@ export function buildLeadAttributionPatch(input: BuildLeadAttributionPatchInput)
         },
         firstTouch,
         lastTouch,
+        assistedTouches,
         updatedAt: FieldValue.serverTimestamp(),
       },
     },
     firstTouch,
     lastTouch,
+    assistedTouches,
     originLabel,
     campaignLabel,
     sourceLabel,
@@ -554,6 +570,7 @@ export async function recordInboundLead(input: RecordInboundLeadInput) {
           referrer: attributionState.patch.referrer || "",
           firstTouch: attributionState.firstTouch,
           lastTouch: attributionState.lastTouch,
+          assistedTouches: attributionState.assistedTouches,
           createdAt: FieldValue.serverTimestamp(),
         })
       : Promise.resolve(),
@@ -567,7 +584,23 @@ export async function recordInboundLead(input: RecordInboundLeadInput) {
       actorId: clean(input.automationActorId, 140) || "altum_inbound",
       actorName: clean(input.automationActorName, 140) || "ALTUM Inbound",
     });
+
+    await dispatchLeadConversionEvents({
+      tenantId,
+      leadId: leadRef.id,
+      reason: "lead_created",
+    }).catch((error) => {
+      console.error("Falha ao disparar conversoes do lead criado:", error);
+    });
   }
+
+  await syncLeadCommercialState({
+    tenantId,
+    leadId: leadRef.id,
+    actorId: clean(input.automationActorId, 140) || "altum_inbound",
+    actorName: clean(input.automationActorName, 140) || "ALTUM Inbound",
+    allowStageAdvance: true,
+  });
 
   return {
     leadId: leadRef.id,

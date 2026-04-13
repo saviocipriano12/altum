@@ -8,6 +8,7 @@ import {
   TenantAccessError,
 } from "@/lib/server/tenant";
 import { trackAppointmentOutcome } from "@/lib/server/ai/learning-outcomes";
+import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 
 type Body = {
   title?: string;
@@ -152,6 +153,28 @@ export async function PATCH(
         appointmentId,
         status: nextStatus,
       });
+
+      if (nextStatus === "scheduled" || nextStatus === "confirmed") {
+        await dispatchLeadConversionEvents({
+          tenantId,
+          leadId,
+          appointmentId,
+          reason: "meeting_scheduled",
+        }).catch((error) => {
+          console.error("Falha ao disparar conversao de reuniao agendada:", error);
+        });
+      }
+
+      if (nextStatus === "completed") {
+        await dispatchLeadConversionEvents({
+          tenantId,
+          leadId,
+          appointmentId,
+          reason: "meeting_completed",
+        }).catch((error) => {
+          console.error("Falha ao disparar conversao de reuniao concluida:", error);
+        });
+      }
     }
 
     return NextResponse.json({ ok: true, tenantId, appointmentId });

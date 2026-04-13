@@ -5,6 +5,7 @@ import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/ro
 import { normalizePhoneBR } from "@/app/lib/server/phone";
 import { getTenantForCurrentUser } from "@/lib/server/tenant";
 import { buildLeadAttributionPatch } from "@/lib/server/lead-intake";
+import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { runLeadAutomations } from "@/lib/server/automations";
 
 type Body = {
@@ -242,6 +243,14 @@ export async function POST(req: Request) {
           leadId: leadRef.id,
           actorId: user.uid,
           actorName: user.name,
+        });
+
+        await dispatchLeadConversionEvents({
+          tenantId,
+          leadId: leadRef.id,
+          reason: "lead_created",
+        }).catch((error) => {
+          console.error("Falha ao disparar conversao de lead manual:", error);
         });
       }
     }
