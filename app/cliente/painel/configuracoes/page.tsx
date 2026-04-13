@@ -442,6 +442,14 @@ export default function ClienteConfiguracoesPage() {
       featured: true,
     },
     {
+      href: "/cliente/painel/configuracoes/social",
+      title: "Automacoes sociais",
+      description: "Respostas de DM, comentario e novo seguidor com horario ativo, opt-out e logs por tenant.",
+      icon: Bot,
+      badge: "social",
+      tone: "info" as const,
+    },
+    {
       href: "/cliente/painel/ia",
       title: "Politicas da IA",
       description: summary.aiEnabled

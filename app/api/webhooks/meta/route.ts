@@ -7,6 +7,7 @@ import {
   getMetaChannelByVerifyToken,
   getMetaChannelForTenant,
   isMetaConversationChannelType,
+  type MetaChannelConfig,
   type MetaConversationChannelType,
   type MetaWebhookChannelType,
 } from "@/app/lib/server/meta-channel";
@@ -17,6 +18,15 @@ import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { recordInboundLead } from "@/lib/server/lead-intake";
+import { parseMetaSocialEvents } from "@/lib/server/social/meta";
+import {
+  getSocialAutomationContactState,
+  getTenantSocialAutomationConfig,
+  handleMetaSocialEvent,
+  logSocialAutomationStatus,
+  setSocialAutomationContactOptOut,
+  shouldAutoReplyToDm,
+} from "@/lib/server/social/service";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
 
@@ -594,13 +604,15 @@ export async function POST(req: Request) {
     const body = JSON.parse(rawBody) as Record<string, unknown>;
     const objectType = cleanString(body.object, 40).toLowerCase();
     const parsedEvents = parseMetaEvents(body);
+    const socialEvents = parseMetaSocialEvents(body);
     const leadgenEvents = parseLeadgenEvents(body);
 
-    if (parsedEvents.length === 0 && leadgenEvents.length === 0) {
+    if (parsedEvents.length === 0 && socialEvents.length === 0 && leadgenEvents.length === 0) {
       return NextResponse.json({ status: "ignored_no_message" });
     }
 
     const firstEvent = parsedEvents[0];
+    const firstSocialEvent = socialEvents[0];
     const firstLeadgen = leadgenEvents[0];
     const resolved = firstEvent
       ? await findMetaChannelForWebhook({
@@ -608,6 +620,12 @@ export async function POST(req: Request) {
           entryId: firstEvent.entryId,
           recipientId: firstEvent.recipientId,
         })
+      : firstSocialEvent
+        ? await findMetaChannelForWebhook({
+            objectType,
+            entryId: firstSocialEvent.entryId,
+            recipientId: firstSocialEvent.actorId,
+          })
       : await getMetaAdsChannelForLeadgen({
           entryId: firstLeadgen?.pageId,
           formId: firstLeadgen?.formId,
@@ -622,18 +640,30 @@ export async function POST(req: Request) {
     }
 
     const processed: Array<Record<string, unknown>> = [];
+    const socialConfigCache = new Map<string, Awaited<ReturnType<typeof getTenantSocialAutomationConfig>>>();
+
+    async function getCachedSocialConfig(tenantId: string) {
+      const cached = socialConfigCache.get(tenantId);
+      if (cached) return cached;
+      const config = await getTenantSocialAutomationConfig(tenantId);
+      socialConfigCache.set(tenantId, config);
+      return config;
+    }
 
     for (const event of parsedEvents) {
-      if (!isMetaConversationChannelType(resolved.type)) {
+      const resolvedConversationChannel = isMetaConversationChannelType(resolved.type)
+        ? (resolved as MetaChannelConfig)
+        : null;
+      if (!resolvedConversationChannel) {
         continue;
       }
 
-      const channel =
-        (await getMetaChannelForTenant(resolved.tenantId, resolved.type, {
-          channelId: resolved.id,
+      const channel: MetaChannelConfig =
+        (await getMetaChannelForTenant(resolvedConversationChannel.tenantId, resolvedConversationChannel.type, {
+          channelId: resolvedConversationChannel.id,
           externalAccountId: event.recipientId,
           pageId: event.entryId,
-        })) || resolved;
+        })) || resolvedConversationChannel;
 
       if (!channel || !isMetaConversationChannelType(channel.type)) {
         continue;
@@ -754,6 +784,76 @@ export async function POST(req: Request) {
         });
       }
 
+      const socialConfig = await getCachedSocialConfig(channel.tenantId);
+      const contactState = await getSocialAutomationContactState(channel.tenantId, channel.type, event.senderId);
+      const dmDecision = shouldAutoReplyToDm({
+        config: socialConfig,
+        text: event.text,
+        senderId: event.senderId,
+        channel,
+        contactState,
+      });
+
+      if (dmDecision.shouldPersistOptOut) {
+        await setSocialAutomationContactOptOut({
+          tenantId: channel.tenantId,
+          channelType: channel.type,
+          actorId: event.senderId,
+          actorName: contactName,
+          optedOut: true,
+          reason: event.text,
+        });
+      }
+
+      await logSocialAutomationStatus({
+        tenantId: channel.tenantId,
+        channelType: channel.type,
+        eventId: event.eventId,
+        eventType: "dm",
+        actorId: event.senderId,
+        actorName: contactName,
+        text: event.text,
+        status: dmDecision.reason,
+        reason:
+          dmDecision.reason === "processed"
+            ? "DM encaminhada para fila de IA."
+            : dmDecision.reason === "ignored_opt_out"
+              ? "DM sem resposta automatica por opt-out."
+              : dmDecision.reason === "ignored_inactive_hours"
+                ? "DM fora da janela ativa configurada."
+                : dmDecision.reason === "ignored_loop"
+                  ? "DM ignorada por anti-loop."
+                  : "DM sem auto reply pela configuracao.",
+        leadId: lead.leadId,
+        chatId: chat.chatId,
+      });
+
+      if (!dmDecision.allowed) {
+        await claim.eventRef.set(
+          {
+            status: "processed",
+            tenantId: channel.tenantId,
+            channelType: channel.type,
+            chatId: chat.chatId,
+            leadId: lead.leadId,
+            messageDocId: messageRef.id,
+            queueStatus: "skipped_social_automation",
+            processedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        processed.push({
+          tenantId: channel.tenantId,
+          channel: channel.type,
+          chatId: chat.chatId,
+          messageId: messageRef.id,
+          socialStatus: dmDecision.reason,
+        });
+        continue;
+      }
+
       const queue = await enqueueIncomingMessageJob({
         tenantId: channel.tenantId,
         chatId: chat.chatId,
@@ -813,6 +913,44 @@ export async function POST(req: Request) {
         chatId: chat.chatId,
         messageId: messageRef.id,
       });
+    }
+
+    for (const event of socialEvents) {
+      const channel = await getMetaChannelForTenant(resolved.tenantId, event.channelType, {
+        channelId: resolved.id,
+        externalAccountId: resolved.externalAccountId || event.entryId,
+        pageId: event.entryId,
+      });
+
+      if (!channel || channel.type !== event.channelType) {
+        continue;
+      }
+
+      try {
+        const socialResult = await handleMetaSocialEvent({
+          tenantId: channel.tenantId,
+          channel,
+          event,
+        });
+
+        processed.push({
+          tenantId: channel.tenantId,
+          channel: channel.type,
+          socialEventType: event.eventType,
+          eventId: event.eventId,
+          status: socialResult.status,
+          leadId: "leadId" in socialResult ? socialResult.leadId : null,
+          chatId: "chatId" in socialResult ? socialResult.chatId : null,
+        });
+      } catch (error) {
+        console.error("Erro ao processar evento social da Meta:", {
+          tenantId: channel.tenantId,
+          channelType: channel.type,
+          eventType: event.eventType,
+          eventId: event.eventId,
+          error,
+        });
+      }
     }
 
     for (const event of leadgenEvents) {
