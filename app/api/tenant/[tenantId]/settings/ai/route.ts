@@ -27,6 +27,7 @@ type Body = {
   autonomyMode?: AltumAiAutonomyMode;
   reasoningLevel?: AltumAiReasoningLevel;
   responseStyle?: AltumAiResponseStyle;
+  allowPremiumModels?: boolean;
   preferredProviders?: AltumAiProvider[] | string;
   conversationModelOverride?: string;
   extractionModelOverride?: string;
@@ -109,6 +110,7 @@ function normalizeAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings
     autonomyMode: operatingProfile.autonomyMode,
     reasoningLevel: operatingProfile.reasoningLevel,
     responseStyle: operatingProfile.responseStyle,
+    allowPremiumModels: operatingProfile.allowPremiumModels,
     preferredProviders: operatingProfile.preferredProviders,
     conversationModelOverride: operatingProfile.conversationModelOverride || "",
     extractionModelOverride: operatingProfile.extractionModelOverride || "",
@@ -183,6 +185,7 @@ export async function POST(
         autonomyMode: body.autonomyMode ?? current.autonomyMode,
         reasoningLevel: body.reasoningLevel ?? current.reasoningLevel,
         responseStyle: body.responseStyle ?? current.responseStyle,
+        allowPremiumModels: body.allowPremiumModels ?? current.allowPremiumModels,
         preferredProviders: body.preferredProviders ?? current.preferredProviders,
         conversationModelOverride: body.conversationModelOverride ?? current.conversationModelOverride,
         extractionModelOverride: body.extractionModelOverride ?? current.extractionModelOverride,

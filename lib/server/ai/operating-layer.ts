@@ -9,6 +9,7 @@ export type TenantAiOperatingProfile = {
   autonomyMode: AltumAiAutonomyMode;
   reasoningLevel: AltumAiReasoningLevel;
   responseStyle: AltumAiResponseStyle;
+  allowPremiumModels: boolean;
   preferredProviders: AltumAiProvider[];
   conversationModelOverride?: string;
   extractionModelOverride?: string;
@@ -25,6 +26,8 @@ export type TenantAiRuntimePolicy = {
   supportsToolCalling: boolean;
   supportsDeepReasoning: boolean;
   budgetMode: "conservative" | "balanced" | "premium";
+  modelGuardrailApplied: boolean;
+  modelGuardrailReason: string | null;
 };
 
 const PROVIDERS: AltumAiProvider[] = ["openai", "anthropic", "gemini", "mistral", "altum_rules"];
@@ -97,6 +100,22 @@ function normalizeModelOverride(value: unknown) {
   return normalized || undefined;
 }
 
+function normalizeBoolean(value: unknown, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "sim", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "nao", "off"].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function isPremiumOpenAiModel(model: string) {
+  const normalized = cleanString(model, 120);
+  return normalized === "gpt-5.4" || normalized === "gpt-5-mini";
+}
+
 export function normalizeTenantAiOperatingProfile(value: unknown): TenantAiOperatingProfile {
   const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
@@ -105,6 +124,7 @@ export function normalizeTenantAiOperatingProfile(value: unknown): TenantAiOpera
     autonomyMode: normalizeEnum(source.autonomyMode, ["copilot", "hybrid", "autonomous"], "hybrid"),
     reasoningLevel: normalizeEnum(source.reasoningLevel, ["fast", "balanced", "deep"], "balanced"),
     responseStyle: normalizeEnum(source.responseStyle, ["concise", "consultative", "premium_sales", "closer"], "consultative"),
+    allowPremiumModels: normalizeBoolean(source.allowPremiumModels, false),
     preferredProviders: normalizeProviders(source.preferredProviders),
     conversationModelOverride: normalizeModelOverride(source.conversationModelOverride),
     extractionModelOverride: normalizeModelOverride(source.extractionModelOverride),
@@ -146,6 +166,14 @@ export function buildAiRuntimePolicy(profile: TenantAiOperatingProfile): TenantA
             ? "mistral-small"
             : "altum_rules_v1");
 
+  const shouldClampOpenAiPremium = primaryProvider === "openai" && !profile.allowPremiumModels;
+  const conversationModelClamped =
+    shouldClampOpenAiPremium && isPremiumOpenAiModel(conversationModel) ? "gpt-4.1-mini" : conversationModel;
+  const extractionModelClamped =
+    shouldClampOpenAiPremium && isPremiumOpenAiModel(extractionModel) ? "gpt-4.1-mini" : extractionModel;
+  const modelGuardrailApplied = conversationModelClamped !== conversationModel || extractionModelClamped !== extractionModel;
+  const modelGuardrailReason = modelGuardrailApplied ? "premium_models_disabled" : null;
+
   const retrievalMode =
     profile.reasoningLevel === "deep" || profile.tier === "elite" || profile.tier === "enterprise"
       ? "semantic"
@@ -156,8 +184,8 @@ export function buildAiRuntimePolicy(profile: TenantAiOperatingProfile): TenantA
   return {
     primaryProvider,
     fallbackProviders,
-    conversationModel,
-    extractionModel,
+    conversationModel: conversationModelClamped,
+    extractionModel: extractionModelClamped,
     retrievalMode,
     supportsToolCalling: primaryProvider !== "altum_rules",
     supportsDeepReasoning: profile.reasoningLevel === "deep" && primaryProvider !== "altum_rules",
@@ -165,7 +193,9 @@ export function buildAiRuntimePolicy(profile: TenantAiOperatingProfile): TenantA
       profile.tier === "essential"
         ? "conservative"
         : profile.tier === "premium" || profile.tier === "elite" || profile.tier === "enterprise"
-          ? "premium"
-          : "balanced",
+        ? "premium"
+        : "balanced",
+    modelGuardrailApplied,
+    modelGuardrailReason,
   };
 }

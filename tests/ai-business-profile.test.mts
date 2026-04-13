@@ -68,3 +68,31 @@ test('ai operating layer falls back safely when profile is invalid', () => {
   assert.equal(policy.conversationModel, 'gpt-4.1-mini');
   assert.equal(policy.supportsToolCalling, true);
 });
+
+test('ai operating layer clamps premium openai models when premium is disabled', () => {
+  const profile = normalizeTenantAiOperatingProfile({
+    preferredProviders: ['openai'],
+    allowPremiumModels: false,
+    conversationModelOverride: 'gpt-5.4',
+    extractionModelOverride: 'gpt-5-mini',
+  });
+
+  const policy = buildAiRuntimePolicy(profile);
+  assert.equal(policy.conversationModel, 'gpt-4.1-mini');
+  assert.equal(policy.extractionModel, 'gpt-4.1-mini');
+  assert.equal(policy.modelGuardrailApplied, true);
+  assert.equal(policy.modelGuardrailReason, 'premium_models_disabled');
+});
+
+test('ai operating layer keeps premium model when explicitly allowed', () => {
+  const profile = normalizeTenantAiOperatingProfile({
+    preferredProviders: ['openai'],
+    allowPremiumModels: true,
+    conversationModelOverride: 'gpt-5.4',
+  });
+
+  const policy = buildAiRuntimePolicy(profile);
+  assert.equal(policy.conversationModel, 'gpt-5.4');
+  assert.equal(policy.modelGuardrailApplied, false);
+  assert.equal(policy.modelGuardrailReason, null);
+});
