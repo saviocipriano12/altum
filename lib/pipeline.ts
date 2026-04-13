@@ -5,6 +5,10 @@ export type PipelineStageDefinition = {
   color: string;
   position: number;
   isTerminal?: boolean;
+  slaHours?: number | null;
+  followUpHours?: number | null;
+  ownerUserId?: string | null;
+  ownerName?: string | null;
 };
 
 const DEFAULT_STAGE_COLORS = [
@@ -24,6 +28,8 @@ export const DEFAULT_PIPELINE_STAGES: PipelineStageDefinition[] = [
     description: "Entradas novas no funil comercial.",
     color: DEFAULT_STAGE_COLORS[0],
     position: 0,
+    slaHours: 4,
+    followUpHours: 2,
   },
   {
     id: "contato",
@@ -31,6 +37,8 @@ export const DEFAULT_PIPELINE_STAGES: PipelineStageDefinition[] = [
     description: "Primeira abordagem iniciada.",
     color: DEFAULT_STAGE_COLORS[1],
     position: 1,
+    slaHours: 12,
+    followUpHours: 6,
   },
   {
     id: "qualificacao",
@@ -38,6 +46,8 @@ export const DEFAULT_PIPELINE_STAGES: PipelineStageDefinition[] = [
     description: "Lead engajado e em descoberta.",
     color: DEFAULT_STAGE_COLORS[2],
     position: 2,
+    slaHours: 24,
+    followUpHours: 12,
   },
   {
     id: "proposta",
@@ -45,6 +55,8 @@ export const DEFAULT_PIPELINE_STAGES: PipelineStageDefinition[] = [
     description: "Oferta enviada ou em estruturacao.",
     color: DEFAULT_STAGE_COLORS[3],
     position: 3,
+    slaHours: 48,
+    followUpHours: 24,
   },
   {
     id: "fechamento",
@@ -52,6 +64,8 @@ export const DEFAULT_PIPELINE_STAGES: PipelineStageDefinition[] = [
     description: "Negociacao final e decisao.",
     color: DEFAULT_STAGE_COLORS[4],
     position: 4,
+    slaHours: 24,
+    followUpHours: 12,
   },
   {
     id: "ganho",
@@ -60,6 +74,8 @@ export const DEFAULT_PIPELINE_STAGES: PipelineStageDefinition[] = [
     color: DEFAULT_STAGE_COLORS[5],
     position: 5,
     isTerminal: true,
+    slaHours: null,
+    followUpHours: null,
   },
   {
     id: "perdido",
@@ -68,6 +84,8 @@ export const DEFAULT_PIPELINE_STAGES: PipelineStageDefinition[] = [
     color: DEFAULT_STAGE_COLORS[6],
     position: 6,
     isTerminal: true,
+    slaHours: null,
+    followUpHours: null,
   },
 ];
 
@@ -94,6 +112,12 @@ const STAGE_ALIASES: Record<string, string> = {
 function cleanText(value: unknown, max = 120) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+function cleanNumber(value: unknown, min: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
 function slugify(value: string) {
@@ -139,6 +163,16 @@ export function normalizePipelineStages(value: unknown): PipelineStageDefinition
       position:
         typeof source.position === "number" && Number.isFinite(source.position) ? source.position : index,
       isTerminal: Boolean(source.isTerminal ?? defaultStage.isTerminal),
+      slaHours:
+        source.slaHours === null
+          ? null
+          : cleanNumber(source.slaHours, 0, 24 * 30) ?? defaultStage.slaHours ?? null,
+      followUpHours:
+        source.followUpHours === null
+          ? null
+          : cleanNumber(source.followUpHours, 0, 24 * 30) ?? defaultStage.followUpHours ?? null,
+      ownerUserId: cleanText(source.ownerUserId, 120) || null,
+      ownerName: cleanText(source.ownerName, 120) || null,
     });
   }
 
@@ -156,9 +190,24 @@ export function normalizePipelineStages(value: unknown): PipelineStageDefinition
     color: item.color,
     position: index,
     isTerminal: item.isTerminal,
+    slaHours: item.slaHours ?? null,
+    followUpHours: item.followUpHours ?? null,
+    ownerUserId: item.ownerUserId ?? null,
+    ownerName: item.ownerName ?? null,
   }));
 }
 
 export function getPipelineStageLabel(stageId: string, stages = DEFAULT_PIPELINE_STAGES) {
   return stages.find((item) => item.id === normalizePipelineStageId(stageId))?.label || stageId || "Captado";
+}
+
+export function getPipelineStageDefinition(stageId: string, stages = DEFAULT_PIPELINE_STAGES) {
+  const normalizedStageId = normalizePipelineStageId(stageId);
+  return stages.find((item) => item.id === normalizedStageId) || stages[0] || DEFAULT_PIPELINE_STAGES[0];
+}
+
+export function getPipelineStageIndex(stageId: string, stages = DEFAULT_PIPELINE_STAGES) {
+  const normalizedStageId = normalizePipelineStageId(stageId);
+  const index = stages.findIndex((item) => item.id === normalizedStageId);
+  return index >= 0 ? index : 0;
 }

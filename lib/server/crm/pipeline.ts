@@ -3,6 +3,7 @@ import { getBusinessProfilePipelineStages } from "@/lib/business-profiles";
 import {
   getPipelineStageDefinition,
   getPipelineStageIndex,
+  normalizePipelineStageId,
   normalizePipelineStages,
   type PipelineStageDefinition,
 } from "@/lib/pipeline";

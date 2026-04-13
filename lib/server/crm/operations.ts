@@ -72,9 +72,10 @@ async function listRelatedChats(tenantId: string, leadId: string, phone: string)
 }
 
 async function listRecentAiSignals(tenantId: string, leadId: string) {
-  const snap = await adminDb.collection("ai_logs").where("tenantId", "==", tenantId).where("leadId", "==", leadId).limit(12).get();
+  const snap = await adminDb.collection("ai_logs").where("tenantId", "==", tenantId).limit(60).get();
   return snap.docs
     .map((doc): GenericRow => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }))
+    .filter((item) => cleanText(item.leadId, 140) === leadId)
     .sort((a, b) => toTime(b.createdAt) - toTime(a.createdAt))
     .slice(0, 4);
 }
