@@ -6,6 +6,8 @@ import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAcc
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
+import { analyzeLeadCommercialState, syncLeadCommercialState } from "@/lib/server/crm/operations";
+import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 
 type LeadDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -85,6 +87,10 @@ function parseTags(value: unknown) {
 
 function toSeconds(value: unknown) {
   if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? 0 : Math.floor(parsed.getTime() / 1000);
+  }
   if (
     typeof value === "object" &&
     value &&
@@ -243,6 +249,7 @@ async function listAppointments(tenantId: string, leadId: string) {
     .filter((item) => cleanString(item.leadId, 140) === leadId)
     .sort((a, b) => toSeconds(a.startAt) - toSeconds(b.startAt));
 }
+
 function buildConversationSummary(chats: Array<Record<string, unknown>>) {
   const open = chats.filter((item) => String(item.status || "open").toLowerCase() === "open").length;
   const pending = chats.filter((item) => String(item.status || "").toLowerCase() === "pending").length;
@@ -275,11 +282,17 @@ export async function GET(
     assertTenantRole(membership, "client_viewer");
 
     const { lead } = await getLeadRef(tenantId, leadId);
-    const [notes, tasks, timeline, relatedChats] = await Promise.all([
+    const [notes, tasks, timeline, relatedChats, appointments, commercial] = await Promise.all([
       listNotes(tenantId, leadId),
       listTasks(tenantId, leadId),
       listTimeline(leadId),
       listRelatedChats(tenantId, leadId, lead.telefone || ""),
+      listAppointments(tenantId, leadId),
+      analyzeLeadCommercialState({
+        tenantId,
+        leadId,
+        lead,
+      }),
     ]);
 
     return NextResponse.json({
@@ -302,9 +315,14 @@ export async function GET(
       },
       notes,
       tasks,
+      appointments,
       timeline,
       relatedChats,
       conversationSummary: buildConversationSummary(relatedChats),
+      qualification: commercial.qualification,
+      stagePolicy: commercial.stagePolicy,
+      handoff: commercial.handoff,
+      schedulingAdapter: commercial.schedulingAdapter,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {
@@ -390,6 +408,7 @@ export async function PATCH(
     const score = cleanNumber(body.score);
     if (body.score !== undefined && score !== (typeof lead.score === "number" ? lead.score : null)) {
       patch.score = score;
+      patch.scoreSource = "manual";
       changes.push(`score: ${score ?? 0}`);
     }
 
@@ -462,7 +481,36 @@ export async function PATCH(
         previousStage,
         nextStage: pipelineStage,
       });
+
+      if (pipelineStage === "qualificacao") {
+        await dispatchLeadConversionEvents({
+          tenantId,
+          leadId,
+          reason: "lead_qualified",
+        }).catch((error) => {
+          console.error("Falha ao disparar conversao de lead qualificado:", error);
+        });
+      }
+
+      if (pipelineStage === "ganho") {
+        await dispatchLeadConversionEvents({
+          tenantId,
+          leadId,
+          reason: "sale_won",
+        }).catch((error) => {
+          console.error("Falha ao disparar conversao de venda:", error);
+        });
+      }
     }
+
+    await syncLeadCommercialState({
+      tenantId,
+      leadId,
+      actorId: user.uid,
+      actorName: user.name,
+      allowStageAdvance: body.pipelineStage === undefined,
+      preserveManualScore: body.score !== undefined,
+    });
 
     return NextResponse.json({ ok: true, tenantId, leadId });
   } catch (error) {

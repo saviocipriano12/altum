@@ -4,7 +4,10 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
+import { normalizePipelineStageId } from "@/lib/pipeline";
+import { syncLeadCommercialState } from "@/lib/server/crm/operations";
 
 type Body = {
   stage?: string;
@@ -29,7 +32,7 @@ export async function POST(
     }
 
     const body = (await req.json()) as Body;
-    const stage = clean(body.stage, 80);
+    const stage = normalizePipelineStageId(clean(body.stage, 80) || "captado");
     const status = clean(body.status, 80);
 
     if (!stage) {
@@ -47,7 +50,7 @@ export async function POST(
       return NextResponse.json({ error: "Lead fora do tenant informado." }, { status: 403 });
     }
 
-    const previousStage = clean(leadData.pipelineStage, 80) || "captado";
+    const previousStage = normalizePipelineStageId(clean(leadData.pipelineStage, 80) || "captado");
 
     const patch: Record<string, unknown> = {
       pipelineStage: stage,
@@ -89,6 +92,34 @@ export async function POST(
       previousStage,
       nextStage: stage,
     });
+
+    await syncLeadCommercialState({
+      tenantId,
+      leadId,
+      actorId: user.uid,
+      actorName: user.name,
+      allowStageAdvance: false,
+    });
+
+    if (stage === "qualificacao") {
+      await dispatchLeadConversionEvents({
+        tenantId,
+        leadId,
+        reason: "lead_qualified",
+      }).catch((error) => {
+        console.error("Falha ao disparar conversao de lead qualificado:", error);
+      });
+    }
+
+    if (stage === "ganho") {
+      await dispatchLeadConversionEvents({
+        tenantId,
+        leadId,
+        reason: "sale_won",
+      }).catch((error) => {
+        console.error("Falha ao disparar conversao de venda:", error);
+      });
+    }
 
     return NextResponse.json({ ok: true, tenantId, leadId, previousStage, stage });
   } catch (error) {
