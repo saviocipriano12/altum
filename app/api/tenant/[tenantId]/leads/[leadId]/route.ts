@@ -238,8 +238,7 @@ async function listAppointments(tenantId: string, leadId: string) {
   const snap = await adminDb
     .collection("appointments")
     .where("tenantId", "==", tenantId)
-    .where("leadId", "==", leadId)
-    .limit(20)
+    .limit(60)
     .get();
 
   return snap.docs
@@ -247,6 +246,7 @@ async function listAppointments(tenantId: string, leadId: string) {
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }))
+    .filter((item) => cleanString(item.leadId, 140) === leadId)
     .sort((a, b) => toSeconds(a.startAt) - toSeconds(b.startAt));
 }
 

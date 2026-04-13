@@ -12,8 +12,10 @@ type ChatStateItem = {
   updatedAt: unknown;
   lastJobStatus?: string | null;
   lastJobError?: string | null;
+  lastJobErrorCode?: string | null;
   lastDecision?: string | null;
   lastDecisionReason?: string | null;
+  lastDecisionReasonCode?: string | null;
   lastProcessedAt?: unknown;
   lastJobId?: string | null;
   lastMessageId?: string | null;
@@ -132,8 +134,11 @@ export async function GET(
             updatedAt: data.updatedAt || null,
             lastJobStatus: typeof data.lastJobStatus === "string" ? data.lastJobStatus : null,
             lastJobError: typeof data.lastJobError === "string" ? data.lastJobError : null,
+            lastJobErrorCode: typeof data.lastJobErrorCode === "string" ? data.lastJobErrorCode : null,
             lastDecision: typeof data.lastDecision === "string" ? data.lastDecision : null,
             lastDecisionReason: typeof data.lastDecisionReason === "string" ? data.lastDecisionReason : null,
+            lastDecisionReasonCode:
+              typeof data.lastDecisionReasonCode === "string" ? data.lastDecisionReasonCode : null,
             lastProcessedAt: data.lastProcessedAt || null,
             lastJobId: typeof data.lastJobId === "string" ? data.lastJobId : null,
             lastMessageId: typeof data.lastMessageId === "string" ? data.lastMessageId : null,

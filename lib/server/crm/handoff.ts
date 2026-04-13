@@ -124,9 +124,9 @@ export async function buildLeadHandoffContext(input: {
         return snap.docs
           .map(
             (doc): ChatMessageRow => ({
-            id: doc.id,
-            chatId,
-            ...(doc.data() as Record<string, unknown>),
+              id: doc.id,
+              chatId,
+              ...(doc.data() as Record<string, unknown>),
             })
           )
           .sort((a, b) => toTime(a.createdAt || a.timestamp) - toTime(b.createdAt || b.timestamp))

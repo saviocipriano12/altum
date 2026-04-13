@@ -13,6 +13,9 @@ export type TenantAutomationTrigger =
   | "finance_paid";
 export type TenantAutomationActionType =
   | "create_task"
+  | "follow_up"
+  | "move_stage"
+  | "alert_human"
   | "add_note"
   | "add_tag"
   | "set_priority"
@@ -36,6 +39,10 @@ export type TenantAutomationAction = {
   tag?: string;
   priority?: string;
   taskType?: string;
+  stageId?: string;
+  ownerUserId?: string;
+  ownerName?: string;
+  reasonCode?: string;
   dueInHours?: number | null;
   waitInHours?: number | null;
   sequenceOrder?: number | null;
@@ -137,6 +144,9 @@ function normalizeTrigger(value: unknown): TenantAutomationTrigger {
 
 function normalizeActionType(value: unknown): TenantAutomationActionType {
   const raw = cleanText(value, 40).toLowerCase();
+  if (raw === "follow_up") return "follow_up";
+  if (raw === "move_stage") return "move_stage";
+  if (raw === "alert_human") return "alert_human";
   if (raw === "add_note") return "add_note";
   if (raw === "add_tag") return "add_tag";
   if (raw === "set_priority") return "set_priority";
@@ -162,6 +172,10 @@ export function normalizeAutomationDoc(
             tag: cleanText(action.tag, 32).toLowerCase(),
             priority: cleanText(action.priority, 20).toLowerCase(),
             taskType: cleanText(action.taskType, 40).toLowerCase(),
+            stageId: cleanText(action.stageId, 80),
+            ownerUserId: cleanText(action.ownerUserId, 140),
+            ownerName: cleanText(action.ownerName, 140),
+            reasonCode: cleanText(action.reasonCode, 80).toLowerCase(),
             dueInHours: cleanNumber(action.dueInHours),
             waitInHours: cleanNumber(action.waitInHours),
             sequenceOrder: cleanNumber(action.sequenceOrder),
@@ -169,6 +183,9 @@ export function normalizeAutomationDoc(
         })
         .filter((action) => {
           if (action.type === "create_task") return Boolean(action.title);
+          if (action.type === "follow_up") return Boolean(action.title || action.dueInHours !== null);
+          if (action.type === "move_stage") return Boolean(action.stageId);
+          if (action.type === "alert_human") return Boolean(action.title || action.text || action.reasonCode);
           if (action.type === "add_note") return Boolean(action.text);
           if (action.type === "add_tag") return Boolean(action.tag);
           if (action.type === "set_priority") return Boolean(action.priority);
@@ -392,16 +409,21 @@ async function executeImmediateAction(
     };
   }
 
-  if (action.type === "create_task" && action.title) {
+  if ((action.type === "create_task" || action.type === "follow_up") && (action.title || action.type === "follow_up")) {
     const dueInHours = Math.max(0, Math.min(24 * 30, Number(action.dueInHours || 0)));
+    const taskTitle =
+      action.title ||
+      (action.type === "follow_up" ? `Follow-up automatico para ${lead.nome}` : "Tarefa automatica");
     await adminDb.collection("lead_tasks").add({
       tenantId: context.tenantId,
       leadId: context.leadId,
-      title: action.title,
-      type: action.taskType || "follow_up",
+      title: taskTitle,
+      type: action.type === "follow_up" ? "follow_up" : action.taskType || "follow_up",
       priority: action.priority || lead.priority || "medium",
       dueAt: dueInHours ? new Date(Date.now() + dueInHours * 3600_000) : null,
       status: "pending",
+      source: "tenant_automation",
+      reasonCode: action.reasonCode || (action.type === "follow_up" ? "follow_up_due" : "automation_task"),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       createdBy: context.actorId || "automation",
@@ -414,7 +436,69 @@ async function executeImmediateAction(
       event: {
         type: "automation_task_created",
         title: "Automacao criou tarefa",
-        detail: action.title,
+        detail: taskTitle,
+      },
+    };
+  }
+
+  if (action.type === "move_stage" && action.stageId) {
+    const nextStage = normalizePipelineStageId(action.stageId);
+    leadPatch.pipelineStage = nextStage;
+    leadPatch.stage = nextStage;
+    leadPatch.stageUpdatedAt = FieldValue.serverTimestamp();
+    return {
+      executed: true,
+      event: {
+        type: "automation_stage_changed",
+        title: "Automacao moveu stage",
+        detail: `${lead.pipelineStage} -> ${nextStage}`,
+      },
+    };
+  }
+
+  if (action.type === "alert_human") {
+    const dueInHours = Math.max(0, Math.min(24 * 30, Number(action.dueInHours || 0)));
+    const title = action.title || `Handoff humano para ${lead.nome}`;
+    await adminDb.collection("lead_tasks").add({
+      tenantId: context.tenantId,
+      leadId: context.leadId,
+      title,
+      type: "alerta_humano",
+      priority: action.priority || "high",
+      dueAt: dueInHours ? new Date(Date.now() + dueInHours * 3600_000) : new Date(),
+      status: "pending",
+      source: "tenant_automation",
+      reasonCode: action.reasonCode || "human_alert",
+      ownerUserId: action.ownerUserId || null,
+      ownerName: action.ownerName || null,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      createdBy: context.actorId || "automation",
+      createdByName: context.actorName || automation.name,
+      automationId: automation.id,
+      automationName: automation.name,
+    });
+
+    if (action.text) {
+      await adminDb.collection("lead_notes").add({
+        tenantId: context.tenantId,
+        leadId: context.leadId,
+        text: action.text,
+        authorId: "automation",
+        authorName: automation.name,
+        reasonCode: action.reasonCode || "human_alert",
+        automationId: automation.id,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    return {
+      executed: true,
+      event: {
+        type: "automation_human_alerted",
+        title: "Automacao alertou humano",
+        detail: title,
       },
     };
   }

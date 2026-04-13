@@ -54,8 +54,10 @@ type ChatAiState = {
   pauseReason?: string | null;
   lastJobStatus?: string | null;
   lastJobError?: string | null;
+  lastJobErrorCode?: string | null;
   lastDecision?: string | null;
   lastDecisionReason?: string | null;
+  lastDecisionReasonCode?: string | null;
   lastProcessedAt?: unknown;
   lastJobId?: string | null;
   lastMessageId?: string | null;
@@ -516,6 +518,53 @@ function isAiPaused(chat: Pick<ChatItem, "aiState"> | null | undefined) {
   return Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
 }
 
+function compactAiError(value: string, max = 180) {
+  return value.replace(/\s+/g, " ").replace(/https?:\/\/\S+/g, "").trim().slice(0, max);
+}
+
+function aiErrorStatusMessage(code: string, mode: "retrying" | "dead_letter") {
+  const retrying = mode === "retrying";
+  if (code === "quota_exceeded") {
+    return retrying
+      ? "IA sem quota/saldo no provider atual. Ajuste billing ou troque para modelo economico no painel IA."
+      : "IA parou por falta de quota/saldo no provider. Ajuste billing/modelo e clique em Reprocessar ultima mensagem.";
+  }
+  if (code === "auth_invalid") {
+    return retrying
+      ? "IA com credencial invalida no provider atual. Revise a chave de API do tenant."
+      : "IA parou por credencial invalida no provider. Atualize a chave de API e reprocese.";
+  }
+  if (code === "rate_limited") {
+    return retrying
+      ? "IA aguardando janela do provider por limite de requisicoes (rate limit)."
+      : "IA excedeu limite de requisicoes no provider e entrou em fila de falha.";
+  }
+  if (code === "timeout") {
+    return retrying
+      ? "IA enfrentou timeout no provider e esta tentando novamente."
+      : "IA parou por timeout repetido no provider. Tente reprocessar agora.";
+  }
+  if (code === "provider_unavailable") {
+    return retrying
+      ? "Provider de IA indisponivel no momento; tentativa automatica em andamento."
+      : "Provider de IA indisponivel por tempo prolongado. Reprocessamento manual recomendado.";
+  }
+  if (code === "network_error") {
+    return retrying
+      ? "Instabilidade de rede entre plataforma e provider; nova tentativa em andamento."
+      : "Falha de rede persistente no envio ao provider. Reprocessamento manual recomendado.";
+  }
+  if (code === "payload_invalid") {
+    return retrying
+      ? "Mensagem com payload invalido; a IA esta tentando normalizar e reenviar."
+      : "Falha por payload invalido. Revise a mensagem e tente reprocessar.";
+  }
+
+  return retrying
+    ? "IA tentando novamente apos uma falha recente."
+    : "Ultima tentativa da IA falhou e precisa de revisao.";
+}
+
 function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefined) {
   if (!chat?.aiState) return "IA pronta para respostas automaticas nesta conversa.";
   const updatedByName = String(chat.aiState.updatedByName || "").trim();
@@ -523,7 +572,9 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
   const isStillPaused = Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
   const lastJobStatus = String(chat.aiState.lastJobStatus || "").trim().toLowerCase();
   const lastJobError = String(chat.aiState.lastJobError || "").trim();
+  const lastJobErrorCode = String(chat.aiState.lastJobErrorCode || "").trim().toLowerCase();
   const lastDecisionReason = String(chat.aiState.lastDecisionReason || "").trim().toLowerCase();
+  const lastDecisionReasonCode = String(chat.aiState.lastDecisionReasonCode || "").trim().toLowerCase();
 
   if (chat.aiState.humanOwnerUserId && isStillPaused) {
     const suffix = pausedUntil ? ` ate ${formatDateTime(pausedUntil)}` : "";
@@ -540,22 +591,30 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
   }
 
   if (lastJobStatus === "retrying") {
-    return lastJobError
-      ? `IA tentando novamente apos falha: ${lastJobError}.`
-      : "IA tentando novamente apos uma falha recente.";
+    const base = aiErrorStatusMessage(lastJobErrorCode, "retrying");
+    const detail = !lastJobErrorCode && lastJobError ? ` Detalhe tecnico: ${compactAiError(lastJobError)}.` : "";
+    return `${base}${detail}`;
   }
 
   if (lastJobStatus === "dead_letter") {
-    return lastJobError
-      ? `Ultima tentativa da IA falhou: ${lastJobError}.`
-      : "Ultima tentativa da IA falhou e precisa de revisao.";
+    const base = aiErrorStatusMessage(lastJobErrorCode, "dead_letter");
+    const detail = !lastJobErrorCode && lastJobError ? ` Detalhe tecnico: ${compactAiError(lastJobError)}.` : "";
+    return `${base}${detail}`;
   }
 
-  if (lastJobStatus === "done" && lastDecisionReason.includes("provider_fallback_contingency")) {
+  if (
+    lastJobStatus === "done" &&
+    (lastDecisionReason.includes("provider_fallback_contingency") ||
+      lastDecisionReasonCode.includes("provider_fallback_contingency"))
+  ) {
     return "IA operando em contingencia por falha temporaria do provider. A conversa segue ativa.";
   }
 
-  if (lastJobStatus === "done" && lastDecisionReason.includes("usage_cap_contingency")) {
+  if (
+    lastJobStatus === "done" &&
+    (lastDecisionReason.includes("usage_cap_contingency") ||
+      lastDecisionReasonCode.includes("usage_cap_contingency"))
+  ) {
     return "IA operando em contingencia por limite mensal (uso/custo). Atualize o budget para voltar ao modo completo.";
   }
 

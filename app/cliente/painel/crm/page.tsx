@@ -28,7 +28,7 @@ import {
 } from "@/app/cliente/painel/components/ui";
 import { getBusinessProfile, type BusinessProfileId } from "@/lib/business-profiles";
 import { buildAiTaskPreset, humanizeAiNextAction, suggestPipelineStageForAiAction } from "@/lib/ai-next-actions";
-import { getPipelineStageLabel, normalizePipelineStageId } from "@/lib/pipeline";
+import { getPipelineStageLabel, normalizePipelineStageId, type PipelineStageDefinition } from "@/lib/pipeline";
 
 type TimelineEvent = {
   id: string;
@@ -55,6 +55,65 @@ type LeadTask = {
   createdAt?: unknown;
 };
 
+type AppointmentItem = {
+  id: string;
+  title?: string;
+  status?: string;
+  startAt?: unknown;
+  ownerName?: string | null;
+};
+
+type QualificationReason = {
+  code: string;
+  label: string;
+  detail: string;
+  direction: "positive" | "negative";
+};
+
+type LeadQualification = {
+  score?: number;
+  band?: "cold" | "warming" | "sales_ready" | "handoff";
+  label?: string;
+  recommendedStage?: string;
+  nextAction?: string;
+  missingFields?: string[];
+  reasons?: QualificationReason[];
+};
+
+type LeadStagePolicy = {
+  stageLabel?: string;
+  slaHours?: number | null;
+  followUpHours?: number | null;
+  ownerName?: string | null;
+  slaDueAt?: string | null;
+  slaBreached?: boolean;
+};
+
+type LeadHandoff = {
+  status?: "monitoring" | "ready";
+  reasonCode?: string;
+  reasonLabel?: string;
+  summary?: string;
+  recommendedOwnerName?: string | null;
+  transcript?: Array<{
+    id: string;
+    text?: string;
+    author?: string;
+    sentAt?: unknown;
+  }>;
+};
+
+type LeadSchedulingAdapter = {
+  provider?: "google_calendar";
+  status?: "not_configured" | "ready";
+  syncReady?: boolean;
+  suggestedEvent?: {
+    title?: string;
+    startAt?: string;
+    description?: string;
+  };
+};
+
 type LeadItem = {
   id: string;
   nome?: string;
@@ -75,6 +134,8 @@ type LeadItem = {
   tags?: string[];
   customFields?: Record<string, string | number | boolean | null>;
   notes?: string;
+  qualification?: LeadQualification;
+  handoff?: LeadHandoff;
   chatSummary?: {
     total?: number;
     open?: number;
@@ -104,8 +165,13 @@ type LeadDetailPayload = {
   lead: LeadItem;
   notes?: LeadNote[];
   tasks?: LeadTask[];
+  appointments?: AppointmentItem[];
   timeline?: TimelineEvent[];
   relatedChats?: RelatedChat[];
+  qualification?: LeadQualification;
+  stagePolicy?: LeadStagePolicy;
+  handoff?: LeadHandoff;
+  schedulingAdapter?: LeadSchedulingAdapter;
   conversationSummary?: {
     total?: number;
     open?: number;
@@ -122,6 +188,10 @@ type SettingsPayload = {
   settings?: {
     businessProfileId?: BusinessProfileId | string;
   };
+};
+
+type PipelinePayload = {
+  stages?: PipelineStageDefinition[];
 };
 
 type AiSignalLog = {
@@ -141,6 +211,10 @@ const HEAT_OPTIONS = ["frio", "morno", "quente"];
 function toDate(value: unknown) {
   if (!value) return null;
   if (typeof value === "number") return new Date(value);
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
   if (
     typeof value === "object" &&
     value &&
@@ -218,6 +292,13 @@ function getHeatTone(heat?: string) {
   return "neutral" as const;
 }
 
+function getQualificationTone(band?: string) {
+  if (band === "handoff") return "danger" as const;
+  if (band === "sales_ready") return "success" as const;
+  if (band === "warming") return "warning" as const;
+  return "neutral" as const;
+}
+
 function formatCustomFieldValue(value: string | number | boolean | null | undefined) {
   if (typeof value === "boolean") return value ? "Sim" : "Nao";
   if (typeof value === "number") return String(value);
@@ -255,6 +336,7 @@ export default function ClienteCrmPage() {
   const [error, setError] = useState<string | null>(null);
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [aiLogs, setAiLogs] = useState<AiSignalLog[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<PipelineStageDefinition[]>([]);
   const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [detail, setDetail] = useState<LeadDetailPayload | null>(null);
@@ -292,14 +374,16 @@ export default function ClienteCrmPage() {
 
     setLoading(true);
     try {
-      const [res, settingsRes, aiLogsRes] = await Promise.all([
+      const [res, settingsRes, aiLogsRes, pipelineRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/leads`),
         authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
         authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/pipeline`),
       ]);
       const payload = (await res.json()) as { items?: LeadItem[]; error?: string };
       const settingsPayload = (await settingsRes.json().catch(() => ({}))) as SettingsPayload;
       const aiLogsPayload = (await aiLogsRes.json().catch(() => ({}))) as { items?: AiSignalLog[] };
+      const pipelinePayload = (await pipelineRes.json().catch(() => ({}))) as PipelinePayload;
 
       if (!res.ok) {
         setError(payload.error || "Falha ao carregar leads.");
@@ -312,6 +396,7 @@ export default function ClienteCrmPage() {
       setBusinessProfileId((settingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
       setLeads(nextLeads);
       setAiLogs(aiLogsRes.ok ? aiLogsPayload.items || [] : []);
+      setPipelineStages(pipelineRes.ok ? pipelinePayload.stages || [] : []);
       setSelectedLeadId((current) => {
         if (current && nextLeads.some((lead) => lead.id === current)) return current;
         if (leadFromQuery && nextLeads.some((lead) => lead.id === leadFromQuery)) return leadFromQuery;
@@ -354,7 +439,12 @@ export default function ClienteCrmPage() {
           channel: payload.lead.channel || "",
           priority: payload.lead.priority || "medium",
           heat: payload.lead.heat || "morno",
-          score: typeof payload.lead.score === "number" ? String(payload.lead.score) : "",
+          score:
+            typeof payload.lead.score === "number"
+              ? String(payload.lead.score)
+              : typeof payload.qualification?.score === "number"
+                ? String(payload.qualification.score)
+                : "",
           potentialValue:
             typeof payload.lead.potentialValue === "number" ? String(payload.lead.potentialValue) : "",
           notes: payload.lead.notes || "",
@@ -419,8 +509,11 @@ export default function ClienteCrmPage() {
   );
   const businessProfile = useMemo(() => getBusinessProfile(businessProfileId), [businessProfileId]);
   const stageOptions = useMemo(
-    () => businessProfile.pipeline.stages.map((stage) => normalizePipelineStageId(stage)),
-    [businessProfile]
+    () =>
+      (pipelineStages.length ? pipelineStages.map((stage) => stage.id) : businessProfile.pipeline.stages).map((stage) =>
+        normalizePipelineStageId(stage)
+      ),
+    [businessProfile, pipelineStages]
   );
   const selectedLeadAiLogs = useMemo(() => {
     if (!selectedLead) return [] as AiSignalLog[];
@@ -576,6 +669,16 @@ export default function ClienteCrmPage() {
         return String(value ?? "").trim().length > 0;
       }),
     [detail?.lead?.customFields]
+  );
+  const leadQualification = detail?.qualification || detail?.lead?.qualification || selectedLead?.qualification || null;
+  const leadStagePolicy = detail?.stagePolicy || null;
+  const leadHandoff = detail?.handoff || detail?.lead?.handoff || selectedLead?.handoff || null;
+  const schedulingAdapter = detail?.schedulingAdapter || null;
+  const nextAppointment = useMemo(
+    () =>
+      [...(detail?.appointments || [])]
+        .sort((a, b) => new Date(String(a.startAt || 0)).getTime() - new Date(String(b.startAt || 0)).getTime())[0] || null,
+    [detail?.appointments]
   );
 
   async function refreshCurrent() {
@@ -1035,6 +1138,83 @@ export default function ClienteCrmPage() {
                   </div>
                 </div>
 
+                {leadQualification || leadStagePolicy || leadHandoff ? (
+                  <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <CardTitle title="Qualificacao IA" subtitle="Score operacional com motivo explicito." />
+                        {leadQualification?.band ? (
+                          <StateBadge label={leadQualification.label || leadQualification.band} tone={getQualificationTone(leadQualification.band)} />
+                        ) : null}
+                      </div>
+                      <p className="mt-4 text-3xl font-semibold text-white">{leadQualification?.score ?? selectedLead.score ?? "--"}</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text-soft)]">
+                        Proximo passo: {leadQualification?.nextAction ? humanizeAiNextAction(leadQualification.nextAction) : "Sem recomendacao"}
+                      </p>
+                      {leadQualification?.recommendedStage ? (
+                        <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
+                          Stage sugerido: {getPipelineStageLabel(leadQualification.recommendedStage, pipelineStages.length ? pipelineStages : undefined)}
+                        </p>
+                      ) : null}
+                      <div className="mt-3 space-y-2">
+                        {(leadQualification?.reasons || []).slice(0, 3).map((reason) => (
+                          <div key={reason.code} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+                            <p className="text-xs font-medium text-white">{reason.label}</p>
+                            <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">{reason.detail}</p>
+                          </div>
+                        ))}
+                        {leadQualification?.missingFields?.length ? (
+                          <p className="text-[11px] text-amber-100">
+                            Faltando: {leadQualification.missingFields.join(", ").replaceAll("_", " ")}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <CardTitle title="Governanca da etapa" subtitle="SLA, follow-up e ownership do stage atual." />
+                        {leadStagePolicy?.slaBreached ? <StateBadge label="SLA vencido" tone="danger" /> : <StateBadge label="em janela" tone="info" />}
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <QuickContext
+                          title="Etapa"
+                          value={leadStagePolicy?.stageLabel || getPipelineStageLabel(selectedLead.pipelineStage || selectedLead.stage || "captado", pipelineStages.length ? pipelineStages : undefined)}
+                          detail={leadStagePolicy?.ownerName ? `Responsavel: ${leadStagePolicy.ownerName}` : "Sem responsavel fixo"}
+                        />
+                        <QuickContext
+                          title="Follow-up"
+                          value={leadStagePolicy?.followUpHours ? `${leadStagePolicy.followUpHours}h` : "--"}
+                          detail={leadStagePolicy?.slaHours ? `SLA da etapa: ${leadStagePolicy.slaHours}h` : "Sem SLA configurado"}
+                        />
+                      </div>
+                      <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">
+                        Vencimento do SLA: {leadStagePolicy?.slaDueAt ? formatDateTime(leadStagePolicy.slaDueAt) : "Nao configurado"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <CardTitle title="Handoff humano" subtitle="Contexto pronto para assumirmos sem perder historico." />
+                        <StateBadge label={leadHandoff?.status === "ready" ? "pronto" : "monitorando"} tone={leadHandoff?.status === "ready" ? "danger" : "info"} />
+                      </div>
+                      <p className="mt-4 text-sm text-[var(--cliente-card-text)]">{leadHandoff?.reasonLabel || "Aguardando gatilho de handoff."}</p>
+                      <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{leadHandoff?.summary || "Sem resumo de handoff ainda."}</p>
+                      {leadHandoff?.recommendedOwnerName ? (
+                        <p className="mt-2 text-xs text-[var(--cliente-card-text-muted)]">Responsavel sugerido: {leadHandoff.recommendedOwnerName}</p>
+                      ) : null}
+                      <div className="mt-3 space-y-2">
+                        {(leadHandoff?.transcript || []).slice(-2).map((item) => (
+                          <div key={item.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{item.author || "Contato"}</p>
+                            <p className="mt-1 text-sm text-white">{item.text || "--"}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 {customFieldEntries.length ? (
                   <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                     <div className="flex items-center justify-between gap-3">
@@ -1142,6 +1322,42 @@ export default function ClienteCrmPage() {
                     </button>
                   </div>
                 </div>
+
+                {schedulingAdapter ? (
+                  <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <CardTitle title="Agenda comercial" subtitle="Adapter inicial pronto para Google Calendar." />
+                      <StateBadge
+                        label={schedulingAdapter.syncReady ? "google pronto" : "nao configurado"}
+                        tone={schedulingAdapter.syncReady ? "success" : "warning"}
+                      />
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <QuickContext
+                        title="Sugestao"
+                        value={schedulingAdapter.suggestedEvent?.title || "Reuniao comercial"}
+                        detail={schedulingAdapter.suggestedEvent?.startAt ? formatDateTime(schedulingAdapter.suggestedEvent.startAt) : "Sem horario sugerido"}
+                      />
+                      <QuickContext
+                        title="Proximo agendamento"
+                        value={nextAppointment?.title || "Nenhum"}
+                        detail={nextAppointment?.startAt ? formatDateTime(nextAppointment.startAt) : "Criar na agenda"}
+                      />
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                      {schedulingAdapter.suggestedEvent?.description || "Sem payload sugerido."}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link
+                        href={`/cliente/painel/agenda?leadId=${encodeURIComponent(selectedLead.id)}`}
+                        className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+                      >
+                        Abrir agenda
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
 
                 <form onSubmit={saveProfile} className="mt-4 space-y-4">
                   <div className="grid gap-3 md:grid-cols-2">

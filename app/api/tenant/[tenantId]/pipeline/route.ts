@@ -8,8 +8,7 @@ import {
   normalizePipelineStages,
   type PipelineStageDefinition,
 } from "@/lib/pipeline";
-import { getBusinessProfilePipelineStages } from "@/lib/business-profiles";
-import { getTenantSettings } from "@/lib/server/tenant";
+import { buildLeadStagePolicy, loadTenantPipelineConfig } from "@/lib/server/crm/pipeline";
 
 type PipelineLead = {
   id: string;
@@ -109,25 +108,6 @@ function getStageStartedAt(lead: PipelineLead) {
   return toMillis(lead.stageUpdatedAt) || toMillis(lead.updatedAt) || toMillis(lead.createdAt);
 }
 
-async function loadPipelineConfig(tenantId: string) {
-  const direct = await adminDb.collection("pipeline").doc(tenantId).get();
-  if (direct.exists) {
-    const data = direct.data() as Record<string, unknown>;
-    if ((data.tenantId || tenantId) === tenantId) {
-      return normalizePipelineStages(data.stages);
-    }
-  }
-
-  const querySnap = await adminDb.collection("pipeline").where("tenantId", "==", tenantId).limit(1).get();
-  if (!querySnap.empty) {
-    const data = querySnap.docs[0].data() as Record<string, unknown>;
-    return normalizePipelineStages(data.stages);
-  }
-
-  const settings = await getTenantSettings(tenantId);
-  return getBusinessProfilePipelineStages(settings?.businessProfileId);
-}
-
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -138,8 +118,8 @@ export async function GET(
     const membership = await assertTenantAccess(user.uid, tenantId);
     assertTenantRole(membership, "client_viewer");
 
-    const [stages, leadsSnap] = await Promise.all([
-      loadPipelineConfig(tenantId),
+    const [{ stages, owners }, leadsSnap] = await Promise.all([
+      loadTenantPipelineConfig(tenantId),
       adminDb.collection("leads").where("tenantId", "==", tenantId).limit(240).get(),
     ]);
 
@@ -161,10 +141,15 @@ export async function GET(
         .map((lead) => {
           const stageStartedAt = getStageStartedAt(lead);
           const daysInStage = stageStartedAt > 0 ? Math.max(0, Math.floor((now - stageStartedAt) / 86400000)) : 0;
+          const stagePolicy = buildLeadStagePolicy({
+            lead,
+            stages,
+          });
 
           return {
             ...lead,
             ageDays: daysInStage,
+            slaBreached: stagePolicy.slaBreached,
           };
         });
 
@@ -186,6 +171,7 @@ export async function GET(
         totalValue: value,
         avgScore,
         avgAgeDays,
+        slaBreachedCount: items.filter((lead) => Boolean(lead.slaBreached)).length,
         items,
       };
     });
@@ -201,6 +187,7 @@ export async function GET(
       ok: true,
       tenantId,
       stages,
+      owners,
       columns,
       summary: {
         totalLeads: leads.length,
