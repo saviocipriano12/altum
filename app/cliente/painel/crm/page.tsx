@@ -133,6 +133,31 @@ type LeadItem = {
   potentialValue?: number | null;
   tags?: string[];
   customFields?: Record<string, string | number | boolean | null>;
+  aiFieldEvidence?: Record<
+    string,
+    {
+      value?: string;
+      source?: "agent_extracted" | "conversation_context" | "derived" | string;
+      confidence?: number;
+      intent?: string | null;
+      stateAfter?: string | null;
+      nextAction?: string | null;
+      capturedAt?: unknown;
+    }
+  >;
+  aiCaptureChecklist?: {
+    nome?: boolean;
+    tipoEmpresa?: boolean;
+    objetivo?: boolean;
+    orcamento?: boolean;
+    urgencia?: boolean;
+    decisor?: boolean;
+    canaisAtuais?: boolean;
+    cidade?: boolean;
+    tamanhoTime?: boolean;
+    servicoInteresse?: boolean;
+    updatedAt?: unknown;
+  };
   notes?: string;
   qualification?: LeadQualification;
   handoff?: LeadHandoff;
@@ -304,6 +329,21 @@ function formatCustomFieldValue(value: string | number | boolean | null | undefi
   if (typeof value === "number") return String(value);
   if (typeof value === "string") return value.trim() || "--";
   return "--";
+}
+
+function humanizeEvidenceSource(value?: string | null) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "agent_extracted") return "extraido da conversa";
+  if (normalized === "conversation_context") return "contexto da conversa";
+  if (normalized === "derived") return "derivado por regra";
+  return normalized || "origem desconhecida";
+}
+
+function getEvidenceConfidenceTone(confidence?: number | null) {
+  if (typeof confidence !== "number" || !Number.isFinite(confidence)) return "neutral" as const;
+  if (confidence >= 0.82) return "success" as const;
+  if (confidence >= 0.66) return "info" as const;
+  return "warning" as const;
 }
 
 function nextLocalDateTime(daysAhead = 1) {
@@ -670,6 +710,67 @@ export default function ClienteCrmPage() {
       }),
     [detail?.lead?.customFields]
   );
+  const aiFieldEvidenceEntries = useMemo(() => {
+    const source = detail?.lead?.aiFieldEvidence || selectedLead?.aiFieldEvidence || {};
+    return Object.entries(source)
+      .map(([field, raw]) => {
+        const evidence =
+          raw && typeof raw === "object"
+            ? (raw as {
+                value?: unknown;
+                source?: unknown;
+                confidence?: unknown;
+                intent?: unknown;
+                stateAfter?: unknown;
+                nextAction?: unknown;
+                capturedAt?: unknown;
+              })
+            : null;
+        const value = typeof evidence?.value === "string" ? evidence.value.trim() : "";
+        const sourceLabel = typeof evidence?.source === "string" ? evidence.source : "";
+        const confidence =
+          typeof evidence?.confidence === "number" && Number.isFinite(evidence.confidence)
+            ? evidence.confidence
+            : null;
+        const intent = typeof evidence?.intent === "string" ? evidence.intent.trim() : "";
+        const stateAfter = typeof evidence?.stateAfter === "string" ? evidence.stateAfter.trim() : "";
+        const nextAction = typeof evidence?.nextAction === "string" ? evidence.nextAction.trim() : "";
+        const capturedAt = evidence?.capturedAt;
+
+        return {
+          field,
+          value: value || "--",
+          source: sourceLabel,
+          confidence,
+          intent,
+          stateAfter,
+          nextAction,
+          capturedAt,
+        };
+      })
+      .sort((a, b) => {
+        const confidenceA = typeof a.confidence === "number" ? a.confidence : -1;
+        const confidenceB = typeof b.confidence === "number" ? b.confidence : -1;
+        return confidenceB - confidenceA;
+      });
+  }, [detail?.lead?.aiFieldEvidence, selectedLead?.aiFieldEvidence]);
+  const aiCaptureChecklistEntries = useMemo(() => {
+    const checklist = detail?.lead?.aiCaptureChecklist || selectedLead?.aiCaptureChecklist;
+    if (!checklist || typeof checklist !== "object") return [] as Array<{ key: string; done: boolean }>;
+    const orderedKeys = [
+      "nome",
+      "tipoEmpresa",
+      "objetivo",
+      "orcamento",
+      "urgencia",
+      "decisor",
+      "canaisAtuais",
+      "cidade",
+      "tamanhoTime",
+      "servicoInteresse",
+    ] as const;
+    return orderedKeys.map((key) => ({ key, done: Boolean(checklist[key]) }));
+  }, [detail?.lead?.aiCaptureChecklist, selectedLead?.aiCaptureChecklist]);
   const leadQualification = detail?.qualification || detail?.lead?.qualification || selectedLead?.qualification || null;
   const leadStagePolicy = detail?.stagePolicy || null;
   const leadHandoff = detail?.handoff || detail?.lead?.handoff || selectedLead?.handoff || null;
@@ -1234,6 +1335,80 @@ export default function ClienteCrmPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : null}
+
+                {aiCaptureChecklistEntries.length || aiFieldEvidenceEntries.length ? (
+                  <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle
+                        title="Rastreabilidade IA"
+                        subtitle="Origem e confianca de cada dado comercial preenchido automaticamente."
+                      />
+                      <StateBadge label={`${aiFieldEvidenceEntries.length} evidencias`} tone="info" />
+                    </div>
+
+                    {aiCaptureChecklistEntries.length ? (
+                      <div className="mt-4">
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                          Checklist de captura
+                        </p>
+                        <div className="mt-3 grid gap-2 md:grid-cols-2">
+                          {aiCaptureChecklistEntries.map((item) => (
+                            <div
+                              key={item.key}
+                              className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2"
+                            >
+                              <p className="text-xs text-white">{item.key.replace(/([A-Z])/g, " $1").toLowerCase()}</p>
+                              <StateBadge label={item.done ? "ok" : "pendente"} tone={item.done ? "success" : "warning"} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {aiFieldEvidenceEntries.length ? (
+                      <div className="mt-4">
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                          Evidencias por campo
+                        </p>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          {aiFieldEvidenceEntries.map((item) => (
+                            <div
+                              key={item.field}
+                              className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                                  {item.field.replaceAll("_", " ").replaceAll(".", " / ")}
+                                </p>
+                                <StateBadge
+                                  label={
+                                    typeof item.confidence === "number"
+                                      ? `conf ${Math.round(item.confidence * 100)}%`
+                                      : "conf --"
+                                  }
+                                  tone={getEvidenceConfidenceTone(item.confidence)}
+                                />
+                              </div>
+                              <p className="mt-2 text-sm text-white">{item.value}</p>
+                              <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                                Fonte: {humanizeEvidenceSource(item.source)}
+                              </p>
+                              <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                                Intent: {item.intent || "--"} · Stage: {item.stateAfter || "--"}
+                              </p>
+                              <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                                Next action: {item.nextAction ? humanizeAiNextAction(item.nextAction) : "--"}
+                              </p>
+                              <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">
+                                Capturado em: {formatDateTime(item.capturedAt)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
