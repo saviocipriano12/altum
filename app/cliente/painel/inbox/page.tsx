@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
 import {
   CardTitle,
   EmptyState,
@@ -61,6 +62,12 @@ type ChatAiState = {
   lastProcessedAt?: unknown;
   lastJobId?: string | null;
   lastMessageId?: string | null;
+  lastHandoffNotifyAt?: unknown;
+  lastHandoffNotifyMessageId?: string | null;
+  lastHandoffNotifyStatus?: string | null;
+  lastHandoffNotifyRecipients?: number | null;
+  lastHandoffNotifySuccessCount?: number | null;
+  lastHandoffNotifyFailureCount?: number | null;
 } | null;
 
 type ChatItem = {
@@ -531,8 +538,8 @@ function aiErrorStatusMessage(code: string, mode: "retrying" | "dead_letter") {
   }
   if (code === "auth_invalid") {
     return retrying
-      ? "IA com credencial invalida no provider atual. Revise a chave de API do tenant."
-      : "IA parou por credencial invalida no provider. Atualize a chave de API e reprocese.";
+      ? "IA com credencial invalida/expirada no provider ou canal atual. Revise chave/API token do tenant."
+      : "IA parou por credencial invalida/expirada no provider/canal. Atualize a chave/API token e reprocese.";
   }
   if (code === "rate_limited") {
     return retrying
@@ -592,13 +599,19 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
 
   if (lastJobStatus === "retrying") {
     const base = aiErrorStatusMessage(lastJobErrorCode, "retrying");
-    const detail = !lastJobErrorCode && lastJobError ? ` Detalhe tecnico: ${compactAiError(lastJobError)}.` : "";
+    const detail =
+      (!lastJobErrorCode || lastJobErrorCode === "unknown_error") && lastJobError
+        ? ` Detalhe tecnico: ${compactAiError(lastJobError)}.`
+        : "";
     return `${base}${detail}`;
   }
 
   if (lastJobStatus === "dead_letter") {
     const base = aiErrorStatusMessage(lastJobErrorCode, "dead_letter");
-    const detail = !lastJobErrorCode && lastJobError ? ` Detalhe tecnico: ${compactAiError(lastJobError)}.` : "";
+    const detail =
+      (!lastJobErrorCode || lastJobErrorCode === "unknown_error") && lastJobError
+        ? ` Detalhe tecnico: ${compactAiError(lastJobError)}.`
+        : "";
     return `${base}${detail}`;
   }
 
@@ -1287,27 +1300,26 @@ export default function ClienteInboxPage() {
     void loadSelectedChat(selectedChatId);
   }, [selectedChatId, loadSelectedChat]);
 
-  useEffect(() => {
-    if (!tenant?.tenantId || !selectedChatId) return;
+  useAdaptivePolling({
+    enabled: Boolean(tenant?.tenantId && selectedChatId),
+    onTick: () => {
+      if (!selectedChatId) return;
+      return loadSelectedChat(selectedChatId, { withMessages: true, silent: true });
+    },
+    fastIntervalMs: 5000,
+    slowIntervalMs: 30000,
+    runOnMount: false,
+  });
 
-    const interval = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void loadSelectedChat(selectedChatId, { withMessages: true, silent: true });
-    }, 4000);
-
-    return () => window.clearInterval(interval);
-  }, [loadSelectedChat, selectedChatId, tenant?.tenantId]);
-
-  useEffect(() => {
-    if (!tenant?.tenantId) return;
-
-    const interval = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void loadChats({ silent: true });
-    }, 15000);
-
-    return () => window.clearInterval(interval);
-  }, [loadChats, tenant?.tenantId]);
+  useAdaptivePolling({
+    enabled: Boolean(tenant?.tenantId),
+    onTick: async () => {
+      await loadChats({ silent: true });
+    },
+    fastIntervalMs: 15000,
+    slowIntervalMs: 90000,
+    runOnMount: false,
+  });
 
   const selectedChat = useMemo(
     () => chats.find((item) => item.id === selectedChatId) || detail?.chat || null,
@@ -1942,6 +1954,22 @@ export default function ClienteInboxPage() {
                 {activeChat?.aiState?.lastProcessedAt ? (
                   <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
                     ultimo ciclo {formatDateTime(activeChat.aiState.lastProcessedAt)}
+                  </span>
+                ) : null}
+                {activeChat?.aiState?.lastHandoffNotifyStatus ? (
+                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
+                    handoff notify {String(activeChat.aiState.lastHandoffNotifyStatus).replaceAll("_", " ")}
+                  </span>
+                ) : null}
+                {typeof activeChat?.aiState?.lastHandoffNotifySuccessCount === "number" ? (
+                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
+                    notify ok {activeChat.aiState.lastHandoffNotifySuccessCount}
+                  </span>
+                ) : null}
+                {typeof activeChat?.aiState?.lastHandoffNotifyFailureCount === "number" &&
+                Number(activeChat.aiState.lastHandoffNotifyFailureCount || 0) > 0 ? (
+                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
+                    notify falha {activeChat.aiState.lastHandoffNotifyFailureCount}
                   </span>
                 ) : null}
               </div>

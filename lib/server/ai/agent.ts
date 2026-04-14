@@ -2771,6 +2771,7 @@ async function resolveHandoffNotifyRecipients(input: {
   aiConfig: TenantAiConfig;
   chatData: Record<string, unknown>;
   tenantSettings: Awaited<ReturnType<typeof getTenantSettings>>;
+  leadId?: string | null;
 }) {
   if (!input.aiConfig.handoffNotifyEnabled) {
     return [] as Array<{ phone: string; source: string }>;
@@ -2799,12 +2800,31 @@ async function resolveHandoffNotifyRecipients(input: {
     addRecipient(phone, "tenant_settings");
   }
 
-  const ownerId = sanitizeText(input.chatData.ownerId || input.chatData.assignedUserId, 160);
+  const ownerIds = new Set<string>();
+  const chatOwnerId = sanitizeText(input.chatData.ownerId || input.chatData.assignedUserId, 160);
+  if (chatOwnerId) ownerIds.add(chatOwnerId);
   for (const phone of extractPhoneCandidates(input.chatData)) {
     addRecipient(phone, "chat_owner");
   }
 
-  if (ownerId) {
+  if (input.leadId) {
+    const leadSnap = await adminDb.collection("leads").doc(input.leadId).get();
+    if (leadSnap.exists) {
+      const leadData = leadSnap.data() as Record<string, unknown>;
+      if (String(leadData.tenantId || "") === input.tenantId) {
+        for (const phone of extractPhoneCandidates(leadData)) {
+          addRecipient(phone, "lead_owner");
+        }
+        const leadOwnerId = sanitizeText(
+          leadData.ownerId || leadData.assignedUserId || leadData.responsavelId,
+          160
+        );
+        if (leadOwnerId) ownerIds.add(leadOwnerId);
+      }
+    }
+  }
+
+  for (const ownerId of ownerIds) {
     const tenantUserDocId = `${input.tenantId}_${ownerId}`;
     const tenantUserByDoc = await adminDb.collection("tenant_users").doc(tenantUserDocId).get();
     if (tenantUserByDoc.exists) {
@@ -3028,40 +3048,46 @@ export async function handleIncomingMessage(
     (looksLikeHumanName(chatData.contactName) ? sanitizeText(chatData.contactName, 120) : "") ||
     undefined;
 
-  const llmRun =
-    shouldUseProviderLlm
-      ? await runConversationAgent(
-          {
-            tenantId,
-            chatId,
-            inboundText,
-            multimodalSummary: multimodal.summary || undefined,
-            messageType,
-            channel: chatChannel,
-            contactName: preferredContactName,
-            runtimeStateSummary: runtimeStateSummary || undefined,
-            leadMemorySummary: leadMemorySummary || undefined,
-            toneOfVoice: aiConfig.toneOfVoice,
-            businessSummary: aiConfig.businessSummary,
-            objective: aiConfig.objective,
-            guardrails: aiConfig.guardrails,
-            mandatoryQuestions: aiConfig.mandatoryQuestions,
-            escalationTopics: aiConfig.escalationTopics,
-            playbookOffers: aiConfig.playbookOffers,
-            playbookScripts: aiConfig.playbookScripts,
-            tier: aiConfig.tier,
-            autonomyMode: aiConfig.autonomyMode,
-            reasoningLevel: aiConfig.reasoningLevel,
-            responseStyle: aiConfig.responseStyle,
-            conversation,
-            kbDocs,
-            preferredProviders: aiConfig.preferredProviders,
-          },
-          aiConfig.runtimePolicy
-        )
-      : null;
+  let llmRun: Awaited<ReturnType<typeof runConversationAgent>> | null = null;
+  let unexpectedProviderError = "";
+  if (shouldUseProviderLlm) {
+    try {
+      llmRun = await runConversationAgent(
+        {
+          tenantId,
+          chatId,
+          inboundText,
+          multimodalSummary: multimodal.summary || undefined,
+          messageType,
+          channel: chatChannel,
+          contactName: preferredContactName,
+          runtimeStateSummary: runtimeStateSummary || undefined,
+          leadMemorySummary: leadMemorySummary || undefined,
+          toneOfVoice: aiConfig.toneOfVoice,
+          businessSummary: aiConfig.businessSummary,
+          objective: aiConfig.objective,
+          guardrails: aiConfig.guardrails,
+          mandatoryQuestions: aiConfig.mandatoryQuestions,
+          escalationTopics: aiConfig.escalationTopics,
+          playbookOffers: aiConfig.playbookOffers,
+          playbookScripts: aiConfig.playbookScripts,
+          tier: aiConfig.tier,
+          autonomyMode: aiConfig.autonomyMode,
+          reasoningLevel: aiConfig.reasoningLevel,
+          responseStyle: aiConfig.responseStyle,
+          conversation,
+          kbDocs,
+          preferredProviders: aiConfig.preferredProviders,
+        },
+        aiConfig.runtimePolicy
+      );
+    } catch (error) {
+      unexpectedProviderError =
+        error instanceof Error ? sanitizeText(error.message, 280) : "conversation_router_unexpected_error";
+    }
+  }
   const llmResult = llmRun?.result || null;
-  const providerChainError = llmRun?.providerChainError || null;
+  const providerChainError = llmRun?.providerChainError || unexpectedProviderError || null;
   const providerFallbackTriggered = Boolean(llmRun?.providerFallbackTriggered || llmResult?.fallbackUsed);
   const fallbackChoice = decide({ inboundText, kbDocs, tenantAi: aiConfig });
   const choice = resolveConversationalChoice({
@@ -3299,6 +3325,7 @@ export async function handleIncomingMessage(
           aiConfig,
           chatData,
           tenantSettings,
+          leadId,
         })
       : [];
 
