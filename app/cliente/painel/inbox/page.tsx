@@ -192,6 +192,31 @@ type LeadSummary = {
   heat?: string;
   potentialValue?: number | null;
   tags?: string[];
+  aiFieldEvidence?: Record<
+    string,
+    {
+      value?: string;
+      source?: "agent_extracted" | "conversation_context" | "derived" | string;
+      confidence?: number;
+      intent?: string | null;
+      stateAfter?: string | null;
+      nextAction?: string | null;
+      capturedAt?: unknown;
+    }
+  >;
+  aiCaptureChecklist?: {
+    nome?: boolean;
+    tipoEmpresa?: boolean;
+    objetivo?: boolean;
+    orcamento?: boolean;
+    urgencia?: boolean;
+    decisor?: boolean;
+    canaisAtuais?: boolean;
+    cidade?: boolean;
+    tamanhoTime?: boolean;
+    servicoInteresse?: boolean;
+    updatedAt?: unknown;
+  };
   timeline?: TimelineEvent[];
 };
 
@@ -489,6 +514,21 @@ function getHeatTone(heat?: string) {
   if (heat === "morno") return "warning" as const;
   if (heat === "frio") return "info" as const;
   return "neutral" as const;
+}
+
+function humanizeEvidenceSource(value?: string | null) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "agent_extracted") return "extraido";
+  if (normalized === "conversation_context") return "contexto";
+  if (normalized === "derived") return "derivado";
+  return normalized || "desconhecido";
+}
+
+function getEvidenceConfidenceTone(confidence?: number | null) {
+  if (typeof confidence !== "number" || !Number.isFinite(confidence)) return "neutral" as const;
+  if (confidence >= 0.82) return "success" as const;
+  if (confidence >= 0.66) return "info" as const;
+  return "warning" as const;
 }
 
 function getInitials(value?: string) {
@@ -1737,6 +1777,49 @@ export default function ClienteInboxPage() {
   }
 
   const activeLead = detail?.lead || null;
+  const aiEvidenceTop = useMemo(() => {
+    const source = activeLead?.aiFieldEvidence || {};
+    return Object.entries(source)
+      .map(([field, raw]) => {
+        const evidence =
+          raw && typeof raw === "object"
+            ? (raw as { value?: unknown; source?: unknown; confidence?: unknown; capturedAt?: unknown })
+            : null;
+        const value = typeof evidence?.value === "string" ? evidence.value.trim() : "";
+        const src = typeof evidence?.source === "string" ? evidence.source : "";
+        const confidence =
+          typeof evidence?.confidence === "number" && Number.isFinite(evidence.confidence)
+            ? evidence.confidence
+            : null;
+        return {
+          field,
+          value: value || "--",
+          source: src,
+          confidence,
+          capturedAt: evidence?.capturedAt,
+        };
+      })
+      .sort((a, b) => (b.confidence ?? -1) - (a.confidence ?? -1))
+      .slice(0, 6);
+  }, [activeLead?.aiFieldEvidence]);
+  const aiChecklistProgress = useMemo(() => {
+    const checklist = activeLead?.aiCaptureChecklist;
+    if (!checklist) return { done: 0, total: 0 };
+    const keys = [
+      "nome",
+      "tipoEmpresa",
+      "objetivo",
+      "orcamento",
+      "urgencia",
+      "decisor",
+      "canaisAtuais",
+      "cidade",
+      "tamanhoTime",
+      "servicoInteresse",
+    ] as const;
+    const done = keys.filter((key) => Boolean(checklist[key])).length;
+    return { done, total: keys.length };
+  }, [activeLead?.aiCaptureChecklist]);
   const leadTasks = detail?.leadTasks || [];
   const leadNotes = detail?.leadNotes || [];
   const leadBudgets = detail?.leadBudgets || [];
@@ -2340,6 +2423,41 @@ export default function ClienteInboxPage() {
                   <InfoRow label="Origem" value={activeLead.origem || formatChannelLabel(activeLead.channel)} />
                   <InfoRow label="Responsavel" value={activeLead.owner || activeChat?.assignedUserName || "Sem dono"} />
                 </div>
+
+                {aiEvidenceTop.length > 0 || aiChecklistProgress.total > 0 ? (
+                  <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                        IA rastreabilidade
+                      </p>
+                      {aiChecklistProgress.total > 0 ? (
+                        <StateBadge
+                          label={`checklist ${aiChecklistProgress.done}/${aiChecklistProgress.total}`}
+                          tone={aiChecklistProgress.done >= Math.ceil(aiChecklistProgress.total * 0.6) ? "success" : "warning"}
+                        />
+                      ) : null}
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {aiEvidenceTop.map((item) => (
+                        <div key={item.field} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                              {item.field.replaceAll("_", " ").replaceAll(".", " / ")}
+                            </p>
+                            <StateBadge
+                              label={typeof item.confidence === "number" ? `${Math.round(item.confidence * 100)}%` : "--"}
+                              tone={getEvidenceConfidenceTone(item.confidence)}
+                            />
+                          </div>
+                          <p className="mt-1 text-sm text-[var(--cliente-card-text)]">{item.value}</p>
+                          <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">
+                            {humanizeEvidenceSource(item.source)} · {formatDateTime(item.capturedAt)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="mt-4 grid gap-3">
                   <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
