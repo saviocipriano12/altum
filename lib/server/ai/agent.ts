@@ -1633,6 +1633,36 @@ async function executeAltumAgentActions(input: {
           string | number | boolean | null
         >)
       : {};
+  const existingAiFieldEvidence =
+    leadData.aiFieldEvidence && typeof leadData.aiFieldEvidence === "object"
+      ? ({ ...(leadData.aiFieldEvidence as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+  let aiFieldEvidenceChanged = false;
+  const setAiFieldEvidence = (
+    fieldKey: string,
+    value: unknown,
+    source: "agent_extracted" | "conversation_context" | "derived"
+  ) => {
+    const normalizedKey = sanitizeText(fieldKey, 80);
+    const normalizedValue =
+      typeof value === "string"
+        ? sanitizeText(value, 220)
+        : typeof value === "number"
+          ? String(value)
+          : "";
+    if (!normalizedKey || !normalizedValue) return;
+
+    existingAiFieldEvidence[normalizedKey] = {
+      value: normalizedValue,
+      source,
+      confidence: Number(plannerConfidence.toFixed(3)),
+      intent: sanitizeText(input.plan.intent, 80) || null,
+      stateAfter: sanitizeText(input.plan.stateAfter, 40) || null,
+      nextAction: sanitizeText(input.plan.nextAction, 120) || null,
+      capturedAt: now.toISOString(),
+    };
+    aiFieldEvidenceChanged = true;
+  };
   let customFieldsChanged = false;
   const upsertCustomField = (key: string, value: string | null) => {
     const normalizedKey = sanitizeText(key, 60);
@@ -1713,6 +1743,19 @@ async function executeAltumAgentActions(input: {
     aiLeadSummary,
     aiLastInboundText: sanitizeText(input.inboundText, 500) || null,
     aiPlannerConfidence: plannerConfidence,
+    aiCaptureChecklist: {
+      nome: Boolean(aiMemory.preferredName),
+      tipoEmpresa: Boolean(aiMemory.businessType),
+      objetivo: Boolean(aiMemory.primaryGoal),
+      orcamento: Boolean(aiMemory.budgetBand),
+      urgencia: Boolean(aiMemory.urgency),
+      decisor: Boolean(aiMemory.decisionMaker),
+      canaisAtuais: Boolean(aiMemory.currentChannels),
+      cidade: Boolean(aiMemory.city),
+      tamanhoTime: Boolean(aiMemory.teamSize),
+      servicoInteresse: Boolean(aiMemory.serviceInterest),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
     aiMemory,
     qualification: {
       score: qualificationScore,
@@ -1782,18 +1825,22 @@ async function executeAltumAgentActions(input: {
 
   if (canWriteIdentity && shouldPatchLeadName) {
     leadPatch.nome = nextLeadName;
+    setAiFieldEvidence("nome", nextLeadName, aiMemory.preferredName ? "agent_extracted" : "conversation_context");
     actions.push("enrich_lead_name");
   }
   if (canWriteContact && extractedEmail && !currentLeadEmail) {
     leadPatch.email = extractedEmail;
+    setAiFieldEvidence("email", extractedEmail, "agent_extracted");
     actions.push("enrich_lead_email");
   }
   if (canWriteContact && extractedPhone && !currentLeadPhone) {
     leadPatch.telefone = extractedPhone;
+    setAiFieldEvidence("telefone", extractedPhone, "agent_extracted");
     actions.push("enrich_lead_phone");
   }
   if (canWriteCompany && extractedCompany && !currentLeadCompany) {
     leadPatch.empresa = extractedCompany;
+    setAiFieldEvidence("empresa", extractedCompany, "agent_extracted");
     actions.push("enrich_lead_company");
   }
   if (mappedHeat && sanitizeText(leadData.heat, 20) !== mappedHeat) {
@@ -1811,7 +1858,24 @@ async function executeAltumAgentActions(input: {
   }
   if (canWriteCustomFields && customFieldsChanged) {
     leadPatch.customFields = existingCustomFields;
+    setAiFieldEvidence("custom.nicho", aiMemory.businessType, "agent_extracted");
+    setAiFieldEvidence("custom.objetivo_principal", aiMemory.primaryGoal, "agent_extracted");
+    setAiFieldEvidence("custom.orcamento", aiMemory.budgetBand, "agent_extracted");
+    setAiFieldEvidence("custom.urgencia", aiMemory.urgency, "agent_extracted");
+    setAiFieldEvidence("custom.cidade", aiMemory.city, "agent_extracted");
+    setAiFieldEvidence("custom.canais_atuais", aiMemory.currentChannels, "agent_extracted");
+    setAiFieldEvidence("custom.tamanho_time", aiMemory.teamSize, "agent_extracted");
+    setAiFieldEvidence("custom.servico_interesse", aiMemory.serviceInterest, "agent_extracted");
+    setAiFieldEvidence("custom.decisor", aiMemory.decisionMaker, "agent_extracted");
+    setAiFieldEvidence("custom.maturidade_digital", aiMemory.digitalMaturity, "agent_extracted");
+    setAiFieldEvidence("custom.tom_lead", aiMemory.leadTone, "derived");
+    setAiFieldEvidence("custom.topico_ativo", aiMemory.activeTopic, "derived");
+    setAiFieldEvidence("custom.objecao_principal", aiMemory.dominantObjection, "derived");
     actions.push("enrich_custom_fields");
+  }
+  if (aiFieldEvidenceChanged) {
+    leadPatch.aiFieldEvidence = existingAiFieldEvidence;
+    actions.push("track_field_evidence");
   }
 
   const pipelineStages = getBusinessProfilePipelineStages(input.businessProfileId).map((stage) => stage.id);
