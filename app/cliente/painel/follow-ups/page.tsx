@@ -136,8 +136,13 @@ export default function ClienteFollowUpsPage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<FollowUpsResponse>({});
   const [search, setSearch] = useState(searchFromQuery);
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "done" | "overdue">(
-    statusFromQuery === "pending" || statusFromQuery === "done" || statusFromQuery === "overdue" ? statusFromQuery : "all"
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "done" | "overdue" | "today">(
+    statusFromQuery === "pending" ||
+      statusFromQuery === "done" ||
+      statusFromQuery === "overdue" ||
+      statusFromQuery === "today"
+      ? statusFromQuery
+      : "all"
   );
   const [typeFilter, setTypeFilter] = useState<"all" | string>(typeFromQuery);
   const [ownerFilter, setOwnerFilter] = useState(ownerFromQuery || "all");
@@ -145,6 +150,7 @@ export default function ClienteFollowUpsPage() {
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
   const [aiLogs, setAiLogs] = useState<AiSignalLog[]>([]);
+  const [showAdvancedDesk, setShowAdvancedDesk] = useState(false);
   const canOperate = hasCapability("edit_leads");
 
   const loadData = useCallback(async () => {
@@ -178,7 +184,12 @@ export default function ClienteFollowUpsPage() {
 
   useEffect(() => {
     if (searchFromQuery !== search) setSearch(searchFromQuery);
-    if (statusFromQuery === "pending" || statusFromQuery === "done" || statusFromQuery === "overdue") {
+    if (
+      statusFromQuery === "pending" ||
+      statusFromQuery === "done" ||
+      statusFromQuery === "overdue" ||
+      statusFromQuery === "today"
+    ) {
       if (statusFromQuery !== statusFilter) setStatusFilter(statusFromQuery);
     } else if (statusFilter !== "all") {
       setStatusFilter("all");
@@ -212,8 +223,10 @@ export default function ClienteFollowUpsPage() {
       if (statusFilter === "pending" && item.status !== "pending") return false;
       if (statusFilter === "done" && item.status !== "done") return false;
       if (statusFilter === "overdue" && !item.overdue) return false;
+      if (statusFilter === "today" && !item.dueToday) return false;
       if (typeFilter !== "all" && item.type !== typeFilter) return false;
-      if (ownerFilter !== "all" && item.lead?.ownerId !== ownerFilter) return false;
+      if (ownerFilter === "unassigned" && item.lead?.ownerId) return false;
+      if (ownerFilter !== "all" && ownerFilter !== "unassigned" && item.lead?.ownerId !== ownerFilter) return false;
       if (priorityFilter !== "all" && String(item.priority || "").toLowerCase() !== priorityFilter) return false;
       if (
         normalizedSearch &&
@@ -277,6 +290,28 @@ export default function ClienteFollowUpsPage() {
       .slice(0, 4);
   }, [aiLogs, items]);
 
+  function applySimpleScenario(mode: "urgent" | "today" | "proposal") {
+    setSearch("");
+    setOwnerFilter("all");
+    if (mode === "urgent") {
+      setStatusFilter("overdue");
+      setPriorityFilter("high");
+      setTypeFilter("all");
+      return;
+    }
+
+    if (mode === "proposal") {
+      setStatusFilter("pending");
+      setPriorityFilter("all");
+      setTypeFilter("proposta");
+      return;
+    }
+
+    setStatusFilter("today");
+    setPriorityFilter("all");
+    setTypeFilter("all");
+  }
+
   async function toggleTask(item: FollowUpItem) {
     if (!tenant?.tenantId || !item.leadId || !canOperate) return;
 
@@ -326,6 +361,74 @@ export default function ClienteFollowUpsPage() {
 
   return (
     <div className="space-y-6">
+      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <PanelCard className="p-5 md:p-6">
+          <SectionHeader
+            title="Modo simples do follow-up"
+            subtitle="Se estiver em duvida, siga esse fluxo rapido para nao perder lead."
+            action={<StateBadge label="3 passos" tone="info" />}
+          />
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-red-300/20 bg-red-500/10 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-red-100/80">Passo 1</p>
+              <p className="mt-2 text-sm font-medium text-white">Resolver vencidos</p>
+              <p className="mt-1 text-xs text-white/60">Puxa imediatamente tudo que ja estourou prazo.</p>
+              <button
+                type="button"
+                onClick={() => applySimpleScenario("urgent")}
+                className="mt-3 rounded-xl border border-red-200/25 bg-red-500/20 px-3 py-2 text-xs font-medium text-red-100 transition hover:bg-red-500/30"
+              >
+                Ver vencidos agora
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-100/80">Passo 2</p>
+              <p className="mt-2 text-sm font-medium text-white">Executar agenda do dia</p>
+              <p className="mt-1 text-xs text-white/60">Trata os follow-ups pendentes antes de abrir novas frentes.</p>
+              <button
+                type="button"
+                onClick={() => applySimpleScenario("today")}
+                className="mt-3 rounded-xl border border-amber-200/25 bg-amber-500/20 px-3 py-2 text-xs font-medium text-amber-100 transition hover:bg-amber-500/30"
+              >
+                Ver pendentes do dia
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100/80">Passo 3</p>
+              <p className="mt-2 text-sm font-medium text-white">Avancar propostas</p>
+              <p className="mt-1 text-xs text-white/60">Foco em leads que ja estao perto de fechar.</p>
+              <button
+                type="button"
+                onClick={() => applySimpleScenario("proposal")}
+                className="mt-3 rounded-xl border border-emerald-200/25 bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-500/30"
+              >
+                Ver propostas abertas
+              </button>
+            </div>
+          </div>
+        </PanelCard>
+
+        <PanelCard className="p-5 md:p-6">
+          <SectionHeader title="Configuracao rapida" subtitle="Como operar sem travar no excesso de informacao." />
+          <div className="space-y-3 text-sm text-white/70">
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <p className="font-medium text-white">1. Defina quem responde cada fila</p>
+              <p className="mt-1 text-xs text-white/55">Sem owner claro, o follow-up sempre estoura. Use a distribuicao no inbox.</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <p className="font-medium text-white">2. Trabalhe por prioridade e prazo</p>
+              <p className="mt-1 text-xs text-white/55">Primeiro vencidos, depois hoje, depois propostas. Esse fluxo evita perda de lead.</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <p className="font-medium text-white">3. Feche ciclo no CRM</p>
+              <p className="mt-1 text-xs text-white/55">Toda interacao precisa atualizar stage/nota para a IA aprender e priorizar melhor.</p>
+            </div>
+          </div>
+        </PanelCard>
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
@@ -358,9 +461,20 @@ export default function ClienteFollowUpsPage() {
           <SectionHeader
             title="Modo operacional do follow-up"
             subtitle="O desk comercial fica mais assertivo quando seguimos o contexto natural do negocio."
-            action={<StateBadge label={businessProfile.label} tone="info" />}
+            action={
+              <div className="flex items-center gap-2">
+                <StateBadge label={businessProfile.label} tone="info" />
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedDesk((current) => !current)}
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/75 transition hover:bg-white/[0.08]"
+                >
+                  {showAdvancedDesk ? "Ocultar avancado" : "Mostrar avancado"}
+                </button>
+              </div>
+            }
           />
-
+          {showAdvancedDesk ? (
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Movimento esperado</p>
@@ -396,6 +510,14 @@ export default function ClienteFollowUpsPage() {
               </div>
             </div>
           </div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <p className="text-sm text-white/84">
+                O modo avancado fica escondido para manter a operacao simples no dia a dia.
+                Quando precisar calibrar playbook, campos e narrativa comercial, clique em <span className="font-semibold">Mostrar avancado</span>.
+              </p>
+            </div>
+          )}
         </PanelCard>
 
         <PanelCard className="p-5 md:p-6">
@@ -490,10 +612,11 @@ export default function ClienteFollowUpsPage() {
             options={[
               { value: "all", label: "Todos" },
               { value: "pending", label: "Pendentes" },
+              { value: "today", label: "Vencem hoje" },
               { value: "overdue", label: "Vencidos" },
               { value: "done", label: "Concluidos" },
             ]}
-            onChange={(value) => setStatusFilter(value as "all" | "pending" | "done" | "overdue")}
+            onChange={(value) => setStatusFilter(value as "all" | "pending" | "done" | "overdue" | "today")}
           />
           <FilterSelect
             label="Tipo"
@@ -504,7 +627,7 @@ export default function ClienteFollowUpsPage() {
           <FilterSelect
             label="Owner"
             value={ownerFilter}
-            options={[{ value: "all", label: "Todos" }, ...ownerOptions]}
+            options={[{ value: "all", label: "Todos" }, { value: "unassigned", label: "Sem responsavel" }, ...ownerOptions]}
             onChange={(value) => setOwnerFilter(value)}
           />
           <FilterSelect
@@ -591,14 +714,14 @@ export default function ClienteFollowUpsPage() {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setOwnerFilter(item.id === "unassigned" ? "all" : item.id)}
+                  onClick={() => setOwnerFilter(item.id)}
                   className="w-full rounded-2xl border border-white/10 bg-black/25 p-3 text-left transition hover:bg-white/[0.04]"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium text-white">{item.name}</p>
                       <p className="mt-1 text-xs text-white/46">
-                        {item.overdue} vencido(s) • {item.high} alta prioridade
+                        {item.overdue} vencido(s) | {item.high} alta prioridade
                       </p>
                     </div>
                     <StateBadge label={String(item.total)} tone={item.overdue > 0 ? "warning" : "info"} />

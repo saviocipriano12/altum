@@ -48,6 +48,7 @@ import {
   type BusinessProfilePlaybookScript,
 } from "@/lib/business-profiles";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { syncLeadCommercialState } from "@/lib/server/crm/operations";
 import type { AltumPlannerDecision } from "@/lib/server/ai/altum-agent-v2";
 import type { AltumConversationRuntimeState } from "@/lib/server/ai/runtime-state";
 import { buildAiTaskPreset, suggestPipelineStageForAiAction } from "@/lib/ai-next-actions";
@@ -79,6 +80,12 @@ type ChatStateDoc = {
   lastProcessedAt?: unknown;
   lastJobId?: string | null;
   lastMessageId?: string | null;
+  lastHandoffNotifyAt?: unknown;
+  lastHandoffNotifyMessageId?: string | null;
+  lastHandoffNotifyStatus?: string | null;
+  lastHandoffNotifyRecipients?: number | null;
+  lastHandoffNotifySuccessCount?: number | null;
+  lastHandoffNotifyFailureCount?: number | null;
 };
 
 type KbDoc = {
@@ -112,6 +119,8 @@ type TenantAiConfig = {
   businessSummary: string;
   objective: string;
   responsiblePhone: string;
+  handoffNotifyEnabled: boolean;
+  handoffNotifyPhones: string[];
   guardrails: string[];
   mandatoryQuestions: string[];
   escalationTopics: string[];
@@ -399,6 +408,37 @@ function leadFirstName(value: unknown) {
   return clean.split(/\s+/)[0] || clean;
 }
 
+function normalizeEmail(value: unknown) {
+  const clean = sanitizeText(value, 180).toLowerCase();
+  if (!clean) return "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(clean)) return "";
+  return clean;
+}
+
+function extractPhoneCandidates(record?: Record<string, unknown> | null) {
+  if (!record) return [] as string[];
+  const rawCandidates = [
+    record.phone,
+    record.telefone,
+    record.mobile,
+    record.celular,
+    record.whatsapp,
+    record.whatsappPhone,
+    record.whatsapp_phone,
+    record.whatsappNumber,
+    record.whatsapp_number,
+    record.contactPhone,
+  ];
+
+  return Array.from(
+    new Set(
+      rawCandidates
+        .map((value) => normalizePhone(String(value || "")))
+        .filter(Boolean)
+    )
+  ).slice(0, 4);
+}
+
 export type HandleIncomingMessageInput = {
   tenantId: string;
   chatId: string;
@@ -428,6 +468,12 @@ export type ChatState = {
   lastProcessedAt?: Date | null;
   lastJobId?: string | null;
   lastMessageId?: string | null;
+  lastHandoffNotifyAt?: Date | null;
+  lastHandoffNotifyMessageId?: string | null;
+  lastHandoffNotifyStatus?: string | null;
+  lastHandoffNotifyRecipients?: number | null;
+  lastHandoffNotifySuccessCount?: number | null;
+  lastHandoffNotifyFailureCount?: number | null;
 };
 
 export function getChatStateDocId(tenantId: string, chatId: string) {
@@ -574,6 +620,16 @@ function parseLines(value: unknown, maxItems = 12) {
   return [];
 }
 
+function parsePhoneLines(value: unknown, maxItems = 8) {
+  return Array.from(
+    new Set(
+      parseLines(value, maxItems)
+        .map((item) => normalizePhone(item))
+        .filter(Boolean)
+    )
+  ).slice(0, maxItems);
+}
+
 function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>): TenantAiConfig {
   const ai =
     settings && typeof settings.ai === "object" && settings.ai
@@ -594,7 +650,11 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
       sanitizeText(settings?.name, 120) ||
       businessProfile.description,
     objective: sanitizeText(ai.objective, 200) || businessProfile.ai.objective,
-    responsiblePhone: normalizePhone(String(ai.responsiblePhone || "")),
+    responsiblePhone: normalizePhone(
+      String(ai.responsiblePhone || settings?.contactPhone || settings?.ownerPhone || settings?.phone || "")
+    ),
+    handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
+    handoffNotifyPhones: parsePhoneLines(ai.handoffNotifyPhones, 8),
     guardrails: Array.from(new Set([...DEFAULT_GUARDRAILS, ...businessProfile.ai.guardrails, ...parseGuardrails(ai.guardrails)])).slice(0, 24),
     mandatoryQuestions: Array.from(new Set([...businessProfile.ai.mandatoryQuestions, ...parseLines(ai.mandatoryQuestions, 12)])).slice(0, 12),
     escalationTopics: Array.from(new Set([...businessProfile.ai.escalationTopics, ...parseLines(ai.escalationTopics, 12)])).slice(0, 12),
@@ -1005,6 +1065,12 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
       lastProcessedAt: null,
       lastJobId: null,
       lastMessageId: null,
+      lastHandoffNotifyAt: null,
+      lastHandoffNotifyMessageId: null,
+      lastHandoffNotifyStatus: null,
+      lastHandoffNotifyRecipients: null,
+      lastHandoffNotifySuccessCount: null,
+      lastHandoffNotifyFailureCount: null,
     };
   }
 
@@ -1066,6 +1132,27 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
       lastJobId: typeof data.lastJobId === "string" && data.lastJobId.trim() ? data.lastJobId.trim() : null,
       lastMessageId:
         typeof data.lastMessageId === "string" && data.lastMessageId.trim() ? data.lastMessageId.trim() : null,
+      lastHandoffNotifyAt: toDate(data.lastHandoffNotifyAt),
+      lastHandoffNotifyMessageId:
+        typeof data.lastHandoffNotifyMessageId === "string" && data.lastHandoffNotifyMessageId.trim()
+          ? data.lastHandoffNotifyMessageId.trim()
+          : null,
+      lastHandoffNotifyStatus:
+        typeof data.lastHandoffNotifyStatus === "string" && data.lastHandoffNotifyStatus.trim()
+          ? data.lastHandoffNotifyStatus.trim()
+          : null,
+      lastHandoffNotifyRecipients:
+        typeof data.lastHandoffNotifyRecipients === "number" && Number.isFinite(data.lastHandoffNotifyRecipients)
+          ? data.lastHandoffNotifyRecipients
+          : null,
+      lastHandoffNotifySuccessCount:
+        typeof data.lastHandoffNotifySuccessCount === "number" && Number.isFinite(data.lastHandoffNotifySuccessCount)
+          ? data.lastHandoffNotifySuccessCount
+          : null,
+      lastHandoffNotifyFailureCount:
+        typeof data.lastHandoffNotifyFailureCount === "number" && Number.isFinite(data.lastHandoffNotifyFailureCount)
+          ? data.lastHandoffNotifyFailureCount
+          : null,
     };
   }
 
@@ -1106,6 +1193,27 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
     lastJobId: typeof data.lastJobId === "string" && data.lastJobId.trim() ? data.lastJobId.trim() : null,
     lastMessageId:
       typeof data.lastMessageId === "string" && data.lastMessageId.trim() ? data.lastMessageId.trim() : null,
+    lastHandoffNotifyAt: toDate(data.lastHandoffNotifyAt),
+    lastHandoffNotifyMessageId:
+      typeof data.lastHandoffNotifyMessageId === "string" && data.lastHandoffNotifyMessageId.trim()
+        ? data.lastHandoffNotifyMessageId.trim()
+        : null,
+    lastHandoffNotifyStatus:
+      typeof data.lastHandoffNotifyStatus === "string" && data.lastHandoffNotifyStatus.trim()
+        ? data.lastHandoffNotifyStatus.trim()
+        : null,
+    lastHandoffNotifyRecipients:
+      typeof data.lastHandoffNotifyRecipients === "number" && Number.isFinite(data.lastHandoffNotifyRecipients)
+        ? data.lastHandoffNotifyRecipients
+        : null,
+    lastHandoffNotifySuccessCount:
+      typeof data.lastHandoffNotifySuccessCount === "number" && Number.isFinite(data.lastHandoffNotifySuccessCount)
+        ? data.lastHandoffNotifySuccessCount
+        : null,
+    lastHandoffNotifyFailureCount:
+      typeof data.lastHandoffNotifyFailureCount === "number" && Number.isFinite(data.lastHandoffNotifyFailureCount)
+        ? data.lastHandoffNotifyFailureCount
+        : null,
   };
 }
 
@@ -1380,6 +1488,37 @@ async function createAiAppointmentDraft(input: {
   return ref.id;
 }
 
+function normalizeLeadTags(value: unknown) {
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+
+  return Array.from(
+    new Set(
+      source
+        .map((item) => sanitizeText(item, 48).toLowerCase())
+        .filter(Boolean)
+    )
+  ).slice(0, 12);
+}
+
+function mapTemperatureToScore(temperature?: string | null) {
+  const normalized = sanitizeText(temperature, 20).toLowerCase();
+  if (normalized === "hot") return 82;
+  if (normalized === "warm") return 64;
+  if (normalized === "cold") return 42;
+  return 55;
+}
+
+function mapTemperatureToQualificationBand(temperature?: string | null) {
+  const normalized = sanitizeText(temperature, 20).toLowerCase();
+  if (normalized === "hot") return "sales_ready";
+  if (normalized === "warm") return "warming";
+  return "cold";
+}
+
 async function executeAltumAgentActions(input: {
   tenantId: string;
   chatId: string;
@@ -1390,6 +1529,8 @@ async function executeAltumAgentActions(input: {
   inboundText: string;
   businessProfileId: BusinessProfileId;
   leadName?: string | null;
+  leadOwnerId?: string | null;
+  leadOwnerName?: string | null;
 }) {
   const leadId = sanitizeText(input.leadId, 160);
   if (!leadId) return [] as string[];
@@ -1399,6 +1540,14 @@ async function executeAltumAgentActions(input: {
   const leadSnap = await leadRef.get();
   const leadData = leadSnap.exists ? (leadSnap.data() as Record<string, unknown>) : {};
   const now = new Date();
+  const plannerConfidence = Number.isFinite(input.plan.confidence) ? Math.max(0, Math.min(1, input.plan.confidence)) : 0;
+  const canWriteIdentity = plannerConfidence >= 0.66;
+  const canWriteCompany = plannerConfidence >= 0.7;
+  const canWriteContact = plannerConfidence >= 0.82;
+  const canAdvanceStage = plannerConfidence >= 0.72;
+  const canFlagHotLead = plannerConfidence >= 0.76;
+  const canSetReadyHandoff = plannerConfidence >= 0.84 || input.plan.decision === "handoff";
+  const canWriteCustomFields = plannerConfidence >= 0.58;
   const rawPreferredName = sanitizeText(
     input.extractedFields?.preferredName || input.extractedFields?.name || input.extractedFields?.contactName,
     80
@@ -1451,6 +1600,94 @@ async function executeAltumAgentActions(input: {
     recommendedOffer: input.plan.recommendedOffer || aiMemory.serviceInterest,
     nextAction: input.plan.nextAction || null,
   });
+  const extractedEmail = normalizeEmail(
+    input.extractedFields?.email || input.extractedFields?.contactEmail || input.extractedFields?.mail
+  );
+  const extractedPhone = normalizePhone(
+    String(
+      input.extractedFields?.phone ||
+        input.extractedFields?.telefone ||
+        input.extractedFields?.contactPhone ||
+        input.extractedFields?.whatsapp ||
+        ""
+    )
+  );
+  const extractedCompany = sanitizeText(
+    input.extractedFields?.company || input.extractedFields?.businessName || input.extractedFields?.empresa,
+    180
+  );
+  const currentLeadName = sanitizeText(leadData.nome, 120);
+  const fallbackLeadName = sanitizeText(input.leadName, 120);
+  const nextLeadName = aiMemory.preferredName || (looksLikeHumanName(fallbackLeadName) ? fallbackLeadName : "");
+  const shouldPatchLeadName =
+    looksLikeHumanName(nextLeadName) &&
+    (!looksLikeHumanName(currentLeadName) || /^(lead|contato|cliente|visitante)$/i.test(currentLeadName));
+  const currentLeadPhone = normalizePhone(String(leadData.telefone || ""));
+  const currentLeadEmail = normalizeEmail(leadData.email);
+  const currentLeadCompany = sanitizeText(leadData.empresa, 180);
+
+  const existingCustomFields =
+    leadData.customFields && typeof leadData.customFields === "object"
+      ? ({ ...(leadData.customFields as Record<string, string | number | boolean | null>) } as Record<
+          string,
+          string | number | boolean | null
+        >)
+      : {};
+  let customFieldsChanged = false;
+  const upsertCustomField = (key: string, value: string | null) => {
+    const normalizedKey = sanitizeText(key, 60);
+    const normalizedValue = sanitizeText(value, 200);
+    if (!normalizedKey || !normalizedValue) return;
+    if (existingCustomFields[normalizedKey] !== normalizedValue) {
+      existingCustomFields[normalizedKey] = normalizedValue;
+      customFieldsChanged = true;
+    }
+  };
+
+  upsertCustomField("nicho", aiMemory.businessType);
+  upsertCustomField("objetivo_principal", aiMemory.primaryGoal);
+  upsertCustomField("orcamento", aiMemory.budgetBand);
+  upsertCustomField("urgencia", aiMemory.urgency);
+  upsertCustomField("cidade", aiMemory.city);
+  upsertCustomField("canais_atuais", aiMemory.currentChannels);
+  upsertCustomField("tamanho_time", aiMemory.teamSize);
+  upsertCustomField("servico_interesse", aiMemory.serviceInterest);
+  upsertCustomField("decisor", aiMemory.decisionMaker);
+  upsertCustomField("maturidade_digital", aiMemory.digitalMaturity);
+  upsertCustomField("tom_lead", aiMemory.leadTone);
+  upsertCustomField("topico_ativo", aiMemory.activeTopic);
+  upsertCustomField("objecao_principal", aiMemory.dominantObjection);
+
+  const heatByTemperature: Record<string, "frio" | "morno" | "quente"> = {
+    cold: "frio",
+    warm: "morno",
+    hot: "quente",
+  };
+  const mappedHeat = heatByTemperature[String(input.plan.commercialTemperature || "").toLowerCase()] || null;
+  const missingFields = [
+    !aiMemory.preferredName ? "nome" : "",
+    !aiMemory.businessType ? "tipo_empresa" : "",
+    !aiMemory.primaryGoal ? "objetivo" : "",
+    !aiMemory.budgetBand ? "orcamento" : "",
+    !aiMemory.urgency ? "urgencia" : "",
+  ].filter(Boolean);
+
+  let qualificationScore = mapTemperatureToScore(input.plan.commercialTemperature || null);
+  if (aiMemory.primaryGoal) qualificationScore += 4;
+  if (aiMemory.businessType) qualificationScore += 4;
+  if (aiMemory.budgetBand) qualificationScore += 5;
+  if (aiMemory.urgency && aiMemory.urgency !== "baixa") qualificationScore += 3;
+  if (input.plan.recommendedOffer) qualificationScore += 4;
+  qualificationScore = Math.max(0, Math.min(100, qualificationScore));
+
+  const currentTags = normalizeLeadTags(leadData.tags);
+  const aiTags = [
+    aiMemory.businessType ? `nicho:${sanitizeText(aiMemory.businessType, 40).toLowerCase()}` : "",
+    aiMemory.primaryGoal ? "ia:objetivo_mapeado" : "",
+    aiMemory.budgetBand ? "ia:orcamento_mapeado" : "",
+    input.plan.commercialTemperature === "hot" ? "ia:lead_quente" : "",
+  ].filter(Boolean);
+  const mergedTags = Array.from(new Set([...currentTags, ...aiTags])).slice(0, 12);
 
   const leadPatch: Record<string, unknown> = {
     tenantId: input.tenantId,
@@ -1475,36 +1712,154 @@ async function executeAltumAgentActions(input: {
     aiActiveTopic: aiMemory.activeTopic,
     aiLeadSummary,
     aiLastInboundText: sanitizeText(input.inboundText, 500) || null,
+    aiPlannerConfidence: plannerConfidence,
     aiMemory,
+    qualification: {
+      score: qualificationScore,
+      band:
+        input.plan.decision === "handoff"
+          ? "handoff"
+          : mapTemperatureToQualificationBand(input.plan.commercialTemperature || null),
+      label:
+        input.plan.decision === "handoff"
+          ? "Pronto para handoff humano"
+          : input.plan.commercialTemperature === "hot"
+            ? "Pronto para proposta"
+            : input.plan.commercialTemperature === "warm"
+              ? "Em aquecimento comercial"
+              : "Descoberta em andamento",
+      recommendedStage: null,
+      nextAction: input.plan.nextAction || null,
+      missingFields,
+      reasons: [
+        aiMemory.businessType
+          ? {
+              code: "business_type_mapped",
+              label: "Tipo de empresa identificado",
+              detail: aiMemory.businessType,
+              direction: "positive",
+            }
+          : {
+              code: "business_type_missing",
+              label: "Tipo de empresa pendente",
+              detail: "Confirmar nicho para calibrar oferta.",
+              direction: "negative",
+            },
+        aiMemory.primaryGoal
+          ? {
+              code: "goal_mapped",
+              label: "Objetivo principal mapeado",
+              detail: aiMemory.primaryGoal,
+              direction: "positive",
+            }
+          : {
+              code: "goal_missing",
+              label: "Objetivo principal pendente",
+              detail: "Sem objetivo claro ainda.",
+              direction: "negative",
+            },
+        input.plan.commercialTemperature === "hot"
+          ? {
+              code: "hot_signal",
+              label: "Sinal comercial forte",
+              detail: "Lead sinalizou pronta abertura para proximo passo.",
+              direction: "positive",
+            }
+          : {
+              code: "temperature_needs_progress",
+              label: "Temperatura em evolucao",
+              detail: "Conversa precisa consolidar contexto antes de fechar.",
+              direction: "negative",
+            },
+      ],
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    score: qualificationScore,
+    scoreSource: "ai",
+    tags: mergedTags,
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  const suggestedStage = suggestPipelineStageForAiAction(
-    input.plan.nextAction,
-    getBusinessProfilePipelineStages(input.businessProfileId).map((stage) => stage.id)
-  );
-  if (suggestedStage) {
-    const previousStage = sanitizeText(leadData.pipelineStage || leadData.stage, 80) || null;
-    leadPatch.pipelineStage = suggestedStage;
-    leadPatch.stage = suggestedStage;
-    leadPatch.stageUpdatedAt = FieldValue.serverTimestamp();
-    if (previousStage && previousStage !== suggestedStage) {
-      await trackLeadStageOutcome({
-        tenantId: input.tenantId,
-        leadId,
-        previousStage,
-        nextStage: suggestedStage,
-      });
-    }
-    actions.push("move_pipeline_stage");
+  if (canWriteIdentity && shouldPatchLeadName) {
+    leadPatch.nome = nextLeadName;
+    actions.push("enrich_lead_name");
+  }
+  if (canWriteContact && extractedEmail && !currentLeadEmail) {
+    leadPatch.email = extractedEmail;
+    actions.push("enrich_lead_email");
+  }
+  if (canWriteContact && extractedPhone && !currentLeadPhone) {
+    leadPatch.telefone = extractedPhone;
+    actions.push("enrich_lead_phone");
+  }
+  if (canWriteCompany && extractedCompany && !currentLeadCompany) {
+    leadPatch.empresa = extractedCompany;
+    actions.push("enrich_lead_company");
+  }
+  if (mappedHeat && sanitizeText(leadData.heat, 20) !== mappedHeat) {
+    leadPatch.heat = mappedHeat;
+  }
+  const ownerId = sanitizeText(input.leadOwnerId, 160);
+  const ownerName = sanitizeText(input.leadOwnerName, 120);
+  if (ownerId && !sanitizeText(leadData.ownerId, 160)) {
+    leadPatch.ownerId = ownerId;
+    if (ownerName) leadPatch.owner = ownerName;
+    actions.push("sync_lead_owner");
+  } else if (ownerName && sanitizeText(leadData.ownerId, 160) === ownerId && !sanitizeText(leadData.owner, 120)) {
+    leadPatch.owner = ownerName;
+    actions.push("sync_lead_owner");
+  }
+  if (canWriteCustomFields && customFieldsChanged) {
+    leadPatch.customFields = existingCustomFields;
+    actions.push("enrich_custom_fields");
   }
 
-  if (input.plan.stateAfter === "recommendation") {
+  const pipelineStages = getBusinessProfilePipelineStages(input.businessProfileId).map((stage) => stage.id);
+  const suggestedStage = suggestPipelineStageForAiAction(input.plan.nextAction, pipelineStages);
+  const previousStage = sanitizeText(leadData.pipelineStage || leadData.stage, 80) || null;
+  let appliedStage = previousStage;
+  if (canAdvanceStage && suggestedStage && suggestedStage !== previousStage) {
+    const previousIndex = previousStage ? pipelineStages.indexOf(previousStage) : -1;
+    const suggestedIndex = pipelineStages.indexOf(suggestedStage);
+    const shouldAdvance = suggestedIndex >= 0 && (previousIndex < 0 || suggestedIndex >= previousIndex);
+
+    if (shouldAdvance) {
+      leadPatch.pipelineStage = suggestedStage;
+      leadPatch.stage = suggestedStage;
+      leadPatch.stageUpdatedAt = FieldValue.serverTimestamp();
+      appliedStage = suggestedStage;
+      if (previousStage) {
+        await trackLeadStageOutcome({
+          tenantId: input.tenantId,
+          leadId,
+          previousStage,
+          nextStage: suggestedStage,
+        });
+      }
+      actions.push("move_pipeline_stage");
+    }
+  }
+  const qualificationPatch = leadPatch.qualification as Record<string, unknown>;
+  qualificationPatch.recommendedStage = appliedStage || pipelineStages[0] || null;
+
+  if (canFlagHotLead && input.plan.stateAfter === "recommendation") {
     leadPatch.priority = "high";
-    leadPatch.heat = "hot";
+    leadPatch.heat = "quente";
     leadPatch.aiSignalStrength = "high";
     leadPatch.aiLastRecommendedAt = FieldValue.serverTimestamp();
     actions.push("flag_hot_lead");
+  }
+
+  if (canSetReadyHandoff && (input.plan.stateAfter === "handoff" || input.plan.decision === "handoff")) {
+    leadPatch.priority = "high";
+    leadPatch.handoff = {
+      status: "ready",
+      reasonCode: "ai_handoff_requested",
+      reasonLabel: "IA recomendou atendimento humano",
+      summary: aiLeadSummary,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    actions.push("mark_handoff_ready");
   }
 
   await leadRef.set(leadPatch, { merge: true });
@@ -1780,6 +2135,16 @@ async function executeAltumAgentActions(input: {
     actions.push("notify_internal_team");
   }
 
+  await syncLeadCommercialState({
+    tenantId: input.tenantId,
+    leadId,
+    actorId: "ai_sales_agent",
+    actorName: "AI Sales Agent",
+    allowStageAdvance: canAdvanceStage,
+    preserveManualScore: true,
+  });
+  actions.push("sync_crm_state");
+
   return actions;
 }
 
@@ -2013,6 +2378,20 @@ export function normalizeExtractedFieldsForCrm(extracted?: Record<string, string
     nome: "preferredName",
     contactname: "preferredName",
     contact_name: "preferredName",
+    email: "email",
+    contactemail: "email",
+    contact_email: "email",
+    mail: "email",
+    phone: "phone",
+    telefone: "phone",
+    contactphone: "phone",
+    contact_phone: "phone",
+    whatsapp: "phone",
+    mobile: "phone",
+    celular: "phone",
+    company: "company",
+    businessname: "company",
+    empresa: "company",
   };
 
   const normalized = Object.entries(extracted).reduce<Record<string, string>>((acc, [key, value]) => {
@@ -2339,6 +2718,26 @@ export function extractBusinessFields(inboundText: string, tenantAi: TenantAiCon
     extracted.currentChannels = Array.from(new Set(channels)).join(", ");
   }
 
+  const emailMatch = normalizedText.match(/\b([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b/i);
+  if (emailMatch?.[1]) {
+    extracted.email = emailMatch[1].toLowerCase();
+  }
+
+  const phoneMatch = normalizedText.match(/(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9?\d{4})[-\s]?\d{4}/);
+  if (phoneMatch?.[0]) {
+    extracted.phone = normalizePhone(phoneMatch[0]);
+  }
+
+  const explicitNameMatch = normalizedText.match(
+    /\b(?:meu nome e|me chamo|pode me chamar de|sou o|sou a|eu sou)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]{1,40})/i
+  );
+  if (explicitNameMatch?.[1]) {
+    const possibleName = sanitizeText(explicitNameMatch[1], 80);
+    if (looksLikeHumanName(possibleName)) {
+      extracted.preferredName = possibleName;
+    }
+  }
+
   const teamMatch = normalizedText.match(/\b(?:somos|tenho|equipe de|time de)\s+(\d{1,2})\b/i);
   if (teamMatch?.[1]) {
     extracted.teamSize = `${teamMatch[1]} pessoas`;
@@ -2365,6 +2764,80 @@ function buildConversationLink(tenantId: string, chatId: string) {
   }
 
   return `${explicitBase.replace(/\/$/, "")}/cliente/painel/inbox?chatId=${encodeURIComponent(chatId)}`;
+}
+
+async function resolveHandoffNotifyRecipients(input: {
+  tenantId: string;
+  aiConfig: TenantAiConfig;
+  chatData: Record<string, unknown>;
+  tenantSettings: Awaited<ReturnType<typeof getTenantSettings>>;
+}) {
+  if (!input.aiConfig.handoffNotifyEnabled) {
+    return [] as Array<{ phone: string; source: string }>;
+  }
+
+  const recipients = new Map<string, string>();
+  const addRecipient = (phone: string, source: string) => {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return;
+    if (!recipients.has(normalized)) {
+      recipients.set(normalized, source);
+    }
+  };
+
+  addRecipient(input.aiConfig.responsiblePhone, "ai_responsible_phone");
+  for (const phone of input.aiConfig.handoffNotifyPhones) {
+    addRecipient(phone, "ai_handoff_notify_phone");
+  }
+
+  const tenantSettingsRecord =
+    input.tenantSettings && typeof input.tenantSettings === "object"
+      ? (input.tenantSettings as Record<string, unknown>)
+      : null;
+
+  for (const phone of extractPhoneCandidates(tenantSettingsRecord)) {
+    addRecipient(phone, "tenant_settings");
+  }
+
+  const ownerId = sanitizeText(input.chatData.ownerId || input.chatData.assignedUserId, 160);
+  for (const phone of extractPhoneCandidates(input.chatData)) {
+    addRecipient(phone, "chat_owner");
+  }
+
+  if (ownerId) {
+    const tenantUserDocId = `${input.tenantId}_${ownerId}`;
+    const tenantUserByDoc = await adminDb.collection("tenant_users").doc(tenantUserDocId).get();
+    if (tenantUserByDoc.exists) {
+      for (const phone of extractPhoneCandidates(tenantUserByDoc.data() as Record<string, unknown>)) {
+        addRecipient(phone, "tenant_user");
+      }
+    } else {
+      const tenantUserByQuery = await adminDb
+        .collection("tenant_users")
+        .where("userId", "==", ownerId)
+        .limit(20)
+        .get();
+      const tenantUserMatch = tenantUserByQuery.docs.find(
+        (doc) => String((doc.data() as Record<string, unknown>).tenantId || "") === input.tenantId
+      );
+      if (tenantUserMatch) {
+        for (const phone of extractPhoneCandidates(tenantUserMatch.data() as Record<string, unknown>)) {
+          addRecipient(phone, "tenant_user");
+        }
+      }
+    }
+
+    const userDoc = await adminDb.collection("users").doc(ownerId).get();
+    if (userDoc.exists) {
+      for (const phone of extractPhoneCandidates(userDoc.data() as Record<string, unknown>)) {
+        addRecipient(phone, "global_user");
+      }
+    }
+  }
+
+  return Array.from(recipients.entries())
+    .slice(0, 6)
+    .map(([phone, source]) => ({ phone, source }));
 }
 
 export async function handleIncomingMessage(
@@ -2649,11 +3122,9 @@ export async function handleIncomingMessage(
   }
 
   const shouldUseWhatsApp = chatChannel === "whatsapp";
-  const whatsappChannel = shouldUseWhatsApp
-    ? await getWhatsAppChannelForTenant(tenantId, {
-        allowAgencyFallback: tenantId === "ALTUM_AGENCY",
-      })
-    : null;
+  const whatsappChannel = await getWhatsAppChannelForTenant(tenantId, {
+    allowAgencyFallback: tenantId === "ALTUM_AGENCY",
+  });
   const metaChannel = isMetaConversation
     ? await getMetaChannelForTenant(tenantId, chatChannel, {
         channelId: String(chatData.channelId || "").trim() || null,
@@ -2822,22 +3293,118 @@ export async function handleIncomingMessage(
       channelPhoneNumberId: whatsappChannel?.phoneNumberId,
     });
 
-    if (aiConfig.responsiblePhone && whatsappChannel) {
+    const handoffRecipients = whatsappChannel
+      ? await resolveHandoffNotifyRecipients({
+          tenantId,
+          aiConfig,
+          chatData,
+          tenantSettings,
+        })
+      : [];
+
+    const previousHandoffNotifyMessageId = sanitizeText(chatState.lastHandoffNotifyMessageId, 160);
+    const previousHandoffNotifyStatus = sanitizeText(chatState.lastHandoffNotifyStatus, 80).toLowerCase();
+    const handoffNotifyAlreadyHandled =
+      previousHandoffNotifyMessageId === messageId &&
+      [
+        "success",
+        "partial_failure",
+        "failed",
+        "skipped_no_channel",
+        "skipped_no_recipients",
+        "skipped_disabled",
+      ].includes(previousHandoffNotifyStatus);
+
+    let handoffNotifySuccessCount = 0;
+    let handoffNotifyFailureCount = 0;
+    let handoffNotifyStatus = "pending";
+    if (handoffNotifyAlreadyHandled) {
+      handoffNotifyStatus = "skipped_duplicate";
+      handoffNotifySuccessCount = Math.max(0, Number(chatState.lastHandoffNotifySuccessCount || 0));
+      handoffNotifyFailureCount = Math.max(0, Number(chatState.lastHandoffNotifyFailureCount || 0));
+    } else if (!aiConfig.handoffNotifyEnabled) {
+      handoffNotifyStatus = "skipped_disabled";
+    } else if (!whatsappChannel) {
+      handoffNotifyStatus = "skipped_no_channel";
+    } else if (!handoffRecipients.length) {
+      handoffNotifyStatus = "skipped_no_recipients";
+    } else {
+      const leadName = sanitizeText(chatData.contactName, 120) || "Contato";
+      const leadPhoneLabel =
+        leadPhone || normalizePhone(String(chatData.contactPhone || "")) || "sem telefone";
+      const businessType =
+        sanitizeText(extractedFields?.businessType || leadMemory?.businessType, 120) || "nao mapeado";
+      const primaryGoal =
+        sanitizeText(extractedFields?.primaryGoal || leadMemory?.primaryGoal, 160) || "nao mapeado";
+      const budgetBand =
+        sanitizeText(extractedFields?.budgetBand || leadMemory?.budgetBand, 120) || "nao informado";
+      const temperature = sanitizeText(plannerDecision.commercialTemperature, 40) || "em avaliacao";
+      const nextActionLabel = sanitizeText(nextAction, 160) || "nao definido";
+
       const notification = [
         `Handoff solicitado para tenant ${tenantId}.`,
         `Conversa: ${chatId}`,
-        `Lead: ${String(chatData.contactName || "Contato")} (${leadPhone})`,
+        `Lead: ${leadName} (${leadPhoneLabel})`,
+        `Motivo: ${sanitizeText(plannerDecision.reason || choice.reason, 180) || "avaliacao da IA"}`,
+        `Temperatura: ${temperature}`,
+        `Proximo passo: ${nextActionLabel}`,
+        `Negocio: ${businessType}`,
+        `Objetivo: ${primaryGoal}`,
+        `Orcamento: ${budgetBand}`,
         `Inbox: ${conversationLink}`,
         "Resumo:",
         ...summaryBullets,
       ].join("\n");
 
-      await sendMetaTextMessage({
-        channel: whatsappChannel,
-        to: aiConfig.responsiblePhone,
-        text: notification,
-      });
+      const notifyResults = await Promise.allSettled(
+        handoffRecipients.map((recipient) =>
+          sendMetaTextMessage({
+            channel: whatsappChannel,
+            to: recipient.phone,
+            text: notification,
+          })
+        )
+      );
+
+      handoffNotifySuccessCount = notifyResults.filter((result) => result.status === "fulfilled").length;
+      handoffNotifyFailureCount = Math.max(0, notifyResults.length - handoffNotifySuccessCount);
+      handoffNotifyStatus =
+        handoffNotifyFailureCount === 0
+          ? "success"
+          : handoffNotifySuccessCount > 0
+            ? "partial_failure"
+            : "failed";
+
+      if (handoffNotifyFailureCount > 0 && leadId) {
+        await createAiInternalNotification({
+          tenantId,
+          chatId,
+          leadId,
+          type: "handoff_notify_failed",
+          severity: "warning",
+          title: "Falha parcial ao notificar handoff no WhatsApp",
+          detail: `${handoffNotifyFailureCount} notificacao(oes) nao foram entregues. Verifique phones dos responsaveis.`,
+        });
+      }
     }
+
+    await adminDb
+      .collection("chat_state")
+      .doc(getChatStateDocId(tenantId, chatId))
+      .set(
+        {
+          tenantId,
+          chatId,
+          lastHandoffNotifyAt: FieldValue.serverTimestamp(),
+          lastHandoffNotifyMessageId: messageId,
+          lastHandoffNotifyStatus: handoffNotifyStatus,
+          lastHandoffNotifyRecipients: handoffRecipients.length,
+          lastHandoffNotifySuccessCount: handoffNotifySuccessCount,
+          lastHandoffNotifyFailureCount: handoffNotifyFailureCount,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
 
     await upsertChatState({
       tenantId,
@@ -2859,6 +3426,8 @@ export async function handleIncomingMessage(
       inboundText,
       businessProfileId: aiConfig.businessProfileId,
       leadName: sanitizeText(chatData.contactName, 120) || null,
+      leadOwnerId: sanitizeText(chatData.ownerId || chatData.assignedUserId, 160) || null,
+      leadOwnerName: sanitizeText(chatData.ownerName || chatData.assignedUserName, 120) || null,
     });
 
     await saveAiLog({
@@ -2876,9 +3445,11 @@ export async function handleIncomingMessage(
         "chat_state",
         "tenant_settings.ai",
         shouldUseWhatsApp ? "whatsapp_send" : isMetaConversation ? "meta_send" : "site_chat_reply",
-        aiConfig.responsiblePhone && whatsappChannel ? "handoff_notify" : "handoff_log",
+        ["success", "partial_failure", "failed"].includes(handoffNotifyStatus) ? "handoff_notify" : "handoff_log",
+        handoffNotifyStatus !== "pending" ? `handoff_notify_${handoffNotifyStatus}` : "",
+        handoffNotifyFailureCount > 0 ? "handoff_notify_partial_failure" : "",
         ...providerFallbackToolCalls,
-      ],
+      ].filter(Boolean),
       confidence: Math.max(choice.confidence, plannerDecision.confidence || 0),
       matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
       latencyMs: Date.now() - startedAt,
@@ -2946,6 +3517,11 @@ export async function handleIncomingMessage(
         conversationLedBy: choice.ledBy,
         qualityScore: quality.score,
         qualityNotes: quality.notes,
+        handoffNotifyStatus,
+        handoffNotifySkippedDuplicate: handoffNotifyStatus === "skipped_duplicate",
+        handoffNotifyRecipients: handoffRecipients.length,
+        handoffNotifySuccessCount,
+        handoffNotifyFailureCount,
         executedActions,
       },
     });
@@ -3145,6 +3721,8 @@ export async function handleIncomingMessage(
     inboundText,
     businessProfileId: aiConfig.businessProfileId,
     leadName: sanitizeText(chatData.contactName, 120) || null,
+    leadOwnerId: sanitizeText(chatData.ownerId || chatData.assignedUserId, 160) || null,
+    leadOwnerName: sanitizeText(chatData.ownerName || chatData.assignedUserName, 120) || null,
   });
 
   await saveAiLog({
