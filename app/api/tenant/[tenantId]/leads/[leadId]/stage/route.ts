@@ -12,11 +12,62 @@ import { syncLeadCommercialState } from "@/lib/server/crm/operations";
 type Body = {
   stage?: string;
   status?: string;
+  force?: boolean;
 };
 
 function clean(value: unknown, max = 80) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+function hasMeaningfulText(value: unknown, min = 3) {
+  return clean(value, 500).length >= min;
+}
+
+function hasAnyContextSignal(lead: Record<string, unknown>) {
+  const customFields =
+    lead.customFields && typeof lead.customFields === "object"
+      ? (lead.customFields as Record<string, unknown>)
+      : {};
+
+  return Boolean(
+    hasMeaningfulText(lead.notes, 12) ||
+      hasMeaningfulText(lead.mensagem, 12) ||
+      hasMeaningfulText(lead.aiLeadSummary, 12) ||
+      hasMeaningfulText(customFields.objetivo_principal, 6) ||
+      hasMeaningfulText(customFields.servico_interesse, 6) ||
+      hasMeaningfulText(customFields.orcamento, 1) ||
+      hasMeaningfulText(customFields.urgencia, 1)
+  );
+}
+
+function validateStageContext(input: {
+  targetStage: string;
+  lead: Record<string, unknown>;
+}) {
+  const stage = normalizePipelineStageId(input.targetStage);
+  const lead = input.lead;
+  const missingFields: string[] = [];
+
+  const hasName = hasMeaningfulText(lead.nome, 2);
+  const hasContact = hasMeaningfulText(lead.telefone, 6) || hasMeaningfulText(lead.email, 6);
+  const hasCompany = hasMeaningfulText(lead.empresa, 2);
+  const hasContext = hasAnyContextSignal(lead);
+
+  if (["qualificacao", "proposta", "fechamento", "ganho"].includes(stage)) {
+    if (!hasName) missingFields.push("nome");
+    if (!hasContact) missingFields.push("telefone_ou_email");
+  }
+
+  if (["proposta", "fechamento", "ganho"].includes(stage)) {
+    if (!hasCompany) missingFields.push("empresa");
+    if (!hasContext) missingFields.push("contexto_comercial_minimo");
+  }
+
+  return {
+    ok: missingFields.length === 0,
+    missingFields,
+  };
 }
 
 export async function POST(
@@ -45,9 +96,28 @@ export async function POST(
       return NextResponse.json({ error: "Lead nao encontrado." }, { status: 404 });
     }
 
-    const leadData = leadSnap.data() as { tenantId?: string; pipelineStage?: string };
+    const leadData = leadSnap.data() as Record<string, unknown>;
     if ((leadData.tenantId || "") !== tenantId) {
       return NextResponse.json({ error: "Lead fora do tenant informado." }, { status: 403 });
+    }
+    const forceStageMove = body.force === true;
+    const stageValidation = validateStageContext({
+      targetStage: stage,
+      lead: leadData,
+    });
+
+    if (!stageValidation.ok && !forceStageMove) {
+      return NextResponse.json(
+        {
+          error: "Bloqueado: contexto minimo insuficiente para avancar stage.",
+          code: "stage_context_missing",
+          tenantId,
+          leadId,
+          stage,
+          missingFields: stageValidation.missingFields,
+        },
+        { status: 409 }
+      );
     }
 
     const previousStage = normalizePipelineStageId(clean(leadData.pipelineStage, 80) || "captado");
@@ -61,15 +131,28 @@ export async function POST(
     if (status) {
       patch.status = status;
     }
+    if (!stageValidation.ok && forceStageMove) {
+      patch.stageContextOverride = {
+        by: user.uid,
+        byName: user.name,
+        missingFields: stageValidation.missingFields,
+        forcedAt: FieldValue.serverTimestamp(),
+      };
+    }
 
     await Promise.all([
       leadRef.set(patch, { merge: true }),
       leadRef.collection("events").add({
-        type: "stage_change",
-        title: "Stage atualizado",
-        detail: `${previousStage} -> ${stage}`,
+        type: !stageValidation.ok && forceStageMove ? "stage_change_forced" : "stage_change",
+        title: !stageValidation.ok && forceStageMove ? "Stage atualizado com override" : "Stage atualizado",
+        detail:
+          !stageValidation.ok && forceStageMove
+            ? `${previousStage} -> ${stage} (override: ${stageValidation.missingFields.join(", ")})`
+            : `${previousStage} -> ${stage}`,
         previousStage,
         nextStage: stage,
+        forced: !stageValidation.ok && forceStageMove,
+        missingFields: !stageValidation.ok && forceStageMove ? stageValidation.missingFields : [],
         actorId: user.uid,
         actorName: user.name,
         createdAt: FieldValue.serverTimestamp(),

@@ -14,6 +14,7 @@ import {
 import { verifyMetaSignature } from "@/app/lib/server/whatsapp-channel";
 import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { cacheInboundMessageMedia } from "@/lib/server/ai/multimodal";
+import { upsertAiOperationalAlert } from "@/lib/server/ai/observability";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
@@ -285,6 +286,61 @@ function parseLeadgenEvents(body: Record<string, unknown>) {
   }
 
   return parsed;
+}
+
+function summarizeUnsupportedSocialChanges(body: Record<string, unknown>) {
+  const entries = Array.isArray(body.entry) ? body.entry : [];
+  const items: string[] = [];
+
+  for (const entryRaw of entries) {
+    const entry = entryRaw && typeof entryRaw === "object" ? (entryRaw as Record<string, unknown>) : {};
+    const entryId = cleanString(entry.id, 80);
+    const changes = Array.isArray(entry.changes) ? entry.changes : [];
+    for (const changeRaw of changes) {
+      const change = changeRaw && typeof changeRaw === "object" ? (changeRaw as Record<string, unknown>) : {};
+      const field = cleanString(change.field, 80).toLowerCase();
+      if (!field) continue;
+      const value = change.value && typeof change.value === "object" ? (change.value as Record<string, unknown>) : {};
+      const item = cleanString(value.item, 80).toLowerCase();
+      const verb = cleanString(value.verb, 80).toLowerCase();
+      items.push(`${entryId || "entry"}:${field}:${item || "item"}:${verb || "verb"}`);
+      if (items.length >= 10) return items;
+    }
+  }
+
+  return items;
+}
+
+async function signalUnsupportedSocialEvent(input: {
+  tenantId: string;
+  objectType: string;
+  entryId: string;
+  summary: string[];
+}) {
+  const detail = `Evento social nao suportado pela automacao atual. object=${input.objectType}, entry=${input.entryId || "n/a"}, detalhes=${input.summary.join(" | ") || "sem_detalhe"}`;
+
+  await Promise.all([
+    upsertAiOperationalAlert({
+      tenantId: input.tenantId,
+      type: "social_unsupported_event",
+      scope: `social_${sanitizeId(input.objectType || "unknown", 60)}`,
+      severity: "warning",
+      title: "Webhook social recebido com evento nao suportado",
+      detail: detail.slice(0, 320),
+      reasonCode: "ignored_unsupported_social_event",
+      source: "meta_webhook",
+    }),
+    adminDb.collection("social_automation_logs").add({
+      tenantId: input.tenantId,
+      channelType: input.objectType || "social",
+      eventType: "unsupported_event",
+      eventId: sanitizeId(`${input.entryId || "entry"}_${Date.now()}`, 180),
+      status: "ignored_unsupported",
+      reason: detail.slice(0, 300),
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+    }),
+  ]);
 }
 
 async function claimMetaWebhookEvent(input: {
@@ -608,6 +664,27 @@ export async function POST(req: Request) {
     const leadgenEvents = parseLeadgenEvents(body);
 
     if (parsedEvents.length === 0 && socialEvents.length === 0 && leadgenEvents.length === 0) {
+      const socialUnsupportedSummary = summarizeUnsupportedSocialChanges(body);
+      const firstEntry =
+        Array.isArray(body.entry) && body.entry[0] && typeof body.entry[0] === "object"
+          ? (body.entry[0] as Record<string, unknown>)
+          : {};
+      const firstEntryId = cleanString(firstEntry.id, 180);
+      if (socialUnsupportedSummary.length > 0 && (objectType === "instagram" || objectType === "page")) {
+        const unsupportedResolved = await findMetaChannelForWebhook({
+          objectType,
+          entryId: firstEntryId,
+          recipientId: "",
+        });
+        if (unsupportedResolved?.tenantId) {
+          await signalUnsupportedSocialEvent({
+            tenantId: unsupportedResolved.tenantId,
+            objectType,
+            entryId: firstEntryId,
+            summary: socialUnsupportedSummary,
+          });
+        }
+      }
       return NextResponse.json({ status: "ignored_no_message" });
     }
 
@@ -943,6 +1020,16 @@ export async function POST(req: Request) {
           chatId: "chatId" in socialResult ? socialResult.chatId : null,
         });
       } catch (error) {
+        await upsertAiOperationalAlert({
+          tenantId: channel.tenantId,
+          type: "social_automation_failure",
+          scope: `social_${sanitizeId(event.eventType, 60)}`,
+          severity: "high",
+          title: "Falha ao processar evento social da Meta",
+          detail: `event=${event.eventType}, channel=${channel.type}, eventId=${event.eventId}, erro=${error instanceof Error ? cleanString(error.message, 200) : "erro_desconhecido"}`,
+          reasonCode: "social_automation_failed",
+          source: "meta_webhook",
+        });
         console.error("Erro ao processar evento social da Meta:", {
           tenantId: channel.tenantId,
           channelType: channel.type,

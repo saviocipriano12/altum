@@ -43,6 +43,17 @@ function parseDueAt(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeTaskKey(input: { title: string; type: string }) {
+  return `${input.type}:${input.title}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\w\s:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 220);
+}
+
 async function assertLeadInTenant(tenantId: string, leadId: string) {
   const leadRef = adminDb.collection("leads").doc(leadId);
   const leadSnap = await leadRef.get();
@@ -123,6 +134,33 @@ export async function POST(
     const dueAt = parseDueAt(body.dueAt);
     const priority = cleanString(body.priority, 20).toLowerCase() || "medium";
     const type = cleanString(body.type, 40).toLowerCase() || "follow_up";
+    const dedupeKey = normalizeTaskKey({ title, type });
+
+    const existingTasksSnap = await adminDb
+      .collection("lead_tasks")
+      .where("tenantId", "==", tenantId)
+      .where("leadId", "==", leadId)
+      .where("status", "==", "pending")
+      .limit(120)
+      .get();
+
+    const duplicatedTask = existingTasksSnap.docs.find((doc) => {
+      const data = doc.data() as Record<string, unknown>;
+      const currentTitle = cleanString(data.title, 180) || "Tarefa";
+      const currentType = cleanString(data.type, 40).toLowerCase() || "follow_up";
+      const currentKey = normalizeTaskKey({ title: currentTitle, type: currentType });
+      return currentKey === dedupeKey;
+    });
+
+    if (duplicatedTask) {
+      return NextResponse.json({
+        ok: true,
+        tenantId,
+        leadId,
+        deduped: true,
+        taskId: duplicatedTask.id,
+      });
+    }
 
     await Promise.all([
       adminDb.collection("lead_tasks").add({
