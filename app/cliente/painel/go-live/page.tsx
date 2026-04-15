@@ -32,6 +32,21 @@ type ChecklistItem = {
   target: string;
 };
 
+type OnboardingStep = {
+  id: string;
+  title: string;
+  description: string;
+  href: string;
+  mode: "auto" | "manual";
+  status: "done" | "pending" | "blocked";
+  critical: boolean;
+  done: boolean;
+  blocking: boolean;
+  evidence: string;
+  doneAt: string | null;
+  doneByName: string;
+};
+
 type GoLivePayload = {
   settings?: {
     businessProfileId?: string;
@@ -63,6 +78,15 @@ type GoLivePayload = {
     aiMonthlyUsageCap?: number;
   };
   checklist?: ChecklistItem[];
+  onboarding?: {
+    completed?: number;
+    total?: number;
+    progressPct?: number;
+    pendingCritical?: number;
+    manualPending?: number;
+    autoPending?: number;
+    steps?: OnboardingStep[];
+  };
   activation?: {
     gateStatus?: "open" | "blocked";
     status?: "approved" | "ready_to_activate" | "blocked";
@@ -119,11 +143,15 @@ export default function ClienteGoLivePage() {
   const { tenant } = useClienteTenant();
   const { readiness, loading } = useTenantReadiness(tenant?.tenantId);
   const [saving, setSaving] = useState(false);
+  const [updatingStepId, setUpdatingStepId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ tone: Tone; text: string } | null>(null);
   const [overrideSnapshot, setOverrideSnapshot] = useState<GoLivePayload | null>(null);
 
   const snapshot = (overrideSnapshot || readiness) as GoLivePayload | null;
   const checklist = snapshot?.checklist || [];
+  const onboarding = snapshot?.onboarding || {};
+  const onboardingSteps = onboarding.steps || [];
+  const manualOnboardingSteps = onboardingSteps.filter((item) => item.mode === "manual");
   const criticalChecklist = checklist.filter((item) => item.critical);
   const blockers = snapshot?.blockers || [];
   const modules = snapshot?.modules || [];
@@ -173,6 +201,55 @@ export default function ClienteGoLivePage() {
     }
   }
 
+  async function handleToggleManualStep(step: OnboardingStep) {
+    if (!tenant?.tenantId || step.mode !== "manual" || updatingStepId) return;
+    setUpdatingStepId(step.id);
+    setFeedback(null);
+    try {
+      const response = await authedFetch(`/api/tenant/${tenant.tenantId}/onboarding`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stepId: step.id,
+          done: !step.done,
+        }),
+      });
+      const payload = (await response.json()) as GoLivePayload & {
+        onboarding?: GoLivePayload["onboarding"];
+        summary?: GoLivePayload["summary"];
+        activation?: GoLivePayload["activation"];
+        error?: string;
+      };
+
+      if (!response.ok) {
+        setFeedback({
+          tone: "danger",
+          text: payload.error || "Falha ao atualizar etapa de onboarding.",
+        });
+        return;
+      }
+
+      setOverrideSnapshot((prev) => ({
+        ...(prev || {}),
+        ...(snapshot || {}),
+        onboarding: payload.onboarding || snapshot?.onboarding,
+        summary: payload.summary || snapshot?.summary,
+        activation: payload.activation || snapshot?.activation,
+      }));
+      setFeedback({
+        tone: "success",
+        text: !step.done ? "Etapa manual marcada como concluida." : "Etapa manual reaberta para acompanhamento.",
+      });
+    } catch {
+      setFeedback({
+        tone: "danger",
+        text: "Falha ao atualizar etapa de onboarding.",
+      });
+    } finally {
+      setUpdatingStepId(null);
+    }
+  }
+
   if (loading && !snapshot) {
     return (
       <div className="flex min-h-[45vh] items-center justify-center">
@@ -205,6 +282,33 @@ export default function ClienteGoLivePage() {
         <MetricCard label="Gates criticos" value={String(criticalChecklist.length)} icon={ShieldCheck} trend={`${criticalChecklist.filter((item) => item.status === "ready").length} aprovados`} />
         <MetricCard label="Uso IA no mes" value={String(snapshot?.summary?.aiMonthlyRuns || 0)} icon={Wallet} trend={`${formatUsd(snapshot?.summary?.aiMonthlyCostUsd)} consumidos`} />
         <MetricCard label="Cobertura humana" value={String(snapshot?.summary?.activeUsers || 0)} icon={CheckCircle2} trend={`${snapshot?.summary?.operationalChannels || 0} canal(is) pronto(s)`} />
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Onboarding"
+          value={`${Number(onboarding.progressPct || 0)}%`}
+          icon={Rocket}
+          trend={`${Number(onboarding.completed || 0)}/${Number(onboarding.total || 0)} etapa(s)`}
+        />
+        <MetricCard
+          label="Pendencias criticas"
+          value={String(Number(onboarding.pendingCritical || 0))}
+          icon={AlertTriangle}
+          trend={Number(onboarding.pendingCritical || 0) > 0 ? "bloqueiam operacao segura" : "sem bloqueio critico"}
+        />
+        <MetricCard
+          label="Pendencias manuais"
+          value={String(Number(onboarding.manualPending || 0))}
+          icon={Clock3}
+          trend="itens de governanca do time"
+        />
+        <MetricCard
+          label="Pendencias automaticas"
+          value={String(Number(onboarding.autoPending || 0))}
+          icon={ShieldCheck}
+          trend="itens rastreados por sistema"
+        />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -323,6 +427,48 @@ export default function ClienteGoLivePage() {
               <RunbookRow icon={Clock3} title="D0" detail="Fechar owner, canal, IA, conhecimento minimo e limites de uso/custo." />
               <RunbookRow icon={CheckCircle2} title="D1" detail="Validar fila real, handoff, SLA e primeira rotina de acompanhamento." />
               <RunbookRow icon={AlertTriangle} title="D7" detail="Revisar consumo de IA, backlog, webhook, automacoes e gargalos de operacao." />
+            </div>
+          </PanelCard>
+
+          <PanelCard className="p-5">
+            <CardTitle title="Etapas manuais do onboarding" subtitle="Checklist guiado para confirmar governanca de operacao e handoff." />
+            <div className="mt-4 space-y-3">
+              {manualOnboardingSteps.length === 0 ? (
+                <EmptyState title="Sem etapas manuais" description="As etapas manuais aparecerao aqui quando o tenant exigir confirmacao de governanca." />
+              ) : (
+                manualOnboardingSteps.map((step) => (
+                  <div key={step.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{step.title}</p>
+                        <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{step.description}</p>
+                        <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">Evidencia: {step.evidence}</p>
+                        {step.doneAt ? (
+                          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                            Confirmado em {formatDate(step.doneAt)}{step.doneByName ? ` por ${step.doneByName}` : ""}.
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <StateBadge label={step.done ? "concluida" : "pendente"} tone={step.done ? "success" : "warning"} />
+                        <div className="flex items-center gap-2">
+                          <Link href={step.href} className="rounded-xl border border-[var(--cliente-border)] px-3 py-1 text-xs text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-panel-soft)]">
+                            Abrir
+                          </Link>
+                          <button
+                            type="button"
+                            disabled={updatingStepId === step.id}
+                            onClick={() => void handleToggleManualStep(step)}
+                            className="rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)] px-3 py-1 text-xs font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {updatingStepId === step.id ? "..." : step.done ? "Reabrir" : "Concluir"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </PanelCard>
 

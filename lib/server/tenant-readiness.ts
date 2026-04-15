@@ -137,6 +137,31 @@ export type TenantOperationalAlert = {
   lastOccurredAt: string | null;
 };
 
+export type TenantOnboardingStep = {
+  id: string;
+  title: string;
+  description: string;
+  href: string;
+  mode: "auto" | "manual";
+  status: "done" | "pending" | "blocked";
+  critical: boolean;
+  done: boolean;
+  blocking: boolean;
+  evidence: string;
+  doneAt: string | null;
+  doneByName: string;
+};
+
+export type TenantOnboardingProgress = {
+  completed: number;
+  total: number;
+  progressPct: number;
+  pendingCritical: number;
+  manualPending: number;
+  autoPending: number;
+  steps: TenantOnboardingStep[];
+};
+
 export type TenantReadinessSnapshot = {
   tenantId: string;
   settings: {
@@ -165,6 +190,7 @@ export type TenantReadinessSnapshot = {
   summary: TenantReadinessSummary;
   operationalHealth: TenantOperationalHealth;
   operationalAlerts: TenantOperationalAlert[];
+  onboarding: TenantOnboardingProgress;
   checklist: TenantGoLiveCriterion[];
   activation: TenantGoLiveActivation;
   blockers: TenantReadinessItem[];
@@ -284,6 +310,32 @@ function parseGoLiveValidation(value: unknown): TenantGoLiveValidation {
   };
 }
 
+function parseOnboardingManualAcks(value: unknown) {
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const entries = Object.entries(source).slice(0, 20);
+  const map = new Map<
+    string,
+    {
+      done: boolean;
+      doneAt: string | null;
+      doneByName: string;
+    }
+  >();
+
+  for (const [key, raw] of entries) {
+    const id = clean(key, 80).toLowerCase();
+    if (!id) continue;
+    const item = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    map.set(id, {
+      done: item.done === true,
+      doneAt: toIso(item.doneAt),
+      doneByName: clean(item.doneByName, 140),
+    });
+  }
+
+  return map;
+}
+
 function statusToTone(status: ModuleStatus): Tone {
   if (status === "ready") return "success";
   if (status === "partial") return "warning";
@@ -337,9 +389,14 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
   const settings = await getTenantSettings(tenantId);
   const inboxRules = parseInboxRules(settings?.rules);
   const aiSettings = settings?.ai && typeof settings.ai === "object" ? (settings.ai as Record<string, unknown>) : {};
+  const onboardingSettings =
+    settings?.onboarding && typeof settings.onboarding === "object"
+      ? (settings.onboarding as Record<string, unknown>)
+      : {};
   const aiOperatingProfile = parseAiOperatingProfile(aiSettings.operatingProfile);
   const guardrails = parseGuardrails(aiSettings.guardrails);
   const storedValidation = parseGoLiveValidation(settings?.goLive);
+  const manualOnboardingAcks = parseOnboardingManualAcks(onboardingSettings.manualAcks);
 
   const [
     usersSnap,
@@ -1121,6 +1178,164 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
     },
   ];
 
+  const onboardingSteps: TenantOnboardingStep[] = [
+    {
+      id: "profile_setup",
+      title: "Perfil comercial configurado",
+      description: "Empresa, contato e modo de negocio definidos para o tenant.",
+      href: "/cliente/painel/configuracoes/empresa",
+      mode: "auto",
+      status: hasCompanyProfile && hasCompanyContact && hasBusinessMode ? "done" : hasCompanyProfile || hasCompanyContact ? "pending" : "blocked",
+      critical: true,
+      done: hasCompanyProfile && hasCompanyContact && hasBusinessMode,
+      blocking: !(hasCompanyProfile && hasCompanyContact && hasBusinessMode),
+      evidence:
+        hasCompanyProfile && hasCompanyContact && hasBusinessMode
+          ? "Perfil e contato comercial completos."
+          : "Faltam dados de empresa, contato ou modo operacional.",
+      doneAt: null,
+      doneByName: "",
+    },
+    {
+      id: "channel_ready",
+      title: "Canal operacional pronto",
+      description: "Pelo menos um canal ativo com roteamento/sync apto para operacao.",
+      href: "/cliente/painel/configuracoes/canais",
+      mode: "auto",
+      status: operationalChannels > 0 ? "done" : activeChannels > 0 ? "pending" : "blocked",
+      critical: true,
+      done: operationalChannels > 0,
+      blocking: operationalChannels === 0,
+      evidence:
+        operationalChannels > 0
+          ? `${operationalChannels} canal(is) operacional(is).`
+          : activeChannels > 0
+            ? "Canal ativo sem readiness operacional completo."
+            : "Nenhum canal ativo para atendimento.",
+      doneAt: null,
+      doneByName: "",
+    },
+    {
+      id: "ai_guardrails",
+      title: "IA com guardrails e limites",
+      description: "IA ligada, dono de handoff definido e limites de uso/custo em zona segura.",
+      href: "/cliente/painel/ia",
+      mode: "auto",
+      status:
+        aiEnabled && hasAiOwner && guardrails.length > 0 && !aiBudgetExceeded && !aiUsageCapExceeded
+          ? "done"
+          : aiEnabled && hasAiOwner
+            ? "pending"
+            : "blocked",
+      critical: true,
+      done: aiEnabled && hasAiOwner && guardrails.length > 0 && !aiBudgetExceeded && !aiUsageCapExceeded,
+      blocking: !(aiEnabled && hasAiOwner && guardrails.length > 0 && !aiBudgetExceeded && !aiUsageCapExceeded),
+      evidence:
+        aiEnabled && hasAiOwner && guardrails.length > 0 && !aiBudgetExceeded && !aiUsageCapExceeded
+          ? "IA com owner, guardrails e budget/cap sem estouro."
+          : "Falta owner/guardrails ou limite mensal foi ultrapassado.",
+      doneAt: null,
+      doneByName: "",
+    },
+    {
+      id: "crm_followup_ops",
+      title: "CRM e follow-up operacionais",
+      description: "Equipe ativa e SLA basico para operar fila comercial.",
+      href: "/cliente/painel/crm",
+      mode: "auto",
+      status: activeUsers > 0 && hasSla ? "done" : activeUsers > 0 ? "pending" : "blocked",
+      critical: true,
+      done: activeUsers > 0 && hasSla,
+      blocking: !(activeUsers > 0 && hasSla),
+      evidence:
+        activeUsers > 0 && hasSla
+          ? "Equipe ativa com SLA configurado."
+          : activeUsers > 0
+            ? "Equipe ativa sem SLA fechado."
+            : "Sem equipe ativa para operar CRM/follow-up.",
+      doneAt: null,
+      doneByName: "",
+    },
+    {
+      id: "ads_sync_health",
+      title: "Sync de Ads saudavel",
+      description: "Canais de Ads sem defasagem de sync relevante.",
+      href: "/cliente/painel/campanhas",
+      mode: "auto",
+      status: staleAdsChannels.length === 0 ? "done" : "pending",
+      critical: false,
+      done: staleAdsChannels.length === 0,
+      blocking: false,
+      evidence:
+        staleAdsChannels.length === 0
+          ? "Sync de Ads atualizado."
+          : `${staleAdsChannels.length} canal(is) de Ads sem sync nas ultimas 48h.`,
+      doneAt: null,
+      doneByName: "",
+    },
+    {
+      id: "team_enablement",
+      title: "Equipe treinada no playbook",
+      description: "Confirma que time comercial foi alinhado em roteiro, SLA e handoff.",
+      href: "/cliente/painel/go-live",
+      mode: "manual",
+      status: manualOnboardingAcks.get("team_enablement")?.done ? "done" : "pending",
+      critical: false,
+      done: Boolean(manualOnboardingAcks.get("team_enablement")?.done),
+      blocking: false,
+      evidence: manualOnboardingAcks.get("team_enablement")?.done
+        ? "Treinamento operacional confirmado."
+        : "Pendente de confirmacao manual.",
+      doneAt: manualOnboardingAcks.get("team_enablement")?.doneAt || null,
+      doneByName: manualOnboardingAcks.get("team_enablement")?.doneByName || "",
+    },
+    {
+      id: "incident_runbook_ack",
+      title: "Runbook de incidente validado",
+      description: "Confirma que o responsavel conhece o fluxo de resposta a canal/IA/job degradado.",
+      href: "/cliente/painel/go-live",
+      mode: "manual",
+      status: manualOnboardingAcks.get("incident_runbook_ack")?.done ? "done" : "pending",
+      critical: false,
+      done: Boolean(manualOnboardingAcks.get("incident_runbook_ack")?.done),
+      blocking: false,
+      evidence: manualOnboardingAcks.get("incident_runbook_ack")?.done
+        ? "Runbook confirmado com owner."
+        : "Pendente de confirmacao manual.",
+      doneAt: manualOnboardingAcks.get("incident_runbook_ack")?.doneAt || null,
+      doneByName: manualOnboardingAcks.get("incident_runbook_ack")?.doneByName || "",
+    },
+    {
+      id: "handoff_drill",
+      title: "Teste de handoff executado",
+      description: "Confirma um takeover real validando notificacao e continuidade do atendimento.",
+      href: "/cliente/painel/handoffs",
+      mode: "manual",
+      status: manualOnboardingAcks.get("handoff_drill")?.done ? "done" : "pending",
+      critical: false,
+      done: Boolean(manualOnboardingAcks.get("handoff_drill")?.done),
+      blocking: false,
+      evidence: manualOnboardingAcks.get("handoff_drill")?.done
+        ? "Handoff drill confirmado."
+        : "Pendente de confirmacao manual.",
+      doneAt: manualOnboardingAcks.get("handoff_drill")?.doneAt || null,
+      doneByName: manualOnboardingAcks.get("handoff_drill")?.doneByName || "",
+    },
+  ];
+  const onboardingCompleted = onboardingSteps.filter((item) => item.done).length;
+  const onboardingCriticalPending = onboardingSteps.filter((item) => item.critical && !item.done).length;
+  const onboardingManualPending = onboardingSteps.filter((item) => item.mode === "manual" && !item.done).length;
+  const onboardingAutoPending = onboardingSteps.filter((item) => item.mode === "auto" && !item.done).length;
+  const onboardingProgress: TenantOnboardingProgress = {
+    completed: onboardingCompleted,
+    total: onboardingSteps.length,
+    progressPct: onboardingSteps.length ? Math.round((onboardingCompleted / onboardingSteps.length) * 100) : 0,
+    pendingCritical: onboardingCriticalPending,
+    manualPending: onboardingManualPending,
+    autoPending: onboardingAutoPending,
+    steps: onboardingSteps,
+  };
+
   const nextBuildItems: TenantReadinessItem[] = [];
 
   return {
@@ -1152,6 +1367,7 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
       stuckJobs: staleRunningJob || lockStale ? 1 : 0,
     },
     operationalAlerts,
+    onboarding: onboardingProgress,
     checklist,
     activation,
     blockers: blockers.slice(0, 8),
