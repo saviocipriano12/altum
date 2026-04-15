@@ -283,6 +283,16 @@ export default function ClienteFollowUpsPage() {
       return due && due >= now && due <= tomorrow;
     }).length;
   }, [items]);
+  const recommendedMode = useMemo<"urgent" | "today" | "proposal">(() => {
+    if ((summary.overdue || 0) > 0 || (summary.highPriority || 0) > 0) return "urgent";
+    if ((summary.dueToday || 0) > 0) return "today";
+    return "proposal";
+  }, [summary.dueToday, summary.highPriority, summary.overdue]);
+  const recommendedModeLabel = useMemo(() => {
+    if (recommendedMode === "urgent") return "Resolver vencidos";
+    if (recommendedMode === "today") return "Executar agenda do dia";
+    return "Avancar propostas";
+  }, [recommendedMode]);
   const deskAiSuggestions = useMemo(() => {
     const activeLeadIds = new Set(items.filter((item) => item.status === "pending").map((item) => item.leadId).filter(Boolean));
     return aiLogs
@@ -405,6 +415,23 @@ export default function ClienteFollowUpsPage() {
                 className="mt-3 rounded-xl border border-emerald-200/25 bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-500/30"
               >
                 Ver propostas abertas
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100/80">
+                  Modo recomendado agora
+                </p>
+                <p className="mt-1 text-sm text-emerald-50">{recommendedModeLabel}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => applySimpleScenario(recommendedMode)}
+                className="rounded-xl border border-emerald-200/25 bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-500/30"
+              >
+                Aplicar modo recomendado
               </button>
             </div>
           </div>

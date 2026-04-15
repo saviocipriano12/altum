@@ -3479,6 +3479,48 @@ export async function handleIncomingMessage(
       }
     }
 
+    if (leadId && handoffNotifyStatus === "skipped_no_channel") {
+      await createAiInternalNotificationOnce({
+        tenantId,
+        chatId,
+        leadId,
+        type: "handoff_notify_missing_channel",
+        severity: "high",
+        title: "Handoff sem notificacao no WhatsApp",
+        detail:
+          "A IA escalou para humano, mas nao encontrou canal WhatsApp ativo para enviar alerta ao responsavel.",
+        dedupeWindowMinutes: 240,
+      });
+    }
+
+    if (leadId && handoffNotifyStatus === "skipped_no_recipients") {
+      await createAiInternalNotificationOnce({
+        tenantId,
+        chatId,
+        leadId,
+        type: "handoff_notify_missing_recipients",
+        severity: "high",
+        title: "Handoff sem destinatarios configurados",
+        detail:
+          "A IA escalou para humano, mas nao encontrou telefone valido para notificar responsavel no WhatsApp.",
+        dedupeWindowMinutes: 240,
+      });
+    }
+
+    if (leadId && handoffNotifyStatus === "skipped_disabled") {
+      await createAiInternalNotificationOnce({
+        tenantId,
+        chatId,
+        leadId,
+        type: "handoff_notify_disabled",
+        severity: "info",
+        title: "Notificacao de handoff desativada",
+        detail:
+          "A IA escalou para humano, porem o envio de notificacoes de handoff no WhatsApp esta desativado nas configuracoes.",
+        dedupeWindowMinutes: 360,
+      });
+    }
+
     await adminDb
       .collection("chat_state")
       .doc(getChatStateDocId(tenantId, chatId))

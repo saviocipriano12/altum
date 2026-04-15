@@ -612,6 +612,44 @@ function aiErrorStatusMessage(code: string, mode: "retrying" | "dead_letter") {
     : "Ultima tentativa da IA falhou e precisa de revisao.";
 }
 
+function normalizeHandoffNotifyStatus(status: unknown) {
+  return String(status || "").trim().toLowerCase();
+}
+
+function getHandoffNotifyStatusMeta(status: unknown) {
+  const normalized = normalizeHandoffNotifyStatus(status);
+  if (!normalized) return null;
+  if (normalized === "success") return { label: "handoff notify ok", tone: "success" as const };
+  if (normalized === "partial_failure") return { label: "handoff notify parcial", tone: "warning" as const };
+  if (normalized === "failed") return { label: "handoff notify falhou", tone: "danger" as const };
+  if (normalized === "skipped_no_channel") return { label: "handoff sem canal", tone: "danger" as const };
+  if (normalized === "skipped_no_recipients") return { label: "handoff sem destinatario", tone: "danger" as const };
+  if (normalized === "skipped_disabled") return { label: "handoff notify desativado", tone: "warning" as const };
+  if (normalized === "skipped_duplicate") return { label: "handoff notify duplicado", tone: "neutral" as const };
+  return { label: `handoff notify ${normalized.replaceAll("_", " ")}`, tone: "neutral" as const };
+}
+
+function getHandoffNotifyStatusHint(status: unknown) {
+  const normalized = normalizeHandoffNotifyStatus(status);
+  if (!normalized) return "";
+  if (normalized === "skipped_no_channel") {
+    return "Handoff foi gerado, mas nao havia canal WhatsApp ativo para alertar o humano.";
+  }
+  if (normalized === "skipped_no_recipients") {
+    return "Handoff foi gerado, mas nao havia telefone de responsavel configurado para receber alerta.";
+  }
+  if (normalized === "skipped_disabled") {
+    return "Handoff foi gerado, mas a notificacao de handoff esta desativada nas configuracoes da IA.";
+  }
+  if (normalized === "partial_failure") {
+    return "Parte dos alertas de handoff falhou. Revise os telefones dos responsaveis.";
+  }
+  if (normalized === "failed") {
+    return "Os alertas de handoff falharam. Revise canal e telefones dos responsaveis.";
+  }
+  return "";
+}
+
 function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefined) {
   if (!chat?.aiState) return "IA pronta para respostas automaticas nesta conversa.";
   const updatedByName = String(chat.aiState.updatedByName || "").trim();
@@ -669,6 +707,20 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
       lastDecisionReasonCode.includes("usage_cap_contingency"))
   ) {
     return "IA operando em contingencia por limite mensal (uso/custo). Atualize o budget para voltar ao modo completo.";
+  }
+
+  const handoffNotifyStatus = normalizeHandoffNotifyStatus(chat.aiState.lastHandoffNotifyStatus);
+  if (handoffNotifyStatus === "skipped_no_channel") {
+    return "IA ativa, mas o ultimo handoff nao conseguiu notificar humano por falta de canal WhatsApp ativo.";
+  }
+  if (handoffNotifyStatus === "skipped_no_recipients") {
+    return "IA ativa, mas o ultimo handoff nao conseguiu notificar humano por falta de telefone de responsavel.";
+  }
+  if (handoffNotifyStatus === "skipped_disabled") {
+    return "IA ativa, mas a notificacao de handoff esta desativada nas configuracoes.";
+  }
+  if (handoffNotifyStatus === "partial_failure" || handoffNotifyStatus === "failed") {
+    return "IA ativa, mas o ultimo alerta de handoff teve falha de entrega para parte do time.";
   }
 
   return "IA pronta para respostas automaticas nesta conversa.";
@@ -1349,6 +1401,7 @@ export default function ClienteInboxPage() {
     fastIntervalMs: 5000,
     slowIntervalMs: 30000,
     runOnMount: false,
+    source: "inbox-chat",
   });
 
   useAdaptivePolling({
@@ -1359,6 +1412,7 @@ export default function ClienteInboxPage() {
     fastIntervalMs: 15000,
     slowIntervalMs: 90000,
     runOnMount: false,
+    source: "inbox-list",
   });
 
   const selectedChat = useMemo(
@@ -1370,6 +1424,14 @@ export default function ClienteInboxPage() {
   const aiPaused = useMemo(() => isAiPaused(activeChat), [activeChat]);
   const aiStateDescription = useMemo(() => getAiStateDescription(activeChat), [activeChat]);
   const aiRetryAvailable = useMemo(() => shouldOfferAiRetry(activeChat), [activeChat]);
+  const handoffNotifyMeta = useMemo(
+    () => getHandoffNotifyStatusMeta(activeChat?.aiState?.lastHandoffNotifyStatus),
+    [activeChat?.aiState?.lastHandoffNotifyStatus]
+  );
+  const handoffNotifyHint = useMemo(
+    () => getHandoffNotifyStatusHint(activeChat?.aiState?.lastHandoffNotifyStatus),
+    [activeChat?.aiState?.lastHandoffNotifyStatus]
+  );
 
   const filteredChats = useMemo(() => {
     return chats.filter((chat) => {
@@ -2039,9 +2101,20 @@ export default function ClienteInboxPage() {
                     ultimo ciclo {formatDateTime(activeChat.aiState.lastProcessedAt)}
                   </span>
                 ) : null}
-                {activeChat?.aiState?.lastHandoffNotifyStatus ? (
-                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
-                    handoff notify {String(activeChat.aiState.lastHandoffNotifyStatus).replaceAll("_", " ")}
+                {handoffNotifyMeta ? (
+                  <span
+                    className={cn(
+                      "rounded-full border px-2 py-1",
+                      handoffNotifyMeta.tone === "danger"
+                        ? "border-rose-300/30 text-rose-100"
+                        : handoffNotifyMeta.tone === "warning"
+                        ? "border-amber-300/30 text-amber-100"
+                        : handoffNotifyMeta.tone === "success"
+                        ? "border-emerald-300/30 text-emerald-100"
+                        : "border-[var(--cliente-border)] text-[var(--cliente-card-text-soft)]"
+                    )}
+                  >
+                    {handoffNotifyMeta.label}
                   </span>
                 ) : null}
                 {typeof activeChat?.aiState?.lastHandoffNotifySuccessCount === "number" ? (
@@ -2060,6 +2133,11 @@ export default function ClienteInboxPage() {
             <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
               Quando a conversa entra em handoff ou pausa manual, a IA para de responder ate ser retomada novamente.
             </p>
+            {handoffNotifyHint ? (
+              <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                {handoffNotifyHint}
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
             <StateBadge
@@ -2097,6 +2175,14 @@ export default function ClienteInboxPage() {
                 {retryingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 Reprocessar ultima mensagem
               </button>
+            ) : null}
+            {handoffNotifyHint ? (
+              <Link
+                href="/cliente/painel/ia"
+                className="inline-flex items-center gap-2 rounded-xl border border-amber-300/20 bg-amber-500/12 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/18"
+              >
+                Ajustar alerta de handoff
+              </Link>
             ) : null}
           </div>
         </div>
