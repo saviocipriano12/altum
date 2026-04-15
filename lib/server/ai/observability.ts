@@ -390,6 +390,11 @@ export function classifyAiQueueError(error: unknown): AiErrorClassification {
     normalized.includes("forbidden") ||
     normalized.includes("authentication") ||
     normalized.includes("auth") ||
+    normalized.includes("token has expired") ||
+    normalized.includes("oauth exception") ||
+    normalized.includes("oauthexception") ||
+    normalized.includes("code\":190") ||
+    normalized.includes("code: 190") ||
     normalized.includes("invalid api key") ||
     normalized.includes("api key")
   ) {

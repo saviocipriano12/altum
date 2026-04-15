@@ -75,6 +75,8 @@ export type TenantSettings = {
     businessSummary?: string;
     objective?: string;
     responsiblePhone?: string;
+    handoffNotifyEnabled?: boolean;
+    handoffNotifyPhones?: string[] | string;
     guardrails?: string[] | string;
     mandatoryQuestions?: string[] | string;
     escalationTopics?: string[] | string;

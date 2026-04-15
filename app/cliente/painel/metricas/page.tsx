@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
 import { getBusinessProfile, type BusinessProfileId } from "@/lib/business-profiles";
 import {
   CardTitle,
@@ -233,12 +234,14 @@ export default function ClienteMetricasPage() {
   const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
   const canSyncCampaigns = hasCapability("manage_channels");
 
-  const loadMetrics = useCallback(async () => {
+  const loadMetrics = useCallback(async (silent = false) => {
     if (!tenant?.tenantId) return;
 
     try {
-      setLoading(true);
-      setError(null);
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
 
       const [res, settingsRes, readinessRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/metrics-summary?rangeDays=${rangeDays}`),
@@ -250,23 +253,33 @@ export default function ClienteMetricasPage() {
       const readinessPayload = (await readinessRes.json()) as ReadinessPayload;
 
       if (!res.ok) {
-        setError(payload.error || "Falha ao carregar metricas.");
+        if (!silent) setError(payload.error || "Falha ao carregar metricas.");
         return;
       }
 
       setData(payload);
       setReadiness(readinessRes.ok ? readinessPayload : {});
       setBusinessProfileId((settingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
+      setError(null);
     } catch {
-      setError("Falha ao carregar metricas.");
+      if (!silent) setError("Falha ao carregar metricas.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [rangeDays, tenant?.tenantId]);
 
   useEffect(() => {
-    void loadMetrics();
+    void loadMetrics(false);
   }, [loadMetrics]);
+
+  useAdaptivePolling({
+    enabled: Boolean(tenant?.tenantId),
+    onTick: () => loadMetrics(true),
+    fastIntervalMs: 30000,
+    slowIntervalMs: 120000,
+    runOnMount: false,
+    source: "metricas",
+  });
 
   async function handleSyncCampaigns() {
     if (!tenant?.tenantId || !canSyncCampaigns) return;
@@ -289,7 +302,7 @@ export default function ClienteMetricasPage() {
       }
 
       setNotice(`Sync concluido: ${payload.synced || 0} snapshot(s) atualizados.`);
-      await loadMetrics();
+      await loadMetrics(false);
     } catch {
       setError("Falha ao sincronizar campanhas.");
     } finally {

@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/internal/jobs/ai/process?drain=1&limit=40",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/internal/jobs/campaigns/sync?days=1&limit=20",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/internal/jobs/client-portal/push-critical?maxTenants=80",
+      "schedule": "*/3 * * * *"
+    }
+  ]
+}

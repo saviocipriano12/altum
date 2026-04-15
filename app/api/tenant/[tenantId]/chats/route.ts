@@ -19,6 +19,12 @@ type ChatStateItem = {
   lastProcessedAt?: unknown;
   lastJobId?: string | null;
   lastMessageId?: string | null;
+  lastHandoffNotifyAt?: unknown;
+  lastHandoffNotifyMessageId?: string | null;
+  lastHandoffNotifyStatus?: string | null;
+  lastHandoffNotifyRecipients?: number | null;
+  lastHandoffNotifySuccessCount?: number | null;
+  lastHandoffNotifyFailureCount?: number | null;
 };
 
 type ChatListItem = Record<string, unknown> & {
@@ -142,6 +148,17 @@ export async function GET(
             lastProcessedAt: data.lastProcessedAt || null,
             lastJobId: typeof data.lastJobId === "string" ? data.lastJobId : null,
             lastMessageId: typeof data.lastMessageId === "string" ? data.lastMessageId : null,
+            lastHandoffNotifyAt: data.lastHandoffNotifyAt || null,
+            lastHandoffNotifyMessageId:
+              typeof data.lastHandoffNotifyMessageId === "string" ? data.lastHandoffNotifyMessageId : null,
+            lastHandoffNotifyStatus:
+              typeof data.lastHandoffNotifyStatus === "string" ? data.lastHandoffNotifyStatus : null,
+            lastHandoffNotifyRecipients:
+              typeof data.lastHandoffNotifyRecipients === "number" ? data.lastHandoffNotifyRecipients : null,
+            lastHandoffNotifySuccessCount:
+              typeof data.lastHandoffNotifySuccessCount === "number" ? data.lastHandoffNotifySuccessCount : null,
+            lastHandoffNotifyFailureCount:
+              typeof data.lastHandoffNotifyFailureCount === "number" ? data.lastHandoffNotifyFailureCount : null,
           },
         ];
       })

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
 import {
   CardTitle,
   EmptyState,
@@ -279,6 +280,55 @@ export default function ClientePainelOverviewPage() {
   const [metricsSummary, setMetricsSummary] = useState<MetricsSummaryPayload>({});
   const [automationSummary, setAutomationSummary] = useState<AutomationSummaryPayload>({});
   const [readiness, setReadiness] = useState<ReadinessPayload>({});
+
+  const refreshOverview = useCallback(async () => {
+    if (!tenant?.tenantId) return;
+
+    try {
+      const [dashboardRes, leadsRes, chatsRes, aiRes, kbRes, metricsRes, automationRes, readinessRes] = await Promise.all([
+        authedFetch("/api/client-portal/dashboard"),
+        authedFetch(`/api/tenant/${tenant.tenantId}/leads`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/chats`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/metrics-summary`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/automation-summary`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/readiness`),
+      ]);
+
+      const dashboardPayload = (await dashboardRes.json()) as DashboardData;
+      const leadsPayload = (await leadsRes.json()) as { items?: LeadItem[] };
+      const chatsPayload = (await chatsRes.json()) as { items?: ChatItem[] };
+      const aiPayload = (await aiRes.json()) as { ai?: AiSettings };
+      const kbPayload = (await kbRes.json()) as KbDocList;
+      const metricsPayload = (await metricsRes.json()) as MetricsSummaryPayload;
+      const automationPayload = (await automationRes.json()) as AutomationSummaryPayload;
+      const readinessPayload = (await readinessRes.json()) as ReadinessPayload;
+
+      if (dashboardRes.ok) {
+        setDashboard(dashboardPayload);
+        setError(null);
+      }
+      if (leadsRes.ok) setLeads(leadsPayload.items || []);
+      if (chatsRes.ok) setChats(chatsPayload.items || []);
+      if (aiRes.ok) setAi(aiPayload.ai || {});
+      if (kbRes.ok) setKbCount((kbPayload.items || []).length);
+      if (metricsRes.ok) setMetricsSummary(metricsPayload || {});
+      if (automationRes.ok) setAutomationSummary(automationPayload || {});
+      if (readinessRes.ok) setReadiness(readinessPayload || {});
+    } catch {
+      // Mantem ultimo estado valido durante refresh silencioso.
+    }
+  }, [tenant?.tenantId]);
+
+  useAdaptivePolling({
+    enabled: Boolean(tenant?.tenantId),
+    onTick: refreshOverview,
+    fastIntervalMs: 30000,
+    slowIntervalMs: 120000,
+    runOnMount: false,
+    source: "overview",
+  });
 
   useEffect(() => {
     if (!tenant?.tenantId) return;

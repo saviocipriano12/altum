@@ -2,7 +2,19 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Building2, Loader2, MessageSquare, Shuffle, Users2, UsersRound } from "lucide-react";
+import {
+  Bell,
+  BellOff,
+  Bot,
+  Building2,
+  Loader2,
+  MessageSquare,
+  RefreshCw,
+  Send,
+  Shuffle,
+  Users2,
+  UsersRound,
+} from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
@@ -141,6 +153,14 @@ type ActionItem = {
   tone: "neutral" | "success" | "warning" | "danger" | "info";
 };
 
+type PushSubscriptionPayload = {
+  enabled?: boolean;
+  publicKey?: string | null;
+  hasOwnSubscription?: boolean;
+  ownSubscriptionCount?: number;
+  error?: string;
+};
+
 export default function ClienteConfiguracoesPage() {
   const { tenant, hasCapability } = useClienteTenant();
   const [loading, setLoading] = useState(true);
@@ -151,6 +171,47 @@ export default function ClienteConfiguracoesPage() {
   const [ai, setAi] = useState<AiPayload["ai"] | null>(null);
   const [forms, setForms] = useState<CaptureFormsPayload["forms"]>([]);
   const [readiness, setReadiness] = useState<ReadinessPayload | null>(null);
+  const [pushStatus, setPushStatus] = useState<PushSubscriptionPayload>({
+    enabled: false,
+    publicKey: null,
+    hasOwnSubscription: false,
+    ownSubscriptionCount: 0,
+  });
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushNotice, setPushNotice] = useState<string | null>(null);
+
+  const loadPushStatus = useCallback(async () => {
+    try {
+      const res = await authedFetch("/api/client-portal/push/subscription");
+      const payload = (await res.json()) as PushSubscriptionPayload;
+      if (!res.ok) {
+        setPushStatus({
+          enabled: false,
+          publicKey: null,
+          hasOwnSubscription: false,
+          ownSubscriptionCount: 0,
+          error: payload.error || "Falha ao carregar push.",
+        });
+        return;
+      }
+
+      setPushStatus({
+        enabled: payload.enabled === true,
+        publicKey: typeof payload.publicKey === "string" ? payload.publicKey : null,
+        hasOwnSubscription: payload.hasOwnSubscription === true,
+        ownSubscriptionCount: Number(payload.ownSubscriptionCount || 0),
+      });
+    } catch {
+      setPushStatus({
+        enabled: false,
+        publicKey: null,
+        hasOwnSubscription: false,
+        ownSubscriptionCount: 0,
+        error: "Falha ao carregar push.",
+      });
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!tenant?.tenantId) return;
@@ -193,16 +254,70 @@ export default function ClienteConfiguracoesPage() {
       setAi(aiPayload.ai || null);
       setForms(formsPayload.forms || []);
       setReadiness(readinessPayload || null);
+      await loadPushStatus();
     } catch {
       setError("Falha ao carregar configuracoes.");
     } finally {
       setLoading(false);
     }
-  }, [tenant?.tenantId]);
+  }, [loadPushStatus, tenant?.tenantId]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      return;
+    }
+    setNotificationPermission(Notification.permission);
+  }, []);
+
+  async function handleEnableBrowserNotifications() {
+    if (typeof window === "undefined") return;
+    if (!("Notification" in window)) return;
+    setPushBusy(true);
+    setPushNotice(null);
+    try {
+      const result = await Notification.requestPermission();
+      setNotificationPermission(result);
+      if (result === "granted") {
+        setPushNotice("Permissao concedida. Aguarde alguns segundos para sincronizar a assinatura.");
+      } else if (result === "denied") {
+        setPushNotice("Permissao bloqueada no navegador. Reative manualmente nas configuracoes do site.");
+      } else {
+        setPushNotice("Permissao de notificacao mantida como padrao.");
+      }
+      await loadPushStatus();
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function handleSendPushTest() {
+    setPushBusy(true);
+    setPushNotice(null);
+    try {
+      const res = await authedFetch("/api/client-portal/push/test", { method: "POST" });
+      const payload = (await res.json()) as { error?: string; result?: { sent?: number } };
+      if (!res.ok) {
+        setPushNotice(payload.error || "Falha ao enviar push de teste.");
+        return;
+      }
+      setPushNotice(
+        (payload.result?.sent || 0) > 0
+          ? "Push de teste enviado para este usuario/dispositivo."
+          : "Sem subscription ativa para este usuario. Ative as notificacoes no navegador."
+      );
+      await loadPushStatus();
+    } catch {
+      setPushNotice("Falha ao enviar push de teste.");
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   const summary = useMemo(() => {
     const activeUsers = (users || []).filter((item) => item.status !== "blocked").length;
@@ -692,6 +807,77 @@ export default function ClienteConfiguracoesPage() {
                   title="Publicar captacao"
                   detail={`${summary.activeForms} formulario(s) ativo(s) para iniciar o piloto`}
                 />
+              </div>
+            </PanelCard>
+
+            <PanelCard className="p-5">
+              <CardTitle title="Notificacoes criticas" subtitle="Controle de push web para alertas operacionais do tenant" />
+              <div className="mt-4 space-y-3">
+                <ReadinessRow
+                  label="Push no servidor"
+                  value={pushStatus.enabled ? "Configurado" : "Nao configurado"}
+                  tone={pushStatus.enabled ? "success" : "warning"}
+                />
+                <ReadinessRow
+                  label="Permissao do navegador"
+                  value={
+                    notificationPermission === "granted"
+                      ? "Concedida"
+                      : notificationPermission === "denied"
+                        ? "Bloqueada"
+                        : notificationPermission === "default"
+                          ? "Nao definida"
+                          : "Sem suporte"
+                  }
+                  tone={
+                    notificationPermission === "granted"
+                      ? "success"
+                      : notificationPermission === "denied"
+                        ? "danger"
+                        : "warning"
+                  }
+                />
+                <ReadinessRow
+                  label="Subscription deste usuario"
+                  value={pushStatus.hasOwnSubscription ? `${pushStatus.ownSubscriptionCount || 1} ativa(s)` : "Nenhuma"}
+                  tone={pushStatus.hasOwnSubscription ? "info" : "warning"}
+                />
+              </div>
+
+              {pushNotice ? (
+                <div className="mt-4 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text-muted)]">
+                  {pushNotice}
+                </div>
+              ) : null}
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => void handleEnableBrowserNotifications()}
+                  disabled={pushBusy || notificationPermission === "unsupported"}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
+                >
+                  {notificationPermission === "granted" ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
+                  Permissao
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSendPushTest()}
+                  disabled={pushBusy || notificationPermission !== "granted" || !pushStatus.enabled}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
+                >
+                  {pushBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  Testar push
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void loadPushStatus()}
+                  disabled={pushBusy}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Atualizar
+                </button>
               </div>
             </PanelCard>
           </section>

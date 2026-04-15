@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { ClienteBottomNav } from "@/app/cliente/painel/components/cliente-bottom-nav";
+import { ClienteRealtimeBanner } from "@/app/cliente/painel/components/cliente-realtime-banner";
 import { ClienteSidebar } from "@/app/cliente/painel/components/cliente-sidebar";
 import { ClienteShellProvider } from "@/app/cliente/painel/components/cliente-shell";
 import { ClienteTopbar } from "@/app/cliente/painel/components/cliente-topbar";
@@ -21,10 +23,15 @@ function ClientePainelShell({ children }: { children: React.ReactNode }) {
       <ClienteTopbar onOpenMenu={() => setSidebarOpen(true)} />
 
       <div className="relative transition-[padding] duration-300 lg:pl-[var(--cliente-sidebar-width)]">
-        <main className="min-h-screen px-4 pb-10 pt-[132px] transition-[padding] duration-300 lg:px-6 xl:pt-[98px]">
-          <div className="mx-auto max-w-[1280px]">{children}</div>
+        <main className="min-h-screen px-4 pb-28 pt-[132px] transition-[padding] duration-300 sm:pb-24 lg:px-6 lg:pb-10 xl:pt-[98px]">
+          <div className="mx-auto max-w-[1280px] space-y-4">
+            <ClienteRealtimeBanner />
+            {children}
+          </div>
         </main>
       </div>
+
+      <ClienteBottomNav />
     </div>
   );
 }

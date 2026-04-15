@@ -12,6 +12,9 @@ test("social config normalizes defaults and opt-out keywords", () => {
     enabled: true,
     dmAutoReply: false,
     optOutKeywords: ["PARE", "cancelar", "parar"],
+    commentIntentPricingKeywords: ["Preco", "orcamento"],
+    commentIntentPurchaseKeywords: ["Quero", "comprar"],
+    commentIntentSchedulingKeywords: ["Agendar", "consulta"],
     activeHours: {
       timezone: "America/Sao_Paulo",
       start: "09:00",
@@ -23,6 +26,9 @@ test("social config normalizes defaults and opt-out keywords", () => {
   assert.equal(config.tenantId, "tenant_123");
   assert.equal(config.dmAutoReply, false);
   assert.deepEqual(config.optOutKeywords, ["pare", "cancelar", "parar"]);
+  assert.deepEqual(config.commentIntentPricingKeywords, ["preco", "orcamento"]);
+  assert.deepEqual(config.commentIntentPurchaseKeywords, ["quero", "comprar"]);
+  assert.deepEqual(config.commentIntentSchedulingKeywords, ["agendar", "consulta"]);
   assert.equal(config.activeHours.end, "18:30");
 });
 

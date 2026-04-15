@@ -20,6 +20,8 @@ type Body = {
   businessSummary?: string;
   objective?: string;
   responsiblePhone?: string;
+  handoffNotifyEnabled?: boolean;
+  handoffNotifyPhones?: string[] | string;
   guardrails?: string[] | string;
   mandatoryQuestions?: string[] | string;
   escalationTopics?: string[] | string;
@@ -88,6 +90,10 @@ function parseLines(value: unknown, maxItems = 20) {
   return [] as string[];
 }
 
+function parseNotifyPhones(value: unknown) {
+  return Array.from(new Set(parseLines(value, 8).map((item) => clean(item, 40)).filter(Boolean))).slice(0, 8);
+}
+
 function normalizeAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>) {
   const ai =
     settings && typeof settings.ai === "object" && settings.ai
@@ -103,6 +109,8 @@ function normalizeAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings
     businessSummary: clean(ai.businessSummary, 320) || clean(settings?.name, 180) || businessProfile.description,
     objective: clean(ai.objective, 200) || businessProfile.ai.objective,
     responsiblePhone: clean(ai.responsiblePhone, 40),
+    handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
+    handoffNotifyPhones: parseNotifyPhones(ai.handoffNotifyPhones),
     guardrails: Array.from(new Set([...businessProfile.ai.guardrails, ...parseGuardrails(ai.guardrails)])).slice(0, 20),
     mandatoryQuestions: Array.from(new Set([...businessProfile.ai.mandatoryQuestions, ...parseLines(ai.mandatoryQuestions, 12)])).slice(0, 12),
     escalationTopics: Array.from(new Set([...businessProfile.ai.escalationTopics, ...parseLines(ai.escalationTopics, 12)])).slice(0, 12),
@@ -170,6 +178,14 @@ export async function POST(
       businessSummary: clean(body.businessSummary, 320) || current.businessSummary,
       objective: clean(body.objective, 200) || current.objective,
       responsiblePhone: clean(body.responsiblePhone, 40) || current.responsiblePhone,
+      handoffNotifyEnabled:
+        typeof body.handoffNotifyEnabled === "boolean"
+          ? body.handoffNotifyEnabled
+          : current.handoffNotifyEnabled,
+      handoffNotifyPhones:
+        body.handoffNotifyPhones === undefined
+          ? current.handoffNotifyPhones
+          : parseNotifyPhones(body.handoffNotifyPhones),
       guardrails:
         body.guardrails === undefined ? current.guardrails : parseGuardrails(body.guardrails),
       mandatoryQuestions:

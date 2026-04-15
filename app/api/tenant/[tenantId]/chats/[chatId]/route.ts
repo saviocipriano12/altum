@@ -134,6 +134,12 @@ function serializeAiState(state: Awaited<ReturnType<typeof getChatState>>) {
     lastProcessedAt: state.lastProcessedAt ? state.lastProcessedAt.toISOString() : null,
     lastJobId: state.lastJobId || null,
     lastMessageId: state.lastMessageId || null,
+    lastHandoffNotifyAt: state.lastHandoffNotifyAt ? state.lastHandoffNotifyAt.toISOString() : null,
+    lastHandoffNotifyMessageId: state.lastHandoffNotifyMessageId || null,
+    lastHandoffNotifyStatus: state.lastHandoffNotifyStatus || null,
+    lastHandoffNotifyRecipients: state.lastHandoffNotifyRecipients ?? null,
+    lastHandoffNotifySuccessCount: state.lastHandoffNotifySuccessCount ?? null,
+    lastHandoffNotifyFailureCount: state.lastHandoffNotifyFailureCount ?? null,
   };
 }
 

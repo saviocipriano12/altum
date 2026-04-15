@@ -263,6 +263,8 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       objective: clean(ai.objective, 200) || businessProfile.ai.objective,
       toneOfVoice: clean(ai.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
       responsiblePhone: clean(ai.responsiblePhone, 40),
+      handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
+      handoffNotifyPhones: parseLines(ai.handoffNotifyPhones, 8),
       guardrails: parseGuardrails(ai.guardrails),
       mandatoryQuestions: parseLines(ai.mandatoryQuestions, 12),
       escalationTopics: parseLines(ai.escalationTopics, 12),

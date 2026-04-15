@@ -51,6 +51,16 @@ type ClaimedJob = {
   maxAttempts: number;
 };
 
+function isRetryableQueueErrorCode(errorCode: string) {
+  const normalized = String(errorCode || "").trim().toLowerCase();
+  if (!normalized) return true;
+
+  if (normalized === "auth_invalid") return false;
+  if (normalized === "quota_exceeded") return false;
+  if (normalized === "payload_invalid") return false;
+  return true;
+}
+
 async function updateChatStateProcessing(input: {
   tenantId: string;
   chatId: string;
@@ -511,7 +521,7 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
   const classification = classifyAiQueueError(error);
   const message = classification.message;
 
-  const canRetry = job.attempts < job.maxAttempts;
+  const canRetry = job.attempts < job.maxAttempts && isRetryableQueueErrorCode(classification.errorCode);
   const retryDelayMs = computeRetryDelayMs(job.attempts);
 
   const jobRef = adminDb.collection("jobs").doc(job.id);

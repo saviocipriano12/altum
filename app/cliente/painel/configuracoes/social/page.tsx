@@ -17,6 +17,9 @@ type SocialAutomationConfig = {
   dmPrompt: string;
   commentPrompt: string;
   optOutKeywords: string[];
+  commentIntentPricingKeywords: string[];
+  commentIntentPurchaseKeywords: string[];
+  commentIntentSchedulingKeywords: string[];
   activeHours: {
     timezone: string;
     start: string;
@@ -49,6 +52,15 @@ type SocialAutomationPayload = {
     newFollowerMessageEnabled?: boolean;
     enabled?: boolean;
   };
+  channels?: Array<{
+    id: string;
+    type: string;
+    status: string;
+    displayName?: string;
+    externalAccountId?: string;
+    pageId?: string;
+    updatedAt?: unknown;
+  }>;
   logs?: SocialAutomationLog[];
   error?: string;
 };
@@ -111,6 +123,7 @@ export default function ClienteSocialAutomationsPage() {
   const [config, setConfig] = useState<SocialAutomationConfig | null>(null);
   const [logs, setLogs] = useState<SocialAutomationLog[]>([]);
   const [summary, setSummary] = useState<SocialAutomationPayload["summary"] | null>(null);
+  const [channels, setChannels] = useState<SocialAutomationPayload["channels"]>([]);
   const canManage = hasCapability("manage_channels") || hasCapability("manage_automations");
 
   useEffect(() => {
@@ -132,6 +145,7 @@ export default function ClienteSocialAutomationsPage() {
         setConfig(payload.config);
         setLogs(payload.logs || []);
         setSummary(payload.summary || null);
+        setChannels(payload.channels || []);
       } catch {
         if (mounted) {
           setError("Falha ao carregar automacoes sociais.");
@@ -375,6 +389,60 @@ export default function ClienteSocialAutomationsPage() {
               disabled={!canManage}
             />
             <TextAreaField
+              label="Keywords de intencao: preco"
+              value={config.commentIntentPricingKeywords.join(", ")}
+              onChange={(value) =>
+                setConfig((current) =>
+                  current
+                    ? {
+                        ...current,
+                        commentIntentPricingKeywords: value
+                          .split(",")
+                          .map((item) => item.trim())
+                          .filter(Boolean),
+                      }
+                    : current
+                )
+              }
+              disabled={!canManage}
+            />
+            <TextAreaField
+              label="Keywords de intencao: compra"
+              value={config.commentIntentPurchaseKeywords.join(", ")}
+              onChange={(value) =>
+                setConfig((current) =>
+                  current
+                    ? {
+                        ...current,
+                        commentIntentPurchaseKeywords: value
+                          .split(",")
+                          .map((item) => item.trim())
+                          .filter(Boolean),
+                      }
+                    : current
+                )
+              }
+              disabled={!canManage}
+            />
+            <TextAreaField
+              label="Keywords de intencao: agendamento"
+              value={config.commentIntentSchedulingKeywords.join(", ")}
+              onChange={(value) =>
+                setConfig((current) =>
+                  current
+                    ? {
+                        ...current,
+                        commentIntentSchedulingKeywords: value
+                          .split(",")
+                          .map((item) => item.trim())
+                          .filter(Boolean),
+                      }
+                    : current
+                )
+              }
+              disabled={!canManage}
+            />
+            <TextAreaField
               label="Prompt para DM"
               value={config.dmPrompt}
               onChange={(value) => setConfig((current) => (current ? { ...current, dmPrompt: value } : current))}
@@ -430,6 +498,47 @@ export default function ClienteSocialAutomationsPage() {
           ) : null}
         </PanelCard>
 
+        <PanelCard className="p-5">
+          <CardTitle title="Canais conectados" subtitle="Instagram e Messenger ativos para automacao social." />
+          <div className="mt-4 space-y-3">
+            {channels && channels.length > 0 ? (
+              channels.map((channel) => (
+                <div key={channel.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">
+                        {channel.displayName || (channel.type === "instagram" ? "Instagram" : "Messenger")}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                        {channel.type} · {channel.externalAccountId || channel.pageId || "sem id externo"}
+                      </p>
+                    </div>
+                    <StateBadge
+                      label={channel.status === "active" ? "ativo" : channel.status || "pendente"}
+                      tone={channel.status === "active" ? "success" : "warning"}
+                    />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
+                Nenhum canal social ativo. Conecte Instagram/Messenger em Configuracoes de Canais para habilitar automacoes.
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4">
+            <Link
+              href="/cliente/painel/configuracoes/canais"
+              className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
+            >
+              Revisar canais Meta
+            </Link>
+          </div>
+        </PanelCard>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <PanelCard className="p-5">
           <CardTitle title="Logs recentes" subtitle="Ultimos eventos sociais processados por tenant." />
           <div className="mt-4 space-y-3">

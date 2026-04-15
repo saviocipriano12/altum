@@ -31,6 +31,8 @@ type CriticalSnapshot = {
 
 const DISMISS_PROMPT_KEY = "altum-client-notify-prompt-dismissed";
 const SNAPSHOT_KEY_PREFIX = "altum-client-notify-snapshot";
+const TEST_SENT_KEY_PREFIX = "altum-client-push-test-sent";
+const ENDPOINT_KEY_PREFIX = "altum-client-push-endpoint";
 const MIN_NOTIFY_INTERVAL_MS = 10 * 60 * 1000;
 
 function snapshotStorageKey(tenantId: string) {
@@ -39,6 +41,25 @@ function snapshotStorageKey(tenantId: string) {
 
 function notifyCooldownKey(tenantId: string, tag: string) {
   return `${SNAPSHOT_KEY_PREFIX}:${tenantId}:cooldown:${tag}`;
+}
+
+function pushTestStorageKey(tenantId: string) {
+  return `${TEST_SENT_KEY_PREFIX}:${tenantId}`;
+}
+
+function endpointStorageKey(tenantId: string) {
+  return `${ENDPOINT_KEY_PREFIX}:${tenantId}`;
+}
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 
 function readStoredSnapshot(tenantId: string): CriticalSnapshot | null {
@@ -133,7 +154,11 @@ export function ClienteCriticalNotifications() {
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const [promptDismissed, setPromptDismissed] = useState(true);
   const [requesting, setRequesting] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushPublicKey, setPushPublicKey] = useState<string | null>(null);
+  const [hasOwnServerSubscription, setHasOwnServerSubscription] = useState(false);
   const baselineRef = useRef<CriticalSnapshot | null>(null);
+  const endpointRef = useRef<string>("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -154,6 +179,145 @@ export function ClienteCriticalNotifications() {
     }
     baselineRef.current = readStoredSnapshot(tenantId);
   }, [tenantId]);
+
+  const loadPushStatus = useCallback(async () => {
+    if (!tenantId) {
+      setPushEnabled(false);
+      setPushPublicKey(null);
+      setHasOwnServerSubscription(false);
+      endpointRef.current = "";
+      return;
+    }
+
+    try {
+      const res = await authedFetch("/api/client-portal/push/subscription");
+      const payload = (await res.json()) as {
+        enabled?: boolean;
+        publicKey?: string | null;
+        hasOwnSubscription?: boolean;
+      };
+      setPushEnabled(payload.enabled === true);
+      setPushPublicKey(typeof payload.publicKey === "string" ? payload.publicKey : null);
+      setHasOwnServerSubscription(payload.hasOwnSubscription === true);
+    } catch {
+      setPushEnabled(false);
+      setPushPublicKey(null);
+      setHasOwnServerSubscription(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => {
+    void loadPushStatus();
+  }, [loadPushStatus]);
+
+  const syncPushSubscription = useCallback(async () => {
+    if (!tenantId) return;
+    if (permission !== "granted") return;
+    if (!pushEnabled || !pushPublicKey) return;
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      if (!registration.pushManager) return;
+
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(pushPublicKey),
+        });
+      }
+
+      const endpoint = String(subscription.endpoint || "");
+      if (!endpoint) return;
+      const endpointKey = endpointStorageKey(tenantId);
+      const previousEndpoint = window.localStorage.getItem(endpointKey) || "";
+
+      const shouldSync = endpointRef.current !== endpoint || !hasOwnServerSubscription;
+      endpointRef.current = endpoint;
+
+      if (shouldSync) {
+        const saveRes = await authedFetch("/api/client-portal/push/subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: subscription.toJSON() }),
+        });
+        if (saveRes.ok) setHasOwnServerSubscription(true);
+      }
+
+      if (previousEndpoint && previousEndpoint !== endpoint) {
+        await authedFetch("/api/client-portal/push/subscription", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: previousEndpoint }),
+        });
+      }
+
+      window.localStorage.setItem(endpointKey, endpoint);
+
+      const testKey = pushTestStorageKey(tenantId);
+      if (window.localStorage.getItem(testKey) !== endpoint) {
+        await authedFetch("/api/client-portal/push/test", {
+          method: "POST",
+        });
+        window.localStorage.setItem(testKey, endpoint);
+      }
+    } catch (error) {
+      console.warn("Falha ao sincronizar push do portal cliente:", error);
+    }
+  }, [hasOwnServerSubscription, permission, pushEnabled, pushPublicKey, tenantId]);
+
+  const clearPushSubscription = useCallback(async () => {
+    if (!tenantId) return;
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      if (!registration.pushManager) return;
+
+      const subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        await authedFetch("/api/client-portal/push/subscription", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        endpointRef.current = "";
+        setHasOwnServerSubscription(false);
+        return;
+      }
+
+      const endpoint = String(subscription.endpoint || "");
+      await subscription.unsubscribe();
+
+      if (endpoint) {
+        await authedFetch("/api/client-portal/push/subscription", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint }),
+        });
+      }
+
+      window.localStorage.removeItem(endpointStorageKey(tenantId));
+      endpointRef.current = "";
+      setHasOwnServerSubscription(false);
+    } catch (error) {
+      console.warn("Falha ao limpar subscription push do portal cliente:", error);
+    }
+  }, [tenantId]);
+
+  useEffect(() => {
+    void syncPushSubscription();
+  }, [syncPushSubscription]);
+
+  useEffect(() => {
+    if (permission !== "denied") return;
+    void clearPushSubscription();
+  }, [clearPushSubscription, permission]);
+
+  const useLocalFallback = permission === "granted" && (!pushEnabled || !hasOwnServerSubscription);
 
   const refreshSignals = useCallback(async () => {
     if (!tenantId) return;
@@ -203,7 +367,7 @@ export function ClienteCriticalNotifications() {
         });
       }
 
-      if (permission === "granted") {
+      if (useLocalFallback) {
         for (const item of notifications) {
           if (!canNotifyNow(tenantId, item.tag)) continue;
           await showPortalNotification(item);
@@ -213,14 +377,15 @@ export function ClienteCriticalNotifications() {
 
     baselineRef.current = current;
     saveSnapshot(tenantId, current);
-  }, [permission, tenantId]);
+  }, [tenantId, useLocalFallback]);
 
   useAdaptivePolling({
-    enabled: Boolean(tenantId) && permission === "granted",
+    enabled: Boolean(tenantId) && useLocalFallback,
     onTick: refreshSignals,
     fastIntervalMs: 45000,
     slowIntervalMs: 180000,
     runOnMount: true,
+    source: "critical-notifications",
   });
 
   const showPrompt = useMemo(() => {
@@ -248,6 +413,9 @@ export function ClienteCriticalNotifications() {
       setPermission(result);
       if (result !== "default") {
         dismissPrompt();
+      }
+      if (result === "granted") {
+        await syncPushSubscription();
       }
     } finally {
       setRequesting(false);

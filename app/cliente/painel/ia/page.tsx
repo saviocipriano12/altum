@@ -15,6 +15,8 @@ type AiSettings = {
   businessSummary: string;
   objective?: string;
   responsiblePhone: string;
+  handoffNotifyEnabled?: boolean;
+  handoffNotifyPhones?: string[];
   guardrails: string[];
   mandatoryQuestions?: string[];
   escalationTopics?: string[];
@@ -272,6 +274,8 @@ const EMPTY_SETTINGS: AiSettings = {
   businessSummary: "",
   objective: "",
   responsiblePhone: "",
+  handoffNotifyEnabled: true,
+  handoffNotifyPhones: [],
   guardrails: [],
   mandatoryQuestions: [],
   escalationTopics: [],
@@ -505,6 +509,7 @@ export default function ClienteIaPage() {
   const [guardrailsText, setGuardrailsText] = useState("");
   const [mandatoryQuestionsText, setMandatoryQuestionsText] = useState("");
   const [escalationTopicsText, setEscalationTopicsText] = useState("");
+  const [handoffNotifyPhonesText, setHandoffNotifyPhonesText] = useState("");
   const [kbDocs, setKbDocs] = useState<KbDoc[]>([]);
   const [logs, setLogs] = useState<AiLog[]>([]);
   const [usageSummary, setUsageSummary] = useState<AiUsageSummary>({
@@ -570,6 +575,7 @@ export default function ClienteIaPage() {
         setGuardrailsText((nextSettings.guardrails || []).join("\n"));
         setMandatoryQuestionsText((nextSettings.mandatoryQuestions || []).join("\n"));
         setEscalationTopicsText((nextSettings.escalationTopics || []).join("\n"));
+        setHandoffNotifyPhonesText((nextSettings.handoffNotifyPhones || []).join("\n"));
       } else {
         setError(settingsPayload.error || "Falha ao carregar configuracoes da IA.");
       }
@@ -935,6 +941,11 @@ export default function ClienteIaPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...settings,
+          handoffNotifyEnabled: settings.handoffNotifyEnabled !== false,
+          handoffNotifyPhones: handoffNotifyPhonesText
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean),
           guardrails: guardrailsText
             .split("\n")
             .map((line) => line.trim())
@@ -1775,6 +1786,26 @@ export default function ClienteIaPage() {
             <Field label="Resumo do negocio" value={settings.businessSummary} onChange={(value) => setSettings((prev) => ({ ...prev, businessSummary: value }))} placeholder="o que a empresa vende, para quem e com qual foco" disabled={!canManage} />
             <Field label="Objetivo principal da IA" value={settings.objective || ""} onChange={(value) => setSettings((prev) => ({ ...prev, objective: value }))} placeholder="qualificar, orientar, vender e encaminhar" disabled={!canManage} />
             <Field label="WhatsApp responsavel (handoff)" value={settings.responsiblePhone} onChange={(value) => setSettings((prev) => ({ ...prev, responsiblePhone: value }))} placeholder="5511999999999" disabled={!canManage} />
+            <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <input
+                type="checkbox"
+                checked={settings.handoffNotifyEnabled !== false}
+                onChange={(event) => setSettings((prev) => ({ ...prev, handoffNotifyEnabled: event.target.checked }))}
+                disabled={!canManage}
+              />
+              Notificar responsaveis via WhatsApp quando a IA pedir handoff
+            </label>
+            <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+              WhatsApps para notificar no handoff (um por linha)
+              <textarea
+                value={handoffNotifyPhonesText}
+                onChange={(event) => setHandoffNotifyPhonesText(event.target.value)}
+                rows={3}
+                disabled={!canManage}
+                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
+                placeholder={"5511999999999\n5511888888888"}
+              />
+            </label>
 
             <label className="block text-xs text-[var(--cliente-card-text-soft)]">
               Guardrails (uma regra por linha)

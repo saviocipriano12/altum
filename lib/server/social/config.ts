@@ -17,6 +17,9 @@ export type TenantSocialAutomationConfig = {
   dmPrompt: string;
   commentPrompt: string;
   optOutKeywords: string[];
+  commentIntentPricingKeywords: string[];
+  commentIntentPurchaseKeywords: string[];
+  commentIntentSchedulingKeywords: string[];
   activeHours: SocialActiveHours;
   updatedAt?: unknown;
   updatedBy?: string;
@@ -114,6 +117,32 @@ export function normalizeTenantSocialAutomationConfig(
       cleanText(data?.commentPrompt, 800) ||
       "Responda em portugues do Brasil, com tom publico, curto e convidando a conversa continuar no direct quando fizer sentido.",
     optOutKeywords: parseKeywordList(data?.optOutKeywords),
+    commentIntentPricingKeywords: parseKeywordList(data?.commentIntentPricingKeywords, [
+      "preco",
+      "valor",
+      "quanto custa",
+      "orcamento",
+      "investimento",
+      "condicao",
+    ]),
+    commentIntentPurchaseKeywords: parseKeywordList(data?.commentIntentPurchaseKeywords, [
+      "quero",
+      "tenho interesse",
+      "me chama",
+      "chama no direct",
+      "chama no dm",
+      "contratar",
+      "comprar",
+      "fechar",
+    ]),
+    commentIntentSchedulingKeywords: parseKeywordList(data?.commentIntentSchedulingKeywords, [
+      "agendar",
+      "agenda",
+      "horario",
+      "consulta",
+      "reuniao",
+      "marcar",
+    ]),
     activeHours: {
       timezone,
       start: cleanTime(hours.start, "08:00"),
