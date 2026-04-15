@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { upsertCampaignSnapshot } from "@/app/lib/server/campaign-sync";
 import { fetchGoogleAdsDailyMetrics } from "@/app/lib/server/google-ads";
+import { resolveAiOperationalAlert, upsertAiOperationalAlert } from "@/lib/server/ai/observability";
 
 type TenantChannelItem = {
   id: string;
@@ -20,6 +21,7 @@ export type TenantCampaignSyncItem = {
   dateRef?: string;
   ok: boolean;
   error?: string;
+  attempts?: number;
 };
 
 export type TenantCampaignSyncSummary = {
@@ -33,6 +35,10 @@ type RunTenantCampaignSyncInput = {
   tenantId: string;
   days?: number;
   onlyChannelIds?: string[];
+  maxRetriesPerDate?: number;
+  retryBaseDelayMs?: number;
+  runId?: string;
+  source?: string;
 };
 
 const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
@@ -86,6 +92,68 @@ function buildDateRefs(days: number) {
 
 function normalizeDays(days: number | undefined) {
   return [1, 7, 30].includes(Number(days)) ? Number(days) : 7;
+}
+
+function normalizeRetryCount(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 2;
+  return Math.min(4, Math.max(0, Math.round(parsed)));
+}
+
+function normalizeRetryDelayMs(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 900;
+  return Math.min(10_000, Math.max(250, Math.round(parsed)));
+}
+
+function isRetryableSyncError(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("timeout") ||
+    normalized.includes("timed out") ||
+    normalized.includes("temporar") ||
+    normalized.includes("temporarily") ||
+    normalized.includes("internal error") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("try again") ||
+    normalized.includes("network") ||
+    normalized.includes("econnreset") ||
+    normalized.includes("service unavailable") ||
+    normalized.includes("resource exhausted")
+  );
+}
+
+function waitMs(delayMs: number) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function writeCampaignSyncLog(input: {
+  tenantId: string;
+  channelId: string;
+  platform: string;
+  dateRef: string;
+  ok: boolean;
+  attempt: number;
+  maxAttempts: number;
+  error?: string;
+  runId?: string;
+  source?: string;
+}) {
+  await adminDb.collection("campaign_sync_logs").add({
+    tenantId: input.tenantId,
+    adAccountId: input.channelId,
+    channelId: input.channelId,
+    clientId: input.tenantId,
+    platform: input.platform,
+    dateRef: input.dateRef,
+    ok: input.ok,
+    error: input.error || "",
+    attempt: input.attempt,
+    maxAttempts: input.maxAttempts,
+    runId: clean(input.runId, 160) || null,
+    source: clean(input.source, 80) || "tenant_campaign_sync",
+    createdAt: FieldValue.serverTimestamp(),
+  });
 }
 
 async function syncMetaChannel(input: {
@@ -214,6 +282,8 @@ export async function runTenantCampaignSync(
   }
 
   const days = normalizeDays(input.days);
+  const maxRetriesPerDate = normalizeRetryCount(input.maxRetriesPerDate);
+  const retryBaseDelayMs = normalizeRetryDelayMs(input.retryBaseDelayMs);
   const onlyChannelIds = new Set(
     Array.isArray(input.onlyChannelIds) ? input.onlyChannelIds.map((item) => clean(item, 120)).filter(Boolean) : []
   );
@@ -243,28 +313,89 @@ export async function runTenantCampaignSync(
           : {};
 
       for (const dateRef of dateRefs) {
-        try {
-          await syncGoogleChannel({
-            tenantId,
-            channelId: channel.id,
-            externalAccountId: clean(channel.externalAccountId, 180),
-            accessToken: clean(channel.accessToken, 4000),
-            refreshToken: clean(channel.refreshToken, 4000),
-            loginCustomerId: clean(metadata.loginCustomerId, 180) || clean(channel.pageId, 180),
-            dateRef,
-          });
+        let completed = false;
+        const maxAttempts = maxRetriesPerDate + 1;
+        let finalMessage = "Falha no sync.";
 
-          await markChannelSyncOk(channel.id);
-          results.push({ channelId: channel.id, type, dateRef, ok: true });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Falha no sync.";
-          await markChannelSyncError(channel.id, message);
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          try {
+            await syncGoogleChannel({
+              tenantId,
+              channelId: channel.id,
+              externalAccountId: clean(channel.externalAccountId, 180),
+              accessToken: clean(channel.accessToken, 4000),
+              refreshToken: clean(channel.refreshToken, 4000),
+              loginCustomerId: clean(metadata.loginCustomerId, 180) || clean(channel.pageId, 180),
+              dateRef,
+            });
+
+            await Promise.all([
+              markChannelSyncOk(channel.id),
+              resolveAiOperationalAlert({
+                tenantId,
+                type: "campaign_sync_failed",
+                scope: `campaigns_${channel.id}`,
+              }),
+              writeCampaignSyncLog({
+                tenantId,
+                channelId: channel.id,
+                platform: type,
+                dateRef,
+                ok: true,
+                attempt,
+                maxAttempts,
+                runId: input.runId,
+                source: input.source,
+              }),
+            ]);
+
+            results.push({ channelId: channel.id, type, dateRef, ok: true, attempts: attempt });
+            completed = true;
+            break;
+          } catch (error) {
+            finalMessage = error instanceof Error ? error.message : "Falha no sync.";
+            const retryable = isRetryableSyncError(finalMessage);
+
+            await writeCampaignSyncLog({
+              tenantId,
+              channelId: channel.id,
+              platform: type,
+              dateRef,
+              ok: false,
+              attempt,
+              maxAttempts,
+              error: finalMessage,
+              runId: input.runId,
+              source: input.source,
+            });
+
+            if (!retryable || attempt >= maxAttempts) break;
+            await waitMs(retryBaseDelayMs * attempt);
+          }
+        }
+
+        if (!completed) {
+          await Promise.all([
+            markChannelSyncError(channel.id, finalMessage),
+            upsertAiOperationalAlert({
+              tenantId,
+              type: "campaign_sync_failed",
+              scope: `campaigns_${channel.id}`,
+              severity: "high",
+              title: "Falha recorrente no sync de campanhas",
+              detail: `Canal ${channel.id} (${type}) falhou em ${maxAttempts} tentativa(s): ${finalMessage}`,
+              reasonCode: "campaign_sync_failed",
+              source: clean(input.source, 80) || "campaign_sync_job",
+            }),
+          ]);
+
           results.push({
             channelId: channel.id,
             type,
             dateRef,
             ok: false,
-            error: message,
+            error: finalMessage,
+            attempts: maxAttempts,
           });
         }
       }
@@ -272,26 +403,87 @@ export async function runTenantCampaignSync(
     }
 
     for (const dateRef of dateRefs) {
-      try {
-        await syncMetaChannel({
-          tenantId,
-          channelId: channel.id,
-          externalAccountId: clean(channel.externalAccountId, 180),
-          accessToken: clean(channel.accessToken, 4000),
-          dateRef,
-        });
+      let completed = false;
+      const maxAttempts = maxRetriesPerDate + 1;
+      let finalMessage = "Falha no sync.";
 
-        await markChannelSyncOk(channel.id);
-        results.push({ channelId: channel.id, type, dateRef, ok: true });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Falha no sync.";
-        await markChannelSyncError(channel.id, message);
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          await syncMetaChannel({
+            tenantId,
+            channelId: channel.id,
+            externalAccountId: clean(channel.externalAccountId, 180),
+            accessToken: clean(channel.accessToken, 4000),
+            dateRef,
+          });
+
+          await Promise.all([
+            markChannelSyncOk(channel.id),
+            resolveAiOperationalAlert({
+              tenantId,
+              type: "campaign_sync_failed",
+              scope: `campaigns_${channel.id}`,
+            }),
+            writeCampaignSyncLog({
+              tenantId,
+              channelId: channel.id,
+              platform: type,
+              dateRef,
+              ok: true,
+              attempt,
+              maxAttempts,
+              runId: input.runId,
+              source: input.source,
+            }),
+          ]);
+
+          results.push({ channelId: channel.id, type, dateRef, ok: true, attempts: attempt });
+          completed = true;
+          break;
+        } catch (error) {
+          finalMessage = error instanceof Error ? error.message : "Falha no sync.";
+          const retryable = isRetryableSyncError(finalMessage);
+
+          await writeCampaignSyncLog({
+            tenantId,
+            channelId: channel.id,
+            platform: type,
+            dateRef,
+            ok: false,
+            attempt,
+            maxAttempts,
+            error: finalMessage,
+            runId: input.runId,
+            source: input.source,
+          });
+
+          if (!retryable || attempt >= maxAttempts) break;
+          await waitMs(retryBaseDelayMs * attempt);
+        }
+      }
+
+      if (!completed) {
+        await Promise.all([
+          markChannelSyncError(channel.id, finalMessage),
+          upsertAiOperationalAlert({
+            tenantId,
+            type: "campaign_sync_failed",
+            scope: `campaigns_${channel.id}`,
+            severity: "high",
+            title: "Falha recorrente no sync de campanhas",
+            detail: `Canal ${channel.id} (${type}) falhou em ${maxAttempts} tentativa(s): ${finalMessage}`,
+            reasonCode: "campaign_sync_failed",
+            source: clean(input.source, 80) || "campaign_sync_job",
+          }),
+        ]);
+
         results.push({
           channelId: channel.id,
           type,
           dateRef,
           ok: false,
-          error: message,
+          error: finalMessage,
+          attempts: maxAttempts,
         });
       }
     }

@@ -7,6 +7,7 @@ import { getTenantForCurrentUser } from "@/lib/server/tenant";
 import { buildLeadAttributionPatch } from "@/lib/server/lead-intake";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { recordLeadConversionStep } from "@/lib/server/conversion-trail";
 
 type Body = {
   leadId?: string;
@@ -251,6 +252,22 @@ export async function POST(req: Request) {
           reason: "lead_created",
         }).catch((error) => {
           console.error("Falha ao disparar conversao de lead manual:", error);
+        });
+
+        await recordLeadConversionStep({
+          tenantId,
+          leadId: leadRef.id,
+          step: "captado",
+          source: clean(body.sourceType, 80) || "manual",
+          actorId: user.uid,
+          actorName: user.name,
+          detail: "Lead criado manualmente e marcado como captado.",
+          metadata: {
+            sourceType: clean(body.sourceType, 80) || "manual",
+            sourceId: clean(body.sourceId, 180) || null,
+          },
+        }).catch((error) => {
+          console.error("Falha ao registrar trilha de conversao (captado manual):", error);
         });
       }
     }

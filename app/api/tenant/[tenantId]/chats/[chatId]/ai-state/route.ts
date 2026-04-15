@@ -6,6 +6,7 @@ import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAcc
 import { getChatState, getChatStateDocId } from "@/lib/server/ai/agent";
 import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { buildManualQueuePatch } from "@/lib/server/chat-operations";
+import { recordLeadConversionStep } from "@/lib/server/conversion-trail";
 
 type Body = {
   action?: "pause" | "resume" | "takeover" | "retry";
@@ -15,11 +16,17 @@ type Body = {
 
 type TenantChatRecord = {
   tenantId?: string;
+  leadId?: unknown;
   status?: unknown;
   lastClientMessageAt?: unknown;
   lastAgentMessageAt?: unknown;
   slaDueAt?: unknown;
 };
+
+function cleanString(value: unknown, max = 180) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, max);
+}
 
 function clampMinutes(value: unknown, fallback = 240) {
   if (typeof value !== "number" || Number.isNaN(value)) return fallback;
@@ -286,6 +293,28 @@ export async function POST(
           createdAt: FieldValue.serverTimestamp(),
         }),
       ]);
+
+      if (action === "takeover") {
+        const relatedLeadId = cleanString(chat.leadId, 180);
+        if (relatedLeadId) {
+          await recordLeadConversionStep({
+            tenantId,
+            leadId: relatedLeadId,
+            step: "handoff",
+            source: "chat_takeover",
+            actorId: user.uid,
+            actorName: user.name,
+            detail: `Handoff humano assumido por ${targetOwner.name}.`,
+            metadata: {
+              chatId,
+              humanOwnerUserId: targetOwner.userId,
+              pausedMinutes,
+            },
+          }).catch((error) => {
+            console.error("Falha ao registrar trilha de conversao (handoff):", error);
+          });
+        }
+      }
     }
 
     let resumedPendingMessage = false;

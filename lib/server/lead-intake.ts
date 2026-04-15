@@ -5,6 +5,7 @@ import { runLeadAutomations } from "@/lib/server/automations";
 import { buildBasicAssistedTouches, readLeadAssistedTouches } from "@/lib/server/attribution";
 import { syncLeadCommercialState } from "@/lib/server/crm/operations";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
+import { recordLeadConversionStep } from "@/lib/server/conversion-trail";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 
 export type LeadAttributionInput = {
@@ -591,6 +592,22 @@ export async function recordInboundLead(input: RecordInboundLeadInput) {
       reason: "lead_created",
     }).catch((error) => {
       console.error("Falha ao disparar conversoes do lead criado:", error);
+    });
+
+    await recordLeadConversionStep({
+      tenantId,
+      leadId: leadRef.id,
+      step: "captado",
+      source: clean(input.channel, 80) || "inbound",
+      actorId: clean(input.automationActorId, 140) || "altum_inbound",
+      actorName: clean(input.automationActorName, 140) || "ALTUM Inbound",
+      detail: `Lead captado via ${clean(input.sourceLabel, 120) || "Inbound"}.`,
+      metadata: {
+        sourceType,
+        sourceId: sourceId || null,
+      },
+    }).catch((error) => {
+      console.error("Falha ao registrar trilha de conversao (captado):", error);
     });
   }
 

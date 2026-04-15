@@ -8,6 +8,7 @@ import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { syncLeadCommercialState } from "@/lib/server/crm/operations";
+import { mapPipelineStageToConversionStep, recordLeadConversionStep } from "@/lib/server/conversion-trail";
 
 type Body = {
   stage?: string;
@@ -201,6 +202,35 @@ export async function POST(
         reason: "sale_won",
       }).catch((error) => {
         console.error("Falha ao disparar conversao de venda:", error);
+      });
+    }
+
+    const conversionStep = mapPipelineStageToConversionStep(stage);
+    if (conversionStep) {
+      await recordLeadConversionStep({
+        tenantId,
+        leadId,
+        step: conversionStep,
+        source: "pipeline_stage_update",
+        actorId: user.uid,
+        actorName: user.name,
+        detail:
+          conversionStep === "qualificado"
+            ? "Lead qualificado no pipeline."
+            : conversionStep === "proposta"
+              ? "Lead avancou para proposta."
+              : conversionStep === "fechamento"
+                ? "Lead avancou para fechamento."
+                : conversionStep === "ganho"
+                  ? "Lead marcado como ganho."
+                  : `Lead entrou na etapa ${conversionStep}.`,
+        metadata: {
+          previousStage,
+          nextStage: stage,
+          forced: !stageValidation.ok && forceStageMove,
+        },
+      }).catch((error) => {
+        console.error("Falha ao registrar trilha de conversao por stage:", error);
       });
     }
 

@@ -8,6 +8,7 @@ import { runLeadAutomations } from "@/lib/server/automations";
 import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
 import { analyzeLeadCommercialState, syncLeadCommercialState } from "@/lib/server/crm/operations";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
+import { mapPipelineStageToConversionStep, recordLeadConversionStep } from "@/lib/server/conversion-trail";
 
 type LeadDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -499,6 +500,34 @@ export async function PATCH(
           reason: "sale_won",
         }).catch((error) => {
           console.error("Falha ao disparar conversao de venda:", error);
+        });
+      }
+
+      const conversionStep = mapPipelineStageToConversionStep(pipelineStage);
+      if (conversionStep) {
+        await recordLeadConversionStep({
+          tenantId,
+          leadId,
+          step: conversionStep,
+          source: "lead_patch",
+          actorId: user.uid,
+          actorName: user.name,
+          detail:
+            conversionStep === "qualificado"
+              ? "Lead qualificado por atualizacao manual."
+              : conversionStep === "proposta"
+                ? "Lead movido para proposta por atualizacao manual."
+                : conversionStep === "fechamento"
+                  ? "Lead movido para fechamento por atualizacao manual."
+                  : conversionStep === "ganho"
+                    ? "Lead marcado como ganho por atualizacao manual."
+                    : `Lead entrou na etapa ${conversionStep}.`,
+          metadata: {
+            previousStage,
+            nextStage: pipelineStage,
+          },
+        }).catch((error) => {
+          console.error("Falha ao registrar trilha de conversao (lead patch):", error);
         });
       }
     }
