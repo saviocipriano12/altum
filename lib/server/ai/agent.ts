@@ -1595,6 +1595,26 @@ function mapTemperatureToQualificationBand(temperature?: string | null) {
   return "cold";
 }
 
+function hasMinimumClosingContext(input: {
+  plannerConfidence: number;
+  businessType?: string | null;
+  primaryGoal?: string | null;
+  budgetBand?: string | null;
+  urgency?: string | null;
+  decisionMaker?: string | null;
+}) {
+  const confidenceOk = input.plannerConfidence >= 0.76;
+  const mappedCount = [
+    sanitizeText(input.businessType, 80),
+    sanitizeText(input.primaryGoal, 120),
+    sanitizeText(input.budgetBand, 80),
+    sanitizeText(input.urgency, 80),
+    sanitizeText(input.decisionMaker, 80),
+  ].filter(Boolean).length;
+
+  return confidenceOk && mappedCount >= 3;
+}
+
 async function executeAltumAgentActions(input: {
   tenantId: string;
   chatId: string;
@@ -2066,6 +2086,59 @@ async function executeAltumAgentActions(input: {
       input.plan.nextAction.includes("objecao")
     )
   ) {
+    const normalizedNextAction = sanitizeText(input.plan.nextAction, 160).toLowerCase();
+    const isClosingStep =
+      normalizedNextAction === "preparar_proposta_comercial" ||
+      normalizedNextAction === "agendar_proximo_passo";
+    const hasClosingContext = hasMinimumClosingContext({
+      plannerConfidence,
+      businessType: aiMemory.businessType,
+      primaryGoal: aiMemory.primaryGoal,
+      budgetBand: aiMemory.budgetBand,
+      urgency: aiMemory.urgency,
+      decisionMaker: aiMemory.decisionMaker,
+    });
+
+    if (isClosingStep && !hasClosingContext) {
+      const contextGapTaskId = await ensureAiLeadTask({
+        tenantId: input.tenantId,
+        leadId,
+        title: "Coletar contexto minimo antes de proposta/reuniao",
+        type: "follow_up",
+        priority: "high",
+        dueAt: addHours(now, 2),
+        reasonCode: "ai_context_gap_closing",
+        taskKey: buildAiTaskKey("ai_context_gap_closing", input.chatId),
+      });
+
+      if (contextGapTaskId) {
+        await Promise.all([
+          leadRef.collection("events").add({
+            type: "ai_closing_context_gap_task",
+            title: "IA segurou fechamento por falta de contexto",
+            detail:
+              "Antes de proposta/reuniao, a IA abriu tarefa para coletar contexto comercial minimo com o lead.",
+            actorId: "ai_sales_agent",
+            actorName: "AI Sales Agent",
+            createdAt: FieldValue.serverTimestamp(),
+          }),
+          createAiInternalNotification({
+            tenantId: input.tenantId,
+            chatId: input.chatId,
+            leadId,
+            type: "closing_context_gap",
+            severity: "warning",
+            title: "IA segurou fechamento por falta de contexto",
+            detail:
+              "Faltou contexto minimo para proposta/reuniao. A IA abriu follow-up de qualificacao antes do fechamento.",
+          }),
+        ]);
+        actions.push("create_context_gap_followup_task");
+        actions.push("notify_internal_team");
+      } else {
+        actions.push("context_gap_followup_task_already_pending");
+      }
+    } else {
     const taskPreset = buildAiTaskPreset(input.plan.nextAction, input.leadName);
     const followupReasonCode = normalizeReasonCode(`ai_next_action_${input.plan.nextAction}`, "ai_next_action");
     const followupTaskId = await ensureAiLeadTask({
@@ -2103,6 +2176,7 @@ async function executeAltumAgentActions(input: {
       actions.push("notify_internal_team");
     } else {
       actions.push("followup_task_already_pending");
+    }
     }
   }
 
