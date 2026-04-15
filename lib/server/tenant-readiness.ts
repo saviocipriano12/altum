@@ -117,6 +117,11 @@ export type TenantOperationalHealth = {
   status: TenantOperationalStatus;
   label: string;
   reason: string;
+  queueBacklog?: number;
+  activeBacklog?: number;
+  activeChannels?: number;
+  disconnectedChannels?: number;
+  stuckJobs?: number;
 };
 
 export type TenantOperationalAlert = {
@@ -205,6 +210,13 @@ function toIso(value: unknown) {
     return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
   }
   return null;
+}
+
+function toMillis(value: unknown) {
+  const iso = toIso(value);
+  if (!iso) return 0;
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 }
 
 function parseGuardrails(value: unknown) {
@@ -340,6 +352,8 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
     metricsSnap,
     notificationsSnap,
     leadsSnap,
+    campaignJobRunsSnap,
+    campaignJobLockSnap,
     workerHealth,
     monthlyAiUsage,
   ] = await Promise.all([
@@ -353,6 +367,8 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
     adminDb.collection("metrics").where("tenantId", "==", tenantId).limit(120).get(),
     adminDb.collection("ai_internal_notifications").where("tenantId", "==", tenantId).limit(80).get(),
     adminDb.collection("leads").where("tenantId", "==", tenantId).limit(700).get(),
+    adminDb.collection("internal_job_runs").where("job", "==", "campaigns_sync").limit(80).get(),
+    adminDb.collection("internal_job_locks").doc("campaigns_sync").get(),
     readAiWorkerHealth(),
     getAiMonthlyUsageSnapshot(tenantId),
   ]);
@@ -373,6 +389,13 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
     ...(doc.data() as Record<string, unknown>),
   })) as ReadinessDoc[];
   const leads = leadsSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
+  const campaignJobRuns: ReadinessDoc[] = campaignJobRunsSnap.docs.map((doc) => ({
+    id: doc.id,
+    ...(doc.data() as Record<string, unknown>),
+  })) as ReadinessDoc[];
+  const campaignJobLock = campaignJobLockSnap.exists
+    ? (campaignJobLockSnap.data() as Record<string, unknown>)
+    : {};
 
   const activeUsers = users.length;
   const onlineUsers = users.filter((item) => clean(item.availability, 40) === "online").length;
@@ -453,6 +476,7 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
     .filter((item) => {
       const type = clean(item.type, 60);
       if (!["whatsapp", "instagram", "messenger", "meta_ads"].includes(type)) return false;
+      if (type === "meta_ads") return item.syncReady !== true;
       return item.routingReady !== true && item.inboundReady !== true && item.outboundReady !== true;
     })
     .slice(0, 4)
@@ -471,6 +495,120 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
         lastOccurredAt: toIso(item.updatedAt),
       };
     });
+  const nowIso = new Date().toISOString();
+  const quotaUsagePct =
+    aiOperatingProfile.monthlyBudgetUsd > 0
+      ? (monthlyAiUsage.estimatedCostUsd / aiOperatingProfile.monthlyBudgetUsd) * 100
+      : 0;
+  const runUsagePct =
+    aiOperatingProfile.monthlyUsageCap > 0
+      ? (monthlyAiUsage.conversationRuns / aiOperatingProfile.monthlyUsageCap) * 100
+      : 0;
+  const quotaAlert =
+    aiOperatingProfile.monthlyBudgetUsd > 0 || aiOperatingProfile.monthlyUsageCap > 0
+      ? (() => {
+          const budgetLimit = aiOperatingProfile.monthlyBudgetUsd > 0;
+          const runLimit = aiOperatingProfile.monthlyUsageCap > 0;
+          const budgetHigh = budgetLimit && quotaUsagePct >= 85;
+          const runHigh = runLimit && runUsagePct >= 85;
+          const budgetExceeded = budgetLimit && aiBudgetExceeded;
+          const runExceeded = runLimit && aiUsageCapExceeded;
+          if (!budgetHigh && !runHigh && !budgetExceeded && !runExceeded) return null;
+          const guidance = buildAiAlertGuidance({ type: "quota_exceeded" });
+          return {
+            id: "quota_guardrail",
+            type: guidance.type,
+            severity: budgetExceeded || runExceeded ? ("high" as AiOperationalSeverity) : ("warning" as AiOperationalSeverity),
+            title:
+              budgetExceeded || runExceeded
+                ? "Limite de uso da IA atingido"
+                : "Uso da IA proximo do limite mensal",
+            detail: `${monthlyAiUsage.conversationRuns}/${aiOperatingProfile.monthlyUsageCap || "sem cap"} execucoes • US$ ${monthlyAiUsage.estimatedCostUsd.toFixed(2)}/US$ ${aiOperatingProfile.monthlyBudgetUsd.toFixed(2)}.`,
+            probableCause: guidance.probableCause,
+            recommendedAction: guidance.recommendedAction,
+            href: guidance.href,
+            source: "ai_usage_monthly",
+            lastOccurredAt: nowIso,
+          };
+        })()
+      : null;
+  const backlogThreshold = Math.max(25, activeUsers > 0 ? activeUsers * 25 : 40);
+  const queueBacklog = Number(queueHealth?.backlog || 0);
+  const backlogAlert =
+    activeBacklog >= backlogThreshold || queueBacklog >= backlogThreshold
+      ? (() => {
+          const guidance = buildAiAlertGuidance({ type: "queue_degraded" });
+          return {
+            id: "backlog_anormal",
+            type: guidance.type,
+            severity:
+              activeBacklog >= backlogThreshold * 1.5 || queueBacklog >= backlogThreshold * 1.5
+                ? ("high" as AiOperationalSeverity)
+                : ("warning" as AiOperationalSeverity),
+            title: "Backlog operacional acima do esperado",
+            detail: `${activeBacklog} conversas ativas no inbox e ${queueBacklog} job(s) na fila de IA.`,
+            probableCause: guidance.probableCause,
+            recommendedAction: guidance.recommendedAction,
+            href: "/cliente/painel/inbox?queue=assigned_waiting",
+            source: "tenant_backlog",
+            lastOccurredAt: nowIso,
+          };
+        })()
+      : null;
+  const adsChannels = channels.filter((item) => {
+    if (clean(item.status, 40) !== "active") return false;
+    const type = clean(item.type, 40);
+    return type === "meta_ads" || type === "google_ads";
+  });
+  const staleAdsChannels = adsChannels.filter((item) => {
+    const lastSyncMs = toMillis(item.lastSyncAt);
+    if (!lastSyncMs) return true;
+    return Date.now() - lastSyncMs > 48 * 60 * 60 * 1000;
+  });
+  const adsSyncAlert =
+    staleAdsChannels.length > 0
+      ? {
+          id: "ads_sync_stale",
+          type: "queue_degraded",
+          severity: "high" as AiOperationalSeverity,
+          title: "Sync de Ads sem atualizacao recente",
+          detail: `${staleAdsChannels.length} canal(is) de Ads sem sync nas ultimas 48h.`,
+          probableCause: "Job de sync travado, credencial expirada ou erro recorrente no conector.",
+          recommendedAction: "Revisar credenciais de Ads, rodar sync manual e acompanhar logs de tentativas.",
+          href: "/cliente/painel/campanhas",
+          source: "campaign_sync_health",
+          lastOccurredAt: nowIso,
+        }
+      : null;
+  const campaignRunsForTenant = campaignJobRuns
+    .filter((item) => clean(item.tenantId, 140) === tenantId)
+    .sort((a, b) => toMillis(b.startedAt || b.updatedAt) - toMillis(a.startedAt || a.updatedAt));
+  const staleRunningJob = campaignRunsForTenant.find((item) => {
+    if (clean(item.status, 40) !== "running") return false;
+    const startedAtMs = toMillis(item.startedAt || item.updatedAt);
+    return startedAtMs > 0 && Date.now() - startedAtMs >= 20 * 60 * 1000;
+  });
+  const lockStale =
+    clean(campaignJobLock.status, 40) === "running" &&
+    Number(campaignJobLock.lockedUntilMs || 0) > 0 &&
+    Date.now() - Number(campaignJobLock.lockedUntilMs || 0) >= 5 * 60 * 1000;
+  const stuckJobAlert =
+    staleRunningJob || lockStale
+      ? {
+          id: "campaign_sync_job_stuck",
+          type: "queue_degraded",
+          severity: "high" as AiOperationalSeverity,
+          title: "Job de sync de campanhas pode estar travado",
+          detail: staleRunningJob
+            ? `Execucao ${clean(staleRunningJob.id, 120)} em running ha mais de 20 minutos.`
+            : "Lock de job permanece preso apos expiracao prevista.",
+          probableCause: "Processo de sync interrompido no meio da execucao ou lock nao liberado.",
+          recommendedAction: "Executar novo sync monitorado e validar locks/runs em internal_job_runs/internal_job_locks.",
+          href: "/cliente/painel/campanhas",
+          source: "campaign_sync_job",
+          lastOccurredAt: nowIso,
+        }
+      : null;
   const internalAlerts = notifications
     .filter((item) => clean(item.status, 40) !== "resolved")
     .slice(0, 12)
@@ -515,6 +653,10 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
   const operationalAlerts: TenantOperationalAlert[] = [
     ...internalAlerts,
     ...channelOfflineAlerts,
+    ...(quotaAlert ? [quotaAlert] : []),
+    ...(backlogAlert ? [backlogAlert] : []),
+    ...(adsSyncAlert ? [adsSyncAlert] : []),
+    ...(stuckJobAlert ? [stuckJobAlert] : []),
     ...(conversionAlert ? [conversionAlert] : []),
   ]
     .sort((a, b) => {
@@ -537,6 +679,7 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
     hasHighSeverityAlert,
     hasWarningAlert,
   });
+  const disconnectedChannels = Math.max(0, activeChannels - connectedChannels);
 
   const checklist: TenantGoLiveCriterion[] = [
     buildCriterion({
@@ -1000,7 +1143,14 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
       },
     },
     summary,
-    operationalHealth: operationalSnapshot,
+    operationalHealth: {
+      ...operationalSnapshot,
+      queueBacklog,
+      activeBacklog,
+      activeChannels,
+      disconnectedChannels,
+      stuckJobs: staleRunningJob || lockStale ? 1 : 0,
+    },
     operationalAlerts,
     checklist,
     activation,
