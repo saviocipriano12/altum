@@ -911,7 +911,7 @@ function makeLeadFacingReply(input: {
   }
 
   if (isClarificationRequest(input.inboundText)) {
-    return "A ALTUM ajuda empresas a vender mais e organizar melhor a operacao comercial. Se quiser, eu te explico por onde faz mais sentido comecar no seu caso.";
+    return "Claro. A gente estrutura captacao, atendimento e conversao para vender com mais previsibilidade. Se quiser, te explico pelo seu caso real em 1 minuto.";
   }
 
   if (input.decision === "ask_more") {
@@ -1405,6 +1405,82 @@ async function createAiInternalNotificationOnce(input: {
   });
 
   return true;
+}
+
+function normalizeReasonCode(value: string, fallback: string) {
+  const normalized = sanitizeText(value, 120)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || fallback;
+}
+
+function buildAiTaskKey(reasonCode: string, scope: string) {
+  const reason = normalizeReasonCode(reasonCode, "ai_task");
+  const normalizedScope = sanitizeText(scope, 120)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return `${reason}:${normalizedScope || "default"}`.slice(0, 180);
+}
+
+async function listPendingLeadTasks(tenantId: string, leadId: string) {
+  const snap = await adminDb
+    .collection("lead_tasks")
+    .where("tenantId", "==", tenantId)
+    .where("leadId", "==", leadId)
+    .where("status", "==", "pending")
+    .limit(30)
+    .get();
+
+  return snap.docs.map<{ id: string; taskKey?: unknown; reasonCode?: unknown }>((doc) => ({
+    id: doc.id,
+    ...(doc.data() as Record<string, unknown>),
+  }));
+}
+
+async function ensureAiLeadTask(input: {
+  tenantId: string;
+  leadId: string;
+  title: string;
+  type: string;
+  priority: string;
+  dueAt?: Date | null;
+  reasonCode: string;
+  taskKey: string;
+}) {
+  const existingTasks = await listPendingLeadTasks(input.tenantId, input.leadId);
+  const normalizedReasonCode = normalizeReasonCode(input.reasonCode, "ai_task");
+  const normalizedTaskKey = sanitizeText(input.taskKey, 180);
+  const alreadyExists = existingTasks.some((task) => {
+    const currentTaskKey = sanitizeText(task.taskKey, 180);
+    const currentReasonCode = normalizeReasonCode(sanitizeText(task.reasonCode, 120), "");
+    return (
+      (normalizedTaskKey && currentTaskKey === normalizedTaskKey) ||
+      (normalizedReasonCode && currentReasonCode === normalizedReasonCode)
+    );
+  });
+
+  if (alreadyExists) return null;
+
+  const ref = await adminDb.collection("lead_tasks").add({
+    tenantId: input.tenantId,
+    leadId: input.leadId,
+    title: sanitizeText(input.title, 220) || "Tarefa criada pela IA",
+    type: sanitizeText(input.type, 40) || "follow_up",
+    priority: sanitizeText(input.priority, 20) || "medium",
+    dueAt: input.dueAt || null,
+    status: "pending",
+    source: "ai_sales_agent",
+    reasonCode: normalizedReasonCode,
+    taskKey: normalizedTaskKey || null,
+    createdBy: "ai_sales_agent",
+    createdByName: "AI Sales Agent",
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return ref.id;
 }
 
 async function createAiProposalDraft(input: {
@@ -1991,40 +2067,43 @@ async function executeAltumAgentActions(input: {
     )
   ) {
     const taskPreset = buildAiTaskPreset(input.plan.nextAction, input.leadName);
-    await Promise.all([
-      adminDb.collection("lead_tasks").add({
-        tenantId: input.tenantId,
-        leadId,
-        title: taskPreset.title,
-        type: taskPreset.type,
-        priority: taskPreset.priority,
-        dueAt: addHours(now, getAiTaskDueHours(input.plan.nextAction, input.plan.commercialTemperature || null)),
-        status: "pending",
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-        createdBy: "ai_sales_agent",
-        createdByName: "AI Sales Agent",
-      }),
-      leadRef.collection("events").add({
-        type: "ai_followup_task_created",
-        title: "IA criou tarefa de follow-up",
-        detail: input.plan.nextAction.slice(0, 240),
-        actorId: "ai_sales_agent",
-        actorName: "AI Sales Agent",
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      createAiInternalNotification({
-        tenantId: input.tenantId,
-        chatId: input.chatId,
-        leadId,
-        type: "followup_task",
-        severity: input.plan.commercialTemperature === "hot" ? "high" : "info",
-        title: "IA criou proximo passo operacional",
-        detail: input.plan.nextAction.slice(0, 240),
-      }),
-    ]);
-    actions.push("create_followup_task");
-    actions.push("notify_internal_team");
+    const followupReasonCode = normalizeReasonCode(`ai_next_action_${input.plan.nextAction}`, "ai_next_action");
+    const followupTaskId = await ensureAiLeadTask({
+      tenantId: input.tenantId,
+      leadId,
+      title: taskPreset.title,
+      type: taskPreset.type,
+      priority: taskPreset.priority,
+      dueAt: addHours(now, getAiTaskDueHours(input.plan.nextAction, input.plan.commercialTemperature || null)),
+      reasonCode: followupReasonCode,
+      taskKey: buildAiTaskKey(followupReasonCode, input.plan.stateAfter || "conversation"),
+    });
+
+    if (followupTaskId) {
+      await Promise.all([
+        leadRef.collection("events").add({
+          type: "ai_followup_task_created",
+          title: "IA criou tarefa de follow-up",
+          detail: input.plan.nextAction.slice(0, 240),
+          actorId: "ai_sales_agent",
+          actorName: "AI Sales Agent",
+          createdAt: FieldValue.serverTimestamp(),
+        }),
+        createAiInternalNotification({
+          tenantId: input.tenantId,
+          chatId: input.chatId,
+          leadId,
+          type: "followup_task",
+          severity: input.plan.commercialTemperature === "hot" ? "high" : "info",
+          title: "IA criou proximo passo operacional",
+          detail: input.plan.nextAction.slice(0, 240),
+        }),
+      ]);
+      actions.push("create_followup_task");
+      actions.push("notify_internal_team");
+    } else {
+      actions.push("followup_task_already_pending");
+    }
   }
 
   if (nextActionChanged && input.plan.nextAction === "preparar_proposta_comercial" && shouldSeedDraft) {
@@ -2163,40 +2242,42 @@ async function executeAltumAgentActions(input: {
   }
 
   if (input.plan.decision === "handoff") {
-    await Promise.all([
-      adminDb.collection("lead_tasks").add({
-        tenantId: input.tenantId,
-        leadId,
-        title: "Assumir handoff solicitado pela IA",
-        type: "handoff",
-        priority: "high",
-        dueAt: addHours(now, 1),
-        status: "pending",
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-        createdBy: "ai_sales_agent",
-        createdByName: "AI Sales Agent",
-      }),
-      leadRef.collection("events").add({
-        type: "ai_handoff_requested",
-        title: "IA solicitou handoff",
-        detail: sanitizeText(input.plan.reason, 220),
-        actorId: "ai_sales_agent",
-        actorName: "AI Sales Agent",
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      createAiInternalNotification({
-        tenantId: input.tenantId,
-        chatId: input.chatId,
-        leadId,
-        type: "handoff",
-        severity: "high",
-        title: "IA pediu handoff humano",
-        detail: sanitizeText(input.plan.reason, 220),
-      }),
-    ]);
-    actions.push("handoff_to_human");
-    actions.push("notify_internal_team");
+    const handoffTaskId = await ensureAiLeadTask({
+      tenantId: input.tenantId,
+      leadId,
+      title: "Assumir handoff solicitado pela IA",
+      type: "handoff",
+      priority: "high",
+      dueAt: addHours(now, 1),
+      reasonCode: "ai_handoff_requested",
+      taskKey: buildAiTaskKey("ai_handoff_requested", input.chatId),
+    });
+
+    if (handoffTaskId) {
+      await Promise.all([
+        leadRef.collection("events").add({
+          type: "ai_handoff_requested",
+          title: "IA solicitou handoff",
+          detail: sanitizeText(input.plan.reason, 220),
+          actorId: "ai_sales_agent",
+          actorName: "AI Sales Agent",
+          createdAt: FieldValue.serverTimestamp(),
+        }),
+        createAiInternalNotification({
+          tenantId: input.tenantId,
+          chatId: input.chatId,
+          leadId,
+          type: "handoff",
+          severity: "high",
+          title: "IA pediu handoff humano",
+          detail: sanitizeText(input.plan.reason, 220),
+        }),
+      ]);
+      actions.push("handoff_to_human");
+      actions.push("notify_internal_team");
+    } else {
+      actions.push("handoff_task_already_pending");
+    }
   }
 
   await syncLeadCommercialState({
