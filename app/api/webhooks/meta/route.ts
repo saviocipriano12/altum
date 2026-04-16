@@ -12,6 +12,7 @@ import {
   type MetaWebhookChannelType,
 } from "@/app/lib/server/meta-channel";
 import { verifyMetaSignature } from "@/app/lib/server/whatsapp-channel";
+import { getMetaEnv } from "@/app/lib/server/integration-oauth";
 import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { cacheInboundMessageMedia } from "@/lib/server/ai/multimodal";
 import { upsertAiOperationalAlert } from "@/lib/server/ai/observability";
@@ -643,6 +644,12 @@ export async function GET(req: Request) {
     return new Response("Forbidden", { status: 403 });
   }
 
+  const globalVerifyToken = getMetaEnv().verifyToken;
+  if (globalVerifyToken && token === globalVerifyToken) {
+    return new Response(challenge, { status: 200 });
+  }
+
+  // Compatibilidade legada: permite tenants antigos com verify token por canal.
   const channel = await getMetaChannelByVerifyToken(token);
   if (!channel) {
     return new Response("Forbidden", { status: 403 });
@@ -712,7 +719,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: "ignored_unknown_channel" });
     }
 
-    if (!verifyMetaSignature(rawBody, signature, resolved.appSecret)) {
+    const globalAppSecret = getMetaEnv().appSecret;
+    const signatureSecret = globalAppSecret || resolved.appSecret || "";
+
+    if (!signatureSecret) {
+      console.error("Webhook Meta bloqueado: canal sem appSecret configurado.", {
+        tenantId: resolved.tenantId,
+        channelId: resolved.id,
+        channelType: resolved.type,
+      });
+      return NextResponse.json({ error: "Canal sem segredo de assinatura configurado." }, { status: 503 });
+    }
+
+    if (!verifyMetaSignature(rawBody, signature, signatureSecret)) {
       return NextResponse.json({ error: "Assinatura invalida." }, { status: 401 });
     }
 

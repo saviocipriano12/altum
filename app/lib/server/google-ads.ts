@@ -97,6 +97,7 @@ export async function fetchGoogleAdsDailyMetrics(input: {
   refreshToken?: string;
   accessToken?: string;
   loginCustomerId?: string;
+  conversionActionIds?: string[];
 }) {
   const env = getGoogleAdsEnv();
   if (!env.developerToken) {
@@ -119,55 +120,88 @@ export async function fetchGoogleAdsDailyMetrics(input: {
     throw new Error("Conector Google Ads sem credencial OAuth valida. Informe refresh token ou access token.");
   }
 
-  const response = await fetch(
-    `https://googleads.googleapis.com/${GOOGLE_ADS_VERSION}/customers/${customerId}/googleAds:searchStream`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        "developer-token": env.developerToken,
-        ...(loginCustomerId ? { "login-customer-id": loginCustomerId } : {}),
-      },
-      body: JSON.stringify({
-        query: [
-          "SELECT",
-          "customer.id,",
-          "metrics.impressions,",
-          "metrics.clicks,",
-          "metrics.cost_micros,",
-          "metrics.conversions",
-          "FROM customer",
-          `WHERE segments.date = '${clean(input.dateRef, 20)}'`,
-        ].join(" "),
-      }),
-      cache: "no-store",
+  async function runSearchStreamQuery(query: string) {
+    const response = await fetch(
+      `https://googleads.googleapis.com/${GOOGLE_ADS_VERSION}/customers/${customerId}/googleAds:searchStream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "developer-token": env.developerToken,
+          ...(loginCustomerId ? { "login-customer-id": loginCustomerId } : {}),
+        },
+        body: JSON.stringify({ query }),
+        cache: "no-store",
+      }
+    );
+    const payload = (await response.json().catch(() => ([]))) as
+      | Array<{ results?: Array<Record<string, unknown>> }>
+      | Record<string, unknown>;
+    if (!response.ok) {
+      throw new Error(getGoogleAdsErrorMessage(payload));
     }
-  );
-
-  const payload = (await response.json().catch(() => ([]))) as
-    | Array<{ results?: Array<{ metrics?: Record<string, unknown> }> }>
-    | Record<string, unknown>;
-
-  if (!response.ok) {
-    throw new Error(getGoogleAdsErrorMessage(payload));
+    return Array.isArray(payload) ? payload : [payload];
   }
 
-  const batches = Array.isArray(payload) ? payload : [payload];
+  const baseBatches = await runSearchStreamQuery(
+    [
+      "SELECT",
+      "customer.id,",
+      "metrics.impressions,",
+      "metrics.clicks,",
+      "metrics.cost_micros,",
+      "metrics.conversions",
+      "FROM customer",
+      `WHERE segments.date = '${clean(input.dateRef, 20)}'`,
+    ].join(" ")
+  );
+
   let impressions = 0;
   let clicks = 0;
   let costMicros = 0;
   let conversions = 0;
 
-  for (const batch of batches) {
+  for (const batch of baseBatches) {
     const results = Array.isArray(batch?.results) ? batch.results : [];
     for (const row of results) {
-      const metrics = row?.metrics && typeof row.metrics === "object" ? row.metrics : {};
+      const metrics = row?.metrics && typeof row.metrics === "object" ? (row.metrics as Record<string, unknown>) : {};
       impressions += Math.max(0, Math.round(toNumber(metrics.impressions)));
       clicks += Math.max(0, Math.round(toNumber(metrics.clicks)));
       costMicros += Math.max(0, toNumber(metrics.costMicros ?? metrics.cost_micros));
       conversions += Math.max(0, toNumber(metrics.conversions));
     }
+  }
+
+  const conversionActionIds = Array.isArray(input.conversionActionIds)
+    ? input.conversionActionIds.map((item) => clean(item, 120).replace(/[^\d]/g, "")).filter(Boolean)
+    : [];
+  if (conversionActionIds.length > 0) {
+    const selected = new Set(
+      conversionActionIds.map((id) => `customers/${customerId}/conversionActions/${id}`)
+    );
+    const conversionBatches = await runSearchStreamQuery(
+      [
+        "SELECT",
+        "segments.conversion_action,",
+        "metrics.conversions",
+        "FROM customer",
+        `WHERE segments.date = '${clean(input.dateRef, 20)}'`,
+      ].join(" ")
+    );
+    let filteredConversions = 0;
+    for (const batch of conversionBatches) {
+      const results = Array.isArray(batch?.results) ? batch.results : [];
+      for (const row of results) {
+        const segments = row?.segments && typeof row.segments === "object" ? (row.segments as Record<string, unknown>) : {};
+        const metrics = row?.metrics && typeof row.metrics === "object" ? (row.metrics as Record<string, unknown>) : {};
+        const conversionAction =
+          clean(segments.conversionAction, 220) || clean(segments.conversion_action, 220);
+        if (!conversionAction || !selected.has(conversionAction)) continue;
+        filteredConversions += Math.max(0, toNumber(metrics.conversions));
+      }
+    }
+    conversions = filteredConversions;
   }
 
   return {

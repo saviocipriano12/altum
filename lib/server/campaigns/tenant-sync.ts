@@ -3,6 +3,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { upsertCampaignSnapshot } from "@/app/lib/server/campaign-sync";
 import { fetchGoogleAdsDailyMetrics } from "@/app/lib/server/google-ads";
 import { resolveAiOperationalAlert, upsertAiOperationalAlert } from "@/lib/server/ai/observability";
+import { decryptSecret } from "@/app/lib/server/secret-crypto";
 
 type TenantChannelItem = {
   id: string;
@@ -65,17 +66,24 @@ function normalizeMetaAccountId(externalId: string) {
   return cleaned;
 }
 
-function sumLeadActions(actions: unknown) {
+function sumLeadActions(actions: unknown, filters?: string[]) {
   if (!Array.isArray(actions)) return 0;
+  const normalizedFilters = Array.isArray(filters)
+    ? filters.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean)
+    : [];
   let total = 0;
   for (const action of actions) {
     const item = action as { action_type?: string; value?: unknown };
     const actionType = String(item.action_type || "").toLowerCase();
-    if (
+    const matchesDefaultLeadPattern =
       actionType.includes("lead") ||
       actionType.includes("offsite_conversion.fb_pixel_lead") ||
-      actionType.includes("onsite_conversion.lead_grouped")
-    ) {
+      actionType.includes("onsite_conversion.lead_grouped");
+    const matchesFilter =
+      normalizedFilters.length === 0
+        ? matchesDefaultLeadPattern
+        : normalizedFilters.some((filter) => actionType.includes(filter));
+    if (matchesFilter) {
       total += toNumber(item.value);
     }
   }
@@ -161,6 +169,7 @@ async function syncMetaChannel(input: {
   channelId: string;
   externalAccountId: string;
   accessToken: string;
+  actionTypeFilters?: string[];
   dateRef: string;
 }) {
   const externalId = normalizeMetaAccountId(input.externalAccountId);
@@ -202,7 +211,7 @@ async function syncMetaChannel(input: {
   const impressions = toInt(row?.impressions);
   const clicks = toInt(row?.clicks);
   const spend = Number(toNumber(row?.spend).toFixed(2));
-  const leads = sumLeadActions(row?.actions);
+  const leads = sumLeadActions(row?.actions, input.actionTypeFilters);
   await upsertCampaignSnapshot({
     tenantId: input.tenantId,
     clientId: input.tenantId,
@@ -225,6 +234,7 @@ async function syncGoogleChannel(input: {
   accessToken: string;
   refreshToken: string;
   loginCustomerId: string;
+  conversionActionIds?: string[];
   dateRef: string;
 }) {
   const metrics = await fetchGoogleAdsDailyMetrics({
@@ -233,6 +243,7 @@ async function syncGoogleChannel(input: {
     refreshToken: input.refreshToken,
     accessToken: input.accessToken,
     loginCustomerId: input.loginCustomerId,
+    conversionActionIds: input.conversionActionIds,
   });
 
   await upsertCampaignSnapshot({
@@ -254,6 +265,7 @@ async function markChannelSyncOk(channelId: string) {
   await adminDb.collection("tenant_channels").doc(channelId).set(
     {
       status: "active",
+      connectionStatus: "ready",
       lastError: "",
       lastSyncAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -266,6 +278,7 @@ async function markChannelSyncError(channelId: string, error: string) {
   await adminDb.collection("tenant_channels").doc(channelId).set(
     {
       status: "error",
+      connectionStatus: "degraded",
       lastError: error,
       updatedAt: FieldValue.serverTimestamp(),
     },
@@ -311,6 +324,15 @@ export async function runTenantCampaignSync(
         channel.metadata && typeof channel.metadata === "object" && !Array.isArray(channel.metadata)
           ? (channel.metadata as Record<string, unknown>)
           : {};
+      const conversionActionIds = [
+        clean(metadata.conversionActionId, 120),
+        clean(metadata.leadConversionActionId, 120),
+        clean(metadata.qualifiedConversionActionId, 120),
+        clean(metadata.meetingConversionActionId, 120),
+        clean(metadata.saleConversionActionId, 120),
+      ]
+        .map((item) => item.replace(/[^\d]/g, ""))
+        .filter(Boolean);
 
       for (const dateRef of dateRefs) {
         let completed = false;
@@ -323,9 +345,10 @@ export async function runTenantCampaignSync(
               tenantId,
               channelId: channel.id,
               externalAccountId: clean(channel.externalAccountId, 180),
-              accessToken: clean(channel.accessToken, 4000),
-              refreshToken: clean(channel.refreshToken, 4000),
+              accessToken: clean(decryptSecret(channel.accessToken), 4000),
+              refreshToken: clean(decryptSecret(channel.refreshToken), 4000),
               loginCustomerId: clean(metadata.loginCustomerId, 180) || clean(channel.pageId, 180),
+              conversionActionIds,
               dateRef,
             });
 
@@ -402,6 +425,19 @@ export async function runTenantCampaignSync(
       continue;
     }
 
+    const metadata =
+      channel.metadata && typeof channel.metadata === "object" && !Array.isArray(channel.metadata)
+        ? (channel.metadata as Record<string, unknown>)
+        : {};
+    const metaActionTypeFilters = [
+      clean(metadata.primaryActionType, 120),
+      ...clean(metadata.leadActionTypes, 1200)
+        .split(",")
+        .map((item) => item.trim()),
+    ]
+      .map((item) => item.toLowerCase())
+      .filter(Boolean);
+
     for (const dateRef of dateRefs) {
       let completed = false;
       const maxAttempts = maxRetriesPerDate + 1;
@@ -413,7 +449,8 @@ export async function runTenantCampaignSync(
             tenantId,
             channelId: channel.id,
             externalAccountId: clean(channel.externalAccountId, 180),
-            accessToken: clean(channel.accessToken, 4000),
+            accessToken: clean(decryptSecret(channel.accessToken), 4000),
+            actionTypeFilters: metaActionTypeFilters,
             dateRef,
           });
 

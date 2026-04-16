@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
   Facebook,
   Instagram,
+  Link2,
   Loader2,
   Megaphone,
   MessageSquare,
@@ -25,6 +26,7 @@ type ChannelItem = {
   provider?: string;
   displayName?: string;
   status?: string;
+  connectionStatus?: string;
   phoneNumber?: string;
   phoneNumberId?: string;
   username?: string;
@@ -59,6 +61,15 @@ type ChannelItem = {
 type ChannelsResponse = {
   items?: ChannelItem[];
   error?: string;
+};
+
+type IntegrationPendingItem = {
+  pendingId: string;
+  provider: "meta" | "google";
+  tenantId: string;
+  channelType: ConnectorType;
+  expiresAt: string;
+  options: Array<{ id: string; label: string; description?: string; meta?: Record<string, string> }>;
 };
 
 type WhatsAppChannelResponse = {
@@ -165,6 +176,27 @@ function statusLabel(status?: string) {
   return "Rascunho";
 }
 
+function toneForConnectionStatus(status?: string) {
+  if (status === "ready" || status === "connected") return "success" as const;
+  if (status === "syncing" || status === "webhook_pending" || status === "auth_pending") return "info" as const;
+  if (status === "degraded" || status === "reauth_required" || status === "revoked") return "warning" as const;
+  if (status === "error") return "danger" as const;
+  return "neutral" as const;
+}
+
+function connectionStatusLabel(status?: string) {
+  if (status === "auth_pending") return "Autenticacao pendente";
+  if (status === "connected") return "Conectado";
+  if (status === "webhook_pending") return "Webhook pendente";
+  if (status === "syncing") return "Sincronizando";
+  if (status === "ready") return "Pronto";
+  if (status === "degraded") return "Degradado";
+  if (status === "reauth_required") return "Reconexao necessaria";
+  if (status === "revoked") return "Revogado";
+  if (status === "error") return "Erro";
+  return "Rascunho";
+}
+
 function formatDateTime(value?: string | null) {
   if (!value) return "Sem sync";
   const parsed = new Date(value);
@@ -198,6 +230,15 @@ function buildConnectorOperationalRows(input: {
   const isAdsConnector = definition.type === "meta_ads" || definition.type === "google_ads";
   const rows: Array<{ label: string; value: string; tone: "neutral" | "success" | "warning" | "danger" | "info" }> = [
     { label: "Status", value: statusLabel(statusValue), tone: toneForStatus(statusValue) },
+    ...(definition.type === "whatsapp"
+      ? []
+      : [
+          {
+            label: "Status da integracao",
+            value: connectionStatusLabel(channel?.connectionStatus || "draft"),
+            tone: toneForConnectionStatus(channel?.connectionStatus || "draft"),
+          } as { label: string; value: string; tone: "neutral" | "success" | "warning" | "danger" | "info" },
+        ]),
     {
       label: "Mapeamento da conta",
       value: readinessLabel(
@@ -324,13 +365,20 @@ export default function ClienteCanaisPage() {
   const { tenant, hasCapability } = useClienteTenant();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [syncingCampaigns, setSyncingCampaigns] = useState(false);
+  const [loadingPending, setLoadingPending] = useState(false);
+  const [completingPending, setCompletingPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<ConnectorType>("whatsapp");
   const canManage = hasCapability("manage_channels");
 
   const [channels, setChannels] = useState<ChannelItem[]>([]);
+  const [pendingSelection, setPendingSelection] = useState<IntegrationPendingItem | null>(null);
+  const [pendingOptionId, setPendingOptionId] = useState("");
   const [whatsAppMasked, setWhatsAppMasked] = useState<{ access?: string; verify?: string; secret?: string }>({});
   const [whatsAppForm, setWhatsAppForm] = useState({
     displayName: "WhatsApp",
@@ -346,10 +394,6 @@ export default function ClienteCanaisPage() {
     displayName: "",
     externalAccountId: "",
     secondaryValue: "",
-    accessToken: "",
-    refreshToken: "",
-    verifyToken: "",
-    appSecret: "",
     status: "draft",
     metadataValue: "",
   });
@@ -427,14 +471,78 @@ export default function ClienteCanaisPage() {
         selectedDefinition.secondaryKey === "pageId"
           ? selectedChannel?.pageId || ""
           : selectedChannel?.username || "",
-      accessToken: "",
-      refreshToken: "",
-      verifyToken: "",
-      appSecret: "",
       status: selectedChannel?.status || "draft",
       metadataValue: metadataKey ? selectedChannel?.metadata?.[metadataKey] || "" : "",
     });
   }, [selectedChannel, selectedDefinition, selectedType]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const integration = url.searchParams.get("integration");
+    const result = url.searchParams.get("result");
+    if (!integration || !result) return;
+
+    const message = url.searchParams.get("message");
+    const warning = url.searchParams.get("warning");
+    const status = url.searchParams.get("status");
+    if (result === "success") {
+      setNotice(
+        `${integration === "meta" ? "Meta" : "Google"} conectado${status ? ` (${connectionStatusLabel(status)})` : ""}.` +
+          (warning ? ` Aviso: ${warning}` : "")
+      );
+      if (tenant?.tenantId) {
+        void (async () => {
+          const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels`);
+          const data = (await res.json()) as ChannelsResponse;
+          if (res.ok) setChannels(data.items || []);
+        })();
+      }
+    } else {
+      if (result === "select") {
+        const pendingId = url.searchParams.get("pendingId");
+        const channel = url.searchParams.get("channel");
+        if (pendingId) {
+          setLoadingPending(true);
+          void (async () => {
+            try {
+              const pendingRes = await authedFetch(`/api/integrations/pending/${encodeURIComponent(pendingId)}`);
+              const pendingData = (await pendingRes.json()) as {
+                error?: string;
+                item?: IntegrationPendingItem;
+              };
+              if (!pendingRes.ok || !pendingData.item) {
+                setError(pendingData.error || "Falha ao carregar selecao de ativos.");
+                return;
+              }
+              setPendingSelection(pendingData.item);
+              setPendingOptionId(pendingData.item.options[0]?.id || "");
+              if (channel) {
+                const normalized = channel as ConnectorType;
+                if (["instagram", "messenger", "meta_ads", "google_ads"].includes(normalized)) {
+                  setSelectedType(normalized);
+                }
+              }
+              setNotice("Selecione o ativo correto para concluir a conexao.");
+            } finally {
+              setLoadingPending(false);
+            }
+          })();
+        }
+      } else {
+        setError(`Falha na integracao ${integration}: ${message || "erro desconhecido"}.`);
+      }
+    }
+
+    url.searchParams.delete("integration");
+    url.searchParams.delete("result");
+    url.searchParams.delete("message");
+    url.searchParams.delete("warning");
+    url.searchParams.delete("status");
+    url.searchParams.delete("channel");
+    url.searchParams.delete("pendingId");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+  }, [tenant?.tenantId]);
 
   const configuredCount = useMemo(() => {
     const activeTypes = new Set(channels.filter((item) => item.status === "active").map((item) => item.type || ""));
@@ -497,11 +605,143 @@ export default function ClienteCanaisPage() {
     }
   }
 
-  async function refreshChannels() {
+  const refreshChannels = useCallback(async () => {
     if (!tenant?.tenantId) return;
     const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels`);
     const data = (await res.json()) as ChannelsResponse;
     if (res.ok) setChannels(data.items || []);
+  }, [tenant?.tenantId]);
+
+  async function startManagedConnect(provider: "meta" | "google") {
+    if (!tenant?.tenantId || !canManage) return;
+    setConnecting(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const endpoint = provider === "meta" ? "/api/integrations/meta/start" : "/api/integrations/google/start";
+      const payload =
+        provider === "meta"
+          ? { tenantId: tenant.tenantId, channelType: selectedDefinition.type, redirectPath: "/cliente/painel/configuracoes/canais" }
+          : { tenantId: tenant.tenantId, redirectPath: "/cliente/painel/configuracoes/canais" };
+      const res = await authedFetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json()) as { error?: string; authUrl?: string };
+      if (!res.ok || !data.authUrl) {
+        setError(data.error || `Falha ao iniciar conexao ${provider}.`);
+        return;
+      }
+      window.location.href = data.authUrl;
+    } catch {
+      setError(`Falha ao iniciar conexao ${provider}.`);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function disconnectManagedChannel() {
+    if (!tenant?.tenantId || !selectedChannel?.id || !canManage || selectedType === "whatsapp") return;
+    setDisconnecting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const body = {
+        channelId: selectedChannel.id,
+        type: selectedType,
+        provider: selectedDefinition.provider,
+        displayName: selectedChannel.displayName || selectedDefinition.label,
+        externalAccountId: selectedChannel.externalAccountId || "",
+        status: "inactive",
+        connectionStatus: "revoked",
+        metadata: {
+          ...(selectedChannel.metadata || {}),
+          disconnectedAt: new Date().toISOString(),
+        },
+      };
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(data.error || "Falha ao desconectar canal.");
+        return;
+      }
+      setNotice(`${selectedDefinition.label} desconectado com sucesso.`);
+      await refreshChannels();
+    } catch {
+      setError("Falha ao desconectar canal.");
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  async function testManagedChannelConnection() {
+    if (!tenant?.tenantId || selectedType === "whatsapp") return;
+    setTestingConnection(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels/health?attemptRepair=1`);
+      const data = (await res.json()) as {
+        error?: string;
+        items?: Array<{ channelId: string; type: string; ok: boolean; status: string; reason?: string }>;
+      };
+      if (!res.ok) {
+        setError(data.error || "Falha ao testar conexao.");
+        return;
+      }
+      const item = (data.items || []).find((entry) => entry.type === selectedType);
+      if (!item) {
+        setNotice("Sem diagnostico para este conector ainda.");
+      } else if (item.ok) {
+        setNotice(`${selectedDefinition.label} validado com sucesso (${connectionStatusLabel(item.status)}).`);
+      } else {
+        setError(item.reason || `Conexao com problema (${connectionStatusLabel(item.status)}).`);
+      }
+      await refreshChannels();
+    } catch {
+      setError("Falha ao executar teste de conexao.");
+    } finally {
+      setTestingConnection(false);
+    }
+  }
+
+  async function completePendingSelectionFlow() {
+    if (!pendingSelection?.pendingId || !pendingOptionId) return;
+    setCompletingPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await authedFetch(
+        `/api/integrations/pending/${encodeURIComponent(pendingSelection.pendingId)}/complete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selectionId: pendingOptionId }),
+        }
+      );
+      const data = (await res.json()) as { error?: string; status?: string; warning?: string };
+      if (!res.ok) {
+        setError(data.error || "Falha ao concluir selecao do ativo.");
+        return;
+      }
+      setPendingSelection(null);
+      setPendingOptionId("");
+      setNotice(
+        `Conexao concluida${data.status ? ` (${connectionStatusLabel(data.status)})` : ""}.` +
+          (data.warning ? ` Aviso: ${data.warning}` : "")
+      );
+      await refreshChannels();
+    } catch {
+      setError("Falha ao concluir selecao do ativo.");
+    } finally {
+      setCompletingPending(false);
+    }
   }
 
   async function onSubmitWhatsApp(event: FormEvent) {
@@ -547,23 +787,12 @@ export default function ClienteCanaisPage() {
         ? { [selectedDefinition.metadataKey]: genericForm.metadataValue }
         : {};
 
-      if (supportsMetaWebhook(selectedDefinition.type)) {
-        if (genericForm.verifyToken) {
-          metadata.verifyToken = genericForm.verifyToken;
-        }
-        if (genericForm.appSecret) {
-          metadata.appSecret = genericForm.appSecret;
-        }
-      }
-
       const body = {
         channelId: genericForm.channelId || undefined,
         type: selectedDefinition.type,
         provider: selectedDefinition.provider,
         displayName: genericForm.displayName,
         externalAccountId: genericForm.externalAccountId,
-        accessToken: genericForm.accessToken,
-        refreshToken: genericForm.refreshToken,
         status: genericForm.status,
         metadata,
         ...(selectedDefinition.secondaryKey === "pageId"
@@ -584,8 +813,7 @@ export default function ClienteCanaisPage() {
 
       setGenericForm((current) => ({
         ...current,
-        accessToken: "",
-        refreshToken: "",
+        channelId: "",
       }));
       setNotice(`${selectedDefinition.label} salvo com sucesso.`);
       await refreshChannels();
@@ -648,7 +876,18 @@ export default function ClienteCanaisPage() {
                     <div className="inline-flex rounded-xl border border-white/12 bg-black/25 p-2 text-blue-100">
                       <Icon className="h-4 w-4" />
                     </div>
-                    <StateBadge label={statusLabel(item?.status)} tone={toneForStatus(item?.status)} />
+                    <StateBadge
+                      label={
+                        connector.type === "whatsapp"
+                          ? statusLabel(item?.status)
+                          : connectionStatusLabel(item?.connectionStatus || item?.status)
+                      }
+                      tone={
+                        connector.type === "whatsapp"
+                          ? toneForStatus(item?.status)
+                          : toneForConnectionStatus(item?.connectionStatus || item?.status)
+                      }
+                    />
                   </div>
                   <p className="mt-4 text-sm font-semibold text-white">{connector.label}</p>
                   <p className="mt-1 text-sm leading-6 text-white/56">{connector.description}</p>
@@ -684,7 +923,10 @@ export default function ClienteCanaisPage() {
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <StateBadge label={statusLabel(channel.status)} tone={toneForStatus(channel.status)} />
+                      <StateBadge
+                        label={connectionStatusLabel(channel.connectionStatus || channel.status)}
+                        tone={toneForConnectionStatus(channel.connectionStatus || channel.status)}
+                      />
                       {channel.hasAccessToken ? <StateBadge label="token OK" tone="info" /> : null}
                       {channel.outboundReady ? <StateBadge label="envio pronto" tone="success" /> : null}
                       {channel.inboundReady ? <StateBadge label="entrada pronta" tone="success" /> : null}
@@ -701,8 +943,16 @@ export default function ClienteCanaisPage() {
           <div className="flex items-start justify-between gap-3">
             <CardTitle title={selectedDefinition.label} subtitle={selectedDefinition.description} />
             <StateBadge
-              label={statusLabel(selectedStatus)}
-              tone={toneForStatus(selectedStatus)}
+              label={
+                selectedType === "whatsapp"
+                  ? statusLabel(selectedStatus)
+                  : connectionStatusLabel(selectedChannel?.connectionStatus || selectedStatus)
+              }
+              tone={
+                selectedType === "whatsapp"
+                  ? toneForStatus(selectedStatus)
+                  : toneForConnectionStatus(selectedChannel?.connectionStatus || selectedStatus)
+              }
             />
           </div>
 
@@ -742,30 +992,116 @@ export default function ClienteCanaisPage() {
             <form onSubmit={onSubmitGeneric} className="mt-4 space-y-3">
               <ConnectorReadiness title={`Readiness de ${selectedDefinition.label}`} rows={selectedReadinessRows} />
               <ConnectorGuidance summary={selectedPlaybook.summary} links={selectedPlaybook.links} />
+              {loadingPending ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/65">
+                  Carregando ativos disponiveis...
+                </div>
+              ) : null}
+              {pendingSelection && pendingSelection.channelType === selectedDefinition.type ? (
+                <div className="rounded-2xl border border-emerald-300/25 bg-emerald-500/10 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-emerald-100/80">Selecione o ativo</p>
+                  <p className="mt-2 text-xs text-emerald-100/85">
+                    Encontramos mais de uma conta elegivel. Escolha qual ativo deve ser vinculado a este tenant.
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {pendingSelection.options.map((option) => {
+                      const isSelectedOption = pendingOptionId === option.id;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setPendingOptionId(option.id)}
+                          className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                            isSelectedOption
+                              ? "border-emerald-200/50 bg-emerald-500/20"
+                              : "border-emerald-200/20 bg-black/25 hover:bg-black/35"
+                          }`}
+                        >
+                          <p className="text-sm font-semibold text-white">{option.label}</p>
+                          {option.description ? (
+                            <p className="mt-1 text-xs text-emerald-100/80">{option.description}</p>
+                          ) : null}
+                          <p className="mt-1 text-[11px] text-emerald-100/60">ID: {option.id}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void completePendingSelectionFlow()}
+                      disabled={completingPending || !pendingOptionId}
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-200/35 bg-emerald-500/25 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-500/35 disabled:opacity-60"
+                    >
+                      {completingPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                      Confirmar ativo
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Conexao gerenciada</p>
+                <p className="mt-2 text-xs text-white/62">
+                  A Altum gerencia OAuth, webhook e segredos de plataforma no backend. Nao e necessario informar App Secret, Verify Token, Client ID ou Client Secret aqui.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedDefinition.type === "google_ads" ? (
+                    <button
+                      type="button"
+                      onClick={() => void startManagedConnect("google")}
+                      disabled={connecting || !canManage}
+                      className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-blue-600/90 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+                    >
+                      {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                      {selectedChannel?.id ? "Reconectar Google" : "Conectar Google"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void startManagedConnect("meta")}
+                      disabled={connecting || !canManage}
+                      className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-blue-600/90 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+                    >
+                      {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                      {selectedChannel?.id ? "Reconectar Meta" : "Conectar Meta"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void testManagedChannelConnection()}
+                    disabled={testingConnection || !selectedChannel?.id}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/72 transition hover:bg-white/[0.08] disabled:opacity-60"
+                  >
+                    {testingConnection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                    Testar conexao
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void disconnectManagedChannel()}
+                    disabled={disconnecting || !selectedChannel?.id || !canManage}
+                    className="inline-flex items-center gap-2 rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100 transition hover:bg-rose-500/20 disabled:opacity-60"
+                  >
+                    {disconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                    Desconectar
+                  </button>
+                </div>
+              </div>
               <Field label="Nome do conector" value={genericForm.displayName} onChange={(value) => setGenericForm((current) => ({ ...current, displayName: value }))} placeholder={selectedDefinition.label} required disabled={!canManage} />
               <Field label={selectedDefinition.primaryLabel} value={genericForm.externalAccountId} onChange={(value) => setGenericForm((current) => ({ ...current, externalAccountId: value }))} placeholder="ID externo do conector" required disabled={!canManage} />
               <Field label={selectedDefinition.secondaryLabel} value={genericForm.secondaryValue} onChange={(value) => setGenericForm((current) => ({ ...current, secondaryValue: value }))} placeholder="Referencia secundaria" disabled={!canManage} />
               {selectedDefinition.metadataKey ? (
                 <Field label={selectedDefinition.metadataLabel || selectedDefinition.metadataKey} value={genericForm.metadataValue} onChange={(value) => setGenericForm((current) => ({ ...current, metadataValue: value }))} placeholder="Dado complementar" disabled={!canManage} />
               ) : null}
-              {supportsMetaWebhook(selectedDefinition.type) ? (
-                <>
-                  <SecretField label="Verify Token" value={genericForm.verifyToken} onChange={(value) => setGenericForm((current) => ({ ...current, verifyToken: value }))} placeholder={selectedChannel?.verifyTokenMasked || "token do webhook /api/webhooks/meta"} disabled={!canManage} />
-                  <SecretField label="App Secret" value={genericForm.appSecret} onChange={(value) => setGenericForm((current) => ({ ...current, appSecret: value }))} placeholder={selectedChannel?.appSecretMasked || "app secret Meta"} disabled={!canManage} />
-                </>
-              ) : null}
               <SelectField label="Status" value={genericForm.status} onChange={(value) => setGenericForm((current) => ({ ...current, status: value }))} disabled={!canManage} />
-              <SecretField label="Access Token" value={genericForm.accessToken} onChange={(value) => setGenericForm((current) => ({ ...current, accessToken: value }))} placeholder={selectedChannel?.accessTokenMasked || "token do conector"} disabled={!canManage} />
-              <SecretField label="Refresh Token (opcional)" value={genericForm.refreshToken} onChange={(value) => setGenericForm((current) => ({ ...current, refreshToken: value }))} placeholder={selectedChannel?.refreshTokenMasked || "refresh token"} disabled={!canManage} />
 
               {supportsMetaWebhook(selectedDefinition.type) ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/58">
-                  Webhook unico Meta: <span className="font-medium text-white/82">/api/webhooks/meta</span>
+                  Webhook unico Meta: <span className="font-medium text-white/82">/api/webhooks/meta</span> (verify token e assinatura globais da plataforma)
                 </div>
               ) : null}
               {selectedDefinition.type === "google_ads" ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/58">
-                  O sync do Google Ads usa OAuth offline no backend. O servidor precisa de
+                  O sync do Google Ads usa OAuth offline no backend. O servidor da Altum precisa de
                   <span className="font-medium text-white/82"> GOOGLE_ADS_CLIENT_ID</span>,
                   <span className="font-medium text-white/82"> GOOGLE_ADS_CLIENT_SECRET</span> e
                   <span className="font-medium text-white/82"> GOOGLE_ADS_DEVELOPER_TOKEN</span>.

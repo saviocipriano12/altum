@@ -4,6 +4,8 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { isGoogleAdsServerConfigured } from "@/app/lib/server/google-ads";
+import { encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
+import { normalizeConnectionStatus } from "@/app/lib/server/integration-oauth";
 
 type ChannelBody = {
   channelId?: string;
@@ -18,6 +20,7 @@ type ChannelBody = {
   externalAccountId?: string;
   accessToken?: string;
   refreshToken?: string;
+  connectionStatus?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -57,6 +60,10 @@ function cleanStatus(value: unknown) {
   return "draft";
 }
 
+function cleanConnectionStatus(value: unknown) {
+  return normalizeConnectionStatus(value, "draft");
+}
+
 function cleanMetadata(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
   return Object.entries(input).reduce<Record<string, string>>((acc, [key, value]) => {
@@ -80,11 +87,13 @@ function cleanPublicMetadata(input: unknown) {
   }, {});
 }
 
-function maskSecret(value: unknown) {
-  const normalized = clean(value, 4000);
-  if (!normalized) return "";
-  if (normalized.length <= 8) return "*".repeat(normalized.length);
-  return `${normalized.slice(0, 4)}...${normalized.slice(-4)}`;
+function removeSecretMetadata(input: Record<string, string>) {
+  const secretKeys = new Set(["verifytoken", "webhookverifytoken", "appsecret", "accesstoken", "refreshtoken"]);
+  return Object.entries(input).reduce<Record<string, string>>((acc, [key, value]) => {
+    if (secretKeys.has(clean(key, 80).toLowerCase())) return acc;
+    acc[key] = value;
+    return acc;
+  }, {});
 }
 
 function toIso(value: unknown) {
@@ -272,12 +281,12 @@ export async function GET(
         const phoneNumberId = String(data.phoneNumberId || "");
         const pageId = String(data.pageId || "");
         const externalAccountId = String(data.externalAccountId || "");
-        const hasAccessToken = Boolean(clean(data.accessToken, 4000));
-        const hasRefreshToken = Boolean(clean(data.refreshToken, 4000));
+        const hasAccessToken = hasStoredSecret(data.accessToken);
+        const hasRefreshToken = hasStoredSecret(data.refreshToken);
         const hasVerifyToken = Boolean(
           clean(data.verifyToken, 400) || clean(metadata.verifyToken, 400) || clean(metadata.webhookVerifyToken, 400)
         );
-        const hasAppSecret = Boolean(clean(data.appSecret, 400) || clean(metadata.appSecret, 400));
+        const hasAppSecret = hasStoredSecret(data.appSecret) || Boolean(clean(metadata.appSecret, 400));
         const serverReady = type !== "google_ads" ? true : isGoogleAdsServerConfigured();
         const readiness = buildChannelReadiness({
           type,
@@ -298,6 +307,7 @@ export async function GET(
           provider: String(data.provider || ""),
           displayName: String(data.displayName || data.type || "Canal"),
           status,
+          connectionStatus: cleanConnectionStatus(data.connectionStatus),
           phoneNumber: String(data.phoneNumber || ""),
           phoneNumberId,
           username: String(data.username || ""),
@@ -307,10 +317,10 @@ export async function GET(
           hasRefreshToken,
           hasVerifyToken,
           hasAppSecret,
-          accessTokenMasked: maskSecret(data.accessToken),
-          refreshTokenMasked: maskSecret(data.refreshToken),
-          verifyTokenMasked: maskSecret(clean(data.verifyToken, 400) || clean(metadata.verifyToken, 400) || clean(metadata.webhookVerifyToken, 400)),
-          appSecretMasked: maskSecret(clean(data.appSecret, 400) || clean(metadata.appSecret, 400)),
+          accessTokenMasked: maskStoredSecret(data.accessToken),
+          refreshTokenMasked: maskStoredSecret(data.refreshToken),
+          verifyTokenMasked: maskStoredSecret(clean(data.verifyToken, 400) || clean(metadata.verifyToken, 400) || clean(metadata.webhookVerifyToken, 400)),
+          appSecretMasked: maskStoredSecret(data.appSecret || clean(metadata.appSecret, 400)),
           lastSyncAt: toIso(data.lastSyncAt),
           updatedAt: toIso(data.updatedAt),
           lastError: clean(data.lastError, 500),
@@ -387,20 +397,28 @@ export async function POST(
       channelRef = sameTypeSnap.empty ? adminDb.collection("tenant_channels").doc() : sameTypeSnap.docs[0].ref;
     }
 
+    const metadata = cleanMetadata(body.metadata);
+    const verifyToken =
+      clean(metadata.verifyToken, 400) || clean(metadata.webhookVerifyToken, 400);
+    const appSecret = clean(metadata.appSecret, 400);
+
     const payload = {
       tenantId,
       type,
       provider: clean(body.provider, 80) || type,
       displayName: clean(body.displayName, 120) || type,
       status: cleanStatus(body.status),
+      connectionStatus: cleanConnectionStatus(body.connectionStatus),
       phoneNumber: clean(body.phoneNumber, 80),
       phoneNumberId: clean(body.phoneNumberId, 160),
       username: clean(body.username, 160),
       pageId: clean(body.pageId, 160),
       externalAccountId: clean(body.externalAccountId, 200),
-      accessToken: clean(body.accessToken, 4000),
-      refreshToken: clean(body.refreshToken, 4000),
-      metadata: cleanMetadata(body.metadata),
+      accessToken: encryptSecret(clean(body.accessToken, 4000)),
+      refreshToken: encryptSecret(clean(body.refreshToken, 4000)),
+      verifyToken: verifyToken || null,
+      appSecret: appSecret ? encryptSecret(appSecret) : null,
+      metadata: removeSecretMetadata(metadata),
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: user.uid,
       updatedByName: user.name,
