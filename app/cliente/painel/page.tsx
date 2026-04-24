@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
 import {
   CardTitle,
@@ -186,6 +187,11 @@ type AutomationSummaryPayload = {
       done?: number;
       deadLetter?: number;
     };
+    finance?: {
+      dueSoonCount?: number;
+      dueSoonTotal?: number;
+      nextDueDate?: string | null;
+    };
   };
 };
 
@@ -254,6 +260,12 @@ function pct(value: number) {
   return `${Number(value || 0).toFixed(2)}%`;
 }
 
+function ymdToBr(value?: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return "sem data";
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+}
+
 function normalizeStage(value?: string) {
   return normalizePipelineStageId(value || "captado");
 }
@@ -269,6 +281,7 @@ function formatChannelLabel(channel?: string) {
 
 export default function ClientePainelOverviewPage() {
   const { tenant } = useClienteTenant();
+  const { experienceMode, setExperienceMode } = useClienteShell();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -280,6 +293,10 @@ export default function ClientePainelOverviewPage() {
   const [metricsSummary, setMetricsSummary] = useState<MetricsSummaryPayload>({});
   const [automationSummary, setAutomationSummary] = useState<AutomationSummaryPayload>({});
   const [readiness, setReadiness] = useState<ReadinessPayload>({});
+
+  useEffect(() => {
+    setExperienceMode("essencial");
+  }, [setExperienceMode]);
 
   const refreshOverview = useCallback(async () => {
     if (!tenant?.tenantId) return;
@@ -417,7 +434,7 @@ export default function ClientePainelOverviewPage() {
         id: `${lead.id}_${event.id}`,
         source: "lead" as const,
         title: event.title || "Evento de lead",
-        detail: `${lead.nome || "Lead"} | ${event.detail || "Atualizacao de pipeline"}`,
+        detail: `${lead.nome || "Contato"} | ${event.detail || "Atualizacao de funil"}`,
         createdAt: toDate(event.createdAt),
         href: `/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`,
       }));
@@ -451,6 +468,9 @@ export default function ClientePainelOverviewPage() {
   const aiMetrics = metricsSummary.ai || {};
   const comparisonMetrics = metricsSummary.comparisons || {};
   const automationMetrics = automationSummary.summary || {};
+  const financeMetrics = automationMetrics.finance || {};
+  const financeDueSoonCount = Number(financeMetrics.dueSoonCount || 0);
+  const financeDueSoonTotal = Number(financeMetrics.dueSoonTotal || 0);
   const queueBreakdown = operationMetrics.queueBreakdown || {};
   const channelOperations = operationMetrics.channelOperations || [];
   const pilotReady = readiness.summary?.pilotReady === true;
@@ -503,6 +523,17 @@ export default function ClientePainelOverviewPage() {
       });
     }
 
+    if (financeDueSoonCount > 0) {
+      items.push({
+        id: "finance_due_soon",
+        title: "Faturas proximas do vencimento",
+        description: `${financeDueSoonCount} cobranca(s) vencem nos proximos 5 dias.`,
+        href: "/cliente/painel/comercial?financeStatus=pendente",
+        tone: "warning",
+        badge: "financeiro",
+      });
+    }
+
     if (ai.enabled === false || kbCount === 0) {
       items.push({
         id: "ai_setup",
@@ -510,7 +541,7 @@ export default function ClientePainelOverviewPage() {
         description:
           ai.enabled === false
             ? "Reative o agente para manter cobertura automatica do atendimento."
-            : "Cadastre FAQ, servicos e politicas para melhorar respostas e handoff.",
+            : "Cadastre FAQ, servicos e politicas para melhorar respostas e transferencias.",
         href: "/cliente/painel/ia",
         tone: ai.enabled === false ? "warning" : "info",
         badge: "ia",
@@ -531,7 +562,7 @@ export default function ClientePainelOverviewPage() {
     if (Number(metricKpis.totalLeads || leads.length || 0) === 0) {
       items.push({
         id: "capture",
-        title: "Sem leads no periodo",
+        title: "Sem contatos no periodo",
         description: "Publique formularios e widget para reaquecer o topo de funil.",
         href: "/cliente/painel/captacao",
         tone: "neutral",
@@ -545,6 +576,7 @@ export default function ClientePainelOverviewPage() {
     automationMetrics.activeAutomations,
     automationMetrics.slaBreached,
     automationMetrics.waitingReplyBacklog,
+    financeDueSoonCount,
     kbCount,
     leads.length,
     metricKpis.totalLeads,
@@ -572,17 +604,44 @@ export default function ClientePainelOverviewPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="client-daily-page space-y-5">
       <SectionHeader
         title="Visao geral"
-        subtitle="Uma leitura executiva do que esta pronto, do que pede atencao e do que fazer agora no tenant."
+        subtitle="Leitura rapida da operacao com foco no que agir primeiro."
         action={
-          <StateBadge
-            label={pilotReady ? "Pronto para operar" : ai.enabled === false ? "IA limitada" : "Operacao acompanhada"}
-            tone={pilotReady ? "success" : operationStatusTone}
-          />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <StateBadge
+              label={pilotReady ? "Pronto para operar" : ai.enabled === false ? "IA limitada" : "Operacao acompanhada"}
+              tone={pilotReady ? "success" : operationStatusTone}
+            />
+            <button
+              type="button"
+              onClick={() => setExperienceMode(experienceMode === "essencial" ? "completo" : "essencial")}
+              className="inline-flex items-center rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)]"
+            >
+              {experienceMode === "essencial" ? "Ver modo completo" : "Voltar ao essencial"}
+            </button>
+          </div>
         }
       />
+
+      {financeDueSoonCount > 0 ? (
+        <Link
+          href="/cliente/painel/comercial?financeStatus=pendente"
+          className="block rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4 transition hover:bg-amber-500/15"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-amber-100">Cobrancas proximas do vencimento</p>
+            <StateBadge label="acao financeira" tone="warning" />
+          </div>
+          <p className="mt-1 text-sm text-amber-100/90">
+            {financeDueSoonCount} cobranca(s) vencem em ate 5 dias, total de {brl(financeDueSoonTotal)}.
+          </p>
+          <p className="mt-1 text-xs text-amber-100/80">
+            Proximo vencimento: {ymdToBr(financeMetrics.nextDueDate)}.
+          </p>
+        </Link>
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
         <PanelCard className="overflow-hidden p-5">
@@ -590,13 +649,13 @@ export default function ClientePainelOverviewPage() {
             <div className="max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-card-text-muted)]">
                 <Sparkles className="h-3.5 w-3.5" />
-                Workspace ALTUM
+                Painel ALTUM
               </div>
               <h3 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--cliente-card-text)] md:text-3xl">
                 {tenant?.tenantName || tenant?.clientName || "Cliente"} em modo operacional premium
               </h3>
               <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">
-                Veja atendimento, pipeline, IA e sinais de performance em uma leitura mais simples, com foco no que fazer primeiro.
+                Veja atendimento, funil, IA e sinais de desempenho em uma leitura mais simples, com foco no que fazer primeiro.
               </p>
               <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1 text-xs text-[var(--cliente-card-text-muted)]">
                 <span>Prontidao</span>
@@ -610,7 +669,7 @@ export default function ClientePainelOverviewPage() {
             <div className="min-w-[220px] rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
               <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Resumo rapido</p>
               <div className="mt-3 space-y-3">
-                <HeroStat label="Leads ativos" value={(kpis?.leads || 0).toLocaleString("pt-BR")} />
+                <HeroStat label="Contatos ativos" value={(kpis?.leads || 0).toLocaleString("pt-BR")} />
                 <HeroStat label="Conversas abertas" value={String(operationMetrics.activeChats || chats.length)} />
                 <HeroStat label="Backlog resposta" value={String(automationMetrics.waitingReplyBacklog || 0)} />
                 <HeroStat label="Canal IA" value={ai.enabled === false ? "Restrito" : "Rodando"} />
@@ -622,13 +681,13 @@ export default function ClientePainelOverviewPage() {
             <QuickLink
               href="/cliente/painel/inbox"
               title="Assumir atendimento"
-              description="Abrir conversas com takeover e contexto imediato."
+              description="Abrir conversas com atendimento humano e contexto imediato."
               icon={MessageSquare}
             />
             <QuickLink
               href="/cliente/painel/pipeline"
-              title="Atualizar pipeline"
-              description="Mover leads, revisar gargalos e acelerar fechamento."
+              title="Atualizar funil"
+              description="Mover contatos, revisar gargalos e acelerar fechamento."
               icon={Funnel}
             />
             <QuickLink
@@ -640,7 +699,7 @@ export default function ClientePainelOverviewPage() {
             <QuickLink
               href="/cliente/painel/captacao"
               title="Escalar captacao"
-              description="Publicar formularios, widget e entrada de leads no site."
+              description="Publicar formularios, widget e entrada de contatos no site."
               icon={Megaphone}
             />
           </div>
@@ -654,12 +713,12 @@ export default function ClientePainelOverviewPage() {
                 <FocusRow
                   href="/cliente/painel/inbox"
                   label="Atendimento"
-                  value={aiPausedChats > 0 ? `${aiPausedChats} conversas em takeover` : "Fluxo assistido pela IA"}
+                  value={aiPausedChats > 0 ? `${aiPausedChats} conversas em atendimento humano` : "Fluxo assistido pela IA"}
                   tone={aiPausedChats > 0 ? "warning" : "success"}
                 />
                 <FocusRow
                   href="/cliente/painel/crm"
-                  label="Pipeline"
+                  label="Funil"
                   value={Number(metricKpis.conversionRate || 0) > 0 ? `${pct(Number(metricKpis.conversionRate || 0))} de conversao no periodo` : "Topo de funil dominante"}
                   tone="info"
                 />
@@ -706,7 +765,7 @@ export default function ClientePainelOverviewPage() {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Link href="/cliente/painel/crm" className="block">
           <MetricCard
-            label="Leads"
+            label="Contatos"
             value={(kpis?.leads || 0).toLocaleString("pt-BR")}
             icon={Activity}
             trend="captacao"
@@ -748,14 +807,14 @@ export default function ClientePainelOverviewPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
         <PanelCard className="p-4">
-          <CardTitle title="Funil visual" subtitle="Distribuicao dos leads por etapa comercial" />
+          <CardTitle title="Funil visual" subtitle="Distribuicao dos contatos por etapa comercial" />
           <div className="mt-4 space-y-3">
             {funnel.map((item) => (
               <Link key={item.stage} href={`/cliente/painel/crm?stage=${encodeURIComponent(item.stage)}`} className="block space-y-1.5 rounded-xl px-2 py-2 transition hover:bg-[var(--cliente-surface-muted)]">
                 <div className="flex items-center justify-between text-xs text-[var(--cliente-card-text-soft)]">
                   <span className="uppercase tracking-wide">{getPipelineStageLabel(item.stage)}</span>
                   <span>
-                    {item.total} leads ({item.pct}%)
+                    {item.total} contatos ({item.pct}%)
                   </span>
                 </div>
                 <div className="h-2 rounded-full bg-[var(--cliente-border)]">
@@ -788,7 +847,7 @@ export default function ClientePainelOverviewPage() {
               <span className="font-semibold text-[var(--cliente-card-text)]">{automationMetrics.kbDocs || kbCount} docs</span>
             </div>
             <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
-              <span className="text-[var(--cliente-card-text-soft)]">Conversas com takeover</span>
+                <span className="text-[var(--cliente-card-text-soft)]">Conversas com atendimento humano</span>
               <span className="font-semibold text-[var(--cliente-card-text)]">{automationMetrics.pausedConversations || aiPausedChats}</span>
             </div>
             <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
@@ -800,79 +859,139 @@ export default function ClientePainelOverviewPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_1fr]">
-        <PanelCard className="p-4">
-          <CardTitle title="Atividades recentes" subtitle="Ultimos eventos de financeiro e CRM" />
-          <div className="mt-4 space-y-2">
-            {activities.length === 0 ? (
-              <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem eventos recentes para exibir.</p>
-            ) : (
-              activities.map((item) => (
+        {experienceMode === "essencial" ? (
+          <>
+            <PanelCard className="p-4">
+              <CardTitle title="Leitura de hoje" subtitle="Somente o que impacta sua operacao agora" />
+              <div className="mt-4 space-y-3">
+                <FocusRow
+                  href="/cliente/painel/inbox?queue=sla_breached"
+                  label="Risco de atraso no atendimento"
+                  value={`${automationMetrics.slaBreached || operationMetrics.overdueChats || 0} conversas em risco de SLA.`}
+                  tone={Number(automationMetrics.slaBreached || operationMetrics.overdueChats || 0) > 0 ? "danger" : "success"}
+                />
+                <FocusRow
+                  href="/cliente/painel/crm"
+                  label="Evolucao comercial"
+                  value={`${(kpis?.leads || 0).toLocaleString("pt-BR")} contatos ativos com conversao de ${pct(Number(metricKpis.conversionRate || 0))}.`}
+                  tone="info"
+                />
+                <FocusRow
+                  href="/cliente/painel/comercial"
+                  label="Receita no radar"
+                  value={`Recebido ${brl(Number(kpis?.paid || 0))} e pendente ${brl(Number(kpis?.pending || 0))}.`}
+                  tone="neutral"
+                />
+              </div>
+            </PanelCard>
+
+            <PanelCard className="p-4">
+              <CardTitle title="Mais detalhes quando precisar" subtitle="Modo essencial ativo para reduzir poluicao visual" />
+              <p className="mt-4 text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                Quando quiser uma leitura completa de performance, IA, mesa operacional e canais, ative o modo{" "}
+                <span className="font-semibold text-[var(--cliente-card-text)]">Completo</span> no botao acima.
+              </p>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <Link
-                  key={item.id}
-                  href={item.href}
-                  className="block rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                  href="/cliente/painel/inbox"
+                  className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.title}</p>
-                    <StateBadge label={item.source} tone={item.source === "lead" ? "info" : "neutral"} />
-                  </div>
-                  <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">{item.detail}</p>
-                  <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--cliente-card-text-soft)]">
-                    <Clock3 className="h-3 w-3" />
-                    {item.createdAt ? item.createdAt.toLocaleString("pt-BR") : "sem data"}
-                  </p>
+                  <span className="inline-flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-[var(--cliente-accent)]" />
+                    Abrir atendimento
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
                 </Link>
-              ))
-            )}
-          </div>
-        </PanelCard>
+                <Link
+                  href="/cliente/painel/crm"
+                  className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Funnel className="h-4 w-4 text-[var(--cliente-accent)]" />
+                    Abrir CRM completo
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
+                </Link>
+              </div>
+            </PanelCard>
+          </>
+        ) : (
+          <>
+            <PanelCard className="p-4">
+              <CardTitle title="Atividades recentes" subtitle="Ultimos eventos de financeiro e CRM" />
+              <div className="mt-4 space-y-2">
+                {activities.length === 0 ? (
+                  <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem eventos recentes para exibir.</p>
+                ) : (
+                  activities.map((item) => (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      className="block rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.title}</p>
+                        <StateBadge label={item.source} tone={item.source === "lead" ? "info" : "neutral"} />
+                      </div>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">{item.detail}</p>
+                      <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--cliente-card-text-soft)]">
+                        <Clock3 className="h-3 w-3" />
+                        {item.createdAt ? item.createdAt.toLocaleString("pt-BR") : "sem data"}
+                      </p>
+                    </Link>
+                  ))
+                )}
+              </div>
+            </PanelCard>
 
-        <PanelCard className="p-4">
-          <CardTitle title="Metricas resumidas" subtitle="Resumo executivo do periodo" />
-          <div className="mt-4 overflow-hidden rounded-xl border border-[var(--cliente-border)]">
-            <table className="w-full text-sm">
-              <tbody>
-                <Row label="Impressoes" value={(kpis?.impressions || 0).toLocaleString("pt-BR")} />
-                <Row label="Cliques" value={(kpis?.clicks || 0).toLocaleString("pt-BR")} />
-                <Row label="CTR" value={pct(Number(kpis?.ctr || 0))} />
-                <Row label="CPC" value={brl(Number(kpis?.cpc || 0))} />
-                <Row label="CPL" value={brl(Number(kpis?.cpl || 0))} />
-                <Row label="Projetos ativos" value={String(Number(kpis?.projects || 0))} />
-                <Row label="Orcamentos" value={String(Number(kpis?.budgets || 0))} />
-                <Row label="Tempo medio de 1a resposta" value={`${Number(metricKpis.avgFirstResponseMinutes || 0).toFixed(1)} min`} />
-                <Row label="ROI" value={`${Number(metricKpis.roi || 0).toFixed(2)}x`} />
-                <Row label="Conversao" value={pct(Number(metricKpis.conversionRate || 0))} />
-              </tbody>
-            </table>
-          </div>
+            <PanelCard className="p-4">
+              <CardTitle title="Metricas resumidas" subtitle="Resumo executivo do periodo" />
+              <div className="mt-4 overflow-hidden rounded-xl border border-[var(--cliente-border)]">
+                <table className="w-full text-sm">
+                  <tbody>
+                    <Row label="Impressoes" value={(kpis?.impressions || 0).toLocaleString("pt-BR")} />
+                    <Row label="Cliques" value={(kpis?.clicks || 0).toLocaleString("pt-BR")} />
+                    <Row label="CTR" value={pct(Number(kpis?.ctr || 0))} />
+                    <Row label="CPC" value={brl(Number(kpis?.cpc || 0))} />
+                    <Row label="CPL" value={brl(Number(kpis?.cpl || 0))} />
+                    <Row label="Projetos ativos" value={String(Number(kpis?.projects || 0))} />
+                    <Row label="Orcamentos" value={String(Number(kpis?.budgets || 0))} />
+                    <Row label="Tempo medio de 1a resposta" value={`${Number(metricKpis.avgFirstResponseMinutes || 0).toFixed(1)} min`} />
+                    <Row label="ROI" value={`${Number(metricKpis.roi || 0).toFixed(2)}x`} />
+                    <Row label="Conversao" value={pct(Number(metricKpis.conversionRate || 0))} />
+                  </tbody>
+                </table>
+              </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <Link href="/cliente/painel/metricas" className="block">
-              <PanelCard className="border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
-                <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                  <Megaphone className="h-3.5 w-3.5" />
-                  Midia
-                </div>
-                <p className="mt-2 text-base font-semibold">{brl(Number(kpis?.spend || 0))}</p>
-                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                  Delta {formatDelta(comparisonMetrics.spendDeltaPct, "investimento")}
-                </p>
-              </PanelCard>
-            </Link>
-            <Link href="/cliente/painel/crm" className="block">
-              <PanelCard className="border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
-                <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                  <Funnel className="h-3.5 w-3.5" />
-                  Conversao
-                </div>
-                <p className="mt-2 text-base font-semibold">{(kpis?.leads || 0).toLocaleString("pt-BR")} leads</p>
-                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                  Delta {formatDelta(comparisonMetrics.conversionDeltaPct, "conversao")}
-                </p>
-              </PanelCard>
-            </Link>
-          </div>
-        </PanelCard>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <Link href="/cliente/painel/metricas" className="block">
+                  <PanelCard className="border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
+                    <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                      <Megaphone className="h-3.5 w-3.5" />
+                      Midia
+                    </div>
+                    <p className="mt-2 text-base font-semibold">{brl(Number(kpis?.spend || 0))}</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                      Delta {formatDelta(comparisonMetrics.spendDeltaPct, "investimento")}
+                    </p>
+                  </PanelCard>
+                </Link>
+                <Link href="/cliente/painel/crm" className="block">
+                  <PanelCard className="border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
+                    <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                      <Funnel className="h-3.5 w-3.5" />
+                      Conversao
+                    </div>
+                    <p className="mt-2 text-base font-semibold">{(kpis?.leads || 0).toLocaleString("pt-BR")} contatos</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                      Delta {formatDelta(comparisonMetrics.conversionDeltaPct, "conversao")}
+                    </p>
+                  </PanelCard>
+                </Link>
+              </div>
+            </PanelCard>
+          </>
+        )}
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -887,117 +1006,119 @@ export default function ClientePainelOverviewPage() {
         />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-        <PanelCard className="p-4">
-          <CardTitle title="Mesa operacional" subtitle="Fila, SLA e responsaveis com maior carga" />
-          <div className="mt-4 space-y-3">
-            <FocusRow
-              href="/cliente/painel/inbox?queue=assigned_waiting"
-              label="Fila sem resposta"
-              value={`${automationMetrics.waitingReplyBacklog || 0} conversas aguardando retorno`}
-              tone={Number(automationMetrics.waitingReplyBacklog || 0) > 0 ? "warning" : "success"}
-            />
-            <FocusRow
-              href="/cliente/painel/inbox?queue=sla_breached"
-              label="SLA estourado"
-              value={`${automationMetrics.slaBreached || operationMetrics.overdueChats || 0} conversas em risco`}
-              tone={Number(automationMetrics.slaBreached || operationMetrics.overdueChats || 0) > 0 ? "danger" : "success"}
-            />
-            <FocusRow
-              href="/cliente/painel/inbox?queue=unassigned"
-              label="Sem responsavel"
-              value={`${operationMetrics.unassignedChats || 0} conversas na fila`}
-              tone={Number(operationMetrics.unassignedChats || 0) > 0 ? "warning" : "success"}
-            />
-          </div>
+      {experienceMode === "completo" ? (
+        <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+          <PanelCard className="p-4">
+            <CardTitle title="Mesa operacional" subtitle="Fila, SLA e responsaveis com maior carga" />
+            <div className="mt-4 space-y-3">
+              <FocusRow
+                href="/cliente/painel/inbox?queue=assigned_waiting"
+                label="Fila sem resposta"
+                value={`${automationMetrics.waitingReplyBacklog || 0} conversas aguardando retorno`}
+                tone={Number(automationMetrics.waitingReplyBacklog || 0) > 0 ? "warning" : "success"}
+              />
+              <FocusRow
+                href="/cliente/painel/inbox?queue=sla_breached"
+                label="SLA estourado"
+                value={`${automationMetrics.slaBreached || operationMetrics.overdueChats || 0} conversas em risco`}
+                tone={Number(automationMetrics.slaBreached || operationMetrics.overdueChats || 0) > 0 ? "danger" : "success"}
+              />
+              <FocusRow
+                href="/cliente/painel/inbox?queue=unassigned"
+                label="Sem responsavel"
+                value={`${operationMetrics.unassignedChats || 0} conversas na fila`}
+                tone={Number(operationMetrics.unassignedChats || 0) > 0 ? "warning" : "success"}
+              />
+            </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <MiniStatLink
-              href="/cliente/painel/inbox?queue=triage"
-              label="Triagem"
-              value={String(queueBreakdown.triage || 0)}
-            />
-            <MiniStatLink
-              href="/cliente/painel/inbox?queue=assigned"
-              label="Em atendimento"
-              value={String(queueBreakdown.assigned || 0)}
-            />
-            <MiniStatLink
-              href="/cliente/painel/inbox?ai=ai_active"
-              label="IA ativa"
-              value={String(operationMetrics.aiBreakdown?.active || 0)}
-            />
-            <MiniStatLink
-              href="/cliente/painel/inbox?ai=human_owned"
-              label="Takeover humano"
-              value={String(operationMetrics.aiBreakdown?.humanOwned || 0)}
-            />
-          </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <MiniStatLink
+                href="/cliente/painel/inbox?queue=triage"
+                label="Triagem"
+                value={String(queueBreakdown.triage || 0)}
+              />
+              <MiniStatLink
+                href="/cliente/painel/inbox?queue=assigned"
+                label="Em atendimento"
+                value={String(queueBreakdown.assigned || 0)}
+              />
+              <MiniStatLink
+                href="/cliente/painel/inbox?ai=ai_active"
+                label="IA ativa"
+                value={String(operationMetrics.aiBreakdown?.active || 0)}
+              />
+              <MiniStatLink
+                href="/cliente/painel/inbox?ai=human_owned"
+                label="Atendimento humano"
+                value={String(operationMetrics.aiBreakdown?.humanOwned || 0)}
+              />
+            </div>
 
-          <div className="mt-4 space-y-2">
-            {(operationMetrics.teamPerformance || []).length === 0 ? (
-              <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem performance operacional suficiente para exibir responsaveis.</p>
-            ) : (
-              operationMetrics.teamPerformance?.slice(0, 5).map((owner) => (
-                <Link
-                  key={owner.ownerId}
-                  href={`/cliente/painel/inbox?assignedUser=${encodeURIComponent(owner.ownerId)}`}
-                  className="block rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-[var(--cliente-card-text)]">{owner.ownerName}</p>
-                    <StateBadge
-                      label={`${owner.activeChats} chats`}
-                      tone={owner.overdueChats > 0 ? "warning" : "info"}
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
-                    {owner.totalLeads} leads / {owner.wonLeads} ganhos / win rate {owner.winRate}%
-                  </p>
-                  <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">
-                    {owner.pendingChats} aguardando / {owner.handoffChats} handoffs
-                  </p>
-                </Link>
-              ))
-            )}
-          </div>
-        </PanelCard>
-
-        <PanelCard className="p-4">
-          <CardTitle title="Performance da IA" subtitle="Como o agente esta atuando no periodo" />
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <MetricCard label="IA respondeu" value={String(aiMetrics.responded || 0)} trend="respostas automaticas" />
-            <MetricCard label="Handoffs" value={String(aiMetrics.handoff || metricKpis.handoffChats || 0)} trend="escaladas para humano" />
-            <MetricCard label="Confianca media" value={`${Number(aiMetrics.avgConfidence || 0).toFixed(2)}`} trend="assertividade do agente" />
-            <MetricCard label="Latencia media" value={`${Math.round(Number(aiMetrics.avgLatencyMs || 0))} ms`} trend="tempo de resposta" />
-          </div>
-
-          <div className="mt-4 space-y-2">
-            {channelOperations.length === 0 ? (
-              <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem canais operacionais suficientes para leitura comparativa.</p>
-            ) : (
-              channelOperations.slice(0, 4).map((item) => (
-                <Link
-                  key={item.channel}
-                  href={`/cliente/painel/inbox?channel=${encodeURIComponent(item.channel)}`}
-                  className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
-                >
-                  <div>
-                    <p className="font-medium text-[var(--cliente-card-text)]">{formatChannelLabel(item.channel)}</p>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                      {item.activeChats} ativos / {item.unassignedChats} sem dono / {item.handoffChats} handoffs
+            <div className="mt-4 space-y-2">
+              {(operationMetrics.teamPerformance || []).length === 0 ? (
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem performance operacional suficiente para exibir responsaveis.</p>
+              ) : (
+                operationMetrics.teamPerformance?.slice(0, 5).map((owner) => (
+                  <Link
+                    key={owner.ownerId}
+                    href={`/cliente/painel/inbox?assignedUser=${encodeURIComponent(owner.ownerId)}`}
+                    className="block rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-[var(--cliente-card-text)]">{owner.ownerName}</p>
+                      <StateBadge
+                        label={`${owner.activeChats} chats`}
+                        tone={owner.overdueChats > 0 ? "warning" : "info"}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
+                      {owner.totalLeads} contatos / {owner.wonLeads} ganhos / taxa {owner.winRate}%
                     </p>
-                  </div>
-                  <StateBadge
-                    label={item.overdueChats > 0 ? `${item.overdueChats} em risco` : "estavel"}
-                    tone={item.overdueChats > 0 ? "warning" : "success"}
-                  />
-                </Link>
-              ))
-            )}
-          </div>
-        </PanelCard>
-      </section>
+                    <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">
+                      {owner.pendingChats} aguardando / {owner.handoffChats} transferencias
+                    </p>
+                  </Link>
+                ))
+              )}
+            </div>
+          </PanelCard>
+
+          <PanelCard className="p-4">
+            <CardTitle title="Performance da IA" subtitle="Como o agente esta atuando no periodo" />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <MetricCard label="IA respondeu" value={String(aiMetrics.responded || 0)} trend="respostas automaticas" />
+              <MetricCard label="Transferencias" value={String(aiMetrics.handoff || metricKpis.handoffChats || 0)} trend="escaladas para humano" />
+              <MetricCard label="Confianca media" value={`${Number(aiMetrics.avgConfidence || 0).toFixed(2)}`} trend="assertividade do agente" />
+              <MetricCard label="Latencia media" value={`${Math.round(Number(aiMetrics.avgLatencyMs || 0))} ms`} trend="tempo de resposta" />
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {channelOperations.length === 0 ? (
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem canais operacionais suficientes para leitura comparativa.</p>
+              ) : (
+                channelOperations.slice(0, 4).map((item) => (
+                  <Link
+                    key={item.channel}
+                    href={`/cliente/painel/inbox?channel=${encodeURIComponent(item.channel)}`}
+                    className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                  >
+                    <div>
+                      <p className="font-medium text-[var(--cliente-card-text)]">{formatChannelLabel(item.channel)}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                        {item.activeChats} ativos / {item.unassignedChats} sem dono / {item.handoffChats} transferencias
+                      </p>
+                    </div>
+                    <StateBadge
+                      label={item.overdueChats > 0 ? `${item.overdueChats} em risco` : "estavel"}
+                      tone={item.overdueChats > 0 ? "warning" : "success"}
+                    />
+                  </Link>
+                ))
+              )}
+            </div>
+          </PanelCard>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -1104,4 +1225,5 @@ function MiniStatLink({
     </Link>
   );
 }
+
 

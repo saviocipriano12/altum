@@ -266,7 +266,7 @@ export default function PlaybookComercialPage() {
               Playbook Comercial
             </h1>
             <p className="text-sm text-white/60 mt-1">
-              CatÃƒÂ¡logo oficial de ofertas da agÃƒÂªncia, scripts por situaÃƒÂ§ÃƒÂ£o e dicas prÃƒÂ¡ticas do time.
+              Catalogo oficial de ofertas da agencia, scripts por situacao e dicas praticas do time.
             </p>
           </div>
           <div className="text-xs rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/70">
@@ -283,7 +283,7 @@ export default function PlaybookComercialPage() {
       )}
 
       <section className="flex flex-wrap gap-2">
-        <TabButton active={tab === "products"} onClick={() => setTab("products")} icon={<Sparkles className="h-4 w-4" />} label="Produtos e ServiÃƒÂ§os" />
+        <TabButton active={tab === "products"} onClick={() => setTab("products")} icon={<Sparkles className="h-4 w-4" />} label="Produtos e Servicos" />
         <TabButton active={tab === "scripts"} onClick={() => setTab("scripts")} icon={<Bot className="h-4 w-4" />} label="Scripts Oficiais" />
         <TabButton active={tab === "tips"} onClick={() => setTab("tips")} icon={<Trophy className="h-4 w-4" />} label="Dicas do Time" />
       </section>
@@ -340,7 +340,7 @@ export default function PlaybookComercialPage() {
             <p className="text-sm font-semibold text-white">{selectedProfile.label}</p>
             <p className="mt-2 text-sm text-white/60">{selectedProfile.description}</p>
             <p className="mt-3 text-xs text-white/55">Foco comercial: {selectedProfile.commercialMotion}</p>
-            <p className="mt-2 text-xs text-white/55">Perguntas obrigatorias: {selectedProfile.ai.mandatoryQuestions.slice(0, 3).join(" · ")}</p>
+            <p className="mt-2 text-xs text-white/55">Perguntas obrigatorias: {selectedProfile.ai.mandatoryQuestions.slice(0, 3).join(" - ")}</p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -350,7 +350,7 @@ export default function PlaybookComercialPage() {
                 {selectedPreset.offers.map((item) => (
                   <div key={item.title} className="rounded-lg border border-white/10 bg-black/30 p-2">
                     <p className="text-xs font-medium text-white">{item.title}</p>
-                    <p className="mt-1 text-[11px] text-white/55">{item.category} · {item.targetProfile}</p>
+                    <p className="mt-1 text-[11px] text-white/55">{item.category} - {item.targetProfile}</p>
                   </div>
                 ))}
               </div>
@@ -381,7 +381,7 @@ export default function PlaybookComercialPage() {
           {tab === "products" && (
             <section className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">Produtos e ServiÃƒÂ§os</h2>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">Produtos e Servicos</h2>
                 {isAdmin && (
                   <button
                     onClick={() => setProducts((prev) => [emptyProduct(), ...prev])}
@@ -394,7 +394,7 @@ export default function PlaybookComercialPage() {
               </div>
 
               {products.length === 0 ? (
-                <p className="text-sm text-white/55">Nenhum produto/serviÃƒÂ§o cadastrado ainda.</p>
+                <p className="text-sm text-white/55">Nenhum produto/servico cadastrado ainda.</p>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2">
                   {products.map((item, idx) => (
@@ -448,7 +448,7 @@ export default function PlaybookComercialPage() {
                             )
                           }
                           className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
-                          placeholder="PreÃƒÂ§o inicial"
+                          placeholder="Preco inicial"
                         />
                         <input
                           type="number"
@@ -460,7 +460,7 @@ export default function PlaybookComercialPage() {
                             )
                           }
                           className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
-                          placeholder="PreÃƒÂ§o final"
+                          placeholder="Preco final"
                         />
                       </div>
                       {isAdmin && (
@@ -510,7 +510,7 @@ export default function PlaybookComercialPage() {
                             setScripts((prev) => prev.map((s, i) => (i === idx ? { ...s, situation: e.target.value } : s)))
                           }
                           className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
-                          placeholder="SituaÃƒÂ§ÃƒÂ£o (ex: lead frio, objeÃƒÂ§ÃƒÂ£o de preÃƒÂ§o...)"
+                          placeholder="Situacao (ex: lead frio, objecao de preco...)"
                         />
                         <input
                           disabled={!isAdmin}
@@ -558,13 +558,13 @@ export default function PlaybookComercialPage() {
                     value={tipForm.situation}
                     onChange={(e) => setTipForm((prev) => ({ ...prev, situation: e.target.value }))}
                     className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
-                    placeholder="SituaÃƒÂ§ÃƒÂ£o onde o script funcionou"
+                    placeholder="Situacao onde o script funcionou"
                   />
                   <input
                     value={tipForm.result}
                     onChange={(e) => setTipForm((prev) => ({ ...prev, result: e.target.value }))}
                     className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
-                    placeholder="Resultado alcanÃƒÂ§ado"
+                    placeholder="Resultado alcancado"
                   />
                 </div>
                 <textarea
@@ -590,7 +590,7 @@ export default function PlaybookComercialPage() {
                   {sortedTips.map((tip) => (
                     <div key={tip.id} className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs uppercase tracking-wide text-white/60">{tip.situation || "SituaÃƒÂ§ÃƒÂ£o nÃƒÂ£o informada"}</p>
+                        <p className="text-xs uppercase tracking-wide text-white/60">{tip.situation || "Situacao nao informada"}</p>
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] text-white/45">
                             {tip.authorName || "Time"} ({tip.authorRole || "sdr"})
@@ -609,7 +609,7 @@ export default function PlaybookComercialPage() {
                       <p className="whitespace-pre-line rounded-lg border border-white/10 bg-black/30 p-3 text-sm text-white/85">
                         {tip.script || "-"}
                       </p>
-                      <p className="text-xs text-emerald-200/90">Resultado: {tip.result || "nÃƒÂ£o informado"}</p>
+                      <p className="text-xs text-emerald-200/90">Resultado: {tip.result || "nao informado"}</p>
                       <p className="text-[11px] text-white/35">
                         Publicado em: {toDate(tip.createdAt)?.toLocaleDateString("pt-BR") || "-"}
                       </p>
@@ -663,4 +663,3 @@ function TabButton({
     </button>
   );
 }
-

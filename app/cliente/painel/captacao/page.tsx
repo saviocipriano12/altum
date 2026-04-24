@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import {
   CardTitle,
   EmptyState,
@@ -119,7 +120,7 @@ function emptyFormState() {
     defaultOwnerId: "",
     tagsInput: "",
     status: "draft",
-    successMessage: "Lead recebido com sucesso.",
+    successMessage: "Contato recebido com sucesso.",
     submitLabel: "Enviar",
     widgetLauncherLabel: "Abrir chat",
     widgetGreeting: "Digite sua mensagem para iniciar o atendimento.",
@@ -198,6 +199,7 @@ function createEmptyField(index: number): CaptureFieldDefinition {
 
 export default function ClienteCaptacaoPage() {
   const { tenant, hasCapability } = useClienteTenant();
+  const { experienceMode, setExperienceMode } = useClienteShell();
   const router = useRouter();
   const searchParams = useSearchParams();
   const formFromQuery = searchParams.get("formId");
@@ -220,6 +222,7 @@ export default function ClienteCaptacaoPage() {
   const [formState, setFormState] = useState(emptyFormState());
 
   const canManage = hasCapability("manage_settings");
+  const allowAdvanced = experienceMode === "completo";
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -301,7 +304,7 @@ export default function ClienteCaptacaoPage() {
       defaultOwnerId: selectedForm.defaultOwnerId || "",
       tagsInput: (selectedForm.tags || []).join(", "),
       status: selectedForm.status || "draft",
-      successMessage: selectedForm.successMessage || "Lead recebido com sucesso.",
+      successMessage: selectedForm.successMessage || "Contato recebido com sucesso.",
       submitLabel: selectedForm.submitLabel || "Enviar",
       widgetLauncherLabel: selectedForm.widgetLauncherLabel || "Abrir chat",
       widgetGreeting: selectedForm.widgetGreeting || "Digite sua mensagem para iniciar o atendimento.",
@@ -362,8 +365,8 @@ export default function ClienteCaptacaoPage() {
         id: "no_active_form",
         href: "/cliente/painel/captacao",
         title: "Nenhum formulario ativo",
-        detail: "Ative ao menos um formulario para receber leads publicamente.",
-        badge: "setup",
+        detail: "Ative ao menos um formulario para receber contatos publicamente.",
+        badge: "configurar",
         tone: "warning",
       });
     }
@@ -622,13 +625,13 @@ export default function ClienteCaptacaoPage() {
     <div className="space-y-4">
       <SectionHeader
         title="Captacao"
-        subtitle="Formularios publicos por tenant para transformar trafego em leads dentro do CRM da operacao."
-        action={<StateBadge label="Lead intake ativo" tone="info" />}
+        subtitle="Formularios publicos para transformar trafego em contatos no CRM da operacao."
+        action={<StateBadge label="Captacao ativa" tone="info" />}
       />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Formularios" value={String(forms.length)} icon={ClipboardPen} trend="ativos e em rascunho" />
-        <MetricCard label="Ativos" value={String(activeForms)} icon={ShieldCheck} trend="prontos para receber leads" />
+        <MetricCard label="Ativos" value={String(activeForms)} icon={ShieldCheck} trend="prontos para receber contatos" />
         <MetricCard label="Envios" value={String(totalSubmissions)} icon={Megaphone} trend="capturas acumuladas" />
         <MetricCard label="Responsaveis" value={String(users.length)} icon={Plus} trend="time disponivel para distribuicao" />
       </section>
@@ -682,7 +685,7 @@ export default function ClienteCaptacaoPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <CardTitle
             title={`Modo do negocio: ${businessProfile.label}`}
-            subtitle="Use o perfil ativo do tenant para acelerar setup de formulario, landing e qualificacao."
+            subtitle="Use o perfil ativo da conta para acelerar configuracao de formulario, pagina e qualificacao."
           />
           <div className="flex flex-wrap gap-2">
             <StateBadge label={businessProfile.id} tone="info" />
@@ -700,7 +703,7 @@ export default function ClienteCaptacaoPage() {
         </div>
         <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_1fr]">
           <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-            <p className="text-sm font-semibold text-white">Campos sugeridos para intake</p>
+            <p className="text-sm font-semibold text-white">Campos sugeridos para captacao</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {businessProfile.crm.leadFields.map((field) => (
                 <StateBadge key={field} label={field.replaceAll("_", " ")} tone="neutral" />
@@ -737,7 +740,7 @@ export default function ClienteCaptacaoPage() {
 
           <div className="mt-4 space-y-2">
             {forms.length === 0 ? (
-              <EmptyState title="Nenhum formulario criado" description="Crie o primeiro formulario publico para capturar leads no CRM." />
+              <EmptyState title="Nenhum formulario criado" description="Crie o primeiro formulario publico para capturar contatos no CRM." />
             ) : (
               forms.map((form) => (
                 <button
@@ -770,7 +773,7 @@ export default function ClienteCaptacaoPage() {
         <div className="space-y-4">
           <PanelCard className="p-5">
             <div className="flex items-start justify-between gap-3">
-              <CardTitle title={formState.id ? "Editor do formulario" : "Novo formulario"} subtitle="Origem, stage inicial, responsavel e mensagem de sucesso." />
+              <CardTitle title={formState.id ? "Editor do formulario" : "Novo formulario"} subtitle="Origem, etapa inicial, responsavel e mensagem de sucesso." />
               <StateBadge label={canManage ? "editavel" : "somente leitura"} tone={canManage ? "info" : "neutral"} />
             </div>
 
@@ -778,7 +781,7 @@ export default function ClienteCaptacaoPage() {
               <Field label="Nome" value={formState.name} onChange={(value) => setFormState((current) => ({ ...current, name: value }))} placeholder="Formulario principal" disabled={!canManage} />
               <Field label="Origem" value={formState.sourceLabel} onChange={(value) => setFormState((current) => ({ ...current, sourceLabel: value }))} placeholder="Landing page" disabled={!canManage} />
               <label className="block space-y-1">
-                <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Stage inicial</span>
+                <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Etapa inicial</span>
                 <select
                   value={formState.defaultPipelineStage}
                   onChange={(event) => setFormState((current) => ({ ...current, defaultPipelineStage: event.target.value }))}
@@ -814,7 +817,7 @@ export default function ClienteCaptacaoPage() {
                   value={formState.description}
                   onChange={(event) => setFormState((current) => ({ ...current, description: event.target.value }))}
                   disabled={!canManage}
-                  placeholder="Explique onde este formulario sera usado e qual campanha alimenta este intake."
+                  placeholder="Explique onde este formulario sera usado e qual campanha alimenta esta captacao."
                   className="client-input min-h-[96px] w-full rounded-2xl px-3 py-3 text-sm"
                 />
               </label>
@@ -852,14 +855,14 @@ export default function ClienteCaptacaoPage() {
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <ToggleTile
                 label="Exigir telefone"
-                description="Forca o lead a informar telefone antes do envio."
+                description="Forca o contato a informar telefone antes do envio."
                 checked={Boolean(formState.requirePhone)}
                 onChange={(checked) => setFormState((current) => ({ ...current, requirePhone: checked }))}
                 disabled={!canManage}
               />
               <ToggleTile
                 label="Exigir email"
-                description="Usa email como dado obrigatorio do intake."
+                description="Usa email como dado obrigatorio da captacao."
                 checked={Boolean(formState.requireEmail)}
                 onChange={(checked) => setFormState((current) => ({ ...current, requireEmail: checked }))}
                 disabled={!canManage}
@@ -873,19 +876,21 @@ export default function ClienteCaptacaoPage() {
               />
               <ToggleTile
                 label="Coletar mensagem"
-                description="Mantem campo aberto para contexto inicial do lead."
+                description="Mantem campo aberto para contexto inicial do contato."
                 checked={formState.collectMessage !== false}
                 onChange={(checked) => setFormState((current) => ({ ...current, collectMessage: checked }))}
                 disabled={!canManage}
               />
             </div>
 
+            {allowAdvanced ? (
+            <>
             <div className="mt-5 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-white">Schema avancado do formulario</p>
+                  <p className="text-sm font-semibold text-white">Estrutura avancada do formulario</p>
                   <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
-                    Crie etapas de qualificacao, campos condicionais e perguntas customizadas para cada tenant.
+                    Crie etapas de qualificacao, campos condicionais e perguntas personalizadas para a conta.
                   </p>
                 </div>
                 {canManage ? (
@@ -901,8 +906,8 @@ export default function ClienteCaptacaoPage() {
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Campos customizados" value={String(fieldSummary.total)} icon={Settings2} trend="perguntas extras do tenant" />
-                <MetricCard label="Obrigatorios" value={String(fieldSummary.required)} icon={ShieldCheck} trend="dados criticos do intake" />
+                <MetricCard label="Campos customizados" value={String(fieldSummary.total)} icon={Settings2} trend="perguntas extras da conta" />
+                <MetricCard label="Obrigatorios" value={String(fieldSummary.required)} icon={ShieldCheck} trend="dados criticos da captacao" />
                 <MetricCard label="Condicionais" value={String(fieldSummary.conditional)} icon={GripVertical} trend="logica por resposta" />
                 <MetricCard label="Etapas extras" value={String(fieldSummary.steps)} icon={ClipboardPen} trend="passos alem do bloco base" />
               </div>
@@ -933,7 +938,7 @@ export default function ClienteCaptacaoPage() {
             <div className="mt-5 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-white">Landing builder</p>
+                  <p className="text-sm font-semibold text-white">Construtor da pagina</p>
                   <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
                     Monte a narrativa da pagina publica com hero, prova, depoimentos e FAQ, mantendo o mesmo formulario.
                   </p>
@@ -942,7 +947,7 @@ export default function ClienteCaptacaoPage() {
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Highlights" value={String(landingSummary.highlights)} icon={Megaphone} trend="blocos de valor" />
+                <MetricCard label="Destaques" value={String(landingSummary.highlights)} icon={Megaphone} trend="blocos de valor" />
                 <MetricCard label="Metricas" value={String(landingSummary.metrics)} icon={Settings2} trend="provas do hero" />
                 <MetricCard label="Depoimentos" value={String(landingSummary.testimonials)} icon={ShieldCheck} trend="prova social" />
                 <MetricCard label="FAQ" value={String(landingSummary.faq)} icon={ClipboardPen} trend="objecoes resolvidas" />
@@ -958,7 +963,7 @@ export default function ClienteCaptacaoPage() {
                       landing: { ...current.landing, badge: value },
                     }))
                   }
-                  placeholder="Lead intake premium"
+                  placeholder="Captacao premium"
                   disabled={!canManage}
                 />
                 <Field
@@ -970,7 +975,7 @@ export default function ClienteCaptacaoPage() {
                       landing: { ...current.landing, heroTitle: value },
                     }))
                   }
-                  placeholder="Atraia leads com atendimento consultivo e automacao"
+                  placeholder="Atraia contatos com atendimento consultivo e automacao"
                   disabled={!canManage}
                 />
                 <label className="block space-y-1 md:col-span-2">
@@ -984,7 +989,7 @@ export default function ClienteCaptacaoPage() {
                       }))
                     }
                     disabled={!canManage}
-                    placeholder="Explique a proposta de valor da campanha e como o lead sera atendido."
+                    placeholder="Explique a proposta de valor da campanha e como o contato sera atendido."
                     className="client-input min-h-[110px] w-full rounded-2xl px-3 py-3 text-sm placeholder:text-[var(--cliente-card-text-soft)]"
                   />
                 </label>
@@ -1023,7 +1028,7 @@ export default function ClienteCaptacaoPage() {
                       }))
                     }
                     disabled={!canManage}
-                    placeholder="Oriente o lead sobre o que acontece depois do envio."
+                    placeholder="Oriente o contato sobre o que acontece depois do envio."
                     className="client-input min-h-[96px] w-full rounded-2xl px-3 py-3 text-sm placeholder:text-[var(--cliente-card-text-soft)]"
                   />
                 </label>
@@ -1031,7 +1036,7 @@ export default function ClienteCaptacaoPage() {
 
               <div className="mt-4 grid gap-3 xl:grid-cols-2">
                 <label className="block space-y-1">
-                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Highlights da oferta</span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Destaques da oferta</span>
                   <textarea
                     value={formState.landing.highlights.join("\n")}
                     onChange={(event) =>
@@ -1057,7 +1062,7 @@ export default function ClienteCaptacaoPage() {
                       }))
                     }
                     disabled={!canManage}
-                    placeholder={"Uma por linha.\nFluxo: Site -> CRM -> Inbox"}
+                    placeholder={"Uma por linha.\nFluxo: Site -> CRM -> Conversas"}
                     className="client-input min-h-[150px] w-full rounded-2xl px-3 py-3 text-sm placeholder:text-[var(--cliente-card-text-soft)]"
                   />
                 </label>
@@ -1100,10 +1105,10 @@ export default function ClienteCaptacaoPage() {
                 <div className="mt-3 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
                   <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel)] p-5">
                     <p className="inline-flex rounded-full border border-[var(--cliente-accent)]/20 bg-[var(--cliente-accent-soft)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-accent)]">
-                      {formState.landing.badge || "Lead intake premium"}
+                      {formState.landing.badge || "Captacao premium"}
                     </p>
                     <h3 className="mt-4 text-2xl font-semibold text-[var(--cliente-card-text)]">
-                      {formState.landing.heroTitle || formState.name || "Sua landing de captacao"}
+                      {formState.landing.heroTitle || formState.name || "Sua pagina de captacao"}
                     </h3>
                     <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">
                       {formState.landing.heroDescription || formState.description || "A narrativa da pagina publica aparecera aqui."}
@@ -1139,7 +1144,7 @@ export default function ClienteCaptacaoPage() {
                           <p className="text-sm text-[var(--cliente-card-text)]/84">&ldquo;{item.quote}&rdquo;</p>
                           <p className="mt-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                             {item.author}
-                            {item.role ? ` · ${item.role}` : ""}
+                            {item.role ? ` | ${item.role}` : ""}
                           </p>
                         </div>
                       ))}
@@ -1161,7 +1166,7 @@ export default function ClienteCaptacaoPage() {
                 {publicUrl || "Salve o formulario para gerar a URL publica de captura."}
               </p>
               <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
-                Use essa URL como landing direta. O envio publica no endpoint interno e entra no CRM com tenant isolado.
+                Use essa URL como pagina direta. O envio publica no endpoint interno e entra no CRM com conta isolada.
               </p>
               {publicUrl ? (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -1201,9 +1206,9 @@ export default function ClienteCaptacaoPage() {
               <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
                 A pagina publica aceita UTMs, campos base e qualquer schema customizado salvo neste formulario.
               </p>
-              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Launcher popup</p>
+              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Botao flutuante</p>
               <pre className="mt-2 overflow-x-auto rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-xs text-[var(--cliente-card-text)]/80">
-                {launcherCode || "Salve o formulario para gerar o launcher popup."}
+                {launcherCode || "Salve o formulario para gerar o botao flutuante."}
               </pre>
               {launcherCode ? (
                 <button
@@ -1212,7 +1217,7 @@ export default function ClienteCaptacaoPage() {
                   className="mt-2 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                 >
                   <Copy className="h-3.5 w-3.5" />
-                  {copiedKey === "launcher" ? "Copiado" : "Copiar launcher"}
+                  {copiedKey === "launcher" ? "Copiado" : "Copiar botao flutuante"}
                 </button>
               ) : null}
               <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Widget iframe</p>
@@ -1244,6 +1249,22 @@ export default function ClienteCaptacaoPage() {
                 </button>
               ) : null}
             </div>
+            </>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Modo essencial ativo</p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-soft)]">
+                  Escondemos estrutura avancada, construtor da pagina e codigos de incorporacao para manter a operacao simples no dia a dia.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setExperienceMode("completo")}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
+                >
+                  Abrir modo completo
+                </button>
+              </div>
+            )}
 
             {canManage ? (
               <div className="mt-4 flex flex-wrap gap-2">
@@ -1273,7 +1294,7 @@ export default function ClienteCaptacaoPage() {
 
           <PanelCard className="p-5">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle title="Envios recentes" subtitle="Ultimos leads que entraram via formularios do tenant" />
+              <CardTitle title="Envios recentes" subtitle="Ultimos contatos que entraram pelos formularios da conta" />
               <StateBadge label={`${submissions.length} registros`} tone="info" />
             </div>
 
@@ -1303,7 +1324,7 @@ export default function ClienteCaptacaoPage() {
                         href={`/cliente/painel/inbox?leadId=${encodeURIComponent(submission.leadId)}`}
                         className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                       >
-                        Abrir Inbox
+                        Abrir Conversas
                       </Link>
                     </div>
                   </div>
@@ -1326,7 +1347,7 @@ export default function ClienteCaptacaoPage() {
                       className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 transition hover:bg-[var(--cliente-surface-hover)]"
                     >
                       <span className="text-sm text-[var(--cliente-card-text)]/84">{item.label}</span>
-                      <StateBadge label={`${item.total} leads`} tone="neutral" />
+                      <StateBadge label={`${item.total} contatos`} tone="neutral" />
                     </Link>
                   ))
                 )}
@@ -1350,7 +1371,7 @@ export default function ClienteCaptacaoPage() {
             </PanelCard>
 
             <PanelCard className="p-5">
-              <CardTitle title="Performance por formulario" subtitle="Quais assets estao puxando mais entrada" />
+              <CardTitle title="Performance por formulario" subtitle="Quais formularios estao puxando mais entradas" />
               <div className="mt-4 space-y-2">
                 {formPerformance.length === 0 ? (
                   <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem performance registrada ainda.</p>

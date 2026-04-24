@@ -133,6 +133,30 @@ function queueTone(status?: string) {
   return "neutral" as const;
 }
 
+function decisionLabel(decision?: string) {
+  if (decision === "handoff") return "transferencia";
+  if (decision === "ask_more") return "pedir mais dados";
+  if (decision === "skip") return "ignorar";
+  return "responder";
+}
+
+function executionStatusLabel(status?: string) {
+  if (status === "done") return "concluido";
+  if (status === "error") return "erro";
+  if (status === "skipped") return "ignorado";
+  if (status === "pending") return "pendente";
+  return status || "pendente";
+}
+
+function queueStatusLabel(status?: string) {
+  if (status === "pending") return "pendente";
+  if (status === "processing") return "processando";
+  if (status === "retrying") return "nova tentativa";
+  if (status === "dead_letter") return "falha repetida";
+  if (status === "done") return "concluido";
+  return status || "pendente";
+}
+
 function confidenceLabel(value?: number | null) {
   if (typeof value !== "number") return "--";
   return `${Math.round(value * 100)}%`;
@@ -302,8 +326,8 @@ export default function ClienteLogsPage() {
     return [
       {
         id: "dead_letter",
-        title: "Dead letters em fila",
-        detail: "Jobs que falharam varias vezes e pedem intervencao manual.",
+        title: "Falhas repetidas na fila",
+        detail: "Tarefas que falharam varias vezes e pedem intervencao manual.",
         badge: String(metrics.queueDeadLetters),
         tone: metrics.queueDeadLetters ? "danger" : "success",
         href: "/cliente/painel/automacoes",
@@ -319,7 +343,7 @@ export default function ClienteLogsPage() {
       {
         id: "handoff",
         title: "Escaladas recentes",
-        detail: "Conversas que sairam do autopilot e exigem humano.",
+        detail: "Conversas que sairam do piloto automatico e exigem humano.",
         badge: String(metrics.handoffs),
         tone: metrics.handoffs ? "info" : "neutral",
         href: "/cliente/painel/handoffs",
@@ -327,7 +351,7 @@ export default function ClienteLogsPage() {
       {
         id: "sla",
         title: "SLA em risco",
-        detail: "Fila com impacto direto na experiencia do lead e do time comercial.",
+        detail: "Fila com impacto direto na experiencia do contato e do time comercial.",
         badge: String(summary.summary?.slaBreached || 0),
         tone: summary.summary?.slaBreached ? "danger" : "success",
         href: "/cliente/painel/inbox?queue=sla_breached",
@@ -367,7 +391,7 @@ export default function ClienteLogsPage() {
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
             title="Logs operacionais"
-            subtitle="Auditoria continua da IA, automacoes e fila que sustenta a operacao comercial do tenant."
+            subtitle="Auditoria continua da IA, automacoes e fila que sustenta a operacao comercial da conta."
             action={
               <button
                 type="button"
@@ -382,10 +406,10 @@ export default function ClienteLogsPage() {
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <MetricCard label="Logs IA" value={String(metrics.totalAi)} icon={Bot} trend="ultima janela operacional" />
-            <MetricCard label="Handoffs" value={String(metrics.handoffs)} icon={AlertTriangle} trend="escaladas humanas" />
+            <MetricCard label="Transferencias" value={String(metrics.handoffs)} icon={AlertTriangle} trend="escaladas humanas" />
             <MetricCard label="Baixa confianca" value={String(metrics.lowConfidence)} icon={ShieldAlert} trend="respostas de risco" />
             <MetricCard label="Erros execucao" value={String(metrics.executionErrors)} icon={Cable} trend="automacoes recentes" />
-            <MetricCard label="Dead letters" value={String(metrics.queueDeadLetters)} icon={FileText} trend="fila precisa revisao" />
+            <MetricCard label="Falhas repetidas" value={String(metrics.queueDeadLetters)} icon={FileText} trend="fila precisa revisao" />
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -411,7 +435,7 @@ export default function ClienteLogsPage() {
           <SectionHeader title="Pulso da fila" subtitle="Leitura rapida do que esta segurando a operacao agora." />
           <div className="space-y-3">
             <HealthRow label="Fila pendente" value={String(summary.summary?.queue?.pending || 0)} />
-            <HealthRow label="Retrying" value={String(summary.summary?.queue?.retrying || 0)} danger={Boolean(summary.summary?.queue?.retrying)} />
+            <HealthRow label="Nova tentativa" value={String(summary.summary?.queue?.retrying || 0)} danger={Boolean(summary.summary?.queue?.retrying)} />
             <HealthRow label="Agendadas falhas" value={String(summary.summary?.scheduled?.deadLetter || 0)} danger={Boolean(summary.summary?.scheduled?.deadLetter)} />
             <HealthRow label="SLA estourado" value={String(summary.summary?.slaBreached || 0)} danger={Boolean(summary.summary?.slaBreached)} />
             <HealthRow label="Backlog sem resposta" value={String(summary.summary?.waitingReplyBacklog || 0)} danger={Boolean(summary.summary?.waitingReplyBacklog)} />
@@ -426,7 +450,7 @@ export default function ClienteLogsPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar motivo, automacao, trigger, erro ou chat"
+            placeholder="Buscar motivo, automacao, gatilho, erro ou conversa"
             className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
           />
         </label>
@@ -437,7 +461,7 @@ export default function ClienteLogsPage() {
           <SectionHeader title="IA" subtitle="Decisoes recentes do agente." />
           <div className="mb-4 grid gap-2 md:grid-cols-3 xl:grid-cols-1">
             <FilterButton label="Todos" active={aiFilter === "all"} onClick={() => setAiFilter("all")} />
-            <FilterButton label="Handoffs" active={aiFilter === "handoff"} onClick={() => setAiFilter("handoff")} />
+            <FilterButton label="Transferencias" active={aiFilter === "handoff"} onClick={() => setAiFilter("handoff")} />
             <FilterButton label="Baixa confianca" active={aiFilter === "low_confidence"} onClick={() => setAiFilter("low_confidence")} />
           </div>
           <div className="space-y-3">
@@ -447,7 +471,7 @@ export default function ClienteLogsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <StateBadge label={item.decision || "respond"} tone={decisionTone(item.decision)} />
+                        <StateBadge label={decisionLabel(item.decision)} tone={decisionTone(item.decision)} />
                         <StateBadge label={`conf. ${confidenceLabel(item.confidence)}`} tone={decisionTone(item.decision)} />
                       </div>
                       <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{item.reason || item.input || "Log sem detalhe"}</p>
@@ -455,7 +479,7 @@ export default function ClienteLogsPage() {
                     </div>
                     {item.chatId ? (
                       <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.chatId)}`} className="text-xs text-[var(--cliente-accent)] hover:brightness-110">
-                        Inbox
+                        Conversas
                       </Link>
                     ) : null}
                   </div>
@@ -471,9 +495,9 @@ export default function ClienteLogsPage() {
           <SectionHeader title="Execucoes" subtitle="Automacoes recentes e seus resultados." />
           <div className="mb-4 grid gap-2 md:grid-cols-4 xl:grid-cols-1">
             <FilterButton label="Todos" active={executionFilter === "all"} onClick={() => setExecutionFilter("all")} />
-            <FilterButton label="Done" active={executionFilter === "done"} onClick={() => setExecutionFilter("done")} />
+            <FilterButton label="Concluido" active={executionFilter === "done"} onClick={() => setExecutionFilter("done")} />
             <FilterButton label="Erro" active={executionFilter === "error"} onClick={() => setExecutionFilter("error")} />
-            <FilterButton label="Skipped" active={executionFilter === "skipped"} onClick={() => setExecutionFilter("skipped")} />
+            <FilterButton label="Ignorado" active={executionFilter === "skipped"} onClick={() => setExecutionFilter("skipped")} />
           </div>
           <div className="space-y-3">
             {filteredExecutions.length ? (
@@ -482,8 +506,8 @@ export default function ClienteLogsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <StateBadge label={item.status || "pending"} tone={executionTone(item.status)} />
-                        <StateBadge label={item.trigger || "trigger"} tone="neutral" />
+                        <StateBadge label={executionStatusLabel(item.status)} tone={executionTone(item.status)} />
+                        <StateBadge label={item.trigger || "gatilho"} tone="neutral" />
                       </div>
                       <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{item.automationName || "Automacao"}</p>
                       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.detail || item.lastError || "Sem detalhe"}</p>
@@ -495,7 +519,7 @@ export default function ClienteLogsPage() {
                       </Link>
                       {item.chatId ? (
                         <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.chatId)}`} className="text-xs text-[var(--cliente-accent)] hover:brightness-110">
-                          Inbox
+                          Conversas
                         </Link>
                       ) : null}
                     </div>
@@ -509,13 +533,13 @@ export default function ClienteLogsPage() {
         </PanelCard>
 
         <PanelCard className="p-5 md:p-6 xl:col-span-1">
-          <SectionHeader title="Fila" subtitle="Jobs da operacao conversacional." />
+          <SectionHeader title="Fila" subtitle="Itens da operacao conversacional." />
           <div className="mb-4 grid gap-2 md:grid-cols-5 xl:grid-cols-1">
             <FilterButton label="Todos" active={queueFilter === "all"} onClick={() => setQueueFilter("all")} />
-            <FilterButton label="Pending" active={queueFilter === "pending"} onClick={() => setQueueFilter("pending")} />
-            <FilterButton label="Processing" active={queueFilter === "processing"} onClick={() => setQueueFilter("processing")} />
-            <FilterButton label="Retrying" active={queueFilter === "retrying"} onClick={() => setQueueFilter("retrying")} />
-            <FilterButton label="Dead letter" active={queueFilter === "dead_letter"} onClick={() => setQueueFilter("dead_letter")} />
+            <FilterButton label="Pendente" active={queueFilter === "pending"} onClick={() => setQueueFilter("pending")} />
+            <FilterButton label="Processando" active={queueFilter === "processing"} onClick={() => setQueueFilter("processing")} />
+            <FilterButton label="Nova tentativa" active={queueFilter === "retrying"} onClick={() => setQueueFilter("retrying")} />
+            <FilterButton label="Falha repetida" active={queueFilter === "dead_letter"} onClick={() => setQueueFilter("dead_letter")} />
           </div>
           <div className="space-y-3">
             {filteredQueue.length ? (
@@ -524,7 +548,7 @@ export default function ClienteLogsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <StateBadge label={item.status} tone={queueTone(item.status)} />
+                        <StateBadge label={queueStatusLabel(item.status)} tone={queueTone(item.status)} />
                         <StateBadge label={`${item.attempts} tentativa(s)`} tone="neutral" />
                       </div>
                       <p className="mt-2 text-sm text-[var(--cliente-card-text)]">Chat {item.chatId.slice(0, 12)}</p>
@@ -532,25 +556,25 @@ export default function ClienteLogsPage() {
                       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDateTime(item.updatedAt)}</p>
                     </div>
                     <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.chatId)}`} className="text-xs text-[var(--cliente-accent)] hover:brightness-110">
-                      Inbox
+                      Conversas
                     </Link>
                   </div>
                 </article>
               ))
             ) : (
-              <EmptyState title="Fila limpa neste recorte" description="Nenhum job recente corresponde ao filtro atual." />
+              <EmptyState title="Fila limpa neste recorte" description="Nenhum item recente corresponde ao filtro atual." />
             )}
           </div>
         </PanelCard>
       </section>
 
       <PanelCard className="p-5 md:p-6">
-        <SectionHeader title="Playbook rapido" subtitle="A partir do log, caia no modulo certo e resolva o gargalo." />
+        <SectionHeader title="Guia rapido" subtitle="A partir do log, caia no modulo certo e resolva o gargalo." />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <QuickLink href="/cliente/painel/inbox?queue=awaiting_reply" title="Fila aguardando resposta" description="Checar conversas que podem gerar retry, atraso ou novo handoff." />
+          <QuickLink href="/cliente/painel/inbox?queue=awaiting_reply" title="Fila aguardando resposta" description="Checar conversas que podem gerar nova tentativa, atraso ou nova transferencia." />
           <QuickLink href="/cliente/painel/automacoes" title="Revisar automacoes" description="Atuar em execucoes com erro, regras puladas e cadencias que travaram." />
           <QuickLink href="/cliente/painel/ia" title="Ajustar IA" description="Reforcar conhecimento e guardrails nos pontos de baixa confianca." />
-          <QuickLink href="/cliente/painel/handoffs" title="Assumir escaladas" description="Distribuir handoffs humanos e aliviar backlog operacional." />
+          <QuickLink href="/cliente/painel/handoffs" title="Assumir escaladas" description="Distribuir transferencias humanas e aliviar o backlog operacional." />
         </div>
       </PanelCard>
     </div>

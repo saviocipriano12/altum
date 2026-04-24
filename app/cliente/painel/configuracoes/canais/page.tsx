@@ -868,12 +868,12 @@ export default function ClienteCanaisPage() {
                   onClick={() => setSelectedType(connector.type)}
                   className={`rounded-2xl border p-4 text-left transition ${
                     isSelected
-                      ? "border-blue-300/35 bg-blue-400/10"
+                      ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
                       : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="inline-flex rounded-xl border border-white/12 bg-black/25 p-2 text-blue-100">
+                    <div className="inline-flex rounded-xl border border-white/12 bg-black/25 p-2 text-[var(--cliente-accent)]">
                       <Icon className="h-4 w-4" />
                     </div>
                     <StateBadge
@@ -1050,7 +1050,7 @@ export default function ClienteCanaisPage() {
                       type="button"
                       onClick={() => void startManagedConnect("google")}
                       disabled={connecting || !canManage}
-                      className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-blue-600/90 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-[var(--cliente-accent)] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60"
                     >
                       {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
                       {selectedChannel?.id ? "Reconectar Google" : "Conectar Google"}
@@ -1060,7 +1060,7 @@ export default function ClienteCanaisPage() {
                       type="button"
                       onClick={() => void startManagedConnect("meta")}
                       disabled={connecting || !canManage}
-                      className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-blue-600/90 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-[var(--cliente-accent)] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60"
                     >
                       {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
                       {selectedChannel?.id ? "Reconectar Meta" : "Conectar Meta"}
@@ -1225,7 +1225,7 @@ function SaveButton({ saving, label, disabled = false }: { saving: boolean; labe
     <button
       type="submit"
       disabled={saving || disabled}
-      className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+      className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60"
     >
       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
       {label}
@@ -1250,7 +1250,7 @@ function Field(props: {
         placeholder={props.placeholder}
         required={props.required}
         disabled={props.disabled}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-blue-300/35 focus:bg-black/45"
+        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[var(--cliente-border-strong)] focus:bg-black/45"
       />
     </label>
   );
@@ -1274,7 +1274,7 @@ function SecretField(props: {
         placeholder={props.placeholder}
         required={props.required}
         disabled={props.disabled}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-blue-300/35 focus:bg-black/45"
+        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[var(--cliente-border-strong)] focus:bg-black/45"
       />
     </label>
   );
@@ -1293,7 +1293,7 @@ function SelectField(props: {
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         disabled={props.disabled}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-blue-300/35 focus:bg-black/45"
+        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-[var(--cliente-border-strong)] focus:bg-black/45"
       >
         <option value="draft">Rascunho</option>
         <option value="active">Ativo</option>
@@ -1303,3 +1303,4 @@ function SelectField(props: {
     </label>
   );
 }
+

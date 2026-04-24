@@ -14,7 +14,7 @@ type BottomItem = {
 
 const ITEMS: BottomItem[] = [
   { href: "/cliente/painel", label: "Inicio", icon: LayoutGrid },
-  { href: "/cliente/painel/inbox", label: "Inbox", icon: MessageSquare },
+  { href: "/cliente/painel/inbox", label: "Conversas", icon: MessageSquare },
   { href: "/cliente/painel/crm", label: "CRM", icon: Users },
   { href: "/cliente/painel/metricas", label: "Metricas", icon: BarChart3 },
   { href: "/cliente/painel/configuracoes", label: "Ajustes", icon: Settings, capability: "manage_settings" },

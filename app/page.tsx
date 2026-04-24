@@ -701,7 +701,7 @@ function Founder() {
         <div className="grid lg:grid-cols-2 gap-16 items-center">
            <div className="relative order-2 lg:order-1">
               <div className="aspect-[3/4] bg-[#151419] rounded-[2.5rem] overflow-hidden relative shadow-2xl rotate-3 hover:rotate-0 transition-all duration-700 group">
-                 <Image src="/images/founder/savio.jpg" alt="S�vio Cipriano" fill sizes="(min-width: 1024px) 33vw, 100vw" className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
+                 <Image src="/images/founder/savio.jpg" alt="Savio Cipriano" fill sizes="(min-width: 1024px) 33vw, 100vw" className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
                  <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
                  <div className="absolute bottom-8 left-8 text-white">
                     <div className="text-2xl font-bold">Sávio Cipriano</div>

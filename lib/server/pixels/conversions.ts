@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
+import { decryptSecret } from "@/app/lib/server/secret-crypto";
 import {
   extractLeadAttributionSummary,
   isMeetingStatusCountable,
@@ -173,7 +174,7 @@ function resolveMetaChannels(channels: Array<Record<string, unknown>>) {
         clean(process.env.NEXT_PUBLIC_META_PIXEL_ID, 180);
 
       const accessToken =
-        clean(channel.accessToken, 4000) ||
+        clean(decryptSecret(channel.accessToken), 4000) ||
         clean(metadata.accessToken, 4000) ||
         clean(process.env.META_CONVERSIONS_ACCESS_TOKEN, 4000) ||
         clean(process.env.META_ADS_ACCESS_TOKEN, 4000);
@@ -212,8 +213,8 @@ function resolveGoogleChannels(channels: Array<Record<string, unknown>>, reason:
         clean(metadata.conversionActionId, 180) ||
         clean(process.env[`GOOGLE_ADS_${actionKeyMap[reason].replace(/[A-Z]/g, (item) => `_${item}`).toUpperCase()}`], 180);
       const customerId = clean(channel.externalAccountId, 180);
-      const accessToken = clean(channel.accessToken, 4000);
-      const refreshToken = clean(channel.refreshToken, 4000);
+      const accessToken = clean(decryptSecret(channel.accessToken), 4000);
+      const refreshToken = clean(decryptSecret(channel.refreshToken), 4000);
       const loginCustomerId = clean(metadata.loginCustomerId, 180) || clean(channel.pageId, 180);
 
       if (!conversionActionId || !customerId || (!accessToken && !refreshToken)) {

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { notFound } from "next/navigation";
 import ProgrammaticLanding from "@/components/programmatic/ProgrammaticLanding";
 import { getSegmentPageBySlug, segmentPages } from "@/data/segment-pages";
@@ -67,8 +66,8 @@ export default async function SegmentPage({ params }: PageProps) {
 
   return (
     <>
-      <Script id={`segment-service-jsonld-${item.slug}`} type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(serviceSchema)} />
-      <Script id={`segment-faq-jsonld-${item.slug}`} type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(faqSchema)} />
+      <script id={`segment-service-jsonld-${item.slug}`} type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(serviceSchema)} />
+      <script id={`segment-faq-jsonld-${item.slug}`} type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(faqSchema)} />
       <ProgrammaticLanding
         eyebrow="Segmentos"
         title={`IA e automacao para ${item.name}`}

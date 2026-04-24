@@ -30,6 +30,10 @@ type ContractDoc = {
   nextDueDate?: string;
   notes?: string;
   paymentLink?: string;
+  autoBillingEnabled?: boolean;
+  autoBillingAdvanceDays?: number;
+  autoBillingBillingType?: "PIX" | "BOLETO" | "CREDIT_CARD";
+  reminderWhatsAppPhones?: string;
 };
 
 type PortalUserDoc = {
@@ -128,6 +132,10 @@ export default function ClientePortalAdminPage() {
     nextDueDate: "",
     notes: "",
     paymentLink: "",
+    autoBillingEnabled: false,
+    autoBillingAdvanceDays: 5,
+    autoBillingBillingType: "PIX",
+    reminderWhatsAppPhones: "",
   });
   const selectedProfile = getBusinessProfile(selectedProfileId);
   const starterKit = useMemo(() => getBusinessProfileStarterKit(selectedProfileId), [selectedProfileId]);
@@ -256,6 +264,16 @@ export default function ClientePortalAdminPage() {
           nextDueDate: contractData.contract.nextDueDate || "",
           notes: contractData.contract.notes || "",
           paymentLink: contractData.contract.paymentLink || "",
+          autoBillingEnabled: contractData.contract.autoBillingEnabled === true,
+          autoBillingAdvanceDays: Number(contractData.contract.autoBillingAdvanceDays || 5),
+          autoBillingBillingType:
+            contractData.contract.autoBillingBillingType === "BOLETO" ||
+            contractData.contract.autoBillingBillingType === "CREDIT_CARD"
+              ? contractData.contract.autoBillingBillingType
+              : "PIX",
+          reminderWhatsAppPhones: Array.isArray(contractData.contract.reminderWhatsAppPhones)
+            ? contractData.contract.reminderWhatsAppPhones.join("\n")
+            : "",
         });
       }
     } catch (err) {
@@ -384,7 +402,7 @@ export default function ClientePortalAdminPage() {
           </Link>
           <h1 className="mt-2 text-2xl font-semibold">Portal do Cliente</h1>
           <p className="text-sm text-white/60">
-            Configuração de acesso e contrato do cliente: {clientName || "..." }
+            Configuracao de acesso e contrato do cliente: {clientName || "..." }
           </p>
         </div>
         {tenantSummary ? (
@@ -420,7 +438,7 @@ export default function ClientePortalAdminPage() {
                   Provisionamento operacional do portal
                 </h2>
                 <p className="mt-1 text-sm text-white/65">
-                  Conecte o cliente ao tenant certo e defina o modo operacional que vai orientar IA, CRM, pipeline e captação.
+                  Conecte o cliente ao tenant certo e defina o modo operacional que vai orientar IA, CRM, pipeline e captacao.
                 </p>
               </div>
               <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-white/55">
@@ -710,7 +728,7 @@ export default function ClientePortalAdminPage() {
           <form onSubmit={invitePortalUser} className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70 flex items-center gap-2">
               <UserPlus className="h-4 w-4 text-blue-300" />
-              Convidar usuário do cliente
+              Convidar usuario do cliente
             </h2>
 
             <p className="text-sm text-white/55">
@@ -728,7 +746,7 @@ export default function ClientePortalAdminPage() {
               value={inviteName}
               onChange={(e) => setInviteName(e.target.value)}
               className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
-              placeholder="Nome do usuário cliente"
+              placeholder="Nome do usuario cliente"
             />
             <input
               required
@@ -750,7 +768,7 @@ export default function ClientePortalAdminPage() {
 
             {inviteLink && (
               <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2">
-                <p className="text-xs text-emerald-100 mb-1">Link de ativação:</p>
+                <p className="text-xs text-emerald-100 mb-1">Link de ativacao:</p>
                 <textarea
                   readOnly
                   value={inviteLink}
@@ -762,7 +780,7 @@ export default function ClientePortalAdminPage() {
             <div className="space-y-2">
               <p className="text-xs uppercase tracking-wide text-white/45">Acessos ativos</p>
               {portalUsers.length === 0 ? (
-                <p className="text-sm text-white/55">Nenhum usuário convidado.</p>
+                <p className="text-sm text-white/55">Nenhum usuario convidado.</p>
               ) : (
                 portalUsers.map((portalUser) => (
                   <div key={portalUser.id} className="rounded-lg border border-white/10 bg-black/40 p-2">
@@ -773,7 +791,7 @@ export default function ClientePortalAdminPage() {
                       </span>
                     </div>
                     <p className="text-xs text-white/55">
-                      {portalUser.email || "-"} • {portalUser.status || "active"}
+                      {portalUser.email || "-"} - {portalUser.status || "active"}
                     </p>
                   </div>
                 ))
@@ -791,7 +809,7 @@ export default function ClientePortalAdminPage() {
               value={contract.title || ""}
               onChange={(e) => setContract((prev) => ({ ...prev, title: e.target.value }))}
               className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
-              placeholder="Título do contrato"
+              placeholder="Titulo do contrato"
             />
 
             <div className="grid grid-cols-2 gap-3">
@@ -850,11 +868,64 @@ export default function ClientePortalAdminPage() {
               placeholder="Link de pagamento"
             />
 
+            <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+              <input
+                type="checkbox"
+                checked={contract.autoBillingEnabled === true}
+                onChange={(e) => setContract((prev) => ({ ...prev, autoBillingEnabled: e.target.checked }))}
+                className="mt-1 h-4 w-4 rounded border-white/20 bg-black/40"
+              />
+              <div>
+                <p className="text-sm text-white/90">Ativar cobranca automatica recorrente</p>
+                <p className="mt-1 text-xs text-white/55">
+                  Gera cobranca automaticamente no Asaas com antecedencia configurada antes do vencimento.
+                </p>
+              </div>
+            </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="number"
+                min={1}
+                max={15}
+                value={contract.autoBillingAdvanceDays || 5}
+                onChange={(e) =>
+                  setContract((prev) => ({
+                    ...prev,
+                    autoBillingAdvanceDays: Number(e.target.value || 5),
+                  }))
+                }
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                placeholder="Antecedencia (dias)"
+              />
+              <select
+                value={contract.autoBillingBillingType || "PIX"}
+                onChange={(e) =>
+                  setContract((prev) => ({
+                    ...prev,
+                    autoBillingBillingType: e.target.value as ContractDoc["autoBillingBillingType"],
+                  }))
+                }
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              >
+                <option value="PIX">PIX</option>
+                <option value="BOLETO">Boleto</option>
+                <option value="CREDIT_CARD">Cartao</option>
+              </select>
+            </div>
+
+            <textarea
+              value={contract.reminderWhatsAppPhones || ""}
+              onChange={(e) => setContract((prev) => ({ ...prev, reminderWhatsAppPhones: e.target.value }))}
+              className="w-full h-20 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              placeholder="WhatsApps para aviso de cobranca (um por linha, ex: 5511999999999)"
+            />
+
             <textarea
               value={contract.notes || ""}
               onChange={(e) => setContract((prev) => ({ ...prev, notes: e.target.value }))}
               className="w-full h-24 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
-              placeholder="Observações do contrato"
+              placeholder="Observacoes do contrato"
             />
 
             <button

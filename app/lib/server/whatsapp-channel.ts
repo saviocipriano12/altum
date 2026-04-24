@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { decryptSecret } from "@/app/lib/server/secret-crypto";
 
 export const AGENCY_TENANT_ID = "ALTUM_AGENCY";
 const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
@@ -33,7 +34,7 @@ function normalizeChannelDoc(id: string, data: ChannelDoc): WhatsAppChannelConfi
   const type = String(data.type || "").trim().toLowerCase();
   const status = String(data.status || "active").trim().toLowerCase();
   const phoneNumberId = String(data.phoneNumberId || "").trim();
-  const accessToken = String(data.accessToken || "").trim();
+  const accessToken = decryptSecret(data.accessToken);
 
   if (!tenantId || type !== "whatsapp" || status !== "active") return null;
   if (!phoneNumberId || !accessToken) return null;
@@ -47,7 +48,7 @@ function normalizeChannelDoc(id: string, data: ChannelDoc): WhatsAppChannelConfi
     phoneNumberId,
     accessToken,
     verifyToken: String(data.verifyToken || "") || undefined,
-    appSecret: String(data.appSecret || "") || undefined,
+    appSecret: decryptSecret(data.appSecret) || undefined,
   };
 }
 
@@ -167,7 +168,7 @@ export function verifyMetaSignature(
   appSecret?: string
 ) {
   const secret = String(appSecret || "").trim();
-  if (!secret) return true;
+  if (!secret) return false;
   if (!signatureHeader || !signatureHeader.startsWith("sha256=")) return false;
 
   const signature = signatureHeader.slice(7);

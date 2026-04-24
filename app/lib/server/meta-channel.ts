@@ -1,4 +1,5 @@
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { decryptSecret } from "@/app/lib/server/secret-crypto";
 
 const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
 
@@ -74,7 +75,7 @@ function normalizeMetaChannelDoc(id: string, data: ChannelDoc): MetaChannelConfi
   const tenantId = normalizeString(data.tenantId, 180);
   const type = normalizeType(data.type);
   const status = normalizeString(data.status || "active", 40).toLowerCase();
-  const accessToken = normalizeString(data.accessToken);
+  const accessToken = normalizeString(decryptSecret(data.accessToken));
   const metadata =
     data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
       ? (data.metadata as Record<string, unknown>)
@@ -90,10 +91,11 @@ function normalizeMetaChannelDoc(id: string, data: ChannelDoc): MetaChannelConfi
     displayName: normalizeString(data.displayName, 160) || type,
     accessToken,
     appSecret:
-      normalizeString(data.appSecret, 400) ||
+      normalizeString(decryptSecret(data.appSecret), 400) ||
       normalizeString(metadata.appSecret, 400) ||
       undefined,
     verifyToken:
+      normalizeString((data as { verifyToken?: unknown }).verifyToken, 240) ||
       normalizeString(metadata.verifyToken, 240) ||
       normalizeString(metadata.webhookVerifyToken, 240) ||
       undefined,
@@ -107,7 +109,7 @@ function normalizeMetaWebhookChannelDoc(id: string, data: ChannelDoc): MetaWebho
   const tenantId = normalizeString(data.tenantId, 180);
   const type = normalizeWebhookType(data.type);
   const status = normalizeString(data.status || "active", 40).toLowerCase();
-  const accessToken = normalizeString(data.accessToken);
+  const accessToken = normalizeString(decryptSecret(data.accessToken));
   const metadata = normalizeMetadata(data.metadata);
 
   if (!tenantId || !type || status !== "active" || !accessToken) return null;
@@ -120,10 +122,11 @@ function normalizeMetaWebhookChannelDoc(id: string, data: ChannelDoc): MetaWebho
     displayName: normalizeString(data.displayName, 160) || type,
     accessToken,
     appSecret:
-      normalizeString(data.appSecret, 400) ||
+      normalizeString(decryptSecret(data.appSecret), 400) ||
       normalizeString(metadata.appSecret, 400) ||
       undefined,
     verifyToken:
+      normalizeString((data as { verifyToken?: unknown }).verifyToken, 240) ||
       normalizeString(metadata.verifyToken, 240) ||
       normalizeString(metadata.webhookVerifyToken, 240) ||
       undefined,
@@ -183,12 +186,23 @@ export async function getMetaChannelByVerifyToken(verifyToken: string) {
 
   const snap = await adminDb
     .collection("tenant_channels")
+    .where("verifyToken", "==", normalized)
+    .limit(10)
+    .get();
+
+  const fromRoot = snap.docs
+    .map((doc) => normalizeMetaWebhookChannelDoc(doc.id, doc.data() as ChannelDoc))
+    .find((item): item is MetaWebhookChannelConfig => Boolean(item));
+  if (fromRoot) return fromRoot;
+
+  const legacySnap = await adminDb
+    .collection("tenant_channels")
     .where("metadata.verifyToken", "==", normalized)
     .limit(10)
     .get();
 
   return (
-    snap.docs
+    legacySnap.docs
       .map((doc) => normalizeMetaWebhookChannelDoc(doc.id, doc.data() as ChannelDoc))
       .find((item): item is MetaWebhookChannelConfig => Boolean(item)) || null
   );

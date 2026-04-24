@@ -243,6 +243,16 @@ async function handle(req: Request) {
           });
         }
 
+        if (current.financeDueSoon > previous.financeDueSoon) {
+          notifications.push({
+            title: "Faturas proximas do vencimento",
+            body: `${current.financeDueSoon} cobranca(s) vencem nos proximos 5 dias.`,
+            tag: "finance_due_soon",
+            url: "/cliente/painel/comercial?financeStatus=pendente",
+            ttl: 120,
+          });
+        }
+
         if (current.aiRiskLevel === "high" && previous.aiRiskLevel !== "high") {
           notifications.push({
             title: "Risco alto no motor de IA",

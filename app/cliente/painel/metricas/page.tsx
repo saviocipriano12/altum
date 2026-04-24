@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
 import { getBusinessProfile, type BusinessProfileId } from "@/lib/business-profiles";
 import {
@@ -217,6 +218,7 @@ function queueHref(filter: "all" | "sla_breached" | "unassigned" | "assigned_wai
 
 export default function ClienteMetricasPage() {
   const { tenant, hasCapability } = useClienteTenant();
+  const { experienceMode, setExperienceMode } = useClienteShell();
   const router = useRouter();
   const searchParams = useSearchParams();
   const rangeFromQuery = Number(searchParams.get("range") || 30);
@@ -233,6 +235,7 @@ export default function ClienteMetricasPage() {
   const [readiness, setReadiness] = useState<ReadinessPayload>({});
   const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
   const canSyncCampaigns = hasCapability("manage_channels");
+  const allowAdvanced = experienceMode === "completo";
 
   const loadMetrics = useCallback(async (silent = false) => {
     if (!tenant?.tenantId) return;
@@ -387,7 +390,7 @@ export default function ClienteMetricasPage() {
     if (Number(metrics.avgFirstResponseMinutes || 0) > 0 && Number(metrics.avgFirstResponseMinutes || 0) <= 5) {
       items.push("Tempo de resposta dentro da meta operacional.");
     }
-    if (Number(ai.responded || 0) >= Number(ai.handoff || 0)) items.push("IA sustentando atendimento sem excesso de handoff.");
+    if (Number(ai.responded || 0) >= Number(ai.handoff || 0)) items.push("IA sustentando atendimento sem excesso de transferencia.");
     if (operationalStatus === "healthy") items.push("Saude operacional estavel para escalar operacao.");
     return items.slice(0, 3);
   }, [ai.handoff, ai.responded, metrics.avgFirstResponseMinutes, metrics.conversionRate, operationalStatus]);
@@ -456,7 +459,7 @@ export default function ClienteMetricasPage() {
       items.push({
         id: "ai_handoff",
         title: "IA escalando em excesso",
-        detail: `${ai.handoff || 0} handoffs contra ${ai.responded || 0} respostas automaticas.`,
+        detail: `${ai.handoff || 0} transferencias contra ${ai.responded || 0} respostas automaticas.`,
         href: "/cliente/painel/ia",
         tone: "warning",
         badge: "ia",
@@ -514,10 +517,10 @@ export default function ClienteMetricasPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="client-daily-page space-y-4">
       <SectionHeader
-        title="Cockpit executivo"
-        subtitle="Leitura de funil, IA, mídia e saude operacional para decidir em 30 segundos o que manter e o que agir hoje."
+        title="Metricas"
+        subtitle="Leitura clara de desempenho, atendimento e operacao para decidir rapido o que manter e o que ajustar."
         action={
           <div className="flex flex-wrap gap-2">
             {RANGE_OPTIONS.map((option) => (
@@ -542,7 +545,7 @@ export default function ClienteMetricasPage() {
                 className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
               >
                 {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                Sync campanha
+                Atualizar campanhas
               </button>
             ) : null}
             <button
@@ -554,14 +557,39 @@ export default function ClienteMetricasPage() {
               Exportar CSV
             </button>
             <StateBadge
-              label={`status ${operationalStatus}`}
+              label={`situacao ${operationalStatus}`}
               tone={operationalStatus === "down" ? "danger" : operationalStatus === "degraded" ? "warning" : "success"}
             />
+            <button
+              type="button"
+              onClick={() => setExperienceMode(allowAdvanced ? "essencial" : "completo")}
+              className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
+            >
+              {allowAdvanced ? "Modo essencial" : "Modo completo"}
+            </button>
           </div>
         }
       />
 
       {notice ? <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{notice}</div> : null}
+      {!allowAdvanced ? (
+        <PanelCard className="p-5">
+          <CardTitle
+            title="Modo essencial ativo"
+            subtitle="Exibindo apenas KPIs e alertas principais para leitura diaria mais rapida."
+          />
+          <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
+            Para abrir funil completo, canais, motor de IA e visoes por equipe, ative o modo completo.
+          </p>
+          <button
+            type="button"
+            onClick={() => setExperienceMode("completo")}
+            className="mt-4 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
+          >
+            Abrir modo completo
+          </button>
+        </PanelCard>
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PanelCard className="p-5">
@@ -610,7 +638,7 @@ export default function ClienteMetricasPage() {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Link href="/cliente/painel/crm" className="block">
           <MetricCard
-            label="Leads"
+            label="Contatos"
             value={String(metrics.totalLeads || 0)}
             icon={ChartNoAxesCombined}
             trend={deltaLabel(Number(comparisons.leadsDeltaPct || 0))}
@@ -645,7 +673,7 @@ export default function ClienteMetricasPage() {
             label="Receita"
             value={currency(Number(metrics.paidRevenue || 0))}
             icon={BarChart3}
-            trend={`midia ${currency(Number(traffic.spend || 0))}`}
+            trend={`investimento ${currency(Number(traffic.spend || 0))}`}
           />
         </Link>
         <Link href="/cliente/painel/logs" className="block">
@@ -653,7 +681,7 @@ export default function ClienteMetricasPage() {
             label="Operacao"
             value={operationalStatus}
             icon={ChartNoAxesCombined}
-            trend={operationalHealth.reason || "status operacional"}
+            trend={operationalHealth.reason || "situacao operacional"}
           />
         </Link>
       </section>
@@ -704,7 +732,7 @@ export default function ClienteMetricasPage() {
             />
             <InsightCard
               href="/cliente/painel/crm?stage=ganho"
-              title="Leads ganhos"
+              title="Contatos ganhos"
               value={String(metrics.wonLeads || 0)}
               detail="oportunidades convertidas"
             />
@@ -718,6 +746,8 @@ export default function ClienteMetricasPage() {
         </PanelCard>
       </section>
 
+      {allowAdvanced ? (
+        <>
       <section className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
         <PanelCard className="p-5">
           <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Leitura operacional do tenant para contextualizar os KPIs desta janela." />
@@ -733,11 +763,11 @@ export default function ClienteMetricasPage() {
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Metricas naturais</p>
-                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.metrics.join(" Â· ")}</p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.metrics.join(" | ")}</p>
               </div>
               <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Campos que mais pesam no CRM</p>
-                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.crm.leadFields.join(" Â· ")}</p>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.crm.leadFields.join(" | ")}</p>
               </div>
             </div>
           </div>
@@ -748,7 +778,7 @@ export default function ClienteMetricasPage() {
           <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
             <ul className="space-y-2 text-sm text-[var(--cliente-card-text-muted)]">
               <li>Olhe primeiro para: {businessProfile.metrics.slice(0, 2).join(" e ")}.</li>
-              <li>O atendimento deve conduzir o lead para: {businessProfile.pipeline.stages.slice(1, 3).join(" â†’ ")}.</li>
+              <li>O atendimento deve conduzir o contato para: {businessProfile.pipeline.stages.slice(1, 3).join(" -> ")}.</li>
               <li>O CRM precisa capturar contexto em: {businessProfile.crm.leadFields.slice(0, 3).join(", ")}.</li>
             </ul>
           </div>
@@ -791,7 +821,7 @@ export default function ClienteMetricasPage() {
               <MetricTile label="IA pausada" value={String(aiBreakdown.paused || 0)} tone="warning" />
             </Link>
             <Link href="/cliente/painel/inbox?ai=human_owned" className="block">
-              <MetricTile label="Takeover humano" value={String(aiBreakdown.humanOwned || 0)} tone="danger" />
+              <MetricTile label="Atendimento humano" value={String(aiBreakdown.humanOwned || 0)} tone="danger" />
             </Link>
           </div>
         </PanelCard>
@@ -808,36 +838,36 @@ export default function ClienteMetricasPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{owner.ownerName}</p>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{owner.ownerName}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                        {owner.activeChats} chats ativos â€¢ {owner.totalLeads} leads no periodo
+                        {owner.activeChats} chats ativos | {owner.totalLeads} contatos no periodo
                       </p>
                     </div>
                     <StateBadge
-                      label={`${owner.winRate.toFixed(1)}% win rate`}
+                      label={`${owner.winRate.toFixed(1)}% taxa de ganho`}
                       tone={owner.winRate >= 20 ? "success" : owner.winRate > 0 ? "info" : "neutral"}
                     />
                   </div>
                   <div className="mt-3 grid gap-2 text-sm text-[var(--cliente-card-text-muted)] sm:grid-cols-3">
                     <div>
-                      Ganhos: <span className="text-white">{owner.wonLeads}</span>
+                      Ganhos: <span className="text-[var(--cliente-card-text)]">{owner.wonLeads}</span>
                     </div>
                     <div>
-                      Pendentes: <span className="text-white">{owner.pendingChats}</span>
+                      Pendentes: <span className="text-[var(--cliente-card-text)]">{owner.pendingChats}</span>
                     </div>
                     <div>
-                      SLA vencido: <span className="text-white">{owner.overdueChats}</span>
+                      SLA vencido: <span className="text-[var(--cliente-card-text)]">{owner.overdueChats}</span>
                     </div>
                   </div>
                   <div className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
-                    Handoffs: <span className="text-white">{owner.handoffChats}</span>
+                    Transferencias: <span className="text-[var(--cliente-card-text)]">{owner.handoffChats}</span>
                   </div>
                 </Link>
               ))
             ) : (
               <EmptyState
                 title="Sem produtividade consolidada"
-                description="Assim que os operadores assumirem leads e conversas, a distribuicao passa a aparecer aqui."
+                description="Assim que os operadores assumirem contatos e conversas, a distribuicao passa a aparecer aqui."
               />
             )}
           </div>
@@ -858,13 +888,13 @@ export default function ClienteMetricasPage() {
                   className="flex items-center justify-between rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                 >
                   <div>
-                    <p className="text-sm font-medium text-white">{channelLabel(channel.channel)}</p>
+                    <p className="text-sm font-medium text-[var(--cliente-card-text)]">{channelLabel(channel.channel)}</p>
                     <p className="text-xs text-[var(--cliente-card-text-soft)]">
-                      {channel.activeChats} ativos â€¢ {channel.unassignedChats} sem dono â€¢ {channel.overdueChats} em SLA
+                      {channel.activeChats} ativos | {channel.unassignedChats} sem dono | {channel.overdueChats} em SLA
                     </p>
                   </div>
                   <StateBadge
-                    label={`${channel.handoffChats} handoff`}
+                    label={`${channel.handoffChats} transferencia`}
                     tone={channel.handoffChats > 0 ? "warning" : "neutral"}
                   />
                 </Link>
@@ -874,21 +904,21 @@ export default function ClienteMetricasPage() {
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Leitura de atendimento" subtitle="Peso atual do site chat e handoffs na operacao" />
+          <CardTitle title="Leitura de atendimento" subtitle="Peso atual do chat do site e transferencias na operacao" />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Link href="/cliente/painel/inbox?channel=site_chat" className="block">
-              <MetricTile label="Site chat" value={String(metrics.siteChatConversations || 0)} tone="info" />
+              <MetricTile label="Chat do site" value={String(metrics.siteChatConversations || 0)} tone="info" />
             </Link>
             <Link href="/cliente/painel/inbox" className="block">
-              <MetricTile label="Handoffs" value={String(metrics.handoffChats || 0)} tone="warning" />
+              <MetricTile label="Transferencias" value={String(metrics.handoffChats || 0)} tone="warning" />
             </Link>
           </div>
           <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
             <p className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Leitura rapida</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
               {Number(metrics.siteChatConversations || 0) > 0
-                ? "O site chat ja participa da operacao e deve entrar na rotina de monitoramento do inbox."
-                : "Ainda nao ha conversas de site chat ativas nesta base."}
+                ? "O chat do site ja participa da operacao e deve entrar na rotina de monitoramento do inbox."
+                : "Ainda nao ha conversas de chat do site ativas nesta base."}
             </p>
           </div>
         </PanelCard>
@@ -897,7 +927,7 @@ export default function ClienteMetricasPage() {
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <PanelCard className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <CardTitle title="Serie de trafego e leads" subtitle={formatDateRange(windows.current?.start, windows.current?.end)} />
+            <CardTitle title="Serie de trafego e contatos" subtitle={formatDateRange(windows.current?.start, windows.current?.end)} />
             <StateBadge label={`${rangeDays} dias`} tone="info" />
           </div>
 
@@ -910,12 +940,12 @@ export default function ClienteMetricasPage() {
                   <span className="text-xs text-[var(--cliente-card-text-soft)]">{point.label}</span>
                   <div className="h-2 rounded-full bg-[var(--cliente-border)]">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-[var(--cliente-accent)] to-[#f16001]"
+                      className="h-full rounded-full bg-gradient-to-r from-[var(--cliente-accent)] to-[var(--cliente-accent)]/70"
                       style={{ width: `${Math.max(4, (point.spend / maxSpend) * 100)}%` }}
                     />
                   </div>
                   <span className="text-xs text-[var(--cliente-card-text-muted)]">
-                    {currency(point.spend)} | {point.leads} leads
+                    {currency(point.spend)} | {point.leads} contatos
                   </span>
                 </div>
               ))
@@ -930,7 +960,7 @@ export default function ClienteMetricasPage() {
               <tbody>
                 <Row label="Impressoes" value={String(traffic.impressions || 0)} />
                 <Row label="Cliques" value={String(traffic.clicks || 0)} />
-                <Row label="Leads atribuidos" value={String(traffic.leads || 0)} />
+                <Row label="Contatos atribuidos" value={String(traffic.leads || 0)} />
                 <Row label="CTR" value={percent(Number(traffic.ctr || 0))} />
                 <Row label="CPC" value={currency(Number(traffic.cpc || 0))} />
                 <Row label="CPL" value={currency(Number(traffic.cpl || 0))} />
@@ -940,13 +970,13 @@ export default function ClienteMetricasPage() {
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             <Link href={`/cliente/painel/metricas?range=${rangeDays}`} className="block">
               <InsightCard
-                title="Spend delta"
+                title="Variacao de investimento"
                 value={deltaLabel(Number(comparisons.spendDeltaPct || 0))}
                 detail="versus janela anterior"
               />
             </Link>
             <Link href="/cliente/painel/crm" className="block">
-              <InsightCard title="Growth" value={percent(Number(metrics.growth || 0))} detail="captacao comparada" />
+              <InsightCard title="Crescimento" value={percent(Number(metrics.growth || 0))} detail="captacao comparada" />
             </Link>
           </div>
         </PanelCard>
@@ -966,12 +996,12 @@ export default function ClienteMetricasPage() {
                   className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                 >
                   <div className="flex items-center justify-between gap-3 text-sm">
-                    <span className="font-medium text-white">{stage.label}</span>
-                    <span className="text-[var(--cliente-card-text-muted)]">{stage.total} leads</span>
+                    <span className="font-medium text-[var(--cliente-card-text)]">{stage.label}</span>
+                    <span className="text-[var(--cliente-card-text-muted)]">{stage.total} contatos</span>
                   </div>
                   <div className="mt-2 h-2 rounded-full bg-[var(--cliente-border)]">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-[var(--cliente-accent)] to-[#f59d6d]"
+                      className="h-full rounded-full bg-gradient-to-r from-[var(--cliente-accent)] to-[var(--cliente-accent)]/70"
                       style={{ width: `${Math.max(4, (stage.total / maxFunnel) * 100)}%` }}
                     />
                   </div>
@@ -999,8 +1029,8 @@ export default function ClienteMetricasPage() {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-white">{channelLabel(channel.channel)}</p>
-                      <p className="text-xs text-[var(--cliente-card-text-soft)]">{channel.total} leads na janela atual</p>
+                      <p className="text-sm font-medium text-[var(--cliente-card-text)]">{channelLabel(channel.channel)}</p>
+                      <p className="text-xs text-[var(--cliente-card-text-soft)]">{channel.total} contatos na janela atual</p>
                     </div>
                     <StateBadge
                       label={`${channel.won} ganhos`}
@@ -1020,7 +1050,7 @@ export default function ClienteMetricasPage() {
 
       <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PanelCard className="p-5">
-          <CardTitle title="Motor de IA" subtitle="Resposta automatica, handoff e latencia do agente" />
+          <CardTitle title="Motor de IA" subtitle="Resposta automatica, transferencia e latencia do agente" />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Link href="/cliente/painel/ia" className="block">
               <MetricTile label="Respondeu" value={String(ai.responded || 0)} tone="info" />
@@ -1029,7 +1059,7 @@ export default function ClienteMetricasPage() {
               <MetricTile label="Pediu contexto" value={String(ai.askMore || 0)} tone="warning" />
             </Link>
             <Link href="/cliente/painel/inbox" className="block">
-              <MetricTile label="Handoff" value={String(ai.handoff || 0)} tone="danger" />
+              <MetricTile label="Transferencia" value={String(ai.handoff || 0)} tone="danger" />
             </Link>
             <Link href="/cliente/painel/ia" className="block">
               <MetricTile label="Ignorou" value={String(ai.skipped || 0)} tone="neutral" />
@@ -1042,7 +1072,7 @@ export default function ClienteMetricasPage() {
                 <Row label="Confianca media" value={percent(Number((ai.avgConfidence || 0) * 100))} />
                 <Row label="Latencia media" value={latencyLabel(Number(ai.avgLatencyMs || 0))} />
                 <Row label="Interacoes analisadas" value={String(totalAiInteractions)} />
-                <Row label="Conversas com handoff" value={String(metrics.handoffChats || 0)} />
+                <Row label="Conversas com transferencia" value={String(metrics.handoffChats || 0)} />
               </tbody>
             </table>
           </div>
@@ -1066,12 +1096,14 @@ export default function ClienteMetricasPage() {
               <li>
                 {Number(ai.handoff || 0) > Number(ai.responded || 0)
                   ? "IA esta transferindo mais do que deveria; revisar guardrails e base de conhecimento."
-                  : "IA sustentando boa parte do atendimento sem excesso de handoff."}
+                  : "IA sustentando boa parte do atendimento sem excesso de transferencia."}
               </li>
             </ul>
           </div>
         </PanelCard>
       </section>
+        </>
+      ) : null}
     </div>
   );
 }

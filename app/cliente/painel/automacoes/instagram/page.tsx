@@ -183,8 +183,10 @@ export default function InstagramAutomationOpsPage() {
         setLoading(true);
         setError(null);
         await loadPanel();
-      } catch {
-        if (mounted) setError("Falha ao carregar painel do Instagram.");
+      } catch (loadError) {
+        if (mounted) {
+          setError(loadError instanceof Error ? loadError.message : "Falha ao carregar painel do Instagram.");
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -237,8 +239,8 @@ export default function InstagramAutomationOpsPage() {
       }
       setConfig(payload.config);
       setNotice("Configuracoes do Instagram atualizadas.");
-    } catch {
-      setError("Falha ao salvar configuracoes do Instagram.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Falha ao salvar configuracoes do Instagram.");
     } finally {
       setSaving(false);
     }
@@ -262,8 +264,8 @@ export default function InstagramAutomationOpsPage() {
       }
       await loadPanel();
       setNotice(`Evento reprocessado (${payload.result?.status || "ok"}).`);
-    } catch {
-      setError("Falha ao reprocessar evento do Instagram.");
+    } catch (retryError) {
+      setError(retryError instanceof Error ? retryError.message : "Falha ao reprocessar evento do Instagram.");
     } finally {
       setRetryingLogId(null);
     }
@@ -340,6 +342,13 @@ export default function InstagramAutomationOpsPage() {
 
           <div className="mt-4 space-y-3">
             <QuickToggle
+              title="Automacao social geral"
+              description="Liga/desliga toda a camada de automacoes sociais do tenant."
+              enabled={config.enabled}
+              onToggle={() => setConfig((current) => (current ? { ...current, enabled: !current.enabled } : current))}
+              disabled={!canManage}
+            />
+            <QuickToggle
               title="Responder DM"
               description="Resposta automatica em mensagens de Instagram DM."
               enabled={config.dmAutoReply}
@@ -367,6 +376,12 @@ export default function InstagramAutomationOpsPage() {
               disabled={!canManage}
             />
           </div>
+
+          {instagramChannel?.status !== "active" ? (
+            <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+              Canal Instagram ainda nao esta ativo. Conecte em Configuracao completa para liberar os fluxos de DM e comentario.
+            </div>
+          ) : null}
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button

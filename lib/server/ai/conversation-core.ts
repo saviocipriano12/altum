@@ -64,6 +64,23 @@ function looksLikeTemplate(value: string) {
   );
 }
 
+function hasProgressionSignal(value: string) {
+  const normalized = sanitizeText(value, 500)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (!normalized) return false;
+
+  if (normalized.includes("?")) {
+    return /\b(empresa|negocio|objetivo|meta|momento|foco|destravar|atendimento|venda|lead|orcamento|prazo|urgencia)\b/.test(
+      normalized
+    );
+  }
+
+  return /\b(posso te ajudar|te ajudo|te explico|proximo passo|melhor caminho|faz sentido)\b/.test(normalized);
+}
+
 function shouldTrustLlm(input: ResolveConversationalChoiceInput) {
   const usableResponse = sanitizeText(input.llmResponseText, 1800);
   if (!usableResponse) return false;
@@ -72,7 +89,12 @@ function shouldTrustLlm(input: ResolveConversationalChoiceInput) {
   const turn = classifyTurn(input.inboundText);
   const turnGoal = sanitizeText(input.llmTurnGoal || "", 140).toLowerCase();
 
-  if (turn.isGreeting || turn.isDirectQuestion || turn.isRelational) return true;
+  if (turn.isDirectQuestion) return true;
+  if (turn.isGreeting || turn.isRelational) {
+    if (hasProgressionSignal(usableResponse)) return true;
+    if (!looksLikeTemplate(usableResponse) && usableResponse.length >= 22) return true;
+    return /(qualify|discovery|aprofundar|investigar|entender|proximo passo)/i.test(turnGoal);
+  }
   if (!looksLikeTemplate(usableResponse) && usableResponse.length >= 12) return true;
 
   return /(acolher|boas vindas|esclarecer|aprofundar|investigar|entender|qualify|discovery|responder|conversar)/i.test(

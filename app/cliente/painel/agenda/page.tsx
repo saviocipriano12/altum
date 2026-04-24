@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import {
   CardTitle,
   EmptyState,
@@ -68,6 +69,7 @@ function toStatusTone(status?: string) {
 
 export default function ClienteAgendaPage() {
   const { tenant, hasCapability } = useClienteTenant();
+  const { experienceMode } = useClienteShell();
   const router = useRouter();
   const searchParams = useSearchParams();
   const statusFromQuery = searchParams.get("status") || "all";
@@ -240,7 +242,7 @@ export default function ClienteAgendaPage() {
   if (loading) {
     return (
       <div className="flex min-h-[45vh] items-center justify-center">
-        <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+        <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
@@ -264,6 +266,7 @@ export default function ClienteAgendaPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+        {experienceMode === "completo" ? (
         <PanelCard className="p-5">
           <form onSubmit={createAppointment} className="space-y-3">
             <CardTitle title="Novo agendamento" subtitle="Reuniao, call de fechamento ou atendimento operacional." />
@@ -326,12 +329,20 @@ export default function ClienteAgendaPage() {
             <input value={form.location} onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))} disabled={!canOperate} placeholder="Local ou sala" className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
             <input value={form.meetingUrl} onChange={(event) => setForm((current) => ({ ...current, meetingUrl: event.target.value }))} disabled={!canOperate} placeholder="https://meet.google.com/..." className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
             <textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} disabled={!canOperate} placeholder="Observacoes operacionais do encontro" rows={4} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
-            <button type="submit" disabled={!canOperate || saving || !form.title.trim() || !form.startAt} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60">
+            <button type="submit" disabled={!canOperate || saving || !form.title.trim() || !form.startAt} className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Salvar agendamento
             </button>
           </form>
         </PanelCard>
+        ) : (
+          <PanelCard className="p-5">
+            <CardTitle title="Criacao rapida" subtitle="Modo essencial ativo: formulario completo oculto para reduzir ruido." />
+            <p className="mt-3 text-sm text-[var(--cliente-card-text-soft)]">
+              Troque para modo completo no topo para criar agendamento com todos os campos.
+            </p>
+          </PanelCard>
+        )}
 
         <PanelCard className="p-5">
           <CardTitle title="Agenda operacional" subtitle="Acompanhamento por status e ownership." />
@@ -401,7 +412,7 @@ export default function ClienteAgendaPage() {
                           onClick={() => void updateStatus(item.id, status)}
                           className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${
                             item.status === status
-                              ? "border-blue-500/20 bg-blue-600/10 text-blue-100"
+                              ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)]/10 text-[var(--cliente-accent)]"
                               : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
                           }`}
                         >
@@ -419,3 +430,4 @@ export default function ClienteAgendaPage() {
     </div>
   );
 }
+

@@ -148,7 +148,7 @@ function formatChannel(value?: string) {
   if (channel === "instagram") return "Instagram";
   if (channel === "messenger") return "Messenger";
   if (channel === "facebook") return "Facebook";
-  if (channel === "site_chat") return "Site chat";
+  if (channel === "site_chat") return "Chat do site";
   if (channel === "whatsapp") return "WhatsApp";
   return channel || "Canal";
 }
@@ -270,7 +270,7 @@ export default function ClienteHandoffsPage() {
       setUsers(usersPayload.items || []);
       setBusinessProfileId((settingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Falha ao carregar central de handoffs.");
+      setError(loadError instanceof Error ? loadError.message : "Falha ao carregar central de transferencias.");
     } finally {
       setLoading(false);
     }
@@ -296,12 +296,12 @@ export default function ClienteHandoffsPage() {
       });
       const payload = (await res.json()) as { error?: string };
       if (!res.ok) {
-        setError(payload.error || "Falha ao atualizar handoff.");
+        setError(payload.error || "Falha ao atualizar transferencia.");
         return;
       }
       await loadData();
     } catch {
-      setError("Falha ao atualizar handoff.");
+      setError("Falha ao atualizar transferencia.");
     } finally {
       setActingChatId(null);
     }
@@ -361,7 +361,7 @@ export default function ClienteHandoffsPage() {
           humanOwnerName: ownerMeta?.name || "Sem responsavel",
           humanOwnerTeam: ownerMeta?.team || "",
           humanOwnerAvailability: ownerMeta?.availability || "offline",
-          handoffReason: String(latestLog?.reason || (humanOwnerUserId ? "assumido manualmente" : "handoff sem motivo")),
+          handoffReason: String(latestLog?.reason || (humanOwnerUserId ? "assumido manualmente" : "transferencia sem motivo")),
           handoffTime: toMillis(latestLog?.createdAt || chat.aiState?.updatedAt || chat.lastMessageTime),
           lastMessageTime: toMillis(chat.lastMessageTime),
           confidence: typeof latestLog?.confidence === "number" ? latestLog.confidence : null,
@@ -458,7 +458,7 @@ export default function ClienteHandoffsPage() {
     return [
       {
         id: "unassigned",
-        title: "Handoffs sem responsavel",
+        title: "Transferencias sem responsavel",
         detail: "Escaladas que ainda nao foram assumidas por um humano.",
         badge: String(stats.noOwner),
         tone: stats.noOwner ? "danger" : "success",
@@ -474,7 +474,7 @@ export default function ClienteHandoffsPage() {
       },
       {
         id: "confidence",
-        title: "Baixa confianca antes do handoff",
+        title: "Baixa confianca antes da transferencia",
         detail: "Escaladas em que a IA demonstrou mais incerteza antes de chamar humano.",
         badge: String(stats.lowConfidence),
         tone: stats.lowConfidence ? "info" : "success",
@@ -483,7 +483,7 @@ export default function ClienteHandoffsPage() {
       {
         id: "today",
         title: "Volume das ultimas 24h",
-        detail: "Handoffs recentes para acompanhar pico operacional e calibragem da IA.",
+        detail: "Transferencias recentes para acompanhar pico operacional e calibragem da IA.",
         badge: String(stats.last24h),
         tone: stats.last24h > 6 ? "warning" : "neutral",
         action: () => updateQuery("chatId", null),
@@ -491,7 +491,7 @@ export default function ClienteHandoffsPage() {
       {
         id: "paused_ai",
         title: "IA pausada nas escaladas",
-        detail: "Conversas em handoff onde o autopilot segue pausado e exigem revisao do retorno.",
+        detail: "Conversas em transferencia onde o piloto automatico segue pausado e exigem revisao do retorno.",
         badge: String(stats.pausedAi),
         tone: stats.pausedAi ? "info" : "success",
         action: () => updateQuery("risk", stats.pausedAi ? "paused_ai" : null),
@@ -520,7 +520,7 @@ export default function ClienteHandoffsPage() {
   if (error) {
     return (
       <EmptyState
-        title="Falha ao carregar central de handoffs"
+        title="Falha ao carregar central de transferencias"
         description={error}
         action={
           <button
@@ -540,8 +540,8 @@ export default function ClienteHandoffsPage() {
       <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
-            title="Central de handoffs"
-            subtitle="Controle de escaladas da IA, donos humanos e gargalos operacionais no inbox."
+            title="Central de transferencias"
+            subtitle="Controle de escaladas da IA, responsaveis humanos e gargalos operacionais nas conversas."
             action={<StateBadge label={`${stats.total} ativos`} tone={stats.total ? "warning" : "success"} />}
           />
 
@@ -568,8 +568,8 @@ export default function ClienteHandoffsPage() {
         <PanelCard className="p-5 md:p-6">
           <CardTitle title="Mesa de decisao" subtitle="Leitura rapida para operacao e calibragem do agente." />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <MetricCard label="Handoffs ativos" value={String(stats.total)} icon={GitBranchPlus} trend="conversas com escalada" />
-            <MetricCard label="Sem dono" value={String(stats.noOwner)} icon={UserRound} trend="precisam de takeover humano" />
+            <MetricCard label="Transferencias ativas" value={String(stats.total)} icon={GitBranchPlus} trend="conversas com escalada" />
+            <MetricCard label="Sem dono" value={String(stats.noOwner)} icon={UserRound} trend="precisam de atendimento humano" />
             <MetricCard label="Baixa confianca" value={String(stats.lowConfidence)} icon={Brain} trend="pedem revisao do prompt/KB" />
             <MetricCard label="SLA estourado" value={String(stats.slaBreached)} icon={ShieldAlert} trend="exigem priorizacao" />
           </div>
@@ -579,8 +579,8 @@ export default function ClienteHandoffsPage() {
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
-            title="Modo operacional do handoff"
-            subtitle="O takeover humano fica mais consistente quando seguimos o contexto do negocio e do CRM."
+            title="Modo operacional da transferencia"
+            subtitle="O atendimento humano fica mais consistente quando seguimos o contexto do negocio e do CRM."
             action={<StateBadge label={businessProfile.label} tone="info" />}
           />
 
@@ -622,7 +622,7 @@ export default function ClienteHandoffsPage() {
         </PanelCard>
 
         <PanelCard className="p-5 md:p-6">
-          <SectionHeader title="Playbook de takeover" subtitle="Cenas e ofertas que ajudam o humano a retomar a conversa sem parecer ruptura." />
+          <SectionHeader title="Roteiro de atendimento humano" subtitle="Cenas e ofertas que ajudam o humano a retomar a conversa sem parecer quebra de contexto." />
           <div className="space-y-3">
             {playbookPreset.scripts.slice(0, 2).map((script) => (
               <div key={`${script.situation}-${script.goal}`} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
@@ -635,7 +635,7 @@ export default function ClienteHandoffsPage() {
             ))}
 
             <div className="rounded-2xl border border-emerald-300/14 bg-emerald-500/10 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100/70">Oferta para preparar no takeover</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100/70">Oferta para preparar no atendimento humano</p>
               <p className="mt-2 text-sm text-emerald-50">
                 {playbookPreset.offers[0]
                   ? `${playbookPreset.offers[0].title} | ${playbookPreset.offers[0].targetProfile}`
@@ -654,8 +654,8 @@ export default function ClienteHandoffsPage() {
       <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
-            title="Fila de escaladas"
-            subtitle="Converse com o inbox no contexto certo e distribua a carga com clareza."
+            title="Fila de transferencias"
+            subtitle="Converse no contexto certo e distribua a carga com clareza."
           />
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -721,7 +721,7 @@ export default function ClienteHandoffsPage() {
                         <StateBadge label={row.priority} tone={row.priority === "alta" ? "warning" : "neutral"} />
                       </div>
                       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                        {row.contactPhone || "Sem telefone"} {row.leadId ? `| lead ${row.leadId.slice(0, 8)}` : ""} | ultimo handoff {formatRelative(row.handoffTime)}
+                        {row.contactPhone || "Sem telefone"} {row.leadId ? `| contato ${row.leadId.slice(0, 8)}` : ""} | ultima transferencia {formatRelative(row.handoffTime)}
                       </p>
                     </div>
 
@@ -731,7 +731,7 @@ export default function ClienteHandoffsPage() {
                         className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                       >
                         <Inbox className="h-4 w-4" />
-                        Abrir inbox
+                        Abrir conversas
                       </Link>
                       <button
                         type="button"
@@ -745,22 +745,22 @@ export default function ClienteHandoffsPage() {
 
                   <div className="mt-3 grid gap-3 lg:grid-cols-[1.4fr_1fr]">
                     <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Motivo do handoff</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Motivo da transferencia</p>
                       <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{row.handoffReason}</p>
                       <p className="mt-2 line-clamp-2 text-xs text-[var(--cliente-card-text-soft)]">{row.preview || "Sem preview recente da conversa."}</p>
                     </div>
 
                     <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Owner humano</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Responsavel humano</p>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <div>
                           <p className="text-sm font-medium text-white">{row.humanOwnerName}</p>
                           <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                             {row.humanOwnerTeam
-                              ? `${row.humanOwnerTeam}${row.assignedUserId && row.assignedUserId !== row.humanOwnerUserId ? " • fila atribuida para outro owner" : ""}`
+                              ? `${row.humanOwnerTeam}${row.assignedUserId && row.assignedUserId !== row.humanOwnerUserId ? " • fila atribuida para outro responsavel" : ""}`
                               : row.assignedUserId && row.assignedUserId !== row.humanOwnerUserId
-                                ? "fila atribuida para outro owner"
-                                : "owner principal da escalada"}
+                                ? "fila atribuida para outro responsavel"
+                                : "responsavel principal da escalada"}
                           </p>
                         </div>
                         <StateBadge label={row.humanOwnerAvailability} tone={ownerTone(row.humanOwnerAvailability)} />
@@ -807,7 +807,7 @@ export default function ClienteHandoffsPage() {
               ))
             ) : (
               <EmptyState
-                title="Nenhum handoff encontrado"
+                title="Nenhuma transferencia encontrada"
                 description="Ajuste os filtros ou espere novas escaladas da IA para acompanhar a operacao humana."
               />
             )}
@@ -828,7 +828,7 @@ export default function ClienteHandoffsPage() {
                   </div>
                 ))
               ) : (
-                <EmptyState title="Sem historico de handoff" description="Quando a IA escalar conversas, os motivos aparecem aqui." />
+                <EmptyState title="Sem historico de transferencias" description="Quando a IA escalar conversas, os motivos aparecem aqui." />
               )}
             </div>
           </PanelCard>
@@ -859,7 +859,7 @@ export default function ClienteHandoffsPage() {
                   </button>
                 ))
               ) : (
-                <EmptyState title="Sem owners mapeados" description="Atribua handoffs no inbox para acompanhar carga por responsavel." />
+                <EmptyState title="Sem responsaveis mapeados" description="Atribua transferencias nas conversas para acompanhar carga por responsavel." />
               )}
             </div>
           </PanelCard>
@@ -867,14 +867,14 @@ export default function ClienteHandoffsPage() {
           <PanelCard className="p-5">
             <SectionHeader title="Risco operacional" subtitle="O que esta travando o fluxo humano agora." />
             <div className="space-y-3">
-              <RiskRow label="Owners offline" value={String(stats.offlineOwners)} tone={stats.offlineOwners ? "warning" : "success"} onClick={() => updateQuery("assignment", stats.offlineOwners ? "offline_owner" : null)} />
+              <RiskRow label="Responsaveis offline" value={String(stats.offlineOwners)} tone={stats.offlineOwners ? "warning" : "success"} onClick={() => updateQuery("assignment", stats.offlineOwners ? "offline_owner" : null)} />
               <RiskRow label="IA pausada" value={String(stats.pausedAi)} tone={stats.pausedAi ? "info" : "success"} onClick={() => updateQuery("risk", stats.pausedAi ? "paused_ai" : null)} />
               <RiskRow label="Backlog nao lido" value={String(stats.unreadBacklog)} tone={stats.unreadBacklog ? "warning" : "success"} onClick={() => updateQuery("risk", stats.unreadBacklog ? "unread" : null)} />
             </div>
           </PanelCard>
 
           <PanelCard className="p-5">
-            <SectionHeader title="Playbook rapido" subtitle="Atalhos de execucao para o time comercial." />
+            <SectionHeader title="Guia rapido" subtitle="Atalhos de execucao para o time comercial." />
             <div className="space-y-3">
               <QuickLink
                 href="/cliente/painel/inbox?queue=sla_breached"
@@ -891,13 +891,13 @@ export default function ClienteHandoffsPage() {
               <QuickLink
                 href="/cliente/painel/configuracoes/usuarios"
                 icon={UserRound}
-                title="Ajustar owners"
+                title="Ajustar responsaveis"
                 description="Refinar capacidade, disponibilidade e distribuicao do time."
               />
               <QuickLink
                 href="/cliente/painel/logs?ai=handoff"
                 icon={Brain}
-                title="Auditar handoffs"
+                title="Auditar transferencias"
                 description="Cruzar cada escalada com os logs da IA e corrigir gargalos de decisao."
               />
             </div>

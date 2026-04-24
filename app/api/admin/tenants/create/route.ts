@@ -26,7 +26,7 @@ function clean(value: unknown, max = 200) {
 export async function POST(req: Request) {
   try {
     const actor = await requireRequestUser(req, {
-      roles: ["agency_owner", "agency_admin", "agency_agent"],
+      roles: ["agency_owner", "agency_admin"],
     });
 
     const body = (await req.json()) as Body;

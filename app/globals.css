@@ -6,61 +6,63 @@
 }
 
 [data-client-theme="dark"] {
-  --cliente-bg: #050505;
-  --cliente-bg-elevated: #0b0b0b;
-  --cliente-panel: rgba(14, 14, 14, 0.86);
-  --cliente-panel-solid: #111111;
-  --cliente-panel-soft: rgba(22, 22, 22, 0.88);
-  --cliente-card: rgba(16, 16, 16, 0.92);
-  --cliente-card-text: #f9f9f9;
-  --cliente-card-text-muted: rgba(249, 249, 249, 0.82);
-  --cliente-card-text-soft: rgba(167, 167, 167, 0.78);
-  --cliente-sidebar: rgba(8, 8, 8, 0.95);
-  --cliente-sidebar-card: rgba(20, 20, 20, 0.92);
-  --cliente-topbar: rgba(9, 9, 9, 0.84);
-  --cliente-border: rgba(249, 249, 249, 0.1);
-  --cliente-border-strong: rgba(232, 80, 2, 0.34);
-  --cliente-text: #f9f9f9;
-  --cliente-text-muted: rgba(249, 249, 249, 0.82);
-  --cliente-text-soft: rgba(167, 167, 167, 0.78);
+  --cliente-bg: #090b10;
+  --cliente-bg-elevated: #0c1017;
+  --cliente-panel: rgba(12, 16, 23, 0.88);
+  --cliente-panel-solid: #0c1017;
+  --cliente-panel-soft: rgba(15, 22, 32, 0.9);
+  --cliente-card: rgba(12, 16, 23, 0.9);
+  --cliente-card-text: #f8fafc;
+  --cliente-card-text-muted: rgba(241, 245, 249, 0.86);
+  --cliente-card-text-soft: rgba(148, 163, 184, 0.88);
+  --cliente-sidebar: rgba(12, 16, 23, 0.92);
+  --cliente-sidebar-card: rgba(15, 22, 32, 0.92);
+  --cliente-topbar: rgba(9, 11, 16, 0.84);
+  --cliente-border: rgba(148, 163, 184, 0.22);
+  --cliente-border-strong: rgba(251, 146, 60, 0.42);
+  --cliente-text: #f8fafc;
+  --cliente-text-muted: rgba(226, 232, 240, 0.9);
+  --cliente-text-soft: rgba(148, 163, 184, 0.9);
   --cliente-accent: #e85002;
   --cliente-accent-strong: #c10801;
   --cliente-accent-soft: rgba(232, 80, 2, 0.14);
   --cliente-accent-glow: rgba(232, 80, 2, 0.2);
-  --cliente-accent-secondary-glow: rgba(217, 12, 58, 0.12);
-  --cliente-input-bg: rgba(0, 0, 0, 0.28);
-  --cliente-surface-muted: rgba(255, 255, 255, 0.03);
-  --cliente-shadow-soft: 0 20px 50px rgba(0, 0, 0, 0.26);
-  --cliente-shadow-hard: 0 28px 80px rgba(0, 0, 0, 0.44);
+  --cliente-accent-secondary-glow: rgba(193, 8, 1, 0.05);
+  --cliente-input-bg: rgba(15, 23, 42, 0.52);
+  --cliente-surface-muted: rgba(15, 23, 42, 0.44);
+  --cliente-stripe: rgba(148, 163, 184, 0.08);
+  --cliente-shadow-soft: 0 16px 38px rgba(2, 6, 23, 0.42);
+  --cliente-shadow-hard: 0 34px 84px rgba(2, 6, 23, 0.62);
 }
 
 [data-client-theme="light"] {
-  --cliente-bg: #f9f9f9;
-  --cliente-bg-elevated: #ffffff;
-  --cliente-panel: rgba(255, 255, 255, 0.9);
+  --cliente-bg: #f1f3f7;
+  --cliente-bg-elevated: #f7f8fa;
+  --cliente-panel: rgba(247, 248, 250, 0.88);
   --cliente-panel-solid: #ffffff;
-  --cliente-panel-soft: rgba(255, 255, 255, 0.92);
-  --cliente-card: rgba(255, 255, 255, 0.94);
+  --cliente-panel-soft: rgba(255, 255, 255, 0.94);
+  --cliente-card: rgba(255, 255, 255, 0.96);
   --cliente-card-text: #000000;
-  --cliente-card-text-muted: rgba(0, 0, 0, 0.84);
-  --cliente-card-text-soft: rgba(100, 100, 100, 0.9);
-  --cliente-sidebar: rgba(249, 249, 249, 0.97);
-  --cliente-sidebar-card: rgba(255, 255, 255, 0.94);
-  --cliente-topbar: rgba(249, 249, 249, 0.9);
-  --cliente-border: rgba(100, 100, 100, 0.18);
-  --cliente-border-strong: rgba(232, 80, 2, 0.32);
+  --cliente-card-text-muted: rgba(15, 23, 42, 0.86);
+  --cliente-card-text-soft: rgba(71, 85, 105, 0.88);
+  --cliente-sidebar: rgba(247, 248, 250, 0.9);
+  --cliente-sidebar-card: rgba(255, 255, 255, 0.92);
+  --cliente-topbar: rgba(247, 248, 250, 0.84);
+  --cliente-border: rgba(148, 163, 184, 0.34);
+  --cliente-border-strong: rgba(232, 80, 2, 0.34);
   --cliente-text: #000000;
-  --cliente-text-muted: rgba(0, 0, 0, 0.8);
-  --cliente-text-soft: rgba(100, 100, 100, 0.88);
+  --cliente-text-muted: rgba(30, 41, 59, 0.9);
+  --cliente-text-soft: rgba(71, 85, 105, 0.9);
   --cliente-accent: #e85002;
   --cliente-accent-strong: #c10801;
   --cliente-accent-soft: rgba(232, 80, 2, 0.1);
-  --cliente-accent-glow: rgba(232, 80, 2, 0.12);
-  --cliente-accent-secondary-glow: rgba(217, 12, 58, 0.08);
+  --cliente-accent-glow: rgba(232, 80, 2, 0.14);
+  --cliente-accent-secondary-glow: rgba(193, 8, 1, 0.02);
   --cliente-input-bg: rgba(255, 255, 255, 0.94);
-  --cliente-surface-muted: rgba(0, 0, 0, 0.025);
-  --cliente-shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.06);
-  --cliente-shadow-hard: 0 24px 54px rgba(0, 0, 0, 0.1);
+  --cliente-surface-muted: rgba(241, 245, 249, 0.84);
+  --cliente-stripe: rgba(148, 163, 184, 0.14);
+  --cliente-shadow-soft: 0 16px 34px rgba(15, 23, 42, 0.08);
+  --cliente-shadow-hard: 0 24px 58px rgba(15, 23, 42, 0.16);
 }
 
 @theme inline {
@@ -112,7 +114,7 @@ body {
 }
 
 .client-glass {
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(14px);
 }
 
 .client-surface-muted {
@@ -129,6 +131,73 @@ body {
 .client-input::placeholder {
   color: var(--cliente-card-text-soft);
 }
+
+[data-client-area="daily"] {
+  --cliente-accent-glow: rgba(232, 80, 2, 0.1);
+  --cliente-accent-secondary-glow: rgba(193, 8, 1, 0.015);
+  --cliente-shadow-soft: 0 10px 24px rgba(2, 6, 23, 0.2);
+  --cliente-shadow-hard: 0 22px 48px rgba(2, 6, 23, 0.28);
+}
+
+[data-client-area="daily"] .client-shell-ambient {
+  opacity: 0.6;
+}
+
+[data-client-area="daily"] .client-glass {
+  backdrop-filter: blur(9px);
+}
+
+[data-client-area="daily"] .client-panel-card {
+  border-radius: 14px;
+}
+
+[data-client-area="daily"] .client-section-header {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--cliente-border);
+}
+
+[data-client-area="daily"] .client-section-title {
+  font-size: 1.1rem;
+  letter-spacing: 0;
+}
+
+[data-client-area="daily"] .client-card-title-text {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+[data-client-area="daily"] .client-state-badge {
+  border-radius: 10px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+[data-client-area="daily"] .client-metric-label {
+  letter-spacing: 0.08em;
+}
+
+[data-client-area="daily"] .client-metric-value {
+  font-size: 1.45rem;
+}
+
+[data-client-area="daily"] .client-metric-icon {
+  border-radius: 10px;
+}
+
+[data-client-area="daily"] .client-daily-page {
+  gap: 1rem;
+}
+
+[data-client-area] :is(a, button, input, select, textarea, [role="button"]):focus-visible {
+  outline: 2px solid var(--cliente-accent);
+  outline-offset: 2px;
+}
+
+[data-client-area] :is(input, select, textarea):focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cliente-accent) 22%, transparent);
+}
+
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }

@@ -94,7 +94,12 @@ function parseNotifyPhones(value: unknown) {
   return Array.from(new Set(parseLines(value, 8).map((item) => clean(item, 40)).filter(Boolean))).slice(0, 8);
 }
 
-function normalizeAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>) {
+type NormalizeMode = "resolved" | "stored";
+
+function normalizeAiConfig(
+  settings: Awaited<ReturnType<typeof getTenantSettings>>,
+  mode: NormalizeMode = "resolved"
+) {
   const ai =
     settings && typeof settings.ai === "object" && settings.ai
       ? (settings.ai as Record<string, unknown>)
@@ -102,18 +107,37 @@ function normalizeAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings
   const businessProfile = getBusinessProfile(normalizeBusinessProfileId(settings?.businessProfileId));
   const operatingProfile = normalizeTenantAiOperatingProfile(ai.operatingProfile);
   const runtimePolicy = buildAiRuntimePolicy(operatingProfile);
+  const storedToneOfVoice = clean(ai.toneOfVoice, 120);
+  const storedBusinessSummary = clean(ai.businessSummary, 320);
+  const storedObjective = clean(ai.objective, 200);
+  const storedGuardrails = parseGuardrails(ai.guardrails);
+  const storedMandatoryQuestions = parseLines(ai.mandatoryQuestions, 12);
+  const storedEscalationTopics = parseLines(ai.escalationTopics, 12);
+  const resolveWithDefaults = mode === "resolved";
 
   return {
     enabled: ai.enabled !== false,
-    toneOfVoice: clean(ai.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
-    businessSummary: clean(ai.businessSummary, 320) || clean(settings?.name, 180) || businessProfile.description,
-    objective: clean(ai.objective, 200) || businessProfile.ai.objective,
+    toneOfVoice: resolveWithDefaults
+      ? storedToneOfVoice || businessProfile.ai.toneOfVoice
+      : storedToneOfVoice,
+    businessSummary: resolveWithDefaults
+      ? storedBusinessSummary || clean(settings?.name, 180) || businessProfile.description
+      : storedBusinessSummary,
+    objective: resolveWithDefaults
+      ? storedObjective || businessProfile.ai.objective
+      : storedObjective,
     responsiblePhone: clean(ai.responsiblePhone, 40),
     handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
     handoffNotifyPhones: parseNotifyPhones(ai.handoffNotifyPhones),
-    guardrails: Array.from(new Set([...businessProfile.ai.guardrails, ...parseGuardrails(ai.guardrails)])).slice(0, 20),
-    mandatoryQuestions: Array.from(new Set([...businessProfile.ai.mandatoryQuestions, ...parseLines(ai.mandatoryQuestions, 12)])).slice(0, 12),
-    escalationTopics: Array.from(new Set([...businessProfile.ai.escalationTopics, ...parseLines(ai.escalationTopics, 12)])).slice(0, 12),
+    guardrails: resolveWithDefaults
+      ? (storedGuardrails.length ? storedGuardrails : businessProfile.ai.guardrails)
+      : storedGuardrails,
+    mandatoryQuestions: resolveWithDefaults
+      ? (storedMandatoryQuestions.length ? storedMandatoryQuestions : businessProfile.ai.mandatoryQuestions)
+      : storedMandatoryQuestions,
+    escalationTopics: resolveWithDefaults
+      ? (storedEscalationTopics.length ? storedEscalationTopics : businessProfile.ai.escalationTopics)
+      : storedEscalationTopics,
     tier: operatingProfile.tier,
     autonomyMode: operatingProfile.autonomyMode,
     reasoningLevel: operatingProfile.reasoningLevel,
@@ -170,7 +194,7 @@ export async function POST(
     assertTenantCapability(membership, "manage_ai");
 
     const body = (await req.json()) as Body;
-    const current = normalizeAiConfig(await getTenantSettings(tenantId));
+    const current = normalizeAiConfig(await getTenantSettings(tenantId), "stored");
 
     const next = {
       enabled: typeof body.enabled === "boolean" ? body.enabled : current.enabled,

@@ -402,10 +402,12 @@ export async function POST(
       clean(metadata.verifyToken, 400) || clean(metadata.webhookVerifyToken, 400);
     const appSecret = clean(metadata.appSecret, 400);
 
+    const provider = type === "whatsapp" ? "meta_whatsapp" : clean(body.provider, 80) || type;
+
     const payload = {
       tenantId,
       type,
-      provider: clean(body.provider, 80) || type,
+      provider,
       displayName: clean(body.displayName, 120) || type,
       status: cleanStatus(body.status),
       connectionStatus: cleanConnectionStatus(body.connectionStatus),

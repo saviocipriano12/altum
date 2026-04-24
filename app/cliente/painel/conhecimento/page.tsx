@@ -611,7 +611,7 @@ export default function ClienteConhecimentoPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-xl border border-blue-500/25 bg-blue-600/10 px-4 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-blue-600/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)]/10 px-4 py-2.5 text-sm font-medium text-[var(--cliente-accent)] transition hover:bg-[var(--cliente-accent)]/15 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     {editingDocId ? "Atualizar" : "Salvar documento"}
@@ -750,3 +750,4 @@ function QuickLink({ href, title, description }: { href: string; title: string; 
     </Link>
   );
 }
+

@@ -1,9 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Loader2, Megaphone, Play, Plus, Save, Send, Trash2 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import {
   CardTitle,
   EmptyState,
@@ -57,6 +59,27 @@ type RunItem = {
   };
 };
 
+type AudiencePreview = {
+  summary: {
+    totalLeads: number;
+    matchedFilters: number;
+    selectedByLimit: number;
+    maxRecipients: number;
+    estimatedSend: number;
+    blockedByConsent: number;
+    missingPhone: number;
+    truncatedByLimit: boolean;
+  };
+  sample: Array<{
+    leadId: string;
+    nome: string;
+    telefone: string;
+    stage: string;
+    origem: string;
+    blockedByConsent: boolean;
+  }>;
+};
+
 type TenantSettingsResponse = {
   settings?: {
     businessProfileId?: BusinessProfileId | string;
@@ -69,7 +92,7 @@ function emptyCampaign(): CampaignEditorState {
     name: "",
     status: "draft",
     messageTemplate:
-      "Oi {nome}, aqui Ã© da ALTUM. Vi que vocÃª demonstrou interesse e queria entender se ainda faz sentido conversar por aqui.",
+      "Oi {nome}, aqui e da ALTUM. Vi que voce demonstrou interesse e queria entender se ainda faz sentido conversar por aqui.",
     maxRecipients: 50,
     filters: {
       stageIds: [] as string[],
@@ -96,15 +119,21 @@ function parseList(value: string) {
 
 export default function ClienteCampanhasPage() {
   const { tenant, hasCapability } = useClienteTenant();
+  const { experienceMode, setExperienceMode } = useClienteShell();
+  const searchParams = useSearchParams();
+  const campaignFromQuery = searchParams.get("campaignId");
   const canManage = hasCapability("manage_automations");
+  const allowAdvanced = experienceMode === "completo";
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dispatching, setDispatching] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [audiencePreview, setAudiencePreview] = useState<AudiencePreview | null>(null);
   const [items, setItems] = useState<Campaign[]>([]);
-  const [runs, setRuns] = useState<RunItem[]>([]);
+  const [runs, setRodadas] = useState<RunItem[]>([]);
   const [users, setUsers] = useState<Array<{ userId?: string; name?: string }>>([]);
   const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -136,22 +165,26 @@ export default function ClienteCampanhasPage() {
       if (!campaignsRes.ok) {
         setError(campaignsPayload.error || "Falha ao carregar campanhas outbound.");
         setItems([]);
-        setRuns([]);
+        setRodadas([]);
         return;
       }
 
       const nextItems = campaignsPayload.items || [];
       setItems(nextItems);
-      setRuns(campaignsPayload.runs || []);
+      setRodadas(campaignsPayload.runs || []);
       setUsers((usersPayload.items || []).filter((item) => item.userId));
       setBusinessProfileId((settingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
-      setSelectedId((current) => (current && nextItems.some((item) => item.id === current) ? current : nextItems[0]?.id || null));
+      setSelectedId((current) => {
+        if (current && nextItems.some((item) => item.id === current)) return current;
+        if (campaignFromQuery && nextItems.some((item) => item.id === campaignFromQuery)) return campaignFromQuery;
+        return nextItems[0]?.id || null;
+      });
     } catch {
       setError("Falha ao carregar campanhas outbound.");
     } finally {
       setLoading(false);
     }
-  }, [tenant?.tenantId]);
+  }, [tenant?.tenantId, campaignFromQuery]);
 
   useEffect(() => {
     void loadData();
@@ -160,6 +193,7 @@ export default function ClienteCampanhasPage() {
   const selected = useMemo(() => items.find((item) => item.id === selectedId) || null, [items, selectedId]);
 
   useEffect(() => {
+    setAudiencePreview(null);
     if (!selected) {
       setState(emptyCampaign());
       return;
@@ -219,7 +253,7 @@ export default function ClienteCampanhasPage() {
         tags: current.filters.tags.length > 0 ? current.filters.tags : businessProfile.crm.suggestedTags.slice(0, 2).map((item) => item.toLowerCase()),
       },
     }));
-    setNotice(`Preset outbound do modo ${businessProfile.label} aplicado.${offer ? ` Oferta foco: ${offer.title}.` : ""}`);
+    setNotice(`Modelo base do modo ${businessProfile.label} aplicado.${offer ? ` Oferta foco: ${offer.title}.` : ""}`);
     setError(null);
   }
 
@@ -258,6 +292,47 @@ export default function ClienteCampanhasPage() {
       setError("Falha ao salvar campanha.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handlePreview() {
+    if (!tenant?.tenantId || !state.id || !canManage) return;
+    setPreviewing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns/${state.id}/preview`, {
+        method: "POST",
+      });
+      const payload = (await res.json()) as {
+        error?: string;
+        summary?: AudiencePreview["summary"];
+        sample?: AudiencePreview["sample"];
+      };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao simular audiencia.");
+        return;
+      }
+      setAudiencePreview({
+        summary: payload.summary || {
+          totalLeads: 0,
+          matchedFilters: 0,
+          selectedByLimit: 0,
+          maxRecipients: 0,
+          estimatedSend: 0,
+          blockedByConsent: 0,
+          missingPhone: 0,
+          truncatedByLimit: false,
+        },
+        sample: payload.sample || [],
+      });
+      setNotice(
+        `Simulacao pronta: ${payload.summary?.estimatedSend || 0} envios estimados, ${payload.summary?.blockedByConsent || 0} bloqueados por consentimento e ${payload.summary?.missingPhone || 0} sem telefone.`
+      );
+    } catch {
+      setError("Falha ao simular audiencia da campanha.");
+    } finally {
+      setPreviewing(false);
     }
   }
 
@@ -325,36 +400,36 @@ export default function ClienteCampanhasPage() {
   return (
     <div className="space-y-4">
       <SectionHeader
-        title="Campanhas outbound"
-        subtitle="Disparos segmentados por tenant para reativacao, follow-up comercial e outreach no WhatsApp."
-        action={<StateBadge label="WhatsApp outbound" tone="info" />}
+        title="Campanhas de envio"
+        subtitle="Disparos segmentados para reativacao, retorno comercial e contato ativo no WhatsApp."
+        action={<StateBadge label="Envio via WhatsApp" tone="info" />}
       />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Campanhas" value={String(summary.total)} icon={Megaphone} trend="playbooks salvos" />
+        <MetricCard label="Campanhas" value={String(summary.total)} icon={Megaphone} trend="modelos salvos" />
         <MetricCard label="Ativas" value={String(summary.active)} icon={Play} trend="prontas para disparo" />
         <MetricCard label="Envios" value={String(summary.sent)} icon={Send} trend="ultimo acumulado registrado" />
-        <MetricCard label="Runs" value={String(summary.runs)} icon={Save} trend="historico operacional" />
+        <MetricCard label="Rodadas" value={String(summary.runs)} icon={Save} trend="historico operacional" />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PanelCard className="p-5">
           <div className="flex items-start justify-between gap-3">
-            <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Contexto vertical usado para segmentaÃ§Ã£o e copy de outbound." />
+            <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Contexto vertical usado para segmentacao e texto das campanhas." />
             <StateBadge label={businessProfile.id} tone="info" />
           </div>
           <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
             <p className="text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.description}</p>
             <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Movimento comercial: {businessProfile.commercialMotion}</p>
-            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">Stages naturais: {pipelineStages.map((item) => item.id).join(", ")}</p>
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">Etapas naturais: {pipelineStages.map((item) => item.id).join(", ")}</p>
           </div>
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Preset outbound do modo" subtitle="Base rÃ¡pida de copy e segmentaÃ§Ã£o para campanhas mais coerentes." />
+          <CardTitle title="Modelo base do modo" subtitle="Base rapida de texto e segmentacao para campanhas mais coerentes." />
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-              <p className="text-sm font-semibold text-white">CenÃ¡rio sugerido</p>
+              <p className="text-sm font-semibold text-white">Cenario sugerido</p>
               <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{playbookPreset.scripts[0]?.situation || "Sem cena sugerida."}</p>
               <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{playbookPreset.scripts[0]?.goal || ""}</p>
             </div>
@@ -396,7 +471,7 @@ export default function ClienteCampanhasPage() {
           </div>
           <div className="mt-4 space-y-2">
             {items.length === 0 ? (
-              <EmptyState title="Nenhuma campanha criada" description="Monte playbooks de outreach, reativacao e follow-up comercial." />
+              <EmptyState title="Nenhuma campanha criada" description="Monte campanhas de contato ativo, reativacao e retorno comercial." />
             ) : (
               items.map((item) => (
                 <button
@@ -426,12 +501,12 @@ export default function ClienteCampanhasPage() {
         <div className="space-y-4">
           <PanelCard className="p-5">
             <div className="flex items-start justify-between gap-3">
-              <CardTitle title={state.id ? "Editor de campanha" : "Nova campanha"} subtitle="Segmentacao, mensagem e disparo por tenant." />
+              <CardTitle title={state.id ? "Editor de campanha" : "Nova campanha"} subtitle="Segmentacao, mensagem e disparo por conta." />
               <StateBadge label={canManage ? "editavel" : "somente leitura"} tone={canManage ? "info" : "neutral"} />
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <Field label="Nome" value={state.name} onChange={(value) => setState((current) => ({ ...current, name: value }))} placeholder="Reativacao leads quentes" disabled={!canManage} />
+              <Field label="Nome" value={state.name} onChange={(value) => setState((current) => ({ ...current, name: value }))} placeholder="Reativacao de contatos quentes" disabled={!canManage} />
               <Field
                 label="Maximo de destinatarios"
                 value={String(state.maxRecipients)}
@@ -443,75 +518,79 @@ export default function ClienteCampanhasPage() {
                 label="Status"
                 value={state.status}
                 options={[
-                  { value: "draft", label: "draft" },
-                  { value: "active", label: "active" },
-                  { value: "paused", label: "paused" },
+                  { value: "draft", label: "rascunho" },
+                  { value: "active", label: "ativo" },
+                  { value: "paused", label: "pausado" },
                 ]}
                 onChange={(value) => setState((current) => ({ ...current, status: value as Campaign["status"] }))}
                 disabled={!canManage}
               />
-              <SelectField
-                label="Heat"
-                value={state.filters.heat[0] || ""}
-                options={[
-                  { value: "", label: "qualquer temperatura" },
-                  { value: "cold", label: "cold" },
-                  { value: "warm", label: "warm" },
-                  { value: "hot", label: "hot" },
-                ]}
-                onChange={(value) =>
-                  setState((current) => ({
-                    ...current,
-                    filters: { ...current.filters, heat: value ? [value] : [] },
-                  }))
-                }
-                disabled={!canManage}
-              />
-              <Field
-                label="Stages alvo"
-                value={listValue(state.filters.stageIds)}
-                onChange={(value) => setState((current) => ({ ...current, filters: { ...current.filters, stageIds: parseList(value) } }))}
-                placeholder={pipelineStages.map((item) => item.id).slice(0, 3).join(", ")}
-                disabled={!canManage}
-              />
-              <Field
-                label="Origens"
-                value={listValue(state.filters.sources)}
-                onChange={(value) => setState((current) => ({ ...current, filters: { ...current.filters, sources: parseList(value) } }))}
-                placeholder="meta_ads, google_ads, lp_clinica"
-                disabled={!canManage}
-              />
-              <Field
-                label="Tags"
-                value={listValue(state.filters.tags)}
-                onChange={(value) => setState((current) => ({ ...current, filters: { ...current.filters, tags: parseList(value) } }))}
-                placeholder="reativacao, vip, proposta"
-                disabled={!canManage}
-              />
-              <label className="block space-y-1">
-                <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Owners alvo</span>
-                <select
-                  multiple
-                  value={state.filters.ownerIds}
-                  onChange={(event) =>
-                    setState((current) => ({
-                      ...current,
-                      filters: {
-                        ...current.filters,
-                        ownerIds: Array.from(event.target.selectedOptions).map((option) => option.value),
-                      },
-                    }))
-                  }
-                  disabled={!canManage}
-                  className="min-h-[112px] w-full rounded-xl border client-input px-3 py-2.5 text-sm"
-                >
-                  {users.map((user) => (
-                    <option key={user.userId} value={user.userId}>
-                      {user.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {allowAdvanced ? (
+                <>
+                  <SelectField
+                    label="Heat"
+                    value={state.filters.heat[0] || ""}
+                    options={[
+                      { value: "", label: "qualquer temperatura" },
+                      { value: "frio", label: "frio" },
+                      { value: "morno", label: "morno" },
+                      { value: "quente", label: "quente" },
+                    ]}
+                    onChange={(value) =>
+                      setState((current) => ({
+                        ...current,
+                        filters: { ...current.filters, heat: value ? [value] : [] },
+                      }))
+                    }
+                    disabled={!canManage}
+                  />
+                  <Field
+                    label="Etapas alvo"
+                    value={listValue(state.filters.stageIds)}
+                    onChange={(value) => setState((current) => ({ ...current, filters: { ...current.filters, stageIds: parseList(value) } }))}
+                    placeholder={pipelineStages.map((item) => item.id).slice(0, 3).join(", ")}
+                    disabled={!canManage}
+                  />
+                  <Field
+                    label="Origens"
+                    value={listValue(state.filters.sources)}
+                    onChange={(value) => setState((current) => ({ ...current, filters: { ...current.filters, sources: parseList(value) } }))}
+                    placeholder="meta_ads, google_ads, lp_clinica"
+                    disabled={!canManage}
+                  />
+                  <Field
+                    label="Tags"
+                    value={listValue(state.filters.tags)}
+                    onChange={(value) => setState((current) => ({ ...current, filters: { ...current.filters, tags: parseList(value) } }))}
+                    placeholder="reativacao, vip, proposta"
+                    disabled={!canManage}
+                  />
+                  <label className="block space-y-1">
+                    <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Responsaveis alvo</span>
+                    <select
+                      multiple
+                      value={state.filters.ownerIds}
+                      onChange={(event) =>
+                        setState((current) => ({
+                          ...current,
+                          filters: {
+                            ...current.filters,
+                            ownerIds: Array.from(event.target.selectedOptions).map((option) => option.value),
+                          },
+                        }))
+                      }
+                      disabled={!canManage}
+                      className="min-h-[112px] w-full rounded-xl border client-input px-3 py-2.5 text-sm"
+                    >
+                      {users.map((user) => (
+                        <option key={user.userId} value={user.userId}>
+                          {user.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
             </div>
 
             <label className="mt-4 block space-y-1">
@@ -525,6 +604,18 @@ export default function ClienteCampanhasPage() {
               />
               <p className="text-xs text-[var(--cliente-card-text-soft)]">Variaveis: {"{nome}"}, {"{empresa}"}, {"{telefone}"}, {"{email}"}, {"{stage}"}, {"{origem}"}.</p>
             </label>
+            {!allowAdvanced ? (
+              <div className="mt-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text-soft)]">
+                Filtros detalhados e simulacao de audiencia ficam no modo completo.
+                <button
+                  type="button"
+                  onClick={() => setExperienceMode("completo")}
+                  className="ml-2 inline-flex items-center gap-1 rounded-lg border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-2 py-1 font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
+                >
+                  Abrir completo
+                </button>
+              </div>
+            ) : null}
 
             <div className="mt-4 flex flex-wrap gap-2">
               {canManage ? (
@@ -538,6 +629,17 @@ export default function ClienteCampanhasPage() {
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     Salvar campanha
                   </button>
+                  {allowAdvanced && state.id ? (
+                    <button
+                      type="button"
+                      onClick={() => void handlePreview()}
+                      disabled={previewing}
+                      className="inline-flex items-center gap-2 rounded-xl border border-sky-300/25 bg-sky-500/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/16 disabled:opacity-55"
+                    >
+                      {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                      Simular audiencia
+                    </button>
+                  ) : null}
                   {state.id ? (
                     <button
                       type="button"
@@ -563,12 +665,50 @@ export default function ClienteCampanhasPage() {
                 </>
               ) : null}
             </div>
+
+            {allowAdvanced && audiencePreview ? (
+              <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                <CardTitle title="Simulacao de audiencia" subtitle="Estimativa antes de executar o disparo real." />
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Contatos na conta</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{audiencePreview.summary.totalLeads}</p>
+                  </div>
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Correspondencia de filtros</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{audiencePreview.summary.matchedFilters}</p>
+                  </div>
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Envios estimados</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{audiencePreview.summary.estimatedSend}</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">
+                  Selecionados pelo limite: {audiencePreview.summary.selectedByLimit} de no maximo {audiencePreview.summary.maxRecipients}. Bloqueados por consentimento: {audiencePreview.summary.blockedByConsent}. Sem telefone: {audiencePreview.summary.missingPhone}.
+                </p>
+                {audiencePreview.summary.truncatedByLimit ? (
+                  <p className="mt-1 text-xs text-amber-100">
+                    A audiencia foi limitada pelo maximo de destinatarios da campanha.
+                  </p>
+                ) : null}
+                {audiencePreview.sample.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {audiencePreview.sample.slice(0, 6).map((lead) => (
+                      <div key={lead.leadId} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text)]">
+                        {lead.nome} · {lead.telefone || "sem telefone"} · {lead.stage || "sem etapa"} · {lead.origem || "sem origem"}
+                        {lead.blockedByConsent ? " · sem permissao no WhatsApp" : ""}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </PanelCard>
 
           <PanelCard className="p-5">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle title="Historico de runs" subtitle="Ultimos disparos e volume processado pelo tenant" />
-              <StateBadge label={`${runs.length} run(s)`} tone="info" />
+              <CardTitle title="Historico de rodadas" subtitle="Ultimos disparos e volume processado na conta" />
+              <StateBadge label={`${runs.length} rodada(s)`} tone="info" />
             </div>
             <div className="mt-4 space-y-2">
               {runs.length === 0 ? (
@@ -584,7 +724,7 @@ export default function ClienteCampanhasPage() {
                       <StateBadge label={`${run.summary.sent} enviados`} tone="success" />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--cliente-card-text-muted)]">
-                      <span>Match: {run.summary.totalMatched}</span>
+                      <span>Correspondencia: {run.summary.totalMatched}</span>
                       <span>Pulados: {run.summary.skipped}</span>
                       <span>Falhas: {run.summary.failed}</span>
                     </div>

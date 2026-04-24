@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { encryptSecret } from "@/app/lib/server/secret-crypto";
 
 type Body = {
   displayName?: string;
@@ -27,7 +28,7 @@ export async function POST(
 ) {
   try {
     const actor = await requireRequestUser(req, {
-      roles: ["agency_owner", "agency_admin", "agency_agent"],
+      roles: ["agency_owner", "agency_admin"],
     });
 
     const { tenantId: rawTenantId } = await context.params;
@@ -68,9 +69,9 @@ export async function POST(
           displayName,
           phoneNumber: clean(body.phoneNumber, 60),
           phoneNumberId,
-          accessToken,
+          accessToken: encryptSecret(accessToken),
           verifyToken,
-          appSecret,
+          appSecret: encryptSecret(appSecret),
           businessAccountId: clean(body.businessAccountId, 120),
           status: body.status === "inactive" ? "inactive" : "active",
           metadata: body.metadata || {},

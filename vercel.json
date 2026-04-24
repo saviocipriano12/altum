@@ -5,12 +5,20 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/internal/jobs/automations/process?limit=60",
+      "schedule": "10 3 * * *"
+    },
+    {
       "path": "/api/internal/jobs/campaigns/sync?days=1&limit=20",
       "schedule": "15 3 * * *"
     },
     {
       "path": "/api/internal/jobs/client-portal/push-critical?maxTenants=80",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/internal/jobs/finance/contract-billing?maxContracts=160",
+      "schedule": "45 3 * * *"
     }
   ]
 }

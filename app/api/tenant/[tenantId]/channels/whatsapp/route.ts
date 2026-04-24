@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
 
 type Body = {
   displayName?: string;
@@ -17,12 +18,6 @@ type Body = {
 function clean(value: unknown, max = 200) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
-}
-
-function maskSecret(value: string) {
-  if (!value) return "";
-  if (value.length <= 8) return "*".repeat(value.length);
-  return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
 export async function GET(
@@ -71,12 +66,12 @@ export async function GET(
         phoneNumber: String(channelData.phoneNumber || ""),
         phoneNumberId: String(channelData.phoneNumberId || ""),
         status: String(channelData.status || "active"),
-        hasAccessToken: Boolean(String(channelData.accessToken || "")),
+        hasAccessToken: hasStoredSecret(channelData.accessToken),
         hasVerifyToken: Boolean(String(channelData.verifyToken || "")),
-        hasAppSecret: Boolean(String(channelData.appSecret || "")),
-        accessTokenMasked: maskSecret(String(channelData.accessToken || "")),
-        verifyTokenMasked: maskSecret(String(channelData.verifyToken || "")),
-        appSecretMasked: maskSecret(String(channelData.appSecret || "")),
+        hasAppSecret: hasStoredSecret(channelData.appSecret),
+        accessTokenMasked: maskStoredSecret(channelData.accessToken),
+        verifyTokenMasked: maskStoredSecret(String(channelData.verifyToken || "")),
+        appSecretMasked: maskStoredSecret(channelData.appSecret),
       },
     });
   } catch (error) {
@@ -138,9 +133,9 @@ export async function POST(
           displayName: clean(body.displayName, 120) || "WhatsApp",
           phoneNumber: clean(body.phoneNumber, 60),
           phoneNumberId,
-          accessToken,
+          accessToken: encryptSecret(accessToken),
           verifyToken,
-          appSecret,
+          appSecret: encryptSecret(appSecret),
           status: body.status === "inactive" ? "inactive" : "active",
           updatedAt: FieldValue.serverTimestamp(),
           updatedBy: user.uid,

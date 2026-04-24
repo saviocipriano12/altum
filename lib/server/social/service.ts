@@ -47,6 +47,38 @@ function cleanText(value: unknown, max = 400) {
   return value.trim().slice(0, max);
 }
 
+function toEpochMs(value: unknown) {
+  if (!value) return 0;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  if (typeof value === "object" && value) {
+    if ("toDate" in value && typeof (value as { toDate?: () => Date }).toDate === "function") {
+      return (value as { toDate: () => Date }).toDate().getTime();
+    }
+    if ("_seconds" in value && typeof (value as { _seconds?: unknown })._seconds === "number") {
+      return (value as { _seconds: number })._seconds * 1000;
+    }
+    if ("seconds" in value && typeof (value as { seconds?: unknown }).seconds === "number") {
+      return (value as { seconds: number }).seconds * 1000;
+    }
+  }
+  return 0;
+}
+
+function isFirestoreMissingIndexError(error: unknown) {
+  const code = String((error as { code?: unknown } | null)?.code || "").toLowerCase();
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return (
+    code === "9" ||
+    code === "failed-precondition" ||
+    code.includes("failed-precondition") ||
+    message.includes("requires an index")
+  );
+}
+
 function normalizeText(value: string) {
   return value
     .toLowerCase()
@@ -185,12 +217,35 @@ export async function saveTenantSocialAutomationConfig(input: {
 }
 
 export async function listRecentSocialAutomationLogs(tenantId: string, limit = 20) {
-  const snap = await adminDb
-    .collection("social_automation_logs")
-    .where("tenantId", "==", tenantId)
-    .orderBy("updatedAt", "desc")
-    .limit(Math.max(1, Math.min(50, limit)))
-    .get();
+  const safeLimit = Math.max(1, Math.min(50, limit));
+  let snap;
+
+  try {
+    snap = await adminDb
+      .collection("social_automation_logs")
+      .where("tenantId", "==", tenantId)
+      .orderBy("updatedAt", "desc")
+      .limit(safeLimit)
+      .get();
+  } catch (error) {
+    const fallbackLimit = Math.max(20, Math.min(150, safeLimit * 4));
+    if (isFirestoreMissingIndexError(error)) {
+      console.warn("[social] fallback sem orderBy em listRecentSocialAutomationLogs (indice ausente)", {
+        tenantId,
+      });
+    } else {
+      console.warn("[social] fallback sem orderBy em listRecentSocialAutomationLogs", {
+        tenantId,
+        reason: error instanceof Error ? error.message : "unknown_error",
+      });
+    }
+
+    snap = await adminDb
+      .collection("social_automation_logs")
+      .where("tenantId", "==", tenantId)
+      .limit(fallbackLimit)
+      .get();
+  }
 
   return snap.docs
     .map<{
@@ -202,17 +257,8 @@ export async function listRecentSocialAutomationLogs(tenantId: string, limit = 2
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }))
-    .sort((a, b) => {
-      const aTime =
-        a.updatedAt && typeof a.updatedAt === "object" && "toDate" in a.updatedAt
-          ? (a.updatedAt as { toDate: () => Date }).toDate().getTime()
-          : 0;
-      const bTime =
-        b.updatedAt && typeof b.updatedAt === "object" && "toDate" in b.updatedAt
-          ? (b.updatedAt as { toDate: () => Date }).toDate().getTime()
-          : 0;
-      return bTime - aTime;
-    });
+    .sort((a, b) => toEpochMs(b.updatedAt) - toEpochMs(a.updatedAt))
+    .slice(0, safeLimit);
 }
 
 export async function getTenantSocialAutomationSummary(tenantId: string) {

@@ -24,16 +24,19 @@ export default function ClienteLoginPage() {
       : "/api/client-portal/me";
   }, [tenantId]);
 
-  const buildPostLoginHref = useCallback((resolvedTenantId?: string) => {
-    if (next.startsWith("/cliente/")) {
-      return next;
-    }
-    const finalTenantId = String(resolvedTenantId || tenantId || "").trim();
-    if (finalTenantId) {
-      return `/cliente/painel?tenantId=${encodeURIComponent(finalTenantId)}`;
-    }
-    return "/cliente/painel";
-  }, [next, tenantId]);
+  const buildPostLoginHref = useCallback(
+    (resolvedTenantId?: string) => {
+      if (next.startsWith("/cliente/")) {
+        return next;
+      }
+      const finalTenantId = String(resolvedTenantId || tenantId || "").trim();
+      if (finalTenantId) {
+        return `/cliente/painel?tenantId=${encodeURIComponent(finalTenantId)}`;
+      }
+      return "/cliente/painel";
+    },
+    [next, tenantId]
+  );
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -86,68 +89,83 @@ export default function ClienteLoginPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-[#0B0B0B] flex items-center justify-center text-white">
-        <Loader2 className="h-7 w-7 animate-spin text-blue-400" />
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#050505] text-white">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-16 top-[-120px] h-[280px] w-[280px] rounded-full bg-[#EB5002]/25 blur-3xl" />
+          <div className="absolute right-[-80px] top-[120px] h-[240px] w-[240px] rounded-full bg-[#C10801]/20 blur-3xl" />
+          <div className="absolute inset-0 opacity-25 [background:repeating-linear-gradient(90deg,rgba(235,80,2,0.16)_0px,rgba(235,80,2,0.16)_1px,transparent_1px,transparent_10px)]" />
+        </div>
+        <Loader2 className="relative h-7 w-7 animate-spin text-[#EB5002]" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0B0B] flex items-center justify-center p-4 text-white">
-      <div className="w-full max-w-[460px] rounded-3xl border border-white/10 bg-[#111] p-8">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#050505] p-4 text-white">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-20 top-[-140px] h-[340px] w-[340px] rounded-full bg-[#EB5002]/25 blur-3xl" />
+        <div className="absolute right-[-120px] top-[130px] h-[300px] w-[300px] rounded-full bg-[#C10801]/20 blur-3xl" />
+        <div className="absolute inset-0 opacity-20 [background:repeating-linear-gradient(90deg,rgba(235,80,2,0.16)_0px,rgba(235,80,2,0.16)_1px,transparent_1px,transparent_10px)]" />
+      </div>
+
+      <div className="relative w-full max-w-[460px] rounded-3xl border border-white/10 bg-black/55 p-8 backdrop-blur-xl">
         <div className="mb-7 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-wider text-white/70">
-            <ShieldCheck className="h-3.5 w-3.5 text-blue-300" />
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#EB5002]/30 bg-[#EB5002]/12 px-3 py-1 text-[11px] uppercase tracking-wider text-[#F9F9F9]">
+            <ShieldCheck className="h-3.5 w-3.5 text-[#EB5002]" />
             Portal do Cliente ALTUM
           </div>
           <h1 className="mt-4 text-3xl font-bold">Acesse seu painel</h1>
-          <p className="text-sm text-white/50 mt-2">
+          <p className="mt-2 text-sm text-white/60">
             Acompanhe campanhas, contratos, pagamentos e entregas em tempo real.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs text-white/55">E-mail</label>
-            <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2">
-              <Mail className="h-4 w-4 text-white/40" />
+            <label className="text-xs text-white/65">E-mail</label>
+            <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-3 py-2">
+              <Mail className="h-4 w-4 text-[#EB5002]" />
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-transparent outline-none text-sm"
+                className="w-full bg-transparent text-sm outline-none"
                 placeholder="cliente@empresa.com"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-xs text-white/55">Senha</label>
-            <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2">
-              <Lock className="h-4 w-4 text-white/40" />
+            <label className="text-xs text-white/65">Senha</label>
+            <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-3 py-2">
+              <Lock className="h-4 w-4 text-[#EB5002]" />
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-transparent outline-none text-sm"
-                placeholder="••••••••"
+                className="w-full bg-transparent text-sm outline-none"
+                placeholder="********"
               />
             </div>
           </div>
 
-          {error && <p className="text-xs text-red-300">{error}</p>}
+          {error ? (
+            <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{error}</p>
+          ) : null}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold hover:bg-blue-500 disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#EB5002] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#D94A02] disabled:opacity-60"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
             Entrar no portal
           </button>
         </form>
+
+        <p className="mt-6 text-center text-[11px] uppercase tracking-[0.16em] text-white/35">ALTUM Infrastructure v1.0</p>
       </div>
     </div>
   );

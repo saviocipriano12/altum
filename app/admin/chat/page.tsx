@@ -2172,7 +2172,7 @@ export default function ChatPage() {
                             <ProgressBar value={leadContext.score} max={100} color="emerald" />
                           </div>
                         )}
-                        <button onClick={() => router.push(`/admin/leads/${leadContext.id}`)} className="flex items-center gap-1.5 text-[11px] text-sky-400 hover:text-sky-300 transition-colors">
+                        <button onClick={() => router.push(`/admin/prospeccao/${leadContext.id}`)} className="flex items-center gap-1.5 text-[11px] text-sky-400 hover:text-sky-300 transition-colors">
                           <ExternalLink className="h-3 w-3" /> Ver lead completo
                         </button>
                       </div>

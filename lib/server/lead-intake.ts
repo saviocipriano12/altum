@@ -66,6 +66,7 @@ type RecordInboundLeadInput = {
   submission?: LeadSubmissionInput | null;
   automationActorId?: string | null;
   automationActorName?: string | null;
+  skipLeadCreatedWorkflows?: boolean;
 };
 
 type LeadTouchSnapshot = {
@@ -137,6 +138,7 @@ function canMatchBySourceId(sourceType: string, sourceId: string) {
     "facebook_messenger",
     "site_chat_conversation",
     "site_chat_widget_conversation",
+    "crm_import",
   ].includes(sourceType);
 }
 
@@ -577,7 +579,7 @@ export async function recordInboundLead(input: RecordInboundLeadInput) {
       : Promise.resolve(),
   ]);
 
-  if (!existingLead) {
+  if (!existingLead && !input.skipLeadCreatedWorkflows) {
     await runLeadAutomations({
       tenantId,
       trigger: "lead_created",

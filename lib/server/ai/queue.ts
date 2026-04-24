@@ -367,11 +367,23 @@ export async function enqueueIncomingMessageJob(
 
 async function listClaimableJobs(limit: number) {
   const rawLimit = Math.min(120, Math.max(limit * 4, 20));
-  const snap = await adminDb
-    .collection("jobs")
-    .where("type", "==", JOB_TYPE)
-    .limit(rawLimit)
-    .get();
+  const snap = await (async () => {
+    try {
+      return await adminDb
+        .collection("jobs")
+        .where("type", "==", JOB_TYPE)
+        .orderBy("availableAt", "asc")
+        .orderBy("priority", "asc")
+        .limit(rawLimit)
+        .get();
+    } catch {
+      return await adminDb
+        .collection("jobs")
+        .where("type", "==", JOB_TYPE)
+        .limit(rawLimit)
+        .get();
+    }
+  })();
 
   const now = Date.now();
 

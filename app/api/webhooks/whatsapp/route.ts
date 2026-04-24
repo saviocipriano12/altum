@@ -270,6 +270,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: "ignored_unknown_channel" });
     }
 
+    if (!channel.appSecret) {
+      console.error("Webhook WhatsApp bloqueado: canal sem appSecret configurado.", {
+        tenantId: channel.tenantId,
+        phoneNumberId: channel.phoneNumberId,
+      });
+      return NextResponse.json({ error: "Canal sem segredo de assinatura configurado." }, { status: 503 });
+    }
+
     if (!verifyMetaSignature(rawBody, signature, channel.appSecret)) {
       return NextResponse.json({ error: "Assinatura invalida." }, { status: 401 });
     }

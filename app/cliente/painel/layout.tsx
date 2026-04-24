@@ -1,30 +1,41 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { ClienteBottomNav } from "@/app/cliente/painel/components/cliente-bottom-nav";
+import { ClienteCommandPalette } from "@/app/cliente/painel/components/cliente-command-palette";
 import { ClienteRealtimeBanner } from "@/app/cliente/painel/components/cliente-realtime-banner";
 import { ClienteSidebar } from "@/app/cliente/painel/components/cliente-sidebar";
-import { ClienteShellProvider } from "@/app/cliente/painel/components/cliente-shell";
+import { ClienteShellProvider, useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { ClienteTopbar } from "@/app/cliente/painel/components/cliente-topbar";
 
 function ClientePainelShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
+  const { density } = useClienteShell();
+  const compact = density === "compact";
+  const isAdminSurface = /^\/cliente\/painel\/(ia|automacoes|conhecimento)(\/|$)/.test(pathname || "");
+  const clientArea = isAdminSurface ? "admin" : "daily";
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[var(--cliente-bg)] text-[var(--cliente-text)] [font-family:var(--font-sans)] transition-[background-color,color] duration-300">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-24 top-[-120px] h-[320px] w-[320px] rounded-full bg-[var(--cliente-accent-glow)] blur-3xl" />
-        <div className="absolute right-[-100px] top-[120px] h-[280px] w-[280px] rounded-full bg-[var(--cliente-accent-secondary-glow)] blur-3xl" />
-        <div className="absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_top,var(--cliente-accent-soft),transparent_58%)] opacity-80" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent,var(--cliente-surface-muted))]" />
+    <div
+      data-client-area={clientArea}
+      className="relative min-h-screen overflow-hidden bg-[var(--cliente-bg)] text-[var(--cliente-text)] [font-family:var(--font-sans)] transition-[background-color,color] duration-300"
+    >
+      <div className="client-shell-ambient pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-[var(--cliente-bg)]" />
+        <div className="absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_18%_-10%,var(--cliente-accent-glow),transparent_55%)]" />
+        <div className="absolute inset-y-0 right-0 w-[38vw] bg-[radial-gradient(circle_at_100%_12%,var(--cliente-accent-secondary-glow),transparent_62%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,var(--cliente-surface-muted)_100%)]" />
       </div>
 
       <ClienteSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <ClienteTopbar onOpenMenu={() => setSidebarOpen(true)} />
+      <ClienteCommandPalette />
 
       <div className="relative transition-[padding] duration-300 lg:pl-[var(--cliente-sidebar-width)]">
-        <main className="min-h-screen px-4 pb-28 pt-[132px] transition-[padding] duration-300 sm:pb-24 lg:px-6 lg:pb-10 xl:pt-[98px]">
-          <div className="mx-auto max-w-[1280px] space-y-4">
+        <main className={`min-h-screen transition-[padding] duration-300 ${compact ? "px-3 pb-24 pt-[120px] sm:pb-20 lg:px-5 lg:pb-8 xl:pt-[94px]" : "px-4 pb-28 pt-[132px] sm:pb-24 lg:px-6 lg:pb-10 xl:pt-[98px]"}`}>
+          <div className={`mx-auto max-w-[1320px] ${compact ? "space-y-3" : "space-y-4"}`}>
             <ClienteRealtimeBanner />
             {children}
           </div>

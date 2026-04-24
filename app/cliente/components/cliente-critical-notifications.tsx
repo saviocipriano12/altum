@@ -18,6 +18,9 @@ type AutomationSummaryPayload = {
     commercial?: {
       overdueFollowUps?: number;
     };
+    finance?: {
+      dueSoonCount?: number;
+    };
   };
 };
 
@@ -26,6 +29,7 @@ type CriticalSnapshot = {
   deadLetter: number;
   overdueFollowUps: number;
   waitingReplyBacklog: number;
+  financeDueSoon: number;
   aiRiskLevel: "stable" | "warning" | "high";
 };
 
@@ -74,6 +78,7 @@ function readStoredSnapshot(tenantId: string): CriticalSnapshot | null {
       deadLetter: Number(parsed.deadLetter || 0),
       overdueFollowUps: Number(parsed.overdueFollowUps || 0),
       waitingReplyBacklog: Number(parsed.waitingReplyBacklog || 0),
+      financeDueSoon: Number(parsed.financeDueSoon || 0),
       aiRiskLevel:
         parsed.aiRiskLevel === "high" || parsed.aiRiskLevel === "warning" ? parsed.aiRiskLevel : "stable",
     };
@@ -142,6 +147,7 @@ function toSnapshot(payload: AutomationSummaryPayload): CriticalSnapshot {
     deadLetter: Number(summary.queue?.deadLetter || 0),
     overdueFollowUps: Number(summary.commercial?.overdueFollowUps || 0),
     waitingReplyBacklog: Number(summary.waitingReplyBacklog || 0),
+    financeDueSoon: Number(summary.finance?.dueSoonCount || 0),
     aiRiskLevel: summary.aiHealth?.riskLevel === "high" || summary.aiHealth?.riskLevel === "warning"
       ? summary.aiHealth.riskLevel
       : "stable",
@@ -355,6 +361,15 @@ export function ClienteCriticalNotifications() {
           body: `${current.overdueFollowUps} tarefa(s) comercial(is) atrasada(s).`,
           tag: "overdue_followups",
           url: "/cliente/painel/follow-ups",
+        });
+      }
+
+      if (current.financeDueSoon > previous.financeDueSoon) {
+        notifications.push({
+          title: "Faturas proximas do vencimento",
+          body: `${current.financeDueSoon} cobranca(s) vencem nos proximos 5 dias.`,
+          tag: "finance_due_soon",
+          url: "/cliente/painel/comercial?financeStatus=pendente",
         });
       }
 

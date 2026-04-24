@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import {
   getBusinessProfile,
   getBusinessProfilePlaybookPreset,
@@ -145,6 +146,7 @@ function nextBusinessDate(days = 0) {
 
 export default function ClienteComercialPage() {
   const { tenant, hasCapability } = useClienteTenant();
+  const { experienceMode, setExperienceMode } = useClienteShell();
   const router = useRouter();
   const searchParams = useSearchParams();
   const leadFromQuery = searchParams.get("leadId");
@@ -168,6 +170,7 @@ export default function ClienteComercialPage() {
   const [financeStatusFilter, setFinanceStatusFilter] = useState("all");
   const [financeTypeFilter, setFinanceTypeFilter] = useState("all");
   const canOperate = hasCapability("manage_commercial");
+  const allowAdvanced = experienceMode === "completo";
 
   const [budgetForm, setBudgetForm] = useState({
     leadId: "",
@@ -379,7 +382,7 @@ export default function ClienteComercialPage() {
       items.push({
         id: "no_approved",
         title: "Nenhuma proposta aprovada",
-        detail: "O desk comercial ainda nao converteu propostas em aprovacao nesta base atual.",
+        detail: "A mesa comercial ainda nao converteu propostas em aprovacao nesta base atual.",
         href: "/cliente/painel/comercial",
         tone: "warning",
         badge: "atencao",
@@ -736,11 +739,11 @@ export default function ClienteComercialPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="client-daily-page space-y-4">
       <SectionHeader
         title="Comercial"
         subtitle="Propostas, receita e acompanhamento financeiro do tenant em um unico modulo."
-        action={<StateBadge label="Revenue desk" tone="info" />}
+        action={<StateBadge label="Mesa comercial" tone="info" />}
       />
 
       {error ? <div className="rounded-2xl border border-rose-300/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
@@ -777,35 +780,51 @@ export default function ClienteComercialPage() {
           </div>
         </PanelCard>
 
-        <PanelCard className="p-5">
-          <CardTitle title="Ofertas sugeridas pelo modo" subtitle="Aplique uma sugestão base para acelerar proposta e cobrança." />
-          <div className="mt-4 grid gap-3">
-            {playbookPreset.offers.slice(0, 3).map((offer, index) => (
-              <div key={offer.title} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-white">{offer.title}</p>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{offer.category} · {offer.targetProfile}</p>
-                    <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{offer.whenToOffer}</p>
+        {allowAdvanced ? (
+          <PanelCard className="p-5">
+            <CardTitle title="Ofertas sugeridas pelo modo" subtitle="Aplique uma sugestão base para acelerar proposta e cobrança." />
+            <div className="mt-4 grid gap-3">
+              {playbookPreset.offers.slice(0, 3).map((offer, index) => (
+                <div key={offer.title} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{offer.title}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{offer.category} · {offer.targetProfile}</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{offer.whenToOffer}</p>
+                    </div>
+                    <StateBadge label={money(offer.priceFrom)} tone="success" />
                   </div>
-                  <StateBadge label={money(offer.priceFrom)} tone="success" />
+                  {canOperate ? (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={() => applyBusinessOfferPreset(index)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Aplicar na proposta
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-                {canOperate ? (
-                  <div className="mt-3">
-                    <button
-                      type="button"
-                      onClick={() => applyBusinessOfferPreset(index)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Aplicar na proposta
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </PanelCard>
+              ))}
+            </div>
+          </PanelCard>
+        ) : (
+          <PanelCard className="p-5">
+            <CardTitle title="Modo essencial ativo" subtitle="Mostrando leitura enxuta para operacao diaria." />
+            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
+              Para editar ofertas sugeridas e acelerar propostas com presets avancados, troque para o modo completo no topo.
+            </p>
+            <button
+              type="button"
+              onClick={() => setExperienceMode("completo")}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
+            >
+              Abrir modo completo
+            </button>
+          </PanelCard>
+        )}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
@@ -815,7 +834,7 @@ export default function ClienteComercialPage() {
             {focusSignals.length === 0 ? (
               <EmptyState
                 title="Sem alertas comerciais relevantes"
-                description="O desk comercial nao apresenta gargalos urgentes neste recorte."
+                description="A mesa comercial nao apresenta gargalos urgentes neste recorte."
               />
             ) : (
               focusSignals.map((item) => (
@@ -826,7 +845,7 @@ export default function ClienteComercialPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{item.title}</p>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
                       <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
                     </div>
                     <StateBadge label={item.badge} tone={item.tone} />
@@ -838,10 +857,10 @@ export default function ClienteComercialPage() {
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Resumo do desk" subtitle="Leitura rapida da mesa comercial atual" />
+          <CardTitle title="Resumo da mesa" subtitle="Leitura rapida da mesa comercial atual" />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <DeskCard
-              title="Ticket aprovado"
+              title="Valor medio aprovado"
               value={summary.approvedBudgets > 0 ? money(summary.approvedValue / summary.approvedBudgets) : money(0)}
               detail="media por proposta aprovada"
             />
@@ -853,7 +872,7 @@ export default function ClienteComercialPage() {
             <DeskCard
               title="Propostas enviadas"
               value={String(budgets.filter((item) => item.status === "Enviado").length)}
-              detail="aguardando decisao do lead"
+              detail="aguardando decisao do contato"
             />
             <DeskCard
               title="Fluxo financeiro"
@@ -871,9 +890,9 @@ export default function ClienteComercialPage() {
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text)]">
                   <WalletCards className="h-3.5 w-3.5" />
-                  Lead em negociacao
+                  Contato em negociacao
                 </div>
-                <h3 className="mt-4 text-2xl font-semibold text-white">{selectedLead.nome || "Lead"}</h3>
+                <h3 className="mt-4 text-2xl font-semibold text-[var(--cliente-card-text)]">{selectedLead.nome || "Contato"}</h3>
                 <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
                   {selectedLead.empresa || selectedLead.email || selectedLead.telefone || "Sem contato principal"}
                 </p>
@@ -887,7 +906,7 @@ export default function ClienteComercialPage() {
             </div>
 
             <div className="mt-5 grid gap-3 md:grid-cols-4">
-              <MetricCard label="Propostas" value={String(selectedLeadSummary.budgets)} icon={FileText} trend="vinculadas ao lead" />
+              <MetricCard label="Propostas" value={String(selectedLeadSummary.budgets)} icon={FileText} trend="vinculadas ao contato" />
               <MetricCard label="Aprovadas" value={String(selectedLeadSummary.approvedBudgets)} icon={Target} trend="status comercial" />
               <MetricCard label="Receita paga" value={money(selectedLeadSummary.paidRevenue)} icon={Receipt} trend="valor recebido" />
               <MetricCard label="Pendente" value={money(selectedLeadSummary.pendingRevenue)} icon={Sparkles} trend="receita em aberto" />
@@ -895,7 +914,7 @@ export default function ClienteComercialPage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Continuar operacao" subtitle="Acesse os modulos conectados a este lead." />
+            <CardTitle title="Continuar operacao" subtitle="Acesse os modulos conectados a este contato." />
             <div className="mt-4 space-y-2">
               <Link
                 href={`/cliente/painel/crm?leadId=${encodeURIComponent(selectedLead.id)}`}
@@ -915,14 +934,14 @@ export default function ClienteComercialPage() {
                 href={`/cliente/painel/pipeline?leadId=${encodeURIComponent(selectedLead.id)}`}
                 className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
-                <span>Destacar no pipeline</span>
+                <span>Destacar no funil</span>
                 <span className="text-[var(--cliente-card-text-soft)]">→</span>
               </Link>
               <Link
                 href="/cliente/painel/comercial"
                 className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
-                <span>Limpar contexto do lead</span>
+                <span>Limpar contexto do contato</span>
                 <span className="text-[var(--cliente-card-text-soft)]">→</span>
               </Link>
             </div>
@@ -933,7 +952,7 @@ export default function ClienteComercialPage() {
                 <div className="mt-3 space-y-3">
                   {selectedLeadAiLogs.map((log) => (
                     <div key={log.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-                      <p className="text-sm font-medium text-white">{humanizeAiNextAction(log.nextAction)}</p>
+                      <p className="text-sm font-medium text-[var(--cliente-card-text)]">{humanizeAiNextAction(log.nextAction)}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {Object.entries(log.extractedFields || {}).slice(0, 4).map(([field, value]) => (
                           <span
@@ -971,20 +990,22 @@ export default function ClienteComercialPage() {
         </section>
       ) : null}
 
-      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+      {allowAdvanced ? (
+        <>
+          <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         <PanelCard className="p-5">
           <form onSubmit={createBudget} className="space-y-3">
-            <CardTitle title="Nova proposta" subtitle="Crie uma proposta comercial vinculada ao lead." />
+            <CardTitle title="Nova proposta" subtitle="Crie uma proposta comercial vinculada ao contato." />
             <select
               value={budgetForm.leadId}
               onChange={(event) => setBudgetForm((current) => ({ ...current, leadId: event.target.value }))}
               disabled={!canOperate}
               className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             >
-              <option value="">Selecione um lead</option>
+              <option value="">Selecione um contato</option>
               {leads.map((lead) => (
                 <option key={lead.id} value={lead.id}>
-                  {lead.nome || "Lead"} {lead.empresa ? `• ${lead.empresa}` : ""}
+                  {lead.nome || "Contato"} {lead.empresa ? `• ${lead.empresa}` : ""}
                 </option>
               ))}
             </select>
@@ -1013,17 +1034,17 @@ export default function ClienteComercialPage() {
 
         <PanelCard className="p-5">
           <form onSubmit={createFinance} className="space-y-3">
-            <CardTitle title="Novo lancamento" subtitle="Receita ou despesa comercial com vinculo ao lead." />
+            <CardTitle title="Novo lancamento" subtitle="Receita ou despesa comercial com vinculo ao contato." />
             <select
               value={financeForm.leadId}
               onChange={(event) => setFinanceForm((current) => ({ ...current, leadId: event.target.value }))}
               disabled={!canOperate}
               className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             >
-              <option value="">Sem lead vinculado</option>
+              <option value="">Sem contato vinculado</option>
               {leads.map((lead) => (
                 <option key={lead.id} value={lead.id}>
-                  {lead.nome || "Lead"} {lead.empresa ? `• ${lead.empresa}` : ""}
+                  {lead.nome || "Contato"} {lead.empresa ? `• ${lead.empresa}` : ""}
                 </option>
               ))}
             </select>
@@ -1062,7 +1083,7 @@ export default function ClienteComercialPage() {
                   <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-white">{chargeLead.nome || "Lead"}</p>
+                        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{chargeLead.nome || "Contato"}</p>
                         <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                           {chargeLead.empresa || chargeLead.email || chargeLead.telefone || "Sem contato principal"}
                         </p>
@@ -1073,7 +1094,7 @@ export default function ClienteComercialPage() {
                     </div>
                     {!chargeLead.email ? (
                       <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                        Este lead ainda nao tem e-mail. Para gerar cobranca Asaas, preencha o e-mail no CRM.
+                        Este contato ainda nao tem e-mail. Para gerar cobranca Asaas, preencha o e-mail no CRM.
                       </div>
                     ) : null}
                   </div>
@@ -1095,10 +1116,10 @@ export default function ClienteComercialPage() {
               disabled={!canOperate}
               className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             >
-              <option value="">Selecione um lead</option>
+              <option value="">Selecione um contato</option>
               {leads.map((lead) => (
                 <option key={lead.id} value={lead.id}>
-                  {lead.nome || "Lead"} {lead.empresa ? `• ${lead.empresa}` : ""}
+                  {lead.nome || "Contato"} {lead.empresa ? `• ${lead.empresa}` : ""}
                 </option>
               ))}
             </select>
@@ -1172,7 +1193,7 @@ export default function ClienteComercialPage() {
               <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-white">Charge #{chargePreview.chargeId}</p>
+                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Charge #{chargePreview.chargeId}</p>
                     <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Financeiro vinculado: {chargePreview.financeId}</p>
                   </div>
                   <StateBadge label={chargePreview.billingType || "cobranca"} tone="success" />
@@ -1217,16 +1238,35 @@ export default function ClienteComercialPage() {
             <EmptyState title="Nenhuma cobranca gerada nesta sessao" description="Depois de criar uma cobranca, o retorno com link, boleto ou PIX aparece aqui para uso imediato." />
           )}
         </PanelCard>
-      </section>
+          </section>
+        </>
+      ) : (
+        <PanelCard className="p-5">
+          <CardTitle
+            title="Criacao avancada protegida"
+            subtitle="No modo essencial deixamos apenas leitura, acompanhamento e atualizacao de status."
+          />
+          <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
+            Para criar propostas, lancamentos e cobrancas direto daqui, ative o modo completo.
+          </p>
+          <button
+            type="button"
+            onClick={() => setExperienceMode("completo")}
+            className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
+          >
+            Ativar modo completo
+          </button>
+        </PanelCard>
+      )}
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         <PanelCard className="p-5">
-          <CardTitle title="Pipeline de propostas" subtitle="Envio, aprovacao e perda comercial por lead." />
+          <CardTitle title="Funil de propostas" subtitle="Envio, aprovacao e perda comercial por contato." />
           <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.8fr]">
             <input
               value={budgetSearch}
               onChange={(event) => setBudgetSearch(event.target.value)}
-              placeholder="Buscar proposta, lead ou resumo"
+              placeholder="Buscar proposta, contato ou resumo"
               className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             />
             <select
@@ -1247,9 +1287,9 @@ export default function ClienteComercialPage() {
                 <div key={budget.id} className={`rounded-2xl border p-4 ${selectedLead && budget.leadId === selectedLead.id ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]" : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{budget.titulo || "Proposta"}</p>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{budget.titulo || "Proposta"}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                        {budget.leadName || "Sem lead"} • validade {formatDate(budget.validade)}
+                        {budget.leadName || "Sem contato"} • validade {formatDate(budget.validade)}
                       </p>
                     </div>
                     <div className="text-right">
@@ -1265,7 +1305,7 @@ export default function ClienteComercialPage() {
                                 : "neutral"
                         }
                       />
-                      <p className="mt-2 text-sm font-semibold text-white">{money(Number(budget.valorTotal || 0))}</p>
+                      <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">{money(Number(budget.valorTotal || 0))}</p>
                     </div>
                   </div>
                   {budget.resumo ? <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">{budget.resumo}</p> : null}
@@ -1276,7 +1316,7 @@ export default function ClienteComercialPage() {
                           href={`/cliente/painel/crm?leadId=${encodeURIComponent(budget.leadId)}`}
                           className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                         >
-                          Abrir lead
+                          Abrir contato
                         </Link>
                         <Link
                           href={`/cliente/painel/inbox?leadId=${encodeURIComponent(budget.leadId)}`}
@@ -1322,7 +1362,7 @@ export default function ClienteComercialPage() {
                 description={
                   displayedBudgets.length
                     ? "Nenhuma proposta corresponde aos filtros atuais."
-                    : "Crie a primeira proposta vinculada a um lead para fechar o fluxo comercial."
+                    : "Crie a primeira proposta vinculada a um contato para fechar o fluxo comercial."
                 }
               />
             )}
@@ -1330,12 +1370,12 @@ export default function ClienteComercialPage() {
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Financeiro comercial" subtitle="Receitas e despesas ligadas ao tenant e aos leads." />
+          <CardTitle title="Financeiro comercial" subtitle="Receitas e despesas ligadas ao tenant e aos contatos." />
           <div className="mt-4 grid gap-3 md:grid-cols-[1.1fr_0.8fr_0.8fr]">
             <input
               value={financeSearch}
               onChange={(event) => setFinanceSearch(event.target.value)}
-              placeholder="Buscar descricao, lead, categoria ou meio"
+              placeholder="Buscar descricao, contato, categoria ou meio"
               className="w-full rounded-xl border client-input px-3 py-2.5 text-sm"
             />
             <select
@@ -1364,9 +1404,9 @@ export default function ClienteComercialPage() {
                 <div key={item.id} className={`rounded-2xl border p-4 ${selectedLead && item.leadId === selectedLead.id ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]" : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{item.descricao || "Lancamento"}</p>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.descricao || "Lancamento"}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                        {item.leadName || "Sem lead"} • vencimento {formatDate(item.vencimento)}
+                        {item.leadName || "Sem contato"} • vencimento {formatDate(item.vencimento)}
                       </p>
                     </div>
                     <div className="text-right">
@@ -1374,7 +1414,7 @@ export default function ClienteComercialPage() {
                         label={item.status || "pendente"}
                         tone={item.status === "pago" ? "success" : item.status === "cancelado" ? "danger" : "warning"}
                       />
-                      <p className="mt-2 text-sm font-semibold text-white">{money(Number(item.valor || 0))}</p>
+                      <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">{money(Number(item.valor || 0))}</p>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--cliente-card-text-soft)]">
@@ -1401,7 +1441,7 @@ export default function ClienteComercialPage() {
                           href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`}
                           className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                         >
-                          Abrir lead
+                          Abrir contato
                         </Link>
                         <Link
                           href={`/cliente/painel/inbox?leadId=${encodeURIComponent(item.leadId)}`}
@@ -1481,7 +1521,7 @@ function DeskCard({
   return (
     <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
       <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{title}</p>
-      <p className="mt-2 text-lg font-semibold text-white">{value}</p>
+      <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{value}</p>
       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
     </div>
   );

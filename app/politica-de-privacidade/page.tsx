@@ -1,295 +1,149 @@
-// app/politica-de-privacidade/page.tsx
-
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Política de Privacidade | Altumia",
+  title: "Politica de Privacidade | ALTUM",
   description:
-    "Política de Privacidade da Altumia - Informações sobre como coletamos, usamos e protegemos seus dados.",
+    "Politica de Privacidade da ALTUM com regras de tratamento de dados pessoais em conformidade com a LGPD.",
 };
 
-export default function PoliticaDePrivacidadePage() {
+const LAST_UPDATED = "15/04/2026";
+
+export default function PrivacyPolicyPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50">
-      <section className="max-w-4xl px-4 py-16 mx-auto">
+      <section className="mx-auto max-w-4xl px-4 py-16">
         <header className="mb-10 border-b border-white/10 pb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400/80">
-            Altumia · Política de Privacidade
+            ALTUM · Politica de Privacidade
           </p>
-          <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">
-            Política de Privacidade
-          </h1>
+          <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">Politica de Privacidade</h1>
           <p className="mt-3 text-sm text-slate-300">
-            Data da última atualização:{" "}
-            <span className="font-medium text-slate-100">24/11/2025</span>
+            Ultima atualizacao: <span className="font-medium text-slate-100">{LAST_UPDATED}</span>
           </p>
         </header>
 
         <div className="space-y-8 text-sm leading-relaxed text-slate-200">
-          {/* 1. Informações Gerais */}
           <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              1. Informações Gerais
-            </h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">1. Escopo</h2>
             <p className="text-slate-300">
-              Esta Política de Privacidade descreve como a{" "}
-              <span className="font-semibold">Altumia</span> coleta, utiliza,
-              armazena e protege as informações pessoais dos usuários que
-              acessam nossos sites, landing pages, plataformas digitais e demais
-              serviços relacionados.
-            </p>
-            <p className="mt-2 text-slate-300">
-              Ao utilizar nossos serviços, você declara que leu, entendeu e
-              concorda com os termos desta Política de Privacidade.
+              Esta Politica descreve como a ALTUM trata dados pessoais em seus sites, landing pages,
+              plataforma, APIs, automacoes e canais de atendimento, em conformidade com a Lei Geral
+              de Protecao de Dados Pessoais (Lei no 13.709/2018 - LGPD).
             </p>
           </section>
 
-          {/* 2. Informações que Coletamos */}
           <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              2. Informações que Coletamos
-            </h2>
-
-            <h3 className="mt-3 text-sm font-semibold text-slate-100">
-              2.1. Informações fornecidas voluntariamente
-            </h3>
-            <p className="mt-1 text-slate-300">
-              Podemos coletar informações que você fornece diretamente para
-              nós, incluindo, mas não se limitando a:
-            </p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
-              <li>Nome completo;</li>
-              <li>E-mail;</li>
-              <li>Telefone e/ou WhatsApp;</li>
-              <li>Nome da empresa ou negócio;</li>
-              <li>Informações inseridas em formulários ou chats;</li>
-              <li>
-                Mensagens enviadas através de WhatsApp, formulários, e-mail ou
-                outros canais de contato.
-              </li>
-            </ul>
-
-            <h3 className="mt-4 text-sm font-semibold text-slate-100">
-              2.2. Informações coletadas automaticamente
-            </h3>
-            <p className="mt-1 text-slate-300">
-              Quando você acessa nossos sites ou plataformas, podemos coletar
-              automaticamente:
-            </p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
-              <li>Endereço IP;</li>
-              <li>Tipo e versão do navegador;</li>
-              <li>Páginas acessadas e tempo de navegação;</li>
-              <li>Dados de cookies e identificadores únicos;</li>
-              <li>Informações sobre o dispositivo utilizado.</li>
-            </ul>
-          </section>
-
-          {/* 3. Uso das Informações */}
-          <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              3. Uso das Informações
-            </h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">2. Papéis no Tratamento</h2>
             <p className="text-slate-300">
-              Utilizamos as informações coletadas para os seguintes fins:
-            </p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
-              <li>Fornecer e aprimorar nossos serviços e soluções digitais;</li>
-              <li>
-                Realizar atendimentos, contatos comerciais e suporte ao usuário;
-              </li>
-              <li>
-                Personalizar experiências e comunicações, inclusive em canais
-                automatizados como WhatsApp;
-              </li>
-              <li>
-                Enviar propostas, materiais relevantes, atualizações e
-                comunicações sobre nossos serviços;
-              </li>
-              <li>
-                Analisar métricas de uso, desempenho e melhorias de produtos;
-              </li>
-              <li>
-                Resguardar direitos, prevenir fraudes e garantir segurança das
-                operações;
-              </li>
-              <li>Cumprir obrigações legais ou regulatórias aplicáveis.</li>
-            </ul>
-            <p className="mt-2 text-slate-300">
-              <span className="font-semibold">
-                Não vendemos, alugamos ou comercializamos seus dados pessoais
-                com terceiros não autorizados.
-              </span>
-            </p>
-          </section>
-
-          {/* 4. Compartilhamento de Informações */}
-          <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              4. Compartilhamento de Informações
-            </h2>
-            <p className="text-slate-300">
-              Podemos compartilhar seus dados apenas com terceiros
-              estritamente necessários para a execução de nossos serviços, tais
-              como:
+              A ALTUM pode atuar como:
             </p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
               <li>
-                Plataformas de automação e comunicação (por exemplo, WhatsApp
-                Business API / Meta);
-              </li>
-              <li>Serviços de hospedagem e infraestrutura em nuvem;</li>
-              <li>
-                Ferramentas de CRM, automação de marketing e análise de dados;
+                <span className="font-semibold">Controladora</span>: quando define finalidades e meios
+                do tratamento (por exemplo, dados de leads e dados de marketing da propria ALTUM).
               </li>
               <li>
-                Parceiros de negócio que atuem em conjunto na entrega de
-                soluções contratadas.
+                <span className="font-semibold">Operadora</span>: quando trata dados pessoais em nome de
+                clientes contratantes, inclusive em operacoes de WhatsApp e redes sociais.
               </li>
             </ul>
-            <p className="mt-2 text-slate-300">
-              Todos os parceiros e fornecedores envolvidos seguem padrões de
-              segurança e confidencialidade compatíveis com esta Política.
-            </p>
           </section>
 
-          {/* 5. Cookies */}
           <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              5. Cookies e Tecnologias de Rastreamento
-            </h2>
-            <p className="text-slate-300">
-              Utilizamos cookies e tecnologias similares para melhorar a
-              experiência do usuário, personalizar conteúdo, analisar tráfego e
-              eventualmente exibir anúncios relevantes.
-            </p>
-            <p className="mt-2 text-slate-300">
-              Você pode desativar cookies nas configurações do seu navegador.
-              No entanto, algumas funcionalidades dos nossos serviços podem não
-              funcionar corretamente sem eles.
-            </p>
-          </section>
-
-          {/* 6. Armazenamento e Segurança */}
-          <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              6. Armazenamento e Segurança dos Dados
-            </h2>
-            <p className="text-slate-300">
-              Os dados coletados são armazenados em servidores seguros e
-              protegidos por medidas técnicas, administrativas e organizacionais,
-              incluindo:
-            </p>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">3. Dados Tratados</h2>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
-              <li>Criptografia e protocolos de segurança;</li>
-              <li>Controle de acesso e autenticação;</li>
-              <li>Monitoramento e logs de atividade;</li>
-              <li>Backups e rotinas de proteção contra incidentes.</li>
+              <li>Dados de identificacao e contato (nome, telefone, e-mail, empresa e cargo).</li>
+              <li>Dados de interacao em canais (mensagens, historico de conversas e eventos de atendimento).</li>
+              <li>Dados de navegacao e dispositivo (IP, browser, sistema, cookies e logs tecnicos).</li>
+              <li>Dados de operacao comercial (origem do lead, status de funil, agendamentos e conversoes).</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">4. Finalidades e Bases Legais</h2>
+            <p className="text-slate-300">Tratamos dados para:</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
+              <li>Executar contratos e prestacao de servicos.</li>
+              <li>Atender solicitacoes e suporte tecnico/comercial.</li>
+              <li>Gerir captacao e qualificacao de leads.</li>
+              <li>Executar automacoes operacionais e analises de desempenho.</li>
+              <li>Cumprir obrigacoes legais, regulatórias e exercicio regular de direitos.</li>
+              <li>Promover seguranca, prevencao de fraude e continuidade da plataforma.</li>
             </ul>
             <p className="mt-2 text-slate-300">
-              Apesar dos nossos esforços, nenhum sistema é totalmente imune a
-              riscos. Em caso de incidente relevante, adotaremos as medidas
-              adequadas para mitigar impactos.
+              As bases legais aplicaveis incluem, conforme o caso: execucao de contrato, cumprimento de
+              obrigacao legal, legitimo interesse e consentimento.
             </p>
           </section>
 
-          {/* 7. Direitos do Usuário */}
           <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              7. Direitos do Usuário
-            </h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">5. Compartilhamento</h2>
             <p className="text-slate-300">
-              Você pode, a qualquer momento, solicitar:
+              A ALTUM compartilha dados apenas quando necessario para a operacao, com:
             </p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
-              <li>Acesso aos dados pessoais que mantemos sobre você;</li>
-              <li>Correção ou atualização de informações incompletas;</li>
-              <li>Exclusão de dados, quando aplicável;</li>
-              <li>
-                Revogação de consentimento para atividades baseadas nessa base
-                legal;
-              </li>
-              <li>
-                Esclarecimentos sobre o tratamento que realizamos com seus
-                dados.
-              </li>
+              <li>Provedores de nuvem, banco de dados e infraestrutura.</li>
+              <li>Plataformas de mensageria e redes sociais (como Meta/WhatsApp).</li>
+              <li>Ferramentas de analytics, anuncios e automacao comercial.</li>
+              <li>Prestadores que apoiem suporte, seguranca, antifraude e compliance.</li>
             </ul>
             <p className="mt-2 text-slate-300">
-              Para exercer seus direitos, entre em contato através do e-mail:{" "}
-              <span className="font-semibold">suporte.altum@gmail.com</span>.
+              Exigimos compromisso contratual de confidencialidade e seguranca dos terceiros.
             </p>
           </section>
 
-          {/* 8. Retenção */}
           <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              8. Retenção dos Dados
-            </h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">6. Transferencia Internacional</h2>
             <p className="text-slate-300">
-              Manteremos seus dados pessoais apenas pelo tempo necessário para:
+              Parte dos provedores pode processar dados fora do Brasil. Nesses casos, adotamos
+              mecanismos contratuais e salvaguardas adequadas, conforme a LGPD e normas da ANPD.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">7. Retencao e Descarte</h2>
+            <p className="text-slate-300">
+              Os dados sao mantidos apenas pelo periodo necessario para as finalidades desta Politica,
+              observando requisitos legais, regulatórios e de defesa de direitos. Encerrado o prazo,
+              os dados sao excluidos ou anonimizados de forma segura.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">8. Seguranca da Informacao</h2>
+            <p className="text-slate-300">
+              Adotamos medidas tecnicas e organizacionais proporcionais ao risco, incluindo:
             </p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
-              <li>Cumprir finalidades descritas nesta Política;</li>
-              <li>Cumprir obrigações legais e regulatórias;</li>
-              <li>Exercer direitos em processos judiciais ou administrativos.</li>
+              <li>Controle de acesso com perfis e principio do menor privilegio.</li>
+              <li>Criptografia de segredos e protecao de credenciais.</li>
+              <li>Logs de auditoria e monitoramento de eventos criticos.</li>
+              <li>Rotinas de backup, continuidade e resposta a incidentes.</li>
             </ul>
-            <p className="mt-2 text-slate-300">
-              Após esse período, os dados poderão ser anonimizados ou excluídos
-              de forma segura.
+          </section>
+
+          <section>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">9. Direitos dos Titulares</h2>
+            <p className="text-slate-300">
+              Nos termos da LGPD, o titular pode solicitar confirmacao de tratamento, acesso, correcao,
+              anonimização, bloqueio, eliminacao, portabilidade, informacao sobre compartilhamentos,
+              oposicao e revogacao de consentimento quando aplicavel.
             </p>
           </section>
 
-          {/* 9. Serviços de Terceiros */}
           <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              9. Serviços de Terceiros
-            </h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">10. Canal de Privacidade</h2>
             <p className="text-slate-300">
-              Nossos sites e plataformas podem conter links ou integrações com
-              serviços de terceiros, tais como:
+              Solicitacoes de privacidade e exercicio de direitos podem ser enviados para:
             </p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
-              <li>Meta / Facebook / Instagram;</li>
-              <li>WhatsApp Business API;</li>
-              <li>Google e outros provedores de tecnologia;</li>
-              <li>Plataformas de automação e analytics.</li>
-            </ul>
-            <p className="mt-2 text-slate-300">
-              Cada serviço possui sua própria Política de Privacidade, sendo
-              responsabilidade do usuário consultá-las. A Altumia não se
-              responsabiliza por práticas de terceiros.
-            </p>
+            <p className="mt-2 font-semibold text-slate-100">suporte.altum@gmail.com</p>
           </section>
 
-          {/* 10. Alterações */}
           <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              10. Alterações nesta Política
-            </h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">11. Atualizacoes</h2>
             <p className="text-slate-300">
-              A Altumia poderá atualizar esta Política de Privacidade
-              periodicamente para refletir mudanças em nossos serviços ou na
-              legislação aplicável. A versão mais recente estará sempre
-              disponível neste endereço.
-            </p>
-          </section>
-
-          {/* 11. Contato */}
-          <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              11. Contato
-            </h2>
-            <p className="text-slate-300">
-              Em caso de dúvidas, solicitações ou reclamações relacionadas ao
-              tratamento de dados pessoais, você pode entrar em contato com
-              nossa equipe por meio do e-mail:
-            </p>
-            <p className="mt-2 text-slate-100 font-semibold">
-              suporte.altum@gmail.com
-            </p>
-            <p className="mt-2 text-slate-300">
-              Ou através do nosso site oficial:{" "}
-              <span className="font-semibold">https://altumia.com.br</span>
+              Esta Politica pode ser atualizada para refletir evolucoes legais, tecnicas e operacionais.
+              A versao vigente estara sempre publicada nesta pagina.
             </p>
           </section>
         </div>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { normalizePhoneBR } from "@/app/lib/server/phone";
 
 type Body = {
   clientId?: string;
@@ -13,6 +14,10 @@ type Body = {
   nextDueDate?: string;
   notes?: string;
   paymentLink?: string;
+  autoBillingEnabled?: boolean;
+  autoBillingAdvanceDays?: number;
+  autoBillingBillingType?: "PIX" | "BOLETO" | "CREDIT_CARD" | string;
+  reminderWhatsAppPhones?: string[] | string;
 };
 
 function clean(value: unknown, max = 240) {
@@ -23,6 +28,28 @@ function clean(value: unknown, max = 240) {
 function toNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeBillingType(value: unknown) {
+  const normalized = clean(value, 40).toUpperCase();
+  if (normalized === "BOLETO" || normalized === "CREDIT_CARD") return normalized;
+  return "PIX";
+}
+
+function parseReminderPhones(value: unknown) {
+  const source = Array.isArray(value)
+    ? value.map((item) => clean(item, 40))
+    : clean(value, 600)
+        .split(/[\n,;]+/)
+        .map((item) => clean(item, 40));
+
+  return Array.from(
+    new Set(
+      source
+        .map((item) => normalizePhoneBR(item))
+        .filter((phone) => phone.length >= 12)
+    )
+  ).slice(0, 8);
 }
 
 export async function POST(req: Request) {
@@ -52,6 +79,10 @@ export async function POST(req: Request) {
       nextDueDate: clean(body.nextDueDate, 16) || null,
       notes: clean(body.notes, 3000) || null,
       paymentLink: clean(body.paymentLink, 500) || null,
+      autoBillingEnabled: body.autoBillingEnabled === true,
+      autoBillingAdvanceDays: Math.min(15, Math.max(1, Math.round(toNumber(body.autoBillingAdvanceDays, 5)))),
+      autoBillingBillingType: normalizeBillingType(body.autoBillingBillingType),
+      reminderWhatsAppPhones: parseReminderPhones(body.reminderWhatsAppPhones),
       updatedBy: user.uid,
       updatedByName: user.name,
       updatedAt: FieldValue.serverTimestamp(),

@@ -17,7 +17,6 @@ import {
   FolderKanban,
   Image as ImageIcon,
   Loader2,
-  MessageSquareText,
   Mic,
   NotebookPen,
   PauseCircle,
@@ -26,11 +25,13 @@ import {
   Receipt,
   Search,
   Send,
+  SlidersHorizontal,
   Sparkles,
   UserRound,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
 import {
   CardTitle,
@@ -296,7 +297,7 @@ function ContactAvatar({
 
   if (canRenderImage) {
     return (
-      <div className={cn("shrink-0 overflow-hidden rounded-full border border-white/10 bg-black/20", dimension)}>
+      <div className={cn("shrink-0 overflow-hidden rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]", dimension)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
@@ -312,7 +313,7 @@ function ContactAvatar({
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(37,211,102,0.16),rgba(255,255,255,0.02))] font-semibold text-[var(--cliente-card-text)]",
+        "flex shrink-0 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-[linear-gradient(135deg,rgba(37,211,102,0.12),rgba(255,255,255,0.04))] font-semibold text-[var(--cliente-card-text)]",
         dimension
       )}
     >
@@ -438,8 +439,8 @@ function normalizeTags(value: string) {
 }
 
 function formatChannelLabel(channel?: string) {
-  if (channel === "site_chat") return "Site chat";
-  if (channel === "site_form") return "Site form";
+  if (channel === "site_chat") return "Chat do site";
+  if (channel === "site_form") return "Formulario do site";
   if (channel === "meta_ads") return "Meta Ads";
   if (channel === "google_ads") return "Google Ads";
   if (!channel) return "WhatsApp";
@@ -483,12 +484,12 @@ function formatQueueFilterLabel(filter: QueueFilter) {
 function formatAiFilterLabel(filter: AiFilter) {
   if (filter === "ai_active") return "IA ativa";
   if (filter === "ai_paused") return "IA pausada";
-  if (filter === "human_owned") return "Com takeover";
+  if (filter === "human_owned") return "Com atendimento humano";
   return "IA + humano";
 }
 
 function formatTaskType(type?: string) {
-  if (type === "follow_up") return "Follow-up";
+  if (type === "follow_up") return "Retorno";
   if (type === "ligacao") return "Ligacao";
   if (type === "reuniao") return "Reuniao";
   if (type === "proposta") return "Proposta";
@@ -619,33 +620,33 @@ function normalizeHandoffNotifyStatus(status: unknown) {
 function getHandoffNotifyStatusMeta(status: unknown) {
   const normalized = normalizeHandoffNotifyStatus(status);
   if (!normalized) return null;
-  if (normalized === "success") return { label: "handoff notify ok", tone: "success" as const };
-  if (normalized === "partial_failure") return { label: "handoff notify parcial", tone: "warning" as const };
-  if (normalized === "failed") return { label: "handoff notify falhou", tone: "danger" as const };
-  if (normalized === "skipped_no_channel") return { label: "handoff sem canal", tone: "danger" as const };
-  if (normalized === "skipped_no_recipients") return { label: "handoff sem destinatario", tone: "danger" as const };
-  if (normalized === "skipped_disabled") return { label: "handoff notify desativado", tone: "warning" as const };
-  if (normalized === "skipped_duplicate") return { label: "handoff notify duplicado", tone: "neutral" as const };
-  return { label: `handoff notify ${normalized.replaceAll("_", " ")}`, tone: "neutral" as const };
+  if (normalized === "success") return { label: "alerta de transferencia ok", tone: "success" as const };
+  if (normalized === "partial_failure") return { label: "alerta parcial", tone: "warning" as const };
+  if (normalized === "failed") return { label: "alerta falhou", tone: "danger" as const };
+  if (normalized === "skipped_no_channel") return { label: "transferencia sem canal", tone: "danger" as const };
+  if (normalized === "skipped_no_recipients") return { label: "transferencia sem destinatario", tone: "danger" as const };
+  if (normalized === "skipped_disabled") return { label: "alerta desativado", tone: "warning" as const };
+  if (normalized === "skipped_duplicate") return { label: "alerta duplicado", tone: "neutral" as const };
+  return { label: `alerta ${normalized.replaceAll("_", " ")}`, tone: "neutral" as const };
 }
 
 function getHandoffNotifyStatusHint(status: unknown) {
   const normalized = normalizeHandoffNotifyStatus(status);
   if (!normalized) return "";
   if (normalized === "skipped_no_channel") {
-    return "Handoff foi gerado, mas nao havia canal WhatsApp ativo para alertar o humano.";
+    return "A transferencia foi gerada, mas nao havia canal WhatsApp ativo para alertar o humano.";
   }
   if (normalized === "skipped_no_recipients") {
-    return "Handoff foi gerado, mas nao havia telefone de responsavel configurado para receber alerta.";
+    return "A transferencia foi gerada, mas nao havia telefone de responsavel configurado para receber alerta.";
   }
   if (normalized === "skipped_disabled") {
-    return "Handoff foi gerado, mas a notificacao de handoff esta desativada nas configuracoes da IA.";
+    return "A transferencia foi gerada, mas a notificacao de transferencia esta desativada nas configuracoes da IA.";
   }
   if (normalized === "partial_failure") {
-    return "Parte dos alertas de handoff falhou. Revise os telefones dos responsaveis.";
+    return "Parte dos alertas de transferencia falhou. Revise os telefones dos responsaveis.";
   }
   if (normalized === "failed") {
-    return "Os alertas de handoff falharam. Revise canal e telefones dos responsaveis.";
+    return "Os alertas de transferencia falharam. Revise canal e telefones dos responsaveis.";
   }
   return "";
 }
@@ -711,16 +712,16 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
 
   const handoffNotifyStatus = normalizeHandoffNotifyStatus(chat.aiState.lastHandoffNotifyStatus);
   if (handoffNotifyStatus === "skipped_no_channel") {
-    return "IA ativa, mas o ultimo handoff nao conseguiu notificar humano por falta de canal WhatsApp ativo.";
+    return "IA ativa, mas a ultima transferencia nao conseguiu notificar humano por falta de canal WhatsApp ativo.";
   }
   if (handoffNotifyStatus === "skipped_no_recipients") {
-    return "IA ativa, mas o ultimo handoff nao conseguiu notificar humano por falta de telefone de responsavel.";
+    return "IA ativa, mas a ultima transferencia nao conseguiu notificar humano por falta de telefone de responsavel.";
   }
   if (handoffNotifyStatus === "skipped_disabled") {
-    return "IA ativa, mas a notificacao de handoff esta desativada nas configuracoes.";
+    return "IA ativa, mas a notificacao de transferencia esta desativada nas configuracoes.";
   }
   if (handoffNotifyStatus === "partial_failure" || handoffNotifyStatus === "failed") {
-    return "IA ativa, mas o ultimo alerta de handoff teve falha de entrega para parte do time.";
+    return "IA ativa, mas o ultimo alerta de transferencia teve falha de entrega para parte do time.";
   }
 
   return "IA pronta para respostas automaticas nesta conversa.";
@@ -877,7 +878,7 @@ function MessageMediaFallback({
           : "Midia indisponivel";
 
   return (
-    <div className="mt-3 rounded-[22px] border border-dashed border-white/12 bg-[rgba(8,12,11,0.45)] p-4 text-[var(--cliente-card-text-soft)]">
+    <div className="mt-3 rounded-[22px] border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 text-[var(--cliente-card-text-soft)]">
       <div className="flex items-start gap-3">
         <div className="rounded-2xl border border-amber-300/18 bg-amber-500/12 p-2 text-amber-100">
           <AlertCircle className="h-4 w-4" />
@@ -910,7 +911,7 @@ function ImageAttachment({ message }: { message: MessageItem }) {
   }
 
   return (
-    <div className="mt-3 overflow-hidden rounded-[22px] border border-white/10 bg-black/20">
+    <div className="mt-3 overflow-hidden rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={mediaUrl}
@@ -921,7 +922,7 @@ function ImageAttachment({ message }: { message: MessageItem }) {
         onError={() => setImageFailed(true)}
       />
       {message.mediaWidth && message.mediaHeight ? (
-        <div className="border-t border-white/10 px-3 py-2 text-[11px] text-[var(--cliente-card-text-soft)]">
+        <div className="border-t border-[var(--cliente-border)] px-3 py-2 text-[11px] text-[var(--cliente-card-text-soft)]">
           {message.mediaWidth} x {message.mediaHeight} px
         </div>
       ) : null}
@@ -950,7 +951,7 @@ function AudioAttachment({ message }: { message: MessageItem }) {
   }
 
   return (
-    <div className="mt-3 rounded-[22px] border border-white/10 bg-[rgba(8,12,11,0.45)] p-3">
+    <div className="mt-3 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
       <div className="mb-2 flex items-center justify-between gap-3 text-xs text-[var(--cliente-card-text-soft)]">
         <span className="inline-flex items-center gap-2">
           <Mic className="h-4 w-4" />
@@ -987,7 +988,7 @@ function DocumentAttachment({ message }: { message: MessageItem }) {
   const metaLine = [formatMimeType(message.mediaMimeType), formatFileSize(message.mediaSize)].filter(Boolean).join(" / ");
 
   return (
-    <div className="mt-3 rounded-[22px] border border-white/10 bg-[rgba(8,12,11,0.45)] p-3">
+    <div className="mt-3 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
       <div className="flex items-start gap-3">
         <div className="rounded-2xl border border-sky-300/18 bg-sky-500/12 p-2 text-sky-100">
           <FileText className="h-5 w-5" />
@@ -1004,14 +1005,14 @@ function DocumentAttachment({ message }: { message: MessageItem }) {
           href={mediaUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-black/20"
+          className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
         >
           <ExternalLink className="h-4 w-4" />
           Abrir com seguranca
         </a>
         <a
           href={downloadUrl}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-black/20"
+          className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
           download
         >
           <Download className="h-4 w-4" />
@@ -1051,11 +1052,11 @@ function MessageBubble({
       >
         <div className="flex items-center gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
           <span className="font-semibold uppercase tracking-[0.14em]">
-            {isAgent ? "Time" : isSystem ? "Sistema" : "Lead"}
+            {isAgent ? "Time" : isSystem ? "Sistema" : "Contato"}
           </span>
           {mediaLabel && MediaIcon ? (
             <>
-              <span>â€¢</span>
+              <span>•</span>
               <span className="inline-flex items-center gap-1">
                 <MediaIcon className="h-3.5 w-3.5" />
                 {mediaLabel}
@@ -1154,6 +1155,7 @@ function CommercialMetric({
 
 export default function ClienteInboxPage() {
   const { tenant, hasCapability } = useClienteTenant();
+  const { experienceMode, setExperienceMode } = useClienteShell();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loadingChats, setLoadingChats] = useState(true);
@@ -1196,6 +1198,8 @@ export default function ClienteInboxPage() {
   const [leadTaskDueAt, setLeadTaskDueAt] = useState("");
   const [leadTaskPriority, setLeadTaskPriority] = useState<(typeof TASK_PRIORITIES)[number]>("medium");
   const [leadTaskType, setLeadTaskType] = useState<(typeof TASK_TYPES)[number]>("follow_up");
+  const [showOpsSummary, setShowOpsSummary] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const initialChatId = searchParams.get("chatId");
   const leadIdFromQuery = searchParams.get("leadId");
@@ -1207,6 +1211,14 @@ export default function ClienteInboxPage() {
   const assignedUserFromQuery = searchParams.get("assignedUser");
   const canOperate = hasCapability("respond_inbox");
   const canManageQueue = hasCapability("manage_settings") || hasCapability("manage_users");
+  const allowAdvanced = experienceMode === "completo";
+
+  useEffect(() => {
+    if (!allowAdvanced) {
+      setShowOpsSummary(false);
+      setShowAdvancedFilters(false);
+    }
+  }, [allowAdvanced]);
 
   const loadChats = useCallback(async (options?: { silent?: boolean }) => {
     if (!tenant?.tenantId) return [] as ChatItem[];
@@ -1574,13 +1586,13 @@ export default function ClienteInboxPage() {
       });
       const payload = (await res.json()) as { error?: string };
       if (!res.ok) {
-        setError(payload.error || "Falha ao assumir handoff.");
+        setError(payload.error || "Falha ao assumir transferencia.");
         return;
       }
 
       await refreshSelected(true);
     } catch {
-      setError("Falha ao assumir handoff.");
+      setError("Falha ao assumir transferencia.");
     } finally {
       setUpdatingAi(false);
     }
@@ -1736,13 +1748,13 @@ export default function ClienteInboxPage() {
       });
       const payload = (await res.json()) as { error?: string };
       if (!res.ok) {
-        setError(payload.error || "Falha ao atualizar stage do lead.");
+        setError(payload.error || "Falha ao atualizar etapa do contato.");
         return;
       }
 
       await refreshSelected(false);
     } catch {
-      setError("Falha ao atualizar stage do lead.");
+      setError("Falha ao atualizar etapa do contato.");
     } finally {
       setSavingLeadStage(false);
     }
@@ -1950,9 +1962,9 @@ export default function ClienteInboxPage() {
       items.push({
         id: "lead_context",
         href: `/cliente/painel/comercial?leadId=${encodeURIComponent(activeLead.id)}`,
-        title: "Lead atual com contexto comercial",
+        title: "Contato atual com contexto comercial",
         detail: "Abrir proposta, financeiro e negociacao sem perder o fio da conversa.",
-        badge: "lead",
+        badge: "contato",
         tone: "success",
       });
     }
@@ -1962,10 +1974,10 @@ export default function ClienteInboxPage() {
 
   if (!selectedChat && !loadingChats && chats.length === 0) {
     return (
-      <div className="space-y-4">
+      <div className="client-daily-page space-y-4">
         <SectionHeader
           title="Inbox"
-          subtitle="Operacao omnichannel, takeover humano e contexto comercial no mesmo workspace."
+          subtitle="Operacao de atendimento, apoio humano e contexto comercial no mesmo painel."
         />
         <EmptyState
           title="Nenhuma conversa encontrada"
@@ -1976,17 +1988,62 @@ export default function ClienteInboxPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="client-daily-page space-y-5">
       <SectionHeader
         title="Inbox"
-        subtitle="Workspace operacional para atendimento, CRM e takeover com contexto completo do lead."
+        subtitle={
+          allowAdvanced
+            ? "Atendimento com contexto completo, filtros e painis operacionais."
+            : "Atendimento diario com foco em conversas, resposta e atribuicao."
+        }
         action={
           <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
+              <button
+                type="button"
+                onClick={() => setExperienceMode("essencial")}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-medium transition",
+                  !allowAdvanced
+                    ? "bg-[var(--cliente-accent)] text-white"
+                    : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
+                )}
+              >
+                Modo simples
+              </button>
+              <button
+                type="button"
+                onClick={() => setExperienceMode("completo")}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-medium transition",
+                  allowAdvanced
+                    ? "bg-[var(--cliente-accent)] text-white"
+                    : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
+                )}
+              >
+                Modo completo
+              </button>
+            </div>
+            {allowAdvanced ? (
+              <button
+                type="button"
+                onClick={() => setShowOpsSummary((current) => !current)}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition",
+                  showOpsSummary
+                    ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+                    : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-panel-soft)]"
+                )}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {showOpsSummary ? "Ocultar resumo" : "Mostrar resumo"}
+              </button>
+            ) : null}
             <StateBadge
               label={aiPaused ? "IA pausada nesta conversa" : "IA ativa nesta conversa"}
               tone={aiPaused ? "warning" : "success"}
             />
-            {canManageQueue ? (
+            {allowAdvanced && canManageQueue ? (
               <button
                 type="button"
                 onClick={handleDistributeQueue}
@@ -2013,65 +2070,75 @@ export default function ClienteInboxPage() {
         }
       />
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard
-          label="Conversas"
-          value={inboxStats.total.toLocaleString("pt-BR")}
-          icon={MessageSquareText}
-          trend="volume total do tenant"
-        />
-        <MetricCard
-          label="Abertas"
-          value={inboxStats.open.toLocaleString("pt-BR")}
-          icon={Sparkles}
-          trend="em operacao agora"
-        />
-        <MetricCard
-          label="Pendentes"
-          value={inboxStats.pending.toLocaleString("pt-BR")}
-          icon={Clock3}
-          trend="aguardando proxima acao"
-        />
-        <MetricCard
-          label="Sem dono"
-          value={inboxStats.unassigned.toLocaleString("pt-BR")}
-          icon={UserRound}
-          trend="fila para distribuir"
-        />
-        <MetricCard
-          label="SLA"
-          value={inboxStats.slaBreached.toLocaleString("pt-BR")}
-          icon={Flag}
-          trend="conversas estouradas"
-        />
-      </section>
-
-      <section className="grid gap-3 xl:grid-cols-5">
-        {focusSignals.length === 0 ? (
-          <PanelCard className="p-4 xl:col-span-5">
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Inbox sem gargalos relevantes no momento</p>
-            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-              O atendimento atual nao mostra fila critica, SLA estourado ou operacao sem ownership.
+      {showOpsSummary ? (
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="Abertas"
+            value={inboxStats.open.toLocaleString("pt-BR")}
+            icon={Sparkles}
+            trend="em operacao agora"
+          />
+          <MetricCard
+            label="Pendentes"
+            value={inboxStats.pending.toLocaleString("pt-BR")}
+            icon={Clock3}
+            trend="aguardando proxima acao"
+          />
+          <MetricCard
+            label="Sem dono"
+            value={inboxStats.unassigned.toLocaleString("pt-BR")}
+            icon={UserRound}
+            trend="fila para distribuir"
+          />
+          <MetricCard
+            label="SLA"
+            value={inboxStats.slaBreached.toLocaleString("pt-BR")}
+            icon={Flag}
+            trend="conversas estouradas"
+          />
+        </section>
+      ) : (
+        <PanelCard className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-[var(--cliente-card-text-muted)]">
+              Foco em atendimento: lista de conversas + chat principal. Abra o painel operacional apenas quando precisar.
             </p>
-          </PanelCard>
-        ) : (
-          focusSignals.map((item) => (
-            <Link
-              key={item.id}
-              href={item.href}
-              className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
-                  <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
+            <div className="flex flex-wrap gap-2">
+              <StateBadge label={`${inboxStats.unassigned} sem dono`} tone="warning" />
+              <StateBadge label={`${inboxStats.slaBreached} SLA`} tone="danger" />
+            </div>
+          </div>
+        </PanelCard>
+      )}
+
+      {allowAdvanced && showOpsSummary ? (
+        <section className="grid gap-3 xl:grid-cols-5">
+          {focusSignals.length === 0 ? (
+            <PanelCard className="p-4 xl:col-span-5">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Inbox sem gargalos relevantes no momento</p>
+              <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
+                O atendimento atual nao mostra fila critica, SLA estourado ou operacao sem responsavel.
+              </p>
+            </PanelCard>
+          ) : (
+            focusSignals.map((item) => (
+              <Link
+                key={item.id}
+                href={item.href}
+                className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                    <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
+                  </div>
+                  <StateBadge label={item.badge} tone={item.tone} />
                 </div>
-                <StateBadge label={item.badge} tone={item.tone} />
-              </div>
-            </Link>
-          ))
-        )}
-      </section>
+              </Link>
+            ))
+          )}
+        </section>
+      ) : null}
 
       {error ? (
         <PanelCard className="border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-100">
@@ -2079,6 +2146,7 @@ export default function ClienteInboxPage() {
         </PanelCard>
       ) : null}
 
+      {showOpsSummary && allowAdvanced ? (
       <PanelCard className="p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-[260px] flex-1">
@@ -2088,7 +2156,7 @@ export default function ClienteInboxPage() {
               <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">
                 {activeChat?.aiState?.lastJobStatus ? (
                   <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
-                    job {String(activeChat.aiState.lastJobStatus).replaceAll("_", " ")}
+                    tarefa {String(activeChat.aiState.lastJobStatus).replaceAll("_", " ")}
                   </span>
                 ) : null}
                 {activeChat?.aiState?.lastDecision ? (
@@ -2119,19 +2187,19 @@ export default function ClienteInboxPage() {
                 ) : null}
                 {typeof activeChat?.aiState?.lastHandoffNotifySuccessCount === "number" ? (
                   <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
-                    notify ok {activeChat.aiState.lastHandoffNotifySuccessCount}
+                    alerta ok {activeChat.aiState.lastHandoffNotifySuccessCount}
                   </span>
                 ) : null}
                 {typeof activeChat?.aiState?.lastHandoffNotifyFailureCount === "number" &&
                 Number(activeChat.aiState.lastHandoffNotifyFailureCount || 0) > 0 ? (
                   <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
-                    notify falha {activeChat.aiState.lastHandoffNotifyFailureCount}
+                    alerta falha {activeChat.aiState.lastHandoffNotifyFailureCount}
                   </span>
                 ) : null}
               </div>
             ) : null}
             <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
-              Quando a conversa entra em handoff ou pausa manual, a IA para de responder ate ser retomada novamente.
+              Quando a conversa entra em transferencia ou pausa manual, a IA para de responder ate ser retomada novamente.
             </p>
             {handoffNotifyHint ? (
               <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
@@ -2152,7 +2220,7 @@ export default function ClienteInboxPage() {
                 className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/12 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/18 disabled:opacity-50"
               >
                 {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
-                {activeChat?.aiState?.humanOwnerUserId ? "Liberar handoff e retomar IA" : "Retomar IA agora"}
+                {activeChat?.aiState?.humanOwnerUserId ? "Liberar transferencia e retomar IA" : "Retomar IA agora"}
               </button>
             ) : (
               <button
@@ -2176,19 +2244,27 @@ export default function ClienteInboxPage() {
                 Reprocessar ultima mensagem
               </button>
             ) : null}
-            {handoffNotifyHint ? (
-              <Link
-                href="/cliente/painel/ia"
+              {handoffNotifyHint ? (
+                <Link
+                  href="/cliente/painel/ia"
                 className="inline-flex items-center gap-2 rounded-xl border border-amber-300/20 bg-amber-500/12 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/18"
               >
-                Ajustar alerta de handoff
-              </Link>
-            ) : null}
+                  Ajustar alerta de transferencia
+                </Link>
+              ) : null}
           </div>
         </div>
       </PanelCard>
+      ) : null}
 
-      <section className="grid min-h-[82vh] min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,352px)_minmax(0,1.45fr)] 2xl:grid-cols-[minmax(0,352px)_minmax(0,1.62fr)_minmax(280px,332px)]">
+      <section
+        className={cn(
+          "grid min-h-[82vh] min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,340px)_minmax(0,1.7fr)]",
+          allowAdvanced
+            ? "2xl:grid-cols-[minmax(280px,340px)_minmax(0,1.8fr)_minmax(280px,332px)]"
+            : "2xl:grid-cols-[minmax(280px,340px)_minmax(0,1.8fr)]"
+        )}
+      >
         <PanelCard className="flex min-h-0 min-w-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)]">
           <div className="border-b border-[var(--cliente-border)] p-4">
             <div className="flex items-center justify-between gap-3">
@@ -2225,75 +2301,90 @@ export default function ClienteInboxPage() {
                 ))}
               </div>
 
-              <div className="grid grid-cols-1 gap-2">
-                <select
-                  value={priorityFilter}
-                  onChange={(event) => setPriorityFilter(event.target.value as PriorityFilter)}
-                  className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
+              {allowAdvanced ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters((current) => !current)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
                 >
-                  {PRIORITY_FILTERS.map((option) => (
-                    <option key={option} value={option}>
-                      {option === "all" ? "Todas prioridades" : formatPriorityLabel(option)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  {showAdvancedFilters ? "Ocultar filtros avancados" : "Mostrar filtros avancados"}
+                </button>
+              ) : null}
 
-              <div className="grid grid-cols-1 gap-2">
-                <select
-                  value={queueFilter}
-                  onChange={(event) => setQueueFilter(event.target.value as QueueFilter)}
-                  className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
-                >
-                  {QUEUE_FILTERS.map((option) => (
-                    <option key={option} value={option}>
-                      {formatQueueFilterLabel(option)}
-                    </option>
-                  ))}
-                </select>
+              {allowAdvanced && showAdvancedFilters ? (
+                <>
+                  <div className="grid grid-cols-1 gap-2">
+                    <select
+                      value={priorityFilter}
+                      onChange={(event) => setPriorityFilter(event.target.value as PriorityFilter)}
+                      className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
+                    >
+                      {PRIORITY_FILTERS.map((option) => (
+                        <option key={option} value={option}>
+                          {option === "all" ? "Todas prioridades" : formatPriorityLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <select
-                  value={aiFilter}
-                  onChange={(event) => setAiFilter(event.target.value as AiFilter)}
-                  className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
-                >
-                  {AI_FILTERS.map((option) => (
-                    <option key={option} value={option}>
-                      {formatAiFilterLabel(option)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    <select
+                      value={queueFilter}
+                      onChange={(event) => setQueueFilter(event.target.value as QueueFilter)}
+                      className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
+                    >
+                      {QUEUE_FILTERS.map((option) => (
+                        <option key={option} value={option}>
+                          {formatQueueFilterLabel(option)}
+                        </option>
+                      ))}
+                    </select>
 
-              <div className="grid grid-cols-1 gap-2">
-                <select
-                  value={channelFilter}
-                  onChange={(event) => setChannelFilter(event.target.value)}
-                  className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
-                >
-                  <option value="all">Todos os canais</option>
-                  {availableChannels.map((channel) => (
-                    <option key={channel} value={channel}>
-                      {formatChannelLabel(channel)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                    <select
+                      value={aiFilter}
+                      onChange={(event) => setAiFilter(event.target.value as AiFilter)}
+                      className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
+                    >
+                      {AI_FILTERS.map((option) => (
+                        <option key={option} value={option}>
+                          {formatAiFilterLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="grid grid-cols-1 gap-2">
-                <select
-                  value={assignedUserFilter}
-                  onChange={(event) => setAssignedUserFilter(event.target.value)}
-                  className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
-                >
-                  <option value="all">Todos os responsaveis</option>
-                  {availableAssignees.map((assignee) => (
-                    <option key={assignee.userId} value={assignee.userId}>
-                      {assignee.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    <select
+                      value={channelFilter}
+                      onChange={(event) => setChannelFilter(event.target.value)}
+                      className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
+                    >
+                      <option value="all">Todos os canais</option>
+                      {availableChannels.map((channel) => (
+                        <option key={channel} value={channel}>
+                          {formatChannelLabel(channel)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2">
+                    <select
+                      value={assignedUserFilter}
+                      onChange={(event) => setAssignedUserFilter(event.target.value)}
+                      className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
+                    >
+                      <option value="all">Todos os responsaveis</option>
+                      {availableAssignees.map((assignee) => (
+                        <option key={assignee.userId} value={assignee.userId}>
+                          {assignee.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
           <div className="flex-1 space-y-2 overflow-x-hidden overflow-y-auto px-2 pb-3 pt-2 sm:px-3">
@@ -2362,9 +2453,9 @@ export default function ClienteInboxPage() {
                     <span>
                       Responsavel: {activeChat?.assignedUserName || activeChat?.ownerName || "Sem atribuicao"}
                     </span>
-                    <span>â€¢</span>
+                    <span>•</span>
                     <span>{formatQueueStatusLabel(activeChat?.queueStatus)}</span>
-                    <span>â€¢</span>
+                    <span>•</span>
                     <span>Ultima atividade {formatRelative(activeChat?.lastMessageTime)}</span>
                   </div>
                 </div>
@@ -2393,7 +2484,7 @@ export default function ClienteInboxPage() {
                   className="inline-flex items-center gap-2 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/16 disabled:opacity-50"
                 >
                   {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserRound className="h-3.5 w-3.5" />}
-                  Assumir handoff
+                  Assumir transferencia
                 </button>
                 <button
                   type="button"
@@ -2417,14 +2508,14 @@ export default function ClienteInboxPage() {
             {activeLead ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Lead</p>
-                  <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">{activeLead.nome || "Lead"}</p>
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Contato</p>
+                  <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">{activeLead.nome || "Contato"}</p>
                   <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
                     {activeLead.empresa || activeLead.origem || "Sem empresa"}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Pipeline</p>
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Etapa do funil</p>
                   <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">
                     {getPipelineStageLabel(
                       normalizePipelineStageId(activeLead.pipelineStage || activeLead.stage || "captado")
@@ -2437,7 +2528,7 @@ export default function ClienteInboxPage() {
                   <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">
                     {formatMoney(activeLead.potentialValue)}
                   </p>
-                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Score {activeLead.score ?? "--"}</p>
+                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Pontuacao {activeLead.score ?? "--"}</p>
                 </div>
               </div>
             ) : null}
@@ -2481,17 +2572,18 @@ export default function ClienteInboxPage() {
           </form>
         </PanelCard>
 
+        {allowAdvanced ? (
         <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden overflow-y-auto 2xl:sticky 2xl:top-4 2xl:max-h-[calc(100vh-8rem)]">
           <PanelCard className="p-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle
-                title="Cockpit do lead"
-                subtitle="Dados comerciais, pipeline e contexto de conta"
+                title="Resumo do contato"
+                subtitle="Dados comerciais, etapa e contexto de conta"
               />
               {activeLead ? (
                 <StateBadge label="conectado ao CRM" tone="success" />
               ) : (
-                <StateBadge label="sem lead vinculado" tone="warning" />
+                <StateBadge label="sem contato vinculado" tone="warning" />
               )}
             </div>
 
@@ -2502,7 +2594,7 @@ export default function ClienteInboxPage() {
             ) : activeLead ? (
               <>
                 <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-                  <InfoRow label="Nome" value={activeLead.nome || "Lead"} />
+                  <InfoRow label="Nome" value={activeLead.nome || "Contato"} />
                   <InfoRow label="Telefone" value={activeLead.telefone || activeChat?.contactPhone || "--"} />
                   <InfoRow label="Email" value={activeLead.email || "--"} />
                   <InfoRow label="Empresa" value={activeLead.empresa || "--"} />
@@ -2518,7 +2610,7 @@ export default function ClienteInboxPage() {
                       </p>
                       {aiChecklistProgress.total > 0 ? (
                         <StateBadge
-                          label={`checklist ${aiChecklistProgress.done}/${aiChecklistProgress.total}`}
+                          label={`lista ${aiChecklistProgress.done}/${aiChecklistProgress.total}`}
                           tone={aiChecklistProgress.done >= Math.ceil(aiChecklistProgress.total * 0.6) ? "success" : "warning"}
                         />
                       ) : null}
@@ -2537,7 +2629,7 @@ export default function ClienteInboxPage() {
                           </div>
                           <p className="mt-1 text-sm text-[var(--cliente-card-text)]">{item.value}</p>
                           <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">
-                            {humanizeEvidenceSource(item.source)} · {formatDateTime(item.capturedAt)}
+                            {humanizeEvidenceSource(item.source)} • {formatDateTime(item.capturedAt)}
                           </p>
                         </div>
                       ))}
@@ -2547,7 +2639,7 @@ export default function ClienteInboxPage() {
 
                 <div className="mt-4 grid gap-3">
                   <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                    <span>Stage do pipeline</span>
+                    <span>Etapa do funil</span>
                     <select
                       value={leadStage}
                       onChange={(event) => setLeadStage(event.target.value)}
@@ -2573,13 +2665,13 @@ export default function ClienteInboxPage() {
                     ) : (
                       <FolderKanban className="h-4 w-4" />
                     )}
-                    Atualizar stage
+                    Atualizar etapa
                   </button>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <StateBadge label={getPipelineStageLabel(leadStage)} tone="info" />
-                  <StateBadge label={`Score ${activeLead.score ?? "--"}`} tone="neutral" />
-                  <StateBadge label={activeLead.heat || "sem heat"} tone={getHeatTone(activeLead.heat)} />
+                  <StateBadge label={`Pontuacao ${activeLead.score ?? "--"}`} tone="neutral" />
+                  <StateBadge label={activeLead.heat || "sem temperatura"} tone={getHeatTone(activeLead.heat)} />
                   <StateBadge
                     label={formatPriorityLabel(activeLead.priority)}
                     tone={getPriorityTone(activeLead.priority)}
@@ -2590,7 +2682,7 @@ export default function ClienteInboxPage() {
                   {(activeLead.tags || []).length > 0 ? (
                     activeLead.tags?.map((tag) => <StateBadge key={tag} label={tag} tone="neutral" />)
                   ) : (
-                    <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem tags comerciais no lead.</p>
+                    <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem tags comerciais no contato.</p>
                   )}
                 </div>
 
@@ -2638,7 +2730,7 @@ export default function ClienteInboxPage() {
               </>
             ) : (
               <div className="mt-4 rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
-                Esta conversa ainda nao esta associada a um lead com perfil comercial completo.
+                Esta conversa ainda nao esta associada a um contato com perfil comercial completo.
               </div>
             )}
           </PanelCard>
@@ -2738,10 +2830,10 @@ export default function ClienteInboxPage() {
             <div className="flex items-center justify-between gap-3">
               <CardTitle
                 title="Comercial conectado"
-                subtitle="Propostas, receita e pendencias do lead dentro da conversa"
+                subtitle="Propostas, receita e pendencias do contato dentro da conversa"
               />
               <StateBadge
-                label={activeLead ? "sincronizado" : "aguardando lead"}
+                label={activeLead ? "sincronizado" : "aguardando contato"}
                 tone={activeLead ? "success" : "warning"}
               />
             </div>
@@ -2787,7 +2879,7 @@ export default function ClienteInboxPage() {
                   </div>
                   {leadBudgets.length === 0 ? (
                     <p className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 text-sm text-[var(--cliente-card-text-soft)]">
-                      Nenhuma proposta vinculada a este lead ainda.
+                      Nenhuma proposta vinculada a este contato ainda.
                     </p>
                   ) : (
                     leadBudgets.map((budget) => (
@@ -2828,7 +2920,7 @@ export default function ClienteInboxPage() {
                   </div>
                   {leadFinance.length === 0 ? (
                     <p className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 text-sm text-[var(--cliente-card-text-soft)]">
-                      Nenhum lancamento comercial associado a este lead.
+                      Nenhum lancamento comercial associado a este contato.
                     </p>
                   ) : (
                     leadFinance.map((item) => (
@@ -2856,7 +2948,7 @@ export default function ClienteInboxPage() {
               </>
             ) : (
               <div className="mt-4 rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
-                Vincule um lead a conversa para enxergar propostas, receita e pendencias financeiras aqui.
+                Vincule um contato a conversa para enxergar propostas, receita e pendencias financeiras aqui.
               </div>
             )}
           </PanelCard>
@@ -2864,15 +2956,15 @@ export default function ClienteInboxPage() {
           <PanelCard className="p-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle
-                title="Tarefas do lead"
-                subtitle="Follow-up, proposta e pendencias sem sair do inbox"
+                title="Tarefas do contato"
+                subtitle="Retorno, proposta e pendencias sem sair do inbox"
               />
               <StateBadge label={`${leadTasks.length}`} tone="neutral" />
             </div>
 
             <div className="mt-4 space-y-3">
               {leadTasks.length === 0 ? (
-                <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhuma tarefa criada para este lead ainda.</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhuma tarefa criada para este contato ainda.</p>
               ) : (
                 leadTasks.map((task) => (
                   <div key={task.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
@@ -2974,7 +3066,7 @@ export default function ClienteInboxPage() {
           <PanelCard className="p-4">
             <CardTitle
               title="Notas e inteligencia operacional"
-              subtitle="Notas internas da conversa e observacoes do lead"
+              subtitle="Notas internas da conversa e observacoes do contato"
             />
 
             <form onSubmit={handleCreateInternalNote} className="mt-4 space-y-3">
@@ -3005,7 +3097,7 @@ export default function ClienteInboxPage() {
                 <textarea
                   value={leadNoteText}
                   onChange={(event) => setLeadNoteText(event.target.value)}
-                  placeholder="Registrar nota comercial no perfil do lead"
+                  placeholder="Registrar nota comercial no perfil do contato"
                   disabled={!canOperate}
                   rows={3}
                   className="client-input w-full rounded-2xl border px-3 py-3 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
@@ -3020,7 +3112,7 @@ export default function ClienteInboxPage() {
                   ) : (
                     <NotebookPen className="h-4 w-4" />
                   )}
-                  Salvar nota do lead
+                  Salvar nota do contato
                 </button>
               </form>
             ) : null}
@@ -3035,20 +3127,20 @@ export default function ClienteInboxPage() {
 
           <NoteCard
             title="Notas comerciais"
-            subtitle="Anotacoes persistidas no CRM do lead"
+            subtitle="Anotacoes persistidas no CRM do contato"
             notes={leadNotes}
-            emptyLabel="Nenhuma nota comercial registrada para o lead."
+            emptyLabel="Nenhuma nota comercial registrada para o contato."
           />
 
           <PanelCard className="p-4">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle title="Timeline recente" subtitle="Eventos do lead conectados a esta conversa" />
+              <CardTitle title="Historico recente" subtitle="Eventos do contato conectados a esta conversa" />
               <StateBadge label={`${timeline.length}`} tone="neutral" />
             </div>
 
             <div className="mt-4 space-y-3">
               {timeline.length === 0 ? (
-                <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhum evento recente no lead.</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhum evento recente no contato.</p>
               ) : (
                 timeline.slice(0, 8).map((event) => (
                   <div key={event.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
@@ -3065,7 +3157,33 @@ export default function ClienteInboxPage() {
             </div>
           </PanelCard>
         </div>
+        ) : (
+          <PanelCard className="p-4">
+              <CardTitle title="Painel lateral oculto" subtitle="No modo essencial mostramos apenas lista de conversas e chat." />
+            <p className="mt-2 text-sm text-[var(--cliente-card-text-soft)]">
+              Para ver resumo do contato, comercial conectado, tarefas, notas e historico no inbox, ative o modo completo.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setExperienceMode("completo")}
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
+              >
+                Ativar modo completo
+              </button>
+              {activeLead?.id ? (
+                <Link
+                  href={`/cliente/painel/crm?leadId=${encodeURIComponent(activeLead.id)}`}
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
+                >
+                  Abrir CRM do contato
+                </Link>
+              ) : null}
+            </div>
+          </PanelCard>
+        )}
       </section>
     </div>
   );
 }
+

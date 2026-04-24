@@ -20,6 +20,7 @@ import {
   trackLeadStageOutcome,
   trackProposalOutcome,
 } from "@/lib/server/ai/learning-outcomes";
+import { getTenantLearningHints, type AltumTenantLearningHints } from "@/lib/server/ai/tenant-learning";
 import { enrichInboundMessageForAgent } from "@/lib/server/ai/multimodal";
 import { scoreAltumConversationQuality } from "@/lib/server/ai/quality-score";
 import { sendAltumVoiceReply } from "@/lib/server/ai/voice";
@@ -126,6 +127,7 @@ type TenantAiConfig = {
   escalationTopics: string[];
   playbookOffers: BusinessProfilePlaybookOffer[];
   playbookScripts: BusinessProfilePlaybookScript[];
+  learningHints?: AltumTenantLearningHints | null;
   tier: AltumAiTier;
   autonomyMode: AltumAiAutonomyMode;
   reasoningLevel: AltumAiReasoningLevel;
@@ -792,20 +794,73 @@ function pickNextMandatoryQuestion(messages: ConversationMessage[], questions: s
   return questions[0] || "";
 }
 
-function scoreKbDoc(messageWords: string[], doc: KbDoc) {
+const SEMANTIC_KEYWORD_GROUPS = [
+  ["preco", "valor", "orcamento", "budget", "investimento"],
+  ["reuniao", "call", "agenda", "agendar", "meeting"],
+  ["lead", "demanda", "captacao", "captar", "trafego"],
+  ["venda", "conversao", "converter", "fechamento", "fechar"],
+  ["atendimento", "whatsapp", "suporte", "inbox"],
+  ["crm", "pipeline", "processo", "operacao"],
+  ["urgencia", "prazo", "rapido", "prioridade"],
+];
+
+function expandSemanticWords(words: string[]) {
+  const expanded = new Set(words);
+  for (const group of SEMANTIC_KEYWORD_GROUPS) {
+    const touchesGroup = group.some((token) => expanded.has(token));
+    if (!touchesGroup) continue;
+    for (const token of group) expanded.add(token);
+  }
+  return expanded;
+}
+
+function scoreKbDoc(input: {
+  inboundText: string;
+  messageWords: string[];
+  retrievalMode: "keyword" | "hybrid" | "semantic";
+  doc: KbDoc;
+}) {
+  const { inboundText, messageWords, retrievalMode, doc } = input;
   if (messageWords.length === 0) return 0;
+
   const docWords = new Set<string>([
     ...normalizeWords(doc.content),
     ...doc.tags.flatMap((tag) => normalizeWords(tag)),
     ...normalizeWords(doc.type),
   ]);
+  const normalizedInbound = normalizeComparable(inboundText);
+  const normalizedDoc = normalizeComparable(doc.content);
 
-  let score = 0;
+  let lexicalHits = 0;
   for (const word of messageWords) {
-    if (docWords.has(word)) score += 1;
+    if (docWords.has(word)) lexicalHits += 1;
   }
 
-  return score;
+  let semanticHits = 0;
+  const expandedWords = expandSemanticWords(messageWords);
+  for (const word of expandedWords) {
+    if (docWords.has(word)) semanticHits += 1;
+  }
+
+  let phraseHits = 0;
+  for (const tag of doc.tags) {
+    const normalizedTag = normalizeComparable(tag);
+    if (!normalizedTag) continue;
+    if (normalizedInbound.includes(normalizedTag)) phraseHits += 1;
+  }
+  if (normalizedInbound && normalizedDoc.includes(normalizedInbound)) phraseHits += 2;
+
+  const typeBoost = doc.type === "catalog" ? 0.35 : doc.type === "faq" ? 0.2 : 0.1;
+
+  if (retrievalMode === "semantic") {
+    return Number((semanticHits * 1.25 + phraseHits * 1.6 + lexicalHits * 0.7 + typeBoost).toFixed(4));
+  }
+
+  if (retrievalMode === "hybrid") {
+    return Number((lexicalHits * 1.05 + semanticHits * 0.75 + phraseHits * 1.25 + typeBoost).toFixed(4));
+  }
+
+  return Number((lexicalHits * 1.2 + phraseHits * 0.9 + typeBoost).toFixed(4));
 }
 
 function makeLeadFacingReply(input: {
@@ -890,24 +945,21 @@ function makeLeadFacingReply(input: {
   }
 
   if (asksWellbeing && !turn.hasBusinessTerms) {
-    return "Tudo certo por aqui. E por aí?";
+    return "Tudo certo por aqui. Pra eu te direcionar certo: qual resultado voce quer destravar no comercial agora?";
   }
 
   if (thanks && !turn.hasBusinessTerms) {
-    return "Imagina. Tô por aqui.";
+    return "Perfeito. Antes de avancar, me conta: hoje seu foco e gerar demanda ou melhorar conversao?";
   }
 
   if (turn.isLightSmallTalk && !turn.hasBusinessTerms) {
-    return "Hahaha, tento ajudar rápido mesmo.";
+    return "Fechou. Bora usar isso a seu favor: qual e o principal gargalo do seu atendimento hoje?";
   }
 
   if (isGreetingLike(input.inboundText)) {
-    if (!knownFirstName && !hasAskedName) {
-      return "Oi! Tudo bem? Posso te chamar de como?";
-    }
     return knownFirstName
-      ? `Oi, ${knownFirstName}! Tudo bem? Como posso te ajudar hoje?`
-      : "Oi! Tudo bem? Como posso te ajudar hoje?";
+      ? `Oi, ${knownFirstName}! Tudo bem? Pra eu te direcionar certo, hoje o foco e gerar mais leads, organizar atendimento ou converter melhor?`
+      : "Oi! Tudo bem? Pra te direcionar certo, hoje o foco e gerar mais leads, organizar atendimento ou converter melhor?";
   }
 
   if (isClarificationRequest(input.inboundText)) {
@@ -948,6 +1000,39 @@ function makeLeadFacingReply(input: {
   return defaultReply;
 }
 
+function buildSecondaryCommercialNudge(input: {
+  inboundText: string;
+  responseText: string;
+  messageType?: string | null;
+  decision: Exclude<Decision, "skip" | "handoff">;
+  conversation: ConversationMessage[];
+  mandatoryQuestions: string[];
+}) {
+  const normalizedType = sanitizeText(input.messageType, 40).toLowerCase();
+  if (normalizedType && normalizedType !== "text") return null;
+  if (input.decision !== "respond") return null;
+
+  const turn = classifyLeadTurn(input.inboundText);
+  if (!turn.isGreeting && !turn.isPureRelational) return null;
+  if (sanitizeText(input.responseText, 300).includes("?")) return null;
+
+  const question = sanitizeText(
+    pickNextMandatoryQuestion(input.conversation, input.mandatoryQuestions) ||
+      "Pra te direcionar com precisao: qual e o principal objetivo comercial agora?",
+    220
+  );
+  if (!question || question.length < 12) return null;
+
+  const prefixed = question.endsWith("?")
+    ? `Pra te direcionar com precisao: ${question}`
+    : `Pra te direcionar com precisao: ${question}?`;
+  const normalizedPrefix = normalizeComparable(prefixed);
+  const normalizedPrimary = normalizeComparable(input.responseText);
+  if (!normalizedPrefix || normalizedPrefix === normalizedPrimary) return null;
+
+  return sanitizeText(prefixed, 260);
+}
+
 function summarizeForResponsible(messages: ConversationMessage[]) {
   const recentClient = messages
     .filter((item) => item.sender === "client")
@@ -963,7 +1048,11 @@ function summarizeForResponsible(messages: ConversationMessage[]) {
   return bullets.slice(0, 5);
 }
 
-async function fetchKbDocs(tenantId: string, inboundText: string) {
+async function fetchKbDocs(
+  tenantId: string,
+  inboundText: string,
+  retrievalMode: "keyword" | "hybrid" | "semantic" = "keyword"
+) {
   const snap = await adminDb
     .collection("kb_docs")
     .where("tenantId", "==", tenantId)
@@ -995,19 +1084,39 @@ async function fetchKbDocs(tenantId: string, inboundText: string) {
 
   const messageWords = normalizeWords(inboundText);
   const scored = baseDocs
-    .map((doc) => ({ ...doc, score: scoreKbDoc(messageWords, doc) }))
+    .map((doc) => ({
+      ...doc,
+      score: scoreKbDoc({
+        inboundText,
+        messageWords,
+        retrievalMode,
+        doc,
+      }),
+    }))
     .sort((a, b) => b.score - a.score);
 
   return scored.filter((doc) => doc.score > 0);
 }
 
 async function fetchConversation(chatId: string, tenantId: string) {
-  const snap = await adminDb
-    .collection("messages")
-    .where("chatId", "==", chatId)
-    .where("tenantId", "==", tenantId)
-    .limit(300)
-    .get();
+  const snap = await (async () => {
+    try {
+      return await adminDb
+        .collection("messages")
+        .where("chatId", "==", chatId)
+        .where("tenantId", "==", tenantId)
+        .orderBy("createdAt", "desc")
+        .limit(300)
+        .get();
+    } catch {
+      return await adminDb
+        .collection("messages")
+        .where("chatId", "==", chatId)
+        .where("tenantId", "==", tenantId)
+        .limit(300)
+        .get();
+    }
+  })();
 
   const messages: ConversationMessage[] = snap.docs
     .map((doc) => {
@@ -3252,12 +3361,17 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "human_takeover_active" };
   }
 
-  const [conversation, kbDocs, runtimeState, leadMemory] = await Promise.all([
+  const [conversation, kbDocs, runtimeState, leadMemory, learningHints] = await Promise.all([
     fetchConversation(chatId, tenantId),
-    fetchKbDocs(tenantId, inboundText),
+    fetchKbDocs(tenantId, inboundText, aiConfig.runtimePolicy.retrievalMode),
     getConversationRuntimeState(tenantId, chatId),
     leadId ? getLeadMemory(tenantId, leadId) : Promise.resolve(null),
+    getTenantLearningHints(tenantId),
   ]);
+  const tenantAiWithLearning: TenantAiConfig = {
+    ...aiConfig,
+    learningHints,
+  };
 
   const runtimeStateSummary = summarizeRuntimeStateForAgent(runtimeState);
   const leadMemorySummary = summarizeLeadMemoryForAgent(leadMemory);
@@ -3290,6 +3404,7 @@ export async function handleIncomingMessage(
           escalationTopics: aiConfig.escalationTopics,
           playbookOffers: aiConfig.playbookOffers,
           playbookScripts: aiConfig.playbookScripts,
+          learningHints: tenantAiWithLearning.learningHints,
           tier: aiConfig.tier,
           autonomyMode: aiConfig.autonomyMode,
           reasoningLevel: aiConfig.reasoningLevel,
@@ -3337,6 +3452,7 @@ export async function handleIncomingMessage(
     tenantAi: {
       escalationTopics: aiConfig.escalationTopics,
       playbookOffers: aiConfig.playbookOffers,
+      learningHints: tenantAiWithLearning.learningHints,
     },
   });
   const nextAction = plannerDecision.nextAction || choice.nextAction;
@@ -3917,6 +4033,16 @@ export async function handleIncomingMessage(
         contactName: preferredContactName || null,
       }),
     }) || "Perfeito. Me conta so mais um ponto rapido para eu te orientar melhor.";
+  const secondaryResponseText = buildSecondaryCommercialNudge({
+    inboundText,
+    responseText,
+    messageType: sanitizeText(incomingMessage.type, 40) || null,
+    decision: choice.decision,
+    conversation,
+    mandatoryQuestions: aiConfig.mandatoryQuestions,
+  });
+  const finalOutboundText = secondaryResponseText ? `${responseText}\n${secondaryResponseText}` : responseText;
+  const openQuestionForMemory = secondaryResponseText || responseText;
   const conversationSummary = buildPersistentConversationSummary({
     llmMemorySummary: llmResult?.memorySummary || null,
     preferredName: preferredContactName || null,
@@ -3927,13 +4053,13 @@ export async function handleIncomingMessage(
     primaryGoal: extractedFields?.primaryGoal || extractedFields?.goal || leadMemory?.primaryGoal || null,
     currentChannels: extractedFields?.currentChannels || leadMemory?.currentChannels || null,
     dominantObjection: plannerDecision.objectionType || leadMemory?.dominantObjection || null,
-    openQuestion: responseText,
+    openQuestion: openQuestionForMemory,
     recommendedOffer: plannerDecision.recommendedOffer || null,
     nextAction,
   });
   const quality = scoreAltumConversationQuality({
     inboundText,
-    outboundText: responseText,
+    outboundText: finalOutboundText,
     plan: plannerDecision,
     runtimeState,
   });
@@ -3961,6 +4087,32 @@ export async function handleIncomingMessage(
     channelPhoneNumberId: whatsappChannel?.phoneNumberId,
     senderName: "AI Sales Agent",
   });
+
+  if (secondaryResponseText) {
+    if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
+      await sendMetaTextMessage({
+        channel: whatsappChannel,
+        to: leadPhone,
+        text: secondaryResponseText,
+      });
+    } else if (isMetaConversation && metaChannel && metaRecipientId) {
+      await sendMetaConversationText({
+        channel: metaChannel,
+        recipientId: metaRecipientId,
+        text: secondaryResponseText,
+      });
+    }
+
+    await addMessage({
+      chatId,
+      tenantId,
+      text: secondaryResponseText,
+      sender: "agent",
+      channel: chatChannel,
+      channelPhoneNumberId: whatsappChannel?.phoneNumberId,
+      senderName: "AI Sales Agent",
+    });
+  }
 
   let voiceReplySent = false;
   const shouldSendVoiceReply =
@@ -4022,7 +4174,7 @@ export async function handleIncomingMessage(
       decision: choice.decision,
     reason: choice.reason,
     inboundText,
-    outboundText: responseText,
+    outboundText: finalOutboundText,
     toolCalls: [
       "kb_docs",
       "chat_state",
@@ -4099,6 +4251,8 @@ export async function handleIncomingMessage(
       conversationLedBy: choice.ledBy,
       qualityScore: quality.score,
       qualityNotes: quality.notes,
+      secondaryResponseSent: Boolean(secondaryResponseText),
+      secondaryResponseText: secondaryResponseText || null,
       executedActions,
       voiceReplySent,
     },
@@ -4140,7 +4294,7 @@ export async function handleIncomingMessage(
     chatId,
     leadId,
     inboundText,
-    outboundText: responseText,
+    outboundText: finalOutboundText,
     decision: choice.decision,
     reason: choice.reason,
     confidence: choice.confidence,
@@ -4168,7 +4322,7 @@ export async function handleIncomingMessage(
       preferredName: preferredContactName || null,
       leadTone: extractedFields?.leadTone || runtimeState?.leadTone || null,
       activeTopic: extractedFields?.activeTopic || runtimeState?.activeTopic || null,
-      openQuestion: responseText,
+      openQuestion: openQuestionForMemory,
       conversationMaturity: plannerDecision.stateAfter,
       memorySummary: llmResult?.memorySummary || null,
       summary: conversationSummary,

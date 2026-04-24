@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { notFound } from "next/navigation";
 import ProgrammaticLanding from "@/components/programmatic/ProgrammaticLanding";
 import { cityPages, getCityPageBySlug } from "@/data/city-pages";
@@ -67,8 +66,8 @@ export default async function CityPage({ params }: PageProps) {
 
   return (
     <>
-      <Script id={`city-service-jsonld-${item.slug}`} type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(serviceSchema)} />
-      <Script id={`city-faq-jsonld-${item.slug}`} type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(faqSchema)} />
+      <script id={`city-service-jsonld-${item.slug}`} type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(serviceSchema)} />
+      <script id={`city-faq-jsonld-${item.slug}`} type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(faqSchema)} />
       <ProgrammaticLanding
         eyebrow="Cidades"
         title={`IA e automacao em ${item.city}/${item.state}`}

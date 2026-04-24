@@ -59,11 +59,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Atendimento e vendas",
     items: [
-      { href: "/cliente/painel/inbox", label: "Inbox", icon: MessageSquare },
+      { href: "/cliente/painel/inbox", label: "Conversas", icon: MessageSquare },
       { href: "/cliente/painel/crm", label: "CRM", icon: Users },
-      { href: "/cliente/painel/follow-ups", label: "Follow-ups", icon: ListTodo },
+      { href: "/cliente/painel/follow-ups", label: "Retornos", icon: ListTodo },
       { href: "/cliente/painel/agenda", label: "Agenda", icon: CalendarDays },
-      { href: "/cliente/painel/pipeline", label: "Pipeline", icon: Funnel },
+      { href: "/cliente/painel/pipeline", label: "Funil", icon: Funnel },
       { href: "/cliente/painel/comercial", label: "Comercial", icon: DollarSign, capability: "manage_commercial" },
     ],
   },
@@ -79,16 +79,16 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/cliente/painel/ia", label: "IA", icon: Bot, capability: "manage_ai" },
       { href: "/cliente/painel/conhecimento", label: "Conhecimento", icon: BookOpen, capability: "manage_ai" },
-      { href: "/cliente/painel/handoffs", label: "Handoffs", icon: GitBranchPlus },
+      { href: "/cliente/painel/handoffs", label: "Transferencias", icon: GitBranchPlus },
       { href: "/cliente/painel/automacoes", label: "Automacoes", icon: Cable, capability: "manage_automations" },
-      { href: "/cliente/painel/automacoes/instagram", label: "Instagram Ops", icon: Instagram, capability: "manage_automations" },
+      { href: "/cliente/painel/automacoes/instagram", label: "Operacao Instagram", icon: Instagram, capability: "manage_automations" },
       { href: "/cliente/painel/metricas", label: "Metricas", icon: Target },
     ],
   },
   {
     title: "Governanca",
     items: [
-      { href: "/cliente/painel/go-live", label: "Go-live", icon: Rocket },
+      { href: "/cliente/painel/go-live", label: "Lancamento", icon: Rocket },
       { href: "/cliente/painel/logs", label: "Logs", icon: FileText },
       { href: "/cliente/painel/configuracoes", label: "Configuracoes", icon: Settings, capability: "manage_settings" },
     ],
@@ -104,12 +104,13 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
   const pathname = usePathname();
   const { tenant, hasCapability } = useClienteTenant();
   const { pilotReady, readinessScore, blockerCount } = useTenantReadiness(tenant?.tenantId);
-  const { sidebarCollapsed, setSidebarCollapsed } = useClienteShell();
+  const { sidebarCollapsed, setSidebarCollapsed, density } = useClienteShell();
   const [isDesktop, setIsDesktop] = useState(false);
 
   const roleLabel = tenant?.tenantRole?.replace(/_/g, " ") || "cliente";
   const navStateLabel = pilotReady ? "pronto" : blockerCount > 0 ? `${blockerCount} pend.` : "operando";
   const compactMode = isDesktop && sidebarCollapsed;
+  const dense = density === "compact";
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 1024px)");
@@ -130,20 +131,20 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
       <aside
         className={`client-glass fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-[var(--cliente-border)] bg-[var(--cliente-sidebar)] shadow-[var(--cliente-shadow-hard)] transition-[width,transform] duration-300 lg:translate-x-0 ${
-          compactMode ? "w-[304px] lg:w-[92px]" : "w-[304px]"
+          compactMode ? "w-[286px] lg:w-[88px]" : "w-[286px]"
         } ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="pointer-events-none absolute inset-x-4 top-0 h-24 rounded-b-[32px] bg-[linear-gradient(180deg,var(--cliente-accent-soft),transparent)]" />
+        <div className="pointer-events-none absolute inset-x-3 top-0 h-20 rounded-b-[28px] bg-[linear-gradient(180deg,var(--cliente-accent-soft),transparent)]" />
 
-        <div className="relative flex h-20 items-center gap-3 border-b border-[var(--cliente-border)] px-4">
-          <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)] shadow-[0_12px_30px_rgba(59,130,246,0.16)]">
+        <div className="relative flex h-[74px] items-center gap-3 border-b border-[var(--cliente-border)] px-3.5">
+          <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)] shadow-[0_10px_24px_var(--cliente-accent-glow)]">
             <Crown className="h-5 w-5" />
           </div>
 
           {!compactMode ? (
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12px] font-black uppercase tracking-[0.28em] text-[var(--cliente-text)]">ALTUM</p>
-              <p className="truncate text-[10px] uppercase tracking-[0.22em] text-[var(--cliente-text-soft)]">Portal do cliente</p>
+              <p className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-[var(--cliente-text)]">ALTUM</p>
+              <p className="truncate text-[10px] tracking-[0.14em] text-[var(--cliente-text-soft)]">Portal do cliente</p>
             </div>
           ) : null}
 
@@ -151,7 +152,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
             <button
               type="button"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="hidden rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-text)] lg:inline-flex"
+              className="hidden rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-2 text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-text)] lg:inline-flex"
               title={compactMode ? "Expandir menu" : "Recolher menu"}
             >
               {compactMode ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -159,7 +160,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
             <button
               onClick={onClose}
-              className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-text-muted)] hover:text-[var(--cliente-text)] lg:hidden"
+              className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-2 text-[var(--cliente-text-muted)] hover:text-[var(--cliente-text)] lg:hidden"
               aria-label="Fechar menu"
             >
               <X className="h-4 w-4" />
@@ -169,28 +170,28 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
         <div className="px-4 pt-4">
           <div
-            className={`client-glass overflow-hidden rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-sidebar-card)] shadow-[var(--cliente-shadow-soft)] ${
+            className={`client-glass overflow-hidden rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-sidebar-card)] shadow-[var(--cliente-shadow-soft)] ${
               compactMode ? "px-2 py-3" : "px-4 py-4"
             }`}
           >
             <div className={`flex items-start ${compactMode ? "justify-center" : "justify-between gap-3"}`}>
               <div className={compactMode ? "hidden" : "min-w-0"}>
-                <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--cliente-text-soft)]">Workspace</p>
+                <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--cliente-text-soft)]">Conta</p>
                 <p className="mt-2 truncate text-base font-semibold text-[var(--cliente-text)]">
                   {tenant?.tenantName || tenant?.clientName || "Cliente"}
                 </p>
                 <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Operacao centralizada da conta</p>
               </div>
-              <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]">
+              <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]">
                 <Shield className="h-4 w-4" />
               </div>
             </div>
 
             {!compactMode ? (
-              <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+              <div className="mt-4 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">Prontidao</p>
+                    <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--cliente-text-soft)]">Prontidao</p>
                     <p className="mt-1 text-sm font-medium text-[var(--cliente-text)]">
                       {pilotReady ? "Operacao pronta" : "Estrutura em implantacao"}
                     </p>
@@ -202,7 +203,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
           </div>
         </div>
 
-        <nav className="client-scrollbar mt-4 flex-1 space-y-5 overflow-y-auto px-3 pb-4">
+        <nav className={`client-scrollbar mt-4 flex-1 overflow-y-auto px-3 ${dense ? "space-y-4 pb-3" : "space-y-5 pb-4"}`}>
           {NAV_GROUPS.map((group) => {
             const visibleItems = group.items.filter((item) => !("capability" in item) || !item.capability || hasCapability(item.capability));
             if (visibleItems.length === 0) return null;
@@ -210,10 +211,10 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
             return (
               <div key={group.title}>
                 {!compactMode ? (
-                  <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--cliente-text-soft)]">{group.title}</p>
+                  <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--cliente-text-soft)]">{group.title}</p>
                 ) : null}
 
-                <div className="space-y-1.5">
+                <div className={dense ? "space-y-1" : "space-y-1.5"}>
                   {visibleItems.map((item) => {
                     const active = isActive(pathname, item.href);
                     const Icon = item.icon;
@@ -223,9 +224,9 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                         key={item.href}
                         href={item.href}
                         onClick={onClose}
-                        className={`group relative flex items-center rounded-2xl border px-3 py-3 text-sm font-medium transition ${
+                        className={`group relative flex items-center rounded-2xl border px-3 ${dense ? "py-2.5 text-[13px]" : "py-3 text-sm"} font-medium transition ${
                           active
-                            ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-text)] shadow-[0_12px_30px_rgba(59,130,246,0.14)]"
+                            ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-text)] shadow-[0_10px_24px_var(--cliente-accent-glow)]"
                             : "border-transparent text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-text)]"
                         } ${compactMode ? "justify-center px-2" : "justify-between gap-3"}`}
                         title={compactMode ? item.label : undefined}
@@ -247,7 +248,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                           <span className="ml-auto inline-flex items-center gap-2">
                             {typeof item.badge === "string" && item.badge ? <StateBadge label={item.badge} tone="info" /> : null}
                             {active ? (
-                              <span className="h-2 w-2 rounded-full bg-[var(--cliente-accent)] shadow-[0_0_14px_var(--cliente-accent)]" />
+                              <span className="h-2 w-2 rounded-full bg-[var(--cliente-accent)] shadow-[0_0_12px_var(--cliente-accent)]" />
                             ) : (
                               <ChevronRight className="h-4 w-4 opacity-0 group-hover:opacity-75" />
                             )}
@@ -268,7 +269,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
         <div className="border-t border-[var(--cliente-border)] px-4 py-4">
           <div
-            className={`rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] ${
+            className={`rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] ${
               compactMode ? "flex justify-center px-2 py-3" : "px-4 py-4"
             }`}
           >
@@ -276,7 +277,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
               <Shield className="h-5 w-5 text-[var(--cliente-accent)]" />
             ) : (
               <div>
-                <p className="text-sm font-semibold text-[var(--cliente-text)]">Workspace governado</p>
+                <p className="text-sm font-semibold text-[var(--cliente-text)]">Conta organizada</p>
                 <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">{roleLabel}</p>
                 <p className="mt-2 text-sm text-[var(--cliente-text-muted)]">
                   Conta isolada, canais dedicados, modulos conectados e operacao centralizada.

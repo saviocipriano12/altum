@@ -281,8 +281,7 @@ class MetaAdsConnector implements CampaignConnector {
   async sync(input: SyncContext): Promise<SyncOutput> {
     const token = clean(input.accessToken, 4000) ||
       clean(process.env.META_ADS_ACCESS_TOKEN, 4000) ||
-      clean(process.env.META_WA_TOKEN, 4000) ||
-      clean(process.env.NEXT_PUBLIC_META_WA_TOKEN, 4000);
+      clean(process.env.META_WA_TOKEN, 4000);
     const version = process.env.META_GRAPH_VERSION || "v21.0";
     if (!token) {
       throw new Error("META_ADS_ACCESS_TOKEN nao configurado no servidor.");

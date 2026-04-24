@@ -1,5 +1,6 @@
 import type { AltumPlannerDecision } from "@/lib/server/ai/altum-agent-v2";
 import type { AltumConversationRuntimeState, AltumConversationStage, AltumLeadMemory } from "@/lib/server/ai/runtime-state";
+import type { AltumTenantLearningHints } from "@/lib/server/ai/tenant-learning";
 
 type ConversationMessage = {
   sender: "agent" | "client" | "system";
@@ -18,6 +19,7 @@ type KbDoc = {
 type TenantAiOperationalContext = {
   escalationTopics?: string[];
   playbookOffers?: Array<{ title?: string }>;
+  learningHints?: AltumTenantLearningHints | null;
 };
 
 type ConversationalChoice = {
@@ -192,7 +194,19 @@ function chooseRecommendedOffer(input: {
     )
   );
 
-  if (!allowedOffers.length) return rawOffer;
+  const learnedOffer = sanitizeText(input.tenantAi.learningHints?.topOffers?.[0], 160);
+  if (!rawOffer && learnedOffer) {
+    if (!allowedOffers.length) return learnedOffer;
+    const normalizedLearned = normalizeComparable(learnedOffer);
+    const learnedMatch = allowedOffers.find((offer) => {
+      const normalizedOffer = normalizeComparable(offer);
+      return normalizedOffer === normalizedLearned || normalizedOffer.includes(normalizedLearned);
+    });
+    if (learnedMatch) return learnedMatch;
+  }
+
+  if (!allowedOffers.length) return rawOffer || learnedOffer || null;
+  if (!rawOffer) return learnedOffer || null;
   const normalizedRaw = normalizeComparable(rawOffer);
 
   const exact = allowedOffers.find((offer) => normalizeComparable(offer) === normalizedRaw);
@@ -233,6 +247,7 @@ function inferNextAction(input: {
   messageType?: string | null;
   extractedFields?: Record<string, string> | null;
   leadMemory: AltumLeadMemory | null;
+  tenantAi: TenantAiOperationalContext;
 }) {
   if (input.responseGoal === "handoff") return "assumir_handoff_humano";
   if (input.intent === "send_image" || input.intent === "send_document") return "esclarecer_oferta_e_mapear_foco";
@@ -241,14 +256,24 @@ function inferNextAction(input: {
   if (input.responseGoal === "qualify") return "qualificar_contexto_minimo";
   if (input.intent === "proposal_interest") return "preparar_proposta_comercial";
   if (input.intent === "meeting_interest") return "agendar_proximo_passo";
-  if (input.responseGoal === "move_to_next_step") return "conduzir_para_proximo_passo";
+  if (input.responseGoal === "move_to_next_step") {
+    if (input.tenantAi.learningHints?.preferredClosingMotion === "proposal") return "preparar_proposta_comercial";
+    if (input.tenantAi.learningHints?.preferredClosingMotion === "meeting") return "agendar_proximo_passo";
+    return "conduzir_para_proximo_passo";
+  }
 
   const hasBusinessContext =
     sanitizeText(input.extractedFields?.businessType, 120) ||
     sanitizeText(input.extractedFields?.primaryGoal, 160) ||
     sanitizeText(input.leadMemory?.businessType, 120) ||
     sanitizeText(input.leadMemory?.primaryGoal, 160);
+  const learnedAction = sanitizeText(input.tenantAi.learningHints?.topActions?.[0], 120)
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 
+  if (hasBusinessContext && learnedAction) return learnedAction;
   return hasBusinessContext ? "aprofundar_oportunidade" : "qualificar_contexto_minimo";
 }
 
@@ -313,6 +338,7 @@ export function deriveOperationalPlan(input: DeriveOperationalPlanInput): AltumP
     messageType: latestClientType,
     extractedFields: input.extractedFields,
     leadMemory: input.leadMemory,
+    tenantAi: input.tenantAi,
   });
 
   return {

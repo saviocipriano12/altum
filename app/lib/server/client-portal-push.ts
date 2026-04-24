@@ -15,6 +15,7 @@ export type TenantCriticalPushSnapshot = {
   deadLetter: number;
   overdueFollowUps: number;
   waitingReplyBacklog: number;
+  financeDueSoon: number;
   aiRiskLevel: "stable" | "warning" | "high";
   capturedAt: string;
 };
@@ -52,6 +53,30 @@ function normalizeAiQueueStatus(value: unknown) {
   if (status === "processing") return "processing";
   if (status === "done") return "done";
   return "pending";
+}
+
+function dayStartUtcMs(date: Date) {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function parseFinanceDueDate(value: unknown) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    const [yearRaw, monthRaw, dayRaw] = value.trim().split("-");
+    const year = Number(yearRaw);
+    const month = Number(monthRaw);
+    const day = Number(dayRaw);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+    return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+  }
+  return toDate(value);
+}
+
+function isPendingFinance(value: Record<string, unknown>) {
+  const status = String(value.status || "").toLowerCase();
+  if (status === "pago" || status === "cancelado") return false;
+  const tipo = String(value.tipo || "").toLowerCase();
+  if (tipo === "despesa") return false;
+  return true;
 }
 
 function subscriptionDocId(tenantId: string, endpoint: string) {
@@ -385,15 +410,17 @@ export async function collectTenantCriticalPushSnapshot(
   tenantId: string
 ): Promise<TenantCriticalPushSnapshot> {
   const now = Date.now();
-  const [chatsSnap, jobsSnap, tasksSnap] = await Promise.all([
+  const [chatsSnap, jobsSnap, tasksSnap, financeSnap] = await Promise.all([
     adminDb.collection("chats").where("tenantId", "==", tenantId).limit(600).get(),
     adminDb.collection("jobs").where("tenantId", "==", tenantId).limit(800).get(),
     adminDb.collection("lead_tasks").where("tenantId", "==", tenantId).limit(600).get(),
+    adminDb.collection("financeiro").where("tenantId", "==", tenantId).limit(500).get(),
   ]);
 
   const chats = chatsSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
   const jobs = jobsSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
   const tasks = tasksSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
+  const finance = financeSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
 
   const activeChats = chats.filter((chat) => {
     const status = String(chat.status || "open").toLowerCase();
@@ -418,6 +445,15 @@ export async function collectTenantCriticalPushSnapshot(
     return Boolean(dueAt && dueAt.getTime() < now);
   }).length;
 
+  const nowDayStart = dayStartUtcMs(new Date(now));
+  const financeDueSoon = finance.filter((item) => {
+    if (!isPendingFinance(item)) return false;
+    const dueDate = parseFinanceDueDate(item.vencimento || item.contractDueDate || item.dueDate);
+    if (!dueDate) return false;
+    const diffDays = Math.round((dayStartUtcMs(dueDate) - nowDayStart) / 86_400_000);
+    return diffDays >= 0 && diffDays <= 5;
+  }).length;
+
   const deadLetter = jobs.filter((job) => normalizeAiQueueStatus(job.status) === "dead_letter").length;
   const retrying = jobs.filter((job) => normalizeAiQueueStatus(job.status) === "retrying").length;
   const aiRiskLevel: TenantCriticalPushSnapshot["aiRiskLevel"] =
@@ -428,6 +464,7 @@ export async function collectTenantCriticalPushSnapshot(
     deadLetter,
     overdueFollowUps,
     waitingReplyBacklog,
+    financeDueSoon,
     aiRiskLevel,
     capturedAt: new Date().toISOString(),
   };
@@ -442,6 +479,7 @@ export async function readTenantCriticalPushState(tenantId: string) {
     deadLetter: Number(data.deadLetter || 0),
     overdueFollowUps: Number(data.overdueFollowUps || 0),
     waitingReplyBacklog: Number(data.waitingReplyBacklog || 0),
+    financeDueSoon: Number(data.financeDueSoon || 0),
     aiRiskLevel:
       data.aiRiskLevel === "high" || data.aiRiskLevel === "warning"
         ? data.aiRiskLevel

@@ -5,6 +5,7 @@ import type {
   AltumAiResponseStyle,
   AltumAiTier,
 } from "@/lib/server/ai/operating-layer";
+import type { AltumTenantLearningHints } from "@/lib/server/ai/tenant-learning";
 import type { BusinessProfilePlaybookOffer, BusinessProfilePlaybookScript } from "@/lib/business-profiles";
 
 type ConversationMessage = {
@@ -39,6 +40,7 @@ export type ConversationAgentInput = {
   escalationTopics?: string[];
   playbookOffers?: BusinessProfilePlaybookOffer[];
   playbookScripts?: BusinessProfilePlaybookScript[];
+  learningHints?: AltumTenantLearningHints | null;
   tier: AltumAiTier;
   autonomyMode: AltumAiAutonomyMode;
   reasoningLevel: AltumAiReasoningLevel;
@@ -193,6 +195,35 @@ function getProviderEnv(provider: AltumAiProvider) {
   return { ready: true, apiKey: "" };
 }
 
+function styleDirective(style: AltumAiResponseStyle) {
+  if (style === "concise") {
+    return "Estilo: objetivo, no maximo 2 frases curtas por resposta e uma pergunta por vez.";
+  }
+  if (style === "closer") {
+    return "Estilo: comercial assertivo, sempre conduzindo para proximo passo claro (reuniao, proposta ou diagnostico).";
+  }
+  if (style === "premium_sales") {
+    return "Estilo: premium sales consultivo, mostrando clareza de valor e proximos passos sem enrolacao.";
+  }
+  return "Estilo: consultivo claro, humano e direto ao ponto.";
+}
+
+function autonomyDirective(mode: AltumAiAutonomyMode) {
+  if (mode === "autonomous") {
+    return "Autonomia: assuma iniciativa, dite o ritmo e evite depender do lead para mover a conversa.";
+  }
+  if (mode === "hybrid") {
+    return "Autonomia: conduza com iniciativa, mas valide rapidamente antes de avancar para fechamento.";
+  }
+  return "Autonomia: conduza discovery com cautela e confirme contexto antes do fechamento.";
+}
+
+function reasoningDirective(level: AltumAiReasoningLevel) {
+  if (level === "deep") return "Raciocinio: conecte sinais do historico e personalize com alta precisao.";
+  if (level === "fast") return "Raciocinio: priorize resposta curta, util e com progresso imediato.";
+  return "Raciocinio: equilibrado, com clareza e progressao comercial.";
+}
+
 function buildPrompt(input: ConversationAgentInput) {
   const inboundText = sanitizeText(input.inboundText, 700);
   const multimodalSummary = sanitizeText(input.multimodalSummary, 280);
@@ -229,19 +260,41 @@ function buildPrompt(input: ConversationAgentInput) {
     .slice(0, 3)
     .map((offer, index) => `${index + 1}. ${sanitizeText(offer.title, 80)} | ${sanitizeText(offer.targetProfile, 140)}`)
     .join("\n");
+  const learningSignals = input.learningHints
+    ? [
+        input.learningHints.topOffers?.length
+          ? `Ofertas com melhor historico: ${input.learningHints.topOffers.join(", ")}.`
+          : "",
+        input.learningHints.topActions?.length
+          ? `Acoes de maior conversao: ${input.learningHints.topActions.join(", ")}.`
+          : "",
+        input.learningHints.topObjections?.length
+          ? `Objecoes mais frequentes: ${input.learningHints.topObjections.join(", ")}.`
+          : "",
+        input.learningHints.preferredClosingMotion
+          ? `Fechamento preferencial historico: ${input.learningHints.preferredClosingMotion}.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "";
 
   const systemPrompt = [
     "Voce e um agente conversacional comercial da ALTUM.",
     "Converse em portugues do Brasil como uma pessoa atenta, clara e natural no WhatsApp.",
     "Entenda o que o lead acabou de dizer e responda isso primeiro.",
-    "Nao siga roteiro, nao soe como chatbot e nao transforme cada turno em qualificacao forcada.",
+    "Responda de forma humana, curta e sempre com progressao comercial.",
+    "Em saudacoes ou turnos relacionais, acolha em uma frase e conduza com uma pergunta util sobre contexto de negocio.",
+    "Evite conversa infinita: cada turno deve mover para descoberta, recomendacao ou proximo passo.",
     "Se o lead fizer uma pergunta direta, responda com clareza antes de conduzir qualquer outra coisa.",
-    "Se o lead fizer um turno humano ou relacional, responda de forma humana e nao cole pergunta comercial na mesma mensagem sem necessidade.",
+    "Nao use menus de opcoes; faca pergunta precisa e contextual.",
     "Se o lead responder curto, trate como continuidade do assunto vivo. Nao reinicie nem repita bloco.",
     "Quando faltar contexto, faca no maximo uma pergunta curta e realmente util.",
-    "Nao use menu de opcoes em saudacao simples.",
     "Nao use bordoes de vendedor nem frases institucionais repetitivas.",
     "Nao invente oferta, preco, prazo, prova social ou promessa.",
+    styleDirective(input.responseStyle),
+    autonomyDirective(input.autonomyMode),
+    reasoningDirective(input.reasoningLevel),
     "Se souber o nome do lead, use de forma natural. Se nao souber e fizer sentido, pergunte uma vez: 'Posso te chamar de como?'.",
     "Se a mensagem for audio, imagem ou documento, confirme que recebeu e comente o resumo multimodal antes de perguntar algo.",
     "Use a base e as ofertas apenas como apoio silencioso.",
@@ -267,12 +320,13 @@ function buildPrompt(input: ConversationAgentInput) {
     escalations ? `Temas sensiveis para escalar:\n${escalations}` : "",
     guardrails ? `Limites importantes:\n${guardrails}` : "",
     playbookOffers ? `Ofertas disponiveis como referencia:\n${playbookOffers}` : "",
+    learningSignals ? `Aprendizado recente (use como sinal, nao regra fixa): ${learningSignals}` : "",
     conversation ? `Historico recente:\n${conversation}` : "",
     kb ? `Base relevante:\n${kb}` : "",
     `Mensagem atual do lead: ${inboundText}`,
-    "Exemplo bom 1: lead='oi' -> responseText='Oi! Tudo bem? Como posso te ajudar?'",
-    "Exemplo bom 2: lead='como voce esta?' -> responseText='Tudo certo por aqui. E por ai?'",
-    "Exemplo bom 3: lead='quero gerar mais leads' -> responseText='Boa. Hoje voces captam mais por onde?'",
+    "Exemplo bom 1: lead='oi' -> responseText='Oi! Tudo bem? Pra te direcionar certo: hoje o foco e gerar mais leads ou melhorar conversao?'",
+    "Exemplo bom 2: lead='como voce esta?' -> responseText='Tudo certo por aqui. E no seu comercial hoje, qual e o maior gargalo?'",
+    "Exemplo bom 3: lead='quero gerar mais leads' -> responseText='Perfeito. Hoje voces captam mais por qual canal e com qual meta mensal?'",
     'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","turnGoal":"...","memorySummary":"...","nextAction":"...","extractedFields":{"preferredName":"...","leadTone":"...","activeTopic":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
     "A responseText deve parecer mensagem real de WhatsApp escrita por uma pessoa, nao por um sistema.",
   ]

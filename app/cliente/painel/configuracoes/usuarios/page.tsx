@@ -298,7 +298,7 @@ export default function ClienteUsuariosPage() {
               <button
                 type="submit"
                 disabled={savingInvite}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60"
               >
                 {savingInvite ? <Loader2 className="h-4 w-4 animate-spin" /> : <MailPlus className="h-4 w-4" />}
                 Convidar usuario
@@ -348,7 +348,7 @@ export default function ClienteUsuariosPage() {
                       <p className="text-sm font-semibold text-white">{user.name || user.email || "Usuario"}</p>
                       <p className="mt-1 text-xs text-white/50">{user.email || user.userId || "Sem email"}</p>
                       <p className="mt-1 text-xs text-white/42">
-                        {user.team || "sem time"} · {user.availability || "online"} · limite {user.maxOpenChats || "-"}
+                        {user.team || "sem time"} | {user.availability || "online"} | limite {user.maxOpenChats || "-"}
                       </p>
                     </div>
                   <div className="flex flex-wrap gap-2">
@@ -476,8 +476,10 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-blue-300/35 focus:bg-black/45"
+        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[var(--cliente-border-strong)] focus:bg-black/45"
       />
     </label>
   );
 }
+
+

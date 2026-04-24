@@ -260,7 +260,7 @@ export default function ClienteOperacaoPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60"
                 >
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {canManage ? "Salvar operacao" : "Somente leitura"}
@@ -351,11 +351,12 @@ function Toggle({
       </div>
       <span
         className={`inline-flex h-6 w-11 rounded-full border p-1 transition ${
-          checked ? "border-blue-400/40 bg-blue-500/18 justify-end" : "border-white/15 bg-white/[0.04] justify-start"
+          checked ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] justify-end" : "border-white/15 bg-white/[0.04] justify-start"
         }`}
       >
-        <span className={`h-4 w-4 rounded-full ${checked ? "bg-blue-300" : "bg-white/45"}`} />
+        <span className={`h-4 w-4 rounded-full ${checked ? "bg-[var(--cliente-accent)]" : "bg-white/45"}`} />
       </span>
     </button>
   );
 }
+

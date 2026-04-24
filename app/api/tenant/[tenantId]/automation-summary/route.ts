@@ -49,6 +49,22 @@ function toTime(value: unknown) {
   return toDate(value)?.getTime() || 0;
 }
 
+function dayStartUtcMs(date: Date) {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function parseFinanceDueDate(value: unknown) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    const [yearRaw, monthRaw, dayRaw] = value.trim().split("-");
+    const year = Number(yearRaw);
+    const month = Number(monthRaw);
+    const day = Number(dayRaw);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+    return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+  }
+  return toDate(value);
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -70,6 +86,7 @@ export async function GET(
       leadsSnap,
       tasksSnap,
       appointmentsSnap,
+      financeSnap,
     ] =
       await Promise.all([
         getTenantSettings(tenantId),
@@ -83,6 +100,7 @@ export async function GET(
         adminDb.collection("leads").where("tenantId", "==", tenantId).limit(240).get(),
         adminDb.collection("lead_tasks").where("tenantId", "==", tenantId).limit(320).get(),
         adminDb.collection("appointments").where("tenantId", "==", tenantId).limit(180).get(),
+        adminDb.collection("financeiro").where("tenantId", "==", tenantId).limit(500).get(),
       ]);
 
     const ai =
@@ -244,6 +262,31 @@ export async function GET(
       const status = String(item.status || "scheduled").toLowerCase();
       return status === "scheduled" || status === "confirmed";
     }).length;
+    const financeRows = financeSnap.docs.map((doc) => doc.data() as Record<string, unknown>);
+    const nowDayStart = dayStartUtcMs(new Date(now));
+    const financeDueSoonItems = financeRows.filter((item) => {
+      const status = String(item.status || "").toLowerCase();
+      if (status === "pago" || status === "cancelado") return false;
+      const tipo = String(item.tipo || "").toLowerCase();
+      if (tipo === "despesa") return false;
+      const dueDate = parseFinanceDueDate(item.vencimento || item.contractDueDate || item.dueDate);
+      if (!dueDate) return false;
+      const diffDays = Math.round((dayStartUtcMs(dueDate) - nowDayStart) / 86_400_000);
+      return diffDays >= 0 && diffDays <= 5;
+    });
+    const financeDueSoonCount = financeDueSoonItems.length;
+    const financeDueSoonTotal = Number(
+      financeDueSoonItems
+        .reduce((sum, item) => {
+          const parsed = Number(item.valor || 0);
+          return sum + (Number.isFinite(parsed) ? parsed : 0);
+        }, 0)
+        .toFixed(2)
+    );
+    const financeNextDueDate = financeDueSoonItems
+      .map((item) => parseFinanceDueDate(item.vencimento || item.contractDueDate || item.dueDate))
+      .filter((value): value is Date => Boolean(value))
+      .sort((a, b) => a.getTime() - b.getTime())[0];
 
     const activeAutomations = automationItems.length === 0
       ? aiEnabled
@@ -273,6 +316,13 @@ export async function GET(
           handoffReady,
           slaBreaches,
           meetingsScheduled,
+        },
+        finance: {
+          dueSoonCount: financeDueSoonCount,
+          dueSoonTotal: financeDueSoonTotal,
+          nextDueDate: financeNextDueDate
+            ? financeNextDueDate.toISOString().slice(0, 10)
+            : null,
         },
       },
       automations: automationItems,

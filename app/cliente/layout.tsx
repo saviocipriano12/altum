@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import ClientePanelGuard from "@/app/cliente/ClientePanelGuard";
 import { ClienteCriticalNotifications } from "@/app/cliente/components/cliente-critical-notifications";
+import { ClienteFinanceScreenAlert } from "@/app/cliente/components/cliente-finance-screen-alert";
 import { ClienteInstallBanner } from "@/app/cliente/components/cliente-install-banner";
 import { ClienteNetworkBanner } from "@/app/cliente/components/cliente-network-banner";
 import { ClientePwaRegister } from "@/app/cliente/components/cliente-pwa-register";
@@ -24,6 +25,7 @@ export default function ClienteLayout({
     <ClientePanelGuard>
       <ClientePwaRegister />
       <ClienteNetworkBanner />
+      <ClienteFinanceScreenAlert />
       <ClienteCriticalNotifications />
       <ClienteInstallBanner />
       {children}

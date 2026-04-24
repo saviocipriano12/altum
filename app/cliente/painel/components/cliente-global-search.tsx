@@ -28,7 +28,14 @@ export function ClienteGlobalSearch() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      const target = event.target as HTMLElement | null;
+      const isTypingContext =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.tagName === "SELECT" ||
+        Boolean(target?.isContentEditable);
+
+      if (event.key === "/" && !isTypingContext) {
         event.preventDefault();
         setOpen(true);
         inputRef.current?.focus();
@@ -147,12 +154,12 @@ export function ClienteGlobalSearch() {
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar modulo, lead, proposta ou conversa"
+          placeholder="Buscar modulo, contato, proposta ou conversa"
           className="w-full bg-transparent text-sm text-[var(--cliente-text)] outline-none placeholder:text-[var(--cliente-text-soft)] xl:w-[320px]"
         />
         <span className="hidden items-center gap-1 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-2 py-1 text-[10px] text-[var(--cliente-text-soft)] lg:inline-flex">
           <Command className="h-3 w-3" />
-          Ctrl+K
+          /
         </span>
       </label>
 
@@ -178,12 +185,12 @@ export function ClienteGlobalSearch() {
               ) : null}
 
               {(data.leads || []).length ? (
-                <SearchSection title="Leads">
+                <SearchSection title="Contatos">
                   {(data.leads || []).map((lead) => (
                     <SearchButton
                       key={lead.id}
                       title={lead.name}
-                      subtitle={`${lead.email || lead.phone || "Sem contato"} | Stage ${getPipelineStageLabel(lead.stage || "captado")}`}
+                      subtitle={`${lead.email || lead.phone || "Sem contato"} | Etapa ${getPipelineStageLabel(lead.stage || "captado")}`}
                       onClick={() => navigate(`/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`)}
                     />
                   ))}
@@ -209,7 +216,7 @@ export function ClienteGlobalSearch() {
                     <SearchButton
                       key={budget.id}
                       title={budget.title}
-                      subtitle={`${budget.leadName || "Sem lead"} | ${budget.status || "Rascunho"}`}
+                      subtitle={`${budget.leadName || "Sem contato"} | ${budget.status || "Rascunho"}`}
                       onClick={() =>
                         navigate(
                           budget.leadId
@@ -228,7 +235,7 @@ export function ClienteGlobalSearch() {
                     <SearchButton
                       key={item.id}
                       title={item.description}
-                      subtitle={`${item.leadName || "Sem lead"} | ${item.type || "Receita"} • ${item.status || "pendente"}`}
+                      subtitle={`${item.leadName || "Sem contato"} | ${item.type || "Receita"} • ${item.status || "pendente"}`}
                       onClick={() =>
                         navigate(
                           item.leadId
@@ -244,7 +251,7 @@ export function ClienteGlobalSearch() {
           ) : (
             <div className="py-8 text-center">
               <p className="text-sm font-medium text-[var(--cliente-text)]">Nenhum resultado encontrado</p>
-              <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Tente outro termo para buscar modulos, leads, propostas ou conversas.</p>
+              <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Tente outro termo para buscar modulos, contatos, propostas ou conversas.</p>
             </div>
           )}
         </div>

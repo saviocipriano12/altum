@@ -108,27 +108,91 @@ function normalizeWords(value: string) {
     .filter((word) => word.length > 2);
 }
 
-function scoreKbDoc(messageWords: string[], doc: { content: string; tags: string[]; type: string }) {
+function normalizeComparable(value: string) {
+  return clean(value, 500)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const SEMANTIC_KEYWORD_GROUPS = [
+  ["preco", "valor", "orcamento", "budget", "investimento"],
+  ["reuniao", "call", "agenda", "agendar", "meeting"],
+  ["lead", "demanda", "captacao", "captar", "trafego"],
+  ["venda", "conversao", "converter", "fechamento", "fechar"],
+  ["atendimento", "whatsapp", "suporte", "inbox"],
+  ["crm", "pipeline", "processo", "operacao"],
+  ["urgencia", "prazo", "rapido", "prioridade"],
+];
+
+function expandSemanticWords(words: string[]) {
+  const expanded = new Set(words);
+  for (const group of SEMANTIC_KEYWORD_GROUPS) {
+    const touchesGroup = group.some((token) => expanded.has(token));
+    if (!touchesGroup) continue;
+    for (const token of group) expanded.add(token);
+  }
+  return expanded;
+}
+
+function scoreKbDoc(input: {
+  inboundText: string;
+  messageWords: string[];
+  retrievalMode: "keyword" | "hybrid" | "semantic";
+  doc: { content: string; tags: string[]; type: string };
+}) {
+  const { inboundText, messageWords, retrievalMode, doc } = input;
   if (!messageWords.length) return 0;
+
   const docWords = new Set<string>([
     ...normalizeWords(doc.content),
     ...doc.tags.flatMap((tag) => normalizeWords(tag)),
     ...normalizeWords(doc.type),
   ]);
-  let score = 0;
+  const normalizedInbound = normalizeComparable(inboundText);
+  const normalizedDoc = normalizeComparable(doc.content);
+
+  let lexicalHits = 0;
   for (const word of messageWords) {
-    if (docWords.has(word)) score += 1;
+    if (docWords.has(word)) lexicalHits += 1;
   }
-  return score;
+
+  let semanticHits = 0;
+  const expandedWords = expandSemanticWords(messageWords);
+  for (const word of expandedWords) {
+    if (docWords.has(word)) semanticHits += 1;
+  }
+
+  let phraseHits = 0;
+  for (const tag of doc.tags) {
+    const normalizedTag = normalizeComparable(tag);
+    if (!normalizedTag) continue;
+    if (normalizedInbound.includes(normalizedTag)) phraseHits += 1;
+  }
+  if (normalizedInbound && normalizedDoc.includes(normalizedInbound)) phraseHits += 2;
+  const typeBoost = doc.type === "catalog" ? 0.35 : doc.type === "faq" ? 0.2 : 0.1;
+
+  if (retrievalMode === "semantic") {
+    return Number((semanticHits * 1.25 + phraseHits * 1.6 + lexicalHits * 0.7 + typeBoost).toFixed(4));
+  }
+
+  if (retrievalMode === "hybrid") {
+    return Number((lexicalHits * 1.05 + semanticHits * 0.75 + phraseHits * 1.25 + typeBoost).toFixed(4));
+  }
+
+  return Number((lexicalHits * 1.2 + phraseHits * 0.9 + typeBoost).toFixed(4));
 }
 
 function buildPreviewFallbackChoice(input: { inboundText: string; responseText?: string | null }) {
   const inbound = clean(input.inboundText, 400).toLowerCase();
   const responseText = clean(input.responseText, 1600) || undefined;
-  const isGreeting = /^(oi|ola|olá|bom dia|boa tarde|boa noite)\b/.test(inbound);
+  const isGreeting = /^(oi|ola|bom dia|boa tarde|boa noite)\b/.test(inbound);
   const isDirectQuestion = inbound.includes("?");
   const isHumanTurn =
-    /\b(como voce esta|como você está|tudo bem|obrigad|valeu|kkk|haha|beleza|show)\b/.test(inbound) || isGreeting;
+    /\b(como voce esta|tudo bem|obrigad|valeu|kkk|haha|beleza|show)\b/.test(inbound) || isGreeting;
 
   return {
     decision: isGreeting || isHumanTurn || isDirectQuestion ? ("respond" as const) : ("ask_more" as const),
@@ -138,9 +202,9 @@ function buildPreviewFallbackChoice(input: { inboundText: string; responseText?:
     responseText:
       responseText ||
       (isGreeting
-        ? "Oi! Tudo bem? Como posso te ajudar?"
+        ? "Oi! Tudo bem? Pra te direcionar certo, hoje o foco e gerar mais leads, organizar atendimento ou converter melhor?"
         : isHumanTurn
-          ? "Tudo certo por aqui. E por aí?"
+          ? "Tudo certo por aqui. Pra eu te direcionar melhor, qual e o principal gargalo comercial hoje?"
           : "Me conta um pouco melhor o teu momento hoje."),
   };
 }
@@ -186,7 +250,12 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
           type,
           tags,
           content,
-          score: scoreKbDoc(messageWords, { content, tags, type }),
+          score: scoreKbDoc({
+            inboundText,
+            messageWords,
+            retrievalMode: runtimePolicy.retrievalMode,
+            doc: { content, tags, type },
+          }),
         };
       })
       .filter((item) => item.content && item.score > 0)
@@ -242,6 +311,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
               ),
               playbookOffers: playbookPreset.offers.slice(0, 6),
               playbookScripts: playbookPreset.scripts.slice(0, 6),
+              learningHints,
               tier: operatingProfile.tier,
               autonomyMode: operatingProfile.autonomyMode,
               reasoningLevel: operatingProfile.reasoningLevel,

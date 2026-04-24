@@ -31,9 +31,34 @@ export type OutboundCampaignRecord = {
   updatedAt: string | null;
 };
 
+type OutboundLeadRow = {
+  id: string;
+  data: Record<string, unknown>;
+};
+
+type OutboundAudienceSummary = {
+  totalLeads: number;
+  matchedFilters: number;
+  selectedByLimit: number;
+  maxRecipients: number;
+  estimatedSend: number;
+  blockedByConsent: number;
+  missingPhone: number;
+  truncatedByLimit: boolean;
+};
+
 function clean(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+function normalizeComparableToken(value: string) {
+  return clean(value, 240)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function cleanList(value: unknown, maxItem = 80, max = 20) {
@@ -131,31 +156,144 @@ export function buildOutboundCampaignPatch(input: {
 }
 
 function interpolateTemplate(template: string, lead: Record<string, unknown>) {
+  const stage = clean(lead.pipelineStage, 80) || clean(lead.stage, 80);
+  const origin =
+    clean(lead.origem, 120) ||
+    clean(lead.sourceLabel, 120) ||
+    clean(lead.source, 80) ||
+    clean(lead.utmSource, 120);
+
   const replacements: Record<string, string> = {
     nome: clean(lead.nome, 160) || "Contato",
     empresa: clean(lead.empresa, 160),
     telefone: clean(lead.telefone, 40),
     email: clean(lead.email, 180),
-    stage: clean(lead.stage, 80),
-    origem: clean(lead.source, 80),
+    stage,
+    origem: origin,
   };
 
   return template.replace(/\{(\w+)\}/g, (_, key: string) => replacements[key] || "");
 }
 
-function matchLeadFilters(lead: Record<string, unknown>, filters: OutboundCampaignFilters) {
-  const stage = clean(lead.stage, 80).toLowerCase();
-  const ownerId = clean(lead.ownerId, 140).toLowerCase();
-  const source = clean(lead.source, 80).toLowerCase();
-  const heat = clean(lead.heat, 40).toLowerCase();
-  const tags = cleanList(lead.tags, 40, 50);
+function normalizeHeatToken(value: string) {
+  const token = clean(value, 40).toLowerCase();
+  if (!token) return "";
+  if (token === "quente" || token === "hot") return "quente";
+  if (token === "morno" || token === "warm") return "morno";
+  if (token === "frio" || token === "cold") return "frio";
+  return token;
+}
 
-  if (filters.stageIds.length > 0 && !filters.stageIds.includes(stage)) return false;
-  if (filters.ownerIds.length > 0 && !filters.ownerIds.includes(ownerId)) return false;
-  if (filters.sources.length > 0 && !filters.sources.includes(source)) return false;
-  if (filters.heat.length > 0 && !filters.heat.includes(heat)) return false;
-  if (filters.tags.length > 0 && !filters.tags.some((tag) => tags.includes(tag))) return false;
+function readLeadSource(lead: Record<string, unknown>) {
+  return (
+    clean(lead.origem, 120) ||
+    clean(lead.sourceLabel, 120) ||
+    clean(lead.source, 80) ||
+    clean(lead.utmSource, 120)
+  )
+    .toLowerCase()
+    .trim();
+}
+
+function hasWhatsAppOptOut(lead: Record<string, unknown>) {
+  const customFields =
+    lead.customFields && typeof lead.customFields === "object"
+      ? (lead.customFields as Record<string, unknown>)
+      : {};
+  const raw = customFields.consent_whatsapp;
+  if (typeof raw === "boolean") return raw === false;
+  const text = clean(raw, 40).toLowerCase();
+  return text === "false" || text === "nao" || text === "no" || text === "0";
+}
+
+function matchLeadFilters(lead: Record<string, unknown>, filters: OutboundCampaignFilters) {
+  const stage = normalizeComparableToken(clean(lead.pipelineStage, 80) || clean(lead.stage, 80));
+  const ownerId = normalizeComparableToken(clean(lead.ownerId, 140));
+  const source = normalizeComparableToken(readLeadSource(lead));
+  const heat = normalizeComparableToken(normalizeHeatToken(clean(lead.heat, 40)));
+  const filterStages = filters.stageIds.map((item) => normalizeComparableToken(item)).filter(Boolean);
+  const filterOwnerIds = filters.ownerIds.map((item) => normalizeComparableToken(item)).filter(Boolean);
+  const filterSources = filters.sources.map((item) => normalizeComparableToken(item)).filter(Boolean);
+  const filterHeats = filters.heat.map((item) => normalizeComparableToken(normalizeHeatToken(item))).filter(Boolean);
+  const tags = cleanList(lead.tags, 40, 50).map((tag) => normalizeComparableToken(tag));
+  const filterTags = filters.tags.map((item) => normalizeComparableToken(item)).filter(Boolean);
+
+  if (filterStages.length > 0 && !filterStages.includes(stage)) return false;
+  if (filterOwnerIds.length > 0 && !filterOwnerIds.includes(ownerId)) return false;
+  if (filterSources.length > 0 && !filterSources.includes(source)) return false;
+  if (filterHeats.length > 0 && !filterHeats.includes(heat)) return false;
+  if (filterTags.length > 0 && !filterTags.some((tag) => tags.includes(tag))) return false;
   return true;
+}
+
+async function loadCampaignContext(input: { tenantId: string; campaignId: string }) {
+  const campaignRef = adminDb.collection("outbound_campaigns").doc(input.campaignId);
+  const campaignSnap = await campaignRef.get();
+  if (!campaignSnap.exists) {
+    throw new Error("Campanha outbound nao encontrada.");
+  }
+
+  const campaign = normalizeOutboundCampaign({
+    id: campaignSnap.id,
+    data: campaignSnap.data() as Record<string, unknown>,
+  });
+
+  if (campaign.tenantId !== input.tenantId) {
+    throw new Error("Campanha fora do tenant informado.");
+  }
+
+  return { campaignRef, campaign };
+}
+
+function buildAudienceSelection(input: {
+  leads: OutboundLeadRow[];
+  filters: OutboundCampaignFilters;
+  maxRecipients: number;
+}) {
+  const filtered = input.leads.filter((item) => matchLeadFilters(item.data, input.filters));
+  return {
+    filtered,
+    selected: filtered.slice(0, input.maxRecipients),
+  };
+}
+
+function summarizeAudience(input: {
+  totalLeads: number;
+  matchedFilters: number;
+  maxRecipients: number;
+  selected: OutboundLeadRow[];
+}) {
+  let estimatedSend = 0;
+  let blockedByConsent = 0;
+  let missingPhone = 0;
+
+  for (const lead of input.selected) {
+    if (hasWhatsAppOptOut(lead.data)) {
+      blockedByConsent += 1;
+      continue;
+    }
+
+    const phone = normalizePhone(clean(lead.data.telefone, 40));
+    if (!phone) {
+      missingPhone += 1;
+      continue;
+    }
+
+    estimatedSend += 1;
+  }
+
+  const summary: OutboundAudienceSummary = {
+    totalLeads: input.totalLeads,
+    matchedFilters: input.matchedFilters,
+    selectedByLimit: input.selected.length,
+    maxRecipients: input.maxRecipients,
+    estimatedSend,
+    blockedByConsent,
+    missingPhone,
+    truncatedByLimit: input.matchedFilters > input.selected.length,
+  };
+
+  return summary;
 }
 
 async function findOrCreateLeadChat(input: {
@@ -196,34 +334,57 @@ async function findOrCreateLeadChat(input: {
   return chatRef.id;
 }
 
+export async function previewOutboundCampaign(input: { tenantId: string; campaignId: string }) {
+  const { campaign } = await loadCampaignContext(input);
+
+  const leadsSnap = await adminDb.collection("leads").where("tenantId", "==", input.tenantId).limit(600).get();
+  const leads = leadsSnap.docs.map((doc) => ({ id: doc.id, data: doc.data() as Record<string, unknown> }));
+  const audience = buildAudienceSelection({
+    leads,
+    filters: campaign.filters,
+    maxRecipients: campaign.maxRecipients,
+  });
+  const summary = summarizeAudience({
+    totalLeads: leads.length,
+    matchedFilters: audience.filtered.length,
+    maxRecipients: campaign.maxRecipients,
+    selected: audience.selected,
+  });
+
+  const sample = audience.selected.slice(0, 12).map((item) => ({
+    leadId: item.id,
+    nome: clean(item.data.nome, 160) || "Lead",
+    telefone: normalizePhone(clean(item.data.telefone, 40)),
+    stage: clean(item.data.pipelineStage, 80) || clean(item.data.stage, 80),
+    origem: readLeadSource(item.data),
+    blockedByConsent: hasWhatsAppOptOut(item.data),
+  }));
+
+  return {
+    campaign,
+    summary,
+    sample,
+  };
+}
+
 export async function dispatchOutboundCampaign(input: {
   tenantId: string;
   campaignId: string;
   actor: ChatDispatchActor;
 }) {
-  const campaignRef = adminDb.collection("outbound_campaigns").doc(input.campaignId);
-  const campaignSnap = await campaignRef.get();
-  if (!campaignSnap.exists) {
-    throw new Error("Campanha outbound nao encontrada.");
-  }
-
-  const campaign = normalizeOutboundCampaign({
-    id: campaignSnap.id,
-    data: campaignSnap.data() as Record<string, unknown>,
-  });
-
-  if (campaign.tenantId !== input.tenantId) {
-    throw new Error("Campanha fora do tenant informado.");
-  }
+  const { campaignRef, campaign } = await loadCampaignContext(input);
   if (!campaign.messageTemplate.trim()) {
     throw new Error("A campanha precisa de uma mensagem para ser enviada.");
   }
 
   const leadsSnap = await adminDb.collection("leads").where("tenantId", "==", input.tenantId).limit(600).get();
-  const matchedLeads = leadsSnap.docs
-    .map((doc) => ({ id: doc.id, data: doc.data() as Record<string, unknown> }))
-    .filter((item) => matchLeadFilters(item.data, campaign.filters))
-    .slice(0, campaign.maxRecipients);
+  const leads = leadsSnap.docs.map((doc) => ({ id: doc.id, data: doc.data() as Record<string, unknown> }));
+  const audience = buildAudienceSelection({
+    leads,
+    filters: campaign.filters,
+    maxRecipients: campaign.maxRecipients,
+  });
+  const matchedLeads = audience.selected;
 
   let sent = 0;
   let skipped = 0;
@@ -232,6 +393,11 @@ export async function dispatchOutboundCampaign(input: {
 
   for (const item of matchedLeads) {
     try {
+      if (hasWhatsAppOptOut(item.data)) {
+        skipped += 1;
+        continue;
+      }
+
       const phone = normalizePhone(clean(item.data.telefone, 40));
       if (!phone) {
         skipped += 1;
@@ -286,7 +452,8 @@ export async function dispatchOutboundCampaign(input: {
     sent,
     skipped,
     failed,
-    totalMatched: matchedLeads.length,
+    totalMatched: audience.filtered.length,
+    selectedByLimit: matchedLeads.length,
   };
 
   await Promise.all([
