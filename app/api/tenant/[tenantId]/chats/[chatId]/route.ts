@@ -71,6 +71,11 @@ function cleanString(value: unknown, max = 120) {
   return value.trim().slice(0, max);
 }
 
+function phoneKey(value: unknown) {
+  const digits = cleanString(value, 80).replace(/\D/g, "");
+  return digits ? digits.slice(-13) : "";
+}
+
 function parseTags(value: unknown) {
   const source = Array.isArray(value)
     ? value
@@ -244,6 +249,26 @@ async function resolveContactProfile(chat: ChatDoc, tenantId: string) {
   }
 
   const snap = await query.get();
+  if (snap.empty && phone) {
+    const normalizedPhone = phoneKey(phone);
+    if (!normalizedPhone) return null;
+
+    const contactSnap = await adminDb
+      .collection("contacts")
+      .where("tenantId", "==", tenantId)
+      .limit(500)
+      .get();
+    const matched = contactSnap.docs.find((doc) => phoneKey(doc.data().phone) === normalizedPhone);
+    if (!matched) return null;
+
+    const data = matched.data() as Record<string, unknown>;
+    return {
+      name: cleanString(data.name, 180),
+      company: cleanString(data.company, 180),
+      photoUrl: cleanString(data.photoUrl, 1000),
+    };
+  }
+
   if (snap.empty) return null;
 
   const data = snap.docs[0]?.data() as Record<string, unknown>;

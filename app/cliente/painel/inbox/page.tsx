@@ -293,9 +293,11 @@ function ContactAvatar({
   size?: "sm" | "md";
 }) {
   const [imageFailed, setImageFailed] = useState(false);
-  const dimension = size === "sm" ? "h-11 w-11 text-sm" : "h-12 w-12 text-sm";
+  const dimension = size === "sm" ? "h-10 w-10 text-xs" : "h-11 w-11 text-xs";
   const src = String(photoUrl || "").trim();
   const canRenderImage = src && !imageFailed;
+  const displayName = String(name || "").trim();
+  const fallbackInitials = isPhoneLike(displayName || phone) ? "" : getInitials(displayName || phone);
 
   useEffect(() => {
     setImageFailed(false);
@@ -319,11 +321,11 @@ function ContactAvatar({
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-[linear-gradient(135deg,rgba(37,211,102,0.12),rgba(255,255,255,0.04))] font-semibold text-[var(--cliente-card-text)]",
+        "flex shrink-0 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-[linear-gradient(135deg,rgba(37,211,102,0.14),rgba(134,150,160,0.1))] font-semibold text-[var(--cliente-card-text)]",
         dimension
       )}
     >
-      {getInitials(name || phone)}
+      {fallbackInitials || <UserRound className={size === "sm" ? "h-4 w-4" : "h-5 w-5"} />}
     </div>
   );
 }
@@ -545,6 +547,12 @@ function getInitials(value?: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() || "")
     .join("") || "LD";
+}
+
+function isPhoneLike(value?: string) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return false;
+  return normalized.replace(/\D/g, "").length >= 8 && !/[a-zA-ZÀ-ÿ]/.test(normalized);
 }
 
 function getMessagePreview(message: MessageItem | ChatItem) {
@@ -2453,7 +2461,7 @@ export default function ClienteInboxPage() {
                 />
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="truncate text-xl font-semibold tracking-tight text-[var(--cliente-card-text)]">
+                    <h3 className="truncate text-base font-semibold tracking-tight text-[var(--cliente-card-text)] sm:text-lg">
                       {activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
                     </h3>
                     <StateBadge label={formatChannelLabel(activeChat?.channel)} tone="neutral" />

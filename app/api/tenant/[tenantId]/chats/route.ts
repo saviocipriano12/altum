@@ -72,6 +72,11 @@ function cleanString(value: unknown, max = 240) {
   return value.trim().slice(0, max);
 }
 
+function phoneKey(value: unknown) {
+  const digits = cleanString(value, 80).replace(/\D/g, "");
+  return digits ? digits.slice(-13) : "";
+}
+
 async function listContactProfiles(tenantId: string) {
   const snap = await adminDb
     .collection("contacts")
@@ -92,7 +97,11 @@ async function listContactProfiles(tenantId: string) {
       photoUrl: cleanString(data.photoUrl, 1000),
     };
 
-    if (item.phone) byPhone.set(item.phone, item);
+    if (item.phone) {
+      byPhone.set(item.phone, item);
+      const normalizedPhone = phoneKey(item.phone);
+      if (normalizedPhone) byPhone.set(normalizedPhone, item);
+    }
     if (item.leadId) byLeadId.set(item.leadId, item);
   }
 
@@ -173,7 +182,7 @@ export async function GET(
           const chat = doc.data() as Record<string, unknown>;
           const contactPhone = cleanString(chat.contactPhone, 60);
           const leadId = cleanString(chat.leadId, 180);
-          const profile = contacts.byPhone.get(contactPhone) || contacts.byLeadId.get(leadId);
+          const profile = contacts.byPhone.get(contactPhone) || contacts.byPhone.get(phoneKey(contactPhone)) || contacts.byLeadId.get(leadId);
           return {
             ...chat,
             contactName:
