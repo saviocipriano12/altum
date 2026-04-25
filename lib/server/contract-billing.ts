@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
-import { getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
+import { AGENCY_TENANT_ID, getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
 import {
   normalizeChargeBillingType,
   resolveChargeMethodForAsaas,
@@ -39,6 +39,8 @@ type ContractRow = {
   autoBillingAdvanceDays: number;
   autoBillingBillingType: TenantChargeBillingType;
   reminderWhatsAppPhones: string[];
+  autoSuspendEnabled: boolean;
+  autoSuspendBusinessDays: number;
 };
 
 type AsaasPaymentPayload = {
@@ -49,7 +51,13 @@ type AsaasPaymentPayload = {
   errors?: Array<{ description?: string }>;
 };
 
-type BillingItemStatus = "generated" | "skipped" | "failed";
+type AsaasPixQrCodePayload = {
+  encodedImage?: string;
+  payload?: string;
+  errors?: Array<{ description?: string }>;
+};
+
+type BillingItemStatus = "generated" | "reminded" | "suspended" | "reactivated" | "skipped" | "failed";
 
 export type ContractBillingRunItem = {
   contractId: string;
@@ -68,6 +76,8 @@ export type ContractBillingRunItem = {
 export type ContractBillingRunResult = {
   processed: number;
   generated: number;
+  reminded: number;
+  suspended: number;
   skipped: number;
   failed: number;
   dryRun: boolean;
@@ -199,6 +209,8 @@ function normalizeContractRow(docId: string, data: Record<string, unknown>) {
     autoBillingAdvanceDays: Math.max(1, Math.min(15, Math.round(toNumber(data.autoBillingAdvanceDays, 5)))),
     autoBillingBillingType,
     reminderWhatsAppPhones: parseReminderPhones(data.reminderWhatsAppPhones),
+    autoSuspendEnabled: data.autoSuspendEnabled !== false,
+    autoSuspendBusinessDays: Math.max(1, Math.min(10, Math.round(toNumber(data.autoSuspendBusinessDays, 2)))),
   } satisfies ContractRow;
 }
 
@@ -299,6 +311,15 @@ async function createAsaasCharge(input: {
     invoiceUrl: clean(payload.invoiceUrl, 500) || null,
     bankSlipUrl: clean(payload.bankSlipUrl, 500) || null,
     billingType: clean(payload.billingType, 40) || input.billingType,
+    pixPayload: await (async () => {
+      if (input.billingType !== "PIX") return null;
+      const qrRes = await fetch(`${ASAAS_API_URL}/payments/${chargeId}/pixQrCode`, {
+        headers: { access_token: ASAAS_API_KEY as string },
+      });
+      const qrPayload = (await qrRes.json().catch(() => ({}))) as AsaasPixQrCodePayload;
+      if (!qrRes.ok || qrPayload.errors?.length) return null;
+      return clean(qrPayload.payload, 1200) || null;
+    })(),
   };
 }
 
@@ -383,6 +404,8 @@ async function sendBillingReminderWhatsapp(input: {
   dueDate: string;
   invoiceUrl: string;
   paymentLink: string;
+  pixPayload?: string | null;
+  reminderKind?: "pre_due" | "due_today" | "overdue_blocked";
 }) {
   const fallbackPhone = normalizePhoneBR(input.client.phone);
   const recipients = Array.from(
@@ -397,7 +420,9 @@ async function sendBillingReminderWhatsapp(input: {
     };
   }
 
-  const channel = await getWhatsAppChannelForTenant(input.tenantId, { allowAgencyFallback: false });
+  const channel =
+    (await getWhatsAppChannelForTenant(AGENCY_TENANT_ID, { allowAgencyFallback: true })) ||
+    (await getWhatsAppChannelForTenant(input.tenantId, { allowAgencyFallback: true }));
   if (!channel) {
     return {
       reminderStatus: "skipped_no_channel",
@@ -407,14 +432,26 @@ async function sendBillingReminderWhatsapp(input: {
   }
 
   const paymentTarget = input.invoiceUrl || input.paymentLink;
+  const reminderKind = input.reminderKind || "pre_due";
+  const heading =
+    reminderKind === "due_today"
+      ? "ALTUM - Pagamento vence hoje"
+      : reminderKind === "overdue_blocked"
+        ? "ALTUM - Acesso pausado por pagamento pendente"
+        : "ALTUM - Lembrete de pagamento";
   const body = [
-    "ALTUM - Lembrete de faturamento",
+    heading,
     `Cliente: ${input.client.name}`,
     `Valor: ${formatCurrencyBr(input.amount)}`,
     `Vencimento: ${formatDateBr(input.dueDate)}`,
-    `Cobranca gerada automaticamente ${input.contract.autoBillingAdvanceDays} dia(s) antes do vencimento.`,
+    reminderKind === "pre_due"
+      ? `Cobranca gerada automaticamente ${input.contract.autoBillingAdvanceDays} dia(s) antes do vencimento.`
+      : reminderKind === "due_today"
+        ? "Identificamos que esta mensalidade vence hoje."
+        : "A plataforma foi pausada ate a confirmacao do pagamento. Nenhum dado foi apagado.",
+    input.pixPayload ? `Pix copia e cola: ${input.pixPayload}` : "",
     paymentTarget ? `Pagamento: ${paymentTarget}` : "Pagamento: entre em contato com o financeiro.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   const deliveries = await Promise.allSettled(
     recipients.map((phone) =>
@@ -436,6 +473,260 @@ async function sendBillingReminderWhatsapp(input: {
     reminderSent,
     reminderFailed,
   };
+}
+
+function isPaidStatus(value: unknown) {
+  const normalized = clean(value, 40).toLowerCase();
+  return normalized === "pago" || normalized === "paid" || normalized === "received" || normalized === "confirmed";
+}
+
+function businessDaysAfter(dueDate: Date, now: Date) {
+  let count = 0;
+  const cursor = new Date(Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate() + 1, 12));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12));
+  while (cursor.getTime() <= end.getTime()) {
+    const day = cursor.getUTCDay();
+    if (day !== 0 && day !== 6) count += 1;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return count;
+}
+
+async function markTenantBillingBlocked(input: {
+  tenantId: string;
+  financeId: string;
+  contractId: string;
+  dueDate: string;
+  amount: number;
+}) {
+  if (!input.tenantId) return;
+
+  await Promise.all([
+    adminDb.collection("tenants").doc(input.tenantId).set(
+      {
+        status: "blocked",
+        blockedReason: "billing_overdue",
+        billingStatus: "blocked",
+        billingBlockedAt: FieldValue.serverTimestamp(),
+        billingBlockedFinanceId: input.financeId,
+        billingBlockedContractId: input.contractId,
+        billingBlockedDueDate: input.dueDate,
+        billingBlockedAmount: Number(input.amount || 0),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    ),
+    adminDb.collection("tenant_settings").doc(input.tenantId).set(
+      {
+        billing: {
+          status: "blocked",
+          reason: "billing_overdue",
+          blockedAt: FieldValue.serverTimestamp(),
+          financeId: input.financeId,
+          contractId: input.contractId,
+          dueDate: input.dueDate,
+        },
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    ),
+    adminDb.collection("audit_logs").add({
+      type: "tenant_billing_blocked",
+      tenantId: input.tenantId,
+      financeId: input.financeId,
+      contractId: input.contractId,
+      dueDate: input.dueDate,
+      createdAt: FieldValue.serverTimestamp(),
+    }),
+  ]);
+}
+
+export async function reactivateTenantAfterBillingPayment(input: {
+  tenantId: string;
+  financeId?: string;
+  asaasChargeId?: string;
+}) {
+  const tenantId = clean(input.tenantId, 140);
+  if (!tenantId) return { reactivated: false, reason: "tenant_missing" };
+
+  const pendingSnap = await adminDb
+    .collection("financeiro")
+    .where("tenantId", "==", tenantId)
+    .where("contractAutoBilling", "==", true)
+    .limit(200)
+    .get();
+
+  const hasOpenOverdue = pendingSnap.docs.some((doc) => {
+    const data = doc.data() as Record<string, unknown>;
+    if (isPaidStatus(data.status) || clean(data.status, 40).toLowerCase() === "cancelado") return false;
+    const dueDate = parseYmd(clean(data.contractDueDate || data.vencimento || data.dueDate, 20));
+    return Boolean(dueDate && daysUntil(new Date(), dueDate) < 0);
+  });
+
+  if (hasOpenOverdue) {
+    return { reactivated: false, reason: "open_overdue_finance" };
+  }
+
+  await Promise.all([
+    adminDb.collection("tenants").doc(tenantId).set(
+      {
+        status: "active",
+        blockedReason: null,
+        billingStatus: "active",
+        billingReactivatedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    ),
+    adminDb.collection("tenant_settings").doc(tenantId).set(
+      {
+        billing: {
+          status: "active",
+          reason: null,
+          reactivatedAt: FieldValue.serverTimestamp(),
+          financeId: clean(input.financeId, 140) || null,
+          asaasChargeId: clean(input.asaasChargeId, 140) || null,
+        },
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    ),
+    adminDb.collection("audit_logs").add({
+      type: "tenant_billing_reactivated",
+      tenantId,
+      financeId: clean(input.financeId, 140) || null,
+      asaasChargeId: clean(input.asaasChargeId, 140) || null,
+      createdAt: FieldValue.serverTimestamp(),
+    }),
+  ]);
+
+  return { reactivated: true, reason: "payment_confirmed" };
+}
+
+async function processOpenBillingFollowUps(input: {
+  contractsById: Map<string, ContractRow>;
+  clientsCache: Map<string, ClientRow>;
+  now: Date;
+  tenantFilter?: string;
+  dryRun?: boolean;
+}) {
+  const snap = await adminDb
+    .collection("financeiro")
+    .where("contractAutoBilling", "==", true)
+    .limit(800)
+    .get();
+
+  const results: ContractBillingRunItem[] = [];
+
+  for (const doc of snap.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const tenantId = clean(data.tenantId, 140);
+    if (input.tenantFilter && tenantId !== input.tenantFilter) continue;
+    if (!tenantId || isPaidStatus(data.status) || clean(data.status, 40).toLowerCase() === "cancelado") continue;
+
+    const dueDate = clean(data.contractDueDate || data.vencimento || data.dueDate, 20);
+    const parsedDueDate = parseYmd(dueDate);
+    if (!parsedDueDate) continue;
+
+    const contractId = clean(data.contractId, 140);
+    const contract = input.contractsById.get(contractId);
+    if (!contract) continue;
+
+    const clientId = clean(data.clientId, 140) || contract.clientId;
+    let client = input.clientsCache.get(clientId);
+    if (!client) {
+      client = await readClientRow(clientId);
+      input.clientsCache.set(clientId, client);
+    }
+
+    const diffDays = daysUntil(input.now, parsedDueDate);
+    const overdueBusinessDays = businessDaysAfter(parsedDueDate, input.now);
+    const amount = Number(toNumber(data.valor, contract.monthlyValue).toFixed(2));
+    const invoiceUrl = clean(data.invoiceUrl, 500);
+    const paymentLink = clean(data.paymentLink, 500) || contract.paymentLink;
+    const pixPayload = clean(data.pixPayload, 1200) || null;
+
+    if (diffDays === 0 && !data.dueReminderSentAt) {
+      if (!input.dryRun) {
+        const reminder = await sendBillingReminderWhatsapp({
+          tenantId,
+          client,
+          contract,
+          amount,
+          dueDate,
+          invoiceUrl,
+          paymentLink,
+          pixPayload,
+          reminderKind: "due_today",
+        });
+        await doc.ref.set(
+          {
+            status: "pendente",
+            dueReminderStatus: reminder.reminderStatus,
+            dueReminderSent: reminder.reminderSent,
+            dueReminderFailed: reminder.reminderFailed,
+            dueReminderSentAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+      results.push({
+        contractId,
+        clientId,
+        tenantId,
+        dueDate,
+        status: "reminded",
+        reason: "due_today_reminder_sent",
+        financeId: doc.id,
+      });
+    }
+
+    if (
+      contract.autoSuspendEnabled &&
+      overdueBusinessDays >= contract.autoSuspendBusinessDays &&
+      !data.billingBlockedAt
+    ) {
+      if (!input.dryRun) {
+        const reminder = await sendBillingReminderWhatsapp({
+          tenantId,
+          client,
+          contract,
+          amount,
+          dueDate,
+          invoiceUrl,
+          paymentLink,
+          pixPayload,
+          reminderKind: "overdue_blocked",
+        });
+        await Promise.all([
+          markTenantBillingBlocked({ tenantId, financeId: doc.id, contractId, dueDate, amount }),
+          doc.ref.set(
+            {
+              status: "atrasado",
+              billingBlockedAt: FieldValue.serverTimestamp(),
+              billingBlockReminderStatus: reminder.reminderStatus,
+              billingBlockReminderSent: reminder.reminderSent,
+              billingBlockReminderFailed: reminder.reminderFailed,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          ),
+        ]);
+      }
+      results.push({
+        contractId,
+        clientId,
+        tenantId,
+        dueDate,
+        status: "suspended",
+        reason: "overdue_business_days_reached",
+        financeId: doc.id,
+      });
+    }
+  }
+
+  return results;
 }
 
 async function listActiveContracts(limit: number) {
@@ -499,6 +790,7 @@ export async function runContractBillingCycle(
   }
 
   const clientsCache = new Map<string, ClientRow>();
+  const contractsById = new Map(contracts.map((contract) => [contract.id, contract]));
   const results: ContractBillingRunItem[] = [];
 
   for (const contract of contracts) {
@@ -642,6 +934,7 @@ export async function runContractBillingCycle(
         billingType: contract.autoBillingBillingType,
         invoiceUrl: charge.invoiceUrl,
         bankSlipUrl: charge.bankSlipUrl,
+        pixPayload: charge.pixPayload,
         clientEmail: customerEmail,
         clientPhone: customerPhone || null,
         paymentLink: clean(contract.paymentLink, 500) || charge.invoiceUrl || null,
@@ -660,6 +953,7 @@ export async function runContractBillingCycle(
         dueDate,
         invoiceUrl: charge.invoiceUrl || "",
         paymentLink: contract.paymentLink,
+        pixPayload: charge.pixPayload,
       });
 
       await Promise.all([
@@ -676,12 +970,16 @@ export async function runContractBillingCycle(
         ),
         adminDb.collection("financeiro").doc(financeRef.id).set(
           {
-            reminderStatus: reminder.reminderStatus,
-            reminderSent: reminder.reminderSent,
-            reminderFailed: reminder.reminderFailed,
-            reminderSentAt:
-              reminder.reminderStatus === "success" || reminder.reminderStatus === "partial_failure"
-                ? FieldValue.serverTimestamp()
+        reminderStatus: reminder.reminderStatus,
+        reminderSent: reminder.reminderSent,
+        reminderFailed: reminder.reminderFailed,
+        preDueReminderSentAt:
+          reminder.reminderStatus === "success" || reminder.reminderStatus === "partial_failure"
+            ? FieldValue.serverTimestamp()
+            : null,
+        reminderSentAt:
+          reminder.reminderStatus === "success" || reminder.reminderStatus === "partial_failure"
+            ? FieldValue.serverTimestamp()
                 : null,
             updatedAt: FieldValue.serverTimestamp(),
           },
@@ -734,13 +1032,26 @@ export async function runContractBillingCycle(
     }
   }
 
+  const followUpResults = await processOpenBillingFollowUps({
+    contractsById,
+    clientsCache,
+    now,
+    tenantFilter,
+    dryRun,
+  });
+  results.push(...followUpResults);
+
   const generated = results.filter((item) => item.status === "generated").length;
+  const reminded = results.filter((item) => item.status === "reminded").length;
+  const suspended = results.filter((item) => item.status === "suspended").length;
   const failed = results.filter((item) => item.status === "failed").length;
   const skipped = results.filter((item) => item.status === "skipped").length;
 
   return {
     processed: results.length,
     generated,
+    reminded,
+    suspended,
     skipped,
     failed,
     dryRun,

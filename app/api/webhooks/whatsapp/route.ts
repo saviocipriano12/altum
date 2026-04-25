@@ -111,6 +111,152 @@ function extractWhatsappProfilePhoto(valueObj: Record<string, unknown> | undefin
   );
 }
 
+type WhatsAppDeliveryStatus = "sent" | "delivered" | "read" | "failed";
+
+type ParsedWhatsAppStatusEvent = {
+  messageId: string;
+  status: WhatsAppDeliveryStatus;
+  timestampMs: number | null;
+  recipientId: string;
+  errorCode: string;
+  errorMessage: string;
+};
+
+function normalizeWhatsAppDeliveryStatus(value: unknown): WhatsAppDeliveryStatus | null {
+  const normalized = cleanString(value, 40).toLowerCase();
+  if (normalized === "sent" || normalized === "delivered" || normalized === "read" || normalized === "failed") {
+    return normalized;
+  }
+  return null;
+}
+
+function parseWhatsAppTimestampMs(value: unknown) {
+  const raw = cleanString(value, 40);
+  if (!raw) return null;
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  // Meta pode enviar em segundos.
+  return numeric > 1_000_000_000_000 ? Math.floor(numeric) : Math.floor(numeric * 1000);
+}
+
+function extractWhatsappStatusEvents(valueObj: Record<string, unknown> | undefined) {
+  const statuses = Array.isArray(valueObj?.statuses) ? valueObj.statuses : [];
+  return statuses
+    .map((item) => {
+      const statusEntry = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      const normalizedStatus = normalizeWhatsAppDeliveryStatus(statusEntry.status);
+      const messageId = cleanString(statusEntry.id, 260);
+      if (!normalizedStatus || !messageId) return null;
+
+      const errors = Array.isArray(statusEntry.errors) ? statusEntry.errors : [];
+      const firstError = errors[0] && typeof errors[0] === "object" ? (errors[0] as Record<string, unknown>) : {};
+
+      return {
+        messageId,
+        status: normalizedStatus,
+        timestampMs: parseWhatsAppTimestampMs(statusEntry.timestamp),
+        recipientId: cleanString(statusEntry.recipient_id, 80),
+        errorCode: cleanString(firstError.code, 80),
+        errorMessage: cleanString(firstError.title, 240) || cleanString(firstError.message, 240),
+      } satisfies ParsedWhatsAppStatusEvent;
+    })
+    .filter((item): item is ParsedWhatsAppStatusEvent => Boolean(item));
+}
+
+async function persistWhatsappStatusEvents(input: {
+  tenantId: string;
+  phoneNumberId: string;
+  events: ParsedWhatsAppStatusEvent[];
+}) {
+  let matchedMessages = 0;
+  let updatedChats = 0;
+
+  for (const statusEvent of input.events) {
+    const messageSnap = await adminDb
+      .collection("messages")
+      .where("metaMessageId", "==", statusEvent.messageId)
+      .limit(20)
+      .get();
+
+    const matchingDocs = messageSnap.docs.filter((doc) => {
+      const data = doc.data() as { tenantId?: unknown; sender?: unknown };
+      return (
+        cleanString(data.tenantId, 180) === input.tenantId &&
+        cleanString(data.sender, 20).toLowerCase() !== "client"
+      );
+    });
+
+    const deliveryAtDate = statusEvent.timestampMs ? new Date(statusEvent.timestampMs) : null;
+    const batch = adminDb.batch();
+    const touchedChatIds = new Set<string>();
+
+    for (const messageDoc of matchingDocs) {
+      const data = messageDoc.data() as { chatId?: unknown };
+      const chatId = cleanString(data.chatId, 180);
+      if (chatId) touchedChatIds.add(chatId);
+
+      batch.set(
+        messageDoc.ref,
+        {
+          status: statusEvent.status,
+          deliveryStatus: statusEvent.status,
+          deliveryUpdatedAt: FieldValue.serverTimestamp(),
+          deliveryAt: deliveryAtDate || FieldValue.serverTimestamp(),
+          deliveryError: statusEvent.errorMessage || "",
+          deliveryErrorCode: statusEvent.errorCode || "",
+          deliveryRecipientId: statusEvent.recipientId || "",
+          channelPhoneNumberId: input.phoneNumberId,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
+    for (const chatId of touchedChatIds) {
+      batch.set(
+        adminDb.collection("chats").doc(chatId),
+        {
+          lastOutboundDeliveryStatus: statusEvent.status,
+          lastOutboundDeliveryAt: deliveryAtDate || FieldValue.serverTimestamp(),
+          lastOutboundMetaMessageId: statusEvent.messageId,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      updatedChats += 1;
+    }
+
+    const eventDocId = sanitizeId(
+      `${input.tenantId}_${input.phoneNumberId}_${statusEvent.messageId}_${statusEvent.status}_${statusEvent.timestampMs || Date.now()}`,
+      240
+    );
+    batch.set(
+      adminDb.collection("whatsapp_delivery_events").doc(eventDocId),
+      {
+        tenantId: input.tenantId,
+        phoneNumberId: input.phoneNumberId,
+        metaMessageId: statusEvent.messageId,
+        status: statusEvent.status,
+        recipientId: statusEvent.recipientId || "",
+        errorCode: statusEvent.errorCode || "",
+        errorMessage: statusEvent.errorMessage || "",
+        deliveryAt: deliveryAtDate || null,
+        createdAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await batch.commit();
+    matchedMessages += matchingDocs.length;
+  }
+
+  return {
+    processedEvents: input.events.length,
+    matchedMessages,
+    updatedChats,
+  };
+}
+
 async function resolveLeadOwner(phone: string, tenantId: string) {
   const scopedSnap = await adminDb
     .collection("leads")
@@ -298,15 +444,41 @@ export async function POST(req: Request) {
     const message = Array.isArray(valueObj?.messages)
       ? (valueObj.messages[0] as Record<string, unknown> | undefined)
       : undefined;
+    const statusEvents = extractWhatsappStatusEvents(valueObj);
 
-    if (!message || typeof message !== "object") {
+    if ((!message || typeof message !== "object") && statusEvents.length === 0) {
       return NextResponse.json({ status: "ignored_no_message" });
     }
 
     const tenantId = channel.tenantId;
+
+    if (statusEvents.length > 0) {
+      const result = await persistWhatsappStatusEvents({
+        tenantId,
+        phoneNumberId: channel.phoneNumberId,
+        events: statusEvents,
+      });
+
+      if (!message || typeof message !== "object") {
+        return NextResponse.json({
+          status: "ok_status_update",
+          tenantId,
+          phoneNumberId: channel.phoneNumberId,
+          processedEvents: result.processedEvents,
+          matchedMessages: result.matchedMessages,
+          updatedChats: result.updatedChats,
+        });
+      }
+    }
+
+    if (!message || typeof message !== "object") {
+      return NextResponse.json({ status: "ignored_no_message" });
+    }
+    const inboundMessage = message as Record<string, unknown>;
+
     const tenantSettings = await getTenantSettings(tenantId);
     const slaMinutes = resolveFirstResponseSlaMinutes(tenantSettings as Record<string, unknown> | null);
-    const inboundMetaMessageId = String((message as { id?: unknown }).id || "").trim();
+    const inboundMetaMessageId = cleanString(inboundMessage.id, 260);
 
     const claim = await claimWebhookEvent({
       tenantId,
@@ -325,8 +497,8 @@ export async function POST(req: Request) {
 
     eventRef = claim.eventRef;
 
-    const from = normalizePhone(String((message as { from?: unknown }).from || ""));
-    const mediaMeta = extractWhatsappMediaMeta(message);
+    const from = normalizePhone(cleanString(inboundMessage.from, 40));
+    const mediaMeta = extractWhatsappMediaMeta(inboundMessage);
     const text = mediaMeta.text;
     const contactName =
       String(

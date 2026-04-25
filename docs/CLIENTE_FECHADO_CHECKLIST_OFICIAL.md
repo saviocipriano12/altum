@@ -1,7 +1,7 @@
 ﻿# Checklist Oficial ALTUM - Cliente Fechado (D0 a D7)
 
 Data base: 24/04/2026  
-Versao: 1.0  
+Versao: 1.1  
 Owner do documento: Operacoes ALTUM
 
 ## Objetivo
@@ -32,6 +32,58 @@ Se qualquer um dos 5 itens acima falhar, o go-live fica bloqueado.
 - Operacoes/Implementacao: integra canais, IA, automacoes e testes ponta a ponta.
 - Tech/Plataforma: suporte em incidentes de integracao, webhook, seguranca e jobs.
 - Dono do tenant (cliente): aprova acessos, mensagens, tom e regras de operacao.
+
+## Como executar sem se perder (SOP diario)
+1. Abra uma ficha operacional por cliente usando `docs/CLIENTE_FECHADO_FICHA_OPERACIONAL_TEMPLATE.md`.
+2. Mantenha apenas 1 fase ativa por cliente (nunca avancar em paralelo com fase critica pendente).
+3. So marque etapa como concluida quando houver evidencia registrada.
+4. Se travar, mude o status para `Bloqueado`, registre causa, owner da resolucao e prazo.
+5. Feche cada dia com "proxima acao + responsavel + data".
+
+## Modo inteligente de execucao (anti-erro)
+1. Sempre iniciar com ficha gerada por comando (padrao unico):
+`npm run cliente:onboarding:new -- --cliente "NOME" --tenant "TENANT_ID" --ownerAltum "SEU_NOME" --ownerCliente "NOME_CLIENTE" --fechamento "YYYY-MM-DD" --kickoff "YYYY-MM-DD" --prazo "YYYY-MM-DD" --escopo "PLANO"`
+2. Trabalhar por fase com checkpoint de entrada e saida:
+- entrada: confirmar dados minimos da fase;
+- saida: confirmar evidencias minimas da fase.
+3. Nunca pular etapa bloqueadora:
+- se etapa com "Bloqueia go-live = Sim" nao estiver concluida, a fase nao pode avancar.
+4. Encerrar cada ciclo de trabalho com 3 perguntas obrigatorias:
+- qual etapa estou agora;
+- qual bloqueio pode travar as proximas 24h;
+- qual proxima acao com dono e data.
+
+## Fases oficiais (macro fluxo)
+
+| Fase | Objetivo | Etapas do checklist |
+| --- | --- | --- |
+| F0 - Kickoff interno | Garantir base contratual e setup inicial do tenant | 1 a 4 |
+| F1 - Setup operacional | Fechar empresa, equipe, SLA, ownership e canal principal | 5 a 12 |
+| F2 - Setup IA e CRM | Fechar IA, limites, conhecimento, CRM e handoff | 13 a 19 |
+| F3 - Compliance e liberacao | Fechar LGPD, testes e aprovar go-live | 20 a 23 |
+| F4 - Estabilizacao | Acompanhar operacao D1 e revalidar D7 | 24 a 26 |
+
+## Regras de passagem de bastao (para funcionario)
+- Toda troca de responsavel exige handoff escrito na ficha operacional.
+- O novo responsavel deve conseguir continuar o processo sem call de contexto.
+- Campos minimos no handoff:
+1. fase atual;
+2. etapa exata em andamento;
+3. bloqueios ativos;
+4. proxima acao objetiva;
+5. prazo comprometido com cliente.
+
+## SLA interno recomendado por fase
+- F0: ate 1 dia util apos fechamento.
+- F1: ate 2 dias uteis.
+- F2: ate 2 dias uteis.
+- F3: ate 1 dia util.
+- F4: D1 e D7 obrigatorios nas datas corretas.
+
+## Escalonamento padrao (quando bloquear)
+- Ate 4h sem avancar: escalar para owner de Operacoes.
+- Ate 24h com bloqueio tecnico: envolver Tech/Plataforma.
+- Risco de prazo com cliente: notificar Comercial/CS no mesmo dia.
 
 ## Checklist operacional detalhado (ordem obrigatoria)
 
@@ -73,6 +125,12 @@ Todos os itens abaixo precisam estar verdadeiros ao mesmo tempo:
 - IA ativa com limites de custo/uso definidos e sem estouro;
 - base de conhecimento com no minimo 3 documentos;
 - owner operacional, time padrao e cobertura humana ativa.
+
+## Regra de auditoria semanal (qualidade do processo)
+- Revisar todos os clientes em onboarding toda segunda-feira.
+- Confirmar se cada cliente tem ficha operacional atualizada.
+- Verificar se existe etapa marcada como concluida sem evidencia.
+- Corrigir imediatamente qualquer desvio de ordem do checklist.
 
 ## Runbook de contingencia (resumo)
 Se houver incidente apos liberacao:
@@ -117,4 +175,6 @@ Referencia detalhada: `docs/go-live-incident-playbook.md`.
 - `docs/INTEGRATIONS_OAUTH_MANAGED.md`
 - `docs/LGPD_OPERACAO_E_GOVERNANCA.md`
 - `docs/DPA_MINIMO_CLIENTES.md`
+- `docs/CLIENTE_FECHADO_FICHA_OPERACIONAL_TEMPLATE.md`
+- `scripts/new-client-onboarding.mjs`
 

@@ -8,6 +8,13 @@ type Body = {
   type?: "faq" | "catalog" | "policy";
   content?: string;
   tags?: string[] | string;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  mediaTitle?: string | null;
+  mediaStoragePath?: string | null;
+  mediaMimeType?: string | null;
+  mediaSize?: number | null;
+  serviceKey?: string | null;
 };
 
 function clean(value: unknown, max = 800) {
@@ -39,6 +46,16 @@ function normalizeType(value: unknown): "faq" | "catalog" | "policy" {
   if (type === "catalog") return "catalog";
   if (type === "policy") return "policy";
   return "faq";
+}
+
+function normalizeMediaType(value: unknown) {
+  const normalized = clean(value, 40).toLowerCase();
+  if (normalized === "image" || normalized === "video" || normalized === "document") return normalized;
+  return "";
+}
+
+function numericValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : null;
 }
 
 async function getDocRef(tenantId: string, docId: string) {
@@ -78,6 +95,13 @@ export async function PATCH(
         type: normalizeType(body.type),
         content,
         tags: parseTags(body.tags),
+        mediaUrl: clean(body.mediaUrl, 1200) || null,
+        mediaType: normalizeMediaType(body.mediaType) || null,
+        mediaTitle: clean(body.mediaTitle, 160) || null,
+        mediaStoragePath: clean(body.mediaStoragePath, 600) || null,
+        mediaMimeType: clean(body.mediaMimeType, 140) || null,
+        mediaSize: numericValue(body.mediaSize),
+        serviceKey: clean(body.serviceKey, 120) || null,
         updatedAt: FieldValue.serverTimestamp(),
         updatedBy: user.uid,
         updatedByName: user.name,

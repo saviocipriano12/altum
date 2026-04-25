@@ -86,6 +86,40 @@ type WhatsAppChannelResponse = {
   error?: string;
 };
 
+type ConversionHealthItem = {
+  channelId: string;
+  type: "meta_ads" | "google_ads";
+  displayName: string;
+  ready: boolean;
+  status: string;
+  issues: string[];
+  configuredEvents: string[];
+  recent: {
+    processed: number;
+    failed: number;
+    claimed: number;
+    skipped: number;
+    total: number;
+    lastStatus?: string;
+    lastError?: string;
+    lastEventAt?: string | null;
+  };
+};
+
+type ConversionHealthResponse = {
+  checkedAt?: string;
+  ok?: boolean;
+  summary?: {
+    total: number;
+    ready: number;
+    failedRecent: number;
+    processedRecent: number;
+  };
+  issues?: string[];
+  items?: ConversionHealthItem[];
+  error?: string;
+};
+
 type ConnectorType = "whatsapp" | "instagram" | "messenger" | "meta_ads" | "google_ads";
 
 type ConnectorDefinition = {
@@ -367,6 +401,7 @@ export default function ClienteCanaisPage() {
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
+  const [checkingConversions, setCheckingConversions] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncingCampaigns, setSyncingCampaigns] = useState(false);
   const [loadingPending, setLoadingPending] = useState(false);
@@ -377,6 +412,7 @@ export default function ClienteCanaisPage() {
   const canManage = hasCapability("manage_channels");
 
   const [channels, setChannels] = useState<ChannelItem[]>([]);
+  const [conversionHealth, setConversionHealth] = useState<ConversionHealthResponse | null>(null);
   const [pendingSelection, setPendingSelection] = useState<IntegrationPendingItem | null>(null);
   const [pendingOptionId, setPendingOptionId] = useState("");
   const [whatsAppMasked, setWhatsAppMasked] = useState<{ access?: string; verify?: string; secret?: string }>({});
@@ -396,6 +432,13 @@ export default function ClienteCanaisPage() {
     secondaryValue: "",
     status: "draft",
     metadataValue: "",
+    pixelId: "",
+    testEventCode: "",
+    leadConversionActionId: "",
+    qualifiedConversionActionId: "",
+    meetingConversionActionId: "",
+    meetingCompletedConversionActionId: "",
+    saleConversionActionId: "",
   });
 
   const selectedDefinition = useMemo(
@@ -417,13 +460,15 @@ export default function ClienteCanaisPage() {
         setLoading(true);
         setError(null);
 
-        const [channelsRes, whatsAppRes] = await Promise.all([
+        const [channelsRes, whatsAppRes, conversionHealthRes] = await Promise.all([
           authedFetch(`/api/tenant/${tenant.tenantId}/channels`),
           authedFetch(`/api/tenant/${tenant.tenantId}/channels/whatsapp`),
+          authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/conversions/health`),
         ]);
 
         const channelsData = (await channelsRes.json()) as ChannelsResponse;
         const whatsAppData = (await whatsAppRes.json()) as WhatsAppChannelResponse;
+        const conversionHealthData = (await conversionHealthRes.json().catch(() => ({}))) as ConversionHealthResponse;
 
         if (!mounted) return;
 
@@ -446,6 +491,10 @@ export default function ClienteCanaisPage() {
             verify: whatsAppData.channel.verifyTokenMasked || "",
             secret: whatsAppData.channel.appSecretMasked || "",
           });
+        }
+
+        if (conversionHealthRes.ok) {
+          setConversionHealth(conversionHealthData);
         }
       } catch {
         if (!mounted) return;
@@ -473,6 +522,13 @@ export default function ClienteCanaisPage() {
           : selectedChannel?.username || "",
       status: selectedChannel?.status || "draft",
       metadataValue: metadataKey ? selectedChannel?.metadata?.[metadataKey] || "" : "",
+      pixelId: selectedChannel?.metadata?.pixelId || selectedChannel?.metadata?.metaPixelId || "",
+      testEventCode: selectedChannel?.metadata?.testEventCode || "",
+      leadConversionActionId: selectedChannel?.metadata?.leadConversionActionId || "",
+      qualifiedConversionActionId: selectedChannel?.metadata?.qualifiedConversionActionId || "",
+      meetingConversionActionId: selectedChannel?.metadata?.meetingConversionActionId || "",
+      meetingCompletedConversionActionId: selectedChannel?.metadata?.meetingCompletedConversionActionId || "",
+      saleConversionActionId: selectedChannel?.metadata?.saleConversionActionId || "",
     });
   }, [selectedChannel, selectedDefinition, selectedType]);
 
@@ -605,12 +661,34 @@ export default function ClienteCanaisPage() {
     }
   }
 
+  const refreshConversionHealth = useCallback(async () => {
+    if (!tenant?.tenantId) return;
+    const res = await authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/conversions/health`);
+    const data = (await res.json().catch(() => ({}))) as ConversionHealthResponse;
+    if (res.ok) setConversionHealth(data);
+  }, [tenant?.tenantId]);
+
   const refreshChannels = useCallback(async () => {
     if (!tenant?.tenantId) return;
     const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels`);
     const data = (await res.json()) as ChannelsResponse;
     if (res.ok) setChannels(data.items || []);
-  }, [tenant?.tenantId]);
+    await refreshConversionHealth();
+  }, [refreshConversionHealth, tenant?.tenantId]);
+
+  async function checkConversionHealth() {
+    setCheckingConversions(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await refreshConversionHealth();
+      setNotice("Diagnostico de pixels e conversoes atualizado.");
+    } catch {
+      setError("Falha ao validar pixels e conversoes.");
+    } finally {
+      setCheckingConversions(false);
+    }
+  }
 
   async function startManagedConnect(provider: "meta" | "google") {
     if (!tenant?.tenantId || !canManage) return;
@@ -783,9 +861,23 @@ export default function ClienteCanaisPage() {
     setNotice(null);
 
     try {
-      const metadata = selectedDefinition.metadataKey && genericForm.metadataValue
-        ? { [selectedDefinition.metadataKey]: genericForm.metadataValue }
-        : {};
+      const metadata: Record<string, string> = {
+        ...(selectedChannel?.metadata || {}),
+        ...(selectedDefinition.metadataKey && genericForm.metadataValue
+          ? { [selectedDefinition.metadataKey]: genericForm.metadataValue }
+          : {}),
+      };
+      if (selectedDefinition.type === "meta_ads") {
+        metadata.pixelId = genericForm.pixelId;
+        metadata.testEventCode = genericForm.testEventCode;
+      }
+      if (selectedDefinition.type === "google_ads") {
+        metadata.leadConversionActionId = genericForm.leadConversionActionId;
+        metadata.qualifiedConversionActionId = genericForm.qualifiedConversionActionId;
+        metadata.meetingConversionActionId = genericForm.meetingConversionActionId;
+        metadata.meetingCompletedConversionActionId = genericForm.meetingCompletedConversionActionId;
+        metadata.saleConversionActionId = genericForm.saleConversionActionId;
+      }
 
       const body = {
         channelId: genericForm.channelId || undefined,
@@ -937,6 +1029,12 @@ export default function ClienteCanaisPage() {
               )}
             </div>
           </div>
+
+          <ConversionHealthPanel
+            health={conversionHealth}
+            loading={checkingConversions}
+            onRefresh={() => void checkConversionHealth()}
+          />
         </PanelCard>
 
         <PanelCard className="p-5">
@@ -1092,6 +1190,63 @@ export default function ClienteCanaisPage() {
               {selectedDefinition.metadataKey ? (
                 <Field label={selectedDefinition.metadataLabel || selectedDefinition.metadataKey} value={genericForm.metadataValue} onChange={(value) => setGenericForm((current) => ({ ...current, metadataValue: value }))} placeholder="Dado complementar" disabled={!canManage} />
               ) : null}
+              {selectedDefinition.type === "meta_ads" ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field
+                    label="Meta Pixel ID"
+                    value={genericForm.pixelId}
+                    onChange={(value) => setGenericForm((current) => ({ ...current, pixelId: value }))}
+                    placeholder="123456789012345"
+                    disabled={!canManage}
+                  />
+                  <Field
+                    label="Test event code"
+                    value={genericForm.testEventCode}
+                    onChange={(value) => setGenericForm((current) => ({ ...current, testEventCode: value }))}
+                    placeholder="TEST123"
+                    disabled={!canManage}
+                  />
+                </div>
+              ) : null}
+              {selectedDefinition.type === "google_ads" ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field
+                    label="Conversion: lead criado"
+                    value={genericForm.leadConversionActionId}
+                    onChange={(value) => setGenericForm((current) => ({ ...current, leadConversionActionId: value }))}
+                    placeholder="1234567890"
+                    disabled={!canManage}
+                  />
+                  <Field
+                    label="Conversion: lead qualificado"
+                    value={genericForm.qualifiedConversionActionId}
+                    onChange={(value) => setGenericForm((current) => ({ ...current, qualifiedConversionActionId: value }))}
+                    placeholder="1234567890"
+                    disabled={!canManage}
+                  />
+                  <Field
+                    label="Conversion: reuniao marcada"
+                    value={genericForm.meetingConversionActionId}
+                    onChange={(value) => setGenericForm((current) => ({ ...current, meetingConversionActionId: value }))}
+                    placeholder="1234567890"
+                    disabled={!canManage}
+                  />
+                  <Field
+                    label="Conversion: reuniao concluida"
+                    value={genericForm.meetingCompletedConversionActionId}
+                    onChange={(value) => setGenericForm((current) => ({ ...current, meetingCompletedConversionActionId: value }))}
+                    placeholder="1234567890"
+                    disabled={!canManage}
+                  />
+                  <Field
+                    label="Conversion: venda ganha"
+                    value={genericForm.saleConversionActionId}
+                    onChange={(value) => setGenericForm((current) => ({ ...current, saleConversionActionId: value }))}
+                    placeholder="1234567890"
+                    disabled={!canManage}
+                  />
+                </div>
+              ) : null}
               <SelectField label="Status" value={genericForm.status} onChange={(value) => setGenericForm((current) => ({ ...current, status: value }))} disabled={!canManage} />
 
               {supportsMetaWebhook(selectedDefinition.type) ? (
@@ -1157,6 +1312,82 @@ export default function ClienteCanaisPage() {
           ) : null}
         </PanelCard>
       </section>
+    </div>
+  );
+}
+
+function ConversionHealthPanel({
+  health,
+  loading,
+  onRefresh,
+}: {
+  health: ConversionHealthResponse | null;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const summary = health?.summary;
+  const issues = health?.issues || [];
+  const items = health?.items || [];
+
+  return (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <CardTitle
+          title="Pixels e conversoes"
+          subtitle="Diagnostico do envio server-side para Meta e Google Ads"
+        />
+        <div className="flex items-center gap-2">
+          <StateBadge
+            label={health?.ok ? "Sem bloqueios" : issues.length ? `${issues.length} alerta(s)` : "Nao validado"}
+            tone={health?.ok ? "success" : issues.length ? "warning" : "neutral"}
+          />
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/72 transition hover:bg-white/[0.08] disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Validar
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <MiniPanel title="Conectores prontos" value={`${summary?.ready || 0}/${summary?.total || 0}`} />
+        <MiniPanel title="Eventos enviados" value={String(summary?.processedRecent || 0)} />
+        <MiniPanel title="Falhas recentes" value={String(summary?.failedRecent || 0)} />
+      </div>
+
+      {items.length ? (
+        <div className="mt-4 space-y-2">
+          {items.map((item) => (
+            <div key={item.channelId} className="rounded-xl border border-white/10 bg-black/25 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-white">{item.displayName}</p>
+                  <p className="mt-1 text-xs text-white/46">
+                    {item.configuredEvents.length} evento(s) configurado(s) / ultimo envio {formatDateTime(item.recent.lastEventAt)}
+                  </p>
+                </div>
+                <StateBadge label={item.ready ? "Pronto" : "Pendente"} tone={item.ready ? "success" : "warning"} />
+              </div>
+              {item.issues.length ? (
+                <p className="mt-2 text-xs text-amber-100/80">{item.issues.join(" ")}</p>
+              ) : (
+                <p className="mt-2 text-xs text-white/50">
+                  Processados {item.recent.processed} de {item.recent.total}; falhas {item.recent.failed}.
+                </p>
+              )}
+              {item.recent.lastError ? (
+                <p className="mt-2 text-xs text-rose-100/80">Ultimo erro: {item.recent.lastError}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-white/52">Conecte Meta Ads ou Google Ads para validar o retorno de dados das campanhas.</p>
+      )}
     </div>
   );
 }

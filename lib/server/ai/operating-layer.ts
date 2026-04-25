@@ -118,6 +118,8 @@ function isPremiumOpenAiModel(model: string) {
 
 export function normalizeTenantAiOperatingProfile(value: unknown): TenantAiOperatingProfile {
   const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const conversationModelOverride = normalizeModelOverride(source.conversationModelOverride);
+  const extractionModelOverride = normalizeModelOverride(source.extractionModelOverride);
 
   return {
     tier: normalizeEnum(source.tier, ["essential", "growth", "premium", "elite", "enterprise"], "growth"),
@@ -126,8 +128,8 @@ export function normalizeTenantAiOperatingProfile(value: unknown): TenantAiOpera
     responseStyle: normalizeEnum(source.responseStyle, ["concise", "consultative", "premium_sales", "closer"], "consultative"),
     allowPremiumModels: normalizeBoolean(source.allowPremiumModels, false),
     preferredProviders: normalizeProviders(source.preferredProviders),
-    conversationModelOverride: normalizeModelOverride(source.conversationModelOverride),
-    extractionModelOverride: normalizeModelOverride(source.extractionModelOverride),
+    ...(conversationModelOverride ? { conversationModelOverride } : {}),
+    ...(extractionModelOverride ? { extractionModelOverride } : {}),
     monthlyBudgetUsd: normalizePositiveNumber(source.monthlyBudgetUsd, 100, 100000),
     monthlyUsageCap: normalizePositiveNumber(source.monthlyUsageCap, 1500, 1000000),
   };

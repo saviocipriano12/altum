@@ -119,7 +119,7 @@ export function ClienteCommandPalette() {
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm">
       <div className="mx-auto mt-[14vh] w-full max-w-2xl px-4">
-        <Command className="client-glass overflow-hidden rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] shadow-[var(--cliente-shadow-hard)]">
+        <Command className="client-glass overflow-hidden rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] shadow-[var(--cliente-shadow-hard)]">
           <div className="flex items-center gap-2 border-b border-[var(--cliente-border)] px-3 py-2">
             <Search className="h-4 w-4 text-[var(--cliente-accent)]" />
             <Command.Input
@@ -138,7 +138,7 @@ export function ClienteCommandPalette() {
 
             <Command.Group heading="Navegacao">
               {items.map((item) => (
-                <PaletteItem key={item.key} icon={item.icon} label={item.label} hint={item.href} onSelect={() => go(item.href)} />
+                <PaletteItem key={item.key} icon={item.icon} label={item.label} hint={item.href.replace("/cliente/painel", "Painel")} onSelect={() => go(item.href)} />
               ))}
             </Command.Group>
 

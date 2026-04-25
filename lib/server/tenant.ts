@@ -216,6 +216,29 @@ function isGlobalAgencyAdminRole(role: unknown) {
   return role === "agency_owner" || role === "agency_admin" || role === "admin";
 }
 
+function isAgencyTenantRole(role: unknown) {
+  return role === "agency_owner" || role === "agency_admin" || role === "agency_agent";
+}
+
+export async function isTenantBillingBlocked(tenantId: string) {
+  const normalizedTenantId = tenantId.trim();
+  if (!normalizedTenantId) return false;
+  const snap = await adminDb.collection("tenants").doc(normalizedTenantId).get();
+  if (!snap.exists) return false;
+  const data = snap.data() as Record<string, unknown>;
+  return data.status === "blocked" || data.billingStatus === "blocked";
+}
+
+async function assertTenantNotBillingBlocked(membership: TenantMembership) {
+  if (isAgencyTenantRole(membership.role)) return;
+  if (await isTenantBillingBlocked(membership.tenantId)) {
+    throw new TenantAccessError(
+      "tenant_billing_blocked",
+      "Acesso ao tenant pausado por pendencia financeira."
+    );
+  }
+}
+
 export async function getDefaultTenantMembershipForUser(userId: string) {
   const memberships = await listMembershipsForUser(userId);
   if (memberships.length === 0) return null;
@@ -255,6 +278,7 @@ export async function assertTenantAccess(userId: string, tenantId: string): Prom
     if (direct.exists) {
       const parsed = normalizeMembership(direct.id, direct.data() as Record<string, unknown>);
       if (parsed && parsed.status === "active") {
+        await assertTenantNotBillingBlocked(parsed);
         return parsed;
       }
     }
@@ -269,6 +293,12 @@ export async function assertTenantAccess(userId: string, tenantId: string): Prom
       const legacyTenantId = String(legacy.tenantId || legacy.clientId || "").trim();
       const legacyStatus = legacy.status === "blocked" ? "blocked" : "active";
       if (legacyTenantId === normalizedTenantId && legacyStatus === "active") {
+        if (await isTenantBillingBlocked(normalizedTenantId)) {
+          throw new TenantAccessError(
+            "tenant_billing_blocked",
+            "Acesso ao tenant pausado por pendencia financeira."
+          );
+        }
         return {
           id: `legacy_${normalizedTenantId}_${normalizedUserId}`,
           tenantId: normalizedTenantId,
@@ -313,6 +343,8 @@ export async function assertTenantAccess(userId: string, tenantId: string): Prom
   if (!membership || membership.status !== "active") {
     throw new TenantAccessError("tenant_access_denied", "Usuario sem acesso a este tenant.");
   }
+
+  await assertTenantNotBillingBlocked(membership);
 
   return membership;
 }

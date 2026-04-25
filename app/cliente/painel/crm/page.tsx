@@ -1350,28 +1350,28 @@ export default function ClienteCrmPage() {
         action={
           <div className="flex flex-wrap items-center gap-2">
             {loadingDetail ? <StateBadge label="sincronizando contato" tone="info" /> : null}
-            <div className="inline-flex rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
+            <div className="inline-flex rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
               <button
                 type="button"
                 onClick={() => setExperienceMode("essencial")}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                   experienceMode === "essencial"
                     ? "bg-[var(--cliente-accent)] text-white"
                     : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
                 }`}
               >
-                Modo simples
+                Uso diario
               </button>
               <button
                 type="button"
                 onClick={() => setExperienceMode("completo")}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                   experienceMode === "completo"
                     ? "bg-[var(--cliente-accent)] text-white"
                     : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
                 }`}
               >
-                Modo completo
+                Analise completa
               </button>
             </div>
           </div>
@@ -1490,24 +1490,24 @@ export default function ClienteCrmPage() {
       )}
 
       {experienceMode === "essencial" ? (
-        <section className="grid min-h-[74vh] grid-cols-1 gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <section className="grid min-h-[72vh] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
           <PanelCard className="flex min-h-0 flex-col overflow-hidden">
-            <div className="border-b border-[var(--cliente-border)] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <CardTitle title="Contatos" subtitle={`${filteredLeads.length} em foco`} />
-                <StateBadge label={`${leads.length} total`} tone="info" />
+            <div className="border-b border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <CardTitle title="Contatos" subtitle={`${filteredLeads.length} visiveis de ${leads.length} cadastrados`} />
+                <StateBadge label="Lista do CRM" tone="info" />
               </div>
-              <label className="mt-4 flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
-                <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Buscar contato..."
-                  className="w-full bg-transparent outline-none placeholder:text-[var(--cliente-card-text-soft)]"
-                />
-              </label>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                <select value={stageFilter} onChange={(event) => setStageFilter(event.target.value)} className="rounded-xl border client-input px-3 py-2 text-sm">
+              <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(220px,1fr)_160px_150px_150px] xl:grid-cols-[minmax(240px,1fr)_160px_150px_150px_150px]">
+                <label className="flex items-center gap-2 rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+                  <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Buscar nome, empresa ou telefone"
+                    className="w-full bg-transparent outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+                  />
+                </label>
+                <select value={stageFilter} onChange={(event) => setStageFilter(event.target.value)} className="rounded-lg border client-input px-3 py-2 text-sm">
                   <option value="all">Todas as etapas</option>
                   {stageOptions.map((option) => (
                     <option key={option} value={option}>
@@ -1515,50 +1515,87 @@ export default function ClienteCrmPage() {
                     </option>
                   ))}
                 </select>
-                <select value={heatFilter} onChange={(event) => setHeatFilter(event.target.value)} className="rounded-xl border client-input px-3 py-2 text-sm">
-                  <option value="all">Todas as temperaturas</option>
-                  {HEAT_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} className="rounded-xl border client-input px-3 py-2 text-sm">
-                  <option value="all">Todas as prioridades</option>
+                <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} className="rounded-lg border client-input px-3 py-2 text-sm">
+                  <option value="all">Prioridade</option>
                   {PRIORITY_OPTIONS.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
                   ))}
                 </select>
+                <select value={heatFilter} onChange={(event) => setHeatFilter(event.target.value)} className="rounded-lg border client-input px-3 py-2 text-sm">
+                  <option value="all">Temperatura</option>
+                  {HEAT_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)} className="hidden rounded-lg border client-input px-3 py-2 text-sm xl:block">
+                  <option value="all">Canal</option>
+                  {channelOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {formatChannelLabel(option)}
+                    </option>
+                  ))}
+                </select>
               </div>
+            </div>
+
+            <div className="hidden border-b border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)] lg:grid lg:grid-cols-[minmax(240px,1.45fr)_160px_120px_120px_120px]">
+              <span>Contato</span>
+              <span>Etapa</span>
+              <span>Prioridade</span>
+              <span>Valor</span>
+              <span>Ultimo toque</span>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
               {loading ? (
-                <div className="p-6 text-center text-[var(--cliente-card-text-muted)]">
+                <div className="p-8 text-center text-[var(--cliente-card-text-muted)]">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                  <p className="mt-2 text-sm">Carregando contatos...</p>
+                </div>
+              ) : filteredLeads.length === 0 ? (
+                <div className="p-8">
+                  <EmptyState title="Nenhum contato neste filtro" description="Ajuste a busca, etapa ou prioridade para ver outros contatos." />
                 </div>
               ) : (
                 filteredLeads.map((lead) => {
                   const stage = normalizePipelineStageId(lead.pipelineStage || lead.stage || "captado");
+                  const isSelected = selectedLeadId === lead.id;
+
                   return (
                     <button
                       key={lead.id}
                       type="button"
                       onClick={() => setSelectedLeadId(lead.id)}
-                      className={`w-full border-b border-[var(--cliente-border)] px-4 py-4 text-left transition ${
-                        selectedLeadId === lead.id ? "bg-[var(--cliente-accent-soft)]" : "hover:bg-[var(--cliente-surface-muted)]"
+                      className={`grid w-full gap-3 border-b border-[var(--cliente-border)] px-4 py-3 text-left transition lg:grid-cols-[minmax(240px,1.45fr)_160px_120px_120px_120px] lg:items-center ${
+                        isSelected ? "bg-[var(--cliente-accent-soft)]" : "hover:bg-[var(--cliente-surface-muted)]"
                       }`}
                     >
-                      <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{lead.nome || "Contato"}</p>
-                      <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">
-                        {lead.empresa || lead.email || lead.telefone || "Sem contato"}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <StateBadge label={getPipelineStageLabel(stage)} tone="info" />
-                        {lead.priority ? <StateBadge label={lead.priority} tone={getPriorityTone(lead.priority)} /> : null}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2 w-2 rounded-full ${isSelected ? "bg-[var(--cliente-accent)]" : "bg-[var(--cliente-border-strong)]"}`} />
+                          <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{lead.nome || "Contato sem nome"}</p>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">
+                          {lead.empresa || lead.email || lead.telefone || "Sem empresa ou contato informado"}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2 lg:hidden">
+                          <StateBadge label={getPipelineStageLabel(stage)} tone="info" />
+                          {lead.priority ? <StateBadge label={lead.priority} tone={getPriorityTone(lead.priority)} /> : null}
+                          {lead.heat ? <StateBadge label={lead.heat} tone={getHeatTone(lead.heat)} /> : null}
+                        </div>
                       </div>
+                      <div className="hidden lg:block">
+                        <StateBadge label={getPipelineStageLabel(stage)} tone="info" />
+                      </div>
+                      <div className="hidden lg:block">
+                        {lead.priority ? <StateBadge label={lead.priority} tone={getPriorityTone(lead.priority)} /> : <span className="text-xs text-[var(--cliente-card-text-soft)]">Sem prioridade</span>}
+                      </div>
+                      <p className="hidden text-sm font-medium text-[var(--cliente-card-text)] lg:block">{formatMoney(lead.potentialValue)}</p>
+                      <p className="hidden text-xs text-[var(--cliente-card-text-soft)] lg:block">{formatRelative(lead.chatSummary?.lastInteractionAt)}</p>
                     </button>
                   );
                 })
@@ -1566,150 +1603,183 @@ export default function ClienteCrmPage() {
             </div>
           </PanelCard>
 
-          <div className="space-y-4">
-            <PanelCard className="p-4">
-              {selectedLead ? (
-                <>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+          <PanelCard className="h-fit overflow-hidden xl:sticky xl:top-24">
+            <div className="border-b border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Ficha do contato</p>
+                  <h3 className="mt-1 text-lg font-semibold text-[var(--cliente-card-text)]">
+                    {selectedLead?.nome || "Selecione um contato"}
+                  </h3>
+                  <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
+                    {selectedLead?.empresa || selectedLead?.email || selectedLead?.telefone || "Veja aqui o resumo e as acoes principais."}
+                  </p>
+                </div>
+                {loadingDetail ? <Loader2 className="h-4 w-4 animate-spin text-[var(--cliente-card-text-soft)]" /> : null}
+              </div>
+            </div>
+
+            {selectedLead ? (
+              <div className="divide-y divide-[var(--cliente-border)]">
+                <div className="p-4">
+                  <div className="flex flex-wrap gap-2">
+                    {selectedLead.heat ? <StateBadge label={selectedLead.heat} tone={getHeatTone(selectedLead.heat)} /> : null}
+                    {selectedLead.priority ? <StateBadge label={selectedLead.priority} tone={getPriorityTone(selectedLead.priority)} /> : null}
+                    {typeof selectedLead.score === "number" ? <StateBadge label={`pontuacao ${selectedLead.score}`} tone="neutral" /> : null}
+                    {selectedLead.channel ? <StateBadge label={formatChannelLabel(selectedLead.channel)} tone="neutral" /> : null}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <h3 className="text-xl font-semibold text-[var(--cliente-card-text)]">{selectedLead.nome || "Contato"}</h3>
-                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
-                        {selectedLead.empresa || selectedLead.email || selectedLead.telefone || "Sem contato principal"}
-                      </p>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Empresa</p>
+                      <p className="mt-1 truncate font-medium text-[var(--cliente-card-text)]">{selectedLead.empresa || "-"}</p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedLead.heat ? <StateBadge label={selectedLead.heat} tone={getHeatTone(selectedLead.heat)} /> : null}
-                      {selectedLead.priority ? <StateBadge label={selectedLead.priority} tone={getPriorityTone(selectedLead.priority)} /> : null}
-                      {typeof selectedLead.score === "number" ? <StateBadge label={`pontuacao ${selectedLead.score}`} tone="info" /> : null}
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Valor</p>
+                      <p className="mt-1 font-medium text-[var(--cliente-card-text)]">{formatMoney(selectedLead.potentialValue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Telefone</p>
+                      <p className="mt-1 truncate font-medium text-[var(--cliente-card-text)]">{selectedLead.telefone || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Email</p>
+                      <p className="mt-1 truncate font-medium text-[var(--cliente-card-text)]">{selectedLead.email || "-"}</p>
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-2 md:grid-cols-3">
-                    <Link
-                      href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`}
-                      className="inline-flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
-                    >
-                      <span>Inbox</span>
-                      <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
-                    </Link>
-                    <Link
-                      href={`/cliente/painel/comercial?leadId=${encodeURIComponent(selectedLead.id)}`}
-                      className="inline-flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
-                    >
-                      <span>Comercial</span>
-                      <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => setExperienceMode("completo")}
-                      className="inline-flex items-center justify-between rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-3 text-sm text-[var(--cliente-accent)] transition hover:brightness-95"
-                    >
-                      <span>Ver completo</span>
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <div className="mt-4 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
-                    <p className="mb-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Mover etapa</p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <select value={nextStage} onChange={(event) => setNextStage(event.target.value)} disabled={!canOperate} className="rounded-xl border client-input px-3 py-2 text-sm">
-                        {stageOptions.map((stage) => (
-                          <option key={stage} value={stage}>
-                            {getPipelineStageLabel(stage)}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => void updateStage()}
-                        disabled={savingStage || !canOperate}
-                        className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
-                      >
-                        {savingStage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        Salvar
-                      </button>
+                  {(selectedLead.tags || []).length > 0 ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {(selectedLead.tags || []).slice(0, 5).map((tag) => (
+                        <StateBadge key={tag} label={tag} tone="neutral" />
+                      ))}
                     </div>
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-[var(--cliente-card-text-soft)]">Selecione um contato para abrir o detalhe.</p>
-              )}
-            </PanelCard>
+                  ) : null}
+                </div>
 
-            <section className="grid gap-4 xl:grid-cols-2">
-              <PanelCard className="p-4">
-                <CardTitle title="Proximo passo" subtitle="Retorno rapido para nao perder o momento." />
-                <form onSubmit={createTask} className="mt-3 space-y-2">
-                  <input
-                    value={taskForm.title}
-                    onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))}
-                    disabled={!canOperate}
-                    placeholder="Ex: Retornar proposta hoje"
-                    className="w-full rounded-xl border client-input px-3 py-2 text-sm"
-                  />
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <input
-                      type="datetime-local"
-                      value={taskForm.dueAt}
-                      onChange={(event) => setTaskForm((current) => ({ ...current, dueAt: event.target.value }))}
-                      disabled={!canOperate}
-                      className="rounded-xl border client-input px-3 py-2 text-sm"
-                    />
-                    <select
-                      value={taskForm.priority}
-                      onChange={(event) => setTaskForm((current) => ({ ...current, priority: event.target.value }))}
-                      disabled={!canOperate}
-                      className="rounded-xl border client-input px-3 py-2 text-sm"
-                    >
-                      {PRIORITY_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
+                <div className="p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Etapa do funil</p>
+                  <div className="mt-3 flex gap-2">
+                    <select value={nextStage} onChange={(event) => setNextStage(event.target.value)} disabled={!canOperate} className="min-w-0 flex-1 rounded-lg border client-input px-3 py-2 text-sm">
+                      {stageOptions.map((stage) => (
+                        <option key={stage} value={stage}>
+                          {getPipelineStageLabel(stage)}
                         </option>
                       ))}
                     </select>
-                  </div>
-                  <button type="submit" disabled={!taskForm.title.trim() || savingTask || !canOperate} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50">
-                    {savingTask ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
-                    Criar retorno
-                  </button>
-                </form>
-                <div className="mt-3 space-y-2">
-                  {(detail?.tasks || []).slice(0, 4).map((task) => (
-                    <button key={task.id} type="button" onClick={() => void toggleTask(task.id, task.status === "done" ? "pending" : "done")} disabled={!canOperate} className="w-full rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-left transition hover:bg-[var(--cliente-panel-soft)]">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs text-[var(--cliente-card-text)]">{task.title || "Tarefa"}</p>
-                        <StateBadge label={task.status || "pending"} tone={task.status === "done" ? "success" : "warning"} />
-                      </div>
+                    <button
+                      type="button"
+                      onClick={() => void updateStage()}
+                      disabled={savingStage || !canOperate}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[var(--cliente-accent)] px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
+                    >
+                      {savingStage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      Salvar
                     </button>
-                  ))}
+                  </div>
                 </div>
-              </PanelCard>
 
-              <PanelCard className="p-4">
-                <CardTitle title="Notas e historico" subtitle="Contexto rapido do contato." />
-                <form onSubmit={createNote} className="mt-3 space-y-2">
-                  <textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} disabled={!canOperate} placeholder="Adicionar nota curta..." className="min-h-[84px] w-full rounded-xl border client-input px-3 py-3 text-sm" />
-                  <button type="submit" disabled={!noteText.trim() || savingNote || !canOperate} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50">
-                    {savingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    Salvar nota
+                <div className="grid grid-cols-3 gap-2 p-4">
+                  <Link
+                    href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+                  >
+                    Inbox
+                  </Link>
+                  <Link
+                    href={`/cliente/painel/comercial?leadId=${encodeURIComponent(selectedLead.id)}`}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+                  >
+                    Comercial
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setExperienceMode("completo")}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
+                  >
+                    Completo
                   </button>
-                </form>
-                <div className="mt-3 space-y-2">
-                  {(detail?.notes || []).slice(0, 3).map((note) => (
-                    <div key={note.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
-                      <p className="text-xs text-[var(--cliente-card-text)]">{note.text || "-"}</p>
-                      <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">{formatDateTime(note.createdAt)}</p>
-                    </div>
-                  ))}
-                  {(detail?.timeline || selectedLead?.timeline || []).slice(0, 4).map((event) => (
-                    <div key={event.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
-                      <p className="text-xs text-[var(--cliente-card-text)]">{event.title || event.type || "Evento"}</p>
-                      <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">{formatDateTime(event.createdAt)}</p>
-                    </div>
-                  ))}
                 </div>
-              </PanelCard>
-            </section>
-          </div>
+
+                <div className="p-4">
+                  <CardTitle title="Proximo passo" subtitle="Crie um retorno sem sair da ficha." />
+                  <form onSubmit={createTask} className="mt-3 space-y-2">
+                    <input
+                      value={taskForm.title}
+                      onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))}
+                      disabled={!canOperate}
+                      placeholder="Ex: Retornar proposta hoje"
+                      className="w-full rounded-lg border client-input px-3 py-2 text-sm"
+                    />
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                      <input
+                        type="datetime-local"
+                        value={taskForm.dueAt}
+                        onChange={(event) => setTaskForm((current) => ({ ...current, dueAt: event.target.value }))}
+                        disabled={!canOperate}
+                        className="rounded-lg border client-input px-3 py-2 text-sm"
+                      />
+                      <select
+                        value={taskForm.priority}
+                        onChange={(event) => setTaskForm((current) => ({ ...current, priority: event.target.value }))}
+                        disabled={!canOperate}
+                        className="rounded-lg border client-input px-3 py-2 text-sm"
+                      >
+                        {PRIORITY_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button type="submit" disabled={!taskForm.title.trim() || savingTask || !canOperate} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50">
+                      {savingTask ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
+                      Criar retorno
+                    </button>
+                  </form>
+                  <div className="mt-3 space-y-2">
+                    {(detail?.tasks || []).slice(0, 3).map((task) => (
+                      <button key={task.id} type="button" onClick={() => void toggleTask(task.id, task.status === "done" ? "pending" : "done")} disabled={!canOperate} className="w-full rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-left transition hover:bg-[var(--cliente-panel-soft)]">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-xs font-medium text-[var(--cliente-card-text)]">{task.title || "Tarefa"}</p>
+                          <StateBadge label={task.status === "done" ? "feito" : "pendente"} tone={task.status === "done" ? "success" : "warning"} />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-4">
+                  <CardTitle title="Notas" subtitle="Contexto interno do atendimento." />
+                  <form onSubmit={createNote} className="mt-3 space-y-2">
+                    <textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} disabled={!canOperate} placeholder="Adicionar nota curta..." className="min-h-[82px] w-full rounded-lg border client-input px-3 py-3 text-sm" />
+                    <button type="submit" disabled={!noteText.trim() || savingNote || !canOperate} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50">
+                      {savingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      Salvar nota
+                    </button>
+                  </form>
+                  <div className="mt-3 space-y-2">
+                    {(detail?.notes || []).slice(0, 3).map((note) => (
+                      <div key={note.id} className="rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+                        <p className="text-xs leading-5 text-[var(--cliente-card-text)]">{note.text || "-"}</p>
+                        <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">{formatDateTime(note.createdAt)}</p>
+                      </div>
+                    ))}
+                    {(detail?.timeline || selectedLead.timeline || []).slice(0, 3).map((event) => (
+                      <div key={event.id} className="rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
+                        <p className="text-xs text-[var(--cliente-card-text)]">{event.title || event.type || "Evento"}</p>
+                        <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">{formatDateTime(event.createdAt)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6">
+                <EmptyState title="Selecione um contato" description="Clique em um contato da lista para ver detalhes, etapa e proximos passos." />
+              </div>
+            )}
+          </PanelCard>
         </section>
       ) : (
       <section className="grid min-h-[74vh] grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)_360px]">

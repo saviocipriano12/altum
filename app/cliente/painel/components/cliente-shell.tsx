@@ -85,7 +85,7 @@ export function ClienteShellProvider({ children }: { children: ReactNode }) {
   }, [experienceMode]);
 
   const value = useMemo<ClienteShellContextValue>(() => {
-    const sidebarWidth = sidebarCollapsed ? 88 : 286;
+    const sidebarWidth = sidebarCollapsed ? 84 : 276;
     return {
       theme,
       setTheme: setThemeState,

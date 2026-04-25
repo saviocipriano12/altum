@@ -30,6 +30,7 @@
 ## Rotas Novas
 - `POST /api/integrations/meta/start`
 - `GET /api/integrations/meta/callback`
+- `POST /api/meta/data-deletion`
 - `POST /api/integrations/google/start`
 - `GET /api/integrations/google/callback`
 - `GET /api/tenant/:tenantId/channels/health`
@@ -71,6 +72,16 @@
   - Testar conexao
   - Desconectar
 - Mantido formulario de mapeamento para compatibilidade e ajustes finos.
+
+## Escopos OAuth Meta por canal (padrao)
+- Instagram: `pages_show_list`, `pages_manage_metadata`, `pages_read_engagement`, `instagram_basic`, `instagram_manage_messages`
+- Messenger: `pages_show_list`, `pages_manage_metadata`, `pages_messaging`
+- Meta Ads: `ads_read`, `business_management`, `leads_retrieval`
+- Opcional: `META_INCLUDE_INSTAGRAM_COMMENT_SCOPE=1` para incluir `instagram_manage_comments`.
+- Overrides por ambiente:
+  - `META_OAUTH_SCOPES_INSTAGRAM`
+  - `META_OAUTH_SCOPES_MESSENGER`
+  - `META_OAUTH_SCOPES_META_ADS`
 
 ## Health Check
 - Endpoint valida token por canal e atualiza `connectionStatus`.

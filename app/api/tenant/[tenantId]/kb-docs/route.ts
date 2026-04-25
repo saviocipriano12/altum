@@ -8,6 +8,13 @@ type Body = {
   type?: "faq" | "catalog" | "policy";
   content?: string;
   tags?: string[] | string;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  mediaTitle?: string | null;
+  mediaStoragePath?: string | null;
+  mediaMimeType?: string | null;
+  mediaSize?: number | null;
+  serviceKey?: string | null;
 };
 
 function clean(value: unknown, max = 800) {
@@ -41,6 +48,16 @@ function normalizeType(value: unknown): "faq" | "catalog" | "policy" {
   return "faq";
 }
 
+function normalizeMediaType(value: unknown) {
+  const normalized = clean(value, 40).toLowerCase();
+  if (normalized === "image" || normalized === "video" || normalized === "document") return normalized;
+  return "";
+}
+
+function numericValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : null;
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -66,6 +83,13 @@ export async function GET(
         type: normalizeType(data.type),
         content: clean(data.content, 1200),
         tags: parseTags(data.tags),
+        mediaUrl: clean(data.mediaUrl, 1200) || null,
+        mediaType: normalizeMediaType(data.mediaType) || null,
+        mediaTitle: clean(data.mediaTitle, 160) || null,
+        mediaStoragePath: clean(data.mediaStoragePath, 600) || null,
+        mediaMimeType: clean(data.mediaMimeType, 140) || null,
+        mediaSize: numericValue(data.mediaSize),
+        serviceKey: clean(data.serviceKey, 120) || null,
         createdAt: data.createdAt || null,
         updatedAt: data.updatedAt || null,
       };
@@ -108,6 +132,13 @@ export async function POST(
       type: normalizeType(body.type),
       content,
       tags: parseTags(body.tags),
+      mediaUrl: clean(body.mediaUrl, 1200) || null,
+      mediaType: normalizeMediaType(body.mediaType) || null,
+      mediaTitle: clean(body.mediaTitle, 160) || null,
+      mediaStoragePath: clean(body.mediaStoragePath, 600) || null,
+      mediaMimeType: clean(body.mediaMimeType, 140) || null,
+      mediaSize: numericValue(body.mediaSize),
+      serviceKey: clean(body.serviceKey, 120) || null,
       createdBy: user.uid,
       createdByName: user.name,
       createdAt: FieldValue.serverTimestamp(),

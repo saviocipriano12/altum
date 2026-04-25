@@ -118,7 +118,7 @@ export function ClienteGlobalSearch() {
   }) {
     return (
       <section>
-        <p className="mb-1 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-text-soft)]">{title}</p>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--cliente-text-soft)]">{title}</p>
         <div className="space-y-1">{children}</div>
       </section>
     );
@@ -137,7 +137,7 @@ export function ClienteGlobalSearch() {
       <button
         type="button"
         onClick={onClick}
-        className="w-full rounded-2xl border border-transparent bg-[var(--cliente-accent-soft)]/40 px-3 py-2 text-left transition hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)]"
+        className="w-full rounded-lg border border-transparent bg-[var(--cliente-surface-muted)] px-3 py-2 text-left transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
       >
         <p className="text-sm font-medium text-[var(--cliente-text)]">{title}</p>
         <p className="text-xs text-[var(--cliente-text-soft)]">{subtitle}</p>
@@ -147,7 +147,7 @@ export function ClienteGlobalSearch() {
 
   return (
     <div ref={rootRef} className="relative w-full xl:w-auto">
-      <label className="client-glass flex w-full items-center gap-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2.5 text-sm text-[var(--cliente-text-muted)] shadow-[var(--cliente-shadow-soft)] transition hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-text)]">
+      <label className="client-glass flex w-full items-center gap-2 rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2.5 text-sm text-[var(--cliente-text-muted)] shadow-[var(--cliente-shadow-soft)] transition hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-text)]">
         <Search className="h-4 w-4 shrink-0" />
         <input
           ref={inputRef}
@@ -157,14 +157,14 @@ export function ClienteGlobalSearch() {
           placeholder="Buscar modulo, contato, proposta ou conversa"
           className="w-full bg-transparent text-sm text-[var(--cliente-text)] outline-none placeholder:text-[var(--cliente-text-soft)] xl:w-[320px]"
         />
-        <span className="hidden items-center gap-1 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-2 py-1 text-[10px] text-[var(--cliente-text-soft)] lg:inline-flex">
+        <span className="hidden items-center gap-1 rounded-md border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2 py-1 text-[10px] text-[var(--cliente-text-soft)] lg:inline-flex">
           <Command className="h-3 w-3" />
           /
         </span>
       </label>
 
       {open ? (
-        <div className="client-glass absolute right-0 top-[calc(100%+10px)] z-40 w-full max-w-[560px] rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)]/95 p-3 shadow-[var(--cliente-shadow-hard)] xl:w-[560px]">
+        <div className="client-glass absolute right-0 top-[calc(100%+10px)] z-40 w-full max-w-[560px] rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)]/96 p-3 shadow-[var(--cliente-shadow-hard)] xl:w-[560px]">
           {loading ? (
             <div className="flex items-center justify-center py-8 text-[var(--cliente-text-muted)]">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -235,7 +235,7 @@ export function ClienteGlobalSearch() {
                     <SearchButton
                       key={item.id}
                       title={item.description}
-                      subtitle={`${item.leadName || "Sem contato"} | ${item.type || "Receita"} • ${item.status || "pendente"}`}
+                      subtitle={`${item.leadName || "Sem contato"} | ${item.type || "Receita"} | ${item.status || "pendente"}`}
                       onClick={() =>
                         navigate(
                           item.leadId

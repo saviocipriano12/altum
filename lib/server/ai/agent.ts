@@ -37,8 +37,8 @@ import {
   isMetaConversationChannelType,
   sendMetaConversationText,
 } from "@/app/lib/server/meta-channel";
-import { getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
-import { getTenantSettings } from "@/lib/server/tenant";
+import { getWhatsAppChannelForTenant, sendMetaMediaLinkMessage, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
+import { getTenantSettings, isTenantBillingBlocked } from "@/lib/server/tenant";
 import {
   getBusinessProfile,
   getBusinessProfilePlaybookPreset,
@@ -95,6 +95,13 @@ type KbDoc = {
   content: string;
   tags: string[];
   score: number;
+  mediaUrl?: string | null;
+  mediaType?: "image" | "video" | "document" | null;
+  mediaTitle?: string | null;
+  mediaStoragePath?: string | null;
+  mediaMimeType?: string | null;
+  mediaSize?: number | null;
+  serviceKey?: string | null;
 };
 
 type ConversationMessage = {
@@ -116,12 +123,15 @@ type TenantAiConfig = {
   enabled: boolean;
   businessProfileId: BusinessProfileId;
   businessProfileLabel: string;
+  agentName: string;
   toneOfVoice: string;
   businessSummary: string;
   objective: string;
   responsiblePhone: string;
   handoffNotifyEnabled: boolean;
   handoffNotifyPhones: string[];
+  voiceReplyEnabled: boolean;
+  voiceReplyVoice: string;
   guardrails: string[];
   mandatoryQuestions: string[];
   escalationTopics: string[];
@@ -646,6 +656,9 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
     enabled: ai.enabled !== false,
     businessProfileId,
     businessProfileLabel: businessProfile.label,
+    agentName:
+      sanitizeText(ai.agentName, 80) ||
+      `Agente ${sanitizeText(settings?.name, 80) || businessProfile.label}`,
     toneOfVoice: sanitizeText(ai.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
     businessSummary:
       sanitizeText(ai.businessSummary, 360) ||
@@ -657,6 +670,8 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
     ),
     handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
     handoffNotifyPhones: parsePhoneLines(ai.handoffNotifyPhones, 8),
+    voiceReplyEnabled: ai.voiceReplyEnabled === true,
+    voiceReplyVoice: sanitizeText(ai.voiceReplyVoice, 40) || "alloy",
     guardrails: Array.from(new Set([...DEFAULT_GUARDRAILS, ...businessProfile.ai.guardrails, ...parseGuardrails(ai.guardrails)])).slice(0, 24),
     mandatoryQuestions: Array.from(new Set([...businessProfile.ai.mandatoryQuestions, ...parseLines(ai.mandatoryQuestions, 12)])).slice(0, 12),
     escalationTopics: Array.from(new Set([...businessProfile.ai.escalationTopics, ...parseLines(ai.escalationTopics, 12)])).slice(0, 12),
@@ -911,7 +926,8 @@ function makeLeadFacingReply(input: {
     : "";
 
   if (asksIdentity) {
-    return "Eu sou a assistente comercial da ALTUM. Se quiser, eu posso te ajudar a entender o melhor caminho para o seu caso.";
+    const agentName = sanitizeText(input.tenantAi.agentName, 80) || "assistente comercial";
+    return `Eu sou ${agentName}. Se quiser, eu posso te ajudar a entender o melhor caminho para o seu caso.`;
   }
 
   if (normalizedType === "audio" && multimodalNote) {
@@ -1077,6 +1093,15 @@ async function fetchKbDocs(
         type,
         content: sanitizeText(data.content, 600),
         tags,
+        mediaUrl: sanitizeText(data.mediaUrl, 1200) || null,
+        mediaType: ["image", "video", "document"].includes(sanitizeText(data.mediaType, 40))
+          ? (sanitizeText(data.mediaType, 40) as KbDoc["mediaType"])
+          : null,
+        mediaTitle: sanitizeText(data.mediaTitle, 160) || null,
+        mediaStoragePath: sanitizeText(data.mediaStoragePath, 600) || null,
+        mediaMimeType: sanitizeText(data.mediaMimeType, 120) || null,
+        mediaSize: typeof data.mediaSize === "number" && Number.isFinite(data.mediaSize) ? data.mediaSize : null,
+        serviceKey: sanitizeText(data.serviceKey, 120) || null,
         score: 0,
       };
     })
@@ -1633,14 +1658,68 @@ async function createAiProposalDraft(input: {
   return ref.id;
 }
 
+function addMinutes(base: Date, minutes: number) {
+  return new Date(base.getTime() + minutes * 60 * 1000);
+}
+
+function appointmentRangesOverlap(startA: number, endA: number, startB: number, endB: number) {
+  return startA < endB && startB < endA;
+}
+
+async function findNextAvailableAiSlot(tenantId: string, ownerUserId?: string | null) {
+  const snap = await adminDb.collection("appointments").where("tenantId", "==", tenantId).limit(500).get();
+  const busy = snap.docs
+    .map((doc) => doc.data() as Record<string, unknown>)
+    .filter((item) => ["scheduled", "confirmed"].includes(sanitizeText(item.status, 40) || "scheduled"))
+    .filter((item) => {
+      const currentOwner = sanitizeText(item.ownerUserId, 140);
+      const targetOwner = sanitizeText(ownerUserId, 140);
+      return targetOwner ? currentOwner === targetOwner : !currentOwner;
+    })
+    .map((item) => {
+      const start = new Date(String(item.startAt || "")).getTime();
+      const end = item.endAt ? new Date(String(item.endAt)).getTime() : start + 60 * 60 * 1000;
+      return { start, end };
+    })
+    .filter((item) => Number.isFinite(item.start) && Number.isFinite(item.end));
+
+  const now = new Date();
+  const cursor = addMinutes(now, 120);
+  cursor.setMinutes(cursor.getMinutes() < 30 ? 30 : 0, 0, 0);
+  if (cursor.getMinutes() === 0 && cursor.getTime() < addMinutes(now, 120).getTime()) {
+    cursor.setHours(cursor.getHours() + 1);
+  }
+
+  for (let day = 0; day < 14; day += 1) {
+    for (let hour = 9; hour <= 17; hour += 1) {
+      for (const minute of [0, 30]) {
+        const candidate = new Date(cursor);
+        candidate.setDate(cursor.getDate() + day);
+        candidate.setHours(hour, minute, 0, 0);
+        if (candidate.getTime() < cursor.getTime()) continue;
+
+        const candidateEnd = addMinutes(candidate, 60);
+        const hasConflict = busy.some((item) =>
+          appointmentRangesOverlap(candidate.getTime(), candidateEnd.getTime(), item.start, item.end)
+        );
+        if (!hasConflict) return { startAt: candidate.toISOString(), endAt: candidateEnd.toISOString() };
+      }
+    }
+  }
+
+  const fallback = addHours(now, 24);
+  return { startAt: fallback.toISOString(), endAt: addMinutes(fallback, 60).toISOString() };
+}
+
 async function createAiAppointmentDraft(input: {
   tenantId: string;
   leadId: string;
   leadName?: string | null;
   leadCompany?: string | null;
   summary?: string | null;
+  ownerUserId?: string | null;
 }) {
-  const startAt = addHours(new Date(), 24).toISOString();
+  const slot = await findNextAvailableAiSlot(input.tenantId, input.ownerUserId);
   const ref = await adminDb.collection("appointments").add({
     tenantId: input.tenantId,
     leadId: input.leadId,
@@ -1649,12 +1728,12 @@ async function createAiAppointmentDraft(input: {
     title: `Diagnostico comercial com ${sanitizeText(input.leadName, 120) || "lead"}`,
     type: "reuniao",
     status: "scheduled",
-    startAt,
-    endAt: null,
+    startAt: slot.startAt,
+    endAt: slot.endAt,
     location: null,
     meetingUrl: null,
     notes: sanitizeText(input.summary, 4000) || null,
-    ownerUserId: null,
+    ownerUserId: sanitizeText(input.ownerUserId, 140) || null,
     ownerName: "AI Sales Agent",
     createdBy: "ai_sales_agent",
     createdByName: "AI Sales Agent",
@@ -2329,6 +2408,7 @@ async function executeAltumAgentActions(input: {
       leadName: input.leadName || sanitizeText(leadData.nome, 180) || null,
       leadCompany: sanitizeText(leadData.empresa, 180) || null,
       summary: leadPatch.aiLeadSummary as string,
+      ownerUserId: input.leadOwnerId || sanitizeText(leadData.ownerId, 160) || null,
     });
 
     await Promise.all([
@@ -2506,7 +2586,7 @@ async function addMessage(input: {
   tenantId: string;
   text: string;
   sender: "agent" | "system";
-  type?: "text" | "audio";
+  type?: "text" | "audio" | "image" | "video" | "document";
   channelPhoneNumberId?: string;
   channel?: string;
   senderId?: string;
@@ -2514,10 +2594,11 @@ async function addMessage(input: {
   mediaUrl?: string | null;
   mediaName?: string | null;
   mediaMimeType?: string | null;
+  mediaSize?: number | null;
   metaMessageId?: string | null;
 }) {
   const cleanText = sanitizeText(input.text, 1800);
-  if (!cleanText && input.type !== "audio") return;
+  if (!cleanText && !["audio", "image", "video", "document"].includes(String(input.type || ""))) return;
 
   await Promise.all([
     adminDb.collection("messages").add({
@@ -2534,6 +2615,7 @@ async function addMessage(input: {
       mediaUrl: input.mediaUrl || null,
       mediaName: input.mediaName || null,
       mediaMimeType: input.mediaMimeType || null,
+      mediaSize: typeof input.mediaSize === "number" && Number.isFinite(input.mediaSize) ? input.mediaSize : null,
       metaMessageId: input.metaMessageId || null,
       createdAt: FieldValue.serverTimestamp(),
     }),
@@ -2611,6 +2693,53 @@ function decide(input: {
     confidence: Math.min(0.97, 0.58 + Math.min(input.kbDocs[0]?.score || 0, 6) * 0.06),
     nextAction: "aprofundar_oportunidade",
   };
+}
+
+function selectMediaDocForLead(input: {
+  inboundText: string;
+  kbDocs: KbDoc[];
+  conversation: ConversationMessage[];
+}) {
+  const asksForMedia = textHasAny(input.inboundText, [
+    "foto",
+    "fotos",
+    "imagem",
+    "imagens",
+    "video",
+    "videos",
+    "resultado",
+    "resultados",
+    "antes e depois",
+    "catalogo",
+    "portfolio",
+    "prova",
+    "exemplo",
+  ]);
+  if (!asksForMedia) return null;
+
+  const alreadySent = new Set(
+    input.conversation
+      .filter((item) => item.sender === "agent")
+      .map((item) => sanitizeText(item.mediaUrl, 1200))
+      .filter(Boolean)
+  );
+  const inboundWords = new Set(normalizeWords(input.inboundText));
+
+  return (
+    input.kbDocs
+      .filter((doc) => doc.mediaUrl && doc.mediaType && !alreadySent.has(doc.mediaUrl))
+      .map((doc) => {
+        const mediaWords = [
+          ...normalizeWords(doc.serviceKey || ""),
+          ...normalizeWords(doc.mediaTitle || ""),
+          ...doc.tags.flatMap((tag) => normalizeWords(tag)),
+          ...normalizeWords(doc.content),
+        ];
+        const overlap = mediaWords.filter((word) => inboundWords.has(word)).length;
+        return { doc, score: doc.score + overlap * 0.4 };
+      })
+      .sort((a, b) => b.score - a.score)[0]?.doc || null
+  );
 }
 
 function scorePlaybookText(inboundText: string, parts: string[]) {
@@ -3200,6 +3329,10 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "invalid_payload" };
   }
 
+  if (await isTenantBillingBlocked(tenantId)) {
+    return { decision: "skip", reason: "tenant_billing_blocked" };
+  }
+
   const logDocId = safeLogDocId(tenantId, chatId, messageId);
   const existingLog = await adminDb.collection("ai_logs").doc(logDocId).get();
   if (existingLog.exists) {
@@ -3240,6 +3373,7 @@ export async function handleIncomingMessage(
   const messageType = sanitizeText(incomingMessage.type, 40);
 
   const aiConfig = parseAiConfig(tenantSettings);
+  const agentDisplayName = sanitizeText(aiConfig.agentName, 80) || "Agente IA";
   const runtimeProvider = aiConfig.runtimePolicy.primaryProvider;
   const runtimeModel = aiConfig.runtimePolicy.conversationModel;
   const monthlyUsage = await getAiMonthlyUsageSnapshot(tenantId);
@@ -3393,6 +3527,7 @@ export async function handleIncomingMessage(
           multimodalSummary: multimodal.summary || undefined,
           messageType,
           channel: chatChannel,
+          agentName: aiConfig.agentName,
           contactName: preferredContactName,
           runtimeStateSummary: runtimeStateSummary || undefined,
           leadMemorySummary: leadMemorySummary || undefined,
@@ -3639,7 +3774,7 @@ export async function handleIncomingMessage(
       sender: "agent",
       channel: chatChannel,
       channelPhoneNumberId: whatsappChannel?.phoneNumberId,
-      senderName: "AI Sales Agent",
+      senderName: agentDisplayName,
     });
 
     const systemEventText =
@@ -4085,7 +4220,7 @@ export async function handleIncomingMessage(
     sender: "agent",
     channel: chatChannel,
     channelPhoneNumberId: whatsappChannel?.phoneNumberId,
-    senderName: "AI Sales Agent",
+    senderName: agentDisplayName,
   });
 
   if (secondaryResponseText) {
@@ -4110,12 +4245,58 @@ export async function handleIncomingMessage(
       sender: "agent",
       channel: chatChannel,
       channelPhoneNumberId: whatsappChannel?.phoneNumberId,
-      senderName: "AI Sales Agent",
+      senderName: agentDisplayName,
     });
+  }
+
+  const mediaDoc = selectMediaDocForLead({ inboundText, kbDocs, conversation });
+  let mediaAssetSent = false;
+  if (mediaDoc?.mediaUrl && mediaDoc.mediaType) {
+    const mediaCaption =
+      sanitizeText(mediaDoc.mediaTitle, 180) ||
+      sanitizeText(mediaDoc.content, 180) ||
+      "Material relacionado ao que voce pediu.";
+    try {
+      if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
+        await sendMetaMediaLinkMessage({
+          channel: whatsappChannel,
+          to: leadPhone,
+          mediaUrl: mediaDoc.mediaUrl,
+          mediaType: mediaDoc.mediaType,
+          caption: mediaCaption,
+          filename: mediaDoc.mediaTitle || "material",
+        });
+      } else if (isMetaConversation && metaChannel && metaRecipientId) {
+        await sendMetaConversationText({
+          channel: metaChannel,
+          recipientId: metaRecipientId,
+          text: `${mediaCaption}\n${mediaDoc.mediaUrl}`,
+        });
+      }
+
+      await addMessage({
+        chatId,
+        tenantId,
+        text: mediaCaption,
+        sender: "agent",
+        type: mediaDoc.mediaType,
+        channel: chatChannel,
+        channelPhoneNumberId: whatsappChannel?.phoneNumberId,
+        senderName: agentDisplayName,
+        mediaUrl: mediaDoc.mediaUrl,
+        mediaName: mediaDoc.mediaTitle || mediaDoc.serviceKey || "Material enviado pela IA",
+        mediaMimeType: mediaDoc.mediaMimeType || undefined,
+        mediaSize: mediaDoc.mediaSize || undefined,
+      });
+      mediaAssetSent = true;
+    } catch (error) {
+      console.error("Falha ao enviar midia da base pela IA:", error);
+    }
   }
 
   let voiceReplySent = false;
   const shouldSendVoiceReply =
+    aiConfig.voiceReplyEnabled === true &&
     shouldUseWhatsApp &&
     Boolean(whatsappChannel) &&
     Boolean(leadPhone) &&
@@ -4129,6 +4310,7 @@ export async function handleIncomingMessage(
         text: responseText,
         tenantId,
         chatId,
+        voice: aiConfig.voiceReplyVoice,
       });
 
       await addMessage({
@@ -4139,7 +4321,7 @@ export async function handleIncomingMessage(
         type: "audio",
         channel: chatChannel,
         channelPhoneNumberId: whatsappChannel.phoneNumberId,
-        senderName: "AI Sales Agent",
+        senderName: agentDisplayName,
         mediaUrl: voiceSent.signedUrl,
         mediaName: "Resposta em audio ALTUM",
         mediaMimeType: voiceSent.contentType,
@@ -4254,6 +4436,7 @@ export async function handleIncomingMessage(
       secondaryResponseSent: Boolean(secondaryResponseText),
       secondaryResponseText: secondaryResponseText || null,
       executedActions,
+      mediaAssetSent,
       voiceReplySent,
     },
   });

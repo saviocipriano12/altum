@@ -34,6 +34,8 @@ type ContractDoc = {
   autoBillingAdvanceDays?: number;
   autoBillingBillingType?: "PIX" | "BOLETO" | "CREDIT_CARD";
   reminderWhatsAppPhones?: string;
+  autoSuspendEnabled?: boolean;
+  autoSuspendBusinessDays?: number;
 };
 
 type PortalUserDoc = {
@@ -136,6 +138,8 @@ export default function ClientePortalAdminPage() {
     autoBillingAdvanceDays: 5,
     autoBillingBillingType: "PIX",
     reminderWhatsAppPhones: "",
+    autoSuspendEnabled: true,
+    autoSuspendBusinessDays: 2,
   });
   const selectedProfile = getBusinessProfile(selectedProfileId);
   const starterKit = useMemo(() => getBusinessProfileStarterKit(selectedProfileId), [selectedProfileId]);
@@ -274,6 +278,8 @@ export default function ClientePortalAdminPage() {
           reminderWhatsAppPhones: Array.isArray(contractData.contract.reminderWhatsAppPhones)
             ? contractData.contract.reminderWhatsAppPhones.join("\n")
             : "",
+          autoSuspendEnabled: contractData.contract.autoSuspendEnabled !== false,
+          autoSuspendBusinessDays: Number(contractData.contract.autoSuspendBusinessDays || 2),
         });
       }
     } catch (err) {
@@ -913,6 +919,36 @@ export default function ClientePortalAdminPage() {
                 <option value="CREDIT_CARD">Cartao</option>
               </select>
             </div>
+
+            <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+              <input
+                type="checkbox"
+                checked={contract.autoSuspendEnabled !== false}
+                onChange={(e) => setContract((prev) => ({ ...prev, autoSuspendEnabled: e.target.checked }))}
+                className="mt-1 h-4 w-4 rounded border-white/20 bg-black/40"
+              />
+              <div>
+                <p className="text-sm text-white/90">Bloquear acesso automaticamente se atrasar</p>
+                <p className="mt-1 text-xs text-white/55">
+                  Pausa o painel do cliente e a IA depois do prazo, sem apagar nenhum dado.
+                </p>
+              </div>
+            </label>
+
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={contract.autoSuspendBusinessDays || 2}
+              onChange={(e) =>
+                setContract((prev) => ({
+                  ...prev,
+                  autoSuspendBusinessDays: Number(e.target.value || 2),
+                }))
+              }
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              placeholder="Bloquear apos quantos dias uteis de atraso"
+            />
 
             <textarea
               value={contract.reminderWhatsAppPhones || ""}

@@ -5,8 +5,9 @@ import {
   createIntegrationOAuthState,
   getAppBaseUrl,
   getMetaEnv,
+  getMetaOAuthScopes,
   isMetaPlatformConfigured,
-  type IntegrationChannelType,
+  type MetaOAuthChannelType,
 } from "@/app/lib/server/integration-oauth";
 
 type Body = {
@@ -15,7 +16,7 @@ type Body = {
   redirectPath?: string;
 };
 
-function normalizeChannelType(value: unknown): IntegrationChannelType | null {
+function normalizeChannelType(value: unknown): MetaOAuthChannelType | null {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "instagram" || normalized === "messenger" || normalized === "meta_ads") {
     return normalized;
@@ -40,6 +41,7 @@ export async function POST(req: Request) {
     if (!tenantId || !channelType) {
       return NextResponse.json({ error: "tenantId e channelType sao obrigatorios." }, { status: 400 });
     }
+    const metaChannelType: MetaOAuthChannelType = channelType;
 
     const membership = await assertTenantAccess(user.uid, tenantId);
     assertTenantCapability(membership, "manage_channels");
@@ -48,7 +50,7 @@ export async function POST(req: Request) {
       provider: "meta",
       tenantId,
       userId: user.uid,
-      channelType,
+      channelType: metaChannelType,
       redirectPath: body.redirectPath,
     });
 
@@ -59,19 +61,8 @@ export async function POST(req: Request) {
     }
 
     const redirectUri = `${baseUrl}/api/integrations/meta/callback`;
-    const scopes = [
-      "pages_manage_metadata",
-      "pages_read_engagement",
-      "pages_show_list",
-      "pages_manage_ads",
-      "pages_manage_posts",
-      "instagram_basic",
-      "instagram_manage_messages",
-      "instagram_manage_comments",
-      "ads_read",
-      "leads_retrieval",
-      "business_management",
-    ].join(",");
+    const requestedScopes = getMetaOAuthScopes(metaChannelType);
+    const scopes = requestedScopes.join(",");
 
     const authUrl =
       `https://www.facebook.com/${env.graphVersion}/dialog/oauth` +
@@ -83,6 +74,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       provider: "meta",
+      channelType: metaChannelType,
+      scopes: requestedScopes,
       authUrl,
       stateId: state.stateId,
       expiresAt: state.expiresAt.toISOString(),

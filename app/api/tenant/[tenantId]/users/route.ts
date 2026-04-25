@@ -22,6 +22,7 @@ type TenantUserItem = {
 };
 
 const ALLOWED_ROLES = new Set(["client_admin", "client_agent", "client_viewer"]);
+const AUTH_USER_NOT_FOUND_CODE = "auth/user-not-found";
 
 function shouldPreserveGlobalRole(role: unknown) {
   return (
@@ -88,6 +89,64 @@ function parseCapabilities(value: unknown) {
         .filter((item): item is TenantCapability => TENANT_CAPABILITIES.includes(item as TenantCapability))
     )
   );
+}
+
+function getErrorCode(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code || "").trim().toLowerCase()
+      : "";
+  return code;
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return String(error || "");
+}
+
+function getSafeSiteUrl(req: Request) {
+  const fromEnv = clean(process.env.NEXT_PUBLIC_SITE_URL, 240).replace(/\/+$/, "");
+  if (fromEnv.startsWith("http://") || fromEnv.startsWith("https://")) {
+    return fromEnv;
+  }
+
+  try {
+    const origin = new URL(req.url).origin;
+    if (origin.startsWith("http://") || origin.startsWith("https://")) {
+      return origin.replace(/\/+$/, "");
+    }
+  } catch {}
+
+  return "http://localhost:3000";
+}
+
+async function generateInviteLinkWithFallback(input: { req: Request; email: string }) {
+  const siteUrl = getSafeSiteUrl(input.req);
+  const redirectUrl = `${siteUrl}/cliente/login`;
+
+  try {
+    const inviteLink = await adminAuth.generatePasswordResetLink(input.email, { url: redirectUrl });
+    return {
+      inviteLink,
+      inviteLinkWarning: null as string | null,
+    };
+  } catch (error) {
+    const code = getErrorCode(error);
+    const reason = code || getErrorMessage(error) || "unknown_error";
+    console.warn("Falha ao gerar inviteLink com redirect. Tentando fallback sem redirect.", { reason, redirectUrl });
+
+    try {
+      const inviteLink = await adminAuth.generatePasswordResetLink(input.email);
+      return {
+        inviteLink,
+        inviteLinkWarning: "link_sem_redirect_personalizado",
+      };
+    } catch (fallbackError) {
+      const fallbackCode = getErrorCode(fallbackError);
+      const fallbackReason = fallbackCode || getErrorMessage(fallbackError) || "unknown_error";
+      throw new Error(`invite_link_generation_failed:${fallbackReason}`);
+    }
+  }
 }
 
 export async function GET(
@@ -160,7 +219,10 @@ export async function POST(
       if (name && authUser.displayName !== name) {
         await adminAuth.updateUser(authUser.uid, { displayName: name });
       }
-    } catch {
+    } catch (error) {
+      if (getErrorCode(error) !== AUTH_USER_NOT_FOUND_CODE) {
+        throw error;
+      }
       authUser = await adminAuth.createUser({
         email,
         displayName: name || tenantName,
@@ -235,10 +297,7 @@ export async function POST(
       ),
     ]);
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-    const inviteLink = await adminAuth.generatePasswordResetLink(email, {
-      url: `${siteUrl}/cliente/login`,
-    });
+    const inviteResult = await generateInviteLinkWithFallback({ req, email });
 
     return NextResponse.json({
       ok: true,
@@ -246,7 +305,8 @@ export async function POST(
       uid,
       email,
       role,
-      inviteLink,
+      inviteLink: inviteResult.inviteLink,
+      inviteLinkWarning: inviteResult.inviteLinkWarning,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {
@@ -255,7 +315,8 @@ export async function POST(
     if (error instanceof TenantAccessError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
     }
-    console.error("Erro ao convidar usuario do tenant:", error);
-    return NextResponse.json({ error: "Falha ao convidar usuario." }, { status: 500 });
+    const reason = getErrorCode(error) || getErrorMessage(error) || "unknown_error";
+    console.error("Erro ao convidar usuario do tenant:", { reason, error });
+    return NextResponse.json({ error: `Falha ao convidar usuario. Motivo: ${reason}` }, { status: 500 });
   }
 }

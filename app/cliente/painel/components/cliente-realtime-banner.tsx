@@ -289,7 +289,7 @@ export function ClienteRealtimeBanner() {
 
   return (
     <div className="sticky top-[88px] z-20 space-y-2 lg:top-[86px]">
-      <div className={`rounded-2xl border px-3 py-2 shadow-[var(--cliente-shadow-soft)] ${toneClass}`}>
+      <div className={`rounded-lg border px-3 py-2 shadow-[var(--cliente-shadow-soft)] ${toneClass}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]">
@@ -309,7 +309,7 @@ export function ClienteRealtimeBanner() {
             type="button"
             onClick={() => emitClienteRealtimeRefreshEvent({ target: "all" })}
             disabled={!canManualSync}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-black/10 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition hover:bg-black/20 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md border border-white/20 bg-black/10 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition hover:bg-black/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${snapshot.inFlight ? "animate-spin" : ""}`} />
             Sincronizar agora
@@ -318,7 +318,7 @@ export function ClienteRealtimeBanner() {
       </div>
 
       {isCriticalFallback ? (
-        <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
+        <div className="rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
             Exibindo modo cache temporario
           </p>

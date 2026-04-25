@@ -131,13 +131,13 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
       <aside
         className={`client-glass fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-[var(--cliente-border)] bg-[var(--cliente-sidebar)] shadow-[var(--cliente-shadow-hard)] transition-[width,transform] duration-300 lg:translate-x-0 ${
-          compactMode ? "w-[286px] lg:w-[88px]" : "w-[286px]"
+          compactMode ? "w-[276px] lg:w-[84px]" : "w-[276px]"
         } ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="pointer-events-none absolute inset-x-3 top-0 h-20 rounded-b-[28px] bg-[linear-gradient(180deg,var(--cliente-accent-soft),transparent)]" />
+        <div className="pointer-events-none absolute inset-x-3 top-0 h-20 rounded-b-lg bg-[linear-gradient(180deg,var(--cliente-accent-soft),transparent)]" />
 
         <div className="relative flex h-[74px] items-center gap-3 border-b border-[var(--cliente-border)] px-3.5">
-          <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)] shadow-[0_10px_24px_var(--cliente-accent-glow)]">
+          <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)] shadow-[0_10px_24px_var(--cliente-accent-glow)]">
             <Crown className="h-5 w-5" />
           </div>
 
@@ -152,7 +152,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
             <button
               type="button"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="hidden rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-2 text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-text)] lg:inline-flex"
+              className="hidden rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-2 text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-text)] lg:inline-flex"
               title={compactMode ? "Expandir menu" : "Recolher menu"}
             >
               {compactMode ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -160,7 +160,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
             <button
               onClick={onClose}
-              className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-2 text-[var(--cliente-text-muted)] hover:text-[var(--cliente-text)] lg:hidden"
+              className="rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-2 text-[var(--cliente-text-muted)] hover:text-[var(--cliente-text)] lg:hidden"
               aria-label="Fechar menu"
             >
               <X className="h-4 w-4" />
@@ -170,7 +170,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
         <div className="px-4 pt-4">
           <div
-            className={`client-glass overflow-hidden rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-sidebar-card)] shadow-[var(--cliente-shadow-soft)] ${
+            className={`client-glass overflow-hidden rounded-[10px] border border-[var(--cliente-border)] bg-[var(--cliente-sidebar-card)] shadow-[var(--cliente-shadow-soft)] ${
               compactMode ? "px-2 py-3" : "px-4 py-4"
             }`}
           >
@@ -182,13 +182,13 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                 </p>
                 <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Operacao centralizada da conta</p>
               </div>
-              <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]">
+              <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-accent-alt-soft)] text-[var(--cliente-accent-alt)]">
                 <Shield className="h-4 w-4" />
               </div>
             </div>
 
             {!compactMode ? (
-              <div className="mt-4 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+              <div className="mt-4 rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--cliente-text-soft)]">Prontidao</p>
@@ -224,7 +224,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                         key={item.href}
                         href={item.href}
                         onClick={onClose}
-                        className={`group relative flex items-center rounded-2xl border px-3 ${dense ? "py-2.5 text-[13px]" : "py-3 text-sm"} font-medium transition ${
+                        className={`group relative flex items-center rounded-lg border px-3 ${dense ? "py-2.5 text-[13px]" : "py-3 text-sm"} font-medium transition ${
                           active
                             ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-text)] shadow-[0_10px_24px_var(--cliente-accent-glow)]"
                             : "border-transparent text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-text)]"
@@ -233,7 +233,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                       >
                         <span className={`inline-flex items-center ${compactMode ? "justify-center" : "gap-3"} min-w-0`}>
                           <span
-                            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border ${
+                            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
                               active
                                 ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-panel-solid)] text-[var(--cliente-accent)]"
                                 : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-text-soft)] group-hover:text-[var(--cliente-text)]"
@@ -248,13 +248,13 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                           <span className="ml-auto inline-flex items-center gap-2">
                             {typeof item.badge === "string" && item.badge ? <StateBadge label={item.badge} tone="info" /> : null}
                             {active ? (
-                              <span className="h-2 w-2 rounded-full bg-[var(--cliente-accent)] shadow-[0_0_12px_var(--cliente-accent)]" />
+                              <span className="h-5 w-1 rounded-full bg-[var(--cliente-accent)] shadow-[0_0_12px_var(--cliente-accent)]" />
                             ) : (
                               <ChevronRight className="h-4 w-4 opacity-0 group-hover:opacity-75" />
                             )}
                           </span>
                         ) : (
-                          <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] px-3 py-2 text-xs text-[var(--cliente-text)] shadow-[var(--cliente-shadow-soft)] group-hover:block lg:group-hover:block">
+                          <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] px-3 py-2 text-xs text-[var(--cliente-text)] shadow-[var(--cliente-shadow-soft)] group-hover:block lg:group-hover:block">
                             {item.label}
                           </span>
                         )}
@@ -269,7 +269,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
         <div className="border-t border-[var(--cliente-border)] px-4 py-4">
           <div
-            className={`rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] ${
+            className={`rounded-[10px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] ${
               compactMode ? "flex justify-center px-2 py-3" : "px-4 py-4"
             }`}
           >

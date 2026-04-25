@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { reactivateTenantAfterBillingPayment } from "@/lib/server/contract-billing";
 
 const ASAAS_WEBHOOK_TOKEN = process.env.ASAAS_WEBHOOK_TOKEN;
 
@@ -110,6 +111,7 @@ export async function POST(req: Request) {
       .get();
 
     const automationQueue: Array<{ tenantId: string; leadId: string }> = [];
+    const reactivationQueue: Array<{ tenantId: string; financeId: string }> = [];
 
     if (!financeSnap.empty) {
       const updates = financeSnap.docs.map(async (doc) => {
@@ -135,6 +137,10 @@ export async function POST(req: Request) {
 
         if (mapped.isPaid && leadId && tenantId && previousStatus !== "pago") {
           automationQueue.push({ tenantId, leadId });
+        }
+
+        if (mapped.isPaid && tenantId) {
+          reactivationQueue.push({ tenantId, financeId: doc.id });
         }
       });
       await Promise.all(updates);
@@ -210,6 +216,27 @@ export async function POST(req: Request) {
       );
     }
 
+    if (reactivationQueue.length > 0) {
+      const uniqueReactivationQueue = Array.from(
+        new Map(reactivationQueue.map((item) => [`${item.tenantId}:${item.financeId}`, item])).values()
+      );
+      await Promise.all(
+        uniqueReactivationQueue.map((item) =>
+          reactivateTenantAfterBillingPayment({
+            tenantId: item.tenantId,
+            financeId: item.financeId,
+            asaasChargeId: chargeId,
+          }).catch((reactivationError) => {
+            console.error("[Webhook Asaas] Falha ao reativar tenant apos pagamento:", {
+              tenantId: item.tenantId,
+              financeId: item.financeId,
+              error: reactivationError,
+            });
+          })
+        )
+      );
+    }
+
     return NextResponse.json({
       received: true,
       chargeId,
@@ -217,6 +244,7 @@ export async function POST(req: Request) {
       mappedStatus: mapped.status,
       financeUpdated: financeSnap.size,
       leadsUpdated: leadSnap.size,
+      reactivationChecked: reactivationQueue.length,
     });
   } catch (error) {
     console.error("[Webhook Asaas] Erro critico:", error);

@@ -59,6 +59,12 @@ function cleanLower(value: unknown, max = 4000) {
   return clean(value, max).toLowerCase();
 }
 
+function compactObject<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== "")
+  ) as Partial<T>;
+}
+
 function sanitizeId(value: string, max = 240) {
   return value.replace(/[^a-zA-Z0-9:_-]/g, "_").slice(0, max);
 }
@@ -345,6 +351,7 @@ async function sendMetaConversion(input: {
 }) {
   const attribution = extractLeadAttributionSummary(input.lead);
   const lastTouch = attribution.lastTouch;
+  const lastTouchRecord = lastTouch as Record<string, unknown>;
   const value = resolveLeadPotentialValue(input.lead);
   const email = normalizeEmailForHash(input.lead.email);
   const phone = normalizePhoneForHash(input.lead.telefone);
@@ -356,8 +363,43 @@ async function sendMetaConversion(input: {
     em: email ? [sha256(email)] : undefined,
     ph: phone ? [sha256(phone)] : undefined,
     fn: firstName ? [sha256(firstName)] : undefined,
+    external_id: input.leadId ? [sha256(`${input.tenantId}:${input.leadId}`)] : undefined,
+    fbp: clean(lastTouchRecord.fbp || input.lead.fbp, 240) || undefined,
     fbc: buildFbc(lastTouch.fbclid || clean(input.lead.fbclid, 240), lastTouch.occurredAt || input.lead.updatedAt),
   };
+  const qualification =
+    input.lead.qualification && typeof input.lead.qualification === "object"
+      ? (input.lead.qualification as Record<string, unknown>)
+      : {};
+  const customData = compactObject({
+    currency: "BRL",
+    value,
+    tenant_id: input.tenantId,
+    lead_id: input.leadId,
+    source: attribution.source || clean(input.lead.utmSource, 120),
+    medium: attribution.medium || clean(input.lead.utmMedium, 120),
+    campaign_name: attribution.campaign || clean(input.lead.campaignName || input.lead.utmCampaign, 180),
+    campaign_id: clean(lastTouch.campaignId || input.lead.campaignId, 180),
+    ad_id: clean(lastTouch.adId || input.lead.adId, 180),
+    adset_id: clean(lastTouch.adsetId || input.lead.adsetId, 180),
+    placement: clean(lastTouchRecord.placement || input.lead.placement, 120),
+    channel: clean((attribution as Record<string, unknown>).channel || input.lead.channel || input.lead.origem, 80),
+    pipeline_stage: clean(input.lead.pipelineStage || input.lead.stage, 80),
+    lead_score: typeof input.lead.score === "number" ? input.lead.score : undefined,
+    qualification_score: typeof qualification.score === "number" ? qualification.score : undefined,
+    qualification_band: clean(qualification.band, 80),
+    ai_conversation_stage: clean(input.lead.aiConversationStage, 80),
+    ai_next_action: clean(input.lead.aiNextAction, 160),
+    ai_recommended_offer: clean(input.lead.aiRecommendedOffer, 180),
+    ai_business_type: clean(input.lead.aiBusinessType, 120),
+    ai_primary_goal: clean(input.lead.aiPrimaryGoal, 180),
+    ai_budget_band: clean(input.lead.aiBudgetBand, 120),
+    ai_urgency: clean(input.lead.aiUrgency, 120),
+    ai_commercial_temperature: clean(input.lead.aiCommercialTemperature, 60),
+    meeting_status: input.appointment ? clean(input.appointment.status, 40) : undefined,
+    appointment_type: input.appointment ? clean(input.appointment.type, 80) : undefined,
+    referrer: referrer || undefined,
+  });
 
   const payload = {
     data: [
@@ -368,20 +410,7 @@ async function sendMetaConversion(input: {
         action_source: "website",
         event_source_url: landingPage || undefined,
         user_data: Object.fromEntries(Object.entries(userData).filter(([, value]) => value)),
-        custom_data: {
-          currency: "BRL",
-          value,
-          tenant_id: input.tenantId,
-          lead_id: input.leadId,
-          source: attribution.source || clean(input.lead.utmSource, 120),
-          medium: attribution.medium || clean(input.lead.utmMedium, 120),
-          campaign_name: attribution.campaign || clean(input.lead.campaignName || input.lead.utmCampaign, 180),
-          campaign_id: clean(lastTouch.campaignId || input.lead.campaignId, 180),
-          ad_id: clean(lastTouch.adId || input.lead.adId, 180),
-          adset_id: clean(lastTouch.adsetId || input.lead.adsetId, 180),
-          meeting_status: input.appointment ? clean(input.appointment.status, 40) : undefined,
-          referrer: referrer || undefined,
-        },
+        custom_data: customData,
       },
     ],
     test_event_code: input.channel.testEventCode || undefined,

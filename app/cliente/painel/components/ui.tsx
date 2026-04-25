@@ -10,13 +10,13 @@ const BADGE_TONE: Record<BadgeTone, string> = {
   success: "border-emerald-400/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",
   warning: "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]",
   danger: "border-rose-400/25 bg-rose-500/10 text-rose-700 dark:text-rose-100",
-  info: "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]",
+  info: "border-[var(--cliente-border)] bg-[var(--cliente-accent-alt-soft)] text-[var(--cliente-accent-alt)]",
 };
 
 export function PanelCard({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <section
-      className={`client-glass client-panel-card rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)] ring-1 ring-white/[0.02] ${className}`}
+      className={`client-glass client-panel-card rounded-[10px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)] ring-1 ring-white/[0.02] ${className}`}
     >
       {children}
     </section>
@@ -34,8 +34,8 @@ export function SectionHeader({
 }) {
   return (
     <header className="client-section-header mb-4 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 className="client-section-title text-lg font-semibold tracking-tight text-[var(--cliente-card-text)] md:text-[1.3rem]">{title}</h2>
+      <div className="min-w-0">
+        <h2 className="client-section-title text-lg font-semibold text-[var(--cliente-card-text)] md:text-[1.28rem]">{title}</h2>
         {subtitle ? <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
       </div>
       {action ? <div>{action}</div> : null}
@@ -55,7 +55,7 @@ export function MetricCard({
   trend?: string;
 }) {
   return (
-    <PanelCard className="client-metric-card space-y-2 p-4">
+    <PanelCard className="client-metric-card space-y-2 border-l-2 border-l-[var(--cliente-border-strong)] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="client-metric-label text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
@@ -63,7 +63,7 @@ export function MetricCard({
           {trend ? <p className="mt-2 text-[11px] text-[var(--cliente-card-text-soft)]">{trend}</p> : null}
         </div>
         {Icon ? (
-          <span className="client-metric-icon inline-flex rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] p-2.5 text-[var(--cliente-accent)]">
+          <span className="client-metric-icon inline-flex rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-2.5 text-[var(--cliente-accent)]">
             <Icon className="h-4 w-4" />
           </span>
         ) : null}
@@ -81,7 +81,7 @@ export function StateBadge({
 }) {
   return (
     <span
-      className={`client-state-badge inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${BADGE_TONE[tone]}`}
+      className={`client-state-badge inline-flex items-center rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${BADGE_TONE[tone]}`}
     >
       {label}
     </span>

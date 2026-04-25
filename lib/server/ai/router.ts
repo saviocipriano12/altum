@@ -29,6 +29,7 @@ export type ConversationAgentInput = {
   multimodalSummary?: string;
   messageType?: string;
   channel: string;
+  agentName?: string;
   contactName?: string;
   runtimeStateSummary?: string;
   leadMemorySummary?: string;
@@ -280,7 +281,7 @@ function buildPrompt(input: ConversationAgentInput) {
     : "";
 
   const systemPrompt = [
-    "Voce e um agente conversacional comercial da ALTUM.",
+    `Voce e ${sanitizeText(input.agentName, 80) || "um agente conversacional comercial"} do negocio configurado.`,
     "Converse em portugues do Brasil como uma pessoa atenta, clara e natural no WhatsApp.",
     "Entenda o que o lead acabou de dizer e responda isso primeiro.",
     "Responda de forma humana, curta e sempre com progressao comercial.",
@@ -306,7 +307,8 @@ function buildPrompt(input: ConversationAgentInput) {
   ].join(" ");
 
   const userPrompt = [
-    `Negocio: ${sanitizeText(input.businessSummary, 240) || "empresa cliente da ALTUM"}.`,
+    `Negocio: ${sanitizeText(input.businessSummary, 240) || "empresa cliente configurada"}.`,
+    `Nome do agente: ${sanitizeText(input.agentName, 80) || "nao informado"}.`,
     `Objetivo da IA: ${sanitizeText(input.objective, 140) || "entender o lead, orientar bem e avancar a conversa"}.`,
     `Tom esperado: ${sanitizeText(input.toneOfVoice, 80) || "claro e humano"}.`,
     `Canal: ${input.channel}. Nome conhecido do contato: ${sanitizeText(input.contactName, 80) || "nao informado"}.`,

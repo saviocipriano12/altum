@@ -13,7 +13,8 @@
     "verify:postdeploy": "node scripts/post-deploy-verify.mjs",
     "test:agent-closure": "node scripts/run-agent-closure-gate.mjs",
     "migrate:ownership": "node scripts/migrate-users-ownership.mjs",
-    "push:vapid": "web-push generate-vapid-keys"
+    "push:vapid": "web-push generate-vapid-keys",
+    "cliente:onboarding:new": "node scripts/new-client-onboarding.mjs"
   },
   "dependencies": {
     "@typebot.io/js": "^0.9.19",

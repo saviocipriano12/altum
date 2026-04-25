@@ -5,6 +5,7 @@ import {
   getDefaultTenantMembershipForUser,
   getTenantCapabilities,
   getTenantSettings,
+  isTenantBillingBlocked,
   type TenantCapability,
 } from "@/lib/server/tenant";
 
@@ -115,6 +116,9 @@ async function buildPortalUserFromMembership(
 
   const tenantSnap = await adminDb.collection("tenants").doc(membership.tenantId).get();
   const tenantData = tenantSnap.exists ? (tenantSnap.data() as Record<string, unknown>) : {};
+  if (tenantData.status === "blocked" || tenantData.billingStatus === "blocked") {
+    throw new PortalAuthError(403, "tenant_billing_blocked", "Acesso ao portal pausado por pendencia financeira.");
+  }
   const settings = await getTenantSettings(membership.tenantId);
 
   const tenantName =
@@ -211,6 +215,10 @@ export async function requirePortalRequestUser(
   const tenantId = String(portalData.tenantId || portalData.clientId || "").trim();
   if (!tenantId) {
     throw new PortalAuthError(403, "portal_tenant_missing", "Tenant do portal nao configurado.");
+  }
+
+  if (await isTenantBillingBlocked(tenantId)) {
+    throw new PortalAuthError(403, "tenant_billing_blocked", "Acesso ao portal pausado por pendencia financeira.");
   }
 
   return {

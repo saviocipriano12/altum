@@ -36,6 +36,52 @@ function parseIso(value: unknown) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function addMinutes(iso: string, minutes: number) {
+  return new Date(new Date(iso).getTime() + minutes * 60 * 1000).toISOString();
+}
+
+function rangesOverlap(startA: number, endA: number, startB: number, endB: number) {
+  return startA < endB && startB < endA;
+}
+
+async function findAppointmentConflict(input: {
+  tenantId: string;
+  appointmentId: string;
+  startAt: string;
+  endAt: string;
+  ownerUserId?: string | null;
+  leadId?: string | null;
+}) {
+  const startMs = new Date(input.startAt).getTime();
+  const endMs = new Date(input.endAt).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+
+  const snap = await adminDb.collection("appointments").where("tenantId", "==", input.tenantId).limit(500).get();
+  const ownerUserId = clean(input.ownerUserId, 140);
+  const leadId = clean(input.leadId, 140);
+
+  return (
+    snap.docs.find((doc) => {
+      if (doc.id === input.appointmentId) return false;
+      const data = doc.data() as Record<string, unknown>;
+      const status = clean(data.status, 40) || "scheduled";
+      if (!["scheduled", "confirmed"].includes(status)) return false;
+
+      const currentStart = new Date(String(data.startAt || "")).getTime();
+      const currentEnd = data.endAt
+        ? new Date(String(data.endAt)).getTime()
+        : currentStart + 60 * 60 * 1000;
+      if (!Number.isFinite(currentStart) || !Number.isFinite(currentEnd)) return false;
+      if (!rangesOverlap(startMs, endMs, currentStart, currentEnd)) return false;
+
+      const sameLead = leadId && clean(data.leadId, 140) === leadId;
+      const currentOwner = clean(data.ownerUserId, 140);
+      const sameOwner = ownerUserId ? currentOwner === ownerUserId : !currentOwner;
+      return Boolean(sameLead || sameOwner);
+    }) || null
+  );
+}
+
 export async function PATCH(
   req: Request,
   context: { params: Promise<{ tenantId: string; appointmentId: string }> }
@@ -131,9 +177,37 @@ export async function PATCH(
       return NextResponse.json({ ok: true, tenantId, appointmentId, unchanged: true });
     }
 
+    const nextStatus =
+      body.status !== undefined && VALID_STATUSES.has(status) ? status : clean(current.status, 40) || "scheduled";
+    const nextStartAt = String(patch.startAt || current.startAt || "");
+    const nextEndAt = String(patch.endAt || current.endAt || "") || (nextStartAt ? addMinutes(nextStartAt, 60) : "");
+    const nextOwnerUserId =
+      body.ownerUserId !== undefined ? clean(body.ownerUserId, 140) : clean(current.ownerUserId, 140);
+    const leadId = clean(current.leadId, 140);
+
+    if (["scheduled", "confirmed"].includes(nextStatus) && nextStartAt && nextEndAt) {
+      const conflict = await findAppointmentConflict({
+        tenantId,
+        appointmentId,
+        startAt: nextStartAt,
+        endAt: nextEndAt,
+        ownerUserId: nextOwnerUserId,
+        leadId,
+      });
+      if (conflict) {
+        return NextResponse.json(
+          {
+            error: "Horario indisponivel para este responsavel ou lead.",
+            code: "appointment_conflict",
+            conflictId: conflict.id,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     await ref.set(patch, { merge: true });
 
-    const leadId = clean(current.leadId, 140);
     if (leadId) {
       await adminDb.collection("leads").doc(leadId).collection("events").add({
         type: "appointment_updated",
@@ -145,8 +219,6 @@ export async function PATCH(
         createdAt: FieldValue.serverTimestamp(),
       });
 
-      const nextStatus =
-        body.status !== undefined && VALID_STATUSES.has(status) ? status : clean(current.status, 40) || "scheduled";
       await trackAppointmentOutcome({
         tenantId,
         leadId,

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Loader2, PencilLine, RefreshCw, Save, Search, ShieldCheck, Sparkles, Trash2, Waypoints } from "lucide-react";
+import { Bot, Loader2, PencilLine, RefreshCw, Save, Search, ShieldCheck, Sparkles, Trash2, UploadCloud, Waypoints } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
@@ -11,12 +11,15 @@ import { DEFAULT_AI_PROVIDERS } from "@/lib/server/ai/operating-layer";
 
 type AiSettings = {
   enabled: boolean;
+  agentName?: string;
   toneOfVoice: string;
   businessSummary: string;
   objective?: string;
   responsiblePhone: string;
   handoffNotifyEnabled?: boolean;
   handoffNotifyPhones?: string[];
+  voiceReplyEnabled?: boolean;
+  voiceReplyVoice?: string;
   guardrails: string[];
   mandatoryQuestions?: string[];
   escalationTopics?: string[];
@@ -50,6 +53,13 @@ type KbDoc = {
   type: "faq" | "catalog" | "policy";
   content: string;
   tags: string[];
+  mediaUrl?: string | null;
+  mediaType?: "image" | "video" | "document" | null;
+  mediaTitle?: string | null;
+  mediaStoragePath?: string | null;
+  mediaMimeType?: string | null;
+  mediaSize?: number | null;
+  serviceKey?: string | null;
   createdAt?: unknown;
   updatedAt?: unknown;
 };
@@ -270,12 +280,15 @@ type TenantSettingsPayload = {
 
 const EMPTY_SETTINGS: AiSettings = {
   enabled: true,
+  agentName: "",
   toneOfVoice: "consultivo e objetivo",
   businessSummary: "",
   objective: "",
   responsiblePhone: "",
   handoffNotifyEnabled: true,
   handoffNotifyPhones: [],
+  voiceReplyEnabled: false,
+  voiceReplyVoice: "alloy",
   guardrails: [],
   mandatoryQuestions: [],
   escalationTopics: [],
@@ -523,6 +536,14 @@ export default function ClienteIaPage() {
   const [docType, setDocType] = useState<KbDoc["type"]>("faq");
   const [docContent, setDocContent] = useState("");
   const [docTags, setDocTags] = useState("");
+  const [docMediaUrl, setDocMediaUrl] = useState("");
+  const [docMediaType, setDocMediaType] = useState<"" | "image" | "video" | "document">("");
+  const [docMediaTitle, setDocMediaTitle] = useState("");
+  const [docMediaStoragePath, setDocMediaStoragePath] = useState("");
+  const [docMediaMimeType, setDocMediaMimeType] = useState("");
+  const [docMediaSize, setDocMediaSize] = useState<number | null>(null);
+  const [docServiceKey, setDocServiceKey] = useState("");
+  const [uploadingKbMedia, setUploadingKbMedia] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [kbSearch, setKbSearch] = useState("");
   const [kbTypeFilter, setKbTypeFilter] = useState<"all" | KbDoc["type"]>("all");
@@ -994,7 +1015,18 @@ export default function ClienteIaPage() {
       const res = await authedFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: docType, content: docContent.trim(), tags: docTags }),
+        body: JSON.stringify({
+          type: docType,
+          content: docContent.trim(),
+          tags: docTags,
+          mediaUrl: docMediaUrl.trim() || null,
+          mediaType: docMediaType || null,
+          mediaTitle: docMediaTitle.trim() || null,
+          mediaStoragePath: docMediaStoragePath.trim() || null,
+          mediaMimeType: docMediaMimeType.trim() || null,
+          mediaSize: docMediaSize,
+          serviceKey: docServiceKey.trim() || null,
+        }),
       });
 
       const payload = (await res.json()) as { error?: string };
@@ -1005,6 +1037,13 @@ export default function ClienteIaPage() {
 
       setDocContent("");
       setDocTags("");
+      setDocMediaUrl("");
+      setDocMediaType("");
+      setDocMediaTitle("");
+      setDocMediaStoragePath("");
+      setDocMediaMimeType("");
+      setDocMediaSize(null);
+      setDocServiceKey("");
       setDocType("faq");
       setEditingDocId(null);
       setSuccess(editingDocId ? "Documento atualizado." : "Documento da base de conhecimento adicionado.");
@@ -1013,6 +1052,53 @@ export default function ClienteIaPage() {
       setError("Falha ao salvar documento da base de conhecimento.");
     } finally {
       setSavingDoc(false);
+    }
+  }
+
+  async function handleKbMediaUpload(file: File | null) {
+    if (!tenant?.tenantId || !file || !canEditKb) return;
+
+    setUploadingKbMedia(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      if (docMediaTitle.trim()) form.append("title", docMediaTitle.trim());
+
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs/media/upload`, {
+        method: "POST",
+        body: form,
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        media?: {
+          mediaUrl?: string;
+          mediaStoragePath?: string;
+          mediaType?: "image" | "video" | "document";
+          mediaMimeType?: string;
+          mediaSize?: number;
+          mediaTitle?: string;
+        };
+      };
+
+      if (!res.ok || !payload.media?.mediaUrl) {
+        setError(payload.error || "Falha ao subir midia.");
+        return;
+      }
+
+      setDocMediaUrl(payload.media.mediaUrl || "");
+      setDocMediaStoragePath(payload.media.mediaStoragePath || "");
+      setDocMediaType(payload.media.mediaType || "");
+      setDocMediaMimeType(payload.media.mediaMimeType || "");
+      setDocMediaSize(typeof payload.media.mediaSize === "number" ? payload.media.mediaSize : null);
+      setDocMediaTitle((current) => current || payload.media?.mediaTitle || file.name);
+      setSuccess("Midia enviada e vinculada ao documento.");
+    } catch {
+      setError("Falha ao subir midia.");
+    } finally {
+      setUploadingKbMedia(false);
     }
   }
 
@@ -1783,9 +1869,41 @@ export default function ClienteIaPage() {
             </label>
 
             <Field label="Tom de voz" value={settings.toneOfVoice} onChange={(value) => setSettings((prev) => ({ ...prev, toneOfVoice: value }))} placeholder="consultivo, claro e humano" disabled={!canManage} />
+            <Field label="Nome do agente" value={settings.agentName || ""} onChange={(value) => setSettings((prev) => ({ ...prev, agentName: value }))} placeholder="Ex: Laura da clinica, Agente da imobiliaria" disabled={!canManage} />
             <Field label="Resumo do negocio" value={settings.businessSummary} onChange={(value) => setSettings((prev) => ({ ...prev, businessSummary: value }))} placeholder="o que a empresa vende, para quem e com qual foco" disabled={!canManage} />
             <Field label="Objetivo principal da IA" value={settings.objective || ""} onChange={(value) => setSettings((prev) => ({ ...prev, objective: value }))} placeholder="qualificar, orientar, vender e encaminhar" disabled={!canManage} />
             <Field label="WhatsApp responsavel (handoff)" value={settings.responsiblePhone} onChange={(value) => setSettings((prev) => ({ ...prev, responsiblePhone: value }))} placeholder="5511999999999" disabled={!canManage} />
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+                <input
+                  type="checkbox"
+                  checked={settings.voiceReplyEnabled === true}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, voiceReplyEnabled: event.target.checked }))}
+                  disabled={!canManage}
+                />
+                Responder com audio quando o lead enviar audio
+              </label>
+              <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+                Voz da IA
+                <select
+                  value={settings.voiceReplyVoice || "alloy"}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, voiceReplyVoice: event.target.value }))}
+                  disabled={!canManage || settings.voiceReplyEnabled !== true}
+                  className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
+                >
+                  <option value="alloy">Alloy</option>
+                  <option value="ash">Ash</option>
+                  <option value="ballad">Ballad</option>
+                  <option value="coral">Coral</option>
+                  <option value="echo">Echo</option>
+                  <option value="fable">Fable</option>
+                  <option value="nova">Nova</option>
+                  <option value="onyx">Onyx</option>
+                  <option value="sage">Sage</option>
+                  <option value="shimmer">Shimmer</option>
+                </select>
+              </label>
+            </div>
             <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
               <input
                 type="checkbox"
@@ -1893,6 +2011,74 @@ export default function ClienteIaPage() {
             </label>
 
             <Field label="Tags (separadas por virgula)" value={docTags} onChange={setDocTags} placeholder="preco, prazo, onboarding" disabled={!canEditKb} />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Chave do servico" value={docServiceKey} onChange={setDocServiceKey} placeholder="botox, visita_apto, limpeza_pele" disabled={!canEditKb} />
+              <Field label="Titulo da midia" value={docMediaTitle} onChange={setDocMediaTitle} placeholder="Resultado botox 30 dias" disabled={!canEditKb} />
+            </div>
+            <div className="grid gap-3 md:grid-cols-[0.7fr_1.3fr]">
+              <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+                Tipo de midia
+                <select
+                  value={docMediaType}
+                  onChange={(event) => setDocMediaType(event.target.value as typeof docMediaType)}
+                  disabled={!canEditKb}
+                  className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
+                >
+                  <option value="">Sem midia</option>
+                  <option value="image">Imagem</option>
+                  <option value="video">Video</option>
+                  <option value="document">Documento</option>
+                </select>
+              </label>
+              <Field label="URL publica da midia" value={docMediaUrl} onChange={setDocMediaUrl} placeholder="https://..." disabled={!canEditKb} />
+            </div>
+            <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-[var(--cliente-card-text)]">Upload de midia</p>
+                  <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                    Imagens ate 12 MB, videos ate 64 MB e documentos ate 24 MB.
+                  </p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-accent)]">
+                  {uploadingKbMedia ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
+                  {uploadingKbMedia ? "Enviando" : "Escolher arquivo"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,text/plain,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                    className="hidden"
+                    disabled={!canEditKb || uploadingKbMedia}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] || null;
+                      void handleKbMediaUpload(file);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              {docMediaUrl ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel)] px-3 py-2">
+                  <p className="text-xs text-[var(--cliente-card-text-muted)]">
+                    {docMediaTitle || "Midia vinculada"} {docMediaSize ? `- ${(docMediaSize / 1024 / 1024).toFixed(1)} MB` : ""}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocMediaUrl("");
+                      setDocMediaType("");
+                      setDocMediaTitle("");
+                      setDocMediaStoragePath("");
+                      setDocMediaMimeType("");
+                      setDocMediaSize(null);
+                    }}
+                    disabled={!canEditKb}
+                    className="text-xs font-semibold text-rose-300 disabled:opacity-60"
+                  >
+                    Remover vinculo
+                  </button>
+                </div>
+              ) : null}
+            </div>
 
             {canEditKb ? (
               <div className="flex flex-wrap gap-2">
@@ -1972,6 +2158,13 @@ export default function ClienteIaPage() {
                 setDocType(doc.type);
                 setDocContent(doc.content);
                 setDocTags(doc.tags.join(", "));
+                setDocMediaUrl(doc.mediaUrl || "");
+                setDocMediaType(doc.mediaType || "");
+                setDocMediaTitle(doc.mediaTitle || "");
+                setDocMediaStoragePath(doc.mediaStoragePath || "");
+                setDocMediaMimeType(doc.mediaMimeType || "");
+                setDocMediaSize(doc.mediaSize || null);
+                setDocServiceKey(doc.serviceKey || "");
               }}
               onDelete={(docId) => void handleDeleteDoc(docId)}
             />
@@ -1986,6 +2179,13 @@ export default function ClienteIaPage() {
                 setDocType(doc.type);
                 setDocContent(doc.content);
                 setDocTags(doc.tags.join(", "));
+                setDocMediaUrl(doc.mediaUrl || "");
+                setDocMediaType(doc.mediaType || "");
+                setDocMediaTitle(doc.mediaTitle || "");
+                setDocMediaStoragePath(doc.mediaStoragePath || "");
+                setDocMediaMimeType(doc.mediaMimeType || "");
+                setDocMediaSize(doc.mediaSize || null);
+                setDocServiceKey(doc.serviceKey || "");
               }}
               onDelete={(docId) => void handleDeleteDoc(docId)}
             />
@@ -2000,6 +2200,13 @@ export default function ClienteIaPage() {
                 setDocType(doc.type);
                 setDocContent(doc.content);
                 setDocTags(doc.tags.join(", "));
+                setDocMediaUrl(doc.mediaUrl || "");
+                setDocMediaType(doc.mediaType || "");
+                setDocMediaTitle(doc.mediaTitle || "");
+                setDocMediaStoragePath(doc.mediaStoragePath || "");
+                setDocMediaMimeType(doc.mediaMimeType || "");
+                setDocMediaSize(doc.mediaSize || null);
+                setDocServiceKey(doc.serviceKey || "");
               }}
               onDelete={(docId) => void handleDeleteDoc(docId)}
             />
@@ -2313,6 +2520,11 @@ function DocColumn({
           <article key={doc.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
             <p className="line-clamp-4 text-xs text-[var(--cliente-card-text-muted)]">{doc.content}</p>
             <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">{doc.tags.join(", ") || "sem tags"}</p>
+            {doc.mediaUrl ? (
+              <p className="mt-1 text-[10px] text-[var(--cliente-accent)]">
+                {doc.mediaType || "midia"}: {doc.mediaTitle || doc.serviceKey || "asset cadastrado"}
+              </p>
+            ) : null}
             <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">{formatDateTime(doc.updatedAt || doc.createdAt)}</p>
             {canEdit || canDelete ? (
               <div className="mt-3 flex flex-wrap gap-2">

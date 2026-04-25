@@ -16,12 +16,15 @@ import {
 
 type Body = {
   enabled?: boolean;
+  agentName?: string;
   toneOfVoice?: string;
   businessSummary?: string;
   objective?: string;
   responsiblePhone?: string;
   handoffNotifyEnabled?: boolean;
   handoffNotifyPhones?: string[] | string;
+  voiceReplyEnabled?: boolean;
+  voiceReplyVoice?: string;
   guardrails?: string[] | string;
   mandatoryQuestions?: string[] | string;
   escalationTopics?: string[] | string;
@@ -94,6 +97,23 @@ function parseNotifyPhones(value: unknown) {
   return Array.from(new Set(parseLines(value, 8).map((item) => clean(item, 40)).filter(Boolean))).slice(0, 8);
 }
 
+function pruneUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => pruneUndefinedDeep(item))
+      .filter((item) => item !== undefined) as T;
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => [key, pruneUndefinedDeep(item)] as const)
+      .filter(([, item]) => item !== undefined);
+    return Object.fromEntries(entries) as T;
+  }
+
+  return value;
+}
+
 type NormalizeMode = "resolved" | "stored";
 
 function normalizeAiConfig(
@@ -107,9 +127,11 @@ function normalizeAiConfig(
   const businessProfile = getBusinessProfile(normalizeBusinessProfileId(settings?.businessProfileId));
   const operatingProfile = normalizeTenantAiOperatingProfile(ai.operatingProfile);
   const runtimePolicy = buildAiRuntimePolicy(operatingProfile);
+  const storedAgentName = clean(ai.agentName, 80);
   const storedToneOfVoice = clean(ai.toneOfVoice, 120);
   const storedBusinessSummary = clean(ai.businessSummary, 320);
   const storedObjective = clean(ai.objective, 200);
+  const storedVoiceReplyVoice = clean(ai.voiceReplyVoice, 40);
   const storedGuardrails = parseGuardrails(ai.guardrails);
   const storedMandatoryQuestions = parseLines(ai.mandatoryQuestions, 12);
   const storedEscalationTopics = parseLines(ai.escalationTopics, 12);
@@ -117,6 +139,9 @@ function normalizeAiConfig(
 
   return {
     enabled: ai.enabled !== false,
+    agentName: resolveWithDefaults
+      ? storedAgentName || `Agente ${clean(settings?.name, 80) || businessProfile.label}`
+      : storedAgentName,
     toneOfVoice: resolveWithDefaults
       ? storedToneOfVoice || businessProfile.ai.toneOfVoice
       : storedToneOfVoice,
@@ -129,6 +154,8 @@ function normalizeAiConfig(
     responsiblePhone: clean(ai.responsiblePhone, 40),
     handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
     handoffNotifyPhones: parseNotifyPhones(ai.handoffNotifyPhones),
+    voiceReplyEnabled: ai.voiceReplyEnabled === true,
+    voiceReplyVoice: storedVoiceReplyVoice || "alloy",
     guardrails: resolveWithDefaults
       ? (storedGuardrails.length ? storedGuardrails : businessProfile.ai.guardrails)
       : storedGuardrails,
@@ -196,8 +223,9 @@ export async function POST(
     const body = (await req.json()) as Body;
     const current = normalizeAiConfig(await getTenantSettings(tenantId), "stored");
 
-    const next = {
+    const next = pruneUndefinedDeep({
       enabled: typeof body.enabled === "boolean" ? body.enabled : current.enabled,
+      agentName: clean(body.agentName, 80) || current.agentName,
       toneOfVoice: clean(body.toneOfVoice, 120) || current.toneOfVoice,
       businessSummary: clean(body.businessSummary, 320) || current.businessSummary,
       objective: clean(body.objective, 200) || current.objective,
@@ -210,6 +238,11 @@ export async function POST(
         body.handoffNotifyPhones === undefined
           ? current.handoffNotifyPhones
           : parseNotifyPhones(body.handoffNotifyPhones),
+      voiceReplyEnabled:
+        typeof body.voiceReplyEnabled === "boolean"
+          ? body.voiceReplyEnabled
+          : current.voiceReplyEnabled,
+      voiceReplyVoice: clean(body.voiceReplyVoice, 40) || current.voiceReplyVoice,
       guardrails:
         body.guardrails === undefined ? current.guardrails : parseGuardrails(body.guardrails),
       mandatoryQuestions:
@@ -232,7 +265,7 @@ export async function POST(
         monthlyBudgetUsd: body.monthlyBudgetUsd ?? current.monthlyBudgetUsd,
         monthlyUsageCap: body.monthlyUsageCap ?? current.monthlyUsageCap,
       }),
-    };
+    });
 
     const responseAi = {
       ...next,

@@ -285,6 +285,55 @@ export async function sendMetaAudioMessage(input: {
   return payload;
 }
 
+export async function sendMetaMediaLinkMessage(input: {
+  channel: WhatsAppChannelConfig;
+  to: string;
+  mediaUrl: string;
+  mediaType: "image" | "video" | "document";
+  caption?: string;
+  filename?: string;
+}) {
+  const payloadKey = input.mediaType;
+  const mediaPayload =
+    input.mediaType === "document"
+      ? {
+          link: input.mediaUrl,
+          caption: input.caption,
+          filename: input.filename || "material.pdf",
+        }
+      : {
+          link: input.mediaUrl,
+          caption: input.caption,
+        };
+
+  const response = await fetch(
+    `https://graph.facebook.com/${VERSION}/${input.channel.phoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.channel.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: input.to,
+        type: input.mediaType,
+        [payloadKey]: mediaPayload,
+      }),
+    }
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errMessage =
+      (payload as { error?: { message?: string } })?.error?.message || "Erro na API da Meta ao enviar midia.";
+    throw new Error(errMessage);
+  }
+
+  return payload;
+}
+
 export async function fetchWhatsAppMediaMetadata(input: {
   channel: WhatsAppChannelConfig;
   mediaId: string;

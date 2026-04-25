@@ -44,6 +44,50 @@ function parseIso(value: unknown) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function addMinutes(iso: string, minutes: number) {
+  return new Date(new Date(iso).getTime() + minutes * 60 * 1000).toISOString();
+}
+
+function rangesOverlap(startA: number, endA: number, startB: number, endB: number) {
+  return startA < endB && startB < endA;
+}
+
+async function findAppointmentConflict(input: {
+  tenantId: string;
+  startAt: string;
+  endAt: string;
+  ownerUserId?: string | null;
+  leadId?: string | null;
+}) {
+  const startMs = new Date(input.startAt).getTime();
+  const endMs = new Date(input.endAt).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+
+  const snap = await adminDb.collection("appointments").where("tenantId", "==", input.tenantId).limit(500).get();
+  const ownerUserId = clean(input.ownerUserId, 140);
+  const leadId = clean(input.leadId, 140);
+
+  return (
+    snap.docs.find((doc) => {
+      const data = doc.data() as Record<string, unknown>;
+      const status = clean(data.status, 40) || "scheduled";
+      if (!["scheduled", "confirmed"].includes(status)) return false;
+
+      const currentStart = new Date(String(data.startAt || "")).getTime();
+      const currentEnd = data.endAt
+        ? new Date(String(data.endAt)).getTime()
+        : currentStart + 60 * 60 * 1000;
+      if (!Number.isFinite(currentStart) || !Number.isFinite(currentEnd)) return false;
+      if (!rangesOverlap(startMs, endMs, currentStart, currentEnd)) return false;
+
+      const sameLead = leadId && clean(data.leadId, 140) === leadId;
+      const currentOwner = clean(data.ownerUserId, 140);
+      const sameOwner = ownerUserId ? currentOwner === ownerUserId : !currentOwner;
+      return Boolean(sameLead || sameOwner);
+    }) || null
+  );
+}
+
 export async function GET(req: Request, context: { params: Promise<{ tenantId: string }> }) {
   try {
     const user = await requireRequestUser(req);
@@ -109,6 +153,25 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     }
 
     const status = clean(body.status, 40);
+    const endAt = parseIso(body.endAt) || addMinutes(startAt, 60);
+    const conflict = await findAppointmentConflict({
+      tenantId,
+      startAt,
+      endAt,
+      ownerUserId,
+      leadId,
+    });
+    if (conflict) {
+      return NextResponse.json(
+        {
+          error: "Horario indisponivel para este responsavel ou lead.",
+          code: "appointment_conflict",
+          conflictId: conflict.id,
+        },
+        { status: 409 }
+      );
+    }
+
     const ref = await adminDb.collection("appointments").add({
       tenantId,
       leadId: leadId || null,
@@ -118,7 +181,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       type: clean(body.type, 80) || "reuniao",
       status: VALID_STATUSES.has(status) ? status : "scheduled",
       startAt,
-      endAt: parseIso(body.endAt),
+      endAt,
       location: clean(body.location, 180) || null,
       meetingUrl: clean(body.meetingUrl, 500) || null,
       notes: clean(body.notes, 4000) || null,

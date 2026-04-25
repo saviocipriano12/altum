@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
   BadgeDollarSign,
   Download,
@@ -99,6 +100,11 @@ type MessageItem = {
   id: string;
   text?: string;
   sender?: "agent" | "client" | "system" | "bot";
+  status?: string | null;
+  deliveryStatus?: string | null;
+  deliveryError?: string | null;
+  deliveryAt?: unknown;
+  deliveryUpdatedAt?: unknown;
   createdAt?: unknown;
   type?: string;
   mediaUrl?: string | null;
@@ -774,10 +780,10 @@ function ConversationListItem({
       type="button"
       onClick={onSelect}
       className={cn(
-        "w-full min-w-0 rounded-[24px] border px-3 py-3.5 text-left transition",
+        "inbox-whatsapp-row w-full min-w-0 border px-3 py-3 text-left transition",
         active
-          ? "border-[rgba(37,211,102,0.28)] bg-[linear-gradient(180deg,rgba(37,211,102,0.12),rgba(255,255,255,0.02))] shadow-[0_0_0_1px_rgba(37,211,102,0.12)]"
-          : "border-[var(--cliente-border)] bg-[rgba(255,255,255,0.02)] hover:border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.045)]"
+          ? "inbox-whatsapp-row-active"
+          : ""
       )}
     >
       <div className="flex items-start gap-3">
@@ -801,11 +807,11 @@ function ConversationListItem({
               </div>
               <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
                 <span>{formatChannelLabel(chat.channel)}</span>
-                <span>•</span>
+                <span>|</span>
                 <span>{chat.assignedUserName || chat.ownerName || "Sem responsavel"}</span>
                 {chat.contactCompany ? (
                   <>
-                    <span>•</span>
+                    <span>|</span>
                     <span className="truncate">{chat.contactCompany}</span>
                   </>
                 ) : null}
@@ -822,10 +828,10 @@ function ConversationListItem({
             {getMessagePreview(chat)}
           </p>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <StateBadge label={formatQueueStatusLabel(chat.queueStatus)} tone={sla.breached ? "danger" : "neutral"} />
             <StateBadge label={sla.label} tone={sla.breached ? "danger" : "info"} />
-            <StateBadge label={aiPaused ? "IA pausada" : "IA ativa"} tone={aiPaused ? "warning" : "success"} />
+            {aiPaused ? <StateBadge label="IA pausada" tone="warning" /> : null}
           </div>
 
           <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-[var(--cliente-card-text-soft)]">
@@ -1031,6 +1037,19 @@ function MessageBubble({
   const isAgent = message.sender === "agent";
   const isSystem = message.sender === "system";
   const type = String(message.type || "text").toLowerCase();
+  const outboundStatus = String(message.deliveryStatus || message.status || "").toLowerCase();
+  const outboundStatusLabel =
+    !isAgent
+      ? ""
+      : outboundStatus === "read"
+        ? "Lida"
+        : outboundStatus === "delivered"
+          ? "Entregue"
+          : outboundStatus === "sent"
+            ? "Enviada"
+            : outboundStatus === "failed"
+              ? "Falhou"
+              : "";
   const preview = getMessagePreview(message);
   const shouldRenderText = !["image", "audio", "document", "video"].includes(type) || !isGeneratedMediaPlaceholder(type, preview);
 
@@ -1042,21 +1061,26 @@ function MessageBubble({
     <div className={cn("flex", isAgent ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[92%] min-w-0 rounded-[20px] border px-4 py-3 text-sm shadow-[0_10px_32px_rgba(0,0,0,0.16)] sm:max-w-[86%] xl:max-w-[78%] 2xl:max-w-[74%]",
+          "max-w-[92%] min-w-0 border px-3.5 py-2.5 text-sm shadow-[0_8px_20px_rgba(17,27,33,0.12)] sm:max-w-[86%] xl:max-w-[78%] 2xl:max-w-[74%]",
           isAgent
-            ? "border-[rgba(37,211,102,0.22)] bg-[linear-gradient(180deg,rgba(37,211,102,0.16),rgba(37,211,102,0.08))]"
+            ? "inbox-message-out rounded-2xl rounded-br-md"
             : isSystem
-              ? "border-amber-300/24 bg-amber-500/10"
-              : "border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.045)]"
+              ? "inbox-message-system mx-auto rounded-2xl text-center"
+              : "inbox-message-in rounded-2xl rounded-bl-md"
         )}
       >
-        <div className="flex items-center gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
+        <div className="flex items-center gap-2 text-[11px] text-current opacity-60">
           <span className="font-semibold uppercase tracking-[0.14em]">
             {isAgent ? "Time" : isSystem ? "Sistema" : "Contato"}
           </span>
+          {outboundStatusLabel ? (
+            <span className="rounded-full border border-current/15 bg-white/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]">
+              {outboundStatusLabel}
+            </span>
+          ) : null}
           {mediaLabel && MediaIcon ? (
             <>
-              <span>•</span>
+              <span>|</span>
               <span className="inline-flex items-center gap-1">
                 <MediaIcon className="h-3.5 w-3.5" />
                 {mediaLabel}
@@ -1068,11 +1092,14 @@ function MessageBubble({
         {type === "audio" ? <AudioAttachment message={message} /> : null}
         {type === "document" ? <DocumentAttachment message={message} /> : null}
         {shouldRenderText ? (
-          <p className="mt-2 whitespace-pre-wrap break-words text-[14px] leading-6 text-[var(--cliente-card-text)]">
+          <p className="mt-1.5 whitespace-pre-wrap break-words text-[14px] leading-6 text-current">
             {preview}
           </p>
         ) : null}
-        <div className="mt-3 flex items-center justify-end gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
+        {isAgent && outboundStatus === "failed" && message.deliveryError ? (
+          <p className="mt-2 text-xs text-rose-100/90">Falha de entrega: {message.deliveryError}</p>
+        ) : null}
+        <div className="mt-2 flex items-center justify-end gap-2 text-[11px] text-current opacity-55">
           <span>{formatDateTime(message.createdAt)}</span>
         </div>
       </div>
@@ -1247,7 +1274,7 @@ export default function ClienteInboxPage() {
           const leadChat = nextChats.find((chat) => chat.leadId === leadIdFromQuery);
           if (leadChat) return leadChat.id;
         }
-        return nextChats[0]?.id || null;
+        return null;
       });
       return nextChats;
     } catch {
@@ -1998,30 +2025,30 @@ export default function ClienteInboxPage() {
         }
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
+            <div className="inline-flex rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
               <button
                 type="button"
                 onClick={() => setExperienceMode("essencial")}
                 className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium transition",
+                  "rounded-md px-3 py-1.5 text-xs font-medium transition",
                   !allowAdvanced
                     ? "bg-[var(--cliente-accent)] text-white"
                     : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
                 )}
               >
-                Modo simples
+                Uso diario
               </button>
               <button
                 type="button"
                 onClick={() => setExperienceMode("completo")}
                 className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium transition",
+                  "rounded-md px-3 py-1.5 text-xs font-medium transition",
                   allowAdvanced
                     ? "bg-[var(--cliente-accent)] text-white"
                     : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
                 )}
               >
-                Modo completo
+                Analise completa
               </button>
             </div>
             {allowAdvanced ? (
@@ -2097,19 +2124,7 @@ export default function ClienteInboxPage() {
             trend="conversas estouradas"
           />
         </section>
-      ) : (
-        <PanelCard className="p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-[var(--cliente-card-text-muted)]">
-              Foco em atendimento: lista de conversas + chat principal. Abra o painel operacional apenas quando precisar.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <StateBadge label={`${inboxStats.unassigned} sem dono`} tone="warning" />
-              <StateBadge label={`${inboxStats.slaBreached} SLA`} tone="danger" />
-            </div>
-          </div>
-        </PanelCard>
-      )}
+      ) : null}
 
       {allowAdvanced && showOpsSummary ? (
         <section className="grid gap-3 xl:grid-cols-5">
@@ -2259,13 +2274,16 @@ export default function ClienteInboxPage() {
 
       <section
         className={cn(
-          "grid min-h-[82vh] min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,340px)_minmax(0,1.7fr)]",
+          "grid min-h-[82vh] min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(320px,380px)_minmax(0,1.7fr)]",
           allowAdvanced
-            ? "2xl:grid-cols-[minmax(280px,340px)_minmax(0,1.8fr)_minmax(280px,332px)]"
-            : "2xl:grid-cols-[minmax(280px,340px)_minmax(0,1.8fr)]"
+            ? "2xl:grid-cols-[minmax(320px,380px)_minmax(0,1.8fr)_minmax(280px,332px)]"
+            : "2xl:grid-cols-[minmax(320px,380px)_minmax(0,1.8fr)]"
         )}
       >
-        <PanelCard className="flex min-h-0 min-w-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)]">
+        <PanelCard className={cn(
+          "inbox-whatsapp-list min-h-0 min-w-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:flex xl:max-h-[calc(100vh-8rem)]",
+          selectedChatId ? "hidden" : "flex"
+        )}>
           <div className="border-b border-[var(--cliente-border)] p-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle title="Conversas" subtitle={`${filteredChats.length} visiveis agora`} />
@@ -2387,7 +2405,7 @@ export default function ClienteInboxPage() {
               ) : null}
             </div>
           </div>
-          <div className="flex-1 space-y-2 overflow-x-hidden overflow-y-auto px-2 pb-3 pt-2 sm:px-3">
+          <div className="flex-1 overflow-x-hidden overflow-y-auto">
             {loadingChats ? (
               <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
@@ -2412,10 +2430,21 @@ export default function ClienteInboxPage() {
           </div>
         </PanelCard>
 
-        <PanelCard className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-          <div className="border-b border-[var(--cliente-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] p-4">
+        <PanelCard className={cn(
+          "min-h-0 min-w-0 flex-col overflow-hidden xl:flex",
+          selectedChatId ? "flex" : "hidden"
+        )}>
+          <div className="inbox-chat-header border-b border-[var(--cliente-border)] p-3 sm:p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex min-w-0 items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedChatId(null)}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)] xl:hidden"
+                  aria-label="Voltar para conversas"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
                 <ContactAvatar
                   name={activeChat?.contactName}
                   phone={activeChat?.contactPhone}
@@ -2431,6 +2460,7 @@ export default function ClienteInboxPage() {
                     <StateBadge label={formatStatusLabel(activeChat?.status)} tone={getStatusTone(activeChat?.status)} />
                     <StateBadge label={activeSla.label} tone={activeSla.breached ? "danger" : "info"} />
                   </div>
+                  {allowAdvanced ? (
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <div className="inline-flex min-w-0 items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1.5">
                       <ContactAvatar
@@ -2449,19 +2479,21 @@ export default function ClienteInboxPage() {
                       </div>
                     </div>
                   </div>
+                  ) : null}
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--cliente-card-text-soft)]">
                     <span>
                       Responsavel: {activeChat?.assignedUserName || activeChat?.ownerName || "Sem atribuicao"}
                     </span>
-                    <span>•</span>
+                    <span>|</span>
                     <span>{formatQueueStatusLabel(activeChat?.queueStatus)}</span>
-                    <span>•</span>
+                    <span>|</span>
                     <span>Ultima atividade {formatRelative(activeChat?.lastMessageTime)}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              {allowAdvanced ? (
+              <div className="hidden flex-wrap gap-2 xl:flex">
                 <button
                   type="button"
                   onClick={() => void handleToggleAi()}
@@ -2503,9 +2535,10 @@ export default function ClienteInboxPage() {
                   Resolver
                 </button>
               </div>
+              ) : null}
             </div>
 
-            {activeLead ? (
+            {allowAdvanced && activeLead ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Contato</p>
@@ -2534,8 +2567,13 @@ export default function ClienteInboxPage() {
             ) : null}
           </div>
 
-          <div className="min-h-[50vh] flex-1 space-y-4 overflow-x-hidden overflow-y-auto bg-[linear-gradient(180deg,rgba(10,18,14,0.96),rgba(11,15,18,0.99)),radial-gradient(circle_at_top_left,rgba(37,211,102,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_26%)] px-3 py-4 sm:px-4 lg:px-5 xl:max-h-[calc(100vh-22rem)]">
-            {loadingMessages ? (
+          <div className="inbox-chat-wall min-h-[58vh] flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4 lg:px-5 xl:max-h-[calc(100vh-14rem)]">
+            {!selectedChatId ? (
+              <EmptyState
+                title="Selecione uma conversa"
+                description="Escolha um contato na lista para abrir o atendimento."
+              />
+            ) : loadingMessages ? (
               <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
@@ -2551,19 +2589,19 @@ export default function ClienteInboxPage() {
             )}
           </div>
 
-          <form onSubmit={handleSend} className="border-t border-[var(--cliente-border)] bg-[rgba(255,255,255,0.02)] p-3">
-            <div className="flex gap-2 rounded-[20px] border border-[rgba(255,255,255,0.10)] bg-[rgba(12,18,16,0.96)] p-2">
+          <form onSubmit={handleSend} className="inbox-chat-composer border-t border-[var(--cliente-border)] p-3">
+            <div className="flex gap-2">
               <input
                 value={messageText}
                 onChange={(event) => setMessageText(event.target.value)}
                 placeholder={canOperate ? "Digite a mensagem manual do time" : "Perfil sem permissao para responder"}
-                className="flex-1 bg-transparent px-2 py-2 text-sm text-[var(--cliente-card-text)] outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+                className="inbox-chat-input flex-1 rounded-full border border-transparent px-4 py-3 text-sm outline-none focus:border-[#25D366]"
                 disabled={!selectedChatId || sending || !canOperate}
               />
               <button
                 type="submit"
                 disabled={!selectedChatId || sending || !messageText.trim() || !canOperate}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
+                className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
               >
                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Enviar
@@ -2629,7 +2667,7 @@ export default function ClienteInboxPage() {
                           </div>
                           <p className="mt-1 text-sm text-[var(--cliente-card-text)]">{item.value}</p>
                           <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">
-                            {humanizeEvidenceSource(item.source)} • {formatDateTime(item.capturedAt)}
+                            {humanizeEvidenceSource(item.source)} | {formatDateTime(item.capturedAt)}
                           </p>
                         </div>
                       ))}

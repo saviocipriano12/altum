@@ -35,7 +35,7 @@ export function ClienteBottomNav() {
   if (!visibleItems.length) return null;
 
   return (
-    <nav className="client-glass fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom)+0.4rem)] z-40 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel)] p-1 shadow-[var(--cliente-shadow-hard)] lg:hidden">
+    <nav className="client-glass fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom)+0.4rem)] z-40 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel)] p-1 shadow-[var(--cliente-shadow-hard)] lg:hidden">
       <ul
         className="grid gap-1"
         style={{ gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))` }}
@@ -48,9 +48,9 @@ export function ClienteBottomNav() {
             <li key={item.href}>
               <Link
                 href={item.href}
-                className={`flex flex-col items-center justify-center rounded-xl px-1 py-2 text-[11px] font-medium transition ${
+                className={`flex min-h-12 flex-col items-center justify-center rounded-lg px-1 py-2 text-[11px] font-medium transition ${
                   active
-                    ? "bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+                    ? "bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)] shadow-[inset_0_0_0_1px_var(--cliente-border-strong)]"
                     : "text-[var(--cliente-text-soft)] hover:bg-[var(--cliente-surface-muted)] hover:text-[var(--cliente-text)]"
                 }`}
               >

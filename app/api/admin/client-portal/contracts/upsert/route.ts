@@ -18,6 +18,8 @@ type Body = {
   autoBillingAdvanceDays?: number;
   autoBillingBillingType?: "PIX" | "BOLETO" | "CREDIT_CARD" | string;
   reminderWhatsAppPhones?: string[] | string;
+  autoSuspendEnabled?: boolean;
+  autoSuspendBusinessDays?: number;
 };
 
 function clean(value: unknown, max = 240) {
@@ -83,6 +85,8 @@ export async function POST(req: Request) {
       autoBillingAdvanceDays: Math.min(15, Math.max(1, Math.round(toNumber(body.autoBillingAdvanceDays, 5)))),
       autoBillingBillingType: normalizeBillingType(body.autoBillingBillingType),
       reminderWhatsAppPhones: parseReminderPhones(body.reminderWhatsAppPhones),
+      autoSuspendEnabled: body.autoSuspendEnabled !== false,
+      autoSuspendBusinessDays: Math.min(10, Math.max(1, Math.round(toNumber(body.autoSuspendBusinessDays, 2)))),
       updatedBy: user.uid,
       updatedByName: user.name,
       updatedAt: FieldValue.serverTimestamp(),

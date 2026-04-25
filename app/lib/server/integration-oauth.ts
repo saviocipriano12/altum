@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 
 export type IntegrationProvider = "meta" | "google";
 export type IntegrationChannelType = "instagram" | "messenger" | "meta_ads" | "google_ads";
+export type MetaOAuthChannelType = Exclude<IntegrationChannelType, "google_ads">;
 
 type StoredOAuthState = {
   provider: IntegrationProvider;
@@ -94,6 +95,72 @@ export function getGoogleAdsEnv() {
     developerToken: clean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN, 300),
     apiVersion: clean(process.env.GOOGLE_ADS_API_VERSION, 20) || "v22",
   };
+}
+
+const DEFAULT_META_OAUTH_SCOPES: Record<MetaOAuthChannelType, string[]> = {
+  instagram: [
+    "pages_show_list",
+    "pages_manage_metadata",
+    "pages_read_engagement",
+    "instagram_basic",
+    "instagram_manage_messages",
+  ],
+  messenger: [
+    "pages_show_list",
+    "pages_manage_metadata",
+    "pages_messaging",
+  ],
+  meta_ads: [
+    "ads_read",
+    "business_management",
+    "leads_retrieval",
+  ],
+};
+
+function normalizeScope(scope: unknown) {
+  return clean(scope, 120).toLowerCase().replace(/[^a-z0-9_]/g, "");
+}
+
+function dedupeScopes(scopes: string[]) {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const scope of scopes) {
+    const normalized = normalizeScope(scope);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    ordered.push(normalized);
+  }
+  return ordered;
+}
+
+function parseScopeList(value: unknown) {
+  return dedupeScopes(
+    String(value || "")
+      .split(/[,\s]+/g)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
+}
+
+export function getMetaOAuthScopes(channelType: MetaOAuthChannelType) {
+  const includeInstagramCommentScope =
+    clean(process.env.META_INCLUDE_INSTAGRAM_COMMENT_SCOPE, 10) === "1" ||
+    clean(process.env.META_INCLUDE_INSTAGRAM_COMMENT_SCOPE, 10).toLowerCase() === "true";
+
+  const envOverrides: Record<MetaOAuthChannelType, string[]> = {
+    instagram: parseScopeList(process.env.META_OAUTH_SCOPES_INSTAGRAM),
+    messenger: parseScopeList(process.env.META_OAUTH_SCOPES_MESSENGER),
+    meta_ads: parseScopeList(process.env.META_OAUTH_SCOPES_META_ADS),
+  };
+
+  const defaultScopes = [...DEFAULT_META_OAUTH_SCOPES[channelType]];
+  if (channelType === "instagram" && includeInstagramCommentScope) {
+    defaultScopes.push("instagram_manage_comments");
+  }
+
+  return envOverrides[channelType].length > 0
+    ? envOverrides[channelType]
+    : dedupeScopes(defaultScopes);
 }
 
 export function isMetaPlatformConfigured() {

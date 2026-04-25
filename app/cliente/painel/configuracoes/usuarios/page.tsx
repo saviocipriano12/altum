@@ -153,7 +153,11 @@ export default function ClienteUsuariosPage() {
           capabilities: inviteForm.capabilities,
         }),
       });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string; inviteLink?: string };
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        inviteLink?: string;
+        inviteLinkWarning?: string | null;
+      };
       if (!res.ok) {
         setError(payload.error || "Falha ao convidar usuario.");
         return;
@@ -169,7 +173,11 @@ export default function ClienteUsuariosPage() {
         capabilities: DEFAULT_CAPABILITIES_BY_ROLE.client_viewer,
       });
       setInviteLink(payload.inviteLink || null);
-      setNotice("Usuario convidado com sucesso.");
+      setNotice(
+        payload.inviteLinkWarning
+          ? "Usuario convidado. Link gerado em modo fallback (sem redirect personalizado)."
+          : "Usuario convidado com sucesso."
+      );
       await loadUsers();
     } catch {
       setError("Falha ao convidar usuario do tenant.");
