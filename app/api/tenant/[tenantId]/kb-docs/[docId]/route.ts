@@ -15,6 +15,15 @@ type Body = {
   mediaMimeType?: string | null;
   mediaSize?: number | null;
   serviceKey?: string | null;
+  productName?: string | null;
+  productCategory?: string | null;
+  targetProfile?: string | null;
+  priceFrom?: number | null;
+  priceTo?: number | null;
+  upsellKeys?: string[] | string;
+  crossSellKeys?: string[] | string;
+  priority?: number | null;
+  availability?: "active" | "seasonal" | "paused" | string | null;
 };
 
 function clean(value: unknown, max = 800) {
@@ -41,6 +50,23 @@ function parseTags(value: unknown) {
   return [] as string[];
 }
 
+function parseList(value: unknown, max = 20) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => clean(item, 80))
+      .filter(Boolean)
+      .slice(0, max);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/,|\n|;|\|/)
+      .map((item) => clean(item, 80))
+      .filter(Boolean)
+      .slice(0, max);
+  }
+  return [] as string[];
+}
+
 function normalizeType(value: unknown): "faq" | "catalog" | "policy" {
   const type = String(value || "faq").toLowerCase();
   if (type === "catalog") return "catalog";
@@ -56,6 +82,16 @@ function normalizeMediaType(value: unknown) {
 
 function numericValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : null;
+}
+
+function priceValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Number(value)) : null;
+}
+
+function normalizeAvailability(value: unknown) {
+  const normalized = clean(value, 30).toLowerCase();
+  if (normalized === "active" || normalized === "seasonal" || normalized === "paused") return normalized;
+  return "active";
 }
 
 async function getDocRef(tenantId: string, docId: string) {
@@ -102,6 +138,15 @@ export async function PATCH(
         mediaMimeType: clean(body.mediaMimeType, 140) || null,
         mediaSize: numericValue(body.mediaSize),
         serviceKey: clean(body.serviceKey, 120) || null,
+        ...(body.productName !== undefined ? { productName: clean(body.productName, 160) || null } : {}),
+        ...(body.productCategory !== undefined ? { productCategory: clean(body.productCategory, 120) || null } : {}),
+        ...(body.targetProfile !== undefined ? { targetProfile: clean(body.targetProfile, 180) || null } : {}),
+        ...(body.priceFrom !== undefined ? { priceFrom: priceValue(body.priceFrom) } : {}),
+        ...(body.priceTo !== undefined ? { priceTo: priceValue(body.priceTo) } : {}),
+        ...(body.upsellKeys !== undefined ? { upsellKeys: parseList(body.upsellKeys, 12) } : {}),
+        ...(body.crossSellKeys !== undefined ? { crossSellKeys: parseList(body.crossSellKeys, 12) } : {}),
+        ...(body.priority !== undefined ? { priority: numericValue(body.priority) } : {}),
+        ...(body.availability !== undefined ? { availability: normalizeAvailability(body.availability) } : {}),
         updatedAt: FieldValue.serverTimestamp(),
         updatedBy: user.uid,
         updatedByName: user.name,

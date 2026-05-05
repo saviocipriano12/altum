@@ -64,6 +64,15 @@ type KbDoc = {
   mediaMimeType?: string | null;
   mediaSize?: number | null;
   serviceKey?: string | null;
+  productName?: string | null;
+  productCategory?: string | null;
+  targetProfile?: string | null;
+  priceFrom?: number | null;
+  priceTo?: number | null;
+  upsellKeys?: string[];
+  crossSellKeys?: string[];
+  priority?: number | null;
+  availability?: "active" | "seasonal" | "paused";
   createdAt?: unknown;
   updatedAt?: unknown;
 };
@@ -552,6 +561,15 @@ export default function ClienteIaPage() {
   const [docMediaMimeType, setDocMediaMimeType] = useState("");
   const [docMediaSize, setDocMediaSize] = useState<number | null>(null);
   const [docServiceKey, setDocServiceKey] = useState("");
+  const [docProductName, setDocProductName] = useState("");
+  const [docProductCategory, setDocProductCategory] = useState("");
+  const [docTargetProfile, setDocTargetProfile] = useState("");
+  const [docPriceFrom, setDocPriceFrom] = useState("");
+  const [docPriceTo, setDocPriceTo] = useState("");
+  const [docUpsellKeys, setDocUpsellKeys] = useState("");
+  const [docCrossSellKeys, setDocCrossSellKeys] = useState("");
+  const [docPriority, setDocPriority] = useState("");
+  const [docAvailability, setDocAvailability] = useState<"active" | "seasonal" | "paused">("active");
   const [uploadingKbMedia, setUploadingKbMedia] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [kbSearch, setKbSearch] = useState("");
@@ -725,7 +743,21 @@ export default function ClienteIaPage() {
       if (kbUsageFilter === "used" && !usedDocIds.has(doc.id)) return false;
       if (kbUsageFilter === "unused" && usedDocIds.has(doc.id)) return false;
       if (!term) return true;
-      return [doc.type, doc.content, ...(doc.tags || [])].join(" ").toLowerCase().includes(term);
+      return [
+        doc.type,
+        doc.content,
+        ...(doc.tags || []),
+        doc.serviceKey,
+        doc.productName,
+        doc.productCategory,
+        doc.targetProfile,
+        ...(doc.upsellKeys || []),
+        ...(doc.crossSellKeys || []),
+        doc.availability,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(term);
     });
   }, [kbDocs, kbSearch, kbTypeFilter, kbUsage, kbUsageFilter]);
 
@@ -1015,6 +1047,70 @@ export default function ClienteIaPage() {
     }
   }
 
+  function parseOptionalNumber(value: string) {
+    const normalized = value.replace(",", ".").trim();
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) return null;
+    return Math.max(0, parsed);
+  }
+
+  function parseOptionalInteger(value: string) {
+    const parsed = parseOptionalNumber(value);
+    if (parsed === null) return null;
+    return Math.round(parsed);
+  }
+
+  function clearCatalogDraft() {
+    setDocProductName("");
+    setDocProductCategory("");
+    setDocTargetProfile("");
+    setDocPriceFrom("");
+    setDocPriceTo("");
+    setDocUpsellKeys("");
+    setDocCrossSellKeys("");
+    setDocPriority("");
+    setDocAvailability("active");
+  }
+
+  function clearKbDocForm() {
+    setEditingDocId(null);
+    setDocType("faq");
+    setDocContent("");
+    setDocTags("");
+    setDocMediaUrl("");
+    setDocMediaType("");
+    setDocMediaTitle("");
+    setDocMediaStoragePath("");
+    setDocMediaMimeType("");
+    setDocMediaSize(null);
+    setDocServiceKey("");
+    clearCatalogDraft();
+  }
+
+  function startEditingDoc(doc: KbDoc) {
+    setEditingDocId(doc.id);
+    setDocType(doc.type);
+    setDocContent(doc.content);
+    setDocTags(doc.tags.join(", "));
+    setDocMediaUrl(doc.mediaUrl || "");
+    setDocMediaType(doc.mediaType || "");
+    setDocMediaTitle(doc.mediaTitle || "");
+    setDocMediaStoragePath(doc.mediaStoragePath || "");
+    setDocMediaMimeType(doc.mediaMimeType || "");
+    setDocMediaSize(doc.mediaSize || null);
+    setDocServiceKey(doc.serviceKey || "");
+    setDocProductName(doc.productName || "");
+    setDocProductCategory(doc.productCategory || "");
+    setDocTargetProfile(doc.targetProfile || "");
+    setDocPriceFrom(typeof doc.priceFrom === "number" ? String(doc.priceFrom) : "");
+    setDocPriceTo(typeof doc.priceTo === "number" ? String(doc.priceTo) : "");
+    setDocUpsellKeys((doc.upsellKeys || []).join(", "));
+    setDocCrossSellKeys((doc.crossSellKeys || []).join(", "));
+    setDocPriority(typeof doc.priority === "number" ? String(doc.priority) : "");
+    setDocAvailability(doc.availability || "active");
+  }
+
   async function handleAddKbDoc(event: FormEvent) {
     event.preventDefault();
     if (!tenant?.tenantId || !docContent.trim() || !canEditKb) return;
@@ -1043,6 +1139,15 @@ export default function ClienteIaPage() {
           mediaMimeType: docMediaMimeType.trim() || null,
           mediaSize: docMediaSize,
           serviceKey: docServiceKey.trim() || null,
+          productName: docType === "catalog" ? docProductName.trim() || null : null,
+          productCategory: docType === "catalog" ? docProductCategory.trim() || null : null,
+          targetProfile: docType === "catalog" ? docTargetProfile.trim() || null : null,
+          priceFrom: docType === "catalog" ? parseOptionalNumber(docPriceFrom) : null,
+          priceTo: docType === "catalog" ? parseOptionalNumber(docPriceTo) : null,
+          upsellKeys: docType === "catalog" ? docUpsellKeys : [],
+          crossSellKeys: docType === "catalog" ? docCrossSellKeys : [],
+          priority: docType === "catalog" ? parseOptionalInteger(docPriority) : null,
+          availability: docType === "catalog" ? docAvailability : "active",
         }),
       });
 
@@ -1052,17 +1157,7 @@ export default function ClienteIaPage() {
         return;
       }
 
-      setDocContent("");
-      setDocTags("");
-      setDocMediaUrl("");
-      setDocMediaType("");
-      setDocMediaTitle("");
-      setDocMediaStoragePath("");
-      setDocMediaMimeType("");
-      setDocMediaSize(null);
-      setDocServiceKey("");
-      setDocType("faq");
-      setEditingDocId(null);
+      clearKbDocForm();
       setSuccess(editingDocId ? "Documento atualizado." : "Documento da base de conhecimento adicionado.");
       await loadData();
     } catch {
@@ -1134,10 +1229,7 @@ export default function ClienteIaPage() {
         return;
       }
       if (editingDocId === docId) {
-        setEditingDocId(null);
-        setDocContent("");
-        setDocTags("");
-        setDocType("faq");
+        clearKbDocForm();
       }
       setSuccess("Documento removido.");
       await loadData();
@@ -2044,7 +2136,13 @@ export default function ClienteIaPage() {
               Tipo
               <select
                 value={docType}
-                onChange={(event) => setDocType(event.target.value as KbDoc["type"])}
+                onChange={(event) => {
+                  const nextType = event.target.value as KbDoc["type"];
+                  setDocType(nextType);
+                  if (nextType !== "catalog") {
+                    clearCatalogDraft();
+                  }
+                }}
                 disabled={!canEditKb}
                 className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
               >
@@ -2067,6 +2165,68 @@ export default function ClienteIaPage() {
             </label>
 
             <Field label="Tags (separadas por virgula)" value={docTags} onChange={setDocTags} placeholder="preco, prazo, onboarding" disabled={!canEditKb} />
+            {docType === "catalog" ? (
+              <div className="space-y-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Campos comerciais do catalogo</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field
+                    label="Nome do produto"
+                    value={docProductName}
+                    onChange={setDocProductName}
+                    placeholder="Plano Growth WhatsApp"
+                    disabled={!canEditKb}
+                  />
+                  <Field
+                    label="Categoria"
+                    value={docProductCategory}
+                    onChange={setDocProductCategory}
+                    placeholder="assinatura, servico, pacote"
+                    disabled={!canEditKb}
+                  />
+                </div>
+                <Field
+                  label="Perfil alvo"
+                  value={docTargetProfile}
+                  onChange={setDocTargetProfile}
+                  placeholder="ecommerce, clinicas, imobiliarias"
+                  disabled={!canEditKb}
+                />
+                <div className="grid gap-3 md:grid-cols-3">
+                  <Field label="Preco inicial" value={docPriceFrom} onChange={setDocPriceFrom} placeholder="297" disabled={!canEditKb} />
+                  <Field label="Preco final" value={docPriceTo} onChange={setDocPriceTo} placeholder="1290" disabled={!canEditKb} />
+                  <Field label="Prioridade" value={docPriority} onChange={setDocPriority} placeholder="80" disabled={!canEditKb} />
+                </div>
+                <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+                  Disponibilidade
+                  <select
+                    value={docAvailability}
+                    onChange={(event) => setDocAvailability(event.target.value as typeof docAvailability)}
+                    disabled={!canEditKb}
+                    className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
+                  >
+                    <option value="active">Ativo</option>
+                    <option value="seasonal">Sazonal</option>
+                    <option value="paused">Pausado</option>
+                  </select>
+                </label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field
+                    label="Upsell (chaves)"
+                    value={docUpsellKeys}
+                    onChange={setDocUpsellKeys}
+                    placeholder="plano_pro, suporte_premium"
+                    disabled={!canEditKb}
+                  />
+                  <Field
+                    label="Cross-sell (chaves)"
+                    value={docCrossSellKeys}
+                    onChange={setDocCrossSellKeys}
+                    placeholder="crm_plus, automacao_followup"
+                    disabled={!canEditKb}
+                  />
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-3 md:grid-cols-2">
               <Field label="Chave do servico" value={docServiceKey} onChange={setDocServiceKey} placeholder="botox, visita_apto, limpeza_pele" disabled={!canEditKb} />
               <Field label="Titulo da midia" value={docMediaTitle} onChange={setDocMediaTitle} placeholder="Resultado botox 30 dias" disabled={!canEditKb} />
@@ -2149,12 +2309,7 @@ export default function ClienteIaPage() {
                 {editingDocId ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      setEditingDocId(null);
-                      setDocType("faq");
-                      setDocContent("");
-                      setDocTags("");
-                    }}
+                    onClick={clearKbDocForm}
                     className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
                   >
                     Cancelar edicao
@@ -2209,19 +2364,7 @@ export default function ClienteIaPage() {
               canEdit={canEditKb}
               canDelete={canManage}
               busyDocId={busyDocId}
-              onEdit={(doc) => {
-                setEditingDocId(doc.id);
-                setDocType(doc.type);
-                setDocContent(doc.content);
-                setDocTags(doc.tags.join(", "));
-                setDocMediaUrl(doc.mediaUrl || "");
-                setDocMediaType(doc.mediaType || "");
-                setDocMediaTitle(doc.mediaTitle || "");
-                setDocMediaStoragePath(doc.mediaStoragePath || "");
-                setDocMediaMimeType(doc.mediaMimeType || "");
-                setDocMediaSize(doc.mediaSize || null);
-                setDocServiceKey(doc.serviceKey || "");
-              }}
+              onEdit={startEditingDoc}
               onDelete={(docId) => void handleDeleteDoc(docId)}
             />
             <DocColumn
@@ -2230,19 +2373,7 @@ export default function ClienteIaPage() {
               canEdit={canEditKb}
               canDelete={canManage}
               busyDocId={busyDocId}
-              onEdit={(doc) => {
-                setEditingDocId(doc.id);
-                setDocType(doc.type);
-                setDocContent(doc.content);
-                setDocTags(doc.tags.join(", "));
-                setDocMediaUrl(doc.mediaUrl || "");
-                setDocMediaType(doc.mediaType || "");
-                setDocMediaTitle(doc.mediaTitle || "");
-                setDocMediaStoragePath(doc.mediaStoragePath || "");
-                setDocMediaMimeType(doc.mediaMimeType || "");
-                setDocMediaSize(doc.mediaSize || null);
-                setDocServiceKey(doc.serviceKey || "");
-              }}
+              onEdit={startEditingDoc}
               onDelete={(docId) => void handleDeleteDoc(docId)}
             />
             <DocColumn
@@ -2251,19 +2382,7 @@ export default function ClienteIaPage() {
               canEdit={canEditKb}
               canDelete={canManage}
               busyDocId={busyDocId}
-              onEdit={(doc) => {
-                setEditingDocId(doc.id);
-                setDocType(doc.type);
-                setDocContent(doc.content);
-                setDocTags(doc.tags.join(", "));
-                setDocMediaUrl(doc.mediaUrl || "");
-                setDocMediaType(doc.mediaType || "");
-                setDocMediaTitle(doc.mediaTitle || "");
-                setDocMediaStoragePath(doc.mediaStoragePath || "");
-                setDocMediaMimeType(doc.mediaMimeType || "");
-                setDocMediaSize(doc.mediaSize || null);
-                setDocServiceKey(doc.serviceKey || "");
-              }}
+              onEdit={startEditingDoc}
               onDelete={(docId) => void handleDeleteDoc(docId)}
             />
           </div>
@@ -2584,6 +2703,21 @@ function DocColumn({
           <article key={doc.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
             <p className="line-clamp-4 text-xs text-[var(--cliente-card-text-muted)]">{doc.content}</p>
             <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">{doc.tags.join(", ") || "sem tags"}</p>
+            {doc.type === "catalog" ? (
+              <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">
+                {[doc.productName, doc.productCategory, doc.targetProfile].filter(Boolean).join(" | ") || "catalogo sem estrutura comercial"}
+              </p>
+            ) : null}
+            {doc.type === "catalog" && (typeof doc.priceFrom === "number" || typeof doc.priceTo === "number") ? (
+              <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">
+                faixa: {typeof doc.priceFrom === "number" ? doc.priceFrom : "-"} ate {typeof doc.priceTo === "number" ? doc.priceTo : "-"}
+              </p>
+            ) : null}
+            {doc.type === "catalog" && (doc.upsellKeys?.length || doc.crossSellKeys?.length) ? (
+              <p className="mt-1 text-[10px] text-[var(--cliente-card-text-soft)]">
+                upsell: {(doc.upsellKeys || []).join(", ") || "-"} | cross: {(doc.crossSellKeys || []).join(", ") || "-"}
+              </p>
+            ) : null}
             {doc.mediaUrl ? (
               <p className="mt-1 text-[10px] text-[var(--cliente-accent)]">
                 {doc.mediaType || "midia"}: {doc.mediaTitle || doc.serviceKey || "asset cadastrado"}

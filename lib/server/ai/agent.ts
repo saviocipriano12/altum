@@ -37,7 +37,12 @@ import {
   isMetaConversationChannelType,
   sendMetaConversationText,
 } from "@/app/lib/server/meta-channel";
-import { getWhatsAppChannelForTenant, sendMetaMediaLinkMessage, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
+import {
+  getWhatsAppChannelForTenant,
+  sendMetaMediaLinkMessage,
+  sendMetaTemplateMessage,
+  sendMetaTextMessage,
+} from "@/app/lib/server/whatsapp-channel";
 import { getTenantSettings, isTenantBillingBlocked } from "@/lib/server/tenant";
 import {
   getBusinessProfile,
@@ -87,6 +92,10 @@ type ChatStateDoc = {
   lastHandoffNotifyRecipients?: number | null;
   lastHandoffNotifySuccessCount?: number | null;
   lastHandoffNotifyFailureCount?: number | null;
+  responseFormatPreference?: "audio" | "text" | null;
+  responseFormatPreferenceUpdatedAt?: unknown;
+  responseFormatPreferenceAskedAt?: unknown;
+  responseFormatPreferenceAskCount?: number | null;
 };
 
 type KbDoc = {
@@ -102,6 +111,15 @@ type KbDoc = {
   mediaMimeType?: string | null;
   mediaSize?: number | null;
   serviceKey?: string | null;
+  productName?: string | null;
+  productCategory?: string | null;
+  targetProfile?: string | null;
+  priceFrom?: number | null;
+  priceTo?: number | null;
+  upsellKeys?: string[];
+  crossSellKeys?: string[];
+  priority?: number | null;
+  availability?: "active" | "seasonal" | "paused";
 };
 
 type ConversationMessage = {
@@ -132,6 +150,10 @@ type TenantAiConfig = {
   handoffNotifyPhones: string[];
   voiceReplyEnabled: boolean;
   voiceReplyVoice: string;
+  whatsappTemplateFollowUpEnabled: boolean;
+  whatsappTemplateFollowUpName: string;
+  whatsappTemplateFollowUpLanguage: string;
+  whatsappTemplateFollowUpParams: string[];
   guardrails: string[];
   mandatoryQuestions: string[];
   escalationTopics: string[];
@@ -486,6 +508,10 @@ export type ChatState = {
   lastHandoffNotifyRecipients?: number | null;
   lastHandoffNotifySuccessCount?: number | null;
   lastHandoffNotifyFailureCount?: number | null;
+  responseFormatPreference?: "audio" | "text" | null;
+  responseFormatPreferenceUpdatedAt?: Date | null;
+  responseFormatPreferenceAskedAt?: Date | null;
+  responseFormatPreferenceAskCount?: number | null;
 };
 
 export function getChatStateDocId(tenantId: string, chatId: string) {
@@ -532,6 +558,118 @@ function normalizeWords(value: string) {
     .filter((word) => word.length > 2);
 }
 
+type ResponseFormatPreference = "audio" | "text";
+
+function normalizeResponsePreferenceText(value: string) {
+  return sanitizeText(value, 260)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferResponseFormatPreference(input: {
+  inboundText: string;
+  messageType?: string | null;
+  previousAskedAt?: Date | null;
+}) {
+  const normalizedType = sanitizeText(input.messageType, 40).toLowerCase();
+  if (normalizedType === "audio") {
+    return { preference: "audio" as ResponseFormatPreference, reason: "inbound_audio" };
+  }
+
+  const text = normalizeResponsePreferenceText(input.inboundText);
+  if (!text) return { preference: null as ResponseFormatPreference | null, reason: "empty_text" };
+
+  const asksAudio =
+    /\b(audio|voz|falado|falar|locucao)\b/.test(text) &&
+    /\b(prefiro|preferi|prefere|quero|manda|mandar|pode|poderia|responde|responder)\b/.test(text);
+  const asksText =
+    /\b(texto|escrito|digitado|mensagem)\b/.test(text) &&
+    /\b(prefiro|preferi|prefere|quero|manda|mandar|pode|poderia|responde|responder)\b/.test(text);
+
+  if (asksAudio) return { preference: "audio" as ResponseFormatPreference, reason: "explicit_audio_preference" };
+  if (asksText) return { preference: "text" as ResponseFormatPreference, reason: "explicit_text_preference" };
+
+  const askedRecently =
+    Boolean(input.previousAskedAt) && Date.now() - (input.previousAskedAt?.getTime() || 0) <= 30 * 60 * 1000;
+  if (askedRecently) {
+    if (/^(sim|pode|claro|fechado|ok|okay|manda|pode mandar)(\s|$)/.test(text)) {
+      return { preference: "audio" as ResponseFormatPreference, reason: "reply_yes_after_audio_offer" };
+    }
+    if (/^(nao|melhor nao|prefiro texto|texto)(\s|$)/.test(text)) {
+      return { preference: "text" as ResponseFormatPreference, reason: "reply_no_after_audio_offer" };
+    }
+  }
+
+  return { preference: null as ResponseFormatPreference | null, reason: "no_preference_signal" };
+}
+
+function shouldOfferResponseFormatChoice(input: {
+  chatState: ChatState;
+  messageType?: string | null;
+  inboundText: string;
+  conversation: ConversationMessage[];
+}) {
+  if (input.chatState.responseFormatPreference) return false;
+  const normalizedType = sanitizeText(input.messageType, 40).toLowerCase();
+  if (!["text", "audio"].includes(normalizedType || "text")) return false;
+  const recentlyAsked =
+    Boolean(input.chatState.responseFormatPreferenceAskedAt) &&
+    Date.now() - (input.chatState.responseFormatPreferenceAskedAt?.getTime() || 0) <= 12 * 60 * 60 * 1000;
+  if (recentlyAsked) return false;
+  if (/\b(audio|voz|texto|escrito)\b/i.test(input.inboundText)) return false;
+
+  const clientTurns = input.conversation.filter((item) => item.sender === "client").length;
+  return clientTurns <= 3;
+}
+
+function shouldProactivelySendVoiceReply(input: {
+  preference: ResponseFormatPreference | null;
+  voiceReplyEnabled: boolean;
+  shouldUseWhatsApp: boolean;
+  serviceWindowClosed: boolean;
+  hasChannel: boolean;
+  hasLeadPhone: boolean;
+  inboundMessageType?: string | null;
+  plannerIntent?: string | null;
+  responseGoal?: string | null;
+  commercialTemperature?: string | null;
+  recommendedOffer?: string | null;
+}) {
+  if (
+    !input.voiceReplyEnabled ||
+    !input.shouldUseWhatsApp ||
+    input.serviceWindowClosed ||
+    !input.hasChannel ||
+    !input.hasLeadPhone
+  ) {
+    return { shouldSend: false, reason: "voice_not_available" };
+  }
+
+  const inboundType = sanitizeText(input.inboundMessageType, 40).toLowerCase();
+  if (inboundType === "audio") return { shouldSend: true, reason: "inbound_audio" };
+  if (input.preference === "text") return { shouldSend: false, reason: "lead_prefers_text" };
+  if (input.preference === "audio") return { shouldSend: true, reason: "lead_prefers_audio" };
+
+  const intent = sanitizeText(input.plannerIntent, 80).toLowerCase();
+  const responseGoal = sanitizeText(input.responseGoal, 80).toLowerCase();
+  const temperature = sanitizeText(input.commercialTemperature, 40).toLowerCase();
+  const hasOffer = Boolean(sanitizeText(input.recommendedOffer, 120));
+
+  const commerciallyGoodMoments =
+    ["objection", "recommend", "next_step", "closing", "proposal"].some((term) => intent.includes(term)) ||
+    ["recommend", "move_to_next_step", "handle_objection"].includes(responseGoal) ||
+    temperature === "hot" ||
+    hasOffer;
+
+  return commerciallyGoodMoments
+    ? { shouldSend: true, reason: "commercial_moment_voice" }
+    : { shouldSend: false, reason: "prefer_text_default" };
+}
+
 function safeLogDocId(tenantId: string, chatId: string, messageId: string) {
   const raw = `${tenantId}_${chatId}_${messageId}`;
   const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -553,6 +691,30 @@ function normalizeMessageType(value: unknown) {
 function numericValue(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseCatalogStringList(value: unknown, maxItems = 12) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeText(item, 120))
+      .filter(Boolean)
+      .slice(0, maxItems);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/,|\n|;|\|/)
+      .map((item) => sanitizeText(item, 120))
+      .filter(Boolean)
+      .slice(0, maxItems);
+  }
+  return [] as string[];
+}
+
+function normalizeCatalogAvailability(value: unknown): KbDoc["availability"] {
+  const normalized = sanitizeText(value, 30).toLowerCase();
+  if (normalized === "seasonal") return "seasonal";
+  if (normalized === "paused") return "paused";
+  return "active";
 }
 
 function summarizeMessageForAgent(data: Record<string, unknown>) {
@@ -642,6 +804,36 @@ function parsePhoneLines(value: unknown, maxItems = 8) {
   ).slice(0, maxItems);
 }
 
+function isWhatsAppServiceWindowClosed(value: unknown) {
+  const lastClientMessageAt = toDate(value);
+  if (!lastClientMessageAt) return true;
+  return Date.now() - lastClientMessageAt.getTime() > 23.5 * 60 * 60 * 1000;
+}
+
+function resolveFollowUpTemplateParams(
+  baseParams: string[],
+  context: { contactName?: unknown; contactPhone?: unknown; tenantName?: unknown }
+) {
+  const firstName =
+    sanitizeText(context.contactName, 120)
+      .split(/\s+/)
+      .filter(Boolean)[0] || "";
+  const phone = normalizePhone(String(context.contactPhone || "")) || "";
+  const tenantName = sanitizeText(context.tenantName, 120);
+
+  return baseParams
+    .map((item) =>
+      item
+        .replace(/\{\{\s*nome\s*\}\}/gi, firstName)
+        .replace(/\{\{\s*first_name\s*\}\}/gi, firstName)
+        .replace(/\{\{\s*telefone\s*\}\}/gi, phone)
+        .replace(/\{\{\s*empresa\s*\}\}/gi, tenantName)
+        .trim()
+    )
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>): TenantAiConfig {
   const ai =
     settings && typeof settings.ai === "object" && settings.ai
@@ -672,6 +864,10 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
     handoffNotifyPhones: parsePhoneLines(ai.handoffNotifyPhones, 8),
     voiceReplyEnabled: ai.voiceReplyEnabled === true,
     voiceReplyVoice: sanitizeText(ai.voiceReplyVoice, 40) || "alloy",
+    whatsappTemplateFollowUpEnabled: ai.whatsappTemplateFollowUpEnabled !== false,
+    whatsappTemplateFollowUpName: sanitizeText(ai.whatsappTemplateFollowUpName, 120) || "follow_up_geral",
+    whatsappTemplateFollowUpLanguage: sanitizeText(ai.whatsappTemplateFollowUpLanguage, 24) || "pt_BR",
+    whatsappTemplateFollowUpParams: parseLines(ai.whatsappTemplateFollowUpParams, 12),
     guardrails: Array.from(new Set([...DEFAULT_GUARDRAILS, ...businessProfile.ai.guardrails, ...parseGuardrails(ai.guardrails)])).slice(0, 24),
     mandatoryQuestions: Array.from(new Set([...businessProfile.ai.mandatoryQuestions, ...parseLines(ai.mandatoryQuestions, 12)])).slice(0, 12),
     escalationTopics: Array.from(new Set([...businessProfile.ai.escalationTopics, ...parseLines(ai.escalationTopics, 12)])).slice(0, 12),
@@ -1087,11 +1283,36 @@ async function fetchKbDocs(
             .map((tag) => sanitizeText(tag, 80))
             .filter(Boolean)
         : [];
+      const productName = sanitizeText(data.productName, 160) || null;
+      const productCategory = sanitizeText(data.productCategory, 120) || null;
+      const targetProfile = sanitizeText(data.targetProfile, 180) || null;
+      const priceFrom = numericValue(data.priceFrom);
+      const priceTo = numericValue(data.priceTo);
+      const availability = normalizeCatalogAvailability(data.availability);
+      const structuredCatalogHeader =
+        type === "catalog"
+          ? [
+              productName ? `produto ${productName}` : "",
+              productCategory ? `categoria ${productCategory}` : "",
+              targetProfile ? `perfil ${targetProfile}` : "",
+              priceFrom || priceTo
+                ? `faixa ${priceFrom ? `R$ ${Math.round(priceFrom)}` : "sob consulta"}${priceTo ? ` a R$ ${Math.round(priceTo)}` : ""}`
+                : "",
+              availability !== "active" ? `status ${availability}` : "",
+            ]
+              .filter(Boolean)
+              .join(" | ")
+          : "";
+      const contentBase = sanitizeText(data.content, 600);
+      const content =
+        type === "catalog" && structuredCatalogHeader
+          ? sanitizeText(`catalog_struct: ${structuredCatalogHeader}. ${contentBase}`, 900)
+          : contentBase;
 
       return {
         id: doc.id,
         type,
-        content: sanitizeText(data.content, 600),
+        content,
         tags,
         mediaUrl: sanitizeText(data.mediaUrl, 1200) || null,
         mediaType: ["image", "video", "document"].includes(sanitizeText(data.mediaType, 40))
@@ -1102,13 +1323,24 @@ async function fetchKbDocs(
         mediaMimeType: sanitizeText(data.mediaMimeType, 120) || null,
         mediaSize: typeof data.mediaSize === "number" && Number.isFinite(data.mediaSize) ? data.mediaSize : null,
         serviceKey: sanitizeText(data.serviceKey, 120) || null,
+        productName,
+        productCategory,
+        targetProfile,
+        priceFrom,
+        priceTo,
+        upsellKeys: parseCatalogStringList(data.upsellKeys, 12),
+        crossSellKeys: parseCatalogStringList(data.crossSellKeys, 12),
+        priority: numericValue(data.priority),
+        availability,
         score: 0,
       };
     })
     .filter((item) => item.content);
 
   const messageWords = normalizeWords(inboundText);
-  const scored = baseDocs
+  const candidateDocs = baseDocs.filter((doc) => doc.availability !== "paused");
+
+  const scored = candidateDocs
     .map((doc) => ({
       ...doc,
       score: scoreKbDoc({
@@ -1205,6 +1437,10 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
       lastHandoffNotifyRecipients: null,
       lastHandoffNotifySuccessCount: null,
       lastHandoffNotifyFailureCount: null,
+      responseFormatPreference: null,
+      responseFormatPreferenceUpdatedAt: null,
+      responseFormatPreferenceAskedAt: null,
+      responseFormatPreferenceAskCount: null,
     };
   }
 
@@ -1287,6 +1523,16 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
         typeof data.lastHandoffNotifyFailureCount === "number" && Number.isFinite(data.lastHandoffNotifyFailureCount)
           ? data.lastHandoffNotifyFailureCount
           : null,
+      responseFormatPreference:
+        data.responseFormatPreference === "audio" || data.responseFormatPreference === "text"
+          ? data.responseFormatPreference
+          : null,
+      responseFormatPreferenceUpdatedAt: toDate(data.responseFormatPreferenceUpdatedAt),
+      responseFormatPreferenceAskedAt: toDate(data.responseFormatPreferenceAskedAt),
+      responseFormatPreferenceAskCount:
+        typeof data.responseFormatPreferenceAskCount === "number" && Number.isFinite(data.responseFormatPreferenceAskCount)
+          ? data.responseFormatPreferenceAskCount
+          : null,
     };
   }
 
@@ -1347,6 +1593,16 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
     lastHandoffNotifyFailureCount:
       typeof data.lastHandoffNotifyFailureCount === "number" && Number.isFinite(data.lastHandoffNotifyFailureCount)
         ? data.lastHandoffNotifyFailureCount
+        : null,
+    responseFormatPreference:
+      data.responseFormatPreference === "audio" || data.responseFormatPreference === "text"
+        ? data.responseFormatPreference
+        : null,
+    responseFormatPreferenceUpdatedAt: toDate(data.responseFormatPreferenceUpdatedAt),
+    responseFormatPreferenceAskedAt: toDate(data.responseFormatPreferenceAskedAt),
+    responseFormatPreferenceAskCount:
+      typeof data.responseFormatPreferenceAskCount === "number" && Number.isFinite(data.responseFormatPreferenceAskCount)
+        ? data.responseFormatPreferenceAskCount
         : null,
   };
 }
@@ -2586,7 +2842,7 @@ async function addMessage(input: {
   tenantId: string;
   text: string;
   sender: "agent" | "system";
-  type?: "text" | "audio" | "image" | "video" | "document";
+  type?: "text" | "audio" | "image" | "video" | "document" | "template";
   channelPhoneNumberId?: string;
   channel?: string;
   senderId?: string;
@@ -2596,6 +2852,9 @@ async function addMessage(input: {
   mediaMimeType?: string | null;
   mediaSize?: number | null;
   metaMessageId?: string | null;
+  templateName?: string | null;
+  templateLanguage?: string | null;
+  templateParams?: string[] | null;
 }) {
   const cleanText = sanitizeText(input.text, 1800);
   if (!cleanText && !["audio", "image", "video", "document"].includes(String(input.type || ""))) return;
@@ -2617,6 +2876,9 @@ async function addMessage(input: {
       mediaMimeType: input.mediaMimeType || null,
       mediaSize: typeof input.mediaSize === "number" && Number.isFinite(input.mediaSize) ? input.mediaSize : null,
       metaMessageId: input.metaMessageId || null,
+      templateName: input.templateName || null,
+      templateLanguage: input.templateLanguage || null,
+      templateParams: Array.isArray(input.templateParams) ? input.templateParams.slice(0, 20) : null,
       createdAt: FieldValue.serverTimestamp(),
     }),
     adminDb.collection("chats").doc(input.chatId).set(
@@ -2699,6 +2961,8 @@ function selectMediaDocForLead(input: {
   inboundText: string;
   kbDocs: KbDoc[];
   conversation: ConversationMessage[];
+  recommendedOffer?: string | null;
+  commercialTemperature?: string | null;
 }) {
   const asksForMedia = textHasAny(input.inboundText, [
     "foto",
@@ -2715,7 +2979,10 @@ function selectMediaDocForLead(input: {
     "prova",
     "exemplo",
   ]);
-  if (!asksForMedia) return null;
+  const normalizedOffer = normalizeComparable(sanitizeText(input.recommendedOffer, 160));
+  const commercialTemperature = sanitizeText(input.commercialTemperature, 40).toLowerCase();
+  const proactiveCommercialSend = Boolean(normalizedOffer || commercialTemperature === "hot");
+  if (!asksForMedia && !proactiveCommercialSend) return null;
 
   const alreadySent = new Set(
     input.conversation
@@ -2727,8 +2994,14 @@ function selectMediaDocForLead(input: {
 
   return (
     input.kbDocs
-      .filter((doc) => doc.mediaUrl && doc.mediaType && !alreadySent.has(doc.mediaUrl))
+      .filter((doc) => {
+        if (!doc.mediaUrl || !doc.mediaType || alreadySent.has(doc.mediaUrl)) return false;
+        return doc.availability !== "paused";
+      })
       .map((doc) => {
+        const productWords = normalizeWords(
+          [doc.productName, doc.productCategory, doc.serviceKey, ...(doc.tags || [])].filter(Boolean).join(" ")
+        );
         const mediaWords = [
           ...normalizeWords(doc.serviceKey || ""),
           ...normalizeWords(doc.mediaTitle || ""),
@@ -2736,7 +3009,25 @@ function selectMediaDocForLead(input: {
           ...normalizeWords(doc.content),
         ];
         const overlap = mediaWords.filter((word) => inboundWords.has(word)).length;
-        return { doc, score: doc.score + overlap * 0.4 };
+        const offerMatch = normalizedOffer
+          ? [doc.productName, doc.serviceKey, doc.content]
+              .filter(Boolean)
+              .map((item) => normalizeComparable(String(item || "")))
+              .some((item) => item.includes(normalizedOffer) || normalizedOffer.includes(item))
+          : false;
+        const productOverlap = productWords.filter((word) => inboundWords.has(word)).length;
+        const catalogPriority = typeof doc.priority === "number" ? Math.max(0, Math.min(10, doc.priority)) : 0;
+        const catalogBoost = asksForMedia ? 0 : proactiveCommercialSend ? 1.25 : 0;
+        return {
+          doc,
+          score:
+            doc.score +
+            overlap * 0.4 +
+            productOverlap * 0.5 +
+            (offerMatch ? 2 : 0) +
+            catalogPriority * 0.08 +
+            catalogBoost,
+        };
       })
       .sort((a, b) => b.score - a.score)[0]?.doc || null
   );
@@ -2908,6 +3199,191 @@ export function groundRecommendedOffer(input: {
   }
 
   return allowedOffers[0] || "diagnostico comercial e marketing";
+}
+
+type CommercialOfferBundle = {
+  primaryOffer: string | null;
+  upsellOffer: string | null;
+  crossSellOffer: string | null;
+  primaryDocId: string | null;
+  rationale: string[];
+};
+
+function parseBudgetMaxSignal(value: string) {
+  const normalized = sanitizeText(value, 200).toLowerCase();
+  if (!normalized) return null;
+  const matches = Array.from(normalized.matchAll(/(\d[\d\.,]*)\s*(k|mil)?/g));
+  if (!matches.length) return null;
+
+  let maxValue = 0;
+  for (const match of matches) {
+    const raw = String(match[1] || "").replace(/\./g, "").replace(",", ".");
+    const base = Number(raw);
+    if (!Number.isFinite(base) || base <= 0) continue;
+    const suffix = String(match[2] || "").trim();
+    const multiplier = suffix === "k" || suffix === "mil" ? 1000 : 1;
+    const amount = base * multiplier;
+    if (amount > maxValue) maxValue = amount;
+  }
+
+  return maxValue > 0 ? maxValue : null;
+}
+
+function recommendCommercialOffers(input: {
+  kbDocs: KbDoc[];
+  inboundText: string;
+  extractedFields?: Record<string, string> | null;
+  leadMemory: AltumLeadMemory | null;
+  plannerRecommendedOffer?: string | null;
+  commercialTemperature?: string | null;
+  stageAfter?: string | null;
+}) {
+  const catalogDocs = input.kbDocs.filter((doc) => doc.type === "catalog" && doc.availability !== "paused");
+  if (!catalogDocs.length) {
+    return {
+      primaryOffer: sanitizeText(input.plannerRecommendedOffer, 160) || null,
+      upsellOffer: null,
+      crossSellOffer: null,
+      primaryDocId: null,
+      rationale: ["no_catalog_docs"],
+    } satisfies CommercialOfferBundle;
+  }
+
+  const preferenceSignal = sanitizeText(
+    input.plannerRecommendedOffer ||
+      input.extractedFields?.serviceInterest ||
+      input.extractedFields?.offer ||
+      input.leadMemory?.recommendedOffer,
+    180
+  );
+  const businessSignal = sanitizeText(
+    input.extractedFields?.businessType || input.extractedFields?.niche || input.leadMemory?.businessType,
+    140
+  );
+  const goalSignal = sanitizeText(input.extractedFields?.primaryGoal || input.leadMemory?.primaryGoal, 180);
+  const inboundSignal = sanitizeText(input.inboundText, 300);
+  const stageSignal = sanitizeText(input.stageAfter, 60).toLowerCase();
+  const budgetSignal = sanitizeText(input.extractedFields?.budgetBand || input.leadMemory?.budgetBand, 120);
+  const budgetMax = parseBudgetMaxSignal(budgetSignal);
+  const isHot = sanitizeText(input.commercialTemperature, 40).toLowerCase() === "hot";
+
+  const hasMatch = (left: string, right: string) => {
+    const a = normalizeComparable(left);
+    const b = normalizeComparable(right);
+    if (!a || !b) return false;
+    return a.includes(b) || b.includes(a);
+  };
+
+  const describeDoc = (doc: KbDoc) =>
+    sanitizeText(doc.productName || doc.serviceKey || doc.mediaTitle || doc.content, 160) || "oferta";
+
+  const ranked = catalogDocs
+    .map((doc) => {
+      const corpus = [
+        doc.productName,
+        doc.productCategory,
+        doc.targetProfile,
+        doc.serviceKey,
+        doc.content,
+        ...(doc.tags || []),
+      ]
+        .filter(Boolean)
+        .join(" ");
+      let score = doc.score;
+      score += (typeof doc.priority === "number" ? Math.max(0, Math.min(10, doc.priority)) : 0) * 0.12;
+      if (doc.availability === "seasonal") score -= 0.2;
+
+      if (preferenceSignal && hasMatch(corpus, preferenceSignal)) score += 2.2;
+      if (businessSignal && hasMatch(doc.targetProfile || corpus, businessSignal)) score += 1.1;
+      if (goalSignal && hasMatch(corpus, goalSignal)) score += 0.9;
+      if (inboundSignal && hasMatch(corpus, inboundSignal)) score += 0.7;
+      if (isHot) score += 0.45;
+      if (stageSignal === "recommendation" || stageSignal === "objection_handling") score += 0.35;
+
+      if (budgetMax && typeof doc.priceFrom === "number" && doc.priceFrom > 0) {
+        if (doc.priceFrom <= budgetMax * 1.2) score += 0.8;
+        else if (doc.priceFrom > budgetMax * 1.8) score -= 0.8;
+      }
+
+      return { doc, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const primary = ranked[0]?.doc || null;
+  if (!primary) {
+    return {
+      primaryOffer: sanitizeText(input.plannerRecommendedOffer, 160) || null,
+      upsellOffer: null,
+      crossSellOffer: null,
+      primaryDocId: null,
+      rationale: ["catalog_rank_empty"],
+    } satisfies CommercialOfferBundle;
+  }
+
+  const docsByKey = new Map<string, KbDoc>();
+  for (const doc of catalogDocs) {
+    const keys = [doc.id, doc.serviceKey, doc.productName, doc.mediaTitle]
+      .map((value) => normalizeComparable(String(value || "")))
+      .filter(Boolean);
+    for (const key of keys) {
+      if (!docsByKey.has(key)) docsByKey.set(key, doc);
+    }
+  }
+  const resolveByKeys = (keys: string[] | undefined) => {
+    if (!Array.isArray(keys) || !keys.length) return null;
+    for (const raw of keys) {
+      const key = normalizeComparable(raw);
+      if (!key) continue;
+      const direct = docsByKey.get(key);
+      if (direct) return direct;
+      const fuzzy = catalogDocs.find((doc) => {
+        const corpus = normalizeComparable([doc.serviceKey, doc.productName, doc.mediaTitle].join(" "));
+        if (!corpus) return false;
+        return corpus.includes(key) || key.includes(corpus);
+      });
+      if (fuzzy) return fuzzy;
+    }
+    return null;
+  };
+
+  const higherPriced = ranked
+    .map((item) => item.doc)
+    .filter(
+      (doc) =>
+        doc.id !== primary.id &&
+        typeof doc.priceFrom === "number" &&
+        typeof primary.priceFrom === "number" &&
+        doc.priceFrom > primary.priceFrom
+    );
+  const adjacent = ranked
+    .map((item) => item.doc)
+    .filter((doc) => doc.id !== primary.id)
+    .slice(0, 5);
+
+  const upsellDoc =
+    resolveByKeys(primary.upsellKeys) || (isHot || budgetMax ? higherPriced[0] || null : null) || adjacent[0] || null;
+  const crossSellDoc =
+    resolveByKeys(primary.crossSellKeys) ||
+    adjacent.find(
+      (doc) =>
+        doc.id !== upsellDoc?.id &&
+        normalizeComparable(String(doc.productCategory || "")) !==
+          normalizeComparable(String(primary.productCategory || ""))
+    ) ||
+    adjacent.find((doc) => doc.id !== upsellDoc?.id) ||
+    null;
+
+  return {
+    primaryOffer: describeDoc(primary),
+    upsellOffer: upsellDoc ? describeDoc(upsellDoc) : null,
+    crossSellOffer: crossSellDoc ? describeDoc(crossSellDoc) : null,
+    primaryDocId: primary.id,
+    rationale: [
+      preferenceSignal ? "matched_preference_signal" : "no_preference_signal",
+      isHot ? "hot_lead_boost" : "default_temperature",
+      budgetMax ? `budget_signal_${Math.round(budgetMax)}` : "no_budget_signal",
+    ],
+  } satisfies CommercialOfferBundle;
 }
 
 export function hardenPlannerDecision(input: {
@@ -3590,6 +4066,16 @@ export async function handleIncomingMessage(
       learningHints: tenantAiWithLearning.learningHints,
     },
   });
+  const commercialOfferBundle = recommendCommercialOffers({
+    kbDocs,
+    inboundText,
+    extractedFields,
+    leadMemory,
+    plannerRecommendedOffer: plannerDecision.recommendedOffer || null,
+    commercialTemperature: plannerDecision.commercialTemperature || null,
+    stageAfter: plannerDecision.stateAfter || null,
+  });
+  const recommendedOfferResolved = commercialOfferBundle.primaryOffer || plannerDecision.recommendedOffer || null;
   const nextAction = plannerDecision.nextAction || choice.nextAction;
   const effectiveProvider = llmResult?.provider || runtimeProvider;
   const effectiveModel = llmResult?.model || runtimeModel;
@@ -3656,7 +4142,7 @@ export async function handleIncomingMessage(
       stateBefore: plannerDecision.stateBefore,
       stateAfter: plannerDecision.stateAfter,
       responseGoal: plannerDecision.responseGoal,
-      recommendedOffer: plannerDecision.recommendedOffer || null,
+      recommendedOffer: recommendedOfferResolved,
       objectionType: plannerDecision.objectionType || null,
       commercialTemperature: plannerDecision.commercialTemperature || null,
     });
@@ -3738,6 +4224,32 @@ export async function handleIncomingMessage(
       responseStyle: aiConfig.responseStyle,
     });
     return { decision: "skip", reason: "lead_external_id_missing" };
+  }
+
+  const inferredResponsePreference = inferResponseFormatPreference({
+    inboundText,
+    messageType,
+    previousAskedAt: chatState.responseFormatPreferenceAskedAt || null,
+  });
+  const resolvedResponsePreference: ResponseFormatPreference | null =
+    inferredResponsePreference.preference || chatState.responseFormatPreference || null;
+  if (
+    inferredResponsePreference.preference &&
+    inferredResponsePreference.preference !== chatState.responseFormatPreference
+  ) {
+    await adminDb
+      .collection("chat_state")
+      .doc(getChatStateDocId(tenantId, chatId))
+      .set(
+        {
+          tenantId,
+          chatId,
+          responseFormatPreference: inferredResponsePreference.preference,
+          responseFormatPreferenceUpdatedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
   }
 
   if (choice.decision === "handoff" || plannerDecision.decision === "handoff") {
@@ -3981,6 +4493,7 @@ export async function handleIncomingMessage(
       outboundText: leadAck,
       toolCalls: [
         "kb_docs",
+        "offer_engine",
         "chat_state",
         "tenant_settings.ai",
         shouldUseWhatsApp ? "whatsapp_send" : isMetaConversation ? "meta_send" : "site_chat_reply",
@@ -4002,7 +4515,7 @@ export async function handleIncomingMessage(
       stateBefore: plannerDecision.stateBefore,
       stateAfter: plannerDecision.stateAfter,
       responseGoal: plannerDecision.responseGoal,
-      recommendedOffer: plannerDecision.recommendedOffer || null,
+      recommendedOffer: recommendedOfferResolved,
       objectionType: plannerDecision.objectionType || null,
       commercialTemperature: plannerDecision.commercialTemperature || null,
       llmTurnGoal: llmResult?.turnGoal || null,
@@ -4050,7 +4563,12 @@ export async function handleIncomingMessage(
         stateBefore: plannerDecision.stateBefore,
         stateAfter: plannerDecision.stateAfter,
         responseGoal: plannerDecision.responseGoal,
-        recommendedOffer: plannerDecision.recommendedOffer || null,
+        recommendedOffer: recommendedOfferResolved,
+        offerBundlePrimary: commercialOfferBundle.primaryOffer,
+        offerBundleUpsell: commercialOfferBundle.upsellOffer,
+        offerBundleCrossSell: commercialOfferBundle.crossSellOffer,
+        offerBundlePrimaryDocId: commercialOfferBundle.primaryDocId,
+        offerBundleRationale: commercialOfferBundle.rationale,
         objectionType: plannerDecision.objectionType || null,
         commercialTemperature: plannerDecision.commercialTemperature || null,
         conversationLedBy: choice.ledBy,
@@ -4074,7 +4592,7 @@ export async function handleIncomingMessage(
       intent: plannerDecision.intent,
       responseGoal: plannerDecision.responseGoal,
       stateAfter: plannerDecision.stateAfter,
-      recommendedOffer: plannerDecision.recommendedOffer || null,
+      recommendedOffer: recommendedOfferResolved,
       objectionType: plannerDecision.objectionType || null,
       nextAction,
       confidence: Math.max(choice.confidence, plannerDecision.confidence || 0),
@@ -4106,7 +4624,7 @@ export async function handleIncomingMessage(
       currentChannels: extractedFields?.currentChannels || leadMemory?.currentChannels || null,
       dominantObjection: plannerDecision.objectionType || leadMemory?.dominantObjection || null,
       openQuestion: leadAck,
-      recommendedOffer: plannerDecision.recommendedOffer || null,
+      recommendedOffer: recommendedOfferResolved,
       nextAction,
     });
 
@@ -4123,7 +4641,7 @@ export async function handleIncomingMessage(
       stage: plannerDecision.stateAfter,
       intent: plannerDecision.intent,
       responseGoal: plannerDecision.responseGoal,
-      recommendedOffer: plannerDecision.recommendedOffer || null,
+      recommendedOffer: recommendedOfferResolved,
       objectionType: plannerDecision.objectionType || null,
       turnGoal: llmResult?.turnGoal || null,
       memorySummary: llmResult?.memorySummary || null,
@@ -4137,7 +4655,7 @@ export async function handleIncomingMessage(
         leadId,
         extractedFields,
         nextAction,
-        recommendedOffer: plannerDecision.recommendedOffer || null,
+        recommendedOffer: recommendedOfferResolved,
         dominantIntent: plannerDecision.intent,
         dominantObjection: plannerDecision.objectionType || null,
         preferredName: preferredContactName || null,
@@ -4168,7 +4686,7 @@ export async function handleIncomingMessage(
         contactName: preferredContactName || null,
       }),
     }) || "Perfeito. Me conta so mais um ponto rapido para eu te orientar melhor.";
-  const secondaryResponseText = buildSecondaryCommercialNudge({
+  let secondaryResponseText = buildSecondaryCommercialNudge({
     inboundText,
     responseText,
     messageType: sanitizeText(incomingMessage.type, 40) || null,
@@ -4176,7 +4694,24 @@ export async function handleIncomingMessage(
     conversation,
     mandatoryQuestions: aiConfig.mandatoryQuestions,
   });
-  const finalOutboundText = secondaryResponseText ? `${responseText}\n${secondaryResponseText}` : responseText;
+  const shouldAskResponseFormatNow = shouldOfferResponseFormatChoice({
+    chatState,
+    messageType,
+    inboundText,
+    conversation,
+  });
+  const responseFormatPrompt = shouldAskResponseFormatNow
+    ? String(messageType || "").toLowerCase() === "audio"
+      ? "Se voce preferir, eu posso te responder em audio ou em texto. Qual formato voce prefere?"
+      : "Se preferir, eu tambem posso te explicar em um audio curto. Voce prefere resposta em audio ou em texto?"
+    : "";
+  const responseFormatPromptSent = Boolean(responseFormatPrompt);
+  if (responseFormatPrompt) {
+    secondaryResponseText = secondaryResponseText
+      ? `${secondaryResponseText}\n${responseFormatPrompt}`
+      : responseFormatPrompt;
+  }
+  let finalOutboundText = secondaryResponseText ? `${responseText}\n${secondaryResponseText}` : responseText;
   const openQuestionForMemory = secondaryResponseText || responseText;
   const conversationSummary = buildPersistentConversationSummary({
     llmMemorySummary: llmResult?.memorySummary || null,
@@ -4189,7 +4724,7 @@ export async function handleIncomingMessage(
     currentChannels: extractedFields?.currentChannels || leadMemory?.currentChannels || null,
     dominantObjection: plannerDecision.objectionType || leadMemory?.dominantObjection || null,
     openQuestion: openQuestionForMemory,
-    recommendedOffer: plannerDecision.recommendedOffer || null,
+    recommendedOffer: recommendedOfferResolved,
     nextAction,
   });
   const quality = scoreAltumConversationQuality({
@@ -4199,12 +4734,137 @@ export async function handleIncomingMessage(
     runtimeState,
   });
 
+  const whatsappServiceWindowClosed = shouldUseWhatsApp
+    ? isWhatsAppServiceWindowClosed(chatData.lastClientMessageAt)
+    : false;
+  let sentAsTemplate = false;
+  let sentTemplateName: string | null = null;
+  let sentTemplateLanguage: string | null = null;
+  let sentTemplateParams: string[] = [];
+  let sentTemplateMetaMessageId: string | null = null;
+  const voiceReplyDecision = shouldProactivelySendVoiceReply({
+    preference: resolvedResponsePreference,
+    voiceReplyEnabled: aiConfig.voiceReplyEnabled === true,
+    shouldUseWhatsApp,
+    serviceWindowClosed: whatsappServiceWindowClosed,
+    hasChannel: Boolean(whatsappChannel),
+    hasLeadPhone: Boolean(leadPhone),
+    inboundMessageType: incomingMessage.type as string | null,
+    plannerIntent: plannerDecision.intent,
+    responseGoal: plannerDecision.responseGoal,
+    commercialTemperature: plannerDecision.commercialTemperature,
+    recommendedOffer: recommendedOfferResolved,
+  });
+  const shouldSendVoiceReply = voiceReplyDecision.shouldSend;
+  const voiceReplyDecisionReason = voiceReplyDecision.reason;
+  let voiceReplySent = false;
+  let voiceReplyError: string | null = null;
+
   if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
-    await sendMetaTextMessage({
-      channel: whatsappChannel,
-      to: leadPhone,
-      text: responseText,
-    });
+    if (whatsappServiceWindowClosed) {
+      if (!aiConfig.whatsappTemplateFollowUpEnabled) {
+        throw new Error(
+          "Janela de 24h encerrada e follow-up automatico por template esta desativado na configuracao de IA."
+        );
+      }
+      if (!aiConfig.whatsappTemplateFollowUpName) {
+        throw new Error(
+          "Janela de 24h encerrada e nenhum template padrao foi configurado para follow-up automatico da IA."
+        );
+      }
+
+      sentTemplateName = aiConfig.whatsappTemplateFollowUpName;
+      sentTemplateLanguage = aiConfig.whatsappTemplateFollowUpLanguage || "pt_BR";
+      sentTemplateParams = resolveFollowUpTemplateParams(aiConfig.whatsappTemplateFollowUpParams, {
+        contactName: chatData.contactName,
+        contactPhone: chatData.contactPhone,
+        tenantName: tenantSettings?.name,
+      });
+      let templatePayload: { messages?: Array<{ id?: string }> } | null = null;
+      try {
+        templatePayload = await sendMetaTemplateMessage({
+          channel: whatsappChannel,
+          to: leadPhone,
+          templateName: sentTemplateName,
+          languageCode: sentTemplateLanguage,
+          bodyParams: sentTemplateParams,
+        });
+      } catch (error) {
+        if (leadId) {
+          await createAiInternalNotificationOnce({
+            tenantId,
+            chatId,
+            leadId,
+            type: "followup_template_send_failed",
+            severity: "high",
+            title: "Falha no follow-up automatico por template",
+            detail: `A IA tentou enviar o template ${sentTemplateName} (${sentTemplateLanguage}) e falhou: ${
+              error instanceof Error ? error.message : "erro desconhecido"
+            }`,
+            dedupeWindowMinutes: 240,
+          });
+        }
+        throw error;
+      }
+      sentTemplateMetaMessageId = String(templatePayload?.messages?.[0]?.id || "").trim() || null;
+      sentAsTemplate = true;
+      finalOutboundText = sentTemplateParams.length
+        ? `Template enviado: ${sentTemplateName}\nVariaveis: ${sentTemplateParams.join(" | ")}`
+        : `Template enviado: ${sentTemplateName}`;
+    } else {
+      if (shouldSendVoiceReply) {
+        try {
+          const voiceSent = await sendAltumVoiceReply({
+            channel: whatsappChannel,
+            to: leadPhone,
+            text: finalOutboundText,
+            tenantId,
+            chatId,
+            voice: aiConfig.voiceReplyVoice,
+          });
+
+          await addMessage({
+            chatId,
+            tenantId,
+            text: "[Resposta em audio enviada]",
+            sender: "agent",
+            type: "audio",
+            channel: chatChannel,
+            channelPhoneNumberId: whatsappChannel.phoneNumberId,
+            senderName: agentDisplayName,
+            mediaUrl: voiceSent.signedUrl,
+            mediaName: "Resposta em audio ALTUM",
+            mediaMimeType: voiceSent.contentType,
+            metaMessageId: voiceSent.metaMessageId,
+          });
+          voiceReplySent = true;
+        } catch (error) {
+          voiceReplyError =
+            error instanceof Error ? sanitizeText(error.message, 220) : "voice_reply_send_failed";
+          console.error("Falha ao enviar resposta em voz da IA:", error);
+          if (leadId) {
+            await createAiInternalNotificationOnce({
+              tenantId,
+              chatId,
+              leadId,
+              type: "voice_reply_send_failed",
+              severity: "high",
+              title: "Falha ao enviar resposta em audio",
+              detail: `A IA tentou responder com audio e falhou. Motivo: ${voiceReplyError}.`,
+              dedupeWindowMinutes: 180,
+            });
+          }
+        }
+      }
+
+      if (!voiceReplySent) {
+        await sendMetaTextMessage({
+          channel: whatsappChannel,
+          to: leadPhone,
+          text: responseText,
+        });
+      }
+    }
   } else if (isMetaConversation && metaChannel && metaRecipientId) {
     await sendMetaConversationText({
       channel: metaChannel,
@@ -4213,17 +4873,24 @@ export async function handleIncomingMessage(
     });
   }
 
-  await addMessage({
-    chatId,
-    tenantId,
-    text: responseText,
-    sender: "agent",
-    channel: chatChannel,
-    channelPhoneNumberId: whatsappChannel?.phoneNumberId,
-    senderName: agentDisplayName,
-  });
+  if (sentAsTemplate || !voiceReplySent) {
+    await addMessage({
+      chatId,
+      tenantId,
+      text: sentAsTemplate ? finalOutboundText : responseText,
+      sender: "agent",
+      type: sentAsTemplate ? "template" : "text",
+      channel: chatChannel,
+      channelPhoneNumberId: whatsappChannel?.phoneNumberId,
+      senderName: agentDisplayName,
+      metaMessageId: sentTemplateMetaMessageId,
+      templateName: sentTemplateName,
+      templateLanguage: sentTemplateLanguage,
+      templateParams: sentTemplateParams,
+    });
+  }
 
-  if (secondaryResponseText) {
+  if (secondaryResponseText && !sentAsTemplate && !voiceReplySent) {
     if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
       await sendMetaTextMessage({
         channel: whatsappChannel,
@@ -4249,9 +4916,15 @@ export async function handleIncomingMessage(
     });
   }
 
-  const mediaDoc = selectMediaDocForLead({ inboundText, kbDocs, conversation });
+  const mediaDoc = selectMediaDocForLead({
+    inboundText,
+    kbDocs,
+    conversation,
+    recommendedOffer: recommendedOfferResolved,
+    commercialTemperature: plannerDecision.commercialTemperature || null,
+  });
   let mediaAssetSent = false;
-  if (mediaDoc?.mediaUrl && mediaDoc.mediaType) {
+  if (mediaDoc?.mediaUrl && mediaDoc.mediaType && !whatsappServiceWindowClosed) {
     const mediaCaption =
       sanitizeText(mediaDoc.mediaTitle, 180) ||
       sanitizeText(mediaDoc.content, 180) ||
@@ -4294,43 +4967,20 @@ export async function handleIncomingMessage(
     }
   }
 
-  let voiceReplySent = false;
-  const shouldSendVoiceReply =
-    aiConfig.voiceReplyEnabled === true &&
-    shouldUseWhatsApp &&
-    Boolean(whatsappChannel) &&
-    Boolean(leadPhone) &&
-    String(incomingMessage.type || "").toLowerCase() === "audio";
-
-  if (shouldSendVoiceReply && whatsappChannel && leadPhone) {
-    try {
-      const voiceSent = await sendAltumVoiceReply({
-        channel: whatsappChannel,
-        to: leadPhone,
-        text: responseText,
-        tenantId,
-        chatId,
-        voice: aiConfig.voiceReplyVoice,
-      });
-
-      await addMessage({
-        chatId,
-        tenantId,
-        text: "[Resposta em audio enviada]",
-        sender: "agent",
-        type: "audio",
-        channel: chatChannel,
-        channelPhoneNumberId: whatsappChannel.phoneNumberId,
-        senderName: agentDisplayName,
-        mediaUrl: voiceSent.signedUrl,
-        mediaName: "Resposta em audio ALTUM",
-        mediaMimeType: voiceSent.contentType,
-        metaMessageId: voiceSent.metaMessageId,
-      });
-      voiceReplySent = true;
-    } catch (error) {
-      console.error("Falha ao enviar resposta em voz da IA:", error);
-    }
+  if (responseFormatPromptSent) {
+    await adminDb
+      .collection("chat_state")
+      .doc(getChatStateDocId(tenantId, chatId))
+      .set(
+        {
+          tenantId,
+          chatId,
+          responseFormatPreferenceAskedAt: FieldValue.serverTimestamp(),
+          responseFormatPreferenceAskCount: FieldValue.increment(1),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
   }
 
   const executedActions = await executeAltumAgentActions({
@@ -4359,6 +5009,7 @@ export async function handleIncomingMessage(
     outboundText: finalOutboundText,
     toolCalls: [
       "kb_docs",
+      "offer_engine",
       "chat_state",
       "tenant_settings.ai",
       shouldUseWhatsApp ? "whatsapp_send" : isMetaConversation ? "meta_send" : "site_chat_reply",
@@ -4379,7 +5030,7 @@ export async function handleIncomingMessage(
     stateBefore: plannerDecision.stateBefore,
     stateAfter: plannerDecision.stateAfter,
     responseGoal: plannerDecision.responseGoal,
-    recommendedOffer: plannerDecision.recommendedOffer || null,
+    recommendedOffer: recommendedOfferResolved,
     objectionType: plannerDecision.objectionType || null,
     commercialTemperature: plannerDecision.commercialTemperature || null,
     llmTurnGoal: llmResult?.turnGoal || null,
@@ -4427,7 +5078,12 @@ export async function handleIncomingMessage(
       stateBefore: plannerDecision.stateBefore,
       stateAfter: plannerDecision.stateAfter,
       responseGoal: plannerDecision.responseGoal,
-      recommendedOffer: plannerDecision.recommendedOffer || null,
+      recommendedOffer: recommendedOfferResolved,
+      offerBundlePrimary: commercialOfferBundle.primaryOffer,
+      offerBundleUpsell: commercialOfferBundle.upsellOffer,
+      offerBundleCrossSell: commercialOfferBundle.crossSellOffer,
+      offerBundlePrimaryDocId: commercialOfferBundle.primaryDocId,
+      offerBundleRationale: commercialOfferBundle.rationale,
       objectionType: plannerDecision.objectionType || null,
       commercialTemperature: plannerDecision.commercialTemperature || null,
       conversationLedBy: choice.ledBy,
@@ -4438,6 +5094,11 @@ export async function handleIncomingMessage(
       executedActions,
       mediaAssetSent,
       voiceReplySent,
+      voiceReplyError,
+      voiceReplyDecisionReason,
+      responseFormatPreference: resolvedResponsePreference || null,
+      inferredResponsePreferenceReason: inferredResponsePreference.reason,
+      responseFormatPromptSent,
     },
   });
 
@@ -4450,7 +5111,7 @@ export async function handleIncomingMessage(
     intent: plannerDecision.intent,
     responseGoal: plannerDecision.responseGoal,
     stateAfter: plannerDecision.stateAfter,
-    recommendedOffer: plannerDecision.recommendedOffer || null,
+    recommendedOffer: recommendedOfferResolved,
     objectionType: plannerDecision.objectionType || null,
     nextAction,
     confidence: choice.confidence,
@@ -4485,7 +5146,7 @@ export async function handleIncomingMessage(
     stage: plannerDecision.stateAfter,
     intent: plannerDecision.intent,
     responseGoal: plannerDecision.responseGoal,
-    recommendedOffer: plannerDecision.recommendedOffer || null,
+    recommendedOffer: recommendedOfferResolved,
     objectionType: plannerDecision.objectionType || null,
     turnGoal: llmResult?.turnGoal || null,
     memorySummary: llmResult?.memorySummary || null,
@@ -4499,7 +5160,7 @@ export async function handleIncomingMessage(
       leadId,
       extractedFields,
       nextAction,
-      recommendedOffer: plannerDecision.recommendedOffer || null,
+      recommendedOffer: recommendedOfferResolved,
       dominantIntent: plannerDecision.intent,
       dominantObjection: plannerDecision.objectionType || null,
       preferredName: preferredContactName || null,

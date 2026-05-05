@@ -15,6 +15,15 @@ type Body = {
   mediaMimeType?: string | null;
   mediaSize?: number | null;
   serviceKey?: string | null;
+  productName?: string | null;
+  productCategory?: string | null;
+  targetProfile?: string | null;
+  priceFrom?: number | null;
+  priceTo?: number | null;
+  upsellKeys?: string[] | string;
+  crossSellKeys?: string[] | string;
+  priority?: number | null;
+  availability?: "active" | "seasonal" | "paused" | string | null;
 };
 
 function clean(value: unknown, max = 800) {
@@ -41,6 +50,23 @@ function parseTags(value: unknown) {
   return [] as string[];
 }
 
+function parseList(value: unknown, max = 20) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => clean(item, 80))
+      .filter(Boolean)
+      .slice(0, max);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/,|\n|;|\|/)
+      .map((item) => clean(item, 80))
+      .filter(Boolean)
+      .slice(0, max);
+  }
+  return [] as string[];
+}
+
 function normalizeType(value: unknown): "faq" | "catalog" | "policy" {
   const type = String(value || "faq").toLowerCase();
   if (type === "catalog") return "catalog";
@@ -56,6 +82,16 @@ function normalizeMediaType(value: unknown) {
 
 function numericValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : null;
+}
+
+function priceValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Number(value)) : null;
+}
+
+function normalizeAvailability(value: unknown) {
+  const normalized = clean(value, 30).toLowerCase();
+  if (normalized === "active" || normalized === "seasonal" || normalized === "paused") return normalized;
+  return "active";
 }
 
 export async function GET(
@@ -90,6 +126,15 @@ export async function GET(
         mediaMimeType: clean(data.mediaMimeType, 140) || null,
         mediaSize: numericValue(data.mediaSize),
         serviceKey: clean(data.serviceKey, 120) || null,
+        productName: clean(data.productName, 160) || null,
+        productCategory: clean(data.productCategory, 120) || null,
+        targetProfile: clean(data.targetProfile, 180) || null,
+        priceFrom: priceValue(data.priceFrom),
+        priceTo: priceValue(data.priceTo),
+        upsellKeys: parseList(data.upsellKeys, 12),
+        crossSellKeys: parseList(data.crossSellKeys, 12),
+        priority: numericValue(data.priority),
+        availability: normalizeAvailability(data.availability),
         createdAt: data.createdAt || null,
         updatedAt: data.updatedAt || null,
       };
@@ -139,6 +184,15 @@ export async function POST(
       mediaMimeType: clean(body.mediaMimeType, 140) || null,
       mediaSize: numericValue(body.mediaSize),
       serviceKey: clean(body.serviceKey, 120) || null,
+      productName: clean(body.productName, 160) || null,
+      productCategory: clean(body.productCategory, 120) || null,
+      targetProfile: clean(body.targetProfile, 180) || null,
+      priceFrom: priceValue(body.priceFrom),
+      priceTo: priceValue(body.priceTo),
+      upsellKeys: parseList(body.upsellKeys, 12),
+      crossSellKeys: parseList(body.crossSellKeys, 12),
+      priority: numericValue(body.priority),
+      availability: normalizeAvailability(body.availability),
       createdBy: user.uid,
       createdByName: user.name,
       createdAt: FieldValue.serverTimestamp(),
