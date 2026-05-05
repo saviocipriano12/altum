@@ -119,8 +119,8 @@ export function ClienteCommandPalette() {
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm">
       <div className="mx-auto mt-[14vh] w-full max-w-2xl px-4">
-        <Command className="client-glass overflow-hidden rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] shadow-[var(--cliente-shadow-hard)]">
-          <div className="flex items-center gap-2 border-b border-[var(--cliente-border)] px-3 py-2">
+        <Command className="client-glass overflow-hidden rounded-[34px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] shadow-[var(--cliente-shadow-hard)]">
+          <div className="flex items-center gap-2 border-b border-[var(--cliente-border)] px-4 py-3">
             <Search className="h-4 w-4 text-[var(--cliente-accent)]" />
             <Command.Input
               value={query}
@@ -128,12 +128,12 @@ export function ClienteCommandPalette() {
               placeholder="Buscar modulo ou acao..."
               className="w-full bg-transparent text-sm text-[var(--cliente-text)] outline-none placeholder:text-[var(--cliente-text-soft)]"
             />
-            <span className="rounded-md border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2 py-1 text-[10px] text-[var(--cliente-text-soft)]">
+            <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2 py-1 text-[10px] text-[var(--cliente-text-soft)]">
               ESC
             </span>
           </div>
 
-          <Command.List className="max-h-[56vh] overflow-y-auto p-2">
+          <Command.List className="max-h-[56vh] overflow-y-auto p-3">
             <Command.Empty className="px-3 py-4 text-sm text-[var(--cliente-text-soft)]">Nenhum resultado.</Command.Empty>
 
             <Command.Group heading="Navegacao">
@@ -187,7 +187,7 @@ function PaletteItem({
   return (
     <Command.Item
       onSelect={onSelect}
-      className="mb-1 flex cursor-pointer items-center justify-between rounded-lg border border-transparent px-3 py-2 text-sm text-[var(--cliente-text-muted)] data-[selected=true]:border-[var(--cliente-border-strong)] data-[selected=true]:bg-[var(--cliente-accent-soft)] data-[selected=true]:text-[var(--cliente-text)]"
+      className="mb-1 flex cursor-pointer items-center justify-between rounded-2xl border border-transparent px-3 py-2.5 text-sm text-[var(--cliente-text-muted)] data-[selected=true]:border-[var(--cliente-border-strong)] data-[selected=true]:bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-accent-soft)_76%,white),var(--cliente-accent-soft))] data-[selected=true]:text-[var(--cliente-text)]"
     >
       <span className="inline-flex items-center gap-2">
         <span className="text-[var(--cliente-accent)]">{icon}</span>

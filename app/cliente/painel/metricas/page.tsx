@@ -517,7 +517,7 @@ export default function ClienteMetricasPage() {
   }
 
   return (
-    <div className="client-daily-page space-y-4">
+    <div className="metricas-refined client-daily-page space-y-6">
       <SectionHeader
         title="Metricas"
         subtitle="Leitura clara de desempenho, atendimento e operacao para decidir rapido o que manter e o que ajustar."
@@ -571,7 +571,7 @@ export default function ClienteMetricasPage() {
         }
       />
 
-      {notice ? <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{notice}</div> : null}
+      {notice ? <div className="rounded-[24px] border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">{notice}</div> : null}
       {!allowAdvanced ? (
         <PanelCard className="p-5">
           <CardTitle
@@ -1129,7 +1129,7 @@ function InsightCard({
   detail: string;
 }) {
   const content = (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]">
+    <div className="metricas-insight-card rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]">
       <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{title}</p>
       <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">{value}</p>
       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
@@ -1142,7 +1142,7 @@ function InsightCard({
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
+    <div className="metricas-mini-stat rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
       <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
       <p className="mt-1 text-sm font-semibold text-[var(--cliente-card-text)]">{value}</p>
     </div>
@@ -1159,7 +1159,7 @@ function MetricTile({
   tone: "neutral" | "success" | "warning" | "danger" | "info";
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+    <div className="metricas-tile rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-[var(--cliente-card-text)]">{label}</p>
         <StateBadge label={label} tone={tone} />

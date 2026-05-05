@@ -379,14 +379,14 @@ export default function ClienteConhecimentoPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[45vh] items-center justify-center text-white/60">
-        <Loader2 className="h-5 w-5 animate-spin" />
+      <div className="flex min-h-[45vh] items-center justify-center text-[var(--cliente-card-text-soft)]">
+        <Loader2 className="h-5 w-5 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="knowledge-refined client-daily-page space-y-6">
       <section className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
@@ -406,7 +406,7 @@ export default function ClienteConhecimentoPage() {
         <PanelCard className="p-5 md:p-6">
           <CardTitle title="Orientacao rapida" subtitle="O que reforcar primeiro para o agente vender melhor." />
           <div className="mt-4 space-y-3">
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+            <div className="knowledge-note-card rounded-2xl border border-white/10 bg-black/25 p-4">
               <p className="text-sm font-medium text-white">Cobertura util</p>
               <p className="mt-1 text-xs text-white/50">
                 {stats.used
@@ -414,7 +414,7 @@ export default function ClienteConhecimentoPage() {
                   : "A IA ainda nao reutilizou os documentos; vale revisar perguntas frequentes e scripts comerciais."}
               </p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+            <div className="knowledge-note-card rounded-2xl border border-white/10 bg-black/25 p-4">
               <p className="text-sm font-medium text-white">Motivos de escalada</p>
               <p className="mt-1 text-xs text-white/50">
                 {topReasons.length
@@ -422,13 +422,13 @@ export default function ClienteConhecimentoPage() {
                   : "Sem historico recente de handoffs para analisar."}
               </p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+            <div className="knowledge-note-card rounded-2xl border border-white/10 bg-black/25 p-4">
               <p className="text-sm font-medium text-white">Recomendacao imediata</p>
               <p className="mt-1 text-xs text-white/50">
                 Priorize catalogo e politicas quando a equipe estiver lidando com preco, escopo ou regras comerciais.
               </p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+            <div className="knowledge-note-card rounded-2xl border border-white/10 bg-black/25 p-4">
               <p className="text-sm font-medium text-white">Documento lider</p>
               <p className="mt-1 text-xs text-white/50">
                 {topUsedDoc ? `${typeLabel(topUsedDoc.type)} com ${topUsedDoc.total} uso(s): ${topUsedDoc.preview}` : "Nenhum documento foi reutilizado pela IA ainda."}
@@ -509,7 +509,7 @@ export default function ClienteConhecimentoPage() {
               filteredDocs.map((doc) => {
                 const totalUsage = usageMap.get(doc.id) || 0;
                 return (
-                  <article key={doc.id} className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                  <article key={doc.id} className="knowledge-doc-card rounded-2xl border border-white/10 bg-black/25 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -532,7 +532,7 @@ export default function ClienteConhecimentoPage() {
                           <button
                             type="button"
                             onClick={() => startEdit(doc)}
-                            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/84 transition hover:bg-white/[0.08]"
+                            className="knowledge-action-button inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/84 transition hover:bg-white/[0.08]"
                           >
                             <PencilLine className="h-4 w-4" />
                             Editar
@@ -543,7 +543,7 @@ export default function ClienteConhecimentoPage() {
                             type="button"
                             disabled={busyDocId === doc.id}
                             onClick={() => void removeDoc(doc.id)}
-                            className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-100 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="knowledge-danger-button inline-flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-100 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {busyDocId === doc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                             Remover
@@ -570,8 +570,16 @@ export default function ClienteConhecimentoPage() {
               subtitle="Cadastre conhecimento pronto para reutilizacao em respostas e qualificacao."
             />
 
-            {error ? <p className="mb-3 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{error}</p> : null}
-            {success ? <p className="mb-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">{success}</p> : null}
+            {error ? (
+              <p className="mb-3 rounded-[22px] border border-rose-400/18 bg-rose-500/8 px-3 py-2 text-sm text-rose-700 dark:text-rose-100">
+                {error}
+              </p>
+            ) : null}
+            {success ? (
+              <p className="mb-3 rounded-[22px] border border-emerald-400/18 bg-emerald-500/8 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-100">
+                {success}
+              </p>
+            ) : null}
 
             {canEdit ? (
               <form className="space-y-3" onSubmit={submitDoc}>
@@ -586,24 +594,24 @@ export default function ClienteConhecimentoPage() {
                   onChange={(value) => setForm((current) => ({ ...current, type: value as KbDoc["type"] }))}
                 />
 
-                <label className="block text-xs uppercase tracking-[0.16em] text-white/45">
+                <label className="knowledge-form-label block text-xs uppercase tracking-[0.16em] text-white/45">
                   Conteudo
                   <textarea
                     value={form.content}
                     onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))}
                     rows={7}
                     placeholder="Explique servicos, politicas, argumentos comerciais, objeccoes ou respostas prontas."
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-[#111111] px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                    className="knowledge-editor-input mt-1 w-full rounded-xl border border-white/10 bg-[#111111] px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
                   />
                 </label>
 
-                <label className="block text-xs uppercase tracking-[0.16em] text-white/45">
+                <label className="knowledge-form-label block text-xs uppercase tracking-[0.16em] text-white/45">
                   Tags
                   <input
                     value={form.tags}
                     onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))}
                     placeholder="faq, preco, urgencia, agendamento"
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-[#111111] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/35"
+                    className="knowledge-editor-input mt-1 w-full rounded-xl border border-white/10 bg-[#111111] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/35"
                   />
                 </label>
 
@@ -611,7 +619,7 @@ export default function ClienteConhecimentoPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)]/10 px-4 py-2.5 text-sm font-medium text-[var(--cliente-accent)] transition hover:bg-[var(--cliente-accent)]/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="knowledge-primary-button inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)]/10 px-4 py-2.5 text-sm font-medium text-[var(--cliente-accent)] transition hover:bg-[var(--cliente-accent)]/15 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     {editingDocId ? "Atualizar" : "Salvar documento"}
@@ -620,7 +628,7 @@ export default function ClienteConhecimentoPage() {
                     <button
                       type="button"
                       onClick={resetForm}
-                      className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white/76 transition hover:bg-white/[0.08]"
+                      className="knowledge-secondary-button rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white/76 transition hover:bg-white/[0.08]"
                     >
                       Cancelar edicao
                     </button>
@@ -643,7 +651,7 @@ export default function ClienteConhecimentoPage() {
                   key={template.id}
                   type="button"
                   onClick={() => applyTemplate(template)}
-                  className="w-full rounded-2xl border border-white/10 bg-black/25 p-3 text-left transition hover:bg-white/[0.04]"
+                  className="knowledge-template-card w-full rounded-2xl border border-white/10 bg-black/25 p-3 text-left transition hover:bg-white/[0.04]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -662,7 +670,7 @@ export default function ClienteConhecimentoPage() {
             <div className="space-y-3">
               {usageRows.length ? (
                 usageRows.slice(0, 6).map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                  <div key={item.id} className="knowledge-mini-card rounded-2xl border border-white/10 bg-black/25 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-white">{item.preview || "Documento sem preview"}</p>
@@ -683,7 +691,7 @@ export default function ClienteConhecimentoPage() {
             <div className="space-y-3">
               {topReasons.length ? (
                 topReasons.map((item) => (
-                  <div key={item.reason} className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                  <div key={item.reason} className="knowledge-mini-card rounded-2xl border border-white/10 bg-black/25 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-sm text-white/84">{item.reason}</p>
                       <StateBadge label={String(item.total)} tone="warning" />
@@ -722,7 +730,7 @@ function FilterSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="rounded-xl border border-white/10 bg-[#111111] px-3 py-2 text-xs text-white/45">
+    <label className="knowledge-filter-field rounded-xl border border-white/10 bg-[#111111] px-3 py-2 text-xs text-white/45">
       <span className="block uppercase tracking-[0.16em]">{label}</span>
       <select
         value={value}
@@ -730,7 +738,7 @@ function FilterSelect({
         className="mt-1 w-full bg-transparent text-sm text-white outline-none"
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value} className="bg-[#111111] text-white">
+          <option key={option.value} value={option.value} className="bg-[var(--cliente-panel-solid)] text-[var(--cliente-card-text)]">
             {option.label}
           </option>
         ))}
@@ -743,7 +751,7 @@ function QuickLink({ href, title, description }: { href: string; title: string; 
   return (
     <Link
       href={href}
-      className="block rounded-2xl border border-white/10 bg-black/25 p-3 transition hover:bg-white/[0.04]"
+      className="knowledge-quick-link block rounded-2xl border border-white/10 bg-black/25 p-3 transition hover:bg-white/[0.04]"
     >
       <p className="text-sm font-medium text-white">{title}</p>
       <p className="mt-1 text-xs text-white/48">{description}</p>

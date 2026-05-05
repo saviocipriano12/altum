@@ -130,21 +130,24 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
       />
 
       <aside
+        data-client-nav="sidebar"
         className={`client-glass fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-[var(--cliente-border)] bg-[var(--cliente-sidebar)] shadow-[var(--cliente-shadow-hard)] transition-[width,transform] duration-300 lg:translate-x-0 ${
-          compactMode ? "w-[276px] lg:w-[84px]" : "w-[276px]"
+          compactMode ? "w-[292px] lg:w-[88px]" : "w-[292px]"
         } ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="pointer-events-none absolute inset-x-3 top-0 h-20 rounded-b-lg bg-[linear-gradient(180deg,var(--cliente-accent-soft),transparent)]" />
+        <div className="pointer-events-none absolute inset-x-3 top-0 h-20 rounded-b-[24px] bg-[linear-gradient(180deg,var(--cliente-accent-soft),transparent)]" />
+        <div className="pointer-events-none absolute right-[-30px] top-14 h-32 w-32 rounded-full bg-[var(--cliente-accent-glow)] blur-3xl" />
+        <div className="pointer-events-none absolute left-[-50px] bottom-20 h-36 w-36 rounded-full bg-[var(--cliente-accent-secondary-glow)] blur-3xl" />
 
-        <div className="relative flex h-[74px] items-center gap-3 border-b border-[var(--cliente-border)] px-3.5">
-          <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)] shadow-[0_10px_24px_var(--cliente-accent-glow)]">
+        <div className="relative flex h-[82px] items-center gap-3 border-b border-[var(--cliente-border)] px-4">
+          <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-[var(--cliente-border-strong)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-accent)_10%,white),var(--cliente-accent-soft))] text-[var(--cliente-accent)] shadow-[0_14px_28px_var(--cliente-accent-glow)]">
             <Crown className="h-5 w-5" />
           </div>
 
           {!compactMode ? (
             <div className="min-w-0 flex-1">
               <p className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-[var(--cliente-text)]">ALTUM</p>
-              <p className="truncate text-[10px] tracking-[0.14em] text-[var(--cliente-text-soft)]">Portal do cliente</p>
+              <p className="truncate text-[10px] tracking-[0.16em] text-[var(--cliente-text-soft)]">Portal do cliente</p>
             </div>
           ) : null}
 
@@ -152,7 +155,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
             <button
               type="button"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="hidden rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-2 text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-text)] lg:inline-flex"
+              className="hidden rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-2 text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-text)] lg:inline-flex"
               title={compactMode ? "Expandir menu" : "Recolher menu"}
             >
               {compactMode ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -160,7 +163,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
             <button
               onClick={onClose}
-              className="rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-2 text-[var(--cliente-text-muted)] hover:text-[var(--cliente-text)] lg:hidden"
+              className="rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-2 text-[var(--cliente-text-muted)] hover:text-[var(--cliente-text)] lg:hidden"
               aria-label="Fechar menu"
             >
               <X className="h-4 w-4" />
@@ -170,29 +173,29 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
         <div className="px-4 pt-4">
           <div
-            className={`client-glass overflow-hidden rounded-[10px] border border-[var(--cliente-border)] bg-[var(--cliente-sidebar-card)] shadow-[var(--cliente-shadow-soft)] ${
+            className={`client-glass overflow-hidden rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-sidebar-card)] shadow-[var(--cliente-shadow-soft)] ${
               compactMode ? "px-2 py-3" : "px-4 py-4"
             }`}
           >
             <div className={`flex items-start ${compactMode ? "justify-center" : "justify-between gap-3"}`}>
               <div className={compactMode ? "hidden" : "min-w-0"}>
-                <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--cliente-text-soft)]">Conta</p>
-                <p className="mt-2 truncate text-base font-semibold text-[var(--cliente-text)]">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--cliente-text-soft)]">Conta</p>
+                <p className="mt-2 truncate text-[1.02rem] font-extrabold tracking-[-0.02em] text-[var(--cliente-text)]">
                   {tenant?.tenantName || tenant?.clientName || "Cliente"}
                 </p>
-                <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Operacao centralizada da conta</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--cliente-text-soft)]">Operacao centralizada da conta</p>
               </div>
-              <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-accent-alt-soft)] text-[var(--cliente-accent-alt)]">
+              <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-accent-alt-soft)] text-[var(--cliente-accent-alt)]">
                 <Shield className="h-4 w-4" />
               </div>
             </div>
 
             {!compactMode ? (
-              <div className="mt-4 rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+              <div className="mt-4 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--cliente-text-soft)]">Prontidao</p>
-                    <p className="mt-1 text-sm font-medium text-[var(--cliente-text)]">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--cliente-text-soft)]">Prontidao</p>
+                    <p className="mt-1 text-sm font-semibold text-[var(--cliente-text)]">
                       {pilotReady ? "Operacao pronta" : "Estrutura em implantacao"}
                     </p>
                   </div>
@@ -203,7 +206,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
           </div>
         </div>
 
-        <nav className={`client-scrollbar mt-4 flex-1 overflow-y-auto px-3 ${dense ? "space-y-4 pb-3" : "space-y-5 pb-4"}`}>
+        <nav className={`client-scrollbar mt-5 flex-1 overflow-y-auto px-3 ${dense ? "space-y-4 pb-3" : "space-y-5 pb-4"}`}>
           {NAV_GROUPS.map((group) => {
             const visibleItems = group.items.filter((item) => !("capability" in item) || !item.capability || hasCapability(item.capability));
             if (visibleItems.length === 0) return null;
@@ -211,7 +214,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
             return (
               <div key={group.title}>
                 {!compactMode ? (
-                  <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--cliente-text-soft)]">{group.title}</p>
+                  <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">{group.title}</p>
                 ) : null}
 
                 <div className={dense ? "space-y-1" : "space-y-1.5"}>
@@ -224,18 +227,18 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                         key={item.href}
                         href={item.href}
                         onClick={onClose}
-                        className={`group relative flex items-center rounded-lg border px-3 ${dense ? "py-2.5 text-[13px]" : "py-3 text-sm"} font-medium transition ${
+                        className={`group relative flex items-center rounded-[24px] border px-3.5 ${dense ? "py-2.5 text-[13px]" : "py-3.5 text-sm"} font-medium transition ${
                           active
-                            ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-text)] shadow-[0_10px_24px_var(--cliente-accent-glow)]"
+                            ? "border-[var(--cliente-border-strong)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-accent-soft)_72%,white),var(--cliente-accent-soft))] text-[var(--cliente-text)] shadow-[0_18px_34px_-24px_var(--cliente-accent)]"
                             : "border-transparent text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-text)]"
                         } ${compactMode ? "justify-center px-2" : "justify-between gap-3"}`}
                         title={compactMode ? item.label : undefined}
                       >
                         <span className={`inline-flex items-center ${compactMode ? "justify-center" : "gap-3"} min-w-0`}>
                           <span
-                            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
+                            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border ${
                               active
-                                ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-panel-solid)] text-[var(--cliente-accent)]"
+                                ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-panel-solid)] text-[var(--cliente-accent)] shadow-[0_12px_24px_-18px_var(--cliente-accent)]"
                                 : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-text-soft)] group-hover:text-[var(--cliente-text)]"
                             }`}
                           >
@@ -269,7 +272,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
         <div className="border-t border-[var(--cliente-border)] px-4 py-4">
           <div
-            className={`rounded-[10px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] ${
+            className={`rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] ${
               compactMode ? "flex justify-center px-2 py-3" : "px-4 py-4"
             }`}
           >
@@ -277,9 +280,9 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
               <Shield className="h-5 w-5 text-[var(--cliente-accent)]" />
             ) : (
               <div>
-                <p className="text-sm font-semibold text-[var(--cliente-text)]">Conta organizada</p>
+                <p className="text-[1rem] font-extrabold tracking-[-0.02em] text-[var(--cliente-text)]">Conta organizada</p>
                 <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">{roleLabel}</p>
-                <p className="mt-2 text-sm text-[var(--cliente-text-muted)]">
+                <p className="mt-2 text-sm leading-6 text-[var(--cliente-text-muted)]">
                   Conta isolada, canais dedicados, modulos conectados e operacao centralizada.
                 </p>
               </div>

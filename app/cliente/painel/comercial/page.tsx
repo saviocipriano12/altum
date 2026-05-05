@@ -739,15 +739,15 @@ export default function ClienteComercialPage() {
   }
 
   return (
-    <div className="client-daily-page space-y-4">
+    <div className="comercial-refined client-daily-page space-y-5">
       <SectionHeader
         title="Comercial"
         subtitle="Propostas, receita e acompanhamento financeiro do tenant em um unico modulo."
         action={<StateBadge label="Mesa comercial" tone="info" />}
       />
 
-      {error ? <div className="rounded-2xl border border-rose-300/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
-      {notice ? <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{notice}</div> : null}
+      {error ? <div className="comercial-notice comercial-notice-danger rounded-[24px] border px-4 py-3 text-sm">{error}</div> : null}
+      {notice ? <div className="comercial-notice comercial-notice-success rounded-[24px] border px-4 py-3 text-sm">{notice}</div> : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Link href="/cliente/painel/comercial" className="block">
@@ -768,12 +768,12 @@ export default function ClienteComercialPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <PanelCard className="p-5">
+        <PanelCard className="comercial-surface-card comercial-hero-card p-5 md:p-6">
           <div className="flex items-start justify-between gap-3">
             <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Leitura comercial e ofertas sugeridas para este tenant." />
             <StateBadge label={businessProfile.id} tone="info" />
           </div>
-          <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+          <div className="comercial-highlight-card comercial-story-card mt-4 rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-5">
             <p className="text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.description}</p>
             <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Movimento comercial: {businessProfile.commercialMotion}</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">Métricas naturais: {businessProfile.metrics.join(" · ")}</p>
@@ -781,11 +781,11 @@ export default function ClienteComercialPage() {
         </PanelCard>
 
         {allowAdvanced ? (
-          <PanelCard className="p-5">
+          <PanelCard className="comercial-surface-card comercial-offers-card p-5 md:p-6">
             <CardTitle title="Ofertas sugeridas pelo modo" subtitle="Aplique uma sugestão base para acelerar proposta e cobrança." />
             <div className="mt-4 grid gap-3">
               {playbookPreset.offers.slice(0, 3).map((offer, index) => (
-                <div key={offer.title} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                <div key={offer.title} className="comercial-highlight-card comercial-offer-tile rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{offer.title}</p>
@@ -811,7 +811,7 @@ export default function ClienteComercialPage() {
             </div>
           </PanelCard>
         ) : (
-          <PanelCard className="p-5">
+          <PanelCard className="comercial-surface-card comercial-offers-card p-5 md:p-6">
             <CardTitle title="Modo essencial ativo" subtitle="Mostrando leitura enxuta para operacao diaria." />
             <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
               Para editar ofertas sugeridas e acelerar propostas com presets avancados, troque para o modo completo no topo.
@@ -828,7 +828,7 @@ export default function ClienteComercialPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
-        <PanelCard className="p-5">
+        <PanelCard className="comercial-surface-card comercial-focus-card p-5 md:p-6">
           <CardTitle title="Foco comercial" subtitle="Negociacoes e receita que pedem acao agora" />
           <div className="mt-4 space-y-3">
             {focusSignals.length === 0 ? (
@@ -856,7 +856,7 @@ export default function ClienteComercialPage() {
           </div>
         </PanelCard>
 
-        <PanelCard className="p-5">
+        <PanelCard className="comercial-surface-card comercial-desk-shell p-5 md:p-6">
           <CardTitle title="Resumo da mesa" subtitle="Leitura rapida da mesa comercial atual" />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <DeskCard
@@ -885,7 +885,7 @@ export default function ClienteComercialPage() {
 
       {selectedLead ? (
         <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-          <PanelCard className="p-5">
+          <PanelCard className="comercial-context-card p-5 md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text)]">
@@ -913,7 +913,7 @@ export default function ClienteComercialPage() {
             </div>
           </PanelCard>
 
-          <PanelCard className="p-5">
+          <PanelCard className="comercial-side-card p-5 md:p-6">
             <CardTitle title="Continuar operacao" subtitle="Acesse os modulos conectados a este contato." />
             <div className="mt-4 space-y-2">
               <Link
@@ -993,7 +993,7 @@ export default function ClienteComercialPage() {
       {allowAdvanced ? (
         <>
           <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-        <PanelCard className="p-5">
+        <PanelCard className="comercial-surface-card comercial-form-card p-5 md:p-6">
           <form onSubmit={createBudget} className="space-y-3">
             <CardTitle title="Nova proposta" subtitle="Crie uma proposta comercial vinculada ao contato." />
             <select
@@ -1032,7 +1032,7 @@ export default function ClienteComercialPage() {
           </form>
         </PanelCard>
 
-        <PanelCard className="p-5">
+        <PanelCard className="comercial-surface-card comercial-form-card p-5 md:p-6">
           <form onSubmit={createFinance} className="space-y-3">
             <CardTitle title="Novo lancamento" subtitle="Receita ou despesa comercial com vinculo ao contato." />
             <select
@@ -1519,7 +1519,7 @@ function DeskCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+    <div className="comercial-desk-card rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
       <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{title}</p>
       <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{value}</p>
       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>

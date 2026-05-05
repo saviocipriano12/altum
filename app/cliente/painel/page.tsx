@@ -604,7 +604,7 @@ export default function ClientePainelOverviewPage() {
   }
 
   return (
-    <div className="client-daily-page space-y-5">
+    <div className="dashboard-refined client-daily-page space-y-6">
       <SectionHeader
         title="Visao geral"
         subtitle="Leitura rapida da operacao com foco no que agir primeiro."
@@ -617,7 +617,7 @@ export default function ClientePainelOverviewPage() {
             <button
               type="button"
               onClick={() => setExperienceMode(experienceMode === "essencial" ? "completo" : "essencial")}
-              className="inline-flex items-center rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)]"
+              className="inline-flex items-center rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] shadow-[0_16px_30px_-24px_rgba(15,23,42,0.28)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
             >
               {experienceMode === "essencial" ? "Ver modo completo" : "Voltar ao essencial"}
             </button>
@@ -628,7 +628,7 @@ export default function ClientePainelOverviewPage() {
       {financeDueSoonCount > 0 ? (
         <Link
           href="/cliente/painel/comercial?financeStatus=pendente"
-          className="block rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4 transition hover:bg-amber-500/15"
+          className="dashboard-alert-banner block rounded-[28px] border border-amber-400/25 bg-amber-500/10 p-5 transition hover:bg-amber-500/15"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-amber-100">Cobrancas proximas do vencimento</p>
@@ -644,7 +644,7 @@ export default function ClientePainelOverviewPage() {
       ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
-        <PanelCard className="overflow-hidden p-5">
+        <PanelCard className="dashboard-hero-card overflow-hidden p-6 md:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-card-text-muted)]">
@@ -666,7 +666,7 @@ export default function ClientePainelOverviewPage() {
               </div>
             </div>
 
-            <div className="min-w-[220px] rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <div className="dashboard-summary-card min-w-[220px] rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
               <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Resumo rapido</p>
               <div className="mt-3 space-y-3">
                 <HeroStat label="Contatos ativos" value={(kpis?.leads || 0).toLocaleString("pt-BR")} />
@@ -705,7 +705,7 @@ export default function ClientePainelOverviewPage() {
           </div>
         </PanelCard>
 
-        <PanelCard className="p-5">
+        <PanelCard className="dashboard-agenda-card p-6">
           <CardTitle title="Agenda imediata" subtitle="Prioridades guiadas para agir agora" />
           <div className="mt-4 space-y-3">
             {priorityActions.length === 0 ? (
@@ -740,7 +740,7 @@ export default function ClientePainelOverviewPage() {
           <div className="mt-5 grid gap-2 sm:grid-cols-2">
             <Link
               href="/cliente/painel/configuracoes"
-              className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
+              className="dashboard-action-link flex items-center justify-between rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
             >
               <span className="inline-flex items-center gap-2">
                 <Settings2 className="h-4 w-4 text-[var(--cliente-accent)]" />
@@ -750,7 +750,7 @@ export default function ClientePainelOverviewPage() {
             </Link>
             <Link
               href="/cliente/painel/metricas"
-              className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
+              className="dashboard-action-link flex items-center justify-between rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
             >
               <span className="inline-flex items-center gap-2">
                 <ChartColumn className="h-4 w-4 text-[var(--cliente-accent)]" />
@@ -894,7 +894,7 @@ export default function ClientePainelOverviewPage() {
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <Link
                   href="/cliente/painel/inbox"
-                  className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
+                  className="dashboard-action-link flex items-center justify-between rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
                 >
                   <span className="inline-flex items-center gap-2">
                     <MessageSquare className="h-4 w-4 text-[var(--cliente-accent)]" />
@@ -904,7 +904,7 @@ export default function ClientePainelOverviewPage() {
                 </Link>
                 <Link
                   href="/cliente/painel/crm"
-                  className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
+                  className="dashboard-action-link flex items-center justify-between rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
                 >
                   <span className="inline-flex items-center gap-2">
                     <Funnel className="h-4 w-4 text-[var(--cliente-accent)]" />
@@ -1134,7 +1134,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
+    <div className="dashboard-hero-stat flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
       <span className="text-sm text-[var(--cliente-card-text-soft)]">{label}</span>
       <span className="text-sm font-semibold text-[var(--cliente-card-text)]">{value}</span>
     </div>
@@ -1161,7 +1161,7 @@ function QuickLink({
   return (
     <Link
       href={href}
-      className="group rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
+      className="dashboard-quick-link group rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
     >
       <div className="inline-flex rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-accent)]">
         <Icon className="h-4 w-4" />
@@ -1192,7 +1192,7 @@ function FocusRow({
     badgeLabel || (tone === "warning" ? "atencao" : tone === "success" ? "ok" : tone === "danger" ? "risco" : "monitorar");
 
   const content = (
-    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]">
+    <div className="dashboard-focus-row rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-[var(--cliente-card-text)]">{label}</p>
         <StateBadge label={resolvedBadgeLabel} tone={tone} />
@@ -1218,12 +1218,19 @@ function MiniStatLink({
   return (
     <Link
       href={href}
-      className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
+      className="dashboard-mini-link rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
     >
       <p className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
       <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{value}</p>
     </Link>
   );
 }
+
+
+
+
+
+
+
 
 

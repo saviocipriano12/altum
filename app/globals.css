@@ -6,71 +6,71 @@
 }
 
 [data-client-theme="dark"] {
-  --cliente-font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-  --cliente-bg: #0a0d12;
-  --cliente-bg-elevated: #10141b;
-  --cliente-panel: rgba(15, 19, 26, 0.9);
-  --cliente-panel-solid: #11161d;
-  --cliente-panel-soft: rgba(19, 24, 32, 0.92);
-  --cliente-card: rgba(17, 22, 29, 0.94);
-  --cliente-card-text: #f8fafc;
-  --cliente-card-text-muted: rgba(241, 245, 249, 0.86);
-  --cliente-card-text-soft: rgba(148, 163, 184, 0.88);
-  --cliente-sidebar: rgba(10, 13, 18, 0.96);
-  --cliente-sidebar-card: rgba(18, 23, 31, 0.94);
-  --cliente-topbar: rgba(10, 13, 18, 0.9);
-  --cliente-border: rgba(148, 163, 184, 0.2);
-  --cliente-border-strong: rgba(232, 80, 2, 0.42);
-  --cliente-text: #f8fafc;
-  --cliente-text-muted: rgba(226, 232, 240, 0.9);
-  --cliente-text-soft: rgba(148, 163, 184, 0.9);
-  --cliente-accent: #e85002;
-  --cliente-accent-strong: #c10801;
-  --cliente-accent-soft: rgba(232, 80, 2, 0.14);
-  --cliente-accent-alt: #2dd4bf;
-  --cliente-accent-alt-soft: rgba(45, 212, 191, 0.1);
-  --cliente-accent-glow: rgba(232, 80, 2, 0.12);
-  --cliente-accent-secondary-glow: rgba(45, 212, 191, 0.05);
-  --cliente-input-bg: rgba(15, 23, 42, 0.52);
-  --cliente-surface-muted: rgba(24, 31, 42, 0.64);
-  --cliente-surface-hover: rgba(32, 41, 54, 0.78);
-  --cliente-stripe: rgba(148, 163, 184, 0.08);
-  --cliente-shadow-soft: 0 10px 24px rgba(2, 6, 23, 0.28);
-  --cliente-shadow-hard: 0 24px 58px rgba(2, 6, 23, 0.46);
+  --cliente-font-family: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, Roboto, sans-serif;
+  --cliente-bg: #0f141b;
+  --cliente-bg-elevated: #141b24;
+  --cliente-panel: rgba(20, 28, 38, 0.92);
+  --cliente-panel-solid: #151c25;
+  --cliente-panel-soft: rgba(27, 36, 48, 0.94);
+  --cliente-card: rgba(23, 31, 43, 0.97);
+  --cliente-card-text: #f2f5f8;
+  --cliente-card-text-muted: rgba(220, 227, 236, 0.9);
+  --cliente-card-text-soft: rgba(152, 165, 184, 0.9);
+  --cliente-sidebar: rgba(13, 18, 25, 0.98);
+  --cliente-sidebar-card: rgba(20, 28, 39, 0.96);
+  --cliente-topbar: rgba(13, 18, 25, 0.86);
+  --cliente-border: rgba(148, 163, 184, 0.18);
+  --cliente-border-strong: rgba(233, 117, 50, 0.36);
+  --cliente-text: #f2f5f8;
+  --cliente-text-muted: rgba(221, 228, 236, 0.92);
+  --cliente-text-soft: rgba(150, 164, 183, 0.92);
+  --cliente-accent: #e97532;
+  --cliente-accent-strong: #cc581f;
+  --cliente-accent-soft: rgba(233, 117, 50, 0.13);
+  --cliente-accent-alt: #63bfae;
+  --cliente-accent-alt-soft: rgba(99, 191, 174, 0.1);
+  --cliente-accent-glow: rgba(233, 117, 50, 0.12);
+  --cliente-accent-secondary-glow: rgba(99, 191, 174, 0.05);
+  --cliente-input-bg: rgba(18, 25, 35, 0.76);
+  --cliente-surface-muted: rgba(30, 40, 53, 0.8);
+  --cliente-surface-hover: rgba(38, 49, 64, 0.9);
+  --cliente-stripe: rgba(148, 163, 184, 0.07);
+  --cliente-shadow-soft: 0 14px 30px rgba(2, 6, 23, 0.28);
+  --cliente-shadow-hard: 0 28px 64px rgba(2, 6, 23, 0.48);
 }
 
 [data-client-theme="light"] {
-  --cliente-font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-  --cliente-bg: #f4f1ea;
-  --cliente-bg-elevated: #f8f5ee;
-  --cliente-panel: rgba(250, 247, 240, 0.92);
-  --cliente-panel-solid: #fffaf2;
-  --cliente-panel-soft: rgba(255, 252, 246, 0.96);
-  --cliente-card: rgba(255, 253, 248, 0.98);
-  --cliente-card-text: #111827;
-  --cliente-card-text-muted: #334155;
-  --cliente-card-text-soft: #64748b;
-  --cliente-sidebar: rgba(250, 247, 240, 0.96);
-  --cliente-sidebar-card: rgba(255, 253, 248, 0.98);
-  --cliente-topbar: rgba(250, 247, 240, 0.92);
-  --cliente-border: rgba(117, 126, 143, 0.3);
-  --cliente-border-strong: rgba(211, 76, 18, 0.42);
-  --cliente-text: #0f172a;
-  --cliente-text-muted: #334155;
-  --cliente-text-soft: #64748b;
-  --cliente-accent: #d94b12;
-  --cliente-accent-strong: #b8320b;
-  --cliente-accent-soft: rgba(217, 75, 18, 0.12);
-  --cliente-accent-alt: #0f766e;
-  --cliente-accent-alt-soft: rgba(15, 118, 110, 0.1);
-  --cliente-accent-glow: rgba(217, 75, 18, 0.07);
-  --cliente-accent-secondary-glow: rgba(15, 118, 110, 0.045);
-  --cliente-input-bg: rgba(255, 253, 248, 0.98);
-  --cliente-surface-muted: rgba(241, 238, 230, 0.92);
-  --cliente-surface-hover: rgba(230, 225, 215, 0.94);
-  --cliente-stripe: rgba(100, 116, 139, 0.12);
-  --cliente-shadow-soft: 0 10px 24px rgba(91, 78, 62, 0.08);
-  --cliente-shadow-hard: 0 22px 52px rgba(91, 78, 62, 0.16);
+  --cliente-font-family: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, Roboto, sans-serif;
+  --cliente-bg: #f5f1eb;
+  --cliente-bg-elevated: #fbf8f3;
+  --cliente-panel: rgba(248, 245, 240, 0.95);
+  --cliente-panel-solid: #fcfaf6;
+  --cliente-panel-soft: rgba(255, 253, 249, 0.98);
+  --cliente-card: rgba(255, 255, 255, 0.985);
+  --cliente-card-text: #1b2330;
+  --cliente-card-text-muted: #536074;
+  --cliente-card-text-soft: #7d899c;
+  --cliente-sidebar: rgba(248, 244, 239, 0.98);
+  --cliente-sidebar-card: rgba(255, 253, 249, 0.98);
+  --cliente-topbar: rgba(249, 246, 241, 0.92);
+  --cliente-border: rgba(148, 152, 164, 0.2);
+  --cliente-border-strong: rgba(233, 117, 50, 0.3);
+  --cliente-text: #18202c;
+  --cliente-text-muted: #49566a;
+  --cliente-text-soft: #768396;
+  --cliente-accent: #e67332;
+  --cliente-accent-strong: #cf5b22;
+  --cliente-accent-soft: rgba(230, 115, 50, 0.1);
+  --cliente-accent-alt: #1b8a7b;
+  --cliente-accent-alt-soft: rgba(27, 138, 123, 0.08);
+  --cliente-accent-glow: rgba(230, 115, 50, 0.075);
+  --cliente-accent-secondary-glow: rgba(27, 138, 123, 0.035);
+  --cliente-input-bg: rgba(255, 255, 255, 0.92);
+  --cliente-surface-muted: rgba(248, 243, 237, 0.92);
+  --cliente-surface-hover: rgba(242, 236, 229, 0.96);
+  --cliente-stripe: rgba(100, 116, 139, 0.08);
+  --cliente-shadow-soft: 0 14px 30px rgba(91, 78, 62, 0.065);
+  --cliente-shadow-hard: 0 26px 56px rgba(91, 78, 62, 0.13);
 }
 
 @theme inline {
@@ -157,7 +157,7 @@ body {
 }
 
 .client-glass {
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(18px) saturate(128%);
 }
 
 .client-surface-muted {
@@ -181,7 +181,7 @@ body {
 }
 
 [data-client-theme="light"] .client-glass {
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(16px) saturate(118%);
 }
 
 [data-client-theme="light"] .client-panel-card {
@@ -196,6 +196,44 @@ body {
 [data-client-theme="light"] .client-card-title-text,
 [data-client-theme="light"] .client-metric-label {
   color: #475569;
+}
+
+[data-client-area] {
+  font-feature-settings: "cv02" 1, "cv03" 1, "cv04" 1, "cv11" 1;
+}
+
+.client-section-title {
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.client-section-header p,
+.client-card-title p,
+.client-metric-label,
+.client-card-title-text {
+  letter-spacing: normal;
+}
+
+.client-metric-value {
+  letter-spacing: -0.04em;
+}
+
+.client-panel-card {
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.04) inset,
+    var(--cliente-shadow-soft);
+}
+
+.client-topbar {
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.06) inset,
+    0 16px 44px -30px rgba(15, 23, 42, 0.4);
+}
+
+[data-client-nav="sidebar"] {
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.04) inset,
+    0 36px 80px -44px rgba(2, 6, 23, 0.6);
 }
 
 .inbox-whatsapp-list {
@@ -364,6 +402,887 @@ body {
   gap: 1rem;
 }
 
+/* Visual language inspired by the new rounded reference across client portal */
+[data-client-style="v2"] .client-panel-card,
+.crm-refined .client-panel-card {
+  border-radius: 22px;
+}
+
+[data-client-style="v2"] .client-state-badge,
+.crm-refined .client-state-badge {
+  border-radius: 999px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 700;
+}
+
+[data-client-style="v2"] :is(a, button, input, select, textarea),
+.crm-refined :is(a, button, input, select, textarea) {
+  border-radius: 16px;
+}
+
+[data-client-style="v2"] .client-card-title-text,
+.crm-refined .client-card-title-text {
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+}
+
+[data-client-style="v2"] .client-metric-card,
+.crm-refined .client-metric-card {
+  border-radius: 20px;
+}
+
+[data-client-style="v2"] .client-topbar {
+  border-bottom-left-radius: 22px;
+  border-bottom-right-radius: 22px;
+  box-shadow: 0 14px 42px -28px rgba(15, 23, 42, 0.55);
+}
+
+[data-client-style="v2"] [data-client-nav="sidebar"] {
+  backdrop-filter: blur(18px) saturate(132%);
+}
+
+[data-client-style="v2"] {
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: normal;
+}
+
+[data-client-style="v2"] .client-shell-ambient::before {
+  opacity: 0.14;
+  background-size: 68px 68px;
+}
+
+.crm-refined {
+  font-family: var(--cliente-font-family);
+}
+
+.crm-refined .crm-list-panel,
+.crm-refined .crm-lead-sheet,
+.crm-refined .crm-edit-modal {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 96%, white 4%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent)),
+    radial-gradient(circle at top right, var(--cliente-accent-glow), transparent 34%);
+  box-shadow: 0 28px 56px -40px rgba(15, 23, 42, 0.34);
+}
+
+.crm-refined .crm-list-head,
+.crm-refined .crm-lead-sheet-header {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 92%, white 8%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+}
+
+.crm-refined .crm-contact-card {
+  margin-bottom: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--cliente-border) 84%, transparent);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 98%, white 2%), color-mix(in srgb, var(--cliente-surface-muted) 100%, transparent));
+  box-shadow: 0 18px 34px -30px rgba(15, 23, 42, 0.28);
+}
+
+.crm-refined .crm-contact-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 78%, transparent);
+}
+
+.crm-refined .crm-contact-card-active {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 86%, transparent);
+  box-shadow:
+    0 24px 44px -32px rgba(15, 23, 42, 0.28),
+    0 14px 28px -20px var(--cliente-accent-glow);
+}
+
+.crm-refined .crm-contact-avatar {
+  border: 1px solid color-mix(in srgb, var(--cliente-border-strong) 54%, transparent);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.7), transparent 42%),
+    linear-gradient(135deg, color-mix(in srgb, var(--cliente-accent) 18%, white), color-mix(in srgb, var(--cliente-accent-soft) 82%, white 18%));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.42);
+}
+
+.crm-refined .crm-lead-sheet {
+  border-radius: 34px;
+}
+
+.crm-refined .crm-lead-hero {
+  padding-bottom: 0.25rem;
+}
+
+.crm-refined .crm-edit-modal {
+  border-radius: 32px;
+}
+
+.crm-refined .crm-edit-modal input,
+.crm-refined .crm-edit-modal select,
+.crm-refined .crm-edit-modal textarea {
+  border-radius: 20px;
+}
+
+.inbox-refined .inbox-rail,
+.inbox-refined .inbox-thread-shell,
+.pipeline-refined .pipeline-overview-card,
+.pipeline-refined .pipeline-board-shell {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 94%, white 6%), color-mix(in srgb, var(--cliente-card) 100%, transparent)),
+    radial-gradient(circle at top right, var(--cliente-accent-glow), transparent 38%);
+}
+
+.inbox-refined .inbox-conversation-card {
+  margin: 8px;
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, var(--cliente-border) 85%, transparent);
+  background: color-mix(in srgb, var(--cliente-surface-muted) 88%, transparent);
+  box-shadow: 0 12px 28px -22px rgba(15, 23, 42, 0.45);
+}
+
+.inbox-refined .inbox-whatsapp-row-active {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--cliente-accent-soft) 88%, white 12%), color-mix(in srgb, var(--cliente-panel-soft) 90%, transparent));
+  border-color: var(--cliente-border-strong);
+  box-shadow: 0 16px 36px -26px var(--cliente-accent-glow);
+}
+
+.inbox-refined .inbox-filter-pill {
+  letter-spacing: 0.01em;
+}
+
+.inbox-refined .inbox-thread-header {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 94%, white 6%), color-mix(in srgb, var(--cliente-card) 96%, transparent)),
+    radial-gradient(circle at top right, var(--cliente-accent-glow), transparent 42%);
+}
+
+.inbox-refined .inbox-thread-stat {
+  box-shadow: 0 16px 38px -30px rgba(15, 23, 42, 0.42);
+}
+
+.inbox-refined .inbox-thread-wall {
+  background-image:
+    radial-gradient(circle at 24px 24px, color-mix(in srgb, var(--cliente-stripe) 62%, transparent) 1.2px, transparent 1.2px),
+    radial-gradient(circle at 52px 52px, color-mix(in srgb, var(--cliente-accent-soft) 52%, transparent) 1.3px, transparent 1.3px),
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-bg-elevated) 92%, white 8%), color-mix(in srgb, var(--cliente-bg) 98%, transparent));
+  background-size: 72px 72px, 88px 88px, 100% 100%;
+}
+
+.inbox-refined .inbox-thread-composer {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 94%, white 6%), color-mix(in srgb, var(--cliente-panel-solid) 100%, transparent));
+}
+
+.pipeline-refined .pipeline-highlight-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 95%, white 5%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  box-shadow: 0 20px 42px -32px rgba(15, 23, 42, 0.45);
+}
+
+.pipeline-refined .pipeline-board-shell {
+  position: relative;
+}
+
+.pipeline-refined .pipeline-board-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle at top right, var(--cliente-accent-glow), transparent 32%);
+  opacity: 0.9;
+}
+
+.pipeline-refined .pipeline-column-shell {
+  position: relative;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 94%, white 6%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  box-shadow: 0 22px 44px -34px rgba(15, 23, 42, 0.44);
+}
+
+.pipeline-refined .pipeline-column-head {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.pipeline-refined .pipeline-lead-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 94%, white 6%), color-mix(in srgb, var(--cliente-surface-muted) 100%, transparent));
+  box-shadow: 0 18px 34px -28px rgba(15, 23, 42, 0.42);
+}
+
+.pipeline-refined .pipeline-lead-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 82%, transparent);
+}
+
+.dashboard-refined .client-panel-card,
+.agenda-refined .client-panel-card,
+.comercial-refined .client-panel-card,
+.settings-refined .client-panel-card,
+.ia-refined .client-panel-card {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent) 9%, transparent), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 97%, white 3%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+  box-shadow:
+    0 30px 62px -44px rgba(15, 23, 42, 0.3),
+    0 12px 28px -22px color-mix(in srgb, var(--cliente-accent) 12%, transparent);
+}
+
+.dashboard-refined .client-panel-card::before,
+.agenda-refined .client-panel-card::before,
+.comercial-refined .client-panel-card::before,
+.settings-refined .client-panel-card::before,
+.ia-refined .client-panel-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--cliente-accent-soft) 70%, transparent), transparent 34%);
+  opacity: 0.72;
+}
+
+.agenda-refined .agenda-surface-card,
+.comercial-refined .comercial-surface-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 95%, white 5%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+}
+
+.dashboard-refined .dashboard-hero-card,
+.dashboard-refined .dashboard-agenda-card,
+.dashboard-refined .dashboard-summary-card,
+.dashboard-refined .dashboard-alert-banner {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 76%, transparent) !important;
+}
+
+.dashboard-refined .dashboard-hero-card h3 {
+  font-size: clamp(2rem, 1.6rem + 0.9vw, 3rem);
+  line-height: 1.02;
+  letter-spacing: -0.055em;
+}
+
+.dashboard-refined .dashboard-summary-card,
+.dashboard-refined .dashboard-action-link {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 94%, white 6%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  box-shadow: 0 24px 44px -34px rgba(15, 23, 42, 0.24);
+}
+
+.dashboard-refined .dashboard-alert-banner {
+  color: var(--cliente-card-text);
+  box-shadow: 0 24px 48px -34px rgba(217, 119, 6, 0.24);
+}
+
+.dashboard-refined .dashboard-alert-banner :is(.text-amber-100, .text-amber-100\/90, .text-amber-100\/80) {
+  color: inherit !important;
+}
+
+.dashboard-refined .dashboard-action-link:hover {
+  transform: translateY(-2px);
+}
+
+.agenda-refined .agenda-form-card,
+.agenda-refined .agenda-ops-card {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 74%, transparent) !important;
+}
+
+.agenda-refined .agenda-entry-card {
+  position: relative;
+  box-shadow: 0 24px 46px -34px rgba(15, 23, 42, 0.28);
+}
+
+.agenda-refined .agenda-entry-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--cliente-accent-soft) 66%, transparent), transparent 36%);
+  opacity: 0.68;
+}
+
+.agenda-refined .agenda-entry-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 82%, transparent);
+}
+
+.agenda-refined .agenda-action-pill,
+.agenda-refined .agenda-status-button {
+  position: relative;
+  z-index: 1;
+  border-color: color-mix(in srgb, var(--cliente-border) 88%, transparent);
+  background: color-mix(in srgb, var(--cliente-surface-muted) 92%, white 8%);
+  color: var(--cliente-card-text);
+  box-shadow: 0 14px 28px -24px rgba(15, 23, 42, 0.22);
+}
+
+.agenda-refined .agenda-action-pill:hover,
+.agenda-refined .agenda-status-button:hover {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 82%, transparent);
+}
+
+.agenda-refined .agenda-notice {
+  color: var(--cliente-card-text);
+  box-shadow: 0 20px 42px -32px rgba(15, 23, 42, 0.2);
+}
+
+.agenda-refined .agenda-notice-danger {
+  border-color: rgba(244, 63, 94, 0.24);
+  background: rgba(244, 63, 94, 0.08);
+}
+
+.agenda-refined .agenda-notice-success {
+  border-color: rgba(16, 185, 129, 0.22);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.comercial-refined .comercial-hero-card,
+.comercial-refined .comercial-offers-card,
+.comercial-refined .comercial-focus-card,
+.comercial-refined .comercial-desk-shell,
+.comercial-refined .comercial-context-card,
+.comercial-refined .comercial-side-card,
+.comercial-refined .comercial-form-card {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 76%, transparent) !important;
+}
+
+.comercial-refined .comercial-story-card,
+.comercial-refined .comercial-offer-tile,
+.comercial-refined .comercial-desk-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 95%, white 5%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  box-shadow: 0 22px 42px -32px rgba(15, 23, 42, 0.24);
+}
+
+.comercial-refined .comercial-side-card a {
+  border-radius: 22px !important;
+  box-shadow: 0 16px 30px -24px rgba(15, 23, 42, 0.2);
+}
+
+.comercial-refined .comercial-notice {
+  color: var(--cliente-card-text);
+  box-shadow: 0 20px 42px -32px rgba(15, 23, 42, 0.2);
+}
+
+.comercial-refined .comercial-notice-danger {
+  border-color: rgba(244, 63, 94, 0.24);
+  background: rgba(244, 63, 94, 0.08);
+}
+
+.comercial-refined .comercial-notice-success {
+  border-color: rgba(16, 185, 129, 0.22);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.settings-refined .settings-hero-card,
+.settings-refined .settings-insights-card,
+.settings-refined .settings-map-card,
+.settings-refined .settings-checklist-card,
+.settings-refined .settings-roadmap-card,
+.settings-refined .settings-shortcuts-shell,
+.settings-refined .settings-notifications-card {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 76%, transparent) !important;
+}
+
+.ia-refined .ia-guide-card,
+.ia-refined .ia-preview-card {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 76%, transparent) !important;
+}
+
+.ia-refined .ia-guide-block,
+.ia-refined .ia-preview-block,
+.ia-refined .ia-scenario-chip {
+  box-shadow: 0 22px 42px -34px rgba(15, 23, 42, 0.22);
+}
+
+.agenda-refined .agenda-entry-card,
+.comercial-refined .comercial-highlight-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 95%, white 5%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  box-shadow: 0 18px 36px -28px rgba(15, 23, 42, 0.4);
+}
+
+.settings-refined .client-panel-card,
+.knowledge-refined .client-panel-card,
+.ia-refined .client-panel-card {
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 95%, white 5%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent)),
+    radial-gradient(circle at top right, var(--cliente-accent-glow), transparent 38%);
+  box-shadow: 0 24px 48px -36px rgba(15, 23, 42, 0.38);
+}
+
+.settings-refined .client-panel-card::before,
+.knowledge-refined .client-panel-card::before,
+.ia-refined .client-panel-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent-soft) 72%, transparent), transparent 34%);
+  opacity: 0.65;
+}
+
+.settings-refined .client-metric-card,
+.knowledge-refined .client-metric-card,
+.ia-refined .client-metric-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 98%, white 2%), color-mix(in srgb, var(--cliente-surface-muted) 100%, transparent));
+  box-shadow: 0 20px 38px -30px rgba(15, 23, 42, 0.34);
+}
+
+.settings-refined .settings-readiness-row,
+.settings-refined .settings-insight-card,
+.settings-refined .settings-shortcut-card,
+.settings-refined .settings-link-card,
+.knowledge-refined .knowledge-note-card,
+.knowledge-refined .knowledge-doc-card,
+.knowledge-refined .knowledge-template-card,
+.knowledge-refined .knowledge-mini-card,
+.knowledge-refined .knowledge-quick-link,
+.knowledge-refined .knowledge-filter-field,
+.ia-refined .rounded-2xl.border {
+  border-radius: 28px;
+  border-color: color-mix(in srgb, var(--cliente-border) 86%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 96%, white 4%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  box-shadow: 0 20px 42px -34px rgba(15, 23, 42, 0.34);
+}
+
+.knowledge-refined .knowledge-doc-card,
+.knowledge-refined .knowledge-template-card,
+.knowledge-refined .knowledge-quick-link,
+.settings-refined .settings-link-card,
+.settings-refined .settings-shortcut-card,
+.ia-refined .rounded-2xl.border {
+  position: relative;
+}
+
+.knowledge-refined .knowledge-doc-card::before,
+.knowledge-refined .knowledge-template-card::before,
+.knowledge-refined .knowledge-quick-link::before,
+.settings-refined .settings-link-card::before,
+.settings-refined .settings-shortcut-card::before,
+.ia-refined .rounded-2xl.border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--cliente-accent-soft) 68%, transparent), transparent 34%);
+  opacity: 0.9;
+}
+
+.settings-refined .settings-link-card:hover,
+.settings-refined .settings-shortcut-card:hover,
+.knowledge-refined .knowledge-doc-card:hover,
+.knowledge-refined .knowledge-template-card:hover,
+.knowledge-refined .knowledge-quick-link:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 80%, transparent);
+}
+
+.settings-refined .settings-link-icon {
+  border-radius: 18px;
+  box-shadow: 0 14px 28px -24px rgba(15, 23, 42, 0.32);
+}
+
+.settings-refined .settings-readiness-row {
+  padding: 0.95rem 1rem;
+}
+
+.settings-refined .settings-insight-card {
+  min-height: 130px;
+}
+
+.settings-refined .settings-shortcut-card p:first-child,
+.settings-refined .settings-link-card h3,
+.knowledge-refined .knowledge-template-card p:first-child,
+.knowledge-refined .knowledge-quick-link p:first-child {
+  letter-spacing: -0.01em;
+}
+
+.knowledge-refined .knowledge-note-card {
+  min-height: 118px;
+}
+
+.knowledge-refined .knowledge-doc-card {
+  padding: 1.15rem;
+}
+
+.knowledge-refined .knowledge-form-label,
+.ia-refined label.block.text-xs,
+.ia-refined label.block.text-xs.uppercase {
+  color: var(--cliente-card-text-soft);
+}
+
+.knowledge-refined .knowledge-editor-input,
+.knowledge-refined .knowledge-filter-field,
+.ia-refined .client-input,
+.ia-refined textarea,
+.ia-refined select,
+.ia-refined input[type="text"],
+.ia-refined input[type="number"] {
+  border-color: color-mix(in srgb, var(--cliente-border) 86%, transparent);
+  background: color-mix(in srgb, var(--cliente-input-bg) 94%, white 6%);
+  color: var(--cliente-card-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.knowledge-refined .knowledge-editor-input::placeholder,
+.ia-refined textarea::placeholder,
+.ia-refined input::placeholder {
+  color: var(--cliente-card-text-soft);
+}
+
+.knowledge-refined .knowledge-filter-field select,
+.knowledge-refined .knowledge-editor-input,
+.ia-refined .client-input,
+.ia-refined textarea,
+.ia-refined select,
+.ia-refined input[type="text"],
+.ia-refined input[type="number"] {
+  border-radius: 18px;
+}
+
+.knowledge-refined .knowledge-primary-button,
+.ia-refined button[class*="bg-[var(--cliente-accent)]"],
+.ia-refined button[class*="border-[var(--cliente-border-strong)]"] {
+  border-radius: 999px;
+  box-shadow: 0 18px 34px -24px var(--cliente-accent-glow);
+}
+
+.knowledge-refined .knowledge-secondary-button,
+.knowledge-refined .knowledge-action-button,
+.ia-refined button[class*="bg-[var(--cliente-surface-muted)]"],
+.ia-refined button[class*="bg-[var(--cliente-panel-soft)]"] {
+  border-color: color-mix(in srgb, var(--cliente-border) 88%, transparent);
+  background: color-mix(in srgb, var(--cliente-panel-soft) 96%, white 4%);
+  color: var(--cliente-card-text-muted);
+}
+
+.knowledge-refined .knowledge-danger-button {
+  border-radius: 999px;
+  color: #be123c;
+  background: rgba(244, 63, 94, 0.08);
+}
+
+.ia-refined .rounded-xl.border,
+.ia-refined label.flex.items-center.gap-2.rounded-xl.border {
+  border-radius: 22px;
+  border-color: color-mix(in srgb, var(--cliente-border) 82%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 95%, white 5%), color-mix(in srgb, var(--cliente-surface-muted) 100%, transparent));
+}
+
+.ia-refined .rounded-full.border,
+.ia-refined .client-state-badge {
+  border-radius: 999px;
+}
+
+.ia-refined pre,
+.ia-refined article.rounded-xl.border {
+  border-radius: 22px;
+}
+
+[data-client-theme="light"] .knowledge-refined .knowledge-note-card p.text-white,
+[data-client-theme="light"] .knowledge-refined .knowledge-template-card p.text-white,
+[data-client-theme="light"] .knowledge-refined .knowledge-doc-card p.text-white,
+[data-client-theme="light"] .knowledge-refined .knowledge-mini-card p.text-white,
+[data-client-theme="light"] .knowledge-refined .knowledge-quick-link p.text-white {
+  color: var(--cliente-card-text) !important;
+}
+
+[data-client-theme="light"] .knowledge-refined :is(.text-white\/50, .text-white\/46, .text-white\/48, .text-white\/45, .text-white\/42, .text-white\/76, .text-white\/84, .text-white\/86) {
+  color: var(--cliente-card-text-soft) !important;
+}
+
+[data-client-theme="light"] .knowledge-refined .knowledge-danger-button {
+  color: #be123c !important;
+}
+
+.captacao-refined .client-panel-card,
+.campanhas-refined .client-panel-card,
+.metricas-refined .client-panel-card,
+.logs-refined .client-panel-card,
+.automacoes-refined .client-panel-card,
+.handoffs-refined .client-panel-card {
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 96%, white 4%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent)),
+    radial-gradient(circle at top right, var(--cliente-accent-glow), transparent 36%);
+  box-shadow: 0 24px 52px -38px rgba(15, 23, 42, 0.38);
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 74%, transparent) !important;
+}
+
+.captacao-refined .client-panel-card::before,
+.campanhas-refined .client-panel-card::before,
+.metricas-refined .client-panel-card::before,
+.logs-refined .client-panel-card::before,
+.automacoes-refined .client-panel-card::before,
+.handoffs-refined .client-panel-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--cliente-accent-soft) 70%, transparent), transparent 34%);
+  opacity: 0.7;
+}
+
+.captacao-refined .client-metric-card,
+.campanhas-refined .client-metric-card,
+.metricas-refined .client-metric-card,
+.logs-refined .client-metric-card,
+.automacoes-refined .client-metric-card,
+.handoffs-refined .client-metric-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 99%, white 1%), color-mix(in srgb, var(--cliente-surface-muted) 100%, transparent));
+  box-shadow: 0 20px 36px -30px rgba(15, 23, 42, 0.32);
+}
+
+.captacao-refined :is(.captacao-field-card, .captacao-toggle-card, .rounded-2xl.border, .rounded-xl.border),
+.campanhas-refined :is(.rounded-2xl.border, .rounded-xl.border),
+.metricas-refined :is(.metricas-insight-card, .metricas-mini-stat, .metricas-tile, .rounded-2xl.border, .rounded-xl.border),
+.logs-refined :is(.logs-focus-card, .logs-health-row, .logs-filter-button, .logs-quick-link, .rounded-2xl.border, .rounded-xl.border),
+.automacoes-refined :is(.automacoes-queue-pill, .automacoes-health-row, .automacoes-insight-card, .rounded-2xl.border, .rounded-xl.border, .rounded-3xl.border),
+.handoffs-refined :is(.handoffs-filter-select, .handoffs-filter-pill, .handoffs-quick-link, .handoffs-risk-row, .rounded-2xl.border, .rounded-xl.border) {
+  border-color: color-mix(in srgb, var(--cliente-border) 86%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 96%, white 4%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  box-shadow: 0 20px 42px -34px rgba(15, 23, 42, 0.34);
+}
+
+.captacao-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border),
+.campanhas-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border),
+.metricas-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border),
+.logs-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border),
+.automacoes-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border),
+.knowledge-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border) {
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.captacao-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border):hover,
+.campanhas-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border):hover,
+.metricas-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border):hover,
+.logs-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border):hover,
+.automacoes-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border):hover,
+.knowledge-refined :is(a.rounded-2xl.border, a.rounded-xl.border, button.rounded-2xl.border, button.rounded-xl.border):hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 82%, transparent);
+  box-shadow:
+    0 28px 52px -40px rgba(15, 23, 42, 0.28),
+    0 14px 28px -24px color-mix(in srgb, var(--cliente-accent) 18%, transparent);
+}
+
+.captacao-refined :is(input, select, textarea),
+.campanhas-refined :is(input, select, textarea),
+.metricas-refined :is(input, select, textarea),
+.logs-refined :is(input, select, textarea),
+.automacoes-refined :is(input, select, textarea),
+.knowledge-refined :is(input, select, textarea) {
+  border-color: color-mix(in srgb, var(--cliente-border) 86%, transparent);
+  background: color-mix(in srgb, var(--cliente-input-bg) 95%, white 5%);
+  color: var(--cliente-card-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+
+.captacao-refined :is(input, select, textarea)::placeholder,
+.campanhas-refined :is(input, select, textarea)::placeholder,
+.metricas-refined :is(input, select, textarea)::placeholder,
+.logs-refined :is(input, select, textarea)::placeholder,
+.automacoes-refined :is(input, select, textarea)::placeholder,
+.knowledge-refined :is(input, select, textarea)::placeholder {
+  color: var(--cliente-card-text-soft);
+}
+
+.captacao-refined :is(input, select, textarea, label.rounded-xl.border, label.rounded-2xl.border),
+.campanhas-refined :is(input, select, textarea, label.rounded-xl.border, label.rounded-2xl.border),
+.metricas-refined :is(input, select, textarea, label.rounded-xl.border, label.rounded-2xl.border),
+.logs-refined :is(input, select, textarea, label.rounded-xl.border, label.rounded-2xl.border),
+.automacoes-refined :is(input, select, textarea, label.rounded-xl.border, label.rounded-2xl.border),
+.knowledge-refined :is(input, select, textarea, label.rounded-xl.border, label.rounded-2xl.border) {
+  border-radius: 20px;
+}
+
+.captacao-refined button[class*="bg-[var(--cliente-accent)]"],
+.captacao-refined button[class*="bg-[var(--cliente-accent-soft)]"],
+.campanhas-refined button[class*="bg-[var(--cliente-accent)]"],
+.campanhas-refined button[class*="bg-[var(--cliente-accent-soft)]"],
+.metricas-refined button[class*="bg-[var(--cliente-accent)]"],
+.metricas-refined button[class*="bg-[var(--cliente-accent-soft)]"],
+.logs-refined button[class*="bg-[var(--cliente-accent)]"],
+.logs-refined button[class*="bg-[var(--cliente-accent-soft)]"],
+.automacoes-refined button[class*="bg-[var(--cliente-accent)]"],
+.automacoes-refined button[class*="bg-[var(--cliente-accent-soft)]"],
+.knowledge-refined button[class*="bg-[var(--cliente-accent)]"],
+.knowledge-refined button[class*="bg-[var(--cliente-accent-soft)]"] {
+  border-radius: 999px;
+  box-shadow: 0 18px 34px -24px var(--cliente-accent-glow);
+}
+
+.captacao-refined button[class*="bg-[var(--cliente-surface-muted)]"],
+.captacao-refined button[class*="bg-[var(--cliente-panel-soft)]"],
+.campanhas-refined button[class*="bg-[var(--cliente-surface-muted)]"],
+.campanhas-refined button[class*="bg-[var(--cliente-panel-soft)]"],
+.metricas-refined button[class*="bg-[var(--cliente-surface-muted)]"],
+.metricas-refined button[class*="bg-[var(--cliente-panel-soft)]"],
+.logs-refined button[class*="bg-[var(--cliente-surface-muted)]"],
+.logs-refined button[class*="bg-[var(--cliente-panel-soft)]"],
+.automacoes-refined button[class*="bg-[var(--cliente-surface-muted)]"],
+.automacoes-refined button[class*="bg-[var(--cliente-panel-soft)]"] {
+  border-radius: 999px;
+}
+
+[data-client-theme="light"] .captacao-refined :is(.text-white, .text-amber-100, .text-emerald-100, .text-rose-100),
+[data-client-theme="light"] .campanhas-refined :is(.text-white, .text-amber-100, .text-emerald-100, .text-rose-100),
+[data-client-theme="light"] .metricas-refined :is(.text-white, .text-amber-100, .text-emerald-100, .text-rose-100),
+[data-client-theme="light"] .logs-refined :is(.text-white, .text-amber-100, .text-emerald-100, .text-rose-100),
+[data-client-theme="light"] .automacoes-refined :is(.text-white, .text-amber-100, .text-emerald-100, .text-rose-100) {
+  color: var(--cliente-card-text) !important;
+}
+
+[data-client-theme="light"] .captacao-refined :is(.text-white\/86, .text-white\/82, .text-white\/70, .text-white\/56, .text-white\/50, .text-white\/42),
+[data-client-theme="light"] .campanhas-refined :is(.text-white\/86, .text-white\/82, .text-white\/70, .text-white\/56, .text-white\/50, .text-white\/42),
+[data-client-theme="light"] .metricas-refined :is(.text-emerald-100, .text-emerald-700, .text-emerald-100, .text-\[var\(--cliente-card-text-soft\)\]),
+[data-client-theme="light"] .logs-refined :is(.text-white\/86, .text-white\/70, .text-white\/50, .text-white\/42),
+[data-client-theme="light"] .automacoes-refined :is(.text-white\/86, .text-white\/82, .text-white\/70, .text-white\/56, .text-white\/50, .text-white\/42) {
+  color: var(--cliente-card-text-soft) !important;
+}
+
+.captacao-refined .client-section-title,
+.campanhas-refined .client-section-title,
+.metricas-refined .client-section-title,
+.logs-refined .client-section-title,
+.automacoes-refined .client-section-title,
+.knowledge-refined .client-section-title {
+  letter-spacing: -0.05em;
+}
+
+.captacao-refined :is(.captacao-field-card, .captacao-toggle-card, .rounded-2xl.border),
+.campanhas-refined :is(.rounded-2xl.border),
+.metricas-refined :is(.metricas-insight-card, .metricas-tile, .rounded-2xl.border),
+.logs-refined :is(.logs-focus-card, .logs-quick-link, .rounded-2xl.border),
+.automacoes-refined :is(.rounded-2xl.border, .rounded-3xl.border),
+.handoffs-refined :is(.handoffs-quick-link, .handoffs-risk-row, .rounded-2xl.border) {
+  position: relative;
+}
+
+.captacao-refined :is(.captacao-field-card, .rounded-2xl.border)::before,
+.campanhas-refined :is(.rounded-2xl.border)::before,
+.metricas-refined :is(.metricas-insight-card, .metricas-tile, .rounded-2xl.border)::before,
+.logs-refined :is(.logs-focus-card, .logs-quick-link, .rounded-2xl.border)::before,
+.automacoes-refined :is(.rounded-2xl.border, .rounded-3xl.border)::before,
+.handoffs-refined :is(.handoffs-quick-link, .handoffs-risk-row, .rounded-2xl.border)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--cliente-accent-soft) 64%, transparent), transparent 34%);
+  opacity: 0.78;
+}
+
+.captacao-refined :is(a, button),
+.campanhas-refined :is(a, button),
+.metricas-refined :is(a, button),
+.logs-refined :is(a, button),
+.automacoes-refined :is(a, button),
+.handoffs-refined :is(a, button) {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease, color 180ms ease;
+}
+
+.captacao-refined :is(.captacao-toggle-card, a.rounded-2xl, button.rounded-2xl, button.rounded-xl):hover,
+.campanhas-refined :is(a.rounded-2xl, button.rounded-2xl, button.rounded-xl):hover,
+.metricas-refined :is(a.rounded-2xl, button.rounded-2xl, button.rounded-xl):hover,
+.logs-refined :is(.logs-focus-card, .logs-quick-link, button.rounded-2xl, button.rounded-xl):hover,
+.automacoes-refined :is(button.rounded-2xl, button.rounded-xl, a.rounded-2xl):hover,
+.handoffs-refined :is(.handoffs-quick-link, .handoffs-risk-row, button.rounded-2xl, button.rounded-xl):hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 80%, transparent);
+}
+
+.captacao-refined :is(input, select, textarea),
+.campanhas-refined :is(input, select, textarea),
+.metricas-refined :is(input, select, textarea),
+.logs-refined :is(input, select, textarea),
+.automacoes-refined :is(input, select, textarea),
+.handoffs-refined :is(input, select, textarea) {
+  border-radius: 18px;
+  border-color: color-mix(in srgb, var(--cliente-border) 86%, transparent);
+  background: color-mix(in srgb, var(--cliente-input-bg) 94%, white 6%);
+  color: var(--cliente-card-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.captacao-refined :is(input, textarea)::placeholder,
+.campanhas-refined :is(input, textarea)::placeholder,
+.metricas-refined :is(input, textarea)::placeholder,
+.logs-refined :is(input, textarea)::placeholder,
+.automacoes-refined :is(input, textarea)::placeholder,
+.handoffs-refined :is(input, textarea)::placeholder {
+  color: var(--cliente-card-text-soft);
+}
+
+.captacao-refined :is(select option),
+.campanhas-refined :is(select option),
+.metricas-refined :is(select option),
+.logs-refined :is(select option),
+.automacoes-refined :is(select option),
+.handoffs-refined :is(select option) {
+  background: var(--cliente-panel-solid);
+  color: var(--cliente-card-text);
+}
+
+.captacao-refined .captacao-toggle-card,
+.logs-refined .logs-filter-button,
+.handoffs-refined .handoffs-filter-pill,
+.handoffs-refined .handoffs-filter-select,
+.metricas-refined .rounded-xl.border,
+.campanhas-refined .rounded-xl.border,
+.automacoes-refined .rounded-xl.border {
+  border-radius: 20px;
+}
+
+.campanhas-refined button[class*="bg-[var(--cliente-accent)]"],
+.captacao-refined button[class*="bg-[var(--cliente-accent)]"],
+.metricas-refined button[class*="bg-[var(--cliente-accent)]"],
+.automacoes-refined button[class*="bg-[var(--cliente-accent)]"],
+.handoffs-refined button[class*="bg-[var(--cliente-accent)]"] {
+  border-radius: 999px;
+  box-shadow: 0 18px 34px -24px var(--cliente-accent-glow);
+}
+
+.automacoes-refined .rounded-3xl.border {
+  border-radius: 34px;
+}
+
+.automacoes-refined .automacoes-queue-pill,
+.automacoes-refined .automacoes-health-row,
+.metricas-refined .metricas-mini-stat,
+.logs-refined .logs-health-row,
+.handoffs-refined .handoffs-risk-row {
+  border-radius: 22px;
+}
+
+[data-client-theme="light"] .captacao-refined :is(.text-white, .text-rose-100, .text-emerald-100),
+[data-client-theme="light"] .campanhas-refined :is(.text-white, .text-sky-100, .text-rose-100, .text-emerald-100, .text-amber-100),
+[data-client-theme="light"] .logs-refined .text-white,
+[data-client-theme="light"] .handoffs-refined .text-white,
+[data-client-theme="light"] .automacoes-refined .text-white {
+  color: var(--cliente-card-text) !important;
+}
+
+[data-client-theme="light"] .captacao-refined :is(.text-\[var\(--cliente-card-text-muted\)\], .text-\[var\(--cliente-card-text-soft\)\]),
+[data-client-theme="light"] .campanhas-refined :is(.text-\[var\(--cliente-card-text-muted\)\], .text-\[var\(--cliente-card-text-soft\)\]),
+[data-client-theme="light"] .logs-refined :is(.text-\[var\(--cliente-card-text-muted\)\], .text-\[var\(--cliente-card-text-soft\)\]),
+[data-client-theme="light"] .handoffs-refined :is(.text-\[var\(--cliente-card-text-muted\)\], .text-\[var\(--cliente-card-text-soft\)\]),
+[data-client-theme="light"] .automacoes-refined :is(.text-\[var\(--cliente-card-text-muted\)\], .text-\[var\(--cliente-card-text-soft\)\]) {
+  color: var(--cliente-card-text-soft) !important;
+}
+
 .client-shell-ambient::before {
   content: "";
   position: absolute;
@@ -396,6 +1315,698 @@ body {
 
 [data-client-area] :is(input, select, textarea):focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--cliente-accent) 22%, transparent);
+}
+
+[data-client-theme="light"] .dashboard-refined > section > .client-panel-card,
+[data-client-theme="light"] .dashboard-refined .client-panel-card {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent) 10%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,248,244,0.93));
+}
+
+[data-client-theme="light"] .dashboard-refined .dashboard-hero-stat,
+[data-client-theme="light"] .dashboard-refined .dashboard-quick-link,
+[data-client-theme="light"] .dashboard-refined .dashboard-focus-row,
+[data-client-theme="light"] .dashboard-refined .dashboard-mini-link,
+[data-client-theme="light"] .go-live-refined .go-live-evidence,
+[data-client-theme="light"] .go-live-refined .go-live-runbook,
+[data-client-theme="light"] .followups-refined .followups-signal-card,
+[data-client-theme="light"] .followups-refined .followups-info-tile,
+[data-client-theme="light"] .followups-refined .followups-filter,
+[data-client-theme="light"] .followups-refined .followups-quick-link,
+[data-client-theme="light"] .settings-users-refined .settings-users-member-card,
+[data-client-theme="light"] .settings-users-refined .settings-users-capabilities,
+[data-client-theme="light"] .settings-users-refined .settings-users-invite-link,
+[data-client-theme="light"] .settings-channels-refined .settings-channels-health-panel,
+[data-client-theme="light"] .settings-channels-refined .settings-channels-mini-panel,
+[data-client-theme="light"] .settings-channels-refined .settings-channels-readiness,
+[data-client-theme="light"] .settings-channels-refined .settings-channels-guidance {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 72%, transparent) !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,249,245,0.9)) !important;
+  box-shadow:
+    0 28px 60px -44px rgba(15, 23, 42, 0.26),
+    0 10px 24px -18px color-mix(in srgb, var(--cliente-accent) 16%, transparent);
+}
+
+.dashboard-refined .dashboard-hero-stat,
+.dashboard-refined .dashboard-focus-row,
+.dashboard-refined .dashboard-mini-link,
+.go-live-refined .go-live-evidence,
+.followups-refined .followups-info-tile {
+  border-radius: 24px;
+}
+
+.dashboard-refined .dashboard-quick-link,
+.go-live-refined .go-live-runbook,
+.followups-refined .followups-signal-card,
+.followups-refined .followups-quick-link,
+.settings-users-refined .settings-users-member-card,
+.settings-channels-refined .settings-channels-health-panel,
+.settings-channels-refined .settings-channels-guidance {
+  border-radius: 28px;
+}
+
+.dashboard-refined .dashboard-quick-link:hover,
+.dashboard-refined .dashboard-focus-row:hover,
+.dashboard-refined .dashboard-mini-link:hover,
+.go-live-refined .go-live-runbook:hover,
+.followups-refined .followups-quick-link:hover,
+.settings-users-refined .settings-users-member-card:hover,
+.settings-channels-refined .settings-channels-guidance:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 34px 64px -42px rgba(15, 23, 42, 0.28),
+    0 16px 34px -24px color-mix(in srgb, var(--cliente-accent) 24%, transparent);
+}
+
+[data-client-theme="light"] .dashboard-refined .dashboard-quick-link > div:first-child,
+[data-client-theme="light"] .go-live-refined .go-live-runbook > div > div:first-child {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 76%, transparent) !important;
+  background: color-mix(in srgb, var(--cliente-accent) 10%, white) !important;
+}
+
+[data-client-theme="light"] .go-live-refined .client-panel-card,
+[data-client-theme="light"] .followups-refined .client-panel-card,
+[data-client-theme="light"] .settings-users-refined .client-panel-card,
+[data-client-theme="light"] .settings-channels-refined .client-panel-card {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent) 11%, transparent), transparent 40%),
+    linear-gradient(180deg, rgba(255,255,255,0.97), rgba(255,247,242,0.93));
+}
+
+[data-client-theme="dark"] .dashboard-refined > section > .client-panel-card,
+[data-client-theme="dark"] .dashboard-refined .client-panel-card,
+[data-client-theme="dark"] .go-live-refined .client-panel-card,
+[data-client-theme="dark"] .followups-refined .client-panel-card,
+[data-client-theme="dark"] .settings-users-refined .client-panel-card,
+[data-client-theme="dark"] .settings-channels-refined .client-panel-card {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent) 9%, transparent), transparent 40%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--cliente-card) 96%, black 4%),
+      color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent)
+    ) !important;
+}
+
+[data-client-theme="dark"] .dashboard-refined .dashboard-hero-stat,
+[data-client-theme="dark"] .dashboard-refined .dashboard-quick-link,
+[data-client-theme="dark"] .dashboard-refined .dashboard-focus-row,
+[data-client-theme="dark"] .dashboard-refined .dashboard-mini-link,
+[data-client-theme="dark"] .go-live-refined .go-live-evidence,
+[data-client-theme="dark"] .go-live-refined .go-live-runbook,
+[data-client-theme="dark"] .followups-refined .followups-signal-card,
+[data-client-theme="dark"] .followups-refined .followups-info-tile,
+[data-client-theme="dark"] .followups-refined .followups-filter,
+[data-client-theme="dark"] .followups-refined .followups-quick-link,
+[data-client-theme="dark"] .settings-users-refined .settings-users-member-card,
+[data-client-theme="dark"] .settings-users-refined .settings-users-capabilities,
+[data-client-theme="dark"] .settings-users-refined .settings-users-invite-link,
+[data-client-theme="dark"] .settings-channels-refined .settings-channels-health-panel,
+[data-client-theme="dark"] .settings-channels-refined .settings-channels-mini-panel,
+[data-client-theme="dark"] .settings-channels-refined .settings-channels-readiness,
+[data-client-theme="dark"] .settings-channels-refined .settings-channels-guidance {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 52%, transparent) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--cliente-panel-soft) 94%, black 6%),
+      color-mix(in srgb, var(--cliente-card) 100%, transparent)
+    ) !important;
+  box-shadow:
+    0 28px 60px -44px rgba(2, 6, 23, 0.42),
+    0 10px 24px -18px color-mix(in srgb, var(--cliente-accent) 10%, transparent);
+}
+
+[data-client-theme="dark"] .dashboard-refined .dashboard-quick-link > div:first-child,
+[data-client-theme="dark"] .go-live-refined .go-live-runbook > div > div:first-child {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 58%, transparent) !important;
+  background: color-mix(in srgb, var(--cliente-accent-soft) 72%, transparent) !important;
+}
+
+.followups-refined .followups-scenario-card,
+.followups-refined .followups-recommended-card {
+  border-radius: 30px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.28),
+    0 26px 50px -34px rgba(15, 23, 42, 0.2);
+}
+
+.followups-refined .followups-filter select {
+  color: var(--cliente-card-text) !important;
+}
+
+.followups-refined button[class*="rose-500/10"],
+.followups-refined button[class*="amber-500/10"],
+.followups-refined button[class*="emerald-500/10"] {
+  border-radius: 999px;
+}
+
+[data-client-theme="light"] .settings-users-refined .settings-users-back,
+[data-client-theme="light"] .settings-channels-refined .settings-channels-back {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 72%, transparent) !important;
+  background: rgba(255,255,255,0.78) !important;
+  color: var(--cliente-card-text) !important;
+  border-radius: 999px;
+  box-shadow: 0 18px 36px -28px rgba(15, 23, 42, 0.24);
+}
+
+[data-client-theme="dark"] .settings-users-refined .settings-users-back,
+[data-client-theme="dark"] .settings-channels-refined .settings-channels-back {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 50%, transparent) !important;
+  background: color-mix(in srgb, var(--cliente-panel-soft) 92%, black 8%) !important;
+  color: var(--cliente-card-text) !important;
+  border-radius: 999px;
+  box-shadow: 0 18px 36px -28px rgba(2, 6, 23, 0.38);
+}
+
+.settings-users-refined .settings-users-field span,
+.settings-channels-refined .settings-channels-field span,
+.settings-users-refined .text-white\/55,
+.settings-users-refined .text-white\/50,
+.settings-users-refined .text-white\/42,
+.settings-channels-refined .text-white\/52,
+.settings-channels-refined .text-white\/56,
+.settings-channels-refined .text-white\/46,
+.settings-channels-refined .text-white\/45,
+.settings-channels-refined .text-white\/40 {
+  color: var(--cliente-card-text-soft) !important;
+}
+
+.settings-users-refined .text-white,
+.settings-channels-refined .text-white,
+.settings-channels-refined .text-amber-100,
+.settings-channels-refined .text-emerald-100,
+.settings-channels-refined .text-rose-100 {
+  color: var(--cliente-card-text) !important;
+}
+
+[data-client-theme="light"] .settings-users-refined .settings-users-input,
+[data-client-theme="light"] .settings-users-refined .settings-users-select,
+[data-client-theme="light"] .settings-channels-refined .settings-channels-input,
+[data-client-theme="light"] .settings-channels-refined .settings-channels-select,
+[data-client-theme="light"] .settings-users-refined input:not([type="checkbox"]),
+[data-client-theme="light"] .settings-users-refined select,
+[data-client-theme="light"] .settings-channels-refined input:not([type="checkbox"]),
+[data-client-theme="light"] .settings-channels-refined select {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 72%, transparent) !important;
+  background: rgba(255,255,255,0.9) !important;
+  color: var(--cliente-card-text) !important;
+  border-radius: 20px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22);
+}
+
+[data-client-theme="dark"] .settings-users-refined .settings-users-input,
+[data-client-theme="dark"] .settings-users-refined .settings-users-select,
+[data-client-theme="dark"] .settings-channels-refined .settings-channels-input,
+[data-client-theme="dark"] .settings-channels-refined .settings-channels-select,
+[data-client-theme="dark"] .settings-users-refined input:not([type="checkbox"]),
+[data-client-theme="dark"] .settings-users-refined select,
+[data-client-theme="dark"] .settings-channels-refined input:not([type="checkbox"]),
+[data-client-theme="dark"] .settings-channels-refined select {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 48%, transparent) !important;
+  background: color-mix(in srgb, var(--cliente-input-bg) 96%, black 4%) !important;
+  color: var(--cliente-card-text) !important;
+  border-radius: 20px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.settings-users-refined .settings-users-input::placeholder,
+.settings-channels-refined .settings-channels-input::placeholder {
+  color: var(--cliente-card-text-soft) !important;
+}
+
+.settings-users-refined option,
+.settings-channels-refined option {
+  background: var(--cliente-surface);
+  color: var(--cliente-card-text);
+}
+
+[data-client-theme="light"] .settings-users-refined .settings-users-capability-item,
+[data-client-theme="light"] .settings-channels-refined .rounded-xl.border.border-white\/8,
+[data-client-theme="light"] .settings-channels-refined .rounded-xl.border.border-white\/10.bg-black\/25 {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 68%, transparent) !important;
+  background: rgba(255,255,255,0.82) !important;
+  color: var(--cliente-card-text) !important;
+  border-radius: 18px;
+}
+
+[data-client-theme="dark"] .settings-users-refined .settings-users-capability-item,
+[data-client-theme="dark"] .settings-channels-refined .rounded-xl.border.border-white\/8,
+[data-client-theme="dark"] .settings-channels-refined .rounded-xl.border.border-white\/10.bg-black\/25 {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 48%, transparent) !important;
+  background: color-mix(in srgb, var(--cliente-panel-soft) 94%, black 6%) !important;
+  color: var(--cliente-card-text) !important;
+  border-radius: 18px;
+}
+
+.settings-users-refined .settings-users-action,
+.settings-channels-refined .settings-channels-save,
+.settings-channels-refined button[class*="bg-[var(--cliente-accent)]"] {
+  border-radius: 999px;
+  box-shadow: 0 18px 38px -24px var(--cliente-accent-glow);
+}
+
+[data-client-theme="light"] .settings-channels-refined .rounded-2xl.border.border-white\/10.bg-white\/\[0\.03\],
+[data-client-theme="light"] .settings-channels-refined .rounded-2xl.border.border-white\/10.bg-black\/25,
+[data-client-theme="light"] .settings-channels-refined .rounded-xl.border.border-white\/10.bg-black\/25 {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 70%, transparent) !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.94), rgba(255,248,244,0.88)) !important;
+  box-shadow: 0 22px 44px -34px rgba(15, 23, 42, 0.2);
+}
+
+[data-client-theme="dark"] .settings-channels-refined .rounded-2xl.border.border-white\/10.bg-white\/\[0\.03\],
+[data-client-theme="dark"] .settings-channels-refined .rounded-2xl.border.border-white\/10.bg-black\/25,
+[data-client-theme="dark"] .settings-channels-refined .rounded-xl.border.border-white\/10.bg-black\/25 {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 48%, transparent) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--cliente-panel-soft) 94%, black 6%),
+      color-mix(in srgb, var(--cliente-card) 100%, transparent)
+    ) !important;
+  box-shadow: 0 22px 44px -34px rgba(2, 6, 23, 0.34);
+}
+
+.settings-channels-refined .settings-channels-mini-panel,
+.settings-channels-refined .settings-channels-readiness {
+  border-radius: 24px;
+}
+
+[data-client-theme="light"] .settings-channels-refined .settings-channels-guidance a,
+[data-client-theme="light"] .settings-channels-refined a[class*="bg-white/[0.03]"],
+[data-client-theme="light"] .settings-channels-refined button[class*="bg-white/[0.03]"] {
+  border-radius: 999px;
+  background: rgba(255,255,255,0.82) !important;
+  color: var(--cliente-card-text) !important;
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 72%, transparent) !important;
+}
+
+[data-client-theme="dark"] .settings-channels-refined .settings-channels-guidance a,
+[data-client-theme="dark"] .settings-channels-refined a[class*="bg-white/[0.03]"],
+[data-client-theme="dark"] .settings-channels-refined button[class*="bg-white/[0.03]"] {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cliente-panel-soft) 92%, black 8%) !important;
+  color: var(--cliente-card-text) !important;
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 48%, transparent) !important;
+}
+
+[data-client-theme="light"] .dashboard-refined :is(.text-white, .text-amber-100),
+[data-client-theme="light"] .go-live-refined .text-amber-100,
+[data-client-theme="light"] .followups-refined :is(.text-rose-100, .text-amber-100, .text-emerald-100),
+[data-client-theme="light"] .settings-users-refined .text-red-300,
+[data-client-theme="light"] .settings-users-refined .text-emerald-300,
+[data-client-theme="light"] .settings-channels-refined :is(.text-red-300, .text-emerald-300) {
+  color: var(--cliente-card-text) !important;
+}
+
+[data-client-theme="light"] .dashboard-refined :is(.text-\[var\(--cliente-card-text-muted\)\], .text-\[var\(--cliente-card-text-soft\)\]),
+[data-client-theme="light"] .go-live-refined :is(.text-\[var\(--cliente-card-text-muted\)\], .text-\[var\(--cliente-card-text-soft\)\]),
+[data-client-theme="light"] .followups-refined :is(.text-\[var\(--cliente-card-text-muted\)\], .text-\[var\(--cliente-card-text-soft\)\]) {
+  color: var(--cliente-card-text-soft) !important;
+}
+
+.crm-preview-refined {
+  font-family: var(--cliente-font-family);
+}
+
+.crm-preview-refined .rounded-xl,
+.crm-preview-refined .rounded-lg,
+.crm-preview-refined .rounded-md {
+  border-radius: 24px;
+}
+
+.crm-preview-refined .bg-white,
+.crm-preview-refined .bg-slate-50,
+.crm-preview-refined .bg-slate-50\/50,
+.crm-preview-refined .bg-blue-50 {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.97), rgba(255,248,244,0.9)) !important;
+}
+
+.crm-preview-refined .border-slate-200,
+.crm-preview-refined .border-slate-300,
+.crm-preview-refined .border-blue-200,
+.crm-preview-refined .border-blue-300,
+.crm-preview-refined .border-slate-100 {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 55%, rgba(143,151,164,0.24)) !important;
+}
+
+.crm-preview-refined .shadow-sm,
+.crm-preview-refined .shadow-\[0_20px_50px_rgba\(2\,6\,23\,0\.35\)\] {
+  box-shadow:
+    0 24px 54px -38px rgba(15, 23, 42, 0.24),
+    0 14px 30px -24px color-mix(in srgb, var(--cliente-accent) 16%, transparent) !important;
+}
+
+.crm-preview-refined .text-slate-900,
+.crm-preview-refined .text-slate-800,
+.crm-preview-refined .text-slate-700 {
+  color: var(--cliente-card-text) !important;
+}
+
+.crm-preview-refined .text-slate-600,
+.crm-preview-refined .text-slate-500,
+.crm-preview-refined .text-slate-400 {
+  color: var(--cliente-card-text-soft) !important;
+}
+
+.crm-preview-refined .bg-blue-600,
+.crm-preview-refined .hover\:bg-blue-500:hover {
+  background: linear-gradient(135deg, var(--cliente-accent), var(--cliente-accent-strong)) !important;
+}
+
+.crm-preview-refined .text-blue-700,
+.crm-preview-refined .text-blue-900 {
+  color: var(--cliente-accent) !important;
+}
+
+.crm-preview-refined .bg-blue-100 {
+  background: color-mix(in srgb, var(--cliente-accent) 12%, white) !important;
+}
+
+.crm-preview-refined .bg-amber-100 {
+  background: rgba(245, 158, 11, 0.12) !important;
+}
+
+.crm-preview-refined .bg-emerald-100 {
+  background: rgba(16, 185, 129, 0.12) !important;
+}
+
+.crm-preview-refined .inline-flex.rounded-lg.border,
+.crm-preview-refined button.rounded-lg,
+.crm-preview-refined a.rounded-lg {
+  border-radius: 999px;
+}
+
+.crm-preview-refined input[type="search"] {
+  border-radius: 999px;
+  background: rgba(255,255,255,0.92) !important;
+  color: var(--cliente-card-text) !important;
+}
+
+/* Shared client shell refinements: stronger typography, larger radii, clearer daily layout */
+[data-client-style="v2"] {
+  font-family: var(--cliente-font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+[data-client-style="v2"] .client-panel-card,
+[data-client-style="v2"] .client-metric-card {
+  border-radius: 28px;
+}
+
+[data-client-style="v2"] .client-section-header {
+  margin-bottom: 1.1rem;
+}
+
+[data-client-style="v2"] .client-section-title {
+  font-size: clamp(1.8rem, 1.35rem + 1vw, 2.5rem);
+  letter-spacing: -0.05em;
+}
+
+[data-client-style="v2"] .client-card-title-text,
+[data-client-style="v2"] .client-metric-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+[data-client-style="v2"] .client-metric-value {
+  letter-spacing: -0.05em;
+}
+
+[data-client-area="daily"] {
+  --cliente-accent-glow: rgba(232, 80, 2, 0.11);
+  --cliente-accent-secondary-glow: rgba(45, 212, 191, 0.05);
+  --cliente-shadow-soft: 0 16px 34px rgba(2, 6, 23, 0.16);
+  --cliente-shadow-hard: 0 28px 58px rgba(2, 6, 23, 0.24);
+}
+
+[data-client-theme="light"] [data-client-area="daily"] {
+  --cliente-accent-glow: rgba(217, 75, 18, 0.095);
+  --cliente-accent-secondary-glow: rgba(15, 118, 110, 0.05);
+  --cliente-shadow-soft: 0 18px 36px rgba(91, 78, 62, 0.09);
+  --cliente-shadow-hard: 0 28px 60px rgba(91, 78, 62, 0.16);
+}
+
+[data-client-area="daily"] .client-shell-ambient {
+  opacity: 0.88;
+}
+
+[data-client-area="daily"] .client-glass {
+  backdrop-filter: blur(14px) saturate(120%);
+}
+
+[data-client-area="daily"] .client-panel-card {
+  border-radius: 28px;
+}
+
+[data-client-area="daily"] .client-section-header {
+  margin-bottom: 1.1rem;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+[data-client-area="daily"] .client-section-title {
+  font-size: clamp(1.75rem, 1.38rem + 0.9vw, 2.3rem);
+  letter-spacing: -0.045em;
+}
+
+[data-client-area="daily"] .client-card-title-text {
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+}
+
+[data-client-area="daily"] .client-state-badge {
+  border-radius: 999px;
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+[data-client-area="daily"] .client-metric-label {
+  letter-spacing: 0.16em;
+}
+
+[data-client-area="daily"] .client-metric-value {
+  font-size: clamp(1.9rem, 1.6rem + 0.6vw, 2.35rem);
+}
+
+[data-client-area="daily"] .client-metric-icon {
+  border-radius: 22px;
+}
+
+[data-client-area="daily"] .client-daily-page {
+  gap: 1.35rem;
+}
+
+.crm-refined .crm-list-panel,
+.crm-refined .crm-lead-sheet,
+.crm-refined .crm-edit-modal {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent) 9%, transparent), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 98%, white 2%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+  box-shadow: 0 28px 60px -42px rgba(15, 23, 42, 0.34);
+}
+
+.crm-refined .crm-lead-sheet-header,
+.crm-refined .crm-lead-hero {
+  position: relative;
+}
+
+.crm-refined .crm-lead-sheet-header::after,
+.crm-refined .crm-lead-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--cliente-accent-soft) 72%, transparent), transparent 36%);
+  opacity: 0.85;
+}
+
+.crm-refined .crm-contact-card {
+  box-shadow: 0 18px 34px -30px rgba(15, 23, 42, 0.22);
+}
+
+.crm-refined .crm-contact-card-active {
+  box-shadow:
+    0 20px 44px -30px color-mix(in srgb, var(--cliente-accent) 28%, transparent),
+    0 1px 0 rgba(255,255,255,0.08) inset;
+}
+
+.crm-refined .crm-contact-avatar {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--cliente-accent-soft) 72%, white 28%), color-mix(in srgb, var(--cliente-panel-soft) 90%, transparent));
+  border: 1px solid color-mix(in srgb, var(--cliente-border-strong) 72%, transparent);
+  box-shadow: 0 16px 30px -24px var(--cliente-accent-glow);
+}
+
+.crm-refined .crm-list-head {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-surface-muted) 92%, white 8%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+}
+
+.crm-refined .crm-edit-modal {
+  border-radius: 36px;
+}
+
+.crm-refined .crm-daily-link {
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 94%, white 6%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  box-shadow: 0 18px 34px -28px rgba(15, 23, 42, 0.2);
+}
+
+.crm-refined .crm-daily-link:hover,
+.crm-refined .crm-sheet-secondary-action:hover,
+.crm-refined .crm-sheet-item:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 78%, transparent);
+}
+
+.crm-refined .crm-sheet-info-grid > div {
+  border-radius: 22px;
+  padding: 0.9rem 1rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-surface-muted) 92%, white 8%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  box-shadow: 0 16px 30px -26px rgba(15, 23, 42, 0.18);
+}
+
+.crm-refined .crm-sheet-primary-action {
+  border-radius: 24px;
+  box-shadow:
+    0 20px 38px -24px var(--cliente-accent-glow),
+    inset 0 1px 0 rgba(255,255,255,0.18);
+}
+
+.crm-refined .crm-sheet-action-grid {
+  gap: 0.7rem;
+}
+
+.crm-refined .crm-sheet-secondary-action,
+.crm-refined .crm-sheet-item {
+  box-shadow: 0 16px 30px -26px rgba(15, 23, 42, 0.18);
+}
+
+.inbox-refined .inbox-rail,
+.inbox-refined .inbox-thread-shell {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent) 8%, transparent), transparent 36%),
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 98%, white 2%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+  box-shadow: 0 30px 64px -44px rgba(15, 23, 42, 0.34);
+}
+
+.inbox-refined .inbox-conversation-card {
+  border-radius: 24px;
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 97%, white 3%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+  box-shadow: 0 18px 34px -30px rgba(15, 23, 42, 0.2);
+}
+
+.inbox-refined .inbox-conversation-card:hover {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 76%, transparent);
+  transform: translateY(-1px);
+}
+
+.inbox-refined .inbox-whatsapp-row-active {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 88%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-accent-soft) 72%, white 28%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+  box-shadow: 0 22px 46px -34px color-mix(in srgb, var(--cliente-accent) 24%, transparent);
+}
+
+.inbox-refined .inbox-thread-header,
+.inbox-refined .inbox-thread-composer {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 95%, white 5%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+}
+
+.inbox-refined .inbox-chat-wall {
+  background-size: 66px 66px, 92px 92px, 100% 100%;
+}
+
+.inbox-refined .inbox-message-in,
+.inbox-refined .inbox-message-out {
+  border-radius: 28px;
+  box-shadow: 0 16px 32px -24px rgba(15, 23, 42, 0.2);
+}
+
+.inbox-refined .inbox-message-system {
+  border-radius: 22px;
+}
+
+.inbox-refined .inbox-notice {
+  color: var(--cliente-card-text);
+  box-shadow: 0 20px 40px -32px rgba(15, 23, 42, 0.22);
+}
+
+.inbox-refined .inbox-notice-danger {
+  border-color: rgba(244, 63, 94, 0.22);
+  background: rgba(244, 63, 94, 0.08);
+}
+
+.inbox-refined .inbox-toolbar-button,
+.inbox-refined .inbox-thread-action {
+  border-radius: 999px;
+  box-shadow: 0 14px 30px -24px rgba(15, 23, 42, 0.18);
+}
+
+.inbox-refined .inbox-toolbar-button:hover,
+.inbox-refined .inbox-thread-action:hover {
+  transform: translateY(-1px);
+}
+
+.inbox-refined .inbox-ops-panel {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent) 7%, transparent), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 98%, white 2%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+  box-shadow: 0 22px 44px -34px rgba(15, 23, 42, 0.22);
+}
+
+.inbox-refined .inbox-thread-header {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent-soft) 72%, transparent), transparent 36%),
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 98%, white 2%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+}
+
+.inbox-refined .inbox-thread-stat {
+  box-shadow: 0 18px 34px -28px rgba(15, 23, 42, 0.18);
+}
+
+.pipeline-refined .pipeline-overview-card,
+.pipeline-refined .pipeline-board-shell {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent) 8%, transparent), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 98%, white 2%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+  box-shadow: 0 28px 58px -42px rgba(15, 23, 42, 0.32);
+}
+
+.pipeline-refined .pipeline-column-shell {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 94%, white 6%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  box-shadow: 0 24px 48px -36px rgba(15, 23, 42, 0.28);
+}
+
+.pipeline-refined .pipeline-column-head {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 97%, white 3%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+}
+
+.pipeline-refined .pipeline-lead-card {
+  box-shadow:
+    0 18px 34px -30px rgba(15, 23, 42, 0.24),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+.pipeline-refined .pipeline-lead-card:hover {
+  border-color: color-mix(in srgb, var(--cliente-border-strong) 82%, transparent);
+  transform: translateY(-2px);
 }
 
 html { scroll-behavior: smooth; }

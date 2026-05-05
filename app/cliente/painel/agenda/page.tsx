@@ -248,15 +248,15 @@ export default function ClienteAgendaPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="agenda-refined client-daily-page space-y-5">
       <SectionHeader
         title="Agenda"
         subtitle="Reunioes, agendamentos e slots operacionais ligados aos leads do tenant."
         action={<StateBadge label="Agenda comercial" tone="info" />}
       />
 
-      {error ? <div className="rounded-2xl border border-rose-300/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
-      {notice ? <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{notice}</div> : null}
+      {error ? <div className="agenda-notice agenda-notice-danger rounded-[24px] border px-4 py-3 text-sm">{error}</div> : null}
+      {notice ? <div className="agenda-notice agenda-notice-success rounded-[24px] border px-4 py-3 text-sm">{notice}</div> : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Agendamentos" value={String(summary.total)} icon={CalendarClock} trend="historico do tenant" />
@@ -267,7 +267,7 @@ export default function ClienteAgendaPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         {experienceMode === "completo" ? (
-        <PanelCard className="p-5">
+        <PanelCard className="agenda-surface-card agenda-form-card p-5 md:p-6">
           <form onSubmit={createAppointment} className="space-y-3">
             <CardTitle title="Novo agendamento" subtitle="Reuniao, call de fechamento ou atendimento operacional." />
             <select
@@ -283,7 +283,7 @@ export default function ClienteAgendaPage() {
                 }));
               }}
               disabled={!canOperate}
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none"
             >
               <option value="">Sem lead vinculado</option>
               {leads.map((lead) => (
@@ -297,23 +297,23 @@ export default function ClienteAgendaPage() {
               onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
               disabled={!canOperate}
               placeholder="Ex: Reuniao de fechamento"
-              className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+              className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none"
             />
             <div className="grid gap-3 md:grid-cols-3">
-              <select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none">
+              <select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
                 <option value="reuniao">reuniao</option>
                 <option value="call">call</option>
                 <option value="demo">demo</option>
                 <option value="visita">visita</option>
               </select>
-              <select value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none">
+              <select value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
                 <option value="scheduled">scheduled</option>
                 <option value="confirmed">confirmed</option>
                 <option value="completed">completed</option>
                 <option value="canceled">canceled</option>
                 <option value="no_show">no_show</option>
               </select>
-              <select value={form.ownerUserId} onChange={(event) => setForm((current) => ({ ...current, ownerUserId: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none">
+              <select value={form.ownerUserId} onChange={(event) => setForm((current) => ({ ...current, ownerUserId: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
                 <option value="">Responsavel automatico</option>
                 {ownerOptions.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -323,12 +323,12 @@ export default function ClienteAgendaPage() {
               </select>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <input type="datetime-local" value={form.startAt} onChange={(event) => setForm((current) => ({ ...current, startAt: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
-              <input type="datetime-local" value={form.endAt} onChange={(event) => setForm((current) => ({ ...current, endAt: event.target.value }))} disabled={!canOperate} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
+              <input type="datetime-local" value={form.startAt} onChange={(event) => setForm((current) => ({ ...current, startAt: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
+              <input type="datetime-local" value={form.endAt} onChange={(event) => setForm((current) => ({ ...current, endAt: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
             </div>
-            <input value={form.location} onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))} disabled={!canOperate} placeholder="Local ou sala" className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
-            <input value={form.meetingUrl} onChange={(event) => setForm((current) => ({ ...current, meetingUrl: event.target.value }))} disabled={!canOperate} placeholder="https://meet.google.com/..." className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
-            <textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} disabled={!canOperate} placeholder="Observacoes operacionais do encontro" rows={4} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none" />
+            <input value={form.location} onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))} disabled={!canOperate} placeholder="Local ou sala" className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
+            <input value={form.meetingUrl} onChange={(event) => setForm((current) => ({ ...current, meetingUrl: event.target.value }))} disabled={!canOperate} placeholder="https://meet.google.com/..." className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
+            <textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} disabled={!canOperate} placeholder="Observacoes operacionais do encontro" rows={4} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
             <button type="submit" disabled={!canOperate || saving || !form.title.trim() || !form.startAt} className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Salvar agendamento
@@ -336,7 +336,7 @@ export default function ClienteAgendaPage() {
           </form>
         </PanelCard>
         ) : (
-          <PanelCard className="p-5">
+          <PanelCard className="agenda-surface-card agenda-form-card p-5 md:p-6">
             <CardTitle title="Criacao rapida" subtitle="Modo essencial ativo: formulario completo oculto para reduzir ruido." />
             <p className="mt-3 text-sm text-[var(--cliente-card-text-soft)]">
               Troque para modo completo no topo para criar agendamento com todos os campos.
@@ -344,10 +344,10 @@ export default function ClienteAgendaPage() {
           </PanelCard>
         )}
 
-        <PanelCard className="p-5">
+        <PanelCard className="agenda-surface-card agenda-ops-card p-5 md:p-6">
           <CardTitle title="Agenda operacional" subtitle="Acompanhamento por status e ownership." />
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none">
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
               <option value="all">Todos os status</option>
               <option value="scheduled">scheduled</option>
               <option value="confirmed">confirmed</option>
@@ -355,7 +355,7 @@ export default function ClienteAgendaPage() {
               <option value="canceled">canceled</option>
               <option value="no_show">no_show</option>
             </select>
-            <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none">
+            <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
               <option value="all">Todos os responsaveis</option>
               {ownerOptions.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -370,35 +370,35 @@ export default function ClienteAgendaPage() {
               <EmptyState title="Nenhum agendamento neste recorte" description="Crie a primeira reuniao para ligar comercial, CRM e follow-up numa agenda real." />
             ) : (
               filteredItems.map((item) => (
-                <div key={item.id} className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                <div key={item.id} className="agenda-entry-card rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 md:p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{item.title || "Agendamento"}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-white/42">
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title || "Agendamento"}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
                         {item.leadName || "Sem lead"} • {formatDateTime(item.startAt)}
                       </p>
                     </div>
                     <StateBadge label={item.status || "scheduled"} tone={toStatusTone(item.status)} />
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/56">
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--cliente-card-text-soft)]">
                     {item.ownerName ? <span>{item.ownerName}</span> : null}
                     {item.type ? <span>• {item.type}</span> : null}
                     {item.location ? <span>• {item.location}</span> : null}
                   </div>
-                  {item.notes ? <p className="mt-3 text-sm text-white/60">{item.notes}</p> : null}
+                  {item.notes ? <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">{item.notes}</p> : null}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {item.leadId ? (
                       <>
-                        <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]">
+                        <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="agenda-action-pill rounded-full border px-3.5 py-2 text-xs font-medium transition">
                           Abrir lead
                         </Link>
-                        <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(item.leadId)}`} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]">
+                        <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(item.leadId)}`} className="agenda-action-pill rounded-full border px-3.5 py-2 text-xs font-medium transition">
                           Ver conversa
                         </Link>
                       </>
                     ) : null}
                     {item.meetingUrl ? (
-                      <a href={item.meetingUrl} target="_blank" rel="noreferrer" className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/82 transition hover:bg-white/[0.06]">
+                      <a href={item.meetingUrl} target="_blank" rel="noreferrer" className="agenda-action-pill rounded-full border px-3.5 py-2 text-xs font-medium transition">
                         Abrir reuniao
                       </a>
                     ) : null}
@@ -410,10 +410,10 @@ export default function ClienteAgendaPage() {
                           key={status}
                           type="button"
                           onClick={() => void updateStatus(item.id, status)}
-                          className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${
+                          className={`agenda-status-button rounded-full border px-3.5 py-2 text-xs font-medium transition ${
                             item.status === status
                               ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)]/10 text-[var(--cliente-accent)]"
-                              : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
+                              : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)]"
                           }`}
                         >
                           {status}
@@ -430,4 +430,7 @@ export default function ClienteAgendaPage() {
     </div>
   );
 }
+
+
+
 

@@ -23,6 +23,7 @@ type ClienteShellContextValue = {
 };
 
 const THEME_STORAGE_KEY = "altum-client-theme";
+const THEME_MIGRATION_KEY = "altum-client-theme-v2-reference";
 const DENSITY_STORAGE_KEY = "altum-client-density";
 const EXPERIENCE_STORAGE_KEY = "altum-client-experience";
 const SIDEBAR_STORAGE_KEY = "altum-client-sidebar-collapsed";
@@ -30,9 +31,9 @@ const SIDEBAR_STORAGE_KEY = "altum-client-sidebar-collapsed";
 const ClienteShellContext = createContext<ClienteShellContextValue | null>(null);
 
 function readStoredTheme(): ClienteTheme {
-  if (typeof window === "undefined") return "dark";
+  if (typeof window === "undefined") return "light";
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return stored === "light" ? "light" : "dark";
+  return stored === "dark" ? "dark" : "light";
 }
 
 function readStoredSidebarState(): boolean {
@@ -51,7 +52,7 @@ function readStoredExperienceMode(): ClienteExperienceMode {
 }
 
 export function ClienteShellProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ClienteTheme>("dark");
+  const [theme, setThemeState] = useState<ClienteTheme>("light");
   const [density, setDensityState] = useState<ClienteDensity>("comfortable");
   const [experienceMode, setExperienceModeState] = useState<ClienteExperienceMode>("essencial");
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
@@ -61,6 +62,17 @@ export function ClienteShellProvider({ children }: { children: ReactNode }) {
     setDensityState(readStoredDensity());
     setExperienceModeState(readStoredExperienceMode());
     setSidebarCollapsedState(readStoredSidebarState());
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const migrated = window.localStorage.getItem(THEME_MIGRATION_KEY);
+    if (migrated === "true") return;
+
+    // We are switching the visual direction to match the new light reference.
+    window.localStorage.setItem(THEME_STORAGE_KEY, "light");
+    window.localStorage.setItem(THEME_MIGRATION_KEY, "true");
+    setThemeState("light");
   }, []);
 
   useEffect(() => {
@@ -85,7 +97,7 @@ export function ClienteShellProvider({ children }: { children: ReactNode }) {
   }, [experienceMode]);
 
   const value = useMemo<ClienteShellContextValue>(() => {
-    const sidebarWidth = sidebarCollapsed ? 84 : 276;
+    const sidebarWidth = sidebarCollapsed ? 88 : 292;
     return {
       theme,
       setTheme: setThemeState,
@@ -110,7 +122,7 @@ export function ClienteShellProvider({ children }: { children: ReactNode }) {
 
   return (
     <ClienteShellContext.Provider value={value}>
-      <div data-client-theme={theme} data-client-experience={experienceMode} style={shellStyle}>
+      <div data-client-theme={theme} data-client-experience={experienceMode} data-client-style="v2" style={shellStyle}>
         {children}
       </div>
     </ClienteShellContext.Provider>

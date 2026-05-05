@@ -585,7 +585,7 @@ export default function ClienteConfiguracoesPage() {
    ];
 
   return (
-    <div className="space-y-4">
+    <div className="settings-refined client-daily-page space-y-6">
       <SectionHeader
         title="Configuracoes"
         subtitle="Governanca do tenant, conectores, usuarios e politicas operacionais em um unico lugar."
@@ -599,13 +599,15 @@ export default function ClienteConfiguracoesPage() {
       ) : null}
 
       {error ? (
-        <div className="rounded-2xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</div>
+        <div className="rounded-[26px] border border-rose-400/18 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 shadow-[0_18px_40px_-32px_rgba(190,24,93,0.4)] dark:text-rose-100">
+          {error}
+        </div>
       ) : null}
 
       {!loading ? (
         <>
           <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-            <PanelCard className="p-5">
+            <PanelCard className="settings-hero-card p-5 md:p-6">
               <CardTitle title="Go-live definitivo" subtitle="Gate critico, score e evidencias para entender em 1 tela o que falta para vender e operar este tenant." />
               <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                 <div className="flex items-center justify-between gap-3">
@@ -665,7 +667,7 @@ export default function ClienteConfiguracoesPage() {
               </div>
             </PanelCard>
 
-            <PanelCard className="p-5">
+            <PanelCard className="settings-insights-card p-5 md:p-6">
               <CardTitle title="Leitura operacional" subtitle="O que falta ajustar para o tenant rodar com mais autonomia." />
               <div className="mt-4 space-y-3">
                 {(readiness?.insights || []).length > 0 ? (
@@ -709,7 +711,7 @@ export default function ClienteConfiguracoesPage() {
           </section>
 
           <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-            <PanelCard className="p-5">
+            <PanelCard className="settings-map-card p-5 md:p-6">
               <CardTitle title="Mapa de prontidao" subtitle="Leitura objetiva dos modulos que sustentam o piloto." />
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {(readiness?.modules || []).map((item) => (
@@ -730,7 +732,7 @@ export default function ClienteConfiguracoesPage() {
               </div>
             </PanelCard>
 
-            <PanelCard className="p-5">
+            <PanelCard className="settings-checklist-card p-5 md:p-6">
               <CardTitle title="Checklist acionavel" subtitle="Pendencias mais importantes para fechar o setup do tenant." />
               <div className="mt-4 space-y-3">
                 {(readiness?.blockers || actionItems).length === 0 ? (
@@ -758,7 +760,7 @@ export default function ClienteConfiguracoesPage() {
               </div>
             </PanelCard>
 
-            <PanelCard className="p-5">
+            <PanelCard className="settings-roadmap-card p-5 md:p-6">
               <CardTitle title="Proxima fase do produto" subtitle="Capacidades que ainda nao existem de verdade e entram na proxima construcao." />
               <div className="mt-4 space-y-3">
                 {(readiness?.nextBuildItems || []).map((item) => (
@@ -779,7 +781,7 @@ export default function ClienteConfiguracoesPage() {
               </div>
             </PanelCard>
 
-            <PanelCard className="p-5">
+            <PanelCard className="settings-shortcuts-shell p-5 md:p-6">
               <CardTitle title="Atalhos operacionais" subtitle="Entradas rapidas para revisar setup e operacao viva do tenant." />
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <ShortcutCard
@@ -810,7 +812,7 @@ export default function ClienteConfiguracoesPage() {
               </div>
             </PanelCard>
 
-            <PanelCard className="p-5">
+            <PanelCard className="settings-notifications-card p-5 md:p-6">
               <CardTitle title="Notificacoes criticas" subtitle="Controle de push web para alertas operacionais do tenant" />
               <div className="mt-4 space-y-3">
                 <ReadinessRow
@@ -889,7 +891,7 @@ export default function ClienteConfiguracoesPage() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`rounded-2xl border p-4 transition ${
+                  className={`settings-link-card rounded-2xl border p-4 transition ${
                     item.featured
                       ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] hover:brightness-95"
                       : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] hover:bg-[var(--cliente-panel-soft)]"
@@ -897,7 +899,7 @@ export default function ClienteConfiguracoesPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div
-                      className={`inline-flex rounded-lg border p-2 ${
+                      className={`settings-link-icon inline-flex rounded-lg border p-2 ${
                         item.featured
                           ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)] text-white"
                           : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)]"
@@ -933,7 +935,7 @@ function ReadinessRow({
   tone: "neutral" | "success" | "warning" | "danger" | "info";
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+    <div className="settings-readiness-row rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-[var(--cliente-card-text-muted)]">{label}</p>
         <StateBadge label={value} tone={tone} />
@@ -944,7 +946,7 @@ function ReadinessRow({
 
 function Insight({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+    <div className="settings-insight-card rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
       <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
       <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{description}</p>
     </div>
@@ -963,7 +965,7 @@ function ShortcutCard({
   return (
     <Link
       href={href}
-      className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+      className="settings-shortcut-card rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
     >
       <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
       <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{detail}</p>

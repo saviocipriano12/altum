@@ -622,7 +622,7 @@ export default function ClienteCaptacaoPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="captacao-refined client-daily-page space-y-6">
       <SectionHeader
         title="Captacao"
         subtitle="Formularios publicos para transformar trafego em contatos no CRM da operacao."
@@ -1412,10 +1412,10 @@ export default function ClienteCaptacaoPage() {
       </section>
 
       {error ? (
-        <div className="rounded-2xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</div>
+        <div className="rounded-[24px] border border-rose-400/18 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">{error}</div>
       ) : null}
       {notice ? (
-        <div className="rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{notice}</div>
+        <div className="rounded-[24px] border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">{notice}</div>
       ) : null}
     </div>
   );
@@ -1463,7 +1463,7 @@ function CaptureFieldCard(props: {
   const availableDependencies = props.fields.filter((item) => item.id !== props.field.id);
 
   return (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+    <div className="captacao-field-card rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-white">
@@ -1631,7 +1631,7 @@ function ToggleTile(props: {
       type="button"
       onClick={() => !props.disabled && props.onChange(!props.checked)}
       disabled={props.disabled}
-      className={`rounded-2xl border p-4 text-left transition ${
+      className={`captacao-toggle-card rounded-2xl border p-4 text-left transition ${
         props.checked ? "border-[var(--cliente-accent)]/25 bg-[var(--cliente-accent-soft)]" : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)]"
       } disabled:opacity-60`}
     >

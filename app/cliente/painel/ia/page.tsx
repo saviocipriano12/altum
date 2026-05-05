@@ -23,6 +23,10 @@ type AiSettings = {
   guardrails: string[];
   mandatoryQuestions?: string[];
   escalationTopics?: string[];
+  whatsappTemplateFollowUpEnabled?: boolean;
+  whatsappTemplateFollowUpName?: string;
+  whatsappTemplateFollowUpLanguage?: string;
+  whatsappTemplateFollowUpParams?: string[];
   tier?: "essential" | "growth" | "premium" | "elite" | "enterprise";
   autonomyMode?: "copilot" | "hybrid" | "autonomous";
   reasoningLevel?: "fast" | "balanced" | "deep";
@@ -292,6 +296,10 @@ const EMPTY_SETTINGS: AiSettings = {
   guardrails: [],
   mandatoryQuestions: [],
   escalationTopics: [],
+  whatsappTemplateFollowUpEnabled: true,
+  whatsappTemplateFollowUpName: "follow_up_geral",
+  whatsappTemplateFollowUpLanguage: "pt_BR",
+  whatsappTemplateFollowUpParams: [],
   tier: "growth",
   autonomyMode: "hybrid",
   reasoningLevel: "balanced",
@@ -523,6 +531,7 @@ export default function ClienteIaPage() {
   const [mandatoryQuestionsText, setMandatoryQuestionsText] = useState("");
   const [escalationTopicsText, setEscalationTopicsText] = useState("");
   const [handoffNotifyPhonesText, setHandoffNotifyPhonesText] = useState("");
+  const [followUpTemplateParamsText, setFollowUpTemplateParamsText] = useState("");
   const [kbDocs, setKbDocs] = useState<KbDoc[]>([]);
   const [logs, setLogs] = useState<AiLog[]>([]);
   const [usageSummary, setUsageSummary] = useState<AiUsageSummary>({
@@ -597,6 +606,7 @@ export default function ClienteIaPage() {
         setMandatoryQuestionsText((nextSettings.mandatoryQuestions || []).join("\n"));
         setEscalationTopicsText((nextSettings.escalationTopics || []).join("\n"));
         setHandoffNotifyPhonesText((nextSettings.handoffNotifyPhones || []).join("\n"));
+        setFollowUpTemplateParamsText((nextSettings.whatsappTemplateFollowUpParams || []).join("\n"));
       } else {
         setError(settingsPayload.error || "Falha ao carregar configuracoes da IA.");
       }
@@ -979,6 +989,13 @@ export default function ClienteIaPage() {
             .split("\n")
             .map((line) => line.trim())
             .filter(Boolean),
+          whatsappTemplateFollowUpEnabled: settings.whatsappTemplateFollowUpEnabled !== false,
+          whatsappTemplateFollowUpName: settings.whatsappTemplateFollowUpName || "follow_up_geral",
+          whatsappTemplateFollowUpLanguage: settings.whatsappTemplateFollowUpLanguage || "pt_BR",
+          whatsappTemplateFollowUpParams: followUpTemplateParamsText
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean),
           preferredProviders: settings.preferredProviders || [],
         }),
       });
@@ -1140,7 +1157,7 @@ export default function ClienteIaPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="ia-refined client-daily-page space-y-6">
       <SectionHeader
         title="IA"
         subtitle="Configure o agente, revise a base comercial e acompanhe como ele esta decidindo na pratica."
@@ -1163,25 +1180,25 @@ export default function ClienteIaPage() {
         <MetricCard label="Lane premium" value={String(usageSummary.premiumLane)} icon={Waypoints} trend={`${usageSummary.rulesLane} em rules lane`} />
       </section>
 
-      <PanelCard className="p-5">
+      <PanelCard className="ia-guide-card p-5 md:p-6">
         <CardTitle
           title="Como configurar sem se perder"
           subtitle="Pense nesta pagina em tres blocos: motor, comportamento e base de conhecimento."
         />
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+          <div className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
             <p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Motor</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
               Escolha OpenAI como motor principal e mantenha ALTUM Rules como reserva para nao deixar o tenant sem resposta.
             </p>
           </div>
-          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+          <div className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
             <p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Comportamento</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
               Ajuste tom, objetivo, guardrails e handoff. Isso define como a IA conversa e quando ela chama o humano.
             </p>
           </div>
-          <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+          <div className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
             <p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Base</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
               Cadastre FAQ, ofertas e politicas curtas. A IA responde melhor quando a base esta escrita como conversa, nao como documento interno.
@@ -1190,7 +1207,7 @@ export default function ClienteIaPage() {
         </div>
       </PanelCard>
 
-      <PanelCard className="p-5">
+      <PanelCard className="ia-preview-card p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <CardTitle
             title="Preview comercial do agente"
@@ -1204,7 +1221,7 @@ export default function ClienteIaPage() {
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
           <div className="space-y-4">
-            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <div className="ia-preview-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
               <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Cenario base</p>
               <div className="mt-3 grid gap-2">
                 {PREVIEW_SCENARIOS.map((scenario) => (
@@ -1212,7 +1229,7 @@ export default function ClienteIaPage() {
                     key={scenario.id}
                     type="button"
                     onClick={() => applyPreviewScenario(scenario.id)}
-                    className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
+                    className={`ia-scenario-chip rounded-[22px] border px-3.5 py-3.5 text-left text-sm transition ${
                       scenario.id === previewScenarioId
                         ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-card-text)]"
                         : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-panel-soft)]"
@@ -1225,7 +1242,7 @@ export default function ClienteIaPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <div className="ia-preview-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
               <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Mensagem de entrada</p>
               <textarea
                 value={previewMessage}
@@ -1238,7 +1255,7 @@ export default function ClienteIaPage() {
                 type="button"
                 onClick={() => void handleRunPreview()}
                 disabled={runningPreview || !previewMessage.trim()}
-                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
+                className="mt-3 inline-flex items-center gap-2 rounded-full bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
               >
                 {runningPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Rodar preview
@@ -1247,7 +1264,7 @@ export default function ClienteIaPage() {
                 type="button"
                 onClick={() => void handleRunPreviewBatch()}
                 disabled={runningPreviewBatch}
-                className="mt-3 ml-2 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
+                className="mt-3 ml-2 inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
               >
                 {runningPreviewBatch ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Rodar bateria base
@@ -1925,6 +1942,45 @@ export default function ClienteIaPage() {
               />
             </label>
 
+            <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <input
+                type="checkbox"
+                checked={settings.whatsappTemplateFollowUpEnabled !== false}
+                onChange={(event) =>
+                  setSettings((prev) => ({ ...prev, whatsappTemplateFollowUpEnabled: event.target.checked }))
+                }
+                disabled={!canManage}
+              />
+              Follow-up automatico por template quando fechar a janela de 24h
+            </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field
+                label="Template padrao (24h+)"
+                value={settings.whatsappTemplateFollowUpName || "follow_up_geral"}
+                onChange={(value) => setSettings((prev) => ({ ...prev, whatsappTemplateFollowUpName: value }))}
+                placeholder="follow_up_geral"
+                disabled={!canManage}
+              />
+              <Field
+                label="Idioma do template"
+                value={settings.whatsappTemplateFollowUpLanguage || "pt_BR"}
+                onChange={(value) => setSettings((prev) => ({ ...prev, whatsappTemplateFollowUpLanguage: value }))}
+                placeholder="pt_BR"
+                disabled={!canManage}
+              />
+            </div>
+            <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+              Parametros do template (um por linha, opcional)
+              <textarea
+                value={followUpTemplateParamsText}
+                onChange={(event) => setFollowUpTemplateParamsText(event.target.value)}
+                rows={3}
+                disabled={!canManage}
+                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
+                placeholder={"Exemplo sem variavel\nou\n{{nome}}"}
+              />
+            </label>
+
             <label className="block text-xs text-[var(--cliente-card-text-soft)]">
               Guardrails (uma regra por linha)
               <textarea
@@ -2421,8 +2477,16 @@ export default function ClienteIaPage() {
         </PanelCard>
       </section>
 
-      {error ? <p className="text-sm text-red-300">{error}</p> : null}
-      {success ? <p className="text-sm text-emerald-300">{success}</p> : null}
+      {error ? (
+        <p className="rounded-[22px] border border-rose-400/18 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">
+          {error}
+        </p>
+      ) : null}
+      {success ? (
+        <p className="rounded-[22px] border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">
+          {success}
+        </p>
+      ) : null}
     </div>
   );
 }

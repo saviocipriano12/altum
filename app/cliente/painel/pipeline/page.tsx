@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -125,7 +125,7 @@ function StageEditor({
           <button
             type="button"
             onClick={onReset}
-            className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
+            className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3.5 py-2.5 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
           >
             Resetar padrao
           </button>
@@ -401,7 +401,7 @@ export default function ClientePipelinePage() {
   }
 
   return (
-    <div className="client-daily-page space-y-5">
+    <div className="pipeline-refined client-daily-page space-y-6">
       {error ? (
         <div className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
           {error}
@@ -417,11 +417,11 @@ export default function ClientePipelinePage() {
         }
         action={
           <div className="flex flex-wrap gap-2">
-            <div className="inline-flex rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
+            <div className="inline-flex rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
               <button
                 type="button"
                 onClick={() => setExperienceMode("essencial")}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                className={`rounded-[16px] px-3.5 py-2 text-xs font-semibold transition ${
                   !allowAdvanced
                     ? "bg-[var(--cliente-accent)] text-white"
                     : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
@@ -432,7 +432,7 @@ export default function ClientePipelinePage() {
               <button
                 type="button"
                 onClick={() => setExperienceMode("completo")}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                className={`rounded-[16px] px-3.5 py-2 text-xs font-semibold transition ${
                   allowAdvanced
                     ? "bg-[var(--cliente-accent)] text-white"
                     : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
@@ -452,7 +452,7 @@ export default function ClientePipelinePage() {
                   }
                   setSettingsOpen((current) => !current);
                 }}
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
+                className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3.5 py-2.5 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <Settings2 className="h-4 w-4" />
                 {allowAdvanced ? "Configurar funil" : "Ativar completo p/ configurar"}
@@ -462,7 +462,7 @@ export default function ClientePipelinePage() {
         }
       />
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Oportunidades"
           value={String(summary?.totalLeads || 0)}
@@ -490,9 +490,9 @@ export default function ClientePipelinePage() {
       </section>
 
       <section className={`grid gap-4 ${allowAdvanced ? "xl:grid-cols-[1.2fr_0.8fr]" : "xl:grid-cols-1"}`}>
-        <PanelCard className="p-4">
+        <PanelCard className="pipeline-overview-card p-5">
           <CardTitle title="Leitura do funil" subtitle="Onde a operacao esta concentrada e qual etapa esta mais lenta." />
-          <label className="mt-4 flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text)]/72">
+          <label className="mt-4 flex items-center gap-2 rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3.5 py-3 text-sm text-[var(--cliente-card-text)]/72 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.34)]">
             <Target className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
             <input
               value={search}
@@ -526,7 +526,7 @@ export default function ClientePipelinePage() {
         </PanelCard>
 
         {allowAdvanced ? (
-          <PanelCard className="p-4">
+          <PanelCard className="pipeline-overview-card p-5">
             <CardTitle title="Governanca do funil" subtitle="Etapas atuais ativas no tenant." />
             <div className="mt-4 space-y-2">
               {stages.map((stage) => (
@@ -551,7 +551,7 @@ export default function ClientePipelinePage() {
       </section>
 
       {allowAdvanced ? (
-        <PanelCard className="p-4">
+        <PanelCard className="pipeline-overview-card p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <CardTitle
               title={`Modo do negocio: ${businessProfile.label}`}
@@ -560,14 +560,14 @@ export default function ClientePipelinePage() {
             <StateBadge label={businessProfile.id} tone="info" />
           </div>
           <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+            <div className="pipeline-highlight-card rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
               <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Leitura operacional</p>
               <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.description}</p>
               <p className="mt-3 text-sm text-[var(--cliente-card-text)]/72">
                 Movimento esperado: <span className="text-[var(--cliente-card-text)]">{businessProfile.commercialMotion}</span>
               </p>
             </div>
-            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+            <div className="pipeline-highlight-card rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
               <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Metricas naturais deste modo</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {businessProfile.metrics.map((metric) => (
@@ -578,7 +578,7 @@ export default function ClientePipelinePage() {
           </div>
         </PanelCard>
       ) : (
-        <PanelCard className="p-4">
+        <PanelCard className="pipeline-overview-card p-5">
           <CardTitle title="Modo essencial ativo" subtitle="Exibindo apenas o kanban e sinais principais para rotina diaria." />
           <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
             Para ajustar etapas, SLA, responsaveis e leitura por perfil de negocio, use o modo completo.
@@ -595,7 +595,7 @@ export default function ClientePipelinePage() {
       )}
 
       {selectedLeadContext ? (
-        <PanelCard className="p-4">
+        <PanelCard className="pipeline-overview-card p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <CardTitle
@@ -632,7 +632,7 @@ export default function ClientePipelinePage() {
       ) : null}
 
       {settingsOpen && canManage && !allowAdvanced ? (
-        <PanelCard className="p-4">
+        <PanelCard className="pipeline-overview-card p-5">
           <CardTitle title="Configuracao avancada protegida" subtitle="No modo essencial escondemos ajustes estruturais do funil." />
           <button
             type="button"
@@ -645,7 +645,7 @@ export default function ClientePipelinePage() {
         </PanelCard>
       ) : null}
 
-      <PanelCard className="overflow-hidden p-4">
+      <PanelCard className="pipeline-board-shell overflow-hidden p-5">
         <div className="flex items-center justify-between gap-3">
           <CardTitle title="Kanban do tenant" subtitle="Arraste as oportunidades entre etapas ou abra o contato completo no CRM." />
           {movingLeadId ? <StateBadge label="movendo contato" tone="info" /> : null}
@@ -675,7 +675,7 @@ export default function ClientePipelinePage() {
                       moveLead(leadId, column.stage.id);
                     }
                   }}
-                  className={`flex w-[320px] shrink-0 flex-col rounded-2xl border p-3 transition ${
+                  className={`pipeline-column-shell flex w-[320px] shrink-0 flex-col rounded-[28px] border p-3 transition ${
                     isDropTarget
                       ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
                       : isStageFocus || isLeadFocus
@@ -683,7 +683,7 @@ export default function ClientePipelinePage() {
                         : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)]"
                   }`}
                 >
-                  <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                  <div className="pipeline-column-head rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
@@ -696,11 +696,11 @@ export default function ClientePipelinePage() {
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
+                      <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
                         <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Valor</p>
                         <p className="mt-1 text-sm font-medium text-[var(--cliente-card-text)]">{brl(column.totalValue)}</p>
                       </div>
-                      <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
+                      <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
                         <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Tempo medio</p>
                         <p className="mt-1 text-sm font-medium text-[var(--cliente-card-text)]">{column.avgAgeDays}d</p>
                       </div>
@@ -740,7 +740,7 @@ export default function ClientePipelinePage() {
                             setDragLeadId(null);
                             setDropStageId(null);
                           }}
-                          className={`rounded-2xl border p-3 shadow-[0_10px_24px_rgba(0,0,0,0.2)] ${
+                          className={`pipeline-lead-card rounded-[24px] border p-3 shadow-[0_10px_24px_rgba(0,0,0,0.2)] ${
                             lead.id === leadFromQuery
                               ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
                               : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"
@@ -763,11 +763,11 @@ export default function ClientePipelinePage() {
                           </div>
 
                           <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--cliente-card-text-muted)]">
-                            <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-2">
+                            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-2">
                               <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Valor</p>
                               <p className="mt-1 text-sm font-medium text-[var(--cliente-card-text)]">{brl(Number(lead.potentialValue || 0))}</p>
                             </div>
-                            <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-2">
+                            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-2">
                               <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Tempo</p>
                               <p className="mt-1 text-sm font-medium text-[var(--cliente-card-text)]">{lead.ageDays || 0}d</p>
                             </div>
@@ -795,20 +795,20 @@ export default function ClientePipelinePage() {
                             <div className="flex gap-2">
                               <Link
                                 href={`/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`}
-                                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
+                                className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                               >
                                 Abrir contato
                                 <ArrowRight className="h-3.5 w-3.5" />
                               </Link>
                               <Link
                                 href={`/cliente/painel/comercial?leadId=${encodeURIComponent(lead.id)}`}
-                                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
+                                className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                               >
                                 Comercial
                               </Link>
                               <Link
                                 href={`/cliente/painel/inbox?leadId=${encodeURIComponent(lead.id)}`}
-                                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
+                                className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
                               >
                                 Inbox
                               </Link>
@@ -828,4 +828,5 @@ export default function ClientePipelinePage() {
     </div>
   );
 }
+
 

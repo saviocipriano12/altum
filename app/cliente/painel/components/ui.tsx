@@ -16,7 +16,7 @@ const BADGE_TONE: Record<BadgeTone, string> = {
 export function PanelCard({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <section
-      className={`client-glass client-panel-card rounded-[10px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)] ring-1 ring-white/[0.02] ${className}`}
+      className={`client-glass client-panel-card rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)] ring-1 ring-white/[0.03] ${className}`}
     >
       {children}
     </section>
@@ -35,8 +35,8 @@ export function SectionHeader({
   return (
     <header className="client-section-header mb-4 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="client-section-title text-lg font-semibold text-[var(--cliente-card-text)] md:text-[1.28rem]">{title}</h2>
-        {subtitle ? <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
+        <h2 className="client-section-title text-[1.85rem] font-extrabold text-[var(--cliente-card-text)] md:text-[2.25rem]">{title}</h2>
+        {subtitle ? <p className="mt-2 max-w-3xl text-[0.97rem] leading-7 text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
       </div>
       {action ? <div>{action}</div> : null}
     </header>
@@ -55,16 +55,16 @@ export function MetricCard({
   trend?: string;
 }) {
   return (
-    <PanelCard className="client-metric-card space-y-2 border-l-2 border-l-[var(--cliente-border-strong)] p-4">
+    <PanelCard className="client-metric-card space-y-2 border-l-2 border-l-[var(--cliente-border-strong)] p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="client-metric-label text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
-          <p className="client-metric-value mt-2 text-2xl font-semibold leading-none text-[var(--cliente-card-text)]">{value}</p>
-          {trend ? <p className="mt-2 text-[11px] text-[var(--cliente-card-text-soft)]">{trend}</p> : null}
+          <p className="client-metric-label text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">{label}</p>
+          <p className="client-metric-value mt-3 text-[2rem] font-extrabold leading-none text-[var(--cliente-card-text)] md:text-[2.15rem]">{value}</p>
+          {trend ? <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">{trend}</p> : null}
         </div>
         {Icon ? (
-          <span className="client-metric-icon inline-flex rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-2.5 text-[var(--cliente-accent)]">
-            <Icon className="h-4 w-4" />
+          <span className="client-metric-icon inline-flex rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-[var(--cliente-accent)]">
+            <Icon className="h-4.5 w-4.5" />
           </span>
         ) : null}
       </div>
@@ -81,7 +81,7 @@ export function StateBadge({
 }) {
   return (
     <span
-      className={`client-state-badge inline-flex items-center rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${BADGE_TONE[tone]}`}
+      className={`client-state-badge inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-[0.02em] ${BADGE_TONE[tone]}`}
     >
       {label}
     </span>
@@ -109,8 +109,8 @@ export function EmptyState({
 export function CardTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="client-card-title">
-      <h3 className="client-card-title-text text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">{title}</h3>
-      {subtitle ? <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{subtitle}</p> : null}
+      <h3 className="client-card-title-text text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{title}</h3>
+      {subtitle ? <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{subtitle}</p> : null}
     </div>
   );
 }

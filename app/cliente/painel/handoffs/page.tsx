@@ -536,7 +536,7 @@ export default function ClienteHandoffsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="handoffs-refined client-daily-page space-y-6">
       <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
@@ -920,7 +920,7 @@ function FilterSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text-soft)]">
+    <label className="handoffs-filter-select rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text-soft)]">
       <span className="block uppercase tracking-[0.16em]">{label}</span>
       <select
         value={value}
@@ -928,7 +928,7 @@ function FilterSelect({
         className="mt-1 w-full bg-transparent text-sm text-white outline-none"
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value} className="bg-[#111111] text-white">
+          <option key={option.value} value={option.value} className="bg-[var(--cliente-panel-solid)] text-[var(--cliente-card-text)]">
             {option.label}
           </option>
         ))}
@@ -950,7 +950,7 @@ function FilterPill({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+      className={`handoffs-filter-pill rounded-xl border px-3 py-2 text-left text-sm transition ${
         active
           ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
           : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)]"
@@ -975,7 +975,7 @@ function QuickLink({
   return (
     <Link
       href={href}
-      className="flex items-start gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:bg-[var(--cliente-panel-soft)]"
+      className="handoffs-quick-link flex items-start gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:bg-[var(--cliente-panel-soft)]"
     >
       <span className="inline-flex rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-card-text)]">
         <Icon className="h-4 w-4" />
@@ -1003,7 +1003,7 @@ function RiskRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-between rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 text-left transition hover:bg-[var(--cliente-panel-soft)]"
+      className="handoffs-risk-row flex w-full items-center justify-between rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 text-left transition hover:bg-[var(--cliente-panel-soft)]"
     >
       <span className="text-sm text-[var(--cliente-card-text-muted)]">{label}</span>
       <StateBadge label={value} tone={tone} />

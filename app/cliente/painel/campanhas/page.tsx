@@ -398,7 +398,7 @@ export default function ClienteCampanhasPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="campanhas-refined client-daily-page space-y-6">
       <SectionHeader
         title="Campanhas de envio"
         subtitle="Disparos segmentados para reativacao, retorno comercial e contato ativo no WhatsApp."
@@ -736,8 +736,8 @@ export default function ClienteCampanhasPage() {
         </div>
       </section>
 
-      {error ? <div className="rounded-2xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
-      {notice ? <div className="rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{notice}</div> : null}
+      {error ? <div className="rounded-[24px] border border-rose-400/18 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">{error}</div> : null}
+      {notice ? <div className="rounded-[24px] border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">{notice}</div> : null}
     </div>
   );
 }

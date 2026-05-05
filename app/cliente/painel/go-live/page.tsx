@@ -259,7 +259,7 @@ export default function ClienteGoLivePage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="go-live-refined client-daily-page space-y-4">
       <SectionHeader
         title="Go-live definitivo"
         subtitle="Uma tela para validar score, gates criticos, evidencias e bloqueios antes de vender e operar o tenant sem susto."
@@ -519,7 +519,7 @@ export default function ClienteGoLivePage() {
 
 function EvidenceRow({ label, value, tone }: { label: string; value: string; tone: Tone }) {
   return (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+    <div className="go-live-evidence rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-[var(--cliente-card-text-muted)]">{label}</p>
         <StateBadge label={value} tone={tone} />
@@ -538,7 +538,7 @@ function RunbookRow({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+    <div className="go-live-runbook rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
       <div className="flex items-start gap-3">
         <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-card-text-muted)]">
           <Icon className="h-4 w-4" />

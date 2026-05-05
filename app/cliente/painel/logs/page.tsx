@@ -386,7 +386,7 @@ export default function ClienteLogsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="logs-refined client-daily-page space-y-6">
       <section className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
@@ -417,7 +417,7 @@ export default function ClienteLogsPage() {
               <Link
                 key={item.id}
                 href={item.href}
-                className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:bg-[var(--cliente-panel-soft)]"
+                className="logs-focus-card block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:bg-[var(--cliente-panel-soft)]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -583,7 +583,7 @@ export default function ClienteLogsPage() {
 
 function HealthRow({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3">
+    <div className="logs-health-row flex items-center justify-between rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3">
       <span className="text-sm text-[var(--cliente-card-text-muted)]">{label}</span>
       <StateBadge label={value} tone={danger ? "danger" : "neutral"} />
     </div>
@@ -595,7 +595,7 @@ function FilterButton({ label, active, onClick }: { label: string; active?: bool
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+      className={`logs-filter-button rounded-xl border px-3 py-2 text-left text-sm transition ${
         active
           ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
           : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)]"
@@ -610,7 +610,7 @@ function QuickLink({ href, title, description }: { href: string; title: string; 
   return (
     <Link
       href={href}
-      className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:bg-[var(--cliente-panel-soft)]"
+      className="logs-quick-link block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:bg-[var(--cliente-panel-soft)]"
     >
       <p className="text-sm font-medium text-white">{title}</p>
       <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{description}</p>

@@ -986,9 +986,9 @@ export default function ClienteAutomacoesPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="automacoes-refined client-daily-page space-y-6">
       {error ? (
-        <div className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+        <div className="rounded-[24px] border border-rose-400/18 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">
           {error}
         </div>
       ) : null}
@@ -2155,7 +2155,7 @@ function AutomationEditor({
 
 function QueuePill({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
+    <div className="automacoes-queue-pill rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
       <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
       <p className="mt-2 text-xl font-semibold text-white">{value}</p>
     </div>
@@ -2165,7 +2165,7 @@ function QueuePill({ label, value }: { label: string; value: number }) {
 function HealthRow({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
   return (
     <div
-      className={`rounded-xl border px-3 py-3 ${
+      className={`automacoes-health-row rounded-xl border px-3 py-3 ${
         danger
           ? "border-rose-500/30 bg-rose-500/10"
           : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"
@@ -2179,7 +2179,7 @@ function HealthRow({ label, value, danger = false }: { label: string; value: str
 
 function Insight({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
+    <div className="automacoes-insight-card rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
       <p className="text-sm font-medium text-[var(--cliente-card-text)]">{title}</p>
       <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{description}</p>
     </div>

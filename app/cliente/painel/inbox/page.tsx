@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
@@ -468,6 +468,11 @@ function formatStatusLabel(status?: string) {
   return "Aberta";
 }
 
+function formatStatusFilterLabel(filter: StatusFilter) {
+  if (filter === "all") return "Todas";
+  return formatStatusLabel(filter);
+}
+
 function formatQueueStatusLabel(queueStatus?: string) {
   const value = String(queueStatus || "").toLowerCase();
   if (value === "sla_breached") return "SLA estourado";
@@ -553,6 +558,32 @@ function isPhoneLike(value?: string) {
   const normalized = String(value || "").trim();
   if (!normalized) return false;
   return normalized.replace(/\D/g, "").length >= 8 && !/[a-zA-ZÀ-ÿ]/.test(normalized);
+}
+
+function isWhatsAppServiceWindowClosed(chat?: ChatItem | null) {
+  if (!chat) return false;
+  const channel = String(chat.channel || "whatsapp").toLowerCase();
+  if (channel !== "whatsapp") return false;
+  const lastClientMessageAt = toDate(chat.lastClientMessageAt);
+  if (!lastClientMessageAt) return false;
+  return Date.now() - lastClientMessageAt.getTime() > 23.5 * 60 * 60 * 1000;
+}
+
+function humanizeDeliveryError(value?: string | null) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/re-engagement/i.test(text)) {
+    return "Janela de 24h encerrada. O WhatsApp bloqueou texto livre; use um template aprovado ou aguarde o contato responder.";
+  }
+  return text;
+}
+
+function parseTemplateParams(value: string) {
+  return value
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 20);
 }
 
 function getMessagePreview(message: MessageItem | ChatItem) {
@@ -788,7 +819,7 @@ function ConversationListItem({
       type="button"
       onClick={onSelect}
       className={cn(
-        "inbox-whatsapp-row w-full min-w-0 border px-3 py-3 text-left transition",
+        "inbox-conversation-card inbox-whatsapp-row w-full min-w-0 border px-3.5 py-3.5 text-left transition",
         active
           ? "inbox-whatsapp-row-active"
           : ""
@@ -1062,19 +1093,36 @@ function MessageBubble({
   const shouldRenderText = !["image", "audio", "document", "video"].includes(type) || !isGeneratedMediaPlaceholder(type, preview);
 
   const mediaLabel =
-    type === "audio" ? "Audio" : type === "image" ? "Imagem" : type === "document" ? "Documento" : null;
-  const MediaIcon = type === "audio" ? Mic : type === "image" ? ImageIcon : type === "document" ? FileText : null;
+    type === "audio"
+      ? "Audio"
+      : type === "image"
+        ? "Imagem"
+        : type === "document"
+          ? "Documento"
+          : type === "template"
+            ? "Template"
+            : null;
+  const MediaIcon =
+    type === "audio"
+      ? Mic
+      : type === "image"
+        ? ImageIcon
+        : type === "document"
+          ? FileText
+          : type === "template"
+            ? Receipt
+            : null;
 
   return (
     <div className={cn("flex", isAgent ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[92%] min-w-0 border px-3.5 py-2.5 text-sm shadow-[0_8px_20px_rgba(17,27,33,0.12)] sm:max-w-[86%] xl:max-w-[78%] 2xl:max-w-[74%]",
+          "max-w-[92%] min-w-0 border px-3.5 py-3 text-sm shadow-[0_8px_20px_rgba(17,27,33,0.12)] sm:max-w-[84%] xl:max-w-[74%] 2xl:max-w-[70%]",
           isAgent
-            ? "inbox-message-out rounded-2xl rounded-br-md"
+            ? "inbox-message-out rounded-[28px] rounded-br-[10px]"
             : isSystem
-              ? "inbox-message-system mx-auto rounded-2xl text-center"
-              : "inbox-message-in rounded-2xl rounded-bl-md"
+              ? "inbox-message-system mx-auto rounded-[22px] text-center"
+              : "inbox-message-in rounded-[28px] rounded-bl-[10px]"
         )}
       >
         <div className="flex items-center gap-2 text-[11px] text-current opacity-60">
@@ -1100,12 +1148,12 @@ function MessageBubble({
         {type === "audio" ? <AudioAttachment message={message} /> : null}
         {type === "document" ? <DocumentAttachment message={message} /> : null}
         {shouldRenderText ? (
-          <p className="mt-1.5 whitespace-pre-wrap break-words text-[14px] leading-6 text-current">
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-current">
             {preview}
           </p>
         ) : null}
         {isAgent && outboundStatus === "failed" && message.deliveryError ? (
-          <p className="mt-2 text-xs text-rose-100/90">Falha de entrega: {message.deliveryError}</p>
+          <p className="mt-2 text-xs text-rose-100/90">Falha de entrega: {humanizeDeliveryError(message.deliveryError)}</p>
         ) : null}
         <div className="mt-2 flex items-center justify-end gap-2 text-[11px] text-current opacity-55">
           <span>{formatDateTime(message.createdAt)}</span>
@@ -1193,10 +1241,13 @@ export default function ClienteInboxPage() {
   const { experienceMode, setExperienceMode } = useClienteShell();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendingTemplate, setSendingTemplate] = useState(false);
   const [updatingAi, setUpdatingAi] = useState(false);
   const [retryingAi, setRetryingAi] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
@@ -1213,6 +1264,9 @@ export default function ClienteInboxPage() {
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [detail, setDetail] = useState<ChatDetailPayload | null>(null);
   const [messageText, setMessageText] = useState("");
+  const [templateName, setTemplateName] = useState("follow_up_geral");
+  const [templateLanguage, setTemplateLanguage] = useState("pt_BR");
+  const [templateParamsText, setTemplateParamsText] = useState("");
   const [internalNoteText, setInternalNoteText] = useState("");
   const [leadNoteText, setLeadNoteText] = useState("");
   const [search, setSearch] = useState("");
@@ -1247,6 +1301,7 @@ export default function ClienteInboxPage() {
   const canOperate = hasCapability("respond_inbox");
   const canManageQueue = hasCapability("manage_settings") || hasCapability("manage_users");
   const allowAdvanced = experienceMode === "completo";
+  const showSidePanel = allowAdvanced && showOpsSummary;
 
   useEffect(() => {
     if (!allowAdvanced) {
@@ -1436,6 +1491,8 @@ export default function ClienteInboxPage() {
       return;
     }
 
+    setDetail(null);
+    setMessages([]);
     void loadSelectedChat(selectedChatId);
   }, [selectedChatId, loadSelectedChat]);
 
@@ -1450,6 +1507,22 @@ export default function ClienteInboxPage() {
     runOnMount: false,
     source: "inbox-chat",
   });
+
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    window.requestAnimationFrame(() => {
+      const container = messagesScrollRef.current;
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior });
+        return;
+      }
+      messagesEndRef.current?.scrollIntoView({ block: "end", behavior });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedChatId || loadingMessages) return;
+    scrollMessagesToBottom("auto");
+  }, [loadingMessages, messages.length, scrollMessagesToBottom, selectedChatId]);
 
   useAdaptivePolling({
     enabled: Boolean(tenant?.tenantId),
@@ -1471,6 +1544,7 @@ export default function ClienteInboxPage() {
   const aiPaused = useMemo(() => isAiPaused(activeChat), [activeChat]);
   const aiStateDescription = useMemo(() => getAiStateDescription(activeChat), [activeChat]);
   const aiRetryAvailable = useMemo(() => shouldOfferAiRetry(activeChat), [activeChat]);
+  const whatsappWindowClosed = useMemo(() => isWhatsAppServiceWindowClosed(activeChat), [activeChat]);
   const handoffNotifyMeta = useMemo(
     () => getHandoffNotifyStatusMeta(activeChat?.aiState?.lastHandoffNotifyStatus),
     [activeChat?.aiState?.lastHandoffNotifyStatus]
@@ -1553,6 +1627,10 @@ export default function ClienteInboxPage() {
   async function handleSend(event: FormEvent) {
     event.preventDefault();
     if (!tenant?.tenantId || !selectedChatId || !messageText.trim() || !canOperate) return;
+    if (whatsappWindowClosed) {
+      setError("A janela de 24h do WhatsApp encerrou. Use o envio de follow-up aprovado logo abaixo.");
+      return;
+    }
 
     setSending(true);
     setError(null);
@@ -1570,10 +1648,49 @@ export default function ClienteInboxPage() {
 
       setMessageText("");
       await refreshSelected(true);
+      scrollMessagesToBottom("smooth");
     } catch {
       setError("Falha ao enviar mensagem.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleSendTemplate(event: FormEvent) {
+    event.preventDefault();
+    if (!tenant?.tenantId || !selectedChatId || !canOperate) return;
+
+    const normalizedTemplateName = templateName.trim();
+    if (!normalizedTemplateName) {
+      setError("Informe o nome exato de um template aprovado na Meta.");
+      return;
+    }
+
+    setSendingTemplate(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-template`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateName: normalizedTemplateName,
+          languageCode: templateLanguage.trim() || "pt_BR",
+          bodyParams: parseTemplateParams(templateParamsText),
+        }),
+      });
+      const payload = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao enviar template. Confira se ele esta aprovado na Meta e se o idioma/variaveis batem.");
+        return;
+      }
+
+      setTemplateParamsText("");
+      await refreshSelected(true);
+      scrollMessagesToBottom("smooth");
+    } catch {
+      setError("Falha ao enviar template. Confira o canal WhatsApp e tente novamente.");
+    } finally {
+      setSendingTemplate(false);
     }
   }
 
@@ -2009,7 +2126,7 @@ export default function ClienteInboxPage() {
 
   if (!selectedChat && !loadingChats && chats.length === 0) {
     return (
-      <div className="client-daily-page space-y-4">
+      <div className="inbox-refined client-daily-page space-y-5">
         <SectionHeader
           title="Inbox"
           subtitle="Operacao de atendimento, apoio humano e contexto comercial no mesmo painel."
@@ -2023,7 +2140,7 @@ export default function ClienteInboxPage() {
   }
 
   return (
-    <div className="client-daily-page space-y-5">
+    <div className="inbox-refined client-daily-page space-y-6">
       <SectionHeader
         title="Inbox"
         subtitle={
@@ -2033,12 +2150,12 @@ export default function ClienteInboxPage() {
         }
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
+            <div className="inline-flex rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
               <button
                 type="button"
                 onClick={() => setExperienceMode("essencial")}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition",
+                  "rounded-[16px] px-3.5 py-2 text-xs font-semibold transition",
                   !allowAdvanced
                     ? "bg-[var(--cliente-accent)] text-white"
                     : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
@@ -2050,7 +2167,7 @@ export default function ClienteInboxPage() {
                 type="button"
                 onClick={() => setExperienceMode("completo")}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition",
+                  "rounded-[16px] px-3.5 py-2 text-xs font-semibold transition",
                   allowAdvanced
                     ? "bg-[var(--cliente-accent)] text-white"
                     : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
@@ -2064,7 +2181,7 @@ export default function ClienteInboxPage() {
                 type="button"
                 onClick={() => setShowOpsSummary((current) => !current)}
                 className={cn(
-                  "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition",
+                  "inline-flex items-center gap-2 rounded-[18px] border px-3 py-2.5 text-xs font-semibold transition",
                   showOpsSummary
                     ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
                     : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-panel-soft)]"
@@ -2083,7 +2200,7 @@ export default function ClienteInboxPage() {
                 type="button"
                 onClick={handleDistributeQueue}
                 disabled={distributing}
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
+                className="inbox-toolbar-button inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
               >
                 {distributing ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2096,7 +2213,7 @@ export default function ClienteInboxPage() {
             <button
               type="button"
               onClick={() => void refreshSelected(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
+              className="inbox-toolbar-button inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Atualizar
@@ -2104,6 +2221,13 @@ export default function ClienteInboxPage() {
           </div>
         }
       />
+
+      {error ? (
+        <div className="inbox-notice inbox-notice-danger flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>{error}</p>
+        </div>
+      ) : null}
 
       {showOpsSummary ? (
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -2164,13 +2288,13 @@ export default function ClienteInboxPage() {
       ) : null}
 
       {error ? (
-        <PanelCard className="border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+        <PanelCard className="inbox-notice inbox-notice-danger p-4 text-sm">
           {error}
         </PanelCard>
       ) : null}
 
       {showOpsSummary && allowAdvanced ? (
-      <PanelCard className="p-4">
+      <PanelCard className="inbox-ops-panel p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-[260px] flex-1">
             <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Estado operacional da IA nesta conversa</p>
@@ -2240,7 +2364,7 @@ export default function ClienteInboxPage() {
                 type="button"
                 onClick={() => void handleToggleAi()}
                 disabled={!selectedChatId || updatingAi || !canOperate}
-                className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/12 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/18 disabled:opacity-50"
+                className="inbox-thread-action inbox-thread-action-success inline-flex items-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/12 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/18 disabled:opacity-50"
               >
                 {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
                 {activeChat?.aiState?.humanOwnerUserId ? "Liberar transferencia e retomar IA" : "Retomar IA agora"}
@@ -2250,7 +2374,7 @@ export default function ClienteInboxPage() {
                 type="button"
                 onClick={() => void handleToggleAi()}
                 disabled={!selectedChatId || updatingAi || !canOperate}
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+                className="inbox-thread-action inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
               >
                 {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PauseCircle className="h-3.5 w-3.5" />}
                 Pausar IA agora
@@ -2261,7 +2385,7 @@ export default function ClienteInboxPage() {
                 type="button"
                 onClick={() => void handleRetryAi()}
                 disabled={!selectedChatId || retryingAi || updatingAi || !canOperate || aiPaused}
-                className="inline-flex items-center gap-2 rounded-xl border border-sky-300/20 bg-sky-500/12 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/18 disabled:opacity-50"
+                className="inbox-thread-action inbox-thread-action-info inline-flex items-center gap-2 rounded-xl border border-sky-300/20 bg-sky-500/12 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/18 disabled:opacity-50"
               >
                 {retryingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 Reprocessar ultima mensagem
@@ -2270,7 +2394,7 @@ export default function ClienteInboxPage() {
               {handoffNotifyHint ? (
                 <Link
                   href="/cliente/painel/ia"
-                className="inline-flex items-center gap-2 rounded-xl border border-amber-300/20 bg-amber-500/12 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/18"
+                className="inbox-thread-action inbox-thread-action-warning inline-flex items-center gap-2 rounded-xl border border-amber-300/20 bg-amber-500/12 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/18"
               >
                   Ajustar alerta de transferencia
                 </Link>
@@ -2282,14 +2406,14 @@ export default function ClienteInboxPage() {
 
       <section
         className={cn(
-          "grid min-h-[82vh] min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(320px,380px)_minmax(0,1.7fr)]",
-          allowAdvanced
+          "grid min-h-[82vh] min-w-0 grid-cols-1 gap-4 xl:h-[calc(100vh-8rem)] xl:min-h-0 xl:grid-cols-[minmax(320px,380px)_minmax(0,1.7fr)]",
+          showSidePanel
             ? "2xl:grid-cols-[minmax(320px,380px)_minmax(0,1.8fr)_minmax(280px,332px)]"
             : "2xl:grid-cols-[minmax(320px,380px)_minmax(0,1.8fr)]"
         )}
       >
         <PanelCard className={cn(
-          "inbox-whatsapp-list min-h-0 min-w-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:flex xl:max-h-[calc(100vh-8rem)]",
+          "inbox-rail inbox-whatsapp-list min-h-0 min-w-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:flex xl:max-h-[calc(100vh-8rem)]",
           selectedChatId ? "hidden" : "flex"
         )}>
           <div className="border-b border-[var(--cliente-border)] p-4">
@@ -2299,7 +2423,7 @@ export default function ClienteInboxPage() {
             </div>
 
             <div className="mt-4 space-y-3">
-              <label className="client-input flex items-center gap-2 rounded-xl border px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <label className="client-input flex items-center gap-2 rounded-[20px] border px-3.5 py-3 text-sm text-[var(--cliente-card-text-muted)]">
                 <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
                 <input
                   value={search}
@@ -2309,20 +2433,20 @@ export default function ClienteInboxPage() {
                 />
               </label>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {STATUS_FILTERS.map((filter) => (
                   <button
                     key={filter}
                     type="button"
                     onClick={() => setStatusFilter(filter)}
                     className={cn(
-                      "rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] transition",
+                      "inbox-filter-pill rounded-full border px-3 py-1.5 text-[10px] font-semibold tracking-normal transition",
                       statusFilter === filter
                         ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
                         : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)]"
                     )}
                   >
-                    {filter === "all" ? "todas" : filter}
+                    {formatStatusFilterLabel(filter)}
                   </button>
                 ))}
               </div>
@@ -2331,7 +2455,7 @@ export default function ClienteInboxPage() {
                 <button
                   type="button"
                   onClick={() => setShowAdvancedFilters((current) => !current)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
+                  className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
                   {showAdvancedFilters ? "Ocultar filtros avancados" : "Mostrar filtros avancados"}
@@ -2439,16 +2563,16 @@ export default function ClienteInboxPage() {
         </PanelCard>
 
         <PanelCard className={cn(
-          "min-h-0 min-w-0 flex-col overflow-hidden xl:flex",
-          selectedChatId ? "flex" : "hidden"
+          "inbox-thread-shell min-h-0 min-w-0 flex-col overflow-hidden xl:flex",
+          selectedChatId ? "flex h-[calc(100dvh-7rem)] xl:h-full" : "hidden"
         )}>
-          <div className="inbox-chat-header border-b border-[var(--cliente-border)] p-3 sm:p-4">
+          <div className="inbox-thread-header inbox-chat-header border-b border-[var(--cliente-border)] p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex min-w-0 items-start gap-3">
                 <button
                   type="button"
                   onClick={() => setSelectedChatId(null)}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)] xl:hidden"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)] xl:hidden"
                   aria-label="Voltar para conversas"
                 >
                   <ArrowLeft className="h-5 w-5" />
@@ -2468,9 +2592,9 @@ export default function ClienteInboxPage() {
                     <StateBadge label={formatStatusLabel(activeChat?.status)} tone={getStatusTone(activeChat?.status)} />
                     <StateBadge label={activeSla.label} tone={activeSla.breached ? "danger" : "info"} />
                   </div>
-                  {allowAdvanced ? (
+                  {showSidePanel ? (
                   <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <div className="inline-flex min-w-0 items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1.5">
+                    <div className="inline-flex min-w-0 items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1.5 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.45)]">
                       <ContactAvatar
                         name={detail?.company?.name || tenant?.tenantName || "Cliente"}
                         photoUrl={detail?.company?.photoUrl || null}
@@ -2506,7 +2630,7 @@ export default function ClienteInboxPage() {
                   type="button"
                   onClick={() => void handleToggleAi()}
                   disabled={!selectedChat || updatingAi || !canOperate}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
                 >
                   {updatingAi ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2521,7 +2645,7 @@ export default function ClienteInboxPage() {
                   type="button"
                   onClick={() => void handleTakeover()}
                   disabled={!selectedChat || updatingAi || !canOperate}
-                  className="inline-flex items-center gap-2 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/16 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-[18px] border border-amber-300/20 bg-amber-500/10 px-3 py-2.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/16 disabled:opacity-50"
                 >
                   {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserRound className="h-3.5 w-3.5" />}
                   Assumir transferencia
@@ -2530,7 +2654,7 @@ export default function ClienteInboxPage() {
                   type="button"
                   onClick={() => void handleQuickStatus("pending")}
                   disabled={!selectedChat || savingMeta || !canOperate}
-                  className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+                  className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
                 >
                   Marcar pendente
                 </button>
@@ -2538,7 +2662,7 @@ export default function ClienteInboxPage() {
                   type="button"
                   onClick={() => void handleQuickStatus("resolved")}
                   disabled={!selectedChat || savingMeta || !canOperate}
-                  className="rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/16 disabled:opacity-50"
+                  className="rounded-[18px] border border-emerald-300/20 bg-emerald-500/10 px-3 py-2.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/16 disabled:opacity-50"
                 >
                   Resolver
                 </button>
@@ -2546,16 +2670,16 @@ export default function ClienteInboxPage() {
               ) : null}
             </div>
 
-            {allowAdvanced && activeLead ? (
+            {showSidePanel && activeLead ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                <div className="inbox-thread-stat rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Contato</p>
                   <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">{activeLead.nome || "Contato"}</p>
                   <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
                     {activeLead.empresa || activeLead.origem || "Sem empresa"}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                <div className="inbox-thread-stat rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Etapa do funil</p>
                   <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">
                     {getPipelineStageLabel(
@@ -2564,7 +2688,7 @@ export default function ClienteInboxPage() {
                   </p>
                   <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{activeLead.owner || "Sem dono comercial"}</p>
                 </div>
-                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+                <div className="inbox-thread-stat rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Valor potencial</p>
                   <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">
                     {formatMoney(activeLead.potentialValue)}
@@ -2575,7 +2699,10 @@ export default function ClienteInboxPage() {
             ) : null}
           </div>
 
-          <div className="inbox-chat-wall min-h-[58vh] flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4 lg:px-5 xl:max-h-[calc(100vh-14rem)]">
+          <div
+            ref={messagesScrollRef}
+            className="inbox-thread-wall inbox-chat-wall min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-4 scroll-smooth sm:px-4 lg:px-5"
+          >
             {!selectedChatId ? (
               <EmptyState
                 title="Selecione uma conversa"
@@ -2595,30 +2722,102 @@ export default function ClienteInboxPage() {
                 <MessageBubble key={message.id} message={message} />
               ))
             )}
+            <div ref={messagesEndRef} className="h-1" />
           </div>
 
-          <form onSubmit={handleSend} className="inbox-chat-composer border-t border-[var(--cliente-border)] p-3">
-            <div className="flex gap-2">
-              <input
-                value={messageText}
-                onChange={(event) => setMessageText(event.target.value)}
-                placeholder={canOperate ? "Digite a mensagem manual do time" : "Perfil sem permissao para responder"}
-                className="inbox-chat-input flex-1 rounded-full border border-transparent px-4 py-3 text-sm outline-none focus:border-[#25D366]"
-                disabled={!selectedChatId || sending || !canOperate}
-              />
-              <button
-                type="submit"
-                disabled={!selectedChatId || sending || !messageText.trim() || !canOperate}
-                className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
-              >
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Enviar
-              </button>
-            </div>
+          <form
+            onSubmit={(event) => (whatsappWindowClosed ? void handleSendTemplate(event) : void handleSend(event))}
+            className="inbox-thread-composer inbox-chat-composer shrink-0 border-t border-[var(--cliente-border)] p-4"
+          >
+            {whatsappWindowClosed ? (
+              <div className="rounded-2xl border border-amber-300/25 bg-amber-500/10 p-3 text-amber-100">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-50">Enviar follow-up aprovado</p>
+                    <p className="mt-1 text-xs leading-5 text-amber-100/82">
+                      A janela de 24h fechou. Para chamar o contato agora, envie um template aprovado na Meta.
+                    </p>
+                  </div>
+                  <a
+                    href="https://business.facebook.com/wa/manage/message-templates/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center rounded-full border border-amber-200/30 bg-amber-200/12 px-2.5 py-1 text-xs font-semibold text-amber-50 transition hover:bg-amber-200/18"
+                  >
+                    Gerenciar templates
+                  </a>
+                </div>
+
+                <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(180px,1fr)_92px_minmax(180px,1fr)_auto]">
+                  <label className="min-w-0">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100/70">
+                      Template
+                    </span>
+                    <input
+                      value={templateName}
+                      onChange={(event) => setTemplateName(event.target.value)}
+                      placeholder="Ex: follow_up_geral"
+                      className="w-full rounded-xl border border-amber-200/20 bg-[#111b21]/55 px-3 py-2 text-sm text-amber-50 outline-none placeholder:text-amber-100/40 focus:border-amber-200/45"
+                      disabled={sendingTemplate || !canOperate}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100/70">
+                      Idioma
+                    </span>
+                    <input
+                      value={templateLanguage}
+                      onChange={(event) => setTemplateLanguage(event.target.value)}
+                      placeholder="pt_BR"
+                      className="w-full rounded-xl border border-amber-200/20 bg-[#111b21]/55 px-3 py-2 text-sm text-amber-50 outline-none placeholder:text-amber-100/40 focus:border-amber-200/45"
+                      disabled={sendingTemplate || !canOperate}
+                    />
+                  </label>
+                  <label className="min-w-0">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100/70">
+                      Variaveis, se tiver
+                    </span>
+                    <input
+                      value={templateParamsText}
+                      onChange={(event) => setTemplateParamsText(event.target.value)}
+                      placeholder="Ex: Savio, proposta"
+                      className="w-full rounded-xl border border-amber-200/20 bg-[#111b21]/55 px-3 py-2 text-sm text-amber-50 outline-none placeholder:text-amber-100/40 focus:border-amber-200/45"
+                      disabled={sendingTemplate || !canOperate}
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={!selectedChatId || sendingTemplate || !templateName.trim() || !canOperate}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55 lg:self-end"
+                  >
+                    {sendingTemplate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    Enviar follow-up
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  value={messageText}
+                  onChange={(event) => setMessageText(event.target.value)}
+                  placeholder={canOperate ? "Digite a mensagem" : "Perfil sem permissao para responder"}
+                  className="inbox-chat-input flex-1 rounded-full border border-transparent px-4 py-3 text-sm outline-none focus:border-[#25D366]"
+                  disabled={!selectedChatId || sending || !canOperate}
+                />
+                <button
+                  type="submit"
+                  disabled={!selectedChatId || sending || !messageText.trim() || !canOperate}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Enviar
+                </button>
+              </div>
+            )}
           </form>
         </PanelCard>
 
-        {allowAdvanced ? (
+        {showSidePanel ? (
         <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden overflow-y-auto 2xl:sticky 2xl:top-4 2xl:max-h-[calc(100vh-8rem)]">
           <PanelCard className="p-4">
             <div className="flex items-center justify-between gap-3">
@@ -3203,33 +3402,10 @@ export default function ClienteInboxPage() {
             </div>
           </PanelCard>
         </div>
-        ) : (
-          <PanelCard className="p-4">
-              <CardTitle title="Painel lateral oculto" subtitle="No modo essencial mostramos apenas lista de conversas e chat." />
-            <p className="mt-2 text-sm text-[var(--cliente-card-text-soft)]">
-              Para ver resumo do contato, comercial conectado, tarefas, notas e historico no inbox, ative o modo completo.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setExperienceMode("completo")}
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
-              >
-                Ativar modo completo
-              </button>
-              {activeLead?.id ? (
-                <Link
-                  href={`/cliente/painel/crm?leadId=${encodeURIComponent(activeLead.id)}`}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
-                >
-                  Abrir CRM do contato
-                </Link>
-              ) : null}
-            </div>
-          </PanelCard>
-        )}
+        ) : null}
       </section>
     </div>
   );
 }
+
 

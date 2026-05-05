@@ -384,7 +384,7 @@ export default function ClienteFollowUpsPage() {
   }
 
   return (
-    <div className="client-daily-page space-y-6">
+    <div className="followups-refined client-daily-page space-y-6">
       {allowAdvanced ? (
         <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
           <PanelCard className="p-5 md:p-6">
@@ -394,7 +394,7 @@ export default function ClienteFollowUpsPage() {
               action={<StateBadge label="3 passos" tone="info" />}
             />
             <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl border border-rose-300/20 bg-rose-500/10 p-4">
+              <div className="followups-scenario-card rounded-2xl border border-rose-300/20 bg-rose-500/10 p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-100/80">Passo 1</p>
                 <p className="mt-2 text-sm font-medium text-[var(--cliente-card-text)]">Resolver vencidos</p>
                 <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Puxa imediatamente tudo que ja estourou prazo.</p>
@@ -407,7 +407,7 @@ export default function ClienteFollowUpsPage() {
                 </button>
               </div>
 
-              <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 p-4">
+              <div className="followups-scenario-card rounded-2xl border border-amber-300/20 bg-amber-500/10 p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-100/80">Passo 2</p>
                 <p className="mt-2 text-sm font-medium text-[var(--cliente-card-text)]">Executar agenda do dia</p>
                 <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Trata os retornos pendentes antes de abrir novas frentes.</p>
@@ -420,7 +420,7 @@ export default function ClienteFollowUpsPage() {
                 </button>
               </div>
 
-              <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
+              <div className="followups-scenario-card rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100/80">Passo 3</p>
                 <p className="mt-2 text-sm font-medium text-[var(--cliente-card-text)]">Avancar propostas</p>
                 <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Foco em contatos que ja estao perto de fechar.</p>
@@ -433,7 +433,7 @@ export default function ClienteFollowUpsPage() {
                 </button>
               </div>
             </div>
-            <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
+            <div className="followups-recommended-card mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100/80">
@@ -844,7 +844,7 @@ export default function ClienteFollowUpsPage() {
 
 function SignalCard({ title, detail, tone }: { title: string; detail: string; tone: "neutral" | "success" | "warning" | "danger" | "info" }) {
   return (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+    <div className="followups-signal-card rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-[var(--cliente-card-text)]">{title}</p>
@@ -858,7 +858,7 @@ function SignalCard({ title, detail, tone }: { title: string; detail: string; to
 
 function InfoTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+    <div className="followups-info-tile rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">{label}</p>
       <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{value}</p>
     </div>
@@ -877,7 +877,7 @@ function FilterSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text-soft)]">
+    <label className="followups-filter rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text-soft)]">
       <span className="block uppercase tracking-[0.16em]">{label}</span>
       <select
         value={value}
@@ -898,7 +898,7 @@ function QuickLink({ href, title, description }: { href: string; title: string; 
   return (
     <Link
       href={href}
-      className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-muted)]"
+      className="followups-quick-link block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-muted)]"
     >
       <p className="text-sm font-medium text-[var(--cliente-card-text)]">{title}</p>
       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{description}</p>
