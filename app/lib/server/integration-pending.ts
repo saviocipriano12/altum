@@ -35,6 +35,7 @@ export type PendingSelectionDoc = {
   channelType: IntegrationChannelType;
   redirectPath: string;
   oauthToken?: string;
+  oauthRefreshToken?: string;
   oauthScope?: string;
   pages?: MetaPendingPageOption[];
   adAccounts?: MetaPendingAdAccountOption[];
@@ -90,6 +91,7 @@ export async function createIntegrationPendingSelection(input: {
   channelType: IntegrationChannelType;
   redirectPath: string;
   oauthToken?: string;
+  oauthRefreshToken?: string;
   oauthScope?: string;
   pages?: Array<{
     id?: string;
@@ -119,6 +121,7 @@ export async function createIntegrationPendingSelection(input: {
     channelType: input.channelType,
     redirectPath: cleanPath(input.redirectPath),
     oauthToken: encryptSecret(clean(input.oauthToken, 5000)),
+    oauthRefreshToken: encryptSecret(clean(input.oauthRefreshToken, 5000)),
     oauthScope: clean(input.oauthScope, 1500),
     pages: (Array.isArray(input.pages) ? input.pages : [])
       .map((item) => ({
@@ -184,6 +187,7 @@ export async function readIntegrationPendingSelection(pendingId: string) {
     channelType: data.channelType,
     redirectPath: cleanPath(data.redirectPath),
     oauthToken: clean(decryptSecret(data.oauthToken), 5000),
+    oauthRefreshToken: clean(decryptSecret(data.oauthRefreshToken), 5000),
     oauthScope: clean(data.oauthScope, 1500),
     pages: (Array.isArray(data.pages) ? data.pages : []).map((item) => ({
       id: clean(item.id, 180),

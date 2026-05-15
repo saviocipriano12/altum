@@ -10,6 +10,19 @@ import {
 } from "@/lib/pipeline";
 import { buildLeadStagePolicy, loadTenantPipelineConfig } from "@/lib/server/crm/pipeline";
 
+type PipelineCommercialState = {
+  lastAiSignals: Array<{
+    decision: string | null;
+    nextAction: string | null;
+    confidence: number | null;
+  }>;
+  stagePolicy: {
+    slaBreached: boolean;
+    slaDueAt: string | null;
+    ownerName: string | null;
+  } | null;
+};
+
 type PipelineLead = {
   id: string;
   nome: string;
@@ -27,6 +40,19 @@ type PipelineLead = {
   createdAt: unknown;
   updatedAt: unknown;
   stageUpdatedAt: unknown;
+  aiSignalStrength: string;
+  aiPlannerConfidence: number | null;
+  aiLeadSummary: string;
+  aiNextAction: string;
+  aiConversationStage: string;
+  qualification: {
+    score: number | null;
+    band: string;
+    label: string;
+    recommendedStage: string;
+    nextAction: string;
+  } | null;
+  commercialState: PipelineCommercialState | null;
 };
 
 type Body = {
@@ -56,6 +82,54 @@ function parseTags(value: unknown) {
         .filter(Boolean)
     )
   ).slice(0, 8);
+}
+
+function asRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function formatQualification(value: unknown): PipelineLead["qualification"] {
+  const data = asRecord(value);
+  if (!data) return null;
+
+  return {
+    score: cleanNumber(data.score),
+    band: cleanText(data.band, 40),
+    label: cleanText(data.label, 120),
+    recommendedStage: cleanText(data.recommendedStage, 80),
+    nextAction: cleanText(data.nextAction, 120),
+  };
+}
+
+function formatCommercialState(value: unknown): PipelineLead["commercialState"] {
+  const data = asRecord(value);
+  if (!data) return null;
+  const stagePolicy = asRecord(data.stagePolicy);
+  const signals = Array.isArray(data.lastAiSignals) ? data.lastAiSignals : [];
+
+  return {
+    lastAiSignals: signals
+      .map((item) => {
+        const signal = asRecord(item);
+        if (!signal) return null;
+        return {
+          decision: cleanText(signal.decision, 40) || null,
+          nextAction: cleanText(signal.nextAction, 120) || null,
+          confidence: cleanNumber(signal.confidence),
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 3) as PipelineCommercialState["lastAiSignals"],
+    stagePolicy: stagePolicy
+      ? {
+          slaBreached: Boolean(stagePolicy.slaBreached),
+          slaDueAt: cleanText(stagePolicy.slaDueAt, 40) || null,
+          ownerName: cleanText(stagePolicy.ownerName, 120) || null,
+        }
+      : null,
+  };
 }
 
 function toMillis(value: unknown) {
@@ -101,6 +175,13 @@ function formatLead(docId: string, data: Record<string, unknown>): PipelineLead 
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
     stageUpdatedAt: data.stageUpdatedAt,
+    aiSignalStrength: cleanText(data.aiSignalStrength, 40),
+    aiPlannerConfidence: cleanNumber(data.aiPlannerConfidence),
+    aiLeadSummary: cleanText(data.aiLeadSummary, 260),
+    aiNextAction: cleanText(data.aiNextAction, 120),
+    aiConversationStage: cleanText(data.aiConversationStage, 80),
+    qualification: formatQualification(data.qualification),
+    commercialState: formatCommercialState(data.commercialState),
   };
 }
 

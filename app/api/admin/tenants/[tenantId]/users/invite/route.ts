@@ -167,7 +167,7 @@ export async function POST(
 
     await batch.commit();
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://altum.ag";
     const inviteLink = await adminAuth.generatePasswordResetLink(email, {
       url: `${siteUrl}/cliente/login`,
     });

@@ -15,7 +15,8 @@ import {
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
-import { EmptyState, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
+import { CardTitle, EmptyState, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
+import { ClientOpportunitiesHeader } from "@/app/cliente/painel/components/client-opportunities-header";
 import { getBusinessProfile, getBusinessProfilePlaybookPreset, type BusinessProfileId } from "@/lib/business-profiles";
 import { getPipelineStageLabel } from "@/lib/pipeline";
 
@@ -385,11 +386,53 @@ export default function ClienteFollowUpsPage() {
 
   return (
     <div className="followups-refined client-daily-page space-y-6">
+      <ClientOpportunitiesHeader activeView="agenda" />
+      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+        <PanelCard tone="spotlight" className="p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="inline-flex rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/84">
+                Proximas acoes
+              </p>
+              <h2 className="mt-4 text-[1.75rem] font-semibold tracking-[-0.045em] text-white md:text-[2.15rem]">
+                Organize retornos, compromissos e propostas em uma agenda comercial facil de operar.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72">
+                Esta area existe para responder o que vence hoje, o que atrasou e o que pode virar avancos no funil.
+              </p>
+            </div>
+            <div className="grid min-w-[250px] gap-3 sm:grid-cols-2 xl:w-[320px]">
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Pendentes</p><p className="mt-2 text-base font-semibold text-white">{String(summary.pending || 0)}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Vencidos</p><p className="mt-2 text-base font-semibold text-white">{String(summary.overdue || 0)}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Para hoje</p><p className="mt-2 text-base font-semibold text-white">{String(summary.dueToday || 0)}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Modo sugerido</p><p className="mt-2 text-base font-semibold text-white">{recommendedModeLabel}</p></div>
+            </div>
+          </div>
+        </PanelCard>
+
+        <PanelCard tone="brand" className="p-5">
+          <CardTitle title="Fluxo rapido" subtitle="Uma forma simples de operar sem se perder nos retornos." />
+          <div className="mt-4 grid gap-3">
+            <button type="button" onClick={() => applySimpleScenario("urgent")} className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 text-left shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)]">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Resolver vencidos</p>
+              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Comece pelo que ja saiu do prazo.</p>
+            </button>
+            <button type="button" onClick={() => applySimpleScenario("today")} className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 text-left shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)]">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Executar agenda do dia</p>
+              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Passe pelos retornos da janela atual.</p>
+            </button>
+            <button type="button" onClick={() => applySimpleScenario("proposal")} className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 text-left shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)]">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Avancar propostas</p>
+              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Feche follow-ups mais proximos de conversao.</p>
+            </button>
+          </div>
+        </PanelCard>
+      </section>
       {allowAdvanced ? (
         <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
           <PanelCard className="p-5 md:p-6">
             <SectionHeader
-              title="Modo simples dos retornos"
+              title="Fluxo guiado"
               subtitle="Se estiver em duvida, siga esse fluxo rapido para nao perder contato."
               action={<StateBadge label="3 passos" tone="info" />}
             />
@@ -474,7 +517,7 @@ export default function ClienteFollowUpsPage() {
         <section>
           <PanelCard className="p-5 md:p-6">
             <SectionHeader
-              title="Modo essencial dos retornos"
+              title="Agenda essencial"
               subtitle="Fluxo direto para operar sem ruido e sem desvio."
               action={<StateBadge label={recommendedModeLabel} tone={recommendedModeTone} />}
             />
@@ -527,9 +570,9 @@ export default function ClienteFollowUpsPage() {
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard label="Pendentes" value={String(summary.pending || 0)} icon={ListTodo} trend="tarefas abertas" />
-            <MetricCard label="Vencidos" value={String(summary.overdue || 0)} icon={AlertTriangle} trend="prioridade imediata" />
-            <MetricCard label="Hoje" value={String(summary.dueToday || 0)} icon={CalendarClock} trend="janela atual" />
-            <MetricCard label="Etapa proposta" value={String(summary.proposal || 0)} icon={Sparkles} trend="retorno comercial" />
+            <MetricCard label="Vencidos" value={String(summary.overdue || 0)} icon={AlertTriangle} trend="prioridade imediata" tone="warning" />
+            <MetricCard label="Hoje" value={String(summary.dueToday || 0)} icon={CalendarClock} trend="janela atual" tone="brand" />
+            <MetricCard label="Etapa proposta" value={String(summary.proposal || 0)} icon={Sparkles} trend="retorno comercial" tone="ai" />
           </div>
         </PanelCard>
 

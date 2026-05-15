@@ -5,15 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   ArrowRight,
-  CircleDollarSign,
   GripVertical,
-  LayoutList,
   Loader2,
   Settings2,
-  Sparkles,
   Target,
-  TimerReset,
-  Trophy,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
@@ -21,11 +16,10 @@ import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import {
   CardTitle,
   EmptyState,
-  MetricCard,
   PanelCard,
-  SectionHeader,
   StateBadge,
 } from "@/app/cliente/painel/components/ui";
+import { ClientOpportunitiesHeader } from "@/app/cliente/painel/components/client-opportunities-header";
 import {
   getDefaultPipelineStages,
   normalizePipelineStages,
@@ -47,6 +41,31 @@ type PipelineLead = {
   source?: string;
   status?: string;
   ageDays?: number;
+  slaBreached?: boolean;
+  aiSignalStrength?: string;
+  aiPlannerConfidence?: number | null;
+  aiLeadSummary?: string;
+  aiNextAction?: string;
+  aiConversationStage?: string;
+  qualification?: {
+    score?: number | null;
+    band?: string;
+    label?: string;
+    recommendedStage?: string;
+    nextAction?: string;
+  } | null;
+  commercialState?: {
+    lastAiSignals?: Array<{
+      decision?: string | null;
+      nextAction?: string | null;
+      confidence?: number | null;
+    }>;
+    stagePolicy?: {
+      slaBreached?: boolean;
+      slaDueAt?: string | null;
+      ownerName?: string | null;
+    } | null;
+  } | null;
 };
 
 type PipelineColumn = {
@@ -100,6 +119,15 @@ function toneFromHeat(value?: string) {
   if (normalized === "morno") return "warning" as const;
   if (normalized === "frio") return "neutral" as const;
   return "info" as const;
+}
+
+function formatAiAction(value?: string | null) {
+  const clean = String(value || "").trim();
+  if (!clean) return "";
+  return clean
+    .replaceAll("_", " ")
+    .replace(/\s+/g, " ")
+    .replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function StageEditor({
@@ -287,16 +315,7 @@ export default function ClientePipelinePage() {
   const owners = useMemo(() => data?.owners || [], [data?.owners]);
   const businessProfile = useMemo(() => getBusinessProfile(businessProfileId), [businessProfileId]);
   const columns = useMemo(() => data?.columns || [], [data?.columns]);
-  const summary = data?.summary;
   const normalizedSearch = search.trim().toLowerCase();
-
-  const topStage = useMemo(() => {
-    return [...columns].sort((a, b) => b.count - a.count)[0] || null;
-  }, [columns]);
-
-  const stalledStage = useMemo(() => {
-    return [...columns].sort((a, b) => b.avgAgeDays - a.avgAgeDays)[0] || null;
-  }, [columns]);
 
   const selectedLeadContext = useMemo(() => {
     if (!leadFromQuery) return null;
@@ -408,39 +427,21 @@ export default function ClientePipelinePage() {
         </div>
       ) : null}
 
-      <SectionHeader
-        title="Pipeline comercial"
-        subtitle={
-          allowAdvanced
-            ? "Kanban operacional do tenant, com gargalos, valor em aberto e fluxo real de oportunidade."
-            : "Kanban diario com foco em andamento das oportunidades e proxima acao."
-        }
+      <ClientOpportunitiesHeader
+        activeView="kanban"
         action={
           <div className="flex flex-wrap gap-2">
-            <div className="inline-flex rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
-              <button
-                type="button"
-                onClick={() => setExperienceMode("essencial")}
-                className={`rounded-[16px] px-3.5 py-2 text-xs font-semibold transition ${
-                  !allowAdvanced
-                    ? "bg-[var(--cliente-accent)] text-white"
-                    : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
-                }`}
-              >
-                Modo simples
-              </button>
-              <button
-                type="button"
-                onClick={() => setExperienceMode("completo")}
-                className={`rounded-[16px] px-3.5 py-2 text-xs font-semibold transition ${
-                  allowAdvanced
-                    ? "bg-[var(--cliente-accent)] text-white"
-                    : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
-                }`}
-              >
-                Modo completo
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setExperienceMode(allowAdvanced ? "essencial" : "completo")}
+              className={`rounded-[18px] border px-3.5 py-2 text-xs font-semibold transition ${
+                allowAdvanced
+                  ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]"
+                  : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-card-text)]"
+              }`}
+            >
+              {allowAdvanced ? "Ocultar opcoes avancadas" : "Mostrar opcoes avancadas"}
+            </button>
             {!canOperate ? <StateBadge label="somente leitura" tone="warning" /> : null}
             {canManage ? (
               <button
@@ -455,44 +456,19 @@ export default function ClientePipelinePage() {
                 className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3.5 py-2.5 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
               >
                 <Settings2 className="h-4 w-4" />
-                {allowAdvanced ? "Configurar funil" : "Ativar completo p/ configurar"}
+                {allowAdvanced ? "Configurar funil" : "Mostrar avancado para configurar"}
               </button>
             ) : null}
           </div>
         }
       />
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label="Oportunidades"
-          value={String(summary?.totalLeads || 0)}
-          icon={LayoutList}
-          trend={`${summary?.openCount || 0} abertas`}
-        />
-        <MetricCard
-          label="Valor em aberto"
-          value={brl(Number(summary?.totalValue || 0))}
-          icon={CircleDollarSign}
-          trend="funil ponderado"
-        />
-        <MetricCard
-          label="Ganhas"
-          value={String(summary?.wonCount || 0)}
-          icon={Trophy}
-          trend={`${summary?.winRate || 0}% de taxa de ganho`}
-        />
-        <MetricCard
-          label="Risco atual"
-          value={`${stalledStage?.avgAgeDays || 0}d`}
-          icon={TimerReset}
-          trend={stalledStage ? stalledStage.stage.label : "sem gargalos"}
-        />
-      </section>
-
-      <section className={`grid gap-4 ${allowAdvanced ? "xl:grid-cols-[1.2fr_0.8fr]" : "xl:grid-cols-1"}`}>
-        <PanelCard className="pipeline-overview-card p-5">
-          <CardTitle title="Leitura do funil" subtitle="Onde a operacao esta concentrada e qual etapa esta mais lenta." />
-          <label className="mt-4 flex items-center gap-2 rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3.5 py-3 text-sm text-[var(--cliente-card-text)]/72 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.34)]">
+      <PanelCard className="pipeline-overview-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <CardTitle title="Pipeline" subtitle="Mova oportunidades entre etapas e encontre contatos pelo nome, empresa, origem ou tag." />
+          {selectedLeadContext ? <StateBadge label={selectedLeadContext.lead.nome} tone="info" /> : null}
+        </div>
+        <label className="mt-4 flex items-center gap-2 rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3.5 py-3 text-sm text-[var(--cliente-card-text)]/72 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.34)]">
             <Target className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
             <input
               value={search}
@@ -501,31 +477,9 @@ export default function ClientePipelinePage() {
               className="w-full bg-transparent outline-none placeholder:text-[var(--cliente-card-text)]/30"
             />
           </label>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-              <div className="inline-flex rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] p-2 text-[var(--cliente-accent)]">
-                <Sparkles className="h-4 w-4" />
-              </div>
-              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Maior concentracao</p>
-              <p className="mt-1 text-xl font-semibold text-[var(--cliente-card-text)]">{topStage?.stage.label || "Sem dados"}</p>
-              <p className="mt-2 text-sm text-[var(--cliente-card-text-soft)]">
-                {topStage ? `${topStage.count} contatos e ${brl(topStage.totalValue)} em valor potencial.` : "Nenhuma etapa com volume relevante."}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-              <div className="inline-flex rounded-xl border border-amber-400/20 bg-amber-500/10 p-2 text-amber-100">
-                <Target className="h-4 w-4" />
-              </div>
-              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Gargalo atual</p>
-              <p className="mt-1 text-xl font-semibold text-[var(--cliente-card-text)]">{stalledStage?.stage.label || "Sem gargalo"}</p>
-              <p className="mt-2 text-sm text-[var(--cliente-card-text-soft)]">
-                {stalledStage ? `${stalledStage.avgAgeDays} dias em media nesta etapa.` : "Tempo de permanencia ainda sem sinal de risco."}
-              </p>
-            </div>
-          </div>
-        </PanelCard>
+      </PanelCard>
 
-        {allowAdvanced ? (
+      {allowAdvanced ? (
           <PanelCard className="pipeline-overview-card p-5">
             <CardTitle title="Governanca do funil" subtitle="Etapas atuais ativas no tenant." />
             <div className="mt-4 space-y-2">
@@ -547,8 +501,7 @@ export default function ClientePipelinePage() {
               ))}
             </div>
           </PanelCard>
-        ) : null}
-      </section>
+      ) : null}
 
       {allowAdvanced ? (
         <PanelCard className="pipeline-overview-card p-5">
@@ -577,47 +530,6 @@ export default function ClientePipelinePage() {
             </div>
           </div>
         </PanelCard>
-      ) : (
-        <PanelCard className="pipeline-overview-card p-5">
-          <CardTitle title="Modo essencial ativo" subtitle="Exibindo apenas o kanban e sinais principais para rotina diaria." />
-          <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
-            Para ajustar etapas, SLA, responsaveis e leitura por perfil de negocio, use o modo completo.
-          </p>
-          <button
-            type="button"
-            onClick={() => setExperienceMode("completo")}
-            className="mt-3 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
-          >
-            Abrir modo completo
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-        </PanelCard>
-      )}
-
-      {selectedLeadContext ? (
-        <PanelCard className="pipeline-overview-card p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <CardTitle
-                title="Contato em foco"
-                subtitle="Este contato chegou ao funil a partir de outro modulo e esta destacado no kanban abaixo."
-              />
-              <p className="mt-3 text-lg font-semibold text-[var(--cliente-card-text)]">{selectedLeadContext.lead.nome}</p>
-              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
-                {selectedLeadContext.lead.empresa || selectedLeadContext.lead.source || "Origem nao informada"}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <StateBadge label={selectedLeadContext.column.stage.label} tone="info" />
-              {selectedLeadContext.lead.priority ? (
-                <StateBadge label={selectedLeadContext.lead.priority} tone={toneFromPriority(selectedLeadContext.lead.priority)} />
-              ) : null}
-              {selectedLeadContext.lead.heat ? (
-                <StateBadge label={selectedLeadContext.lead.heat} tone={toneFromHeat(selectedLeadContext.lead.heat)} />
-              ) : null}
-            </div>
-          </div>
-        </PanelCard>
       ) : null}
 
       {settingsOpen && canManage && allowAdvanced ? (
@@ -633,13 +545,13 @@ export default function ClientePipelinePage() {
 
       {settingsOpen && canManage && !allowAdvanced ? (
         <PanelCard className="pipeline-overview-card p-5">
-          <CardTitle title="Configuracao avancada protegida" subtitle="No modo essencial escondemos ajustes estruturais do funil." />
+          <CardTitle title="Configuracao protegida" subtitle="Ajustes estruturais do funil ficam escondidos na visao simplificada." />
           <button
             type="button"
             onClick={() => setExperienceMode("completo")}
             className="mt-3 inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
           >
-            Ativar modo completo
+            Mostrar opcoes avancadas
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </PanelCard>
@@ -647,7 +559,7 @@ export default function ClientePipelinePage() {
 
       <PanelCard className="pipeline-board-shell overflow-hidden p-5">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle title="Kanban do tenant" subtitle="Arraste as oportunidades entre etapas ou abra o contato completo no CRM." />
+          <CardTitle title="Kanban comercial" subtitle="A IA preenche o CRM e pode avancar etapas; voce tambem pode mover oportunidades manualmente." />
           {movingLeadId ? <StateBadge label="movendo contato" tone="info" /> : null}
         </div>
 
@@ -721,6 +633,10 @@ export default function ClientePipelinePage() {
                             lead.empresa,
                             lead.source,
                             lead.owner,
+                            lead.aiLeadSummary,
+                            lead.aiNextAction,
+                            lead.qualification?.label,
+                            lead.qualification?.nextAction,
                             ...(lead.tags || []),
                           ]
                             .join(" ")
@@ -760,7 +676,41 @@ export default function ClientePipelinePage() {
                             ) : null}
                             {lead.heat ? <StateBadge label={lead.heat} tone={toneFromHeat(lead.heat)} /> : null}
                             {lead.score ? <StateBadge label={`pontuacao ${lead.score}`} tone="info" /> : null}
+                            {lead.qualification || lead.aiSignalStrength ? (
+                              <StateBadge label="IA atualizou CRM" tone="info" />
+                            ) : null}
+                            {lead.slaBreached || lead.commercialState?.stagePolicy?.slaBreached ? (
+                              <StateBadge label="SLA vencido" tone="danger" />
+                            ) : null}
                           </div>
+
+                          {lead.qualification?.nextAction ||
+                          lead.aiNextAction ||
+                          lead.commercialState?.lastAiSignals?.[0]?.nextAction ||
+                          lead.aiLeadSummary ? (
+                            <div className="mt-3 rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] px-3 py-2">
+                              {lead.qualification?.label ? (
+                                <p className="text-xs font-semibold text-[var(--cliente-ai)]">{lead.qualification.label}</p>
+                              ) : null}
+                              {lead.qualification?.nextAction ||
+                              lead.aiNextAction ||
+                              lead.commercialState?.lastAiSignals?.[0]?.nextAction ? (
+                                <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text)]">
+                                  Proximo passo:{" "}
+                                  {formatAiAction(
+                                    lead.qualification?.nextAction ||
+                                      lead.aiNextAction ||
+                                      lead.commercialState?.lastAiSignals?.[0]?.nextAction
+                                  )}
+                                </p>
+                              ) : null}
+                              {lead.aiLeadSummary ? (
+                                <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-muted)]">
+                                  {lead.aiLeadSummary.length > 150 ? `${lead.aiLeadSummary.slice(0, 150)}...` : lead.aiLeadSummary}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
 
                           <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--cliente-card-text-muted)]">
                             <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-2">

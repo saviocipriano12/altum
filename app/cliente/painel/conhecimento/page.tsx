@@ -2,22 +2,32 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import {
+  ArrowUpRight,
   BookOpen,
-  LibraryBig,
+  Building2,
+  CheckCircle2,
+  FileText,
+  HelpCircle,
   Loader2,
   PencilLine,
   Save,
   Search,
   ShieldCheck,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { CardTitle, EmptyState, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
-import { getBusinessProfile, type BusinessProfileId } from "@/lib/business-profiles";
+import {
+  CardTitle,
+  ClientActionButton,
+  ClientTabs,
+  EmptyState,
+  MetricCard,
+  PanelCard,
+  SectionHeader,
+  StateBadge,
+} from "@/app/cliente/painel/components/ui";
 
 type KbDoc = {
   id: string;
@@ -36,28 +46,32 @@ type AiLog = {
   createdAt?: unknown;
 };
 
-type UsageRow = {
-  id: string;
-  type: KbDoc["type"];
-  preview: string;
-  total: number;
+type FormState = {
+  type: "faq" | "policy";
+  area: string;
+  title: string;
+  content: string;
+  tags: string;
 };
 
-type TenantSettingsPayload = {
-  settings?: {
-    businessProfileId?: BusinessProfileId | string;
-  };
-};
-
-const EMPTY_FORM = {
-  type: "faq" as KbDoc["type"],
+const EMPTY_FORM: FormState = {
+  type: "faq",
+  area: "Atendimento",
+  title: "",
   content: "",
   tags: "",
 };
 
+const AREAS = ["Todos", "Atendimento", "Comercial", "Entrega", "Pagamento", "Politicas", "FAQ", "Documentos"] as const;
+
+function clean(value: unknown, max = 180) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, max);
+}
+
 function toDate(value: unknown) {
   if (!value) return null;
-  if (typeof value === "number") return new Date(value);
+  if (value instanceof Date) return value;
   if (
     typeof value === "object" &&
     value &&
@@ -74,66 +88,86 @@ function toDate(value: unknown) {
   ) {
     return new Date((value as { _seconds: number })._seconds * 1000);
   }
+  if (typeof value === "number") return new Date(value);
   return null;
 }
 
-function formatDateTime(value: unknown) {
+function formatDate(value: unknown) {
   const date = toDate(value);
-  if (!date) return "Sem data";
-  return date.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  if (!date) return "sem data";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+function parseTags(value: string) {
+  return value
+    .split(/,|\n|;|\|/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function unique(values: string[]) {
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
+}
+
+function areaFromDoc(doc: KbDoc) {
+  const areaTag = (doc.tags || []).find((tag) => tag.toLowerCase().startsWith("area:"));
+  if (!areaTag) {
+    if (doc.type === "policy") return "Politicas";
+    if (doc.type === "catalog") return "Comercial";
+    return "FAQ";
+  }
+  return areaTag.slice("area:".length).trim() || "FAQ";
+}
+
+function titleFromDoc(doc: KbDoc) {
+  const firstLine = clean(doc.content.split("\n")[0], 120);
+  if (firstLine.toLowerCase().startsWith("titulo:")) return firstLine.slice(7).trim() || "Conhecimento";
+  if (doc.type === "catalog") return clean((doc as KbDoc & { productName?: string }).productName, 120) || "Produto ou servico";
+  return firstLine || "Conhecimento";
+}
+
+function bodyFromDoc(doc: KbDoc) {
+  const lines = doc.content.split("\n");
+  if (lines[0]?.toLowerCase().startsWith("titulo:")) return lines.slice(1).join("\n").trim();
+  return doc.content;
 }
 
 function typeLabel(type: KbDoc["type"]) {
-  if (type === "catalog") return "catalogo";
+  if (type === "catalog") return "produto/servico";
   if (type === "policy") return "politica";
-  return "faq";
+  return "pergunta";
 }
 
 function typeTone(type: KbDoc["type"]) {
-  if (type === "catalog") return "info" as const;
+  if (type === "catalog") return "ai" as const;
   if (type === "policy") return "warning" as const;
   return "success" as const;
 }
 
-function usageTone(total: number) {
-  if (total >= 8) return "success" as const;
-  if (total >= 3) return "info" as const;
-  if (total >= 1) return "warning" as const;
-  return "neutral" as const;
+function buildContent(form: FormState) {
+  return [`Titulo: ${form.title.trim()}`, form.content.trim()].filter(Boolean).join("\n\n");
+}
+
+function tagsFromForm(form: FormState) {
+  return unique([`area:${form.area}`, form.type === "policy" ? "politica" : "faq", ...parseTags(form.tags)]);
 }
 
 export default function ClienteConhecimentoPage() {
   const { tenant, hasCapability } = useClienteTenant();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const searchFromQuery = searchParams.get("q") || "";
-  const typeFromQuery = searchParams.get("type") || "all";
-  const usageFromQuery = searchParams.get("usage") || "all";
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [docs, setDocs] = useState<KbDoc[]>([]);
   const [logs, setLogs] = useState<AiLog[]>([]);
-  const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [search, setSearch] = useState("");
+  const [areaFilter, setAreaFilter] = useState("Todos");
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
-  const [search, setSearch] = useState(searchFromQuery);
-  const [typeFilter, setTypeFilter] = useState<"all" | KbDoc["type"]>(
-    typeFromQuery === "faq" || typeFromQuery === "catalog" || typeFromQuery === "policy" ? typeFromQuery : "all"
-  );
-  const [usageFilter, setUsageFilter] = useState<"all" | "used" | "unused">(
-    usageFromQuery === "used" || usageFromQuery === "unused" ? usageFromQuery : "all"
-  );
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
 
-  const canEdit = hasCapability("manage_ai");
-  const canDelete = hasCapability("manage_ai");
+  const canManage = hasCapability("manage_ai");
 
   const loadData = useCallback(async () => {
     if (!tenant?.tenantId) return;
@@ -141,23 +175,16 @@ export default function ClienteConhecimentoPage() {
     try {
       setLoading(true);
       setError(null);
-
-      const [docsRes, logsRes, settingsRes] = await Promise.all([
+      const [docsRes, logsRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
         authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
       ]);
-
       const docsPayload = (await docsRes.json()) as { items?: KbDoc[]; error?: string };
       const logsPayload = (await logsRes.json()) as { items?: AiLog[]; error?: string };
-      const settingsPayload = (await settingsRes.json().catch(() => ({}))) as TenantSettingsPayload;
-
-      if (!docsRes.ok) throw new Error(docsPayload.error || "Falha ao carregar documentos.");
-      if (!logsRes.ok) throw new Error(logsPayload.error || "Falha ao carregar logs da IA.");
-
+      if (!docsRes.ok) throw new Error(docsPayload.error || "Falha ao carregar conhecimento.");
+      if (!logsRes.ok) throw new Error(logsPayload.error || "Falha ao carregar uso da IA.");
       setDocs(docsPayload.items || []);
       setLogs(logsPayload.items || []);
-      setBusinessProfileId((settingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Falha ao carregar base de conhecimento.");
     } finally {
@@ -169,211 +196,139 @@ export default function ClienteConhecimentoPage() {
     void loadData();
   }, [loadData]);
 
-  const businessProfile = useMemo(() => getBusinessProfile(businessProfileId), [businessProfileId]);
-
-  useEffect(() => {
-    if (searchFromQuery !== search) setSearch(searchFromQuery);
-    const nextType =
-      typeFromQuery === "faq" || typeFromQuery === "catalog" || typeFromQuery === "policy" ? typeFromQuery : "all";
-    if (nextType !== typeFilter) setTypeFilter(nextType);
-    const nextUsage = usageFromQuery === "used" || usageFromQuery === "unused" ? usageFromQuery : "all";
-    if (nextUsage !== usageFilter) setUsageFilter(nextUsage);
-  }, [search, searchFromQuery, typeFilter, typeFromQuery, usageFilter, usageFromQuery]);
-
-  useEffect(() => {
-    const next = new URLSearchParams();
-    if (search.trim()) next.set("q", search.trim());
-    if (typeFilter !== "all") next.set("type", typeFilter);
-    if (usageFilter !== "all") next.set("usage", usageFilter);
-    const nextQuery = next.toString();
-    const currentQuery = searchParams.toString();
-    if (nextQuery === currentQuery) return;
-    router.replace(nextQuery ? `/cliente/painel/conhecimento?${nextQuery}` : "/cliente/painel/conhecimento");
-  }, [router, search, searchParams, typeFilter, usageFilter]);
-
   const usageMap = useMemo(() => {
-    const next = new Map<string, number>();
+    const map = new Map<string, number>();
     logs.forEach((log) => {
-      (log.matchedKbDocIds || []).forEach((docId) => {
-        next.set(docId, (next.get(docId) || 0) + 1);
-      });
+      (log.matchedKbDocIds || []).forEach((docId) => map.set(docId, (map.get(docId) || 0) + 1));
     });
-    return next;
+    return map;
   }, [logs]);
 
-  const usageRows = useMemo<UsageRow[]>(() => {
-    return docs
-      .map((doc) => ({
-        id: doc.id,
-        type: doc.type,
-        preview: doc.content.slice(0, 88),
-        total: usageMap.get(doc.id) || 0,
-      }))
-      .sort((a, b) => b.total - a.total);
+  const stats = useMemo(() => {
+    const faq = docs.filter((doc) => doc.type === "faq").length;
+    const policies = docs.filter((doc) => doc.type === "policy").length;
+    const catalog = docs.filter((doc) => doc.type === "catalog").length;
+    const used = docs.filter((doc) => (usageMap.get(doc.id) || 0) > 0).length;
+    const thin = docs.filter((doc) => doc.type !== "catalog" && clean(doc.content, 2000).length < 90).length;
+    return { total: docs.length, faq, policies, catalog, used, thin };
   }, [docs, usageMap]);
 
   const filteredDocs = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-    return docs.filter((doc) => {
-      const totalUsage = usageMap.get(doc.id) || 0;
-      if (typeFilter !== "all" && doc.type !== typeFilter) return false;
-      if (usageFilter === "used" && totalUsage <= 0) return false;
-      if (usageFilter === "unused" && totalUsage > 0) return false;
-      if (
-        normalizedSearch &&
-        !`${doc.content} ${(doc.tags || []).join(" ")} ${doc.type}`.toLowerCase().includes(normalizedSearch)
-      ) {
-        return false;
-      }
-      return true;
-    });
-  }, [docs, search, typeFilter, usageFilter, usageMap]);
+    const term = search.trim().toLowerCase();
+    return docs
+      .filter((doc) => {
+        const area = areaFromDoc(doc);
+        if (areaFilter !== "Todos" && area !== areaFilter) return false;
+        if (!term) return true;
+        return `${titleFromDoc(doc)} ${doc.content} ${(doc.tags || []).join(" ")}`.toLowerCase().includes(term);
+      })
+      .sort((a, b) => {
+        const usedDiff = (usageMap.get(b.id) || 0) - (usageMap.get(a.id) || 0);
+        if (usedDiff !== 0) return usedDiff;
+        return titleFromDoc(a).localeCompare(titleFromDoc(b), "pt-BR");
+      });
+  }, [areaFilter, docs, search, usageMap]);
 
-  const stats = useMemo(() => {
-    const used = usageRows.filter((item) => item.total > 0).length;
-    const unused = usageRows.filter((item) => item.total === 0).length;
-    const faq = docs.filter((doc) => doc.type === "faq").length;
-    const policy = docs.filter((doc) => doc.type === "policy").length;
-    const catalog = docs.filter((doc) => doc.type === "catalog").length;
-    return {
-      total: docs.length,
-      used,
-      unused,
-      faq,
-      policy,
-      catalog,
-    };
-  }, [docs, usageRows]);
-
-  const topReasons = useMemo(() => {
-    return Array.from(
-      logs
-        .filter((log) => log.decision === "handoff")
-        .reduce((acc, log) => {
-          const key = String(log.reason || "sem motivo").trim() || "sem motivo";
-          acc.set(key, (acc.get(key) || 0) + 1);
-          return acc;
-        }, new Map<string, number>())
-    )
+  const topHandoff = useMemo(() => {
+    const map = new Map<string, number>();
+    logs
+      .filter((log) => log.decision === "handoff")
+      .forEach((log) => {
+        const reason = clean(log.reason, 120) || "Sem motivo";
+        map.set(reason, (map.get(reason) || 0) + 1);
+      });
+    return Array.from(map.entries())
       .map(([reason, total]) => ({ reason, total }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 4);
   }, [logs]);
-  const topUsedDoc = usageRows[0] || null;
-  const templates = useMemo(
-    () => [
-      {
-        id: "faq_preco",
-        type: "faq" as KbDoc["type"],
-        title: `FAQ do modo ${businessProfile.label}`,
-        content: `Pergunta: Como funciona o atendimento para ${businessProfile.label.toLowerCase()}?\nResposta: Explique que o fluxo foi desenhado para ${businessProfile.commercialMotion}, mantenha o tom ${businessProfile.ai.toneOfVoice} e colete o contexto necessario antes do proximo passo.`,
-        tags: `faq, ${businessProfile.id}, comercial`,
-      },
-      {
-        id: "catalog_servicos",
-        type: "catalog" as KbDoc["type"],
-        title: "Catalogo operacional do modo",
-        content: `Estruture o catalogo com servicos, diferenciais, entregaveis, prazo medio, restricoes e criterios de fit para ${businessProfile.label.toLowerCase()}. Destaque tambem as metricas naturais: ${businessProfile.metrics.join(", ")}.`,
-        tags: `catalogo, ${businessProfile.id}, proposta`,
-      },
-      {
-        id: "policy_guardrail",
-        type: "policy" as KbDoc["type"],
-        title: "Politica comercial e guardrails",
-        content: `Formalize politicas e excecoes para ${businessProfile.label.toLowerCase()}. Inclua os guardrails: ${businessProfile.ai.guardrails.join(" | ")}.`,
-        tags: `politica, handoff, ${businessProfile.id}`,
-      },
-    ],
-    [businessProfile]
-  );
 
   async function submitDoc(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!tenant?.tenantId || !canEdit) return;
+    if (!tenant?.tenantId || !canManage) return;
+    if (!form.title.trim() || !form.content.trim()) {
+      setError("Preencha titulo e conteudo.");
+      return;
+    }
 
     try {
       setSaving(true);
       setError(null);
-      setSuccess(null);
-
+      setNotice(null);
       const endpoint = editingDocId
         ? `/api/tenant/${tenant.tenantId}/kb-docs/${editingDocId}`
         : `/api/tenant/${tenant.tenantId}/kb-docs`;
       const method = editingDocId ? "PATCH" : "POST";
-
       const res = await authedFetch(endpoint, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: form.type,
-          content: form.content,
-          tags: form.tags,
+          content: buildContent(form),
+          tags: tagsFromForm(form),
         }),
       });
-
-      const payload = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(payload.error || "Falha ao salvar documento.");
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(payload.error || "Falha ao salvar conhecimento.");
 
       setForm(EMPTY_FORM);
       setEditingDocId(null);
-      setSuccess(editingDocId ? "Documento atualizado." : "Documento criado.");
+      setNotice(editingDocId ? "Conhecimento atualizado." : "Conhecimento adicionado.");
       await loadData();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Falha ao salvar documento.");
+      setError(submitError instanceof Error ? submitError.message : "Falha ao salvar conhecimento.");
     } finally {
       setSaving(false);
     }
   }
 
   async function removeDoc(docId: string) {
-    if (!tenant?.tenantId || !canDelete) return;
-
+    if (!tenant?.tenantId || !canManage) return;
     try {
       setBusyDocId(docId);
       setError(null);
-      setSuccess(null);
-
+      setNotice(null);
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs/${docId}`, { method: "DELETE" });
-      const payload = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(payload.error || "Falha ao remover documento.");
-
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(payload.error || "Falha ao remover conhecimento.");
       if (editingDocId === docId) {
         setEditingDocId(null);
         setForm(EMPTY_FORM);
       }
-      setSuccess("Documento removido.");
+      setNotice("Conhecimento removido.");
       await loadData();
     } catch (removeError) {
-      setError(removeError instanceof Error ? removeError.message : "Falha ao remover documento.");
+      setError(removeError instanceof Error ? removeError.message : "Falha ao remover conhecimento.");
     } finally {
       setBusyDocId(null);
     }
   }
 
   function startEdit(doc: KbDoc) {
+    if (doc.type === "catalog") return;
     setEditingDocId(doc.id);
     setForm({
-      type: doc.type,
-      content: doc.content,
-      tags: (doc.tags || []).join(", "),
+      type: doc.type === "policy" ? "policy" : "faq",
+      area: areaFromDoc(doc),
+      title: titleFromDoc(doc),
+      content: bodyFromDoc(doc),
+      tags: (doc.tags || []).filter((tag) => !tag.startsWith("area:") && tag !== "faq" && tag !== "politica").join(", "),
     });
-    setSuccess(null);
+    setNotice(null);
     setError(null);
   }
 
   function resetForm() {
     setEditingDocId(null);
     setForm(EMPTY_FORM);
+    setNotice(null);
+    setError(null);
   }
 
-  function applyTemplate(template: { type: KbDoc["type"]; content: string; tags: string }) {
+  function applyTemplate(template: Partial<FormState>) {
     setEditingDocId(null);
-    setForm({
-      type: template.type,
-      content: template.content,
-      tags: template.tags,
-    });
-    setSuccess(null);
+    setForm((current) => ({ ...current, ...template }));
+    setNotice(null);
     setError(null);
   }
 
@@ -386,164 +341,100 @@ export default function ClienteConhecimentoPage() {
   }
 
   return (
-    <div className="knowledge-refined client-daily-page space-y-6">
-      <section className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
-        <PanelCard className="p-5 md:p-6">
-          <SectionHeader
-            title="Base de conhecimento"
-            subtitle="Documentos, playbooks e regras que orientam o agente comercial do tenant."
-            action={<StateBadge label={`${stats.total} ativos`} tone={stats.total ? "info" : "neutral"} />}
-          />
+    <div className="client-daily-page space-y-5">
+      <SectionHeader
+        title="Base de conhecimento"
+        subtitle="Organize politicas, perguntas e processos para a Altum responder com seguranca e sem improviso."
+        action={
+          <Link
+            href="/cliente/painel/produtos-servicos"
+            className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-hover)]"
+          >
+            Produtos & Servicos
+            <ArrowUpRight className="h-4 w-4" />
+          </Link>
+        }
+      />
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="Documentos" value={String(stats.total)} icon={LibraryBig} trend="base carregada" />
-            <MetricCard label="Em uso" value={String(stats.used)} icon={Sparkles} trend="acionados pela IA" />
-            <MetricCard label="Sem uso" value={String(stats.unused)} icon={ShieldCheck} trend="pedem calibragem" />
-            <MetricCard label="FAQ / catalogo / politica" value={`${stats.faq}/${stats.catalog}/${stats.policy}`} icon={BookOpen} trend="mix da base" />
-          </div>
-        </PanelCard>
-
-        <PanelCard className="p-5 md:p-6">
-          <CardTitle title="Orientacao rapida" subtitle="O que reforcar primeiro para o agente vender melhor." />
-          <div className="mt-4 space-y-3">
-            <div className="knowledge-note-card rounded-2xl border border-white/10 bg-black/25 p-4">
-              <p className="text-sm font-medium text-white">Cobertura util</p>
-              <p className="mt-1 text-xs text-white/50">
-                {stats.used
-                  ? `${stats.used} documentos ja alimentam respostas reais da IA.`
-                  : "A IA ainda nao reutilizou os documentos; vale revisar perguntas frequentes e scripts comerciais."}
-              </p>
-            </div>
-            <div className="knowledge-note-card rounded-2xl border border-white/10 bg-black/25 p-4">
-              <p className="text-sm font-medium text-white">Motivos de escalada</p>
-              <p className="mt-1 text-xs text-white/50">
-                {topReasons.length
-                  ? `Principal gargalo: ${topReasons[0]?.reason || "sem motivo"}.`
-                  : "Sem historico recente de handoffs para analisar."}
-              </p>
-            </div>
-            <div className="knowledge-note-card rounded-2xl border border-white/10 bg-black/25 p-4">
-              <p className="text-sm font-medium text-white">Recomendacao imediata</p>
-              <p className="mt-1 text-xs text-white/50">
-                Priorize catalogo e politicas quando a equipe estiver lidando com preco, escopo ou regras comerciais.
-              </p>
-            </div>
-            <div className="knowledge-note-card rounded-2xl border border-white/10 bg-black/25 p-4">
-              <p className="text-sm font-medium text-white">Documento lider</p>
-              <p className="mt-1 text-xs text-white/50">
-                {topUsedDoc ? `${typeLabel(topUsedDoc.type)} com ${topUsedDoc.total} uso(s): ${topUsedDoc.preview}` : "Nenhum documento foi reutilizado pela IA ainda."}
-              </p>
-            </div>
-          </div>
-        </PanelCard>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Conhecimentos" value={String(stats.total)} icon={BookOpen} trend={`${stats.used} usados pela IA`} tone="ai" />
+        <MetricCard label="Perguntas" value={String(stats.faq)} icon={HelpCircle} trend="duvidas e respostas" tone="success" />
+        <MetricCard label="Politicas" value={String(stats.policies)} icon={ShieldCheck} trend="regras da empresa" tone="warning" />
+        <MetricCard label="Produtos" value={String(stats.catalog)} icon={Building2} trend="geridos em Produtos & Servicos" tone="brand" />
+        <MetricCard label="Melhorar" value={String(stats.thin)} icon={CheckCircle2} trend="conteudos curtos demais" tone={stats.thin ? "warning" : "success"} />
       </section>
 
-      <PanelCard className="p-5 md:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <CardTitle
-            title={`Modo do negocio: ${businessProfile.label}`}
-            subtitle="Use o perfil ativo para alimentar a base com contexto mais util para o agente e os handoffs."
-          />
-          <StateBadge label={businessProfile.id} tone="info" />
-        </div>
-        <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_1fr]">
-          <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-            <p className="text-sm font-medium text-white">Perguntas e contexto mais valiosos</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {businessProfile.ai.mandatoryQuestions.map((question) => (
-                <StateBadge key={question} label={question} tone="neutral" />
-              ))}
-            </div>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-            <p className="text-sm font-medium text-white">Cobertura que mais ajuda este modo</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {businessProfile.crm.leadFields.map((field) => (
-                <StateBadge key={field} label={field.replaceAll("_", " ")} tone="info" />
-              ))}
-            </div>
-          </div>
-        </div>
-      </PanelCard>
-
-      <section className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
         <PanelCard className="p-5 md:p-6">
-          <SectionHeader title="Biblioteca ativa" subtitle="Filtre, revise uso e edite playbooks sem sair da governanca da IA." />
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <label className="xl:col-span-2 flex items-center gap-2 rounded-xl border border-white/10 bg-[#111111] px-3 py-2 text-sm text-white/70">
-              <Search className="h-4 w-4" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar conteudo, tag ou tipo"
-                className="w-full bg-transparent text-sm outline-none placeholder:text-white/40"
-              />
-            </label>
-
-            <FilterSelect
-              label="Tipo"
-              value={typeFilter}
-              options={[
-                { value: "all", label: "Todos" },
-                { value: "faq", label: "FAQ" },
-                { value: "catalog", label: "Catalogo" },
-                { value: "policy", label: "Politica" },
-              ]}
-              onChange={(value) => setTypeFilter(value as "all" | KbDoc["type"])}
-            />
-            <FilterSelect
-              label="Uso"
-              value={usageFilter}
-              options={[
-                { value: "all", label: "Todos" },
-                { value: "used", label: "Em uso" },
-                { value: "unused", label: "Sem uso" },
-              ]}
-              onChange={(value) => setUsageFilter(value as "all" | "used" | "unused")}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CardTitle title="Biblioteca" subtitle="Tudo que sustenta as respostas e decisoes do Assistente Altum." />
+            <ClientTabs
+              value={areaFilter}
+              onChange={setAreaFilter}
+              items={AREAS.map((area) => ({ value: area, label: area }))}
             />
           </div>
+
+          <label className="mt-4 flex items-center gap-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-sm text-[var(--cliente-card-text-muted)]">
+            <Search className="h-4 w-4 text-[var(--cliente-primary)]" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar por assunto, tag ou conteudo"
+              className="w-full bg-transparent outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+            />
+          </label>
 
           <div className="mt-4 space-y-3">
             {filteredDocs.length ? (
               filteredDocs.map((doc) => {
                 const totalUsage = usageMap.get(doc.id) || 0;
+                const isCatalog = doc.type === "catalog";
                 return (
-                  <article key={doc.id} className="knowledge-doc-card rounded-2xl border border-white/10 bg-black/25 p-4">
+                  <article key={doc.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
+                          <StateBadge label={areaFromDoc(doc)} tone="neutral" />
                           <StateBadge label={typeLabel(doc.type)} tone={typeTone(doc.type)} />
-                          <StateBadge label={`${totalUsage} usos`} tone={usageTone(totalUsage)} />
-                          <StateBadge label={`atualizado ${formatDateTime(doc.updatedAt)}`} tone="neutral" />
+                          <StateBadge label={`${totalUsage} usos`} tone={totalUsage ? "success" : "neutral"} />
+                          <StateBadge label={`atualizado ${formatDate(doc.updatedAt || doc.createdAt)}`} tone="neutral" />
                         </div>
-                        <p className="mt-3 text-sm text-white/86">{doc.content}</p>
+                        <h3 className="mt-3 text-lg font-semibold tracking-[-0.02em] text-[var(--cliente-card-text)]">{titleFromDoc(doc)}</h3>
+                        <p className="mt-2 line-clamp-4 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{bodyFromDoc(doc)}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {(doc.tags || []).length ? (
-                            doc.tags.map((tag) => <StateBadge key={`${doc.id}_${tag}`} label={tag} tone="neutral" />)
-                          ) : (
-                            <span className="text-xs text-white/42">sem tags</span>
-                          )}
+                          {(doc.tags || []).filter((tag) => !tag.startsWith("area:")).slice(0, 8).map((tag) => (
+                            <StateBadge key={`${doc.id}_${tag}`} label={tag} tone="neutral" />
+                          ))}
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        {canEdit ? (
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        {isCatalog ? (
+                          <Link
+                            href="/cliente/painel/produtos-servicos"
+                            className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)]"
+                          >
+                            Editar oferta
+                            <ArrowUpRight className="h-3.5 w-3.5" />
+                          </Link>
+                        ) : null}
+                        {canManage && !isCatalog ? (
                           <button
                             type="button"
                             onClick={() => startEdit(doc)}
-                            className="knowledge-action-button inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/84 transition hover:bg-white/[0.08]"
+                            className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)]"
                           >
                             <PencilLine className="h-4 w-4" />
                             Editar
                           </button>
                         ) : null}
-                        {canDelete ? (
+                        {canManage && !isCatalog ? (
                           <button
                             type="button"
                             disabled={busyDocId === doc.id}
                             onClick={() => void removeDoc(doc.id)}
-                            className="knowledge-danger-button inline-flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-100 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-500/15 disabled:opacity-60 dark:text-rose-100"
                           >
                             {busyDocId === doc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                             Remover
@@ -555,10 +446,7 @@ export default function ClienteConhecimentoPage() {
                 );
               })
             ) : (
-              <EmptyState
-                title="Nenhum documento encontrado"
-                description="Ajuste os filtros ou cadastre um novo item para fortalecer o repertorio da IA."
-              />
+              <EmptyState title="Nenhum conhecimento encontrado" description="Adicione respostas, politicas ou processos para melhorar a precisao da IA." />
             )}
           </div>
         </PanelCard>
@@ -566,150 +454,116 @@ export default function ClienteConhecimentoPage() {
         <div className="space-y-4">
           <PanelCard className="p-5 md:p-6">
             <SectionHeader
-              title={editingDocId ? "Editar documento" : "Novo documento"}
-              subtitle="Cadastre conhecimento pronto para reutilizacao em respostas e qualificacao."
+              title={editingDocId ? "Editar conhecimento" : "Adicionar conhecimento"}
+              subtitle="Escreva de forma clara, como a equipe explicaria para um cliente."
             />
 
             {error ? (
-              <p className="mb-3 rounded-[22px] border border-rose-400/18 bg-rose-500/8 px-3 py-2 text-sm text-rose-700 dark:text-rose-100">
+              <p className="mb-3 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100">
                 {error}
               </p>
             ) : null}
-            {success ? (
-              <p className="mb-3 rounded-[22px] border border-emerald-400/18 bg-emerald-500/8 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-100">
-                {success}
+            {notice ? (
+              <p className="mb-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-100">
+                {notice}
               </p>
             ) : null}
 
-            {canEdit ? (
-              <form className="space-y-3" onSubmit={submitDoc}>
-                <FilterSelect
-                  label="Tipo"
-                  value={form.type}
-                  options={[
-                    { value: "faq", label: "FAQ" },
-                    { value: "catalog", label: "Catalogo" },
-                    { value: "policy", label: "Politica" },
-                  ]}
-                  onChange={(value) => setForm((current) => ({ ...current, type: value as KbDoc["type"] }))}
-                />
-
-                <label className="knowledge-form-label block text-xs uppercase tracking-[0.16em] text-white/45">
-                  Conteudo
-                  <textarea
-                    value={form.content}
-                    onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))}
-                    rows={7}
-                    placeholder="Explique servicos, politicas, argumentos comerciais, objeccoes ou respostas prontas."
-                    className="knowledge-editor-input mt-1 w-full rounded-xl border border-white/10 bg-[#111111] px-3 py-3 text-sm text-white outline-none placeholder:text-white/35"
+            {canManage ? (
+              <form onSubmit={submitDoc} className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FieldSelect
+                    label="Tipo"
+                    value={form.type}
+                    onChange={(value) => setForm((current) => ({ ...current, type: value as "faq" | "policy" }))}
+                    options={[
+                      { value: "faq", label: "Pergunta frequente" },
+                      { value: "policy", label: "Politica ou regra" },
+                    ]}
                   />
-                </label>
-
-                <label className="knowledge-form-label block text-xs uppercase tracking-[0.16em] text-white/45">
-                  Tags
-                  <input
-                    value={form.tags}
-                    onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))}
-                    placeholder="faq, preco, urgencia, agendamento"
-                    className="knowledge-editor-input mt-1 w-full rounded-xl border border-white/10 bg-[#111111] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/35"
+                  <FieldSelect
+                    label="Area"
+                    value={form.area}
+                    onChange={(value) => setForm((current) => ({ ...current, area: value }))}
+                    options={AREAS.filter((area) => area !== "Todos").map((area) => ({ value: area, label: area }))}
                   />
-                </label>
+                </div>
+                <FieldInput label="Titulo" value={form.title} onChange={(value) => setForm((current) => ({ ...current, title: value }))} placeholder="Ex: Como explicamos prazo de entrega" />
+                <FieldTextArea label="Conteudo" value={form.content} onChange={(value) => setForm((current) => ({ ...current, content: value }))} placeholder="Resposta, politica, processo ou regra que a IA deve seguir." />
+                <FieldInput label="Tags" value={form.tags} onChange={(value) => setForm((current) => ({ ...current, tags: value }))} placeholder="preco, garantia, prazo" />
 
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="knowledge-primary-button inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)]/10 px-4 py-2.5 text-sm font-medium text-[var(--cliente-accent)] transition hover:bg-[var(--cliente-accent)]/15 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {editingDocId ? "Atualizar" : "Salvar documento"}
-                  </button>
+                <div className="flex flex-wrap justify-end gap-2">
                   {editingDocId ? (
-                    <button
-                      type="button"
-                      onClick={resetForm}
-                      className="knowledge-secondary-button rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white/76 transition hover:bg-white/[0.08]"
-                    >
-                      Cancelar edicao
-                    </button>
+                    <ClientActionButton type="button" tone="secondary" onClick={resetForm}>
+                      Cancelar
+                    </ClientActionButton>
                   ) : null}
+                  <ClientActionButton type="submit" tone="primary" disabled={saving}>
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    {editingDocId ? "Atualizar" : "Salvar"}
+                  </ClientActionButton>
                 </div>
               </form>
             ) : (
-              <EmptyState
-                title="Permissao insuficiente"
-                description="Sua conta nao possui a capacidade necessaria para editar a base de conhecimento deste tenant."
-              />
+              <EmptyState title="Somente leitura" description="Sua conta pode consultar a base, mas nao editar conhecimento." />
             )}
           </PanelCard>
 
-          <PanelCard className="p-5 md:p-6">
-            <SectionHeader title="Templates rapidos" subtitle="Pontos de partida para acelerar a curadoria da base." />
-            <div className="space-y-3">
-              {templates.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  onClick={() => applyTemplate(template)}
-                  className="knowledge-template-card w-full rounded-2xl border border-white/10 bg-black/25 p-3 text-left transition hover:bg-white/[0.04]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-white">{template.title}</p>
-                      <p className="mt-1 text-xs text-white/46">{template.tags}</p>
-                    </div>
-                    <StateBadge label={typeLabel(template.type)} tone={typeTone(template.type)} />
-                  </div>
-                </button>
-              ))}
+          <PanelCard tone="ai" className="p-5">
+            <CardTitle title="Modelos uteis" subtitle="Pontos de partida para tirar a base do improviso." />
+            <div className="mt-4 space-y-2">
+              <TemplateButton
+                title="Pergunta sobre preco"
+                onClick={() =>
+                  applyTemplate({
+                    type: "faq",
+                    area: "Comercial",
+                    title: "Como responder quando perguntam preco",
+                    content: "Explique a faixa de investimento, valide o contexto do cliente e direcione para a melhor proxima acao sem pressionar.",
+                    tags: "preco, comercial, objeção",
+                  })
+                }
+              />
+              <TemplateButton
+                title="Politica de troca ou garantia"
+                onClick={() =>
+                  applyTemplate({
+                    type: "policy",
+                    area: "Politicas",
+                    title: "Politica de troca e garantia",
+                    content: "Descreva prazos, condicoes, excecoes e quando a IA deve chamar uma pessoa da equipe.",
+                    tags: "troca, garantia, atendimento",
+                  })
+                }
+              />
+              <TemplateButton
+                title="Processo de entrega"
+                onClick={() =>
+                  applyTemplate({
+                    type: "policy",
+                    area: "Entrega",
+                    title: "Como explicamos prazos de entrega",
+                    content: "Explique como o prazo e calculado, o que pode atrasar e quais informacoes o cliente precisa enviar.",
+                    tags: "prazo, entrega, pos-venda",
+                  })
+                }
+              />
             </div>
           </PanelCard>
 
-          <PanelCard className="p-5 md:p-6">
-            <SectionHeader title="Uso pela IA" subtitle="Quais documentos estao influenciando mais respostas reais." />
-            <div className="space-y-3">
-              {usageRows.length ? (
-                usageRows.slice(0, 6).map((item) => (
-                  <div key={item.id} className="knowledge-mini-card rounded-2xl border border-white/10 bg-black/25 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-white">{item.preview || "Documento sem preview"}</p>
-                        <p className="mt-1 text-xs text-white/46">{typeLabel(item.type)}</p>
-                      </div>
-                      <StateBadge label={`${item.total} usos`} tone={usageTone(item.total)} />
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <EmptyState title="Sem uso recente" description="Quando a IA consultar documentos, a leitura aparece aqui." />
-              )}
-            </div>
-          </PanelCard>
-
-          <PanelCard className="p-5 md:p-6">
-            <SectionHeader title="Gatilhos de escalada" subtitle="Assuntos que ainda estao levando a handoff humano." />
-            <div className="space-y-3">
-              {topReasons.length ? (
-                topReasons.map((item) => (
-                  <div key={item.reason} className="knowledge-mini-card rounded-2xl border border-white/10 bg-black/25 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm text-white/84">{item.reason}</p>
-                      <StateBadge label={String(item.total)} tone="warning" />
-                    </div>
+          <PanelCard className="p-5">
+            <CardTitle title="Escaladas que pedem conhecimento" subtitle="Use estes sinais para criar respostas ou politicas novas." />
+            <div className="mt-4 space-y-2">
+              {topHandoff.length ? (
+                topHandoff.map((item) => (
+                  <div key={item.reason} className="flex items-start justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                    <p className="text-sm text-[var(--cliente-card-text-muted)]">{item.reason}</p>
+                    <StateBadge label={`${item.total}x`} tone="warning" />
                   </div>
                 ))
               ) : (
-                <EmptyState title="Sem escaladas recentes" description="Bom sinal: o agente nao precisou escalar conversas recentemente." />
+                <p className="text-sm text-[var(--cliente-card-text-muted)]">Ainda nao ha escaladas suficientes para sugerir novos conteudos.</p>
               )}
-            </div>
-          </PanelCard>
-
-          <PanelCard className="p-5 md:p-6">
-            <SectionHeader title="Playbook rapido" subtitle="Aja no modulo certo a partir do conhecimento." />
-            <div className="space-y-3">
-              <QuickLink href="/cliente/painel/ia?risk=low_confidence" title="Revisar confianca da IA" description="Cruzar documentos sem uso com logs de baixa confianca do agente." />
-              <QuickLink href="/cliente/painel/handoffs" title="Ler escaladas humanas" description="Usar motivos de handoff para decidir quais docs ou politicas precisam entrar na base." />
-              <QuickLink href="/cliente/painel/logs?ai=handoff" title="Auditar decisao do agente" description="Entender em quais conversas a base ainda nao sustentou a resposta automatica." />
             </div>
           </PanelCard>
         </div>
@@ -718,27 +572,76 @@ export default function ClienteConhecimentoPage() {
   );
 }
 
-function FilterSelect({
+function FieldInput({
   label,
   value,
-  options,
   onChange,
+  placeholder,
 }: {
   label: string;
   value: string;
-  options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
+  placeholder?: string;
 }) {
   return (
-    <label className="knowledge-filter-field rounded-xl border border-white/10 bg-[#111111] px-3 py-2 text-xs text-white/45">
-      <span className="block uppercase tracking-[0.16em]">{label}</span>
+    <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">
+      {label}
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="client-input mt-2 w-full rounded-xl border px-3 py-2.5 text-sm font-normal normal-case tracking-normal outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+      />
+    </label>
+  );
+}
+
+function FieldTextArea({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">
+      {label}
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={7}
+        placeholder={placeholder}
+        className="client-input mt-2 w-full resize-y rounded-xl border px-3 py-2.5 text-sm font-normal normal-case leading-6 tracking-normal outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+      />
+    </label>
+  );
+}
+
+function FieldSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">
+      {label}
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full bg-transparent text-sm text-white outline-none"
+        className="client-input mt-2 w-full rounded-xl border px-3 py-2.5 text-sm font-normal normal-case tracking-normal outline-none"
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value} className="bg-[var(--cliente-panel-solid)] text-[var(--cliente-card-text)]">
+          <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
@@ -747,15 +650,17 @@ function FilterSelect({
   );
 }
 
-function QuickLink({ href, title, description }: { href: string; title: string; description: string }) {
+function TemplateButton({ title, onClick }: { title: string; onClick: () => void }) {
   return (
-    <Link
-      href={href}
-      className="knowledge-quick-link block rounded-2xl border border-white/10 bg-black/25 p-3 transition hover:bg-white/[0.04]"
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 text-left text-sm font-semibold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
     >
-      <p className="text-sm font-medium text-white">{title}</p>
-      <p className="mt-1 text-xs text-white/48">{description}</p>
-    </Link>
+      <span className="inline-flex items-center gap-2">
+        <FileText className="h-4 w-4 text-[var(--cliente-ai)]" />
+        {title}
+      </span>
+    </button>
   );
 }
-

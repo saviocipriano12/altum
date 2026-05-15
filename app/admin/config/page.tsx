@@ -52,7 +52,7 @@ export default function ConfigPage() {
   const [cnpj, setCnpj] = useState("");
   const [email, setEmail] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
-  const [siteBase, setSiteBase] = useState("https://altumia.com.br");
+  const [siteBase, setSiteBase] = useState("https://altum.ag");
 
   // ===== BRANDING =====
   const [corPrimaria, setCorPrimaria] = useState("#2563eb"); // azul
@@ -88,7 +88,7 @@ export default function ConfigPage() {
         setCnpj(data.cnpj ?? "");
         setEmail(data.email ?? "");
         setWhatsapp(data.whatsapp ?? "");
-        setSiteBase(data.siteBase ?? "https://altumia.com.br");
+        setSiteBase(data.siteBase ?? "https://altum.ag");
 
         setCorPrimaria(data.corPrimaria ?? "#2563eb");
         setCorSecundaria(data.corSecundaria ?? "#f97316");

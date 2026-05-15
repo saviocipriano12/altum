@@ -17,6 +17,10 @@
       "schedule": "30 3 * * *"
     },
     {
+      "path": "/api/internal/jobs/daily-reports/send?maxTenants=120",
+      "schedule": "30 21 * * *"
+    },
+    {
       "path": "/api/internal/jobs/finance/contract-billing?maxContracts=160",
       "schedule": "45 3 * * *"
     }

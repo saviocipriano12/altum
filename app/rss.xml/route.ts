@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAllBlogPosts } from "@/lib/blog";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag").replace(/\/$/, "");
 
 const escapeXml = (value: string): string =>
   value

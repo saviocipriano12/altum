@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     }
 
     const actionCodeSettings = {
-      url: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/login`,
+      url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://altum.ag"}/login`,
     };
     const inviteLink = await adminAuth.generatePasswordResetLink(email, actionCodeSettings);
 

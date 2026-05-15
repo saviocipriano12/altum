@@ -3,31 +3,31 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity,
   ArrowRight,
   Bot,
-  ChartColumn,
+  CalendarClock,
+  CheckCircle2,
   Clock3,
-  Funnel,
-  Handshake,
+  FileText,
   Loader2,
-  Megaphone,
   MessageSquare,
-  Settings2,
   Sparkles,
+  Target,
+  TrendingUp,
   Wallet,
 } from "lucide-react";
+import { motion, type Variants } from "framer-motion";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
 import {
   CardTitle,
-  EmptyState,
+  ClientBadge,
+  ClientEmptyState,
+  ClientPageHeader,
   MetricCard,
   PanelCard,
-  SectionHeader,
-  StateBadge,
 } from "@/app/cliente/painel/components/ui";
 import { getPipelineStageLabel, normalizePipelineStageId } from "@/lib/pipeline";
 
@@ -36,20 +36,14 @@ type DashboardData = {
     title?: string;
     status?: string;
     monthlyValue?: number;
-    dueDay?: number;
     nextDueDate?: string;
   } | null;
   kpis?: {
-    impressions?: number;
-    clicks?: number;
     spend?: number;
     leads?: number;
-    ctr?: number;
-    cpc?: number;
     cpl?: number;
     paid?: number;
     pending?: number;
-    projects?: number;
     budgets?: number;
   };
   finance?: Array<{
@@ -79,7 +73,6 @@ type ChatItem = {
   id: string;
   contactName?: string;
   channel?: string;
-  status?: string;
   aiState?: {
     aiEnabled?: boolean;
     pausedUntil?: unknown;
@@ -96,97 +89,35 @@ type KbDocList = {
   items?: Array<{ id: string }>;
 };
 
-type ActivityItem = {
-  id: string;
-  source: "finance" | "lead";
-  title: string;
-  detail: string;
-  createdAt: Date | null;
-  href: string;
-};
-
 type MetricsSummaryPayload = {
   metrics?: {
     conversionRate?: number;
     avgFirstResponseMinutes?: number;
     roi?: number;
-    growth?: number;
     conversations?: number;
-    handoffChats?: number;
-    siteChatConversations?: number;
-    wonLeads?: number;
     totalLeads?: number;
-    paidRevenue?: number;
   };
   ai?: {
     responded?: number;
-    askMore?: number;
     handoff?: number;
-    skipped?: number;
     avgConfidence?: number;
-    avgLatencyMs?: number;
   };
   operations?: {
     activeChats?: number;
     overdueChats?: number;
     unassignedChats?: number;
     pendingChats?: number;
-    queueBreakdown?: {
-      triage?: number;
-      unassigned?: number;
-      assigned?: number;
-      assignedWaiting?: number;
-      slaBreached?: number;
-    };
-    aiBreakdown?: {
-      active?: number;
-      paused?: number;
-      humanOwned?: number;
-    };
-    channelOperations?: Array<{
-      channel: string;
-      activeChats: number;
-      overdueChats: number;
-      unassignedChats: number;
-      handoffChats: number;
-    }>;
-    teamPerformance?: Array<{
-      ownerId: string;
-      ownerName: string;
-      activeChats: number;
-      overdueChats: number;
-      pendingChats: number;
-      handoffChats: number;
-      totalLeads: number;
-      wonLeads: number;
-      winRate: number;
-    }>;
-  };
-  comparisons?: {
-    leadsDeltaPct?: number;
-    conversionDeltaPct?: number;
-    roiDeltaPct?: number;
-    spendDeltaPct?: number;
   };
 };
 
 type AutomationSummaryPayload = {
   summary?: {
     activeAutomations?: number;
-    monitoredConversations?: number;
     pausedConversations?: number;
     kbDocs?: number;
     guardrails?: number;
-    aiEnabled?: boolean;
     waitingReplyBacklog?: number;
     slaBreached?: number;
-    queue?: {
-      pending?: number;
-      processing?: number;
-      retrying?: number;
-      done?: number;
-      deadLetter?: number;
-    };
     finance?: {
       dueSoonCount?: number;
       dueSoonTotal?: number;
@@ -205,12 +136,55 @@ type ReadinessPayload = {
     href: string;
     title: string;
     description: string;
-    badge: string;
     tone: "neutral" | "success" | "warning" | "danger" | "info";
   }>;
 };
 
-type PriorityAction = {
+type FollowUpItem = {
+  id: string;
+  leadId: string;
+  title: string;
+  status?: "pending" | "done";
+  dueAt?: unknown;
+  overdue?: boolean;
+  dueToday?: boolean;
+  lead?: {
+    nome?: string;
+    pipelineStage?: string;
+  } | null;
+};
+
+type FollowUpsResponse = {
+  summary?: {
+    overdue?: number;
+    dueToday?: number;
+    pending?: number;
+    proposal?: number;
+  };
+  items?: FollowUpItem[];
+};
+
+type AppointmentItem = {
+  id: string;
+  leadId?: string | null;
+  leadName?: string | null;
+  title?: string;
+  type?: string;
+  status?: string;
+  startAt?: string;
+  ownerName?: string | null;
+};
+
+type ActivityItem = {
+  id: string;
+  title: string;
+  detail: string;
+  createdAt: Date | null;
+  href: string;
+  tone: "info" | "warning" | "neutral";
+};
+
+type PriorityItem = {
   id: string;
   title: string;
   description: string;
@@ -219,15 +193,17 @@ type PriorityAction = {
   badge: string;
 };
 
-const FUNNEL_ORDER = [
-  "captado",
-  "contato",
-  "qualificacao",
-  "proposta",
-  "fechamento",
-  "ganho",
-  "perdido",
-];
+const FUNNEL_ORDER = ["captado", "contato", "qualificacao", "proposta", "fechamento", "ganho", "perdido"];
+
+const SECTION_REVEAL: Variants = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.38, ease: [0.22, 1, 0.36, 1] } },
+};
+
+const STAGGER_REVEAL: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.06 } },
+};
 
 function toDate(value: unknown) {
   if (!value) return null;
@@ -257,7 +233,19 @@ function brl(value: number) {
 }
 
 function pct(value: number) {
-  return `${Number(value || 0).toFixed(2)}%`;
+  return `${Number(value || 0).toFixed(1)}%`;
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "Sem horário";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function ymdToBr(value?: string | null) {
@@ -270,21 +258,30 @@ function normalizeStage(value?: string) {
   return normalizePipelineStageId(value || "captado");
 }
 
-function formatChannelLabel(channel?: string) {
-  if (channel === "site_chat") return "Site chat";
-  if (channel === "site_form") return "Site form";
-  if (channel === "meta_ads") return "Meta Ads";
-  if (channel === "google_ads") return "Google Ads";
-  if (!channel) return "WhatsApp";
-  return channel.replaceAll("_", " ");
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+function getLastLeadActivity(lead: LeadItem) {
+  const timelineDates = (lead.timeline || []).map((item) => toDate(item.createdAt)).filter(Boolean) as Date[];
+  if (!timelineDates.length) return null;
+  return timelineDates.sort((a, b) => b.getTime() - a.getTime())[0] || null;
+}
+
+function isActiveOpportunity(stage: string) {
+  return stage !== "ganho" && stage !== "perdido";
 }
 
 export default function ClientePainelOverviewPage() {
   const { tenant } = useClienteTenant();
   const { experienceMode, setExperienceMode } = useClienteShell();
+  const tenantId = tenant?.tenantId;
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [chats, setChats] = useState<ChatItem[]>([]);
@@ -293,119 +290,139 @@ export default function ClientePainelOverviewPage() {
   const [metricsSummary, setMetricsSummary] = useState<MetricsSummaryPayload>({});
   const [automationSummary, setAutomationSummary] = useState<AutomationSummaryPayload>({});
   const [readiness, setReadiness] = useState<ReadinessPayload>({});
+  const [followUps, setFollowUps] = useState<FollowUpsResponse>({});
+  const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
+  const [snapshotNow, setSnapshotNow] = useState(0);
 
   useEffect(() => {
     setExperienceMode("essencial");
   }, [setExperienceMode]);
 
-  const refreshOverview = useCallback(async () => {
-    if (!tenant?.tenantId) return;
+  const loadOverview = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!tenantId) return;
 
-    try {
-      const [dashboardRes, leadsRes, chatsRes, aiRes, kbRes, metricsRes, automationRes, readinessRes] = await Promise.all([
-        authedFetch("/api/client-portal/dashboard"),
-        authedFetch(`/api/tenant/${tenant.tenantId}/leads`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/chats`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/metrics-summary`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/automation-summary`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/readiness`),
-      ]);
-
-      const dashboardPayload = (await dashboardRes.json()) as DashboardData;
-      const leadsPayload = (await leadsRes.json()) as { items?: LeadItem[] };
-      const chatsPayload = (await chatsRes.json()) as { items?: ChatItem[] };
-      const aiPayload = (await aiRes.json()) as { ai?: AiSettings };
-      const kbPayload = (await kbRes.json()) as KbDocList;
-      const metricsPayload = (await metricsRes.json()) as MetricsSummaryPayload;
-      const automationPayload = (await automationRes.json()) as AutomationSummaryPayload;
-      const readinessPayload = (await readinessRes.json()) as ReadinessPayload;
-
-      if (dashboardRes.ok) {
-        setDashboard(dashboardPayload);
+      if (!silent) {
+        setLoading(true);
         setError(null);
       }
-      if (leadsRes.ok) setLeads(leadsPayload.items || []);
-      if (chatsRes.ok) setChats(chatsPayload.items || []);
-      if (aiRes.ok) setAi(aiPayload.ai || {});
-      if (kbRes.ok) setKbCount((kbPayload.items || []).length);
-      if (metricsRes.ok) setMetricsSummary(metricsPayload || {});
-      if (automationRes.ok) setAutomationSummary(automationPayload || {});
-      if (readinessRes.ok) setReadiness(readinessPayload || {});
-    } catch {
-      // Mantem ultimo estado valido durante refresh silencioso.
-    }
-  }, [tenant?.tenantId]);
+
+      const criticalRequests = await Promise.allSettled([
+        authedFetch("/api/client-portal/dashboard").then(async (response) => ({ ok: response.ok, payload: (await response.json()) as DashboardData })),
+        authedFetch(`/api/tenant/${tenantId}/chats`).then(async (response) => ({ ok: response.ok, payload: (await response.json()) as { items?: ChatItem[] } })),
+        authedFetch(`/api/tenant/${tenantId}/follow-ups`).then(async (response) => ({ ok: response.ok, payload: (await response.json()) as FollowUpsResponse })),
+        authedFetch(`/api/tenant/${tenantId}/appointments`).then(async (response) => ({ ok: response.ok, payload: (await response.json()) as { items?: AppointmentItem[] } })),
+      ]);
+
+      const [dashboardResult, chatsResult, followUpsResult, appointmentsResult] = criticalRequests;
+
+      if (dashboardResult.status === "fulfilled") {
+        if (dashboardResult.value.ok) {
+          setDashboard(dashboardResult.value.payload);
+        } else if (!silent) {
+          setError(dashboardResult.value.payload.error || "Falha ao carregar o início.");
+        }
+      } else if (!silent) {
+        setError("Falha ao carregar o início.");
+      }
+
+      if (chatsResult.status === "fulfilled" && chatsResult.value.ok) setChats(chatsResult.value.payload.items || []);
+      if (followUpsResult.status === "fulfilled" && followUpsResult.value.ok) setFollowUps(followUpsResult.value.payload || {});
+      if (appointmentsResult.status === "fulfilled" && appointmentsResult.value.ok) setAppointments(appointmentsResult.value.payload.items || []);
+
+      setSnapshotNow(Date.now());
+      if (!silent) setLoading(false);
+
+      const detailRequests = await Promise.allSettled([
+        authedFetch(`/api/tenant/${tenantId}/leads`).then(async (response) => ({ ok: response.ok, payload: (await response.json()) as { items?: LeadItem[]; error?: string } })),
+        authedFetch(`/api/tenant/${tenantId}/settings/ai`).then(async (response) => ({ ok: response.ok, payload: (await response.json()) as { ai?: AiSettings } })),
+        authedFetch(`/api/tenant/${tenantId}/kb-docs`).then(async (response) => ({ ok: response.ok, payload: (await response.json()) as KbDocList })),
+        authedFetch(`/api/tenant/${tenantId}/metrics-summary`).then(async (response) => ({ ok: response.ok, payload: (await response.json()) as MetricsSummaryPayload })),
+        authedFetch(`/api/tenant/${tenantId}/automation-summary`).then(async (response) => ({ ok: response.ok, payload: (await response.json()) as AutomationSummaryPayload })),
+        authedFetch(`/api/tenant/${tenantId}/readiness`).then(async (response) => ({ ok: response.ok, payload: (await response.json()) as ReadinessPayload })),
+      ]);
+
+      const [leadsResult, aiResult, kbResult, metricsResult, automationResult, readinessResult] = detailRequests;
+
+      if (leadsResult.status === "fulfilled" && leadsResult.value.ok) setLeads(leadsResult.value.payload.items || []);
+      if (aiResult.status === "fulfilled" && aiResult.value.ok) setAi(aiResult.value.payload.ai || {});
+      if (kbResult.status === "fulfilled" && kbResult.value.ok) setKbCount((kbResult.value.payload.items || []).length);
+      if (metricsResult.status === "fulfilled" && metricsResult.value.ok) setMetricsSummary(metricsResult.value.payload || {});
+      if (automationResult.status === "fulfilled" && automationResult.value.ok) setAutomationSummary(automationResult.value.payload || {});
+      if (readinessResult.status === "fulfilled" && readinessResult.value.ok) setReadiness(readinessResult.value.payload || {});
+
+      setSnapshotNow(Date.now());
+    },
+    [tenantId]
+  );
 
   useAdaptivePolling({
-    enabled: Boolean(tenant?.tenantId),
-    onTick: refreshOverview,
-    fastIntervalMs: 30000,
-    slowIntervalMs: 120000,
+    enabled: Boolean(tenantId),
+    onTick: () => void loadOverview({ silent: true }),
+    fastIntervalMs: 90000,
+    slowIntervalMs: 300000,
     runOnMount: false,
     source: "overview",
   });
 
   useEffect(() => {
-    if (!tenant?.tenantId) return;
-
-    let mounted = true;
-
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const [dashboardRes, leadsRes, chatsRes, aiRes, kbRes, metricsRes, automationRes, readinessRes] = await Promise.all([
-          authedFetch("/api/client-portal/dashboard"),
-          authedFetch(`/api/tenant/${tenant.tenantId}/leads`),
-          authedFetch(`/api/tenant/${tenant.tenantId}/chats`),
-          authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`),
-          authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
-          authedFetch(`/api/tenant/${tenant.tenantId}/metrics-summary`),
-          authedFetch(`/api/tenant/${tenant.tenantId}/automation-summary`),
-          authedFetch(`/api/tenant/${tenant.tenantId}/readiness`),
-        ]);
-
-        const dashboardPayload = (await dashboardRes.json()) as DashboardData;
-        const leadsPayload = (await leadsRes.json()) as { items?: LeadItem[]; error?: string };
-        const chatsPayload = (await chatsRes.json()) as { items?: ChatItem[]; error?: string };
-        const aiPayload = (await aiRes.json()) as { ai?: AiSettings; error?: string };
-        const kbPayload = (await kbRes.json()) as KbDocList;
-        const metricsPayload = (await metricsRes.json()) as MetricsSummaryPayload;
-        const automationPayload = (await automationRes.json()) as AutomationSummaryPayload;
-        const readinessPayload = (await readinessRes.json()) as ReadinessPayload;
-
-        if (!mounted) return;
-
-        if (!dashboardRes.ok) {
-          setError(dashboardPayload.error || "Falha ao carregar dashboard.");
-        } else {
-          setDashboard(dashboardPayload);
-        }
-
-        if (leadsRes.ok) setLeads(leadsPayload.items || []);
-        if (chatsRes.ok) setChats(chatsPayload.items || []);
-        if (aiRes.ok) setAi(aiPayload.ai || {});
-        if (kbRes.ok) setKbCount((kbPayload.items || []).length);
-        if (metricsRes.ok) setMetricsSummary(metricsPayload || {});
-        if (automationRes.ok) setAutomationSummary(automationPayload || {});
-        if (readinessRes.ok) setReadiness(readinessPayload || {});
-      } catch {
-        if (!mounted) return;
-        setError("Falha ao carregar dados do dashboard.");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [tenant?.tenantId]);
+    if (!tenantId) return;
+    void loadOverview();
+  }, [loadOverview, tenantId]);
 
   const kpis = dashboard?.kpis;
+  const metricKpis = metricsSummary.metrics || {};
+  const aiMetrics = metricsSummary.ai || {};
+  const operationMetrics = metricsSummary.operations || {};
+  const automationMetrics = automationSummary.summary || {};
+  const financeMetrics = automationMetrics.finance || {};
+  const followUpSummary = followUps.summary || {};
+  const greeting = getGreeting();
+  const workspaceName = tenant?.tenantName || tenant?.clientName || "sua operação";
+  const pilotReady = readiness.summary?.pilotReady === true;
+  const readinessScore = Number(readiness.summary?.readinessScore || 0);
+
+  const activeLeads = useMemo(
+    () => leads.filter((lead) => isActiveOpportunity(normalizeStage(lead.pipelineStage || lead.stage))).length,
+    [leads]
+  );
+
+  const newLeads = useMemo(() => {
+    const sevenDaysAgo = snapshotNow - 7 * 24 * 60 * 60 * 1000;
+    return leads.filter((lead) => {
+      const lastActivity = getLastLeadActivity(lead);
+      if (lastActivity) return lastActivity.getTime() >= sevenDaysAgo;
+      return normalizeStage(lead.pipelineStage || lead.stage) === "captado";
+    }).length;
+  }, [leads, snapshotNow]);
+
+  const stalledOpportunities = useMemo(() => {
+    const sevenDaysAgo = snapshotNow - 7 * 24 * 60 * 60 * 1000;
+    return leads.filter((lead) => {
+      const stage = normalizeStage(lead.pipelineStage || lead.stage);
+      if (!isActiveOpportunity(stage) || stage === "captado") return false;
+      const lastActivity = getLastLeadActivity(lead);
+      return !lastActivity || lastActivity.getTime() < sevenDaysAgo;
+    }).length;
+  }, [leads, snapshotNow]);
+
+  const waitingConversations = Number(
+    automationMetrics.waitingReplyBacklog || operationMetrics.pendingChats || operationMetrics.activeChats || chats.length || 0
+  );
+  const overdueConversations = Number(automationMetrics.slaBreached || operationMetrics.overdueChats || 0);
+  const unassignedConversations = Number(operationMetrics.unassignedChats || 0);
+  const overdueTasks = Number(followUpSummary.overdue || 0);
+  const dueTodayTasks = Number(followUpSummary.dueToday || 0);
+  const openProposals = Math.max(Number(kpis?.budgets || 0), Number(followUpSummary.proposal || 0));
+
+  const aiPausedChats = useMemo(() => {
+    return chats.filter((chat) => {
+      if (!chat.aiState) return false;
+      if (chat.aiState.aiEnabled === false) return true;
+      const pausedUntil = toDate(chat.aiState.pausedUntil);
+      return Boolean(pausedUntil && pausedUntil.getTime() > snapshotNow);
+    }).length;
+  }, [chats, snapshotNow]);
 
   const funnel = useMemo(() => {
     const base = new Map(FUNNEL_ORDER.map((stage) => [stage, 0]));
@@ -415,9 +432,8 @@ export default function ClientePainelOverviewPage() {
       base.set(stage, (base.get(stage) || 0) + 1);
     }
 
-    const total = leads.length || 1;
-
-    return FUNNEL_ORDER.map((stage) => {
+    const total = Math.max(activeLeads, 1);
+    return FUNNEL_ORDER.filter((stage) => stage !== "perdido").map((stage) => {
       const totalStage = base.get(stage) || 0;
       return {
         stage,
@@ -425,726 +441,506 @@ export default function ClientePainelOverviewPage() {
         pct: Math.round((totalStage / total) * 100),
       };
     });
-  }, [leads]);
+  }, [activeLeads, leads]);
 
-  const activities = useMemo(() => {
-    const leadEvents: ActivityItem[] = leads
-      .flatMap((lead) => (lead.timeline || []).map((event) => ({ lead, event })))
-      .map(({ lead, event }) => ({
-        id: `${lead.id}_${event.id}`,
-        source: "lead" as const,
-        title: event.title || "Evento de lead",
-        detail: `${lead.nome || "Contato"} | ${event.detail || "Atualizacao de funil"}`,
-        createdAt: toDate(event.createdAt),
-        href: `/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`,
-      }));
+  const priorityItems = useMemo<PriorityItem[]>(() => {
+    const items: PriorityItem[] = [];
 
-    const financeEvents: ActivityItem[] = (dashboard?.finance || []).map((item) => ({
-      id: item.id,
-      source: "finance" as const,
-      title: item.descricao || "Lancamento financeiro",
-      detail: `${String(item.status || "pendente")} | ${brl(Number(item.valor || 0))}`,
-      createdAt: toDate(item.createdAt),
-      href: "/cliente/painel/comercial",
-    }));
-
-    return [...leadEvents, ...financeEvents]
-      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0))
-      .slice(0, 8);
-  }, [dashboard?.finance, leads]);
-
-  const aiPausedChats = useMemo(() => {
-    return chats.filter((chat) => {
-      if (!chat.aiState) return false;
-      if (chat.aiState.aiEnabled === false) return true;
-      const pausedUntil = toDate(chat.aiState.pausedUntil);
-      return Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
-    }).length;
-  }, [chats]);
-
-  const operationStatusTone = ai.enabled === false ? "warning" : "success";
-  const metricKpis = metricsSummary.metrics || {};
-  const operationMetrics = metricsSummary.operations || {};
-  const aiMetrics = metricsSummary.ai || {};
-  const comparisonMetrics = metricsSummary.comparisons || {};
-  const automationMetrics = automationSummary.summary || {};
-  const financeMetrics = automationMetrics.finance || {};
-  const financeDueSoonCount = Number(financeMetrics.dueSoonCount || 0);
-  const financeDueSoonTotal = Number(financeMetrics.dueSoonTotal || 0);
-  const queueBreakdown = operationMetrics.queueBreakdown || {};
-  const channelOperations = operationMetrics.channelOperations || [];
-  const pilotReady = readiness.summary?.pilotReady === true;
-  const readinessScore = Number(readiness.summary?.readinessScore || 0);
-
-  const priorityActions = useMemo<PriorityAction[]>(() => {
-    const items: PriorityAction[] = [];
-
-    if (!pilotReady && readiness.blockers?.[0]) {
+    if (overdueConversations > 0) {
       items.push({
-        id: `readiness_${readiness.blockers[0].id}`,
-        title: readiness.blockers[0].title,
-        description: readiness.blockers[0].description,
-        href: readiness.blockers[0].href,
-        tone: readiness.blockers[0].tone,
-        badge: "go-live",
-      });
-    }
-
-    if (Number(automationMetrics.slaBreached || operationMetrics.overdueChats || 0) > 0) {
-      items.push({
-        id: "sla",
-        title: "SLA estourado no inbox",
-        description: `${automationMetrics.slaBreached || operationMetrics.overdueChats || 0} conversas exigem resposta imediata do time.`,
+        id: "reply-now",
+        title: "Responder conversas em risco",
+        description: `${overdueConversations} conversa(s) podem perder timing de atendimento.`,
         href: "/cliente/painel/inbox?queue=sla_breached",
         tone: "danger",
         badge: "urgente",
       });
     }
 
-    if (Number(operationMetrics.unassignedChats || 0) > 0) {
+    if (unassignedConversations > 0) {
       items.push({
-        id: "unassigned",
-        title: "Conversas sem responsavel",
-        description: `${operationMetrics.unassignedChats || 0} conversas precisam de atribuicao para nao travar o atendimento.`,
+        id: "assign-owner",
+        title: "Assumir conversas sem responsável",
+        description: `${unassignedConversations} conversa(s) ainda estão sem dono definido.`,
         href: "/cliente/painel/inbox?queue=unassigned",
         tone: "warning",
         badge: "fila",
       });
     }
 
-    if (Number(automationMetrics.waitingReplyBacklog || 0) > 0) {
+    if (overdueTasks > 0) {
       items.push({
-        id: "waiting_reply",
-        title: "Backlog aguardando resposta",
-        description: `${automationMetrics.waitingReplyBacklog || 0} conversas seguem abertas sem retorno do time.`,
-        href: "/cliente/painel/inbox?queue=assigned_waiting",
+        id: "overdue-tasks",
+        title: "Revisar tarefas vencidas",
+        description: `${overdueTasks} follow-up(s) estão vencidos e precisam de ação.`,
+        href: "/cliente/painel/follow-ups?status=pending",
         tone: "warning",
-        badge: "follow-up",
+        badge: "agenda",
       });
     }
 
-    if (financeDueSoonCount > 0) {
+    if (stalledOpportunities > 0) {
       items.push({
-        id: "finance_due_soon",
-        title: "Faturas proximas do vencimento",
-        description: `${financeDueSoonCount} cobranca(s) vencem nos proximos 5 dias.`,
-        href: "/cliente/painel/comercial?financeStatus=pendente",
-        tone: "warning",
-        badge: "financeiro",
+        id: "stalled-opportunities",
+        title: "Retomar oportunidades paradas",
+        description: `${stalledOpportunities} oportunidade(s) estão sem avançar há mais de 7 dias.`,
+        href: "/cliente/painel/crm",
+        tone: "info",
+        badge: "pipeline",
+      });
+    }
+
+    if (openProposals > 0) {
+      items.push({
+        id: "open-proposals",
+        title: "Acompanhar propostas abertas",
+        description: `${openProposals} proposta(s) precisam de retorno comercial.`,
+        href: "/cliente/painel/comercial",
+        tone: "info",
+        badge: "propostas",
+      });
+    }
+
+    if (!pilotReady && readiness.blockers?.[0]) {
+      items.push({
+        id: `readiness-${readiness.blockers[0].id}`,
+        title: readiness.blockers[0].title,
+        description: readiness.blockers[0].description,
+        href: readiness.blockers[0].href,
+        tone: readiness.blockers[0].tone,
+        badge: "implantação",
       });
     }
 
     if (ai.enabled === false || kbCount === 0) {
       items.push({
-        id: "ai_setup",
-        title: ai.enabled === false ? "IA desativada no tenant" : "Base comercial da IA esta vazia",
+        id: "assistant-setup",
+        title: ai.enabled === false ? "Ativar Assistente Altum" : "Completar base de conhecimento",
         description:
           ai.enabled === false
-            ? "Reative o agente para manter cobertura automatica do atendimento."
-            : "Cadastre FAQ, servicos e politicas para melhorar respostas e transferencias.",
+            ? "A IA está desativada e pode deixar o atendimento mais manual."
+            : "Adicione contexto comercial para melhorar respostas e transferências.",
         href: "/cliente/painel/ia",
         tone: ai.enabled === false ? "warning" : "info",
         badge: "ia",
       });
     }
 
-    if (Number(automationMetrics.activeAutomations || 0) === 0) {
-      items.push({
-        id: "automations",
-        title: "Sem automacoes publicadas",
-        description: "Ative playbooks de follow-up e operacao para reduzir fila manual.",
-        href: "/cliente/painel/automacoes",
-        tone: "info",
-        badge: "setup",
-      });
-    }
+    return items.slice(0, 6);
+  }, [ai.enabled, kbCount, openProposals, overdueConversations, overdueTasks, pilotReady, readiness.blockers, stalledOpportunities, unassignedConversations]);
 
-    if (Number(metricKpis.totalLeads || leads.length || 0) === 0) {
-      items.push({
-        id: "capture",
-        title: "Sem contatos no periodo",
-        description: "Publique formularios e widget para reaquecer o topo de funil.",
-        href: "/cliente/painel/captacao",
-        tone: "neutral",
-        badge: "captacao",
-      });
-    }
+  const nextAppointments = useMemo(() => {
+    return appointments
+      .filter((item) => {
+        if (!item.startAt) return false;
+        const date = new Date(item.startAt);
+        if (Number.isNaN(date.getTime())) return false;
+        return date.getTime() >= snapshotNow && item.status !== "canceled" && item.status !== "completed";
+      })
+      .sort((a, b) => new Date(a.startAt || "").getTime() - new Date(b.startAt || "").getTime())
+      .slice(0, 4);
+  }, [appointments, snapshotNow]);
 
-    return items.slice(0, 5);
-  }, [
-    ai.enabled,
-    automationMetrics.activeAutomations,
-    automationMetrics.slaBreached,
-    automationMetrics.waitingReplyBacklog,
-    financeDueSoonCount,
-    kbCount,
-    leads.length,
-    metricKpis.totalLeads,
-    operationMetrics.overdueChats,
-    operationMetrics.unassignedChats,
-    pilotReady,
-    readiness.blockers,
-  ]);
+  const todayTasks = useMemo(() => {
+    return (followUps.items || [])
+      .filter((item) => item.status !== "done" && (item.overdue || item.dueToday))
+      .sort((a, b) => {
+        const aTime = toDate(a.dueAt)?.getTime() || 0;
+        const bTime = toDate(b.dueAt)?.getTime() || 0;
+        return aTime - bTime;
+      })
+      .slice(0, 4);
+  }, [followUps.items]);
+
+  const activities = useMemo<ActivityItem[]>(() => {
+    const leadActivities = leads
+      .flatMap((lead) =>
+        (lead.timeline || []).map((event) => ({
+          id: `${lead.id}-${event.id}`,
+          title: event.title || "Atualização de oportunidade",
+          detail: `${lead.nome || "Contato"} - ${event.detail || getPipelineStageLabel(lead.pipelineStage || lead.stage || "captado")}`,
+          createdAt: toDate(event.createdAt),
+          href: `/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`,
+          tone: "info" as const,
+        }))
+      )
+      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+
+    const financeActivities = (dashboard?.finance || []).map((item) => ({
+      id: item.id,
+      title: item.descricao || "Atualização financeira",
+      detail: `${String(item.status || "pendente")} - ${brl(Number(item.valor || 0))}`,
+      createdAt: toDate(item.createdAt),
+      href: "/cliente/painel/comercial",
+      tone: "neutral" as const,
+    }));
+
+    return [...leadActivities, ...financeActivities]
+      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0))
+      .slice(0, 5);
+  }, [dashboard?.finance, leads]);
 
   if (loading) {
     return (
       <div className="flex min-h-[52vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--cliente-accent)]" />
+        <div className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 shadow-sm">
+          <Loader2 className="h-8 w-8 animate-spin text-[var(--cliente-primary)]" />
+        </div>
       </div>
     );
   }
 
   if (!dashboard || error) {
-    return (
-      <EmptyState
-        title="Nao foi possivel carregar o dashboard executivo"
-        description={error || "Tente novamente em alguns segundos."}
-      />
-    );
+    return <ClientEmptyState title="Não foi possível carregar o início" description={error || "Tente novamente em alguns segundos."} />;
   }
 
   return (
-    <div className="dashboard-refined client-daily-page space-y-6">
-      <SectionHeader
-        title="Visao geral"
-        subtitle="Leitura rapida da operacao com foco no que agir primeiro."
+    <div className="client-daily-page space-y-5 sm:space-y-6">
+      <ClientPageHeader
+        title="Início"
+        subtitle={`${greeting}. Aqui estão as prioridades da ${workspaceName} para hoje.`}
         action={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <StateBadge
-              label={pilotReady ? "Pronto para operar" : ai.enabled === false ? "IA limitada" : "Operacao acompanhada"}
-              tone={pilotReady ? "success" : operationStatusTone}
-            />
-            <button
-              type="button"
-              onClick={() => setExperienceMode(experienceMode === "essencial" ? "completo" : "essencial")}
-              className="inline-flex items-center rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] shadow-[0_16px_30px_-24px_rgba(15,23,42,0.28)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
-            >
-              {experienceMode === "essencial" ? "Ver modo completo" : "Voltar ao essencial"}
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <ClientBadge label={pilotReady ? "Operação pronta" : `Implantação ${readinessScore}%`} tone={pilotReady ? "success" : "warning"} />
+            <ClientBadge label={ai.enabled === false ? "Assistente em revisão" : "Assistente ativo"} tone={ai.enabled === false ? "warning" : "ai"} />
           </div>
         }
       />
 
-      {financeDueSoonCount > 0 ? (
-        <Link
-          href="/cliente/painel/comercial?financeStatus=pendente"
-          className="dashboard-alert-banner block rounded-[28px] border border-amber-400/25 bg-amber-500/10 p-5 transition hover:bg-amber-500/15"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-amber-100">Cobrancas proximas do vencimento</p>
-            <StateBadge label="acao financeira" tone="warning" />
-          </div>
-          <p className="mt-1 text-sm text-amber-100/90">
-            {financeDueSoonCount} cobranca(s) vencem em ate 5 dias, total de {brl(financeDueSoonTotal)}.
-          </p>
-          <p className="mt-1 text-xs text-amber-100/80">
-            Proximo vencimento: {ymdToBr(financeMetrics.nextDueDate)}.
-          </p>
-        </Link>
+      {Number(financeMetrics.dueSoonCount || 0) > 0 ? (
+        <FinanceAlert financeMetrics={financeMetrics} />
       ) : null}
 
-      <section className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
-        <PanelCard className="dashboard-hero-card overflow-hidden p-6 md:p-7">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-card-text-muted)]">
-                <Sparkles className="h-3.5 w-3.5" />
-                Painel ALTUM
-              </div>
-              <h3 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--cliente-card-text)] md:text-3xl">
-                {tenant?.tenantName || tenant?.clientName || "Cliente"} em modo operacional premium
-              </h3>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">
-                Veja atendimento, funil, IA e sinais de desempenho em uma leitura mais simples, com foco no que fazer primeiro.
-              </p>
-              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1 text-xs text-[var(--cliente-card-text-muted)]">
-                <span>Prontidao</span>
-                <StateBadge
-                  label={pilotReady ? `pronto ${readinessScore}%` : `em implantacao ${readinessScore}%`}
-                  tone={pilotReady ? "success" : readinessScore >= 70 ? "info" : "warning"}
-                />
-              </div>
-            </div>
-
-            <div className="dashboard-summary-card min-w-[220px] rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Resumo rapido</p>
-              <div className="mt-3 space-y-3">
-                <HeroStat label="Contatos ativos" value={(kpis?.leads || 0).toLocaleString("pt-BR")} />
-                <HeroStat label="Conversas abertas" value={String(operationMetrics.activeChats || chats.length)} />
-                <HeroStat label="Backlog resposta" value={String(automationMetrics.waitingReplyBacklog || 0)} />
-                <HeroStat label="Canal IA" value={ai.enabled === false ? "Restrito" : "Rodando"} />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <QuickLink
-              href="/cliente/painel/inbox"
-              title="Assumir atendimento"
-              description="Abrir conversas com atendimento humano e contexto imediato."
-              icon={MessageSquare}
-            />
-            <QuickLink
-              href="/cliente/painel/pipeline"
-              title="Atualizar funil"
-              description="Mover contatos, revisar gargalos e acelerar fechamento."
-              icon={Funnel}
-            />
-            <QuickLink
-              href="/cliente/painel/ia"
-              title="Refinar agente"
-              description="Ajustar guardrails, tom de voz e base comercial."
-              icon={Bot}
-            />
-            <QuickLink
-              href="/cliente/painel/captacao"
-              title="Escalar captacao"
-              description="Publicar formularios, widget e entrada de contatos no site."
-              icon={Megaphone}
-            />
-          </div>
-        </PanelCard>
-
-        <PanelCard className="dashboard-agenda-card p-6">
-          <CardTitle title="Agenda imediata" subtitle="Prioridades guiadas para agir agora" />
-          <div className="mt-4 space-y-3">
-            {priorityActions.length === 0 ? (
-              <>
-                <FocusRow
-                  href="/cliente/painel/inbox"
-                  label="Atendimento"
-                  value={aiPausedChats > 0 ? `${aiPausedChats} conversas em atendimento humano` : "Fluxo assistido pela IA"}
-                  tone={aiPausedChats > 0 ? "warning" : "success"}
-                />
-                <FocusRow
-                  href="/cliente/painel/crm"
-                  label="Funil"
-                  value={Number(metricKpis.conversionRate || 0) > 0 ? `${pct(Number(metricKpis.conversionRate || 0))} de conversao no periodo` : "Topo de funil dominante"}
-                  tone="info"
-                />
-              </>
-            ) : (
-              priorityActions.map((item) => (
-                <FocusRow
-                  key={item.id}
-                  href={item.href}
-                  label={item.title}
-                  value={item.description}
-                  tone={item.tone}
-                  badgeLabel={item.badge}
-                />
-              ))
-            )}
-          </div>
-
-          <div className="mt-5 grid gap-2 sm:grid-cols-2">
-            <Link
-              href="/cliente/painel/configuracoes"
-              className="dashboard-action-link flex items-center justify-between rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
-            >
-              <span className="inline-flex items-center gap-2">
-                <Settings2 className="h-4 w-4 text-[var(--cliente-accent)]" />
-                Revisar configuracoes essenciais
-              </span>
-              <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
-            </Link>
-            <Link
-              href="/cliente/painel/metricas"
-              className="dashboard-action-link flex items-center justify-between rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
-            >
-              <span className="inline-flex items-center gap-2">
-                <ChartColumn className="h-4 w-4 text-[var(--cliente-accent)]" />
-                Abrir metricas consolidadas
-              </span>
-              <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
-            </Link>
-          </div>
-        </PanelCard>
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Link href="/cliente/painel/crm" className="block">
-          <MetricCard
-            label="Contatos"
-            value={(kpis?.leads || 0).toLocaleString("pt-BR")}
-            icon={Activity}
-            trend="captacao"
+      <motion.section variants={STAGGER_REVEAL} initial="hidden" animate="show" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+        <motion.div variants={SECTION_REVEAL}>
+          <OverviewHero
+            waitingConversations={waitingConversations}
+            activeLeads={activeLeads}
+            overdueTasks={overdueTasks}
+            openProposals={openProposals}
           />
-        </Link>
-        <Link href="/cliente/painel/inbox" className="block">
-          <MetricCard
-            label="Conversas"
-            value={String(metricKpis.conversations || chats.length)}
-            icon={MessageSquare}
-            trend={`${operationMetrics.unassignedChats || 0} sem responsavel`}
+        </motion.div>
+
+        <motion.div variants={SECTION_REVEAL}>
+          <PriorityPanel priorityItems={priorityItems} />
+        </motion.div>
+      </motion.section>
+
+      <motion.section variants={STAGGER_REVEAL} initial="hidden" animate="show" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <KpiLink href="/cliente/painel/inbox?queue=assigned_waiting">
+          <MetricCard label="Conversas aguardando" value={String(waitingConversations)} icon={MessageSquare} trend={`${unassignedConversations} sem responsável`} tone="success" />
+        </KpiLink>
+        <KpiLink href="/cliente/painel/crm">
+          <MetricCard label="Leads ativos" value={String(activeLeads)} icon={Target} trend={`${newLeads} novos nos últimos dias`} tone="brand" />
+        </KpiLink>
+        <KpiLink href="/cliente/painel/crm">
+          <MetricCard label="Oportunidades paradas" value={String(stalledOpportunities)} icon={Clock3} trend="sem avançar há mais de 7 dias" tone="warning" />
+        </KpiLink>
+        <KpiLink href="/cliente/painel/follow-ups?status=pending">
+          <MetricCard label="Tarefas vencidas" value={String(overdueTasks)} icon={CheckCircle2} trend={`${dueTodayTasks} para hoje`} tone="warning" />
+        </KpiLink>
+        <KpiLink href="/cliente/painel/comercial">
+          <MetricCard label="Propostas abertas" value={String(openProposals)} icon={FileText} trend={`Receita pendente ${brl(Number(kpis?.pending || 0))}`} tone="ai" />
+        </KpiLink>
+      </motion.section>
+
+      <motion.section variants={STAGGER_REVEAL} initial="hidden" animate="show" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <motion.div variants={SECTION_REVEAL}>
+          <DailyWorkPanel nextAppointments={nextAppointments} todayTasks={todayTasks} />
+        </motion.div>
+
+        <motion.div variants={SECTION_REVEAL}>
+          <FunnelPanel funnel={funnel} />
+        </motion.div>
+      </motion.section>
+
+      <motion.section variants={STAGGER_REVEAL} initial="hidden" animate="show" className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <motion.div variants={SECTION_REVEAL}>
+          <AltumInsightsPanel
+            aiEnabled={ai.enabled}
+            aiMetrics={aiMetrics}
+            automationMetrics={automationMetrics}
+            aiPausedChats={aiPausedChats}
+            kbCount={kbCount}
+            guardrailsCount={ai.guardrails?.length || 0}
+            pilotReady={pilotReady}
+            readinessScore={readinessScore}
           />
-        </Link>
-        <Link href="/cliente/painel/inbox?status=open" className="block">
-          <MetricCard
-            label="SLA risco"
-            value={String(automationMetrics.slaBreached || operationMetrics.overdueChats || 0)}
-            icon={Megaphone}
-            trend={`${automationMetrics.waitingReplyBacklog || 0} aguardando resposta`}
+        </motion.div>
+
+        <motion.div variants={SECTION_REVEAL}>
+          <PerformancePanel
+            metricKpis={metricKpis}
+            kpis={kpis}
+            dashboard={dashboard}
+            newLeads={newLeads}
+            waitingConversations={waitingConversations}
+            activities={activities}
+            experienceMode={experienceMode}
           />
-        </Link>
-        <Link href="/cliente/painel/metricas" className="block">
-          <MetricCard
-            label="Investimento"
-            value={brl(Number(kpis?.spend || 0))}
-            icon={Wallet}
-            trend={`CPL ${brl(Number(kpis?.cpl || 0))}`}
-          />
-        </Link>
-        <Link href="/cliente/painel/comercial" className="block">
-          <MetricCard
-            label="Receita"
-            value={brl(Number(kpis?.paid || 0))}
-            icon={Handshake}
-            trend={`Pendente ${brl(Number(kpis?.pending || 0))}`}
-          />
-        </Link>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
-        <PanelCard className="p-4">
-          <CardTitle title="Funil visual" subtitle="Distribuicao dos contatos por etapa comercial" />
-          <div className="mt-4 space-y-3">
-            {funnel.map((item) => (
-              <Link key={item.stage} href={`/cliente/painel/crm?stage=${encodeURIComponent(item.stage)}`} className="block space-y-1.5 rounded-xl px-2 py-2 transition hover:bg-[var(--cliente-surface-muted)]">
-                <div className="flex items-center justify-between text-xs text-[var(--cliente-card-text-soft)]">
-                  <span className="uppercase tracking-wide">{getPipelineStageLabel(item.stage)}</span>
-                  <span>
-                    {item.total} contatos ({item.pct}%)
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-[var(--cliente-border)]">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-[var(--cliente-accent)] to-[var(--cliente-accent-strong)]"
-                    style={{ width: `${Math.max(4, item.pct)}%` }}
-                  />
-                </div>
-              </Link>
-            ))}
-          </div>
-        </PanelCard>
-
-        <PanelCard className="p-4">
-          <CardTitle title="Saude da automacao" subtitle="Estado atual do motor de atendimento e IA" />
-          <div className="mt-4 space-y-3 text-sm">
-            <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
-              <span className="text-[var(--cliente-card-text-soft)]">IA global</span>
-              <StateBadge
-                label={ai.enabled === false ? "desativada" : "ativa"}
-                tone={ai.enabled === false ? "warning" : "success"}
-              />
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
-              <span className="text-[var(--cliente-card-text-soft)]">Guardrails configurados</span>
-              <span className="font-semibold text-[var(--cliente-card-text)]">{automationMetrics.guardrails || (ai.guardrails || []).length}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
-              <span className="text-[var(--cliente-card-text-soft)]">Base de conhecimento</span>
-              <span className="font-semibold text-[var(--cliente-card-text)]">{automationMetrics.kbDocs || kbCount} docs</span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
-                <span className="text-[var(--cliente-card-text-soft)]">Conversas com atendimento humano</span>
-              <span className="font-semibold text-[var(--cliente-card-text)]">{automationMetrics.pausedConversations || aiPausedChats}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
-              <span className="text-[var(--cliente-card-text-soft)]">Fila de automacao</span>
-              <span className="font-semibold text-[var(--cliente-card-text)]">{automationMetrics.queue?.pending || 0} pendentes</span>
-            </div>
-          </div>
-        </PanelCard>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_1fr]">
-        {experienceMode === "essencial" ? (
-          <>
-            <PanelCard className="p-4">
-              <CardTitle title="Leitura de hoje" subtitle="Somente o que impacta sua operacao agora" />
-              <div className="mt-4 space-y-3">
-                <FocusRow
-                  href="/cliente/painel/inbox?queue=sla_breached"
-                  label="Risco de atraso no atendimento"
-                  value={`${automationMetrics.slaBreached || operationMetrics.overdueChats || 0} conversas em risco de SLA.`}
-                  tone={Number(automationMetrics.slaBreached || operationMetrics.overdueChats || 0) > 0 ? "danger" : "success"}
-                />
-                <FocusRow
-                  href="/cliente/painel/crm"
-                  label="Evolucao comercial"
-                  value={`${(kpis?.leads || 0).toLocaleString("pt-BR")} contatos ativos com conversao de ${pct(Number(metricKpis.conversionRate || 0))}.`}
-                  tone="info"
-                />
-                <FocusRow
-                  href="/cliente/painel/comercial"
-                  label="Receita no radar"
-                  value={`Recebido ${brl(Number(kpis?.paid || 0))} e pendente ${brl(Number(kpis?.pending || 0))}.`}
-                  tone="neutral"
-                />
-              </div>
-            </PanelCard>
-
-            <PanelCard className="p-4">
-              <CardTitle title="Mais detalhes quando precisar" subtitle="Modo essencial ativo para reduzir poluicao visual" />
-              <p className="mt-4 text-sm leading-6 text-[var(--cliente-card-text-soft)]">
-                Quando quiser uma leitura completa de performance, IA, mesa operacional e canais, ative o modo{" "}
-                <span className="font-semibold text-[var(--cliente-card-text)]">Completo</span> no botao acima.
-              </p>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <Link
-                  href="/cliente/painel/inbox"
-                  className="dashboard-action-link flex items-center justify-between rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4 text-[var(--cliente-accent)]" />
-                    Abrir atendimento
-                  </span>
-                  <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
-                </Link>
-                <Link
-                  href="/cliente/painel/crm"
-                  className="dashboard-action-link flex items-center justify-between rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Funnel className="h-4 w-4 text-[var(--cliente-accent)]" />
-                    Abrir CRM completo
-                  </span>
-                  <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
-                </Link>
-              </div>
-            </PanelCard>
-          </>
-        ) : (
-          <>
-            <PanelCard className="p-4">
-              <CardTitle title="Atividades recentes" subtitle="Ultimos eventos de financeiro e CRM" />
-              <div className="mt-4 space-y-2">
-                {activities.length === 0 ? (
-                  <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem eventos recentes para exibir.</p>
-                ) : (
-                  activities.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      className="block rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.title}</p>
-                        <StateBadge label={item.source} tone={item.source === "lead" ? "info" : "neutral"} />
-                      </div>
-                      <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">{item.detail}</p>
-                      <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--cliente-card-text-soft)]">
-                        <Clock3 className="h-3 w-3" />
-                        {item.createdAt ? item.createdAt.toLocaleString("pt-BR") : "sem data"}
-                      </p>
-                    </Link>
-                  ))
-                )}
-              </div>
-            </PanelCard>
-
-            <PanelCard className="p-4">
-              <CardTitle title="Metricas resumidas" subtitle="Resumo executivo do periodo" />
-              <div className="mt-4 overflow-hidden rounded-xl border border-[var(--cliente-border)]">
-                <table className="w-full text-sm">
-                  <tbody>
-                    <Row label="Impressoes" value={(kpis?.impressions || 0).toLocaleString("pt-BR")} />
-                    <Row label="Cliques" value={(kpis?.clicks || 0).toLocaleString("pt-BR")} />
-                    <Row label="CTR" value={pct(Number(kpis?.ctr || 0))} />
-                    <Row label="CPC" value={brl(Number(kpis?.cpc || 0))} />
-                    <Row label="CPL" value={brl(Number(kpis?.cpl || 0))} />
-                    <Row label="Projetos ativos" value={String(Number(kpis?.projects || 0))} />
-                    <Row label="Orcamentos" value={String(Number(kpis?.budgets || 0))} />
-                    <Row label="Tempo medio de 1a resposta" value={`${Number(metricKpis.avgFirstResponseMinutes || 0).toFixed(1)} min`} />
-                    <Row label="ROI" value={`${Number(metricKpis.roi || 0).toFixed(2)}x`} />
-                    <Row label="Conversao" value={pct(Number(metricKpis.conversionRate || 0))} />
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <Link href="/cliente/painel/metricas" className="block">
-                  <PanelCard className="border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
-                    <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                      <Megaphone className="h-3.5 w-3.5" />
-                      Midia
-                    </div>
-                    <p className="mt-2 text-base font-semibold">{brl(Number(kpis?.spend || 0))}</p>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                      Delta {formatDelta(comparisonMetrics.spendDeltaPct, "investimento")}
-                    </p>
-                  </PanelCard>
-                </Link>
-                <Link href="/cliente/painel/crm" className="block">
-                  <PanelCard className="border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
-                    <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                      <Funnel className="h-3.5 w-3.5" />
-                      Conversao
-                    </div>
-                    <p className="mt-2 text-base font-semibold">{(kpis?.leads || 0).toLocaleString("pt-BR")} contatos</p>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                      Delta {formatDelta(comparisonMetrics.conversionDeltaPct, "conversao")}
-                    </p>
-                  </PanelCard>
-                </Link>
-              </div>
-            </PanelCard>
-          </>
-        )}
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="CTR" value={pct(Number(kpis?.ctr || 0))} icon={ChartColumn} />
-        <MetricCard label="CPC" value={brl(Number(kpis?.cpc || 0))} icon={Wallet} />
-        <MetricCard label="CPL" value={brl(Number(kpis?.cpl || 0))} icon={Bot} />
-        <MetricCard
-          label="Contrato"
-          value={dashboard.contract?.status || "nao informado"}
-          icon={Handshake}
-          trend={dashboard.contract?.title || ""}
-        />
-      </section>
-
-      {experienceMode === "completo" ? (
-        <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-          <PanelCard className="p-4">
-            <CardTitle title="Mesa operacional" subtitle="Fila, SLA e responsaveis com maior carga" />
-            <div className="mt-4 space-y-3">
-              <FocusRow
-                href="/cliente/painel/inbox?queue=assigned_waiting"
-                label="Fila sem resposta"
-                value={`${automationMetrics.waitingReplyBacklog || 0} conversas aguardando retorno`}
-                tone={Number(automationMetrics.waitingReplyBacklog || 0) > 0 ? "warning" : "success"}
-              />
-              <FocusRow
-                href="/cliente/painel/inbox?queue=sla_breached"
-                label="SLA estourado"
-                value={`${automationMetrics.slaBreached || operationMetrics.overdueChats || 0} conversas em risco`}
-                tone={Number(automationMetrics.slaBreached || operationMetrics.overdueChats || 0) > 0 ? "danger" : "success"}
-              />
-              <FocusRow
-                href="/cliente/painel/inbox?queue=unassigned"
-                label="Sem responsavel"
-                value={`${operationMetrics.unassignedChats || 0} conversas na fila`}
-                tone={Number(operationMetrics.unassignedChats || 0) > 0 ? "warning" : "success"}
-              />
-            </div>
-
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              <MiniStatLink
-                href="/cliente/painel/inbox?queue=triage"
-                label="Triagem"
-                value={String(queueBreakdown.triage || 0)}
-              />
-              <MiniStatLink
-                href="/cliente/painel/inbox?queue=assigned"
-                label="Em atendimento"
-                value={String(queueBreakdown.assigned || 0)}
-              />
-              <MiniStatLink
-                href="/cliente/painel/inbox?ai=ai_active"
-                label="IA ativa"
-                value={String(operationMetrics.aiBreakdown?.active || 0)}
-              />
-              <MiniStatLink
-                href="/cliente/painel/inbox?ai=human_owned"
-                label="Atendimento humano"
-                value={String(operationMetrics.aiBreakdown?.humanOwned || 0)}
-              />
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {(operationMetrics.teamPerformance || []).length === 0 ? (
-                <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem performance operacional suficiente para exibir responsaveis.</p>
-              ) : (
-                operationMetrics.teamPerformance?.slice(0, 5).map((owner) => (
-                  <Link
-                    key={owner.ownerId}
-                    href={`/cliente/painel/inbox?assignedUser=${encodeURIComponent(owner.ownerId)}`}
-                    className="block rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-[var(--cliente-card-text)]">{owner.ownerName}</p>
-                      <StateBadge
-                        label={`${owner.activeChats} chats`}
-                        tone={owner.overdueChats > 0 ? "warning" : "info"}
-                      />
-                    </div>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
-                      {owner.totalLeads} contatos / {owner.wonLeads} ganhos / taxa {owner.winRate}%
-                    </p>
-                    <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">
-                      {owner.pendingChats} aguardando / {owner.handoffChats} transferencias
-                    </p>
-                  </Link>
-                ))
-              )}
-            </div>
-          </PanelCard>
-
-          <PanelCard className="p-4">
-            <CardTitle title="Performance da IA" subtitle="Como o agente esta atuando no periodo" />
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <MetricCard label="IA respondeu" value={String(aiMetrics.responded || 0)} trend="respostas automaticas" />
-              <MetricCard label="Transferencias" value={String(aiMetrics.handoff || metricKpis.handoffChats || 0)} trend="escaladas para humano" />
-              <MetricCard label="Confianca media" value={`${Number(aiMetrics.avgConfidence || 0).toFixed(2)}`} trend="assertividade do agente" />
-              <MetricCard label="Latencia media" value={`${Math.round(Number(aiMetrics.avgLatencyMs || 0))} ms`} trend="tempo de resposta" />
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {channelOperations.length === 0 ? (
-                <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem canais operacionais suficientes para leitura comparativa.</p>
-              ) : (
-                channelOperations.slice(0, 4).map((item) => (
-                  <Link
-                    key={item.channel}
-                    href={`/cliente/painel/inbox?channel=${encodeURIComponent(item.channel)}`}
-                    className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
-                  >
-                    <div>
-                      <p className="font-medium text-[var(--cliente-card-text)]">{formatChannelLabel(item.channel)}</p>
-                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                        {item.activeChats} ativos / {item.unassignedChats} sem dono / {item.handoffChats} transferencias
-                      </p>
-                    </div>
-                    <StateBadge
-                      label={item.overdueChats > 0 ? `${item.overdueChats} em risco` : "estavel"}
-                      tone={item.overdueChats > 0 ? "warning" : "success"}
-                    />
-                  </Link>
-                ))
-              )}
-            </div>
-          </PanelCard>
-        </section>
-      ) : null}
+        </motion.div>
+      </motion.section>
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function FinanceAlert({ financeMetrics }: { financeMetrics: NonNullable<AutomationSummaryPayload["summary"]>["finance"] }) {
   return (
-    <tr className="border-b border-[var(--cliente-border)] last:border-none">
-      <td className="px-3 py-2 text-[var(--cliente-card-text-soft)]">{label}</td>
-      <td className="px-3 py-2 text-right font-medium text-[var(--cliente-card-text)]">{value}</td>
-    </tr>
+    <Link
+      href="/cliente/painel/comercial?financeStatus=pendente"
+      prefetch={false}
+      className="block rounded-[24px] border border-[color:color-mix(in_srgb,var(--cliente-warning)_24%,transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-warning)_12%,white),white_74%)] p-4 shadow-[0_16px_34px_-24px_rgba(249,115,22,0.24)] transition hover:-translate-y-0.5 hover:brightness-[0.995] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cliente-warning)]"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Pendências financeiras próximas do vencimento</p>
+        <ClientBadge label="financeiro" tone="warning" />
+      </div>
+      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
+        {Number(financeMetrics?.dueSoonCount || 0)} cobrança(s) vencem em breve, somando {brl(Number(financeMetrics?.dueSoonTotal || 0))}.
+      </p>
+      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Próximo vencimento: {ymdToBr(financeMetrics?.nextDueDate)}</p>
+    </Link>
+  );
+}
+
+function OverviewHero({
+  waitingConversations,
+  activeLeads,
+  overdueTasks,
+  openProposals,
+}: {
+  waitingConversations: number;
+  activeLeads: number;
+  overdueTasks: number;
+  openProposals: number;
+}) {
+  return (
+    <PanelCard tone="spotlight" className="overflow-hidden p-4 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-2xl">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/84 sm:text-[11px] sm:tracking-[0.18em]">
+            <Sparkles className="h-3.5 w-3.5" />
+            Prioridades de hoje
+          </div>
+          <h2 className="mt-3 text-[1.55rem] font-semibold tracking-[-0.03em] text-white sm:mt-4 sm:text-[1.9rem] md:text-[2.35rem]">
+            Atenda rápido, mova oportunidades e não perca follow-ups.
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/74 sm:mt-3">
+            A visão inicial agora foca no que muda o dia: responder clientes, destravar oportunidades, revisar agenda e acompanhar propostas.
+          </p>
+        </div>
+
+        <div className="grid w-full gap-2 sm:min-w-[260px] sm:grid-cols-2 sm:gap-3 xl:w-[320px]">
+          <HeroStat label="Conversas aguardando" value={String(waitingConversations)} />
+          <HeroStat label="Leads ativos" value={String(activeLeads)} />
+          <HeroStat label="Tarefas vencidas" value={String(overdueTasks)} />
+          <HeroStat label="Propostas abertas" value={String(openProposals)} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:mt-5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <QuickLink href="/cliente/painel/inbox" title="Abrir conversas" description="Responder clientes e puxar o atendimento para frente." icon={MessageSquare} tone="success" />
+        <QuickLink href="/cliente/painel/crm" title="Ver oportunidades" description="Listar contatos, contextos e próximos passos comerciais." icon={Target} tone="brand" />
+        <QuickLink href="/cliente/painel/agenda" title="Revisar agenda" description="Conferir compromissos, follow-ups e vencimentos." icon={CalendarClock} tone="warning" />
+        <QuickLink href="/cliente/painel/ia" title="Assistente Altum" description="Ajustar comportamento, conhecimento e automações." icon={Bot} tone="ai" />
+      </div>
+    </PanelCard>
+  );
+}
+
+function PriorityPanel({ priorityItems }: { priorityItems: PriorityItem[] }) {
+  return (
+    <PanelCard tone="brand" className="h-full p-5">
+      <CardTitle title="Ações recomendadas" subtitle="Leitura curta para decidir o próximo passo" />
+      <div className="mt-4 space-y-3">
+        {priorityItems.length === 0 ? (
+          <ClientEmptyState title="Tudo sob controle por agora" description="Sem alertas críticos no momento. Você pode seguir para conversas, agenda ou relatórios." />
+        ) : (
+          priorityItems.map((item) => <PriorityRow key={item.id} item={item} />)
+        )}
+      </div>
+    </PanelCard>
+  );
+}
+
+function KpiLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} prefetch={false} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)] focus-visible:ring-offset-2">
+      <motion.div variants={SECTION_REVEAL}>{children}</motion.div>
+    </Link>
+  );
+}
+
+function DailyWorkPanel({ nextAppointments, todayTasks }: { nextAppointments: AppointmentItem[]; todayTasks: FollowUpItem[] }) {
+  return (
+    <PanelCard className="p-5">
+      <CardTitle title="Agenda e follow-ups" subtitle="O que vence agora e o que já está marcado" />
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div>
+          <SectionEyebrow>Próximos compromissos</SectionEyebrow>
+          <div className="mt-3 space-y-2">
+            {nextAppointments.length === 0 ? (
+              <EmptySlot text="Nenhum compromisso futuro encontrado." />
+            ) : (
+              nextAppointments.map((item) => <AppointmentCard key={item.id} item={item} />)
+            )}
+          </div>
+        </div>
+
+        <div>
+          <SectionEyebrow>Tarefas para agir</SectionEyebrow>
+          <div className="mt-3 space-y-2">
+            {todayTasks.length === 0 ? (
+              <EmptySlot text="Nenhum follow-up vencido ou para hoje." />
+            ) : (
+              todayTasks.map((item) => <TaskCard key={item.id} item={item} />)
+            )}
+          </div>
+        </div>
+      </div>
+    </PanelCard>
+  );
+}
+
+function FunnelPanel({ funnel }: { funnel: Array<{ stage: string; total: number; pct: number }> }) {
+  return (
+    <PanelCard tone="brand" className="h-full p-5">
+      <CardTitle title="Clientes & oportunidades" subtitle="Mesmo dado, com foco em avançar negócio" />
+      <div className="mt-4 space-y-3">
+        {funnel.map((item) => (
+          <Link
+            key={item.stage}
+            href={`/cliente/painel/crm?stage=${encodeURIComponent(item.stage)}`}
+            prefetch={false}
+            className="block rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)]"
+          >
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="font-medium text-[var(--cliente-card-text)]">{getPipelineStageLabel(item.stage)}</span>
+              <span className="text-[var(--cliente-card-text-soft)]">{item.total} oportunidade(s)</span>
+            </div>
+            <div className="mt-3 h-2 rounded-full bg-[var(--cliente-border)]">
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,var(--cliente-primary),var(--cliente-primary-hover))]"
+                style={{ width: `${Math.max(item.pct, item.total > 0 ? 8 : 0)}%` }}
+              />
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+        <MiniPanelLink href="/cliente/painel/pipeline" label="Kanban" value="Mover etapas e encontrar gargalos" />
+        <MiniPanelLink href="/cliente/painel/comercial" label="Propostas" value="Acompanhar valores e status comercial" />
+      </div>
+    </PanelCard>
+  );
+}
+
+function AltumInsightsPanel({
+  aiEnabled,
+  aiMetrics,
+  automationMetrics,
+  aiPausedChats,
+  kbCount,
+  guardrailsCount,
+  pilotReady,
+  readinessScore,
+}: {
+  aiEnabled?: boolean;
+  aiMetrics: NonNullable<MetricsSummaryPayload["ai"]>;
+  automationMetrics: NonNullable<AutomationSummaryPayload["summary"]>;
+  aiPausedChats: number;
+  kbCount: number;
+  guardrailsCount: number;
+  pilotReady: boolean;
+  readinessScore: number;
+}) {
+  return (
+    <PanelCard tone="ai" className="p-5">
+      <CardTitle title="Insights da Altum" subtitle="Como o assistente ajuda no atendimento e nas vendas" />
+      <div className="mt-4 space-y-3">
+        <InsightRow
+          label="Respostas automáticas"
+          value={String(aiMetrics.responded || 0)}
+          detail={aiEnabled === false ? "Assistente desativado no momento" : "Conversas atendidas com apoio da IA"}
+          tone={aiEnabled === false ? "warning" : "ai"}
+        />
+        <InsightRow
+          label="Confiança média"
+          value={Number(aiMetrics.avgConfidence || 0).toFixed(2)}
+          detail={`${automationMetrics.guardrails || guardrailsCount} regras da IA e ${automationMetrics.kbDocs || kbCount} itens de conhecimento`}
+          tone="ai"
+        />
+        <InsightRow
+          label="Conversas humanas"
+          value={String(automationMetrics.pausedConversations || aiPausedChats)}
+          detail="Atendimentos em que o time assumiu o contexto"
+          tone="info"
+        />
+        <InsightRow
+          label="Automações ativas"
+          value={String(automationMetrics.activeAutomations || 0)}
+          detail={pilotReady ? "Operação pronta para escalar" : `Implantação em ${readinessScore}%`}
+          tone={pilotReady ? "success" : "warning"}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <MiniPanelLink href="/cliente/painel/ia" label="Assistente Altum" value="Ajustar comportamento e conhecimento" />
+        <MiniPanelLink href="/cliente/painel/automacoes" label="Automações" value="Revisar fluxos, esperas e retomadas" />
+      </div>
+    </PanelCard>
+  );
+}
+
+function PerformancePanel({
+  metricKpis,
+  kpis,
+  dashboard,
+  newLeads,
+  waitingConversations,
+  activities,
+  experienceMode,
+}: {
+  metricKpis: NonNullable<MetricsSummaryPayload["metrics"]>;
+  kpis?: DashboardData["kpis"];
+  dashboard: DashboardData;
+  newLeads: number;
+  waitingConversations: number;
+  activities: ActivityItem[];
+  experienceMode: string;
+}) {
+  return (
+    <PanelCard className="p-5">
+      <CardTitle title="Resumo de desempenho" subtitle="Performance suficiente para decidir rápido" />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <MetricCard label="Conversão" value={pct(Number(metricKpis.conversionRate || 0))} icon={TrendingUp} trend={`${newLeads} leads novos`} tone="brand" />
+        <MetricCard label="Tempo de 1ª resposta" value={`${Number(metricKpis.avgFirstResponseMinutes || 0).toFixed(1)} min`} icon={Clock3} trend={`${waitingConversations} aguardando`} tone="success" />
+        <MetricCard label="Investimento" value={brl(Number(kpis?.spend || 0))} icon={Wallet} trend={`CPL ${brl(Number(kpis?.cpl || 0))}`} tone="warning" />
+        <MetricCard label="Receita recebida" value={brl(Number(kpis?.paid || 0))} icon={FileText} trend={`Contrato ${dashboard.contract?.status || "ativo"}`} tone="ai" />
+      </div>
+
+      {experienceMode === "completo" ? (
+        <div className="mt-5 space-y-2">
+          <SectionEyebrow>Mais detalhes</SectionEyebrow>
+          {activities.length === 0 ? (
+            <EmptySlot text="Sem eventos recentes para exibir." />
+          ) : (
+            activities.map((item) => <ActivityCard key={item.id} item={item} />)
+          )}
+        </div>
+      ) : null}
+    </PanelCard>
   );
 }
 
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="dashboard-hero-stat flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
-      <span className="text-sm text-[var(--cliente-card-text-soft)]">{label}</span>
-      <span className="text-sm font-semibold text-[var(--cliente-card-text)]">{value}</span>
+    <div className="rounded-[18px] border border-white/14 bg-white/12 px-3 py-2.5 backdrop-blur-sm sm:rounded-[22px] sm:px-4 sm:py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-white/68 sm:text-[11px] sm:tracking-[0.14em]">{label}</p>
+      <p className="mt-1 text-[1.2rem] font-semibold tracking-[-0.03em] text-white sm:mt-2 sm:text-[1.42rem]">{value}</p>
     </div>
   );
-}
-
-function formatDelta(value: number | undefined, subject: string) {
-  const numeric = Number(value || 0);
-  const prefix = numeric > 0 ? "+" : "";
-  return `${prefix}${numeric.toFixed(1)}% em ${subject}`;
 }
 
 function QuickLink({
@@ -1152,85 +948,173 @@ function QuickLink({
   title,
   description,
   icon: Icon,
+  tone,
 }: {
   href: string;
   title: string;
   description: string;
   icon: typeof MessageSquare;
+  tone: "brand" | "ai" | "success" | "warning";
 }) {
+  const toneClasses = {
+    brand: "border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-primary)_8%,white),white_72%)]",
+    ai: "border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-ai)_8%,white),white_72%)]",
+    success: "border-[color:color-mix(in_srgb,var(--cliente-success)_18%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-success)_8%,white),white_72%)]",
+    warning: "border-[color:color-mix(in_srgb,var(--cliente-warning)_18%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-warning)_8%,white),white_72%)]",
+  }[tone];
+  const iconClasses = {
+    brand: "border-[color:color-mix(in_srgb,var(--cliente-primary)_16%,transparent)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]",
+    ai: "border-[color:color-mix(in_srgb,var(--cliente-ai)_16%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]",
+    success: "border-[color:color-mix(in_srgb,var(--cliente-success)_16%,transparent)] bg-[var(--cliente-success-soft)] text-[var(--cliente-success)]",
+    warning: "border-[color:color-mix(in_srgb,var(--cliente-warning)_16%,transparent)] bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]",
+  }[tone];
+
   return (
     <Link
       href={href}
-      className="dashboard-quick-link group rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
+      prefetch={false}
+      className={`group rounded-[20px] border p-3 shadow-[0_18px_34px_-30px_rgba(15,23,42,0.24)] transition hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)] sm:rounded-[24px] sm:p-4 ${toneClasses}`}
     >
-      <div className="inline-flex rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-accent)]">
+      <div className={`inline-flex rounded-[14px] border p-2 shadow-[0_12px_24px_-18px_var(--cliente-primary-glow)] sm:rounded-[16px] sm:p-2.5 ${iconClasses}`}>
         <Icon className="h-4 w-4" />
       </div>
-      <div className="mt-4 flex items-center justify-between gap-3">
+      <div className="mt-3 flex items-center justify-between gap-3 sm:mt-4">
         <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
-        <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)] transition group-hover:text-[var(--cliente-accent)]" />
+        <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)] transition group-hover:text-[var(--cliente-primary)]" />
       </div>
-      <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-soft)]">{description}</p>
+      <p className="mt-1.5 text-sm leading-5 text-[var(--cliente-card-text-soft)] sm:mt-2 sm:leading-6">{description}</p>
     </Link>
   );
 }
 
-function FocusRow({
-  href,
-  label,
-  value,
-  tone,
-  badgeLabel,
-}: {
-  href?: string;
-  label: string;
-  value: string;
-  tone: "neutral" | "success" | "warning" | "danger" | "info";
-  badgeLabel?: string;
-}) {
-  const resolvedBadgeLabel =
-    badgeLabel || (tone === "warning" ? "atencao" : tone === "success" ? "ok" : tone === "danger" ? "risco" : "monitorar");
+function PriorityRow({ item }: { item: PriorityItem }) {
+  const toneClasses = {
+    neutral: "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]",
+    success: "border-[color:color-mix(in_srgb,var(--cliente-success)_16%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-success)_7%,white),white_78%)]",
+    warning: "border-[color:color-mix(in_srgb,var(--cliente-warning)_18%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-warning)_8%,white),white_78%)]",
+    danger: "border-[color:color-mix(in_srgb,var(--cliente-danger)_18%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-danger)_8%,white),white_80%)]",
+    info: "border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-primary)_8%,white),white_78%)]",
+  }[item.tone];
 
-  const content = (
-    <div className="dashboard-focus-row rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]">
+  return (
+    <Link
+      href={item.href}
+      prefetch={false}
+      className={`block rounded-[22px] border px-4 py-4 shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)] ${toneClasses}`}
+    >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{label}</p>
-        <StateBadge label={resolvedBadgeLabel} tone={tone} />
+        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+        <ClientBadge label={item.badge} tone={item.tone} />
       </div>
-      <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{value}</p>
-    </div>
+      <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-soft)]">{item.description}</p>
+    </Link>
   );
-
-  if (!href) return content;
-
-  return <Link href={href}>{content}</Link>;
 }
 
-function MiniStatLink({
-  href,
-  label,
-  value,
-}: {
-  href: string;
-  label: string;
-  value: string;
-}) {
+function AppointmentCard({ item }: { item: AppointmentItem }) {
+  return (
+    <Link
+      href="/cliente/painel/agenda"
+      prefetch={false}
+      className="block rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.title || item.leadName || "Compromisso"}</p>
+        <ClientBadge label={item.type || "agenda"} tone="info" />
+      </div>
+      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+        {formatDateTime(item.startAt)}
+        {item.ownerName ? ` - ${item.ownerName}` : ""}
+      </p>
+    </Link>
+  );
+}
+
+function TaskCard({ item }: { item: FollowUpItem }) {
+  return (
+    <Link
+      href={item.leadId ? `/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}` : "/cliente/painel/follow-ups"}
+      prefetch={false}
+      className="block rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.title}</p>
+        <ClientBadge label={item.overdue ? "vencida" : "hoje"} tone={item.overdue ? "warning" : "info"} />
+      </div>
+      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+        {(item.lead?.nome || "Contato sem nome")} - {item.lead?.pipelineStage ? getPipelineStageLabel(item.lead.pipelineStage) : "sem etapa"}
+      </p>
+    </Link>
+  );
+}
+
+function ActivityCard({ item }: { item: ActivityItem }) {
+  return (
+    <Link
+      href={item.href}
+      prefetch={false}
+      className="block rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.title}</p>
+        <ClientBadge label={item.tone === "warning" ? "atenção" : item.tone === "neutral" ? "comercial" : "crm"} tone={item.tone} />
+      </div>
+      <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">{item.detail}</p>
+      <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">
+        {item.createdAt ? item.createdAt.toLocaleString("pt-BR") : "sem data"}
+      </p>
+    </Link>
+  );
+}
+
+function SectionEyebrow({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">{children}</p>;
+}
+
+function EmptySlot({ text }: { text: string }) {
+  return (
+    <div className="rounded-[18px] border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-4 text-sm text-[var(--cliente-card-text-soft)]">
+      {text}
+    </div>
+  );
+}
+
+function MiniPanelLink({ href, label, value }: { href: string; label: string; value: string }) {
   return (
     <Link
       href={href}
-      className="dashboard-mini-link rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-accent-soft)]"
+      prefetch={false}
+      className="rounded-[20px] border border-[var(--cliente-border)] bg-[linear-gradient(180deg,var(--cliente-card),var(--cliente-surface-muted))] px-4 py-3 shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)]"
     >
-      <p className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{value}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</p>
+      <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{value}</p>
     </Link>
   );
 }
 
-
-
-
-
-
-
-
-
+function InsightRow({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "success" | "warning" | "info" | "ai";
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[22px] border border-[var(--cliente-border)] bg-[linear-gradient(180deg,var(--cliente-card),var(--cliente-surface-muted))] px-4 py-3 shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)]">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{label}</p>
+        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
+      </div>
+      <div className="text-right">
+        <p className="text-lg font-semibold tracking-[-0.03em] text-[var(--cliente-card-text)]">{value}</p>
+        <div className="mt-1 flex justify-end">
+          <ClientBadge label={tone === "ai" ? "altum" : tone === "warning" ? "atenção" : tone === "success" ? "ok" : "ativo"} tone={tone} />
+        </div>
+      </div>
+    </div>
+  );
+}

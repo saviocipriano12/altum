@@ -73,9 +73,8 @@ export async function GET(req: Request) {
           "GOOGLE_ADS_DEVELOPER_TOKEN",
           "GOOGLE_ADS_CLIENT_ID",
           "GOOGLE_ADS_CLIENT_SECRET",
-          "GOOGLE_ADS_REFRESH_TOKEN",
         ],
-        "Conector de performance para contas Google Ads."
+        "Conector de performance para contas Google Ads. O refresh token e obtido por tenant via OAuth."
       ),
       checkIntegration(
         "google_places",

@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
+import { ensureDefaultWhatsAppFollowUpTemplates } from "@/app/lib/server/whatsapp-channel";
 
 type Body = {
   displayName?: string;
@@ -62,6 +63,7 @@ export async function GET(
         id: channelSnap.id,
         tenantId: String(channelData.tenantId || tenantId),
         type: String(channelData.type || "whatsapp"),
+        provider: String(channelData.provider || "meta_whatsapp"),
         displayName: String(channelData.displayName || "WhatsApp"),
         phoneNumber: String(channelData.phoneNumber || ""),
         phoneNumberId: String(channelData.phoneNumberId || ""),
@@ -123,6 +125,34 @@ export async function POST(
       : adminDb.collection("tenant_channels").doc();
 
     const channelId = channelRef.id;
+    const settingsData = settingsSnap.exists ? (settingsSnap.data() as Record<string, unknown>) : {};
+    const aiData =
+      settingsData.ai && typeof settingsData.ai === "object"
+        ? (settingsData.ai as Record<string, unknown>)
+        : {};
+    const aiDefaultsPatch: Record<string, unknown> = {};
+
+    if (typeof aiData.whatsappTemplateFollowUpEnabled !== "boolean") {
+      aiDefaultsPatch.whatsappTemplateFollowUpEnabled = true;
+    }
+    if (!clean(aiData.whatsappTemplateFollowUpName, 120)) {
+      aiDefaultsPatch.whatsappTemplateFollowUpName = "follow_up_geral";
+    }
+    if (!clean(aiData.whatsappTemplateFollowUpLanguage, 24)) {
+      aiDefaultsPatch.whatsappTemplateFollowUpLanguage = "pt_BR";
+    }
+    if (!Array.isArray(aiData.whatsappTemplateFollowUpParams) && typeof aiData.whatsappTemplateFollowUpParams !== "string") {
+      aiDefaultsPatch.whatsappTemplateFollowUpParams = [];
+    }
+
+    const settingsPatch: Record<string, unknown> = {
+      tenantId,
+      defaultWhatsAppChannelId: channelId,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (Object.keys(aiDefaultsPatch).length > 0) {
+      settingsPatch.ai = aiDefaultsPatch;
+    }
 
     await Promise.all([
       channelRef.set(
@@ -145,11 +175,7 @@ export async function POST(
         { merge: true }
       ),
       settingsRef.set(
-        {
-          tenantId,
-          defaultWhatsAppChannelId: channelId,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
+        settingsPatch,
         { merge: true }
       ),
       adminDb.collection("audit_logs").add({
@@ -163,7 +189,41 @@ export async function POST(
       }),
     ]);
 
-    return NextResponse.json({ ok: true, tenantId, channelId });
+    let templateSeedSummary:
+      | { created: string[]; alreadyPresent: string[]; failed: Array<{ name: string; error: string }> }
+      | null = null;
+    try {
+      const seedResult = await ensureDefaultWhatsAppFollowUpTemplates({
+        id: channelId,
+        tenantId,
+        source: "tenant_channel",
+        provider: "meta_whatsapp",
+        displayName: clean(body.displayName, 120) || "WhatsApp",
+        phoneNumber: clean(body.phoneNumber, 60),
+        phoneNumberId,
+        accessToken,
+        verifyToken: verifyToken || undefined,
+        appSecret: appSecret || undefined,
+      });
+      templateSeedSummary = {
+        created: seedResult.created,
+        alreadyPresent: seedResult.alreadyPresent,
+        failed: seedResult.failed,
+      };
+    } catch (error) {
+      templateSeedSummary = {
+        created: [],
+        alreadyPresent: [],
+        failed: [
+          {
+            name: "template_seed",
+            error: error instanceof Error ? error.message : "template_seed_failed",
+          },
+        ],
+      };
+    }
+
+    return NextResponse.json({ ok: true, tenantId, channelId, templateSeedSummary });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });

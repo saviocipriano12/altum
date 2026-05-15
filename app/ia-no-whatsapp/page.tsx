@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { buildFaqSchema, toJsonLdScript } from "@/lib/schema";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag").replace(/\/$/, "");
 
 export const metadata: Metadata = {
   title: "IA no WhatsApp para qualificacao e agendamento",

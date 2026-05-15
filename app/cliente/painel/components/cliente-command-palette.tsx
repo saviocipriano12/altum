@@ -4,28 +4,26 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
 import {
+  BarChart3,
   BookOpen,
   Bot,
-  Cable,
   CalendarDays,
-  DollarSign,
   FileText,
-  Funnel,
   GitBranchPlus,
-  Instagram,
   LayoutGrid,
   ListTodo,
   LogOut,
   Megaphone,
   MessageSquare,
   MoonStar,
+  Package,
+  Plug,
   Rocket,
   Search,
   Settings,
   Sparkles,
   SunMedium,
   Target,
-  Users,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/firebaseConfig";
@@ -41,24 +39,66 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { key: "visao_geral", label: "Visao geral", href: "/cliente/painel", icon: <LayoutGrid className="h-4 w-4" /> },
-  { key: "inbox", label: "Conversas", href: "/cliente/painel/inbox", icon: <MessageSquare className="h-4 w-4" /> },
-  { key: "crm", label: "CRM", href: "/cliente/painel/crm", icon: <Users className="h-4 w-4" /> },
-  { key: "follow_ups", label: "Retornos", href: "/cliente/painel/follow-ups", icon: <ListTodo className="h-4 w-4" /> },
+  { key: "inicio", label: "Inicio", href: "/cliente/painel", icon: <LayoutGrid className="h-4 w-4" /> },
+  { key: "conversas", label: "Conversas", href: "/cliente/painel/inbox", icon: <MessageSquare className="h-4 w-4" /> },
+  { key: "clientes", label: "Clientes & Oportunidades", href: "/cliente/painel/crm", icon: <Target className="h-4 w-4" /> },
+  { key: "pipeline", label: "Clientes & Oportunidades - Kanban", href: "/cliente/painel/pipeline", icon: <Target className="h-4 w-4" /> },
+  {
+    key: "comercial",
+    label: "Clientes & Oportunidades - Propostas",
+    href: "/cliente/painel/comercial",
+    icon: <ListTodo className="h-4 w-4" />,
+    capability: "manage_commercial",
+  },
   { key: "agenda", label: "Agenda", href: "/cliente/painel/agenda", icon: <CalendarDays className="h-4 w-4" /> },
-  { key: "pipeline", label: "Funil", href: "/cliente/painel/pipeline", icon: <Funnel className="h-4 w-4" /> },
-  { key: "comercial", label: "Comercial", href: "/cliente/painel/comercial", icon: <DollarSign className="h-4 w-4" />, capability: "manage_commercial" },
-  { key: "captacao", label: "Captacao", href: "/cliente/painel/captacao", icon: <Megaphone className="h-4 w-4" /> },
-  { key: "campanhas", label: "Campanhas", href: "/cliente/painel/campanhas", icon: <Sparkles className="h-4 w-4" />, capability: "manage_automations" },
-  { key: "ia", label: "IA", href: "/cliente/painel/ia", icon: <Bot className="h-4 w-4" />, capability: "manage_ai" },
-  { key: "conhecimento", label: "Conhecimento", href: "/cliente/painel/conhecimento", icon: <BookOpen className="h-4 w-4" />, capability: "manage_ai" },
-  { key: "handoffs", label: "Transferencias", href: "/cliente/painel/handoffs", icon: <GitBranchPlus className="h-4 w-4" /> },
-  { key: "automacoes", label: "Automacoes", href: "/cliente/painel/automacoes", icon: <Cable className="h-4 w-4" />, capability: "manage_automations" },
-  { key: "instagram_ops", label: "Operacao Instagram", href: "/cliente/painel/automacoes/instagram", icon: <Instagram className="h-4 w-4" />, capability: "manage_automations" },
-  { key: "metricas", label: "Metricas", href: "/cliente/painel/metricas", icon: <Target className="h-4 w-4" /> },
-  { key: "go_live", label: "Lancamento", href: "/cliente/painel/go-live", icon: <Rocket className="h-4 w-4" /> },
-  { key: "logs", label: "Logs", href: "/cliente/painel/logs", icon: <FileText className="h-4 w-4" /> },
-  { key: "configuracoes", label: "Configuracoes", href: "/cliente/painel/configuracoes", icon: <Settings className="h-4 w-4" />, capability: "manage_settings" },
+  { key: "tarefas", label: "Agenda - Tarefas", href: "/cliente/painel/follow-ups", icon: <ListTodo className="h-4 w-4" /> },
+  {
+    key: "produtos_servicos",
+    label: "Produtos & Servicos",
+    href: "/cliente/painel/produtos-servicos",
+    icon: <Package className="h-4 w-4" />,
+    capability: "manage_ai",
+  },
+  { key: "campanhas", label: "Campanhas", href: "/cliente/painel/campanhas", icon: <Sparkles className="h-4 w-4" /> },
+  { key: "captacao", label: "Campanhas - Captacao", href: "/cliente/painel/captacao", icon: <Megaphone className="h-4 w-4" /> },
+  { key: "relatorios", label: "Relatorios", href: "/cliente/painel/metricas", icon: <BarChart3 className="h-4 w-4" /> },
+  {
+    key: "perguntar_altum",
+    label: "Perguntar a Altum",
+    href: "/cliente/painel/perguntar-altum",
+    icon: <Sparkles className="h-4 w-4" />,
+    capability: "manage_ai",
+  },
+  { key: "assistente", label: "Assistente Altum", href: "/cliente/painel/ia", icon: <Bot className="h-4 w-4" />, capability: "manage_ai" },
+  {
+    key: "conhecimento",
+    label: "Assistente Altum - Base de conhecimento",
+    href: "/cliente/painel/conhecimento",
+    icon: <BookOpen className="h-4 w-4" />,
+    capability: "manage_ai",
+  },
+  {
+    key: "escaladas",
+    label: "Assistente Altum - Escaladas",
+    href: "/cliente/painel/handoffs",
+    icon: <GitBranchPlus className="h-4 w-4" />,
+  },
+  {
+    key: "configuracoes",
+    label: "Configuracoes",
+    href: "/cliente/painel/configuracoes",
+    icon: <Settings className="h-4 w-4" />,
+    capability: "manage_settings",
+  },
+  {
+    key: "integracoes",
+    label: "Configuracoes - Integracoes",
+    href: "/cliente/painel/configuracoes/integracoes",
+    icon: <Plug className="h-4 w-4" />,
+    capability: "manage_settings",
+  },
+  { key: "implantacao", label: "Configuracoes - Implantacao", href: "/cliente/painel/go-live", icon: <Rocket className="h-4 w-4" /> },
+  { key: "logs", label: "Configuracoes - Logs tecnicos", href: "/cliente/painel/logs", icon: <FileText className="h-4 w-4" /> },
 ];
 
 export function ClienteCommandPalette() {
@@ -66,7 +106,7 @@ export function ClienteCommandPalette() {
   const [query, setQuery] = useState("");
   const router = useRouter();
   const { hasCapability } = useClienteTenant();
-  const { theme, toggleTheme, density, toggleDensity } = useClienteShell();
+  const { theme, toggleTheme, density, toggleDensity, experienceMode, toggleExperienceMode } = useClienteShell();
 
   const items = useMemo(() => NAV_ITEMS.filter((item) => !item.capability || hasCapability(item.capability)), [hasCapability]);
 
@@ -95,37 +135,29 @@ export function ClienteCommandPalette() {
     router.push(href);
   };
 
-  const performThemeToggle = () => {
-    toggleTheme();
-    setOpen(false);
-    setQuery("");
-  };
-
-  const performDensityToggle = () => {
-    toggleDensity();
+  const closePalette = () => {
     setOpen(false);
     setQuery("");
   };
 
   const performSignOut = async () => {
     await signOut(auth);
-    setOpen(false);
-    setQuery("");
+    closePalette();
     router.push("/cliente/login");
   };
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-sm">
       <div className="mx-auto mt-[14vh] w-full max-w-2xl px-4">
         <Command className="client-glass overflow-hidden rounded-[34px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] shadow-[var(--cliente-shadow-hard)]">
           <div className="flex items-center gap-2 border-b border-[var(--cliente-border)] px-4 py-3">
-            <Search className="h-4 w-4 text-[var(--cliente-accent)]" />
+            <Search className="h-4 w-4 text-[var(--cliente-primary)]" />
             <Command.Input
               value={query}
               onValueChange={setQuery}
-              placeholder="Buscar modulo ou acao..."
+              placeholder="Buscar pagina ou acao..."
               className="w-full bg-transparent text-sm text-[var(--cliente-text)] outline-none placeholder:text-[var(--cliente-text-soft)]"
             />
             <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2 py-1 text-[10px] text-[var(--cliente-text-soft)]">
@@ -149,13 +181,28 @@ export function ClienteCommandPalette() {
                 icon={theme === "dark" ? <SunMedium className="h-4 w-4" /> : <MoonStar className="h-4 w-4" />}
                 label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}
                 hint="Tema"
-                onSelect={performThemeToggle}
+                onSelect={() => {
+                  toggleTheme();
+                  closePalette();
+                }}
               />
               <PaletteItem
                 icon={<Sparkles className="h-4 w-4" />}
-                label={density === "compact" ? "Usar densidade confortavel" : "Usar densidade compacta"}
+                label={density === "compact" ? "Usar visual confortavel" : "Usar visual compacto"}
                 hint="Layout"
-                onSelect={performDensityToggle}
+                onSelect={() => {
+                  toggleDensity();
+                  closePalette();
+                }}
+              />
+              <PaletteItem
+                icon={<Settings className="h-4 w-4" />}
+                label={experienceMode === "essencial" ? "Mostrar areas avancadas" : "Mostrar visao simplificada"}
+                hint="Navegacao"
+                onSelect={() => {
+                  toggleExperienceMode();
+                  closePalette();
+                }}
               />
               <PaletteItem
                 icon={<LogOut className="h-4 w-4" />}
@@ -187,10 +234,10 @@ function PaletteItem({
   return (
     <Command.Item
       onSelect={onSelect}
-      className="mb-1 flex cursor-pointer items-center justify-between rounded-2xl border border-transparent px-3 py-2.5 text-sm text-[var(--cliente-text-muted)] data-[selected=true]:border-[var(--cliente-border-strong)] data-[selected=true]:bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-accent-soft)_76%,white),var(--cliente-accent-soft))] data-[selected=true]:text-[var(--cliente-text)]"
+      className="mb-1 flex cursor-pointer items-center justify-between rounded-2xl border border-transparent px-3 py-2.5 text-sm text-[var(--cliente-text-muted)] data-[selected=true]:border-[var(--cliente-border-strong)] data-[selected=true]:bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary-soft)_76%,white),var(--cliente-primary-soft))] data-[selected=true]:text-[var(--cliente-text)]"
     >
       <span className="inline-flex items-center gap-2">
-        <span className="text-[var(--cliente-accent)]">{icon}</span>
+        <span className="text-[var(--cliente-primary)]">{icon}</span>
         {label}
       </span>
       <span className="text-xs text-[var(--cliente-text-soft)]">{hint}</span>

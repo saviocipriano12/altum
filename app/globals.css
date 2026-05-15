@@ -7,33 +7,47 @@
 
 [data-client-theme="dark"] {
   --cliente-font-family: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, Roboto, sans-serif;
-  --cliente-bg: #0f141b;
-  --cliente-bg-elevated: #141b24;
-  --cliente-panel: rgba(20, 28, 38, 0.92);
-  --cliente-panel-solid: #151c25;
-  --cliente-panel-soft: rgba(27, 36, 48, 0.94);
-  --cliente-card: rgba(23, 31, 43, 0.97);
-  --cliente-card-text: #f2f5f8;
-  --cliente-card-text-muted: rgba(220, 227, 236, 0.9);
-  --cliente-card-text-soft: rgba(152, 165, 184, 0.9);
-  --cliente-sidebar: rgba(13, 18, 25, 0.98);
-  --cliente-sidebar-card: rgba(20, 28, 39, 0.96);
-  --cliente-topbar: rgba(13, 18, 25, 0.86);
+  --cliente-bg: #0b1220;
+  --cliente-bg-elevated: #111b2f;
+  --cliente-panel: rgba(10, 18, 32, 0.92);
+  --cliente-panel-solid: #101a2c;
+  --cliente-panel-soft: rgba(17, 27, 47, 0.94);
+  --cliente-surface: #101a2c;
+  --cliente-card: rgba(15, 23, 42, 0.97);
+  --cliente-card-text: #f8fafc;
+  --cliente-card-text-muted: rgba(226, 232, 240, 0.92);
+  --cliente-card-text-soft: rgba(148, 163, 184, 0.92);
+  --cliente-sidebar: rgba(8, 15, 29, 0.96);
+  --cliente-sidebar-card: rgba(15, 23, 42, 0.96);
+  --cliente-topbar: rgba(8, 15, 29, 0.84);
   --cliente-border: rgba(148, 163, 184, 0.18);
-  --cliente-border-strong: rgba(233, 117, 50, 0.36);
-  --cliente-text: #f2f5f8;
-  --cliente-text-muted: rgba(221, 228, 236, 0.92);
-  --cliente-text-soft: rgba(150, 164, 183, 0.92);
-  --cliente-accent: #e97532;
-  --cliente-accent-strong: #cc581f;
-  --cliente-accent-soft: rgba(233, 117, 50, 0.13);
-  --cliente-accent-alt: #63bfae;
-  --cliente-accent-alt-soft: rgba(99, 191, 174, 0.1);
-  --cliente-accent-glow: rgba(233, 117, 50, 0.12);
-  --cliente-accent-secondary-glow: rgba(99, 191, 174, 0.05);
-  --cliente-input-bg: rgba(18, 25, 35, 0.76);
-  --cliente-surface-muted: rgba(30, 40, 53, 0.8);
-  --cliente-surface-hover: rgba(38, 49, 64, 0.9);
+  --cliente-border-strong: rgba(249, 115, 22, 0.36);
+  --cliente-text: #f8fafc;
+  --cliente-text-muted: rgba(226, 232, 240, 0.94);
+  --cliente-text-soft: rgba(148, 163, 184, 0.92);
+  --cliente-primary: #f97316;
+  --cliente-primary-hover: #ea580c;
+  --cliente-primary-soft: rgba(249, 115, 22, 0.16);
+  --cliente-primary-glow: rgba(249, 115, 22, 0.18);
+  --cliente-success: #22c55e;
+  --cliente-success-soft: rgba(34, 197, 94, 0.14);
+  --cliente-ai: #8b5cf6;
+  --cliente-ai-soft: rgba(139, 92, 246, 0.14);
+  --cliente-ai-glow: rgba(139, 92, 246, 0.12);
+  --cliente-warning: #f59e0b;
+  --cliente-warning-soft: rgba(245, 158, 11, 0.14);
+  --cliente-danger: #ef4444;
+  --cliente-danger-soft: rgba(239, 68, 68, 0.14);
+  --cliente-accent: var(--cliente-primary);
+  --cliente-accent-strong: var(--cliente-primary-hover);
+  --cliente-accent-soft: var(--cliente-primary-soft);
+  --cliente-accent-alt: var(--cliente-ai);
+  --cliente-accent-alt-soft: var(--cliente-ai-soft);
+  --cliente-accent-glow: var(--cliente-primary-glow);
+  --cliente-accent-secondary-glow: var(--cliente-ai-glow);
+  --cliente-input-bg: rgba(15, 23, 42, 0.72);
+  --cliente-surface-muted: rgba(15, 23, 42, 0.82);
+  --cliente-surface-hover: rgba(30, 41, 59, 0.92);
   --cliente-stripe: rgba(148, 163, 184, 0.07);
   --cliente-shadow-soft: 0 14px 30px rgba(2, 6, 23, 0.28);
   --cliente-shadow-hard: 0 28px 64px rgba(2, 6, 23, 0.48);
@@ -41,36 +55,50 @@
 
 [data-client-theme="light"] {
   --cliente-font-family: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, Roboto, sans-serif;
-  --cliente-bg: #f5f1eb;
-  --cliente-bg-elevated: #fbf8f3;
-  --cliente-panel: rgba(248, 245, 240, 0.95);
-  --cliente-panel-solid: #fcfaf6;
-  --cliente-panel-soft: rgba(255, 253, 249, 0.98);
-  --cliente-card: rgba(255, 255, 255, 0.985);
-  --cliente-card-text: #1b2330;
-  --cliente-card-text-muted: #536074;
-  --cliente-card-text-soft: #7d899c;
-  --cliente-sidebar: rgba(248, 244, 239, 0.98);
-  --cliente-sidebar-card: rgba(255, 253, 249, 0.98);
-  --cliente-topbar: rgba(249, 246, 241, 0.92);
-  --cliente-border: rgba(148, 152, 164, 0.2);
-  --cliente-border-strong: rgba(233, 117, 50, 0.3);
-  --cliente-text: #18202c;
-  --cliente-text-muted: #49566a;
-  --cliente-text-soft: #768396;
-  --cliente-accent: #e67332;
-  --cliente-accent-strong: #cf5b22;
-  --cliente-accent-soft: rgba(230, 115, 50, 0.1);
-  --cliente-accent-alt: #1b8a7b;
-  --cliente-accent-alt-soft: rgba(27, 138, 123, 0.08);
-  --cliente-accent-glow: rgba(230, 115, 50, 0.075);
-  --cliente-accent-secondary-glow: rgba(27, 138, 123, 0.035);
-  --cliente-input-bg: rgba(255, 255, 255, 0.92);
-  --cliente-surface-muted: rgba(248, 243, 237, 0.92);
-  --cliente-surface-hover: rgba(242, 236, 229, 0.96);
+  --cliente-bg: #f6f8fb;
+  --cliente-bg-elevated: #eef3f9;
+  --cliente-panel: rgba(246, 248, 251, 0.92);
+  --cliente-panel-solid: #ffffff;
+  --cliente-panel-soft: rgba(248, 250, 252, 0.98);
+  --cliente-surface: #ffffff;
+  --cliente-card: rgba(255, 255, 255, 0.99);
+  --cliente-card-text: #0f172a;
+  --cliente-card-text-muted: #334155;
+  --cliente-card-text-soft: #64748b;
+  --cliente-sidebar: rgba(255, 255, 255, 0.92);
+  --cliente-sidebar-card: rgba(255, 255, 255, 0.98);
+  --cliente-topbar: rgba(248, 250, 252, 0.88);
+  --cliente-border: #e5e7eb;
+  --cliente-border-strong: rgba(249, 115, 22, 0.3);
+  --cliente-text: #0f172a;
+  --cliente-text-muted: #334155;
+  --cliente-text-soft: #64748b;
+  --cliente-primary: #f97316;
+  --cliente-primary-hover: #ea580c;
+  --cliente-primary-soft: rgba(249, 115, 22, 0.12);
+  --cliente-primary-glow: rgba(249, 115, 22, 0.12);
+  --cliente-success: #16a34a;
+  --cliente-success-soft: rgba(22, 163, 74, 0.12);
+  --cliente-ai: #7c3aed;
+  --cliente-ai-soft: rgba(124, 58, 237, 0.1);
+  --cliente-ai-glow: rgba(124, 58, 237, 0.08);
+  --cliente-warning: #d97706;
+  --cliente-warning-soft: rgba(217, 119, 6, 0.12);
+  --cliente-danger: #ef4444;
+  --cliente-danger-soft: rgba(239, 68, 68, 0.12);
+  --cliente-accent: var(--cliente-primary);
+  --cliente-accent-strong: var(--cliente-primary-hover);
+  --cliente-accent-soft: var(--cliente-primary-soft);
+  --cliente-accent-alt: var(--cliente-ai);
+  --cliente-accent-alt-soft: var(--cliente-ai-soft);
+  --cliente-accent-glow: var(--cliente-primary-glow);
+  --cliente-accent-secondary-glow: var(--cliente-ai-glow);
+  --cliente-input-bg: rgba(255, 255, 255, 0.96);
+  --cliente-surface-muted: rgba(241, 245, 249, 0.96);
+  --cliente-surface-hover: rgba(226, 232, 240, 0.86);
   --cliente-stripe: rgba(100, 116, 139, 0.08);
-  --cliente-shadow-soft: 0 14px 30px rgba(91, 78, 62, 0.065);
-  --cliente-shadow-hard: 0 26px 56px rgba(91, 78, 62, 0.13);
+  --cliente-shadow-soft: 0 18px 38px rgba(15, 23, 42, 0.06);
+  --cliente-shadow-hard: 0 28px 64px rgba(15, 23, 42, 0.12);
 }
 
 @theme inline {
@@ -203,8 +231,9 @@ body {
 }
 
 .client-section-title {
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
   line-height: 1.05;
+  font-weight: 800;
 }
 
 .client-section-header p,
@@ -215,7 +244,8 @@ body {
 }
 
 .client-metric-value {
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
+  font-weight: 800;
 }
 
 .client-panel-card {
@@ -339,17 +369,17 @@ body {
 }
 
 [data-client-area="daily"] {
-  --cliente-accent-glow: rgba(232, 80, 2, 0.08);
-  --cliente-accent-secondary-glow: rgba(45, 212, 191, 0.03);
+  --cliente-accent-glow: rgba(249, 115, 22, 0.12);
+  --cliente-accent-secondary-glow: rgba(124, 58, 237, 0.035);
   --cliente-shadow-soft: 0 6px 18px rgba(2, 6, 23, 0.16);
   --cliente-shadow-hard: 0 18px 38px rgba(2, 6, 23, 0.24);
 }
 
 [data-client-theme="light"] [data-client-area="daily"] {
-  --cliente-accent-glow: rgba(217, 75, 18, 0.065);
-  --cliente-accent-secondary-glow: rgba(15, 118, 110, 0.04);
-  --cliente-shadow-soft: 0 8px 20px rgba(91, 78, 62, 0.08);
-  --cliente-shadow-hard: 0 18px 42px rgba(91, 78, 62, 0.14);
+  --cliente-accent-glow: rgba(249, 115, 22, 0.1);
+  --cliente-accent-secondary-glow: rgba(124, 58, 237, 0.045);
+  --cliente-shadow-soft: 0 10px 24px rgba(15, 23, 42, 0.06);
+  --cliente-shadow-hard: 0 22px 48px rgba(15, 23, 42, 0.1);
 }
 
 [data-client-area="daily"] .client-shell-ambient {
@@ -373,6 +403,7 @@ body {
 [data-client-area="daily"] .client-section-title {
   font-size: 1.1rem;
   letter-spacing: 0;
+  font-weight: 800;
 }
 
 [data-client-area="daily"] .client-card-title-text {
@@ -450,6 +481,31 @@ body {
 [data-client-style="v2"] .client-shell-ambient::before {
   opacity: 0.14;
   background-size: 68px 68px;
+}
+
+[data-client-style="v2"] :where(.tracking-\[-0\.055em\], .tracking-\[-0\.05em\], .tracking-\[-0\.045em\], .tracking-\[-0\.03em\], .tracking-\[-0\.025em\], .tracking-\[-0\.02em\], .tracking-\[-0\.01em\], .tracking-tight) {
+  letter-spacing: 0 !important;
+}
+
+@keyframes cliente-surface-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-client-style="v2"] .client-panel-card {
+  animation: cliente-surface-in 360ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-client-style="v2"] .client-panel-card {
+    animation: none;
+  }
 }
 
 .crm-refined {
@@ -569,6 +625,31 @@ body {
     linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 94%, white 6%), color-mix(in srgb, var(--cliente-panel-solid) 100%, transparent));
 }
 
+[data-client-theme="dark"] .inbox-refined .inbox-rail,
+[data-client-theme="dark"] .inbox-refined .inbox-thread-shell {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 96%, transparent), color-mix(in srgb, var(--cliente-panel-soft) 92%, transparent)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-primary) 12%, transparent), transparent 42%);
+  box-shadow: 0 22px 48px -34px rgba(2, 6, 23, 0.66);
+}
+
+[data-client-theme="dark"] .inbox-refined .inbox-conversation-card {
+  background: color-mix(in srgb, var(--cliente-panel-soft) 92%, transparent);
+  border-color: color-mix(in srgb, var(--cliente-border) 92%, transparent);
+  box-shadow: 0 18px 34px -24px rgba(2, 6, 23, 0.54);
+}
+
+[data-client-theme="dark"] .inbox-refined .inbox-thread-header {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 98%, transparent), color-mix(in srgb, var(--cliente-panel-solid) 98%, transparent)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-primary) 10%, transparent), transparent 46%);
+}
+
+[data-client-theme="dark"] .inbox-refined .inbox-thread-composer {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 98%, transparent), color-mix(in srgb, var(--cliente-panel-solid) 100%, transparent));
+}
+
 .pipeline-refined .pipeline-highlight-card {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 95%, white 5%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
@@ -655,7 +736,8 @@ body {
 .dashboard-refined .dashboard-hero-card h3 {
   font-size: clamp(2rem, 1.6rem + 0.9vw, 3rem);
   line-height: 1.02;
-  letter-spacing: -0.055em;
+  letter-spacing: 0;
+  font-weight: 850;
 }
 
 .dashboard-refined .dashboard-summary-card,
@@ -897,7 +979,8 @@ body {
 .settings-refined .settings-link-card h3,
 .knowledge-refined .knowledge-template-card p:first-child,
 .knowledge-refined .knowledge-quick-link p:first-child {
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
+  font-weight: 800;
 }
 
 .knowledge-refined .knowledge-note-card {
@@ -1158,7 +1241,8 @@ body {
 .logs-refined .client-section-title,
 .automacoes-refined .client-section-title,
 .knowledge-refined .client-section-title {
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
+  font-weight: 850;
 }
 
 .captacao-refined :is(.captacao-field-card, .captacao-toggle-card, .rounded-2xl.border),
@@ -1726,32 +1810,34 @@ body {
 
 [data-client-style="v2"] .client-section-title {
   font-size: clamp(1.8rem, 1.35rem + 1vw, 2.5rem);
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
+  font-weight: 850;
 }
 
 [data-client-style="v2"] .client-card-title-text,
 [data-client-style="v2"] .client-metric-label {
   font-size: 0.68rem;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.08em;
 }
 
 [data-client-style="v2"] .client-metric-value {
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
+  font-weight: 850;
 }
 
 [data-client-area="daily"] {
-  --cliente-accent-glow: rgba(232, 80, 2, 0.11);
-  --cliente-accent-secondary-glow: rgba(45, 212, 191, 0.05);
+  --cliente-accent-glow: rgba(249, 115, 22, 0.14);
+  --cliente-accent-secondary-glow: rgba(124, 58, 237, 0.06);
   --cliente-shadow-soft: 0 16px 34px rgba(2, 6, 23, 0.16);
   --cliente-shadow-hard: 0 28px 58px rgba(2, 6, 23, 0.24);
 }
 
 [data-client-theme="light"] [data-client-area="daily"] {
-  --cliente-accent-glow: rgba(217, 75, 18, 0.095);
-  --cliente-accent-secondary-glow: rgba(15, 118, 110, 0.05);
-  --cliente-shadow-soft: 0 18px 36px rgba(91, 78, 62, 0.09);
-  --cliente-shadow-hard: 0 28px 60px rgba(91, 78, 62, 0.16);
+  --cliente-accent-glow: rgba(249, 115, 22, 0.12);
+  --cliente-accent-secondary-glow: rgba(124, 58, 237, 0.06);
+  --cliente-shadow-soft: 0 18px 36px rgba(15, 23, 42, 0.08);
+  --cliente-shadow-hard: 0 28px 60px rgba(15, 23, 42, 0.12);
 }
 
 [data-client-area="daily"] .client-shell-ambient {
@@ -1774,12 +1860,13 @@ body {
 
 [data-client-area="daily"] .client-section-title {
   font-size: clamp(1.75rem, 1.38rem + 0.9vw, 2.3rem);
-  letter-spacing: -0.045em;
+  letter-spacing: 0;
+  font-weight: 850;
 }
 
 [data-client-area="daily"] .client-card-title-text {
   font-size: 0.68rem;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.08em;
 }
 
 [data-client-area="daily"] .client-state-badge {
@@ -2012,4 +2099,67 @@ body {
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* Client portal premium shell refinement */
+[data-client-style="v2"] .client-shell-ambient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.055) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.42), transparent 78%);
+  opacity: 0.38;
+}
+
+[data-client-theme="light"][data-client-style="v2"] .client-shell-ambient::before {
+  opacity: 0.28;
+}
+
+[data-client-style="v2"] .client-panel-card {
+  position: relative;
+  overflow: hidden;
+}
+
+[data-client-style="v2"] .client-panel-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent 38%);
+  opacity: 0.72;
+}
+
+[data-client-style="v2"] .client-panel-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 52px -38px rgba(15, 23, 42, 0.24);
+}
+
+[data-client-style="v2"] .client-topbar {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-topbar) 94%, white 6%), color-mix(in srgb, var(--cliente-topbar) 100%, transparent));
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.08) inset,
+    0 18px 40px -28px rgba(15, 23, 42, 0.22);
+}
+
+[data-client-style="v2"] [data-client-nav="sidebar"] {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-sidebar) 97%, white 3%), color-mix(in srgb, var(--cliente-sidebar) 100%, transparent));
+}
+
+[data-client-style="v2"] .client-state-badge {
+  box-shadow: 0 12px 26px -22px rgba(15, 23, 42, 0.14);
+}
+
+[data-client-style="v2"] .client-action-button {
+  box-shadow: 0 18px 32px -24px rgba(15, 23, 42, 0.14);
+}
+
+[data-client-style="v2"] a[href]:hover .client-metric-card,
+[data-client-style="v2"] a[href]:hover .client-panel-card {
+  box-shadow: 0 24px 52px -36px rgba(15, 23, 42, 0.2);
 }

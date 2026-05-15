@@ -50,7 +50,6 @@ function replaceExactLine(content, fromLine, toLine) {
 async function findAvailablePath(baseDir, baseName) {
   let candidate = path.join(baseDir, `${baseName}.md`);
   let counter = 2;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       await access(candidate, constants.F_OK);

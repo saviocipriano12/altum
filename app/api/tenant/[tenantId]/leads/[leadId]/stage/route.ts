@@ -3,12 +3,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
-import { runLeadAutomations } from "@/lib/server/automations";
-import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
-import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { syncLeadCommercialState } from "@/lib/server/crm/operations";
-import { mapPipelineStageToConversionStep, recordLeadConversionStep } from "@/lib/server/conversion-trail";
+import { runPipelineStageSideEffects } from "@/lib/server/crm/stage-effects";
 
 type Body = {
   stage?: string;
@@ -160,21 +157,18 @@ export async function POST(
       }),
     ]);
 
-    await runLeadAutomations({
+    await runPipelineStageSideEffects({
       tenantId,
-      trigger: "lead_stage_changed",
       leadId,
+      previousStage,
+      nextStage: stage,
       actorId: user.uid,
       actorName: user.name,
-      previousStage,
-      nextStage: stage,
-    });
-
-    await trackLeadStageOutcome({
-      tenantId,
-      leadId,
-      previousStage,
-      nextStage: stage,
+      source: "pipeline_stage_update",
+      forced: !stageValidation.ok && forceStageMove,
+      metadata: {
+        missingFields: !stageValidation.ok && forceStageMove ? stageValidation.missingFields : [],
+      },
     });
 
     await syncLeadCommercialState({
@@ -184,55 +178,6 @@ export async function POST(
       actorName: user.name,
       allowStageAdvance: false,
     });
-
-    if (stage === "qualificacao") {
-      await dispatchLeadConversionEvents({
-        tenantId,
-        leadId,
-        reason: "lead_qualified",
-      }).catch((error) => {
-        console.error("Falha ao disparar conversao de lead qualificado:", error);
-      });
-    }
-
-    if (stage === "ganho") {
-      await dispatchLeadConversionEvents({
-        tenantId,
-        leadId,
-        reason: "sale_won",
-      }).catch((error) => {
-        console.error("Falha ao disparar conversao de venda:", error);
-      });
-    }
-
-    const conversionStep = mapPipelineStageToConversionStep(stage);
-    if (conversionStep) {
-      await recordLeadConversionStep({
-        tenantId,
-        leadId,
-        step: conversionStep,
-        source: "pipeline_stage_update",
-        actorId: user.uid,
-        actorName: user.name,
-        detail:
-          conversionStep === "qualificado"
-            ? "Lead qualificado no pipeline."
-            : conversionStep === "proposta"
-              ? "Lead avancou para proposta."
-              : conversionStep === "fechamento"
-                ? "Lead avancou para fechamento."
-                : conversionStep === "ganho"
-                  ? "Lead marcado como ganho."
-                  : `Lead entrou na etapa ${conversionStep}.`,
-        metadata: {
-          previousStage,
-          nextStage: stage,
-          forced: !stageValidation.ok && forceStageMove,
-        },
-      }).catch((error) => {
-        console.error("Falha ao registrar trilha de conversao por stage:", error);
-      });
-    }
 
     return NextResponse.json({ ok: true, tenantId, leadId, previousStage, stage });
   } catch (error) {

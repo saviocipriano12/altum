@@ -17,7 +17,6 @@ import { getAiMonthlyUsageSnapshot, logAiUsage } from "@/lib/server/ai/usage-led
 import { trackAltumAgentLearning } from "@/lib/server/ai/learning-loop";
 import {
   trackAppointmentOutcome,
-  trackLeadStageOutcome,
   trackProposalOutcome,
 } from "@/lib/server/ai/learning-outcomes";
 import { getTenantLearningHints, type AltumTenantLearningHints } from "@/lib/server/ai/tenant-learning";
@@ -55,6 +54,7 @@ import {
 } from "@/lib/business-profiles";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { syncLeadCommercialState } from "@/lib/server/crm/operations";
+import { runPipelineStageSideEffects } from "@/lib/server/crm/stage-effects";
 import type { AltumPlannerDecision } from "@/lib/server/ai/altum-agent-v2";
 import type { AltumConversationRuntimeState } from "@/lib/server/ai/runtime-state";
 import { buildAiTaskPreset, suggestPipelineStageForAiAction } from "@/lib/ai-next-actions";
@@ -2422,6 +2422,7 @@ async function executeAltumAgentActions(input: {
   const suggestedStage = suggestPipelineStageForAiAction(input.plan.nextAction, pipelineStages);
   const previousStage = sanitizeText(leadData.pipelineStage || leadData.stage, 80) || null;
   let appliedStage = previousStage;
+  let aiMovedStage = false;
   if (canAdvanceStage && suggestedStage && suggestedStage !== previousStage) {
     const previousIndex = previousStage ? pipelineStages.indexOf(previousStage) : -1;
     const suggestedIndex = pipelineStages.indexOf(suggestedStage);
@@ -2432,14 +2433,7 @@ async function executeAltumAgentActions(input: {
       leadPatch.stage = suggestedStage;
       leadPatch.stageUpdatedAt = FieldValue.serverTimestamp();
       appliedStage = suggestedStage;
-      if (previousStage) {
-        await trackLeadStageOutcome({
-          tenantId: input.tenantId,
-          leadId,
-          previousStage,
-          nextStage: suggestedStage,
-        });
-      }
+      aiMovedStage = true;
       actions.push("move_pipeline_stage");
     }
   }
@@ -2468,6 +2462,23 @@ async function executeAltumAgentActions(input: {
 
   await leadRef.set(leadPatch, { merge: true });
   actions.push("update_lead_memory");
+
+  if (aiMovedStage && previousStage && appliedStage) {
+    await runPipelineStageSideEffects({
+      tenantId: input.tenantId,
+      leadId,
+      previousStage,
+      nextStage: appliedStage,
+      actorId: "ai_sales_agent",
+      actorName: "AI Sales Agent",
+      source: "ai_pipeline_stage_update",
+      metadata: {
+        nextAction: input.plan.nextAction || null,
+        confidence: plannerConfidence,
+        stateAfter: input.plan.stateAfter || null,
+      },
+    });
+  }
 
   const stageChanged = input.runtimeState?.stage !== input.plan.stateAfter;
   const nextActionChanged = input.runtimeState?.nextAction !== (input.plan.nextAction || null);
@@ -4106,6 +4117,8 @@ export async function handleIncomingMessage(
   const shouldUseWhatsApp = chatChannel === "whatsapp";
   const whatsappChannel = await getWhatsAppChannelForTenant(tenantId, {
     allowAgencyFallback: tenantId === "ALTUM_AGENCY",
+    channelId: String(chatData.channelId || "").trim() || null,
+    phoneNumberId: String(chatData.channelPhoneNumberId || "").trim() || null,
   });
   const metaChannel = isMetaConversation
     ? await getMetaChannelForTenant(tenantId, chatChannel, {

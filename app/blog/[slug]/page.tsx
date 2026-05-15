@@ -27,7 +27,7 @@ type PageProps = {
   }>;
 };
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag").replace(/\/$/, "");
 
 export const dynamicParams = false;
 

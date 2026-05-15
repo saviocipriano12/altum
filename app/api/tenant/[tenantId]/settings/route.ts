@@ -18,6 +18,14 @@ type Body = {
   state?: string;
   timezone?: string;
   businessHours?: string;
+  dailyReport?: {
+    enabled?: boolean;
+    ownerName?: string;
+    ownerPhone?: string;
+    sendHour?: string;
+    templateName?: string;
+    templateLanguage?: string;
+  };
   rules?: {
     inbox?: {
       firstResponseSlaMinutes?: number;
@@ -100,6 +108,27 @@ function parseRules(value: unknown) {
   };
 }
 
+function parseDailyReport(value: unknown, current?: unknown) {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const fallback = current && typeof current === "object" ? (current as Record<string, unknown>) : {};
+  const sendHour = clean(raw.sendHour ?? fallback.sendHour, 5);
+  const normalizedSendHour = /^\d{2}:\d{2}$/.test(sendHour) ? sendHour : "18:30";
+
+  return {
+    enabled:
+      typeof raw.enabled === "boolean"
+        ? raw.enabled
+        : typeof fallback.enabled === "boolean"
+          ? fallback.enabled
+          : true,
+    ownerName: clean(raw.ownerName ?? fallback.ownerName, 140),
+    ownerPhone: clean(raw.ownerPhone ?? fallback.ownerPhone, 40),
+    sendHour: normalizedSendHour,
+    templateName: clean(raw.templateName ?? fallback.templateName, 120) || "fechamento_dia_altum",
+    templateLanguage: clean(raw.templateLanguage ?? fallback.templateLanguage, 24) || "pt_BR",
+  };
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -131,6 +160,7 @@ export async function GET(
         state: clean(settings?.state, 60),
         timezone: clean(settings?.timezone, 80) || "America/Sao_Paulo",
         businessHours: clean(settings?.businessHours, 240) || "Seg-Sex 09:00-18:00",
+        dailyReport: parseDailyReport(settings?.dailyReport),
         rules: parseRules(settings?.rules),
       },
     });
@@ -177,6 +207,7 @@ export async function POST(
       state: clean(body.state, 60),
       timezone: clean(body.timezone, 80) || "America/Sao_Paulo",
       businessHours: clean(body.businessHours, 240) || "Seg-Sex 09:00-18:00",
+      dailyReport: parseDailyReport(body.dailyReport, currentSettings?.dailyReport),
       rules: parseRules({ inbox: nextInboxRules }),
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: user.uid,

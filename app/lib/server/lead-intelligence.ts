@@ -227,7 +227,7 @@ async function inspectWebsite(rawWebsite?: string): Promise<WebsiteInsights> {
         method: "GET",
         headers: {
           "user-agent":
-            "Mozilla/5.0 (compatible; AltumLeadBot/1.0; +https://altum.local)",
+            "Mozilla/5.0 (compatible; AltumLeadBot/1.0; +https://altum.ag)",
           accept: "text/html,application/xhtml+xml,application/xml",
         },
         redirect: "follow",
@@ -471,7 +471,7 @@ async function buildAiProposal(args: {
         ...(openAiApiKey
           ? {}
           : {
-              "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "https://altum.local",
+              "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "https://altum.ag",
               "X-Title": "ALTUM OS",
             }),
       },

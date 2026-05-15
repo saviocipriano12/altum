@@ -400,19 +400,61 @@ export default function ClienteCampanhasPage() {
   return (
     <div className="campanhas-refined client-daily-page space-y-6">
       <SectionHeader
-        title="Campanhas de envio"
-        subtitle="Disparos segmentados para reativacao, retorno comercial e contato ativo no WhatsApp."
+        title="Campanhas"
+        subtitle="Reativacao, retorno comercial e contato ativo com mais clareza de publico, mensagem e resultado."
         action={<StateBadge label="Envio via WhatsApp" tone="info" />}
       />
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Campanhas" value={String(summary.total)} icon={Megaphone} trend="modelos salvos" />
-        <MetricCard label="Ativas" value={String(summary.active)} icon={Play} trend="prontas para disparo" />
-        <MetricCard label="Envios" value={String(summary.sent)} icon={Send} trend="ultimo acumulado registrado" />
-        <MetricCard label="Rodadas" value={String(summary.runs)} icon={Save} trend="historico operacional" />
+      <section className="hidden gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+        <PanelCard tone="spotlight" className="p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="inline-flex rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/84">
+                Crescimento com contexto
+              </p>
+              <h2 className="mt-4 text-[1.75rem] font-semibold tracking-[-0.045em] text-white md:text-[2.15rem]">
+                Acione bases, reative oportunidades e acompanhe disparos sem cara de ferramenta tecnica.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72">
+                O objetivo aqui e simples: definir publico, mensagem e volume com seguranca antes de enviar.
+              </p>
+            </div>
+            <div className="grid min-w-[250px] gap-3 sm:grid-cols-2 xl:w-[320px]">
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Campanhas</p><p className="mt-2 text-base font-semibold text-white">{summary.total}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Ativas</p><p className="mt-2 text-base font-semibold text-white">{summary.active}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Envios</p><p className="mt-2 text-base font-semibold text-white">{summary.sent}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Rodadas</p><p className="mt-2 text-base font-semibold text-white">{summary.runs}</p></div>
+            </div>
+          </div>
+        </PanelCard>
+
+        <PanelCard tone="brand" className="p-5">
+          <CardTitle title="Leitura rapida" subtitle="Base, mensagem e movimento sugerido para agir sem travar." />
+          <div className="mt-4 space-y-3">
+            <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Modo do negocio</p>
+              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.label}: {businessProfile.commercialMotion}</p>
+            </div>
+            <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Oferta em foco</p>
+              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{playbookPreset.offers[0]?.title || "Sem oferta sugerida."}</p>
+            </div>
+            <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Etapas mais naturais</p>
+              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{pipelineStages.map((item) => item.id).join(", ")}</p>
+            </div>
+          </div>
+        </PanelCard>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Campanhas" value={String(summary.total)} icon={Megaphone} trend="modelos salvos" tone="brand" />
+        <MetricCard label="Ativas" value={String(summary.active)} icon={Play} trend="prontas para disparo" tone="success" />
+        <MetricCard label="Envios" value={String(summary.sent)} icon={Send} trend="ultimo acumulado registrado" tone="ai" />
+        <MetricCard label="Rodadas" value={String(summary.runs)} icon={Save} trend="historico operacional" tone="warning" />
+      </section>
+
+      <section className="hidden gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PanelCard className="p-5">
           <div className="flex items-start justify-between gap-3">
             <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Contexto vertical usado para segmentacao e texto das campanhas." />
@@ -429,12 +471,12 @@ export default function ClienteCampanhasPage() {
           <CardTitle title="Modelo base do modo" subtitle="Base rapida de texto e segmentacao para campanhas mais coerentes." />
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-              <p className="text-sm font-semibold text-white">Cenario sugerido</p>
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Cenario sugerido</p>
               <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{playbookPreset.scripts[0]?.situation || "Sem cena sugerida."}</p>
               <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{playbookPreset.scripts[0]?.goal || ""}</p>
             </div>
             <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-              <p className="text-sm font-semibold text-white">Oferta em foco</p>
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Oferta em foco</p>
               <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{playbookPreset.offers[0]?.title || "Sem oferta sugerida."}</p>
               <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{playbookPreset.offers[0]?.targetProfile || ""}</p>
             </div>
@@ -486,7 +528,7 @@ export default function ClienteCampanhasPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{item.name}</p>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.name}</p>
                       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.maxRecipients} destinatarios maximos</p>
                     </div>
                     <StateBadge label={item.status} tone={item.status === "active" ? "success" : item.status === "paused" ? "warning" : "neutral"} />
@@ -672,15 +714,15 @@ export default function ClienteCampanhasPage() {
                 <div className="mt-3 grid gap-2 md:grid-cols-3">
                   <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
                     <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Contatos na conta</p>
-                    <p className="mt-1 text-sm font-semibold text-white">{audiencePreview.summary.totalLeads}</p>
+                    <p className="mt-1 text-sm font-semibold text-[var(--cliente-card-text)]">{audiencePreview.summary.totalLeads}</p>
                   </div>
                   <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
                     <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Correspondencia de filtros</p>
-                    <p className="mt-1 text-sm font-semibold text-white">{audiencePreview.summary.matchedFilters}</p>
+                    <p className="mt-1 text-sm font-semibold text-[var(--cliente-card-text)]">{audiencePreview.summary.matchedFilters}</p>
                   </div>
                   <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2">
                     <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Envios estimados</p>
-                    <p className="mt-1 text-sm font-semibold text-white">{audiencePreview.summary.estimatedSend}</p>
+                    <p className="mt-1 text-sm font-semibold text-[var(--cliente-card-text)]">{audiencePreview.summary.estimatedSend}</p>
                   </div>
                 </div>
                 <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">
@@ -718,7 +760,7 @@ export default function ClienteCampanhasPage() {
                   <div key={run.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-medium text-white">{run.campaignName}</p>
+                        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{run.campaignName}</p>
                         <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDate(run.createdAt)}</p>
                       </div>
                       <StateBadge label={`${run.summary.sent} enviados`} tone="success" />

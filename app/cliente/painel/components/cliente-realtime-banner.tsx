@@ -265,12 +265,12 @@ export function ClienteRealtimeBanner() {
 
   const toneClass =
     state.tone === "danger"
-      ? "border-red-500/30 bg-red-500/10 text-red-100"
+      ? "border-[color:color-mix(in_srgb,var(--cliente-danger)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--cliente-danger)_12%,transparent)] text-[var(--cliente-danger)]"
       : state.tone === "warning"
-        ? "border-amber-400/30 bg-amber-400/10 text-amber-100"
+        ? "border-[color:color-mix(in_srgb,var(--cliente-warning)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--cliente-warning)_12%,transparent)] text-[var(--cliente-warning)]"
         : state.tone === "success"
-          ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
-          : "border-sky-400/30 bg-sky-400/10 text-sky-100";
+          ? "border-[color:color-mix(in_srgb,var(--cliente-success)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--cliente-success)_12%,transparent)] text-[var(--cliente-success)]"
+          : "border-[color:color-mix(in_srgb,var(--cliente-primary)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--cliente-primary)_12%,transparent)] text-[var(--cliente-primary)]";
 
   const Icon =
     state.tone === "danger"
@@ -320,7 +320,7 @@ export function ClienteRealtimeBanner() {
       {isCriticalFallback ? (
         <div className="rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-            Exibindo modo cache temporario
+            Exibindo dados temporarios
           </p>
           <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
             Alguns blocos podem refletir o ultimo snapshot. Estamos tentando reconectar automaticamente.

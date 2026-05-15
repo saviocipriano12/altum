@@ -3,6 +3,7 @@ import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import {
   extractWebhookPhoneNumberId,
+  getWhatsAppChannelById,
   getWhatsAppChannelByPhoneNumberId,
   getWhatsAppChannelByVerifyToken,
   verifyMetaSignature,
@@ -398,6 +399,189 @@ export async function GET(req: Request) {
   return new Response(challenge, { status: 200 });
 }
 
+async function persistGenericWhatsAppInbound(input: {
+  channel: NonNullable<Awaited<ReturnType<typeof getWhatsAppChannelById>>>;
+  from: string;
+  text: string;
+  contactName?: string;
+  messageId?: string;
+  messageType?: string;
+}) {
+  const tenantId = input.channel.tenantId;
+  const phoneNumberId = input.channel.phoneNumberId || input.channel.id;
+  const from = normalizePhone(input.from);
+  const text = cleanString(input.text, 4000);
+  const contactName = cleanString(input.contactName, 180) || from || "Contato";
+  const inboundMessageId = cleanString(input.messageId, 260) || `generic_${Date.now()}_${from}`;
+  const messageType = normalizeInboundMessageType(input.messageType || "text");
+
+  if (!from) {
+    return { status: "ignored_invalid_phone" };
+  }
+
+  const tenantSettings = await getTenantSettings(tenantId);
+  const slaMinutes = resolveFirstResponseSlaMinutes(tenantSettings as Record<string, unknown> | null);
+  const claim = await claimWebhookEvent({ tenantId, phoneNumberId, metaMessageId: inboundMessageId });
+  if (!claim.shouldProcess) {
+    return {
+      status: "ignored_duplicate_message",
+      reason: claim.reason,
+      tenantId,
+      phoneNumberId,
+    };
+  }
+
+  const ownerFromLead = await resolveLeadOwner(from, tenantId);
+  let resolvedLeadId = ownerFromLead.leadId;
+  let resolvedOwnerId = ownerFromLead.ownerId;
+  let resolvedOwnerName = await resolveOwnerName(resolvedOwnerId);
+
+  if (!resolvedLeadId) {
+    const inboundAssignee = await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium" });
+    const intake = await recordInboundLead({
+      tenantId,
+      sourceType: "whatsapp_inbound",
+      sourceId: `whatsapp_${from}`,
+      sourceLabel: input.channel.displayName || "WhatsApp",
+      channel: "whatsapp",
+      nome: contactName,
+      telefone: from,
+      mensagem: text,
+      tags: ["whatsapp", "inbound"],
+      defaultOwnerId: inboundAssignee?.userId || null,
+      defaultOwnerName: inboundAssignee?.name || null,
+      automationActorId: "whatsapp_gateway",
+      automationActorName: "WhatsApp Gateway",
+    });
+    resolvedLeadId = intake.leadId;
+    resolvedOwnerId = inboundAssignee?.userId || null;
+    resolvedOwnerName = inboundAssignee?.name || null;
+  }
+
+  const chatsRef = adminDb.collection("chats");
+  const chatQuery = await chatsRef
+    .where("contactPhone", "==", from)
+    .where("tenantId", "==", tenantId)
+    .limit(1)
+    .get();
+
+  let chatId = "";
+  if (chatQuery.empty) {
+    const newChat = await chatsRef.add({
+      contactName,
+      contactPhone: from,
+      contactPhoneNormalized: from,
+      channel: "whatsapp",
+      channelId: input.channel.id,
+      channelPhoneNumberId: phoneNumberId,
+      lastMessage: text,
+      lastMessageTime: FieldValue.serverTimestamp(),
+      ownerId: resolvedOwnerId,
+      ownerName: resolvedOwnerName,
+      assignedUserName: resolvedOwnerName,
+      leadId: resolvedLeadId,
+      tenantId,
+      ...buildIncomingChatOperationalPatch({
+        status: "open",
+        assignedTo: resolvedOwnerId,
+        slaMinutes,
+      }),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    chatId = newChat.id;
+  } else {
+    const chatDoc = chatQuery.docs[0];
+    const chatData = chatDoc.data() as { ownerId?: string; assignedTo?: string; leadId?: string };
+    const currentOwnerId = chatData.ownerId || chatData.assignedTo || resolvedOwnerId;
+    chatId = chatDoc.id;
+    await chatDoc.ref.set(
+      {
+        contactName,
+        channel: "whatsapp",
+        channelId: input.channel.id,
+        channelPhoneNumberId: phoneNumberId,
+        lastMessage: text,
+        lastMessageTime: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        ownerId: currentOwnerId,
+        ownerName: currentOwnerId ? await resolveOwnerName(currentOwnerId) : null,
+        assignedUserName: currentOwnerId ? await resolveOwnerName(currentOwnerId) : null,
+        leadId: chatData.leadId || resolvedLeadId,
+        tenantId,
+        ...buildIncomingChatOperationalPatch({
+          status: "open",
+          assignedTo: currentOwnerId,
+          slaMinutes,
+        }),
+      },
+      { merge: true }
+    );
+  }
+
+  await upsertContactProfile({
+    tenantId,
+    phone: from,
+    leadId: resolvedLeadId,
+    channel: "whatsapp",
+    name: contactName,
+  });
+
+  const incomingMessageRef = adminDb
+    .collection("messages")
+    .doc(sanitizeId(`in_${tenantId}_${phoneNumberId}_${inboundMessageId}`, 240));
+
+  await incomingMessageRef.set(
+    {
+      chatId,
+      text,
+      sender: "client",
+      type: messageType,
+      tenantId,
+      channel: "whatsapp",
+      channelId: input.channel.id,
+      channelPhoneNumberId: phoneNumberId,
+      inboundMetaMessageId: inboundMessageId,
+      source: "whatsapp_gateway",
+      createdAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  if (resolvedLeadId) {
+    await runLeadAutomations({
+      tenantId,
+      trigger: "message_received",
+      leadId: resolvedLeadId,
+      chatId,
+      channel: "whatsapp",
+      messageText: text,
+      actorId: "whatsapp_gateway",
+      actorName: "WhatsApp Gateway",
+    });
+  }
+
+  const queue = await enqueueIncomingMessageJob({
+    tenantId,
+    chatId,
+    messageId: incomingMessageRef.id,
+    source: "webhook_whatsapp",
+    dedupeKey: `${tenantId}_${incomingMessageRef.id}`,
+  });
+
+  await processAiJobNow(queue.jobId);
+  triggerAiQueueWorker({ limit: 8, drain: true });
+
+  return {
+    status: "ok",
+    tenantId,
+    chatId,
+    phoneNumberId,
+    queueJobId: queue.jobId,
+    queueCreated: queue.created,
+  };
+}
+
 export async function POST(req: Request) {
   let eventRef: DocumentReference | null = null;
 
@@ -406,6 +590,45 @@ export async function POST(req: Request) {
     const signature = req.headers.get("x-hub-signature-256");
 
     const body = JSON.parse(rawBody) as Record<string, unknown>;
+    const genericChannelId =
+      cleanString(req.headers.get("x-altum-whatsapp-channel-id"), 180) ||
+      cleanString(body.channelId, 180);
+    if (genericChannelId) {
+      const channel = await getWhatsAppChannelById(genericChannelId);
+      if (!channel) {
+        return NextResponse.json({ status: "ignored_unknown_channel" }, { status: 404 });
+      }
+
+      const authHeader = cleanString(req.headers.get("authorization"), 500);
+      if (channel.accessToken && authHeader !== `Bearer ${channel.accessToken}`) {
+        return NextResponse.json({ error: "Token do gateway invalido." }, { status: 401 });
+      }
+
+      const result = await persistGenericWhatsAppInbound({
+        channel,
+        from:
+          cleanString(body.from, 80) ||
+          cleanString(body.phone, 80) ||
+          cleanString(body.contactPhone, 80) ||
+          cleanString(body.to, 80),
+        text:
+          cleanString(body.text, 4000) ||
+          cleanString((body.message as { text?: unknown } | undefined)?.text, 4000) ||
+          cleanString((body.message as { body?: unknown } | undefined)?.body, 4000),
+        contactName:
+          cleanString(body.contactName, 180) ||
+          cleanString(body.name, 180) ||
+          cleanString((body.contact as { name?: unknown } | undefined)?.name, 180),
+        messageId:
+          cleanString(body.messageId, 260) ||
+          cleanString(body.id, 260) ||
+          cleanString((body.message as { id?: unknown } | undefined)?.id, 260),
+        messageType: cleanString(body.type, 40) || cleanString((body.message as { type?: unknown } | undefined)?.type, 40),
+      });
+
+      return NextResponse.json(result);
+    }
+
     const phoneNumberId = extractWebhookPhoneNumberId(body);
     if (!phoneNumberId) {
       return NextResponse.json({ status: "ignored_no_phone_number_id" });

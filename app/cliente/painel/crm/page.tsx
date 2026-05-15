@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   ClipboardList,
   Download,
-  Flame,
   Loader2,
   MessageSquareText,
   PhoneCall,
@@ -26,12 +25,12 @@ import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import {
   CardTitle,
+  ClientContactAvatar,
   EmptyState,
-  MetricCard,
   PanelCard,
-  SectionHeader,
   StateBadge,
 } from "@/app/cliente/painel/components/ui";
+import { ClientOpportunitiesHeader } from "@/app/cliente/painel/components/client-opportunities-header";
 import { getBusinessProfile, type BusinessProfileId } from "@/lib/business-profiles";
 import { buildAiTaskPreset, humanizeAiNextAction, suggestPipelineStageForAiAction } from "@/lib/ai-next-actions";
 import { getPipelineStageLabel, normalizePipelineStageId, type PipelineStageDefinition } from "@/lib/pipeline";
@@ -225,6 +224,19 @@ type PipelinePayload = {
   stages?: PipelineStageDefinition[];
 };
 
+type TenantChannelItem = {
+  id: string;
+  type?: string;
+  status?: string;
+  connectionStatus?: string;
+  displayName?: string;
+};
+
+type TenantChannelsPayload = {
+  items?: TenantChannelItem[];
+  error?: string;
+};
+
 type LeadImportSummary = {
   totalRows?: number;
   processed?: number;
@@ -266,6 +278,16 @@ type AiSignalLog = {
 
 const PRIORITY_OPTIONS = ["low", "medium", "high"];
 const HEAT_OPTIONS = ["frio", "morno", "quente"];
+const CRM_CHANNEL_ORDER = ["whatsapp", "instagram", "messenger", "meta_ads", "google_ads", "site_chat", "site_form"] as const;
+const CRM_SOURCE_PRESETS = [
+  "instagram_dm",
+  "facebook_messenger",
+  "instagram_organico",
+  "facebook_organico",
+  "meta_ads",
+  "google_ads",
+  "whatsapp",
+] as const;
 
 function toDate(value: unknown) {
   if (!value) return null;
@@ -319,12 +341,27 @@ function formatRelative(value: unknown) {
 }
 
 function formatChannelLabel(channel?: string) {
+  if (channel === "whatsapp") return "WhatsApp";
+  if (channel === "instagram") return "Instagram";
+  if (channel === "messenger") return "Messenger";
   if (channel === "site_chat") return "Site chat";
   if (channel === "site_form") return "Site form";
   if (channel === "meta_ads") return "Meta Ads";
   if (channel === "google_ads") return "Google Ads";
   if (!channel) return "WhatsApp";
   return channel.replaceAll("_", " ");
+}
+
+function formatSourceLabel(source?: string) {
+  const normalized = String(source || "").trim().toLowerCase();
+  if (normalized === "instagram_dm") return "Instagram DM";
+  if (normalized === "facebook_messenger") return "Facebook Messenger";
+  if (normalized === "instagram_organico") return "Instagram organico";
+  if (normalized === "facebook_organico") return "Facebook organico";
+  if (normalized === "meta_ads") return "Meta Ads";
+  if (normalized === "google_ads") return "Google Ads";
+  if (normalized === "whatsapp") return "WhatsApp";
+  return source || "Origem";
 }
 
 function parseTags(value: string) {
@@ -365,19 +402,16 @@ function formatCustomFieldValue(value: string | number | boolean | null | undefi
   return "--";
 }
 
-function contactInitials(name?: string) {
-  const parts = String(name || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "CT";
-}
-
 function buildWhatsAppUrl(phone?: string, name?: string) {
   const digits = String(phone || "").replace(/\D/g, "");
   if (!digits) return "";
   const text = `Ola ${String(name || "tudo bem").split(" ")[0] || "tudo bem"}, tudo bem?`;
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
+function buildTelUrl(phone?: string) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return digits ? `tel:+${digits}` : "";
 }
 
 function humanizeEvidenceSource(value?: string | null) {
@@ -454,6 +488,7 @@ export default function ClienteCrmPage() {
   const [importingCsv, setImportingCsv] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [leads, setLeads] = useState<LeadItem[]>([]);
+  const [tenantChannels, setTenantChannels] = useState<TenantChannelItem[]>([]);
   const [aiLogs, setAiLogs] = useState<AiSignalLog[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStageDefinition[]>([]);
   const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
@@ -506,16 +541,18 @@ export default function ClienteCrmPage() {
 
     setLoading(true);
     try {
-      const [res, settingsRes, aiLogsRes, pipelineRes] = await Promise.all([
+      const [res, settingsRes, aiLogsRes, pipelineRes, channelsRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/leads`),
         authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
         authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`),
         authedFetch(`/api/tenant/${tenant.tenantId}/pipeline`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/channels`),
       ]);
       const payload = (await res.json()) as { items?: LeadItem[]; error?: string };
       const settingsPayload = (await settingsRes.json().catch(() => ({}))) as SettingsPayload;
       const aiLogsPayload = (await aiLogsRes.json().catch(() => ({}))) as { items?: AiSignalLog[] };
       const pipelinePayload = (await pipelineRes.json().catch(() => ({}))) as PipelinePayload;
+      const channelsPayload = (await channelsRes.json().catch(() => ({}))) as TenantChannelsPayload;
 
       if (!res.ok) {
         setError(payload.error || "Falha ao carregar leads.");
@@ -529,6 +566,7 @@ export default function ClienteCrmPage() {
       setLeads(nextLeads);
       setAiLogs(aiLogsRes.ok ? aiLogsPayload.items || [] : []);
       setPipelineStages(pipelineRes.ok ? pipelinePayload.stages || [] : []);
+      setTenantChannels(channelsRes.ok ? channelsPayload.items || [] : []);
       setSelectedLeadId((current) => {
         if (current && nextLeads.some((lead) => lead.id === current)) return current;
         if (leadFromQuery && nextLeads.some((lead) => lead.id === leadFromQuery)) return leadFromQuery;
@@ -669,6 +707,10 @@ export default function ClienteCrmPage() {
     () => buildWhatsAppUrl(selectedLead?.telefone, selectedLead?.nome),
     [selectedLead?.nome, selectedLead?.telefone]
   );
+  const selectedLeadCallUrl = useMemo(
+    () => buildTelUrl(selectedLead?.telefone),
+    [selectedLead?.telefone]
+  );
   const businessProfile = useMemo(() => getBusinessProfile(businessProfileId), [businessProfileId]);
   const stageOptions = useMemo(
     () =>
@@ -730,110 +772,33 @@ export default function ClienteCrmPage() {
     () =>
       Array.from(
         new Set(
-          leads
+          [
+            ...CRM_SOURCE_PRESETS,
+            ...leads
             .map((lead) => String(lead.origem || "").trim())
-            .filter(Boolean)
+            .filter(Boolean),
+          ]
         )
-      ).sort((a, b) => a.localeCompare(b, "pt-BR")),
+      ).sort((a, b) => formatSourceLabel(a).localeCompare(formatSourceLabel(b), "pt-BR")),
     [leads]
   );
 
   const channelOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          leads
-            .map((lead) => String(lead.channel || "").trim().toLowerCase())
-            .filter(Boolean)
-        )
-      ).sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [leads]
+    () => {
+      const configuredChannels = tenantChannels
+        .map((channel) => String(channel.type || "").trim().toLowerCase())
+        .filter(Boolean);
+      const leadChannels = leads.map((lead) => String(lead.channel || "").trim().toLowerCase()).filter(Boolean);
+      return Array.from(new Set([...CRM_CHANNEL_ORDER, ...configuredChannels, ...leadChannels])).sort((a, b) => {
+        const aIndex = CRM_CHANNEL_ORDER.indexOf(a as (typeof CRM_CHANNEL_ORDER)[number]);
+        const bIndex = CRM_CHANNEL_ORDER.indexOf(b as (typeof CRM_CHANNEL_ORDER)[number]);
+        if (aIndex !== -1 || bIndex !== -1) return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+        return a.localeCompare(b, "pt-BR");
+      });
+    },
+    [leads, tenantChannels]
   );
 
-  const crmStats = useMemo(() => {
-    const hot = leads.filter((lead) => lead.heat === "quente").length;
-    const withScore = leads.filter((lead) => typeof lead.score === "number");
-    const avgScore = withScore.length
-      ? Math.round(withScore.reduce((acc, lead) => acc + Number(lead.score || 0), 0) / withScore.length)
-      : 0;
-    const openValue = leads.reduce((acc, lead) => acc + Number(lead.potentialValue || 0), 0);
-    const active = leads.filter(
-      (lead) => normalizePipelineStageId(lead.pipelineStage || lead.stage || "captado") !== "perdido"
-    ).length;
-    return { hot, avgScore, openValue, active };
-  }, [leads]);
-
-  const focusSignals = useMemo(() => {
-    const hotLeads = leads.filter((lead) => lead.heat === "quente");
-    const proposalLeads = leads.filter(
-      (lead) => normalizePipelineStageId(lead.pipelineStage || lead.stage || "captado") === "proposta"
-    );
-    const highPriorityLeads = leads.filter((lead) => lead.priority === "high");
-    const neglectedHotLeads = hotLeads.filter((lead) => !lead.chatSummary?.lastInteractionAt);
-
-    return [
-      hotLeads.length
-        ? {
-            id: "hot",
-            title: "Contatos quentes pedindo acao",
-            detail: `${hotLeads.length} contato(s) com alta temperatura exigem cadencia curta no CRM.`,
-            href: "/cliente/painel/crm?heat=quente",
-            tone: "danger" as const,
-            badge: "quente",
-          }
-        : null,
-      proposalLeads.length
-        ? {
-            id: "proposal",
-            title: "Contatos em proposta",
-            detail: `${proposalLeads.length} contato(s) estao na etapa de proposta e merecem retorno comercial.`,
-            href: "/cliente/painel/crm?stage=proposta",
-            tone: "warning" as const,
-            badge: "proposta",
-          }
-        : null,
-      highPriorityLeads.length
-        ? {
-            id: "priority",
-            title: "Prioridade alta no pipeline",
-            detail: `${highPriorityLeads.length} contato(s) estao marcados como prioridade alta.`,
-            href: "/cliente/painel/crm?priority=high",
-            tone: "info" as const,
-            badge: "prioridade",
-          }
-        : null,
-      neglectedHotLeads.length
-        ? {
-            id: "neglected",
-            title: "Contatos quentes sem historico recente",
-            detail: `${neglectedHotLeads.length} contato(s) quentes ainda nao mostram interacao recente consolidada.`,
-            href: "/cliente/painel/crm?heat=quente",
-            tone: "warning" as const,
-            badge: "retomar",
-          }
-        : null,
-    ].filter(Boolean) as Array<{
-      id: string;
-      title: string;
-      detail: string;
-      href: string;
-      tone: "neutral" | "success" | "warning" | "danger" | "info";
-      badge: string;
-    }>;
-  }, [leads]);
-
-  const selectedConversationSummary = useMemo(
-    () =>
-      detail?.conversationSummary || {
-        total: selectedLead?.chatSummary?.total || 0,
-        open: selectedLead?.chatSummary?.open || 0,
-        pending: selectedLead?.chatSummary?.pending || 0,
-        highPriority: selectedLead?.chatSummary?.highPriority || 0,
-        unassigned: 0,
-        lastInteractionAt: selectedLead?.chatSummary?.lastInteractionAt || null,
-      },
-    [detail?.conversationSummary, selectedLead]
-  );
   const customFieldEntries = useMemo(
     () =>
       Object.entries(detail?.lead?.customFields || {}).filter(([, value]) => {
@@ -1061,6 +1026,41 @@ export default function ClienteCrmPage() {
       await loadLeadDetail(selectedLeadId);
     } catch {
       setError("Falha ao criar tarefa do lead.");
+    } finally {
+      setSavingTask(false);
+    }
+  }
+
+  async function createCallTask() {
+    if (!tenant?.tenantId || !selectedLeadId || !canOperate) return;
+
+    setSavingTask(true);
+    setError(null);
+
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/calls/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: selectedLeadId,
+          phone: selectedLead?.telefone,
+          title: "Ligar para o cliente",
+        }),
+      });
+
+      const payload = (await res.json()) as { error?: string; callUrl?: string; telUrl?: string };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao iniciar ligacao.");
+        return;
+      }
+
+      const url = payload.callUrl || payload.telUrl;
+      if (url && typeof window !== "undefined") {
+        window.open(url, "_self");
+      }
+      await loadLeadDetail(selectedLeadId);
+    } catch {
+      setError("Falha ao iniciar ligacao do lead.");
     } finally {
       setSavingTask(false);
     }
@@ -1398,7 +1398,7 @@ export default function ClienteCrmPage() {
   if (!loading && leads.length === 0) {
     return (
       <div className="crm-refined client-daily-page space-y-5">
-        <SectionHeader title="CRM" subtitle="Gestao comercial, retornos e visao real de cada contato." />
+        <ClientOpportunitiesHeader activeView="list" />
         {importPanel}
         <EmptyState title="Nenhum contato encontrado" description="Quando novos contatos entrarem no tenant, o CRM operacional aparecera aqui." />
       </div>
@@ -1406,155 +1406,28 @@ export default function ClienteCrmPage() {
   }
 
   return (
-    <div className="crm-refined client-daily-page space-y-5">
-      <SectionHeader
-        title="CRM"
-        subtitle={
-          experienceMode === "essencial"
-            ? "Operacao comercial diaria com foco em lista de contatos, proximo passo e decisao."
-            : "Visao completa de pipeline, qualificacao, tarefas e contexto comercial."
-        }
+    <div className="crm-refined client-daily-page space-y-4">
+      <ClientOpportunitiesHeader
+        activeView="list"
         action={
           <div className="flex flex-wrap items-center gap-2">
             {loadingDetail ? <StateBadge label="sincronizando contato" tone="info" /> : null}
-            <div className="inline-flex rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
-              <button
-                type="button"
-                onClick={() => setExperienceMode("essencial")}
-                className={`rounded-[16px] px-3.5 py-2 text-xs font-semibold transition ${
-                  experienceMode === "essencial"
-                    ? "bg-[var(--cliente-accent)] text-white"
-                    : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
-                }`}
-              >
-                Uso diario
-              </button>
-              <button
-                type="button"
-                onClick={() => setExperienceMode("completo")}
-                className={`rounded-[16px] px-3.5 py-2 text-xs font-semibold transition ${
-                  experienceMode === "completo"
-                    ? "bg-[var(--cliente-accent)] text-white"
-                    : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
-                }`}
-              >
-                Analise completa
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setExperienceMode(experienceMode === "essencial" ? "completo" : "essencial")}
+              className={`rounded-[18px] border px-3.5 py-2 text-xs font-semibold transition ${
+                experienceMode === "completo"
+                  ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]"
+                  : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-card-text)]"
+              }`}
+            >
+              {experienceMode === "completo" ? "Ocultar opcoes avancadas" : "Mostrar opcoes avancadas"}
+            </button>
           </div>
         }
       />
 
-      <section className={`grid gap-4 sm:grid-cols-2 ${experienceMode === "completo" ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
-        <MetricCard label="Contatos ativos" value={crmStats.active.toLocaleString("pt-BR")} icon={UserRound} trend="fora do perdido" />
-        <MetricCard label="Contatos quentes" value={crmStats.hot.toLocaleString("pt-BR")} icon={Flame} trend="temperatura alta em operacao" />
-        {experienceMode === "completo" ? (
-          <MetricCard label="Pontuacao media" value={crmStats.avgScore.toLocaleString("pt-BR")} icon={Sparkles} trend="qualidade media da base" />
-        ) : null}
-        <MetricCard label="Potencial aberto" value={formatMoney(crmStats.openValue)} icon={ClipboardList} trend="valor estimado em pipeline" />
-      </section>
-
       {experienceMode === "completo" ? importPanel : null}
-
-      {experienceMode === "completo" ? (
-        <section className="grid gap-4 xl:grid-cols-3">
-        <PanelCard className="p-5">
-          <CardTitle title="Foco comercial" subtitle="Recortes rapidos para atacar o pipeline agora" />
-          <div className="mt-4 space-y-3">
-            {focusSignals.length === 0 ? (
-              <EmptyState
-                title="Sem gargalos comerciais evidentes"
-                description="A base atual nao mostra concentracao anormal de contatos quentes, propostas ou prioridades altas."
-              />
-            ) : (
-              focusSignals.map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
-                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
-                    </div>
-                    <StateBadge label={item.badge} tone={item.tone} />
-                  </div>
-                </Link>
-              ))
-            )}
-          </div>
-        </PanelCard>
-
-        <PanelCard className="p-5">
-          <CardTitle title="Compartilhar contexto" subtitle="Seu recorte atual fica refletido na URL do CRM." />
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <QuickContext title="Contato selecionado" value={selectedLead?.nome || "Nenhum"} detail="mantido no link atual" />
-            <QuickContext title="Etapa" value={stageFilter === "all" ? "Todos" : getPipelineStageLabel(stageFilter)} detail="filtro do funil" />
-            <QuickContext title="Temperatura" value={heatFilter === "all" ? "Todas" : heatFilter} detail="ritmo do atendimento" />
-            <QuickContext title="Prioridade" value={priorityFilter === "all" ? "Todas" : priorityFilter} detail="foco da equipe" />
-          </div>
-        </PanelCard>
-
-        <PanelCard className="p-5">
-          <CardTitle title={`Modo do negocio: ${businessProfile.label}`} subtitle="Campos e tags sugeridos pelo perfil ativo do tenant." />
-          <p className="mt-4 text-sm text-[var(--cliente-card-text-muted)]">{businessProfile.description}</p>
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Campos que merecem foco</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {businessProfile.crm.leadFields.map((field) => (
-                <StateBadge key={field} label={field.replaceAll("_", " ")} tone="info" />
-              ))}
-            </div>
-          </div>
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Tags sugeridas</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {businessProfile.crm.suggestedTags.map((tag) => (
-                <StateBadge key={tag} label={tag} tone="neutral" />
-              ))}
-            </div>
-          </div>
-        </PanelCard>
-        </section>
-      ) : (
-        <section className="grid gap-4 xl:grid-cols-2">
-          <PanelCard className="p-5">
-            <CardTitle title="Leitura rapida do funil" subtitle="Somente o essencial para decidir o proximo passo." />
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <QuickContext title="Contato em foco" value={selectedLead?.nome || "Nenhum"} detail={selectedLead?.empresa || "Sem empresa"} />
-              <QuickContext title="Etapa atual" value={selectedLead ? getPipelineStageLabel(selectedLead.pipelineStage || selectedLead.stage || "captado") : "Sem etapa"} detail="movimente sem abrir telas extras" />
-              <QuickContext title="Valor potencial" value={formatMoney(selectedLead?.potentialValue)} detail="estimativa do pipeline" />
-              <QuickContext title="Ultimo toque" value={formatRelative(selectedLead?.chatSummary?.lastInteractionAt)} detail={formatDateTime(selectedLead?.chatSummary?.lastInteractionAt)} />
-            </div>
-          </PanelCard>
-          <PanelCard className="p-5">
-            <CardTitle title="Acoes de hoje" subtitle="Atalhos mais usados do CRM operacional." />
-            <div className="mt-4 grid gap-2 md:grid-cols-2">
-              <Link
-                href={selectedLead ? `/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}` : "/cliente/painel/inbox"}
-                className="crm-daily-link inline-flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <MessageSquareText className="h-4 w-4 text-[var(--cliente-accent)]" />
-                  Abrir conversa
-                </span>
-                <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
-              </Link>
-              <Link
-                href={selectedLead ? `/cliente/painel/comercial?leadId=${encodeURIComponent(selectedLead.id)}` : "/cliente/painel/comercial"}
-                className="crm-daily-link inline-flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4 text-[var(--cliente-accent)]" />
-                  Ir para comercial
-                </span>
-                <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
-              </Link>
-            </div>
-          </PanelCard>
-        </section>
-      )}
 
       {experienceMode === "essencial" ? (
         <section className="grid min-h-[72vh] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
@@ -1670,9 +1543,7 @@ export default function ClienteCrmPage() {
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-3">
-                          <div className="crm-contact-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] text-xs font-black text-[var(--cliente-accent)]">
-                            {contactInitials(lead.nome)}
-                          </div>
+                          <ClientContactAvatar name={lead.nome} phone={lead.telefone} size="sm" />
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <span className={`h-2 w-2 rounded-full ${isSelected ? "bg-[var(--cliente-accent)]" : "bg-[var(--cliente-border-strong)]"}`} />
@@ -1680,6 +1551,9 @@ export default function ClienteCrmPage() {
                             </div>
                             <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">
                               {lead.empresa || lead.email || lead.telefone || "Sem empresa ou contato informado"}
+                            </p>
+                            <p className="mt-1 truncate text-[11px] text-[var(--cliente-card-text-soft)] lg:hidden">
+                              {formatChannelLabel(lead.channel)} · {formatRelative(lead.chatSummary?.lastInteractionAt)}
                             </p>
                           </div>
                         </div>
@@ -1708,18 +1582,13 @@ export default function ClienteCrmPage() {
             <div className="crm-lead-sheet-header border-b border-[var(--cliente-border)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-panel-solid)_74%,white_26%),var(--cliente-panel-soft))] p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-3">
-                  <div className="crm-contact-avatar flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] text-sm font-black text-[var(--cliente-accent)]">
-                    {contactInitials(selectedLead?.nome)}
-                  </div>
+                  <ClientContactAvatar name={selectedLead?.nome} phone={selectedLead?.telefone} size="lg" />
                   <div className="min-w-0">
-                    <p className="inline-flex rounded-full border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--cliente-accent)]">
-                      Ficha 360
-                    </p>
-                    <h3 className="mt-2 truncate text-lg font-semibold text-[var(--cliente-card-text)]">
+                    <h3 className="truncate text-lg font-semibold text-[var(--cliente-card-text)]">
                       {selectedLead?.nome || "Selecione um contato"}
                     </h3>
                     <p className="mt-1 truncate text-sm text-[var(--cliente-card-text-muted)]">
-                      {selectedLead?.empresa || selectedLead?.email || selectedLead?.telefone || "Veja aqui o resumo e as acoes principais."}
+                      {selectedLead?.empresa || selectedLead?.telefone || selectedLead?.email || "Dados, etapa e proximas acoes do contato."}
                     </p>
                   </div>
                 </div>
@@ -1752,16 +1621,18 @@ export default function ClienteCrmPage() {
                       <p className="mt-1 truncate font-medium text-[var(--cliente-card-text)]">{selectedLead.empresa || "-"}</p>
                     </div>
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Valor</p>
-                      <p className="mt-1 font-medium text-[var(--cliente-card-text)]">{formatMoney(selectedLead.potentialValue)}</p>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Etapa</p>
+                      <p className="mt-1 font-medium text-[var(--cliente-card-text)]">
+                        {getPipelineStageLabel(selectedLead.pipelineStage || selectedLead.stage || "captado", pipelineStages.length ? pipelineStages : undefined)}
+                      </p>
                     </div>
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Telefone</p>
                       <p className="mt-1 truncate font-medium text-[var(--cliente-card-text)]">{selectedLead.telefone || "-"}</p>
                     </div>
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Email</p>
-                      <p className="mt-1 truncate font-medium text-[var(--cliente-card-text)]">{selectedLead.email || "-"}</p>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Valor</p>
+                      <p className="mt-1 truncate font-medium text-[var(--cliente-card-text)]">{formatMoney(selectedLead.potentialValue)}</p>
                     </div>
                   </div>
 
@@ -1808,6 +1679,33 @@ export default function ClienteCrmPage() {
                   </button>
 
                   <div className="crm-sheet-action-grid mt-2 grid grid-cols-2 gap-2">
+                    <Link
+                      href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`}
+                      className="crm-sheet-secondary-action inline-flex items-center justify-center gap-2 rounded-[18px] border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-3 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
+                    >
+                      <MessageSquareText className="h-3.5 w-3.5" />
+                      Conversa
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => void createCallTask()}
+                      disabled={!selectedLeadCallUrl || savingTask || !canOperate}
+                      className={`crm-sheet-secondary-action inline-flex items-center justify-center gap-2 rounded-[18px] border px-3 py-3 text-xs font-semibold transition ${
+                        selectedLeadCallUrl
+                          ? "border-emerald-300/20 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/16"
+                          : "pointer-events-none border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)] opacity-55"
+                      }`}
+                    >
+                      {savingTask ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneCall className="h-3.5 w-3.5" />}
+                      Ligar
+                    </button>
+                    <Link
+                      href={`/cliente/painel/comercial?leadId=${encodeURIComponent(selectedLead.id)}`}
+                      className="crm-sheet-secondary-action inline-flex items-center justify-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+                    >
+                      <ClipboardList className="h-3.5 w-3.5" />
+                      Proposta
+                    </Link>
                     <button
                       type="button"
                       onClick={() => setProfileModalOpen(true)}
@@ -1826,15 +1724,6 @@ export default function ClienteCrmPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        document.getElementById("crm-task-input")?.focus();
-                      }}
-                      className="crm-sheet-secondary-action inline-flex items-center justify-center gap-2 rounded-[18px] border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-3 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
-                    >
-                      Retorno
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
                         document.getElementById("crm-notes-input")?.focus();
                       }}
                       className="crm-sheet-secondary-action inline-flex items-center justify-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
@@ -1846,7 +1735,7 @@ export default function ClienteCrmPage() {
                 </div>
 
                 <div className="p-4">
-                  <CardTitle title="Proximo passo" subtitle="Crie um retorno sem sair da ficha." />
+                  <CardTitle title="Tarefas" subtitle="Registre a proxima acao sem sair do contato." />
                   <form onSubmit={createTask} className="mt-3 space-y-2">
                     <input
                       id="crm-task-input"
@@ -1879,7 +1768,7 @@ export default function ClienteCrmPage() {
                     </div>
                     <button type="submit" disabled={!taskForm.title.trim() || savingTask || !canOperate} className="inline-flex w-full items-center justify-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-3 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50">
                       {savingTask ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
-                      Criar retorno
+                      Criar tarefa
                     </button>
                   </form>
                   <div className="mt-3 space-y-2">
@@ -1895,7 +1784,7 @@ export default function ClienteCrmPage() {
                 </div>
 
                 <div className="p-4">
-                  <CardTitle title="Notas" subtitle="Contexto interno do atendimento." />
+                  <CardTitle title="Notas internas" subtitle="Contexto rapido para a equipe comercial." />
                   <form onSubmit={createNote} className="mt-3 space-y-2">
                     <textarea id="crm-notes-input" value={noteText} onChange={(event) => setNoteText(event.target.value)} disabled={!canOperate} placeholder="Adicionar nota curta..." className="min-h-[82px] w-full rounded-[18px] border client-input px-3 py-3 text-sm" />
                     <button type="submit" disabled={!noteText.trim() || savingNote || !canOperate} className="inline-flex w-full items-center justify-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-3 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50">
@@ -1989,7 +1878,7 @@ export default function ClienteCrmPage() {
                 <option value="all">Todas as origens</option>
                 {sourceOptions.map((option) => (
                   <option key={option} value={option}>
-                    {option}
+                    {formatSourceLabel(option)}
                   </option>
                 ))}
               </select>
@@ -2027,9 +1916,7 @@ export default function ClienteCrmPage() {
                     >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
-                        <div className="crm-contact-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] text-xs font-black text-[var(--cliente-accent)]">
-                          {contactInitials(lead.nome)}
-                        </div>
+                        <ClientContactAvatar name={lead.nome} phone={lead.telefone} size="sm" />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{lead.nome || "Contato"}</p>
                           <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">
@@ -2062,16 +1949,11 @@ export default function ClienteCrmPage() {
               <>
                 <div className="crm-lead-hero flex flex-wrap items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
-                    <div className="crm-contact-avatar flex h-16 w-16 shrink-0 items-center justify-center rounded-[22px] text-base font-black text-[var(--cliente-accent)]">
-                      {contactInitials(selectedLead.nome)}
-                    </div>
+                    <ClientContactAvatar name={selectedLead.nome} phone={selectedLead.telefone} size="lg" />
                     <div className="min-w-0">
-                      <p className="inline-flex rounded-full border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--cliente-accent)]">
-                        Ficha 360
-                      </p>
-                      <h3 className="mt-2 truncate text-xl font-semibold text-[var(--cliente-card-text)]">{selectedLead.nome || "Contato"}</h3>
+                      <h3 className="truncate text-xl font-semibold text-[var(--cliente-card-text)]">{selectedLead.nome || "Contato"}</h3>
                       <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
-                        {selectedLead.email || selectedLead.telefone || "Sem contato principal"}
+                        {selectedLead.empresa || selectedLead.email || selectedLead.telefone || "Sem contato principal"}
                       </p>
                     </div>
                   </div>
@@ -2086,7 +1968,6 @@ export default function ClienteCrmPage() {
                     </button>
                     {selectedLead.heat ? <StateBadge label={selectedLead.heat} tone={getHeatTone(selectedLead.heat)} /> : null}
                     {selectedLead.priority ? <StateBadge label={selectedLead.priority} tone={getPriorityTone(selectedLead.priority)} /> : null}
-                    {typeof selectedLead.score === "number" ? <StateBadge label={`pontuacao ${selectedLead.score}`} tone="info" /> : null}
                     {selectedLead.origem ? <StateBadge label={selectedLead.origem} tone="neutral" /> : null}
                     {selectedLead.channel ? <StateBadge label={formatChannelLabel(selectedLead.channel)} tone="neutral" /> : null}
                   </div>
@@ -2135,29 +2016,6 @@ export default function ClienteCrmPage() {
                     </span>
                     <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
                   </Link>
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Conversas</p>
-                    <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{selectedConversationSummary.total || 0}</p>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{selectedConversationSummary.open || 0} abertas</p>
-                  </div>
-                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Pendencias</p>
-                    <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{selectedConversationSummary.pending || 0}</p>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{selectedConversationSummary.unassigned || 0} sem responsavel</p>
-                  </div>
-                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Prioridade</p>
-                    <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{selectedConversationSummary.highPriority || 0}</p>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">conversas quentes</p>
-                  </div>
-                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Ultimo toque</p>
-                    <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{formatRelative(selectedConversationSummary.lastInteractionAt)}</p>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDateTime(selectedConversationSummary.lastInteractionAt)}</p>
-                  </div>
                 </div>
 
                 {hasAdvancedLeadInsights ? (
@@ -2476,30 +2334,8 @@ export default function ClienteCrmPage() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Edicao do contato</p>
-                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
-                        Abra a janela de edicao para atualizar dados comerciais sem perder o contexto.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setProfileModalOpen(true)}
-                      disabled={!canOperate}
-                      className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
-                    >
-                      Editar contato
-                    </button>
-                  </div>
-                  <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
-                    Potencial atual: <span className="font-semibold text-[var(--cliente-card-text)]">{formatMoney(selectedLead.potentialValue)}</span>
-                  </p>
-                </div>
-
                 <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-                  <CardTitle title="Conversas relacionadas" subtitle="Contexto de atendimento conectado ao contato" />
+                  <CardTitle title="Conversas" subtitle="Atendimento vinculado a este contato." />
                   <div className="mt-4 space-y-2">
                     {(detail?.relatedChats || []).length === 0 ? (
                       <p className="text-sm text-[var(--cliente-card-text-soft)]">Ainda nao existe conversa vinculada a este contato.</p>
@@ -2550,7 +2386,7 @@ export default function ClienteCrmPage() {
           </PanelCard>
 
           <PanelCard className="p-4">
-            <CardTitle title="Historico do contato" subtitle="Eventos, movimentacoes e historico recente" />
+            <CardTitle title="Historico" subtitle="Eventos e movimentacoes recentes." />
             <div className="mt-4 max-h-[36vh] space-y-2 overflow-y-auto">
               {(detail?.timeline || selectedLead?.timeline || []).length === 0 ? (
                 <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem eventos ainda.</p>
@@ -2569,7 +2405,7 @@ export default function ClienteCrmPage() {
 
         <div className="space-y-4">
           <PanelCard className="p-4">
-            <CardTitle title="Retornos e tarefas" subtitle="Acompanhe o proximo passo comercial" />
+            <CardTitle title="Tarefas" subtitle="Proximas acoes deste contato." />
 
             <form onSubmit={createTask} className="mt-4 space-y-3">
               <input id="crm-task-input" value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} disabled={!canOperate} placeholder="Ex: Retornar proposta ou ligar amanha" className="w-full rounded-xl border client-input px-3 py-2 text-sm" />
@@ -2614,7 +2450,7 @@ export default function ClienteCrmPage() {
           </PanelCard>
 
           <PanelCard className="p-4">
-            <CardTitle title="Notas do contato" subtitle="Contexto comercial e memoria operacional" />
+            <CardTitle title="Notas internas" subtitle="Contexto comercial da equipe." />
 
             <form onSubmit={createNote} className="mt-4 space-y-3">
               <textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} disabled={!canOperate} placeholder="Registrar objeccoes, contexto, proximos passos..." className="min-h-[96px] w-full rounded-xl border client-input px-3 py-3 text-sm" />

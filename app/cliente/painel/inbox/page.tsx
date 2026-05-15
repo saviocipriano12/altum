@@ -12,22 +12,21 @@ import {
   ExternalLink,
   CheckCircle2,
   CircleDashed,
-  Clock3,
   FileText,
-  Flag,
   FolderKanban,
   Image as ImageIcon,
   Loader2,
   Mic,
   NotebookPen,
+  PanelRightOpen,
   PauseCircle,
+  PhoneCall,
   PlayCircle,
   RefreshCw,
   Receipt,
   Search,
   Send,
   SlidersHorizontal,
-  Sparkles,
   UserRound,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
@@ -37,11 +36,12 @@ import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-poll
 import {
   CardTitle,
   EmptyState,
-  MetricCard,
   PanelCard,
   SectionHeader,
   StateBadge,
+  ClientTabs,
 } from "@/app/cliente/painel/components/ui";
+import { CustomerProfileDrawer } from "@/app/cliente/painel/components/customer-profile-drawer";
 import {
   DEFAULT_PIPELINE_STAGES,
   getPipelineStageLabel,
@@ -84,6 +84,8 @@ type ChatItem = {
   lastAgentMessageAt?: unknown;
   slaDueAt?: unknown;
   channel?: string;
+  channelId?: string;
+  channelPhoneNumberId?: string;
   status?: string;
   priority?: string;
   queueStatus?: string;
@@ -93,6 +95,7 @@ type ChatItem = {
   assignedUserName?: string | null;
   tags?: string[];
   leadId?: string;
+  unreadCount?: number;
   aiState?: ChatAiState;
 };
 
@@ -258,11 +261,26 @@ type ChatListPayload = {
   error?: string;
 };
 
+type TenantChannelItem = {
+  id: string;
+  type?: string;
+  status?: string;
+  connectionStatus?: string;
+  displayName?: string;
+};
+
+type TenantChannelsPayload = {
+  items?: TenantChannelItem[];
+  error?: string;
+};
+
 type MessageListPayload = {
   items?: MessageItem[];
   error?: string;
 };
 
+const INBOX_CHANNEL_ORDER = ["whatsapp", "instagram", "messenger", "site_chat", "site_form"] as const;
+const INBOX_CHANNEL_SET = new Set<string>(INBOX_CHANNEL_ORDER);
 const STATUS_FILTERS = ["all", "open", "pending", "resolved", "archived"] as const;
 const STATUS_OPTIONS = ["open", "pending", "resolved", "archived"] as const;
 const PRIORITY_OPTIONS = ["low", "medium", "high"] as const;
@@ -447,6 +465,9 @@ function normalizeTags(value: string) {
 }
 
 function formatChannelLabel(channel?: string) {
+  if (channel === "whatsapp") return "WhatsApp";
+  if (channel === "instagram") return "Instagram";
+  if (channel === "messenger") return "Messenger";
   if (channel === "site_chat") return "Chat do site";
   if (channel === "site_form") return "Formulario do site";
   if (channel === "meta_ads") return "Meta Ads";
@@ -510,13 +531,6 @@ function formatTaskType(type?: string) {
   return "Tarefa";
 }
 
-function getStatusTone(status?: string) {
-  if (status === "resolved") return "success" as const;
-  if (status === "pending") return "warning" as const;
-  if (status === "archived") return "neutral" as const;
-  return "info" as const;
-}
-
 function getPriorityTone(priority?: string) {
   if (priority === "high") return "danger" as const;
   if (priority === "medium") return "warning" as const;
@@ -528,21 +542,6 @@ function getHeatTone(heat?: string) {
   if (heat === "morno") return "warning" as const;
   if (heat === "frio") return "info" as const;
   return "neutral" as const;
-}
-
-function humanizeEvidenceSource(value?: string | null) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "agent_extracted") return "extraido";
-  if (normalized === "conversation_context") return "contexto";
-  if (normalized === "derived") return "derivado";
-  return normalized || "desconhecido";
-}
-
-function getEvidenceConfidenceTone(confidence?: number | null) {
-  if (typeof confidence !== "number" || !Number.isFinite(confidence)) return "neutral" as const;
-  if (confidence >= 0.82) return "success" as const;
-  if (confidence >= 0.66) return "info" as const;
-  return "warning" as const;
 }
 
 function getInitials(value?: string) {
@@ -558,6 +557,11 @@ function isPhoneLike(value?: string) {
   const normalized = String(value || "").trim();
   if (!normalized) return false;
   return normalized.replace(/\D/g, "").length >= 8 && !/[a-zA-ZÀ-ÿ]/.test(normalized);
+}
+
+function buildTelUrl(phone?: string) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return digits ? `tel:+${digits}` : "";
 }
 
 function isWhatsAppServiceWindowClosed(chat?: ChatItem | null) {
@@ -662,19 +666,6 @@ function normalizeHandoffNotifyStatus(status: unknown) {
   return String(status || "").trim().toLowerCase();
 }
 
-function getHandoffNotifyStatusMeta(status: unknown) {
-  const normalized = normalizeHandoffNotifyStatus(status);
-  if (!normalized) return null;
-  if (normalized === "success") return { label: "alerta de transferencia ok", tone: "success" as const };
-  if (normalized === "partial_failure") return { label: "alerta parcial", tone: "warning" as const };
-  if (normalized === "failed") return { label: "alerta falhou", tone: "danger" as const };
-  if (normalized === "skipped_no_channel") return { label: "transferencia sem canal", tone: "danger" as const };
-  if (normalized === "skipped_no_recipients") return { label: "transferencia sem destinatario", tone: "danger" as const };
-  if (normalized === "skipped_disabled") return { label: "alerta desativado", tone: "warning" as const };
-  if (normalized === "skipped_duplicate") return { label: "alerta duplicado", tone: "neutral" as const };
-  return { label: `alerta ${normalized.replaceAll("_", " ")}`, tone: "neutral" as const };
-}
-
 function getHandoffNotifyStatusHint(status: unknown) {
   const normalized = normalizeHandoffNotifyStatus(status);
   if (!normalized) return "";
@@ -709,7 +700,7 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
 
   if (chat.aiState.humanOwnerUserId && isStillPaused) {
     const suffix = pausedUntil ? ` ate ${formatDateTime(pausedUntil)}` : "";
-    return `Takeover humano ativo${updatedByName ? ` por ${updatedByName}` : ""}${suffix}.`;
+    return `Atendimento humano ativo${updatedByName ? ` por ${updatedByName}` : ""}${suffix}.`;
   }
 
   if (chat.aiState.aiEnabled === false || isStillPaused) {
@@ -802,6 +793,20 @@ function getSlaState(chat: ChatItem) {
 
   return { breached: false, label: `SLA ${Math.ceil(remainingMs / 60000)}m` };
 }
+
+function getConversationResponseState(chat: ChatItem) {
+  const clientAt = toDate(chat.lastClientMessageAt);
+  const agentAt = toDate(chat.lastAgentMessageAt);
+
+  if (clientAt && (!agentAt || clientAt.getTime() > agentAt.getTime())) {
+    return { label: "Precisa de resposta", tone: "success" as const };
+  }
+  if (agentAt && (!clientAt || agentAt.getTime() >= clientAt.getTime())) {
+    return { label: "Aguardando cliente", tone: "neutral" as const };
+  }
+  return { label: "Nova conversa", tone: "info" as const };
+}
+
 function ConversationListItem({
   chat,
   active,
@@ -813,6 +818,13 @@ function ConversationListItem({
 }) {
   const sla = getSlaState(chat);
   const aiPaused = isAiPaused(chat);
+  const responseState = getConversationResponseState(chat);
+  const unreadCount =
+    typeof chat.unreadCount === "number" && chat.unreadCount > 0
+      ? chat.unreadCount
+      : responseState.label === "Precisa de resposta"
+        ? 1
+        : 0;
 
   return (
     <button
@@ -845,8 +857,6 @@ function ConversationListItem({
                 ) : null}
               </div>
               <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
-                <span>{formatChannelLabel(chat.channel)}</span>
-                <span>|</span>
                 <span>{chat.assignedUserName || chat.ownerName || "Sem responsavel"}</span>
                 {chat.contactCompany ? (
                   <>
@@ -859,7 +869,14 @@ function ConversationListItem({
 
             <div className="text-right text-[11px] text-[var(--cliente-card-text-soft)]">
               <p>{formatTime(chat.lastMessageTime)}</p>
-              <p className="mt-1">{formatRelative(chat.lastMessageTime)}</p>
+              <div className="mt-1 flex items-center justify-end gap-2">
+                {unreadCount > 0 ? (
+                  <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-[var(--cliente-success)] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                ) : null}
+                <span>{formatRelative(chat.lastMessageTime)}</span>
+              </div>
             </div>
           </div>
 
@@ -868,14 +885,14 @@ function ConversationListItem({
           </p>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <StateBadge label={formatQueueStatusLabel(chat.queueStatus)} tone={sla.breached ? "danger" : "neutral"} />
-            <StateBadge label={sla.label} tone={sla.breached ? "danger" : "info"} />
+            <StateBadge label={responseState.label} tone={responseState.tone} />
+            {sla.breached ? <StateBadge label={sla.label} tone="danger" /> : null}
             {aiPaused ? <StateBadge label="IA pausada" tone="warning" /> : null}
           </div>
 
           <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-[var(--cliente-card-text-soft)]">
-            <span>{formatStatusLabel(chat.status)}</span>
-            <span className="truncate text-right">{chat.tags?.slice(0, 2).join(" / ") || "sem tags"}</span>
+            <span>{formatChannelLabel(chat.channel)}</span>
+            <span className="truncate text-right">{chat.tags?.slice(0, 1).join(" / ") || formatStatusLabel(chat.status)}</span>
           </div>
         </div>
       </div>
@@ -925,7 +942,7 @@ function MessageMediaFallback({
   return (
     <div className="mt-3 rounded-[22px] border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 text-[var(--cliente-card-text-soft)]">
       <div className="flex items-start gap-3">
-        <div className="rounded-2xl border border-amber-300/18 bg-amber-500/12 p-2 text-amber-100">
+        <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-warning)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--cliente-warning)_14%,transparent)] p-2 text-[var(--cliente-warning)]">
           <AlertCircle className="h-4 w-4" />
         </div>
         <div className="min-w-0">
@@ -1035,7 +1052,7 @@ function DocumentAttachment({ message }: { message: MessageItem }) {
   return (
     <div className="mt-3 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
       <div className="flex items-start gap-3">
-        <div className="rounded-2xl border border-sky-300/18 bg-sky-500/12 p-2 text-sky-100">
+        <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-primary)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--cliente-primary)_14%,transparent)] p-2 text-[var(--cliente-primary)]">
           <FileText className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
@@ -1153,21 +1170,12 @@ function MessageBubble({
           </p>
         ) : null}
         {isAgent && outboundStatus === "failed" && message.deliveryError ? (
-          <p className="mt-2 text-xs text-rose-100/90">Falha de entrega: {humanizeDeliveryError(message.deliveryError)}</p>
+          <p className="mt-2 text-xs text-[var(--cliente-danger)]">Falha de entrega: {humanizeDeliveryError(message.deliveryError)}</p>
         ) : null}
         <div className="mt-2 flex items-center justify-end gap-2 text-[11px] text-current opacity-55">
           <span>{formatDateTime(message.createdAt)}</span>
         </div>
       </div>
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-[var(--cliente-border)] py-2.5 last:border-b-0 last:pb-0">
-      <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</span>
-      <span className="max-w-[62%] text-right text-sm text-[var(--cliente-card-text-muted)]">{value || "--"}</span>
     </div>
   );
 }
@@ -1260,6 +1268,7 @@ export default function ClienteInboxPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [chats, setChats] = useState<ChatItem[]>([]);
+  const [tenantChannels, setTenantChannels] = useState<TenantChannelItem[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [detail, setDetail] = useState<ChatDetailPayload | null>(null);
@@ -1287,8 +1296,8 @@ export default function ClienteInboxPage() {
   const [leadTaskDueAt, setLeadTaskDueAt] = useState("");
   const [leadTaskPriority, setLeadTaskPriority] = useState<(typeof TASK_PRIORITIES)[number]>("medium");
   const [leadTaskType, setLeadTaskType] = useState<(typeof TASK_TYPES)[number]>("follow_up");
-  const [showOpsSummary, setShowOpsSummary] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
 
   const initialChatId = searchParams.get("chatId");
   const leadIdFromQuery = searchParams.get("leadId");
@@ -1301,14 +1310,20 @@ export default function ClienteInboxPage() {
   const canOperate = hasCapability("respond_inbox");
   const canManageQueue = hasCapability("manage_settings") || hasCapability("manage_users");
   const allowAdvanced = experienceMode === "completo";
-  const showSidePanel = allowAdvanced && showOpsSummary;
+  const showContextPanel = Boolean(selectedChatId);
+  const showDesktopContextPanel = Boolean(selectedChatId);
 
   useEffect(() => {
     if (!allowAdvanced) {
-      setShowOpsSummary(false);
       setShowAdvancedFilters(false);
     }
   }, [allowAdvanced]);
+
+  useEffect(() => {
+    if (!selectedChatId) {
+      setShowDetailsDrawer(false);
+    }
+  }, [selectedChatId]);
 
   const loadChats = useCallback(async (options?: { silent?: boolean }) => {
     if (!tenant?.tenantId) return [] as ChatItem[];
@@ -1350,6 +1365,19 @@ export default function ClienteInboxPage() {
       if (!silent) setLoadingChats(false);
     }
   }, [tenant?.tenantId, initialChatId, leadIdFromQuery]);
+
+  const loadTenantChannels = useCallback(async () => {
+    if (!tenant?.tenantId) return;
+
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels`);
+      const payload = (await res.json()) as TenantChannelsPayload;
+      if (!res.ok) return;
+      setTenantChannels(payload.items || []);
+    } catch {
+      setTenantChannels([]);
+    }
+  }, [tenant?.tenantId]);
 
   const loadSelectedChat = useCallback(
     async (chatId: string, options?: { withMessages?: boolean; silent?: boolean }) => {
@@ -1482,7 +1510,8 @@ export default function ClienteInboxPage() {
 
   useEffect(() => {
     void loadChats();
-  }, [loadChats]);
+    void loadTenantChannels();
+  }, [loadChats, loadTenantChannels]);
 
   useEffect(() => {
     if (!selectedChatId) {
@@ -1545,10 +1574,6 @@ export default function ClienteInboxPage() {
   const aiStateDescription = useMemo(() => getAiStateDescription(activeChat), [activeChat]);
   const aiRetryAvailable = useMemo(() => shouldOfferAiRetry(activeChat), [activeChat]);
   const whatsappWindowClosed = useMemo(() => isWhatsAppServiceWindowClosed(activeChat), [activeChat]);
-  const handoffNotifyMeta = useMemo(
-    () => getHandoffNotifyStatusMeta(activeChat?.aiState?.lastHandoffNotifyStatus),
-    [activeChat?.aiState?.lastHandoffNotifyStatus]
-  );
   const handoffNotifyHint = useMemo(
     () => getHandoffNotifyStatusHint(activeChat?.aiState?.lastHandoffNotifyStatus),
     [activeChat?.aiState?.lastHandoffNotifyStatus]
@@ -1558,7 +1583,7 @@ export default function ClienteInboxPage() {
     return chats.filter((chat) => {
       if (statusFilter !== "all" && (chat.status || "open") !== statusFilter) return false;
       if (priorityFilter !== "all" && (chat.priority || "low") !== priorityFilter) return false;
-      if (channelFilter !== "all" && (chat.channel || "whatsapp") !== channelFilter) return false;
+      if (channelFilter !== "all" && (chat.channel || "whatsapp").toLowerCase() !== channelFilter.toLowerCase()) return false;
       if (queueFilter === "sla_breached" && !getSlaState(chat).breached) return false;
       if (queueFilter !== "all" && queueFilter !== "sla_breached" && (chat.queueStatus || "open") !== queueFilter) return false;
       if (aiFilter === "ai_active" && isAiPaused(chat)) return false;
@@ -1590,8 +1615,23 @@ export default function ClienteInboxPage() {
   }, [aiFilter, assignedUserFilter, channelFilter, chats, leadIdFromQuery, priorityFilter, queueFilter, search, statusFilter]);
 
   const availableChannels = useMemo(() => {
-    return Array.from(new Set(chats.map((chat) => (chat.channel || "whatsapp").trim()).filter(Boolean)));
-  }, [chats]);
+    const configuredChannels = tenantChannels
+      .filter((channel) => {
+        const type = String(channel.type || "").trim().toLowerCase();
+        if (!INBOX_CHANNEL_SET.has(type)) return false;
+        const status = String(channel.status || "").toLowerCase();
+        const connectionStatus = String(channel.connectionStatus || "").toLowerCase();
+        return status === "active" || ["connected", "ready", "webhook_pending"].includes(connectionStatus);
+      })
+      .map((channel) => String(channel.type || "").trim().toLowerCase());
+    const chatChannels = chats.map((chat) => (chat.channel || "whatsapp").trim().toLowerCase()).filter(Boolean);
+    return Array.from(new Set([...INBOX_CHANNEL_ORDER, ...configuredChannels, ...chatChannels])).sort((a, b) => {
+      const aIndex = INBOX_CHANNEL_ORDER.indexOf(a as (typeof INBOX_CHANNEL_ORDER)[number]);
+      const bIndex = INBOX_CHANNEL_ORDER.indexOf(b as (typeof INBOX_CHANNEL_ORDER)[number]);
+      if (aIndex !== -1 || bIndex !== -1) return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+      return a.localeCompare(b, "pt-BR");
+    });
+  }, [chats, tenantChannels]);
 
   const availableAssignees = useMemo(() => {
     return Array.from(
@@ -1603,25 +1643,6 @@ export default function ClienteInboxPage() {
         return acc;
       }, new Map<string, string>())
     ).map(([userId, name]) => ({ userId, name }));
-  }, [chats]);
-
-  const inboxStats = useMemo(() => {
-    const open = chats.filter((chat) => (chat.status || "open") === "open").length;
-    const pending = chats.filter((chat) => chat.status === "pending").length;
-    const resolved = chats.filter((chat) => chat.status === "resolved").length;
-    const unassigned = chats.filter((chat) => !(chat.assignedTo || chat.ownerId)).length;
-    const slaBreached = chats.filter((chat) => getSlaState(chat).breached).length;
-    const highPriority = chats.filter((chat) => chat.priority === "high").length;
-
-    return {
-      total: chats.length,
-      open,
-      pending,
-      resolved,
-      unassigned,
-      slaBreached,
-      highPriority,
-    };
   }, [chats]);
 
   async function handleSend(event: FormEvent) {
@@ -1947,6 +1968,41 @@ export default function ClienteInboxPage() {
     }
   }
 
+  async function handleCreateCallTask() {
+    if (!tenant?.tenantId || !canOperate) return;
+
+    setSavingLeadTask(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/calls/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId: selectedChatId,
+          leadId: detail?.lead?.id,
+          phone: detail?.lead?.telefone || activeChat?.contactPhone,
+          channelId: activeChat?.channelId,
+          title: "Ligar para o cliente",
+        }),
+      });
+      const payload = (await res.json()) as { error?: string; callUrl?: string; telUrl?: string };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao iniciar ligacao.");
+        return;
+      }
+
+      const url = payload.callUrl || payload.telUrl;
+      if (url && typeof window !== "undefined") {
+        window.open(url, "_self");
+      }
+      await refreshSelected(false);
+    } catch {
+      setError("Falha ao iniciar ligacao.");
+    } finally {
+      setSavingLeadTask(false);
+    }
+  }
+
   async function handleToggleLeadTask(task: LeadTask) {
     if (!tenant?.tenantId || !detail?.lead?.id || !canOperate) return;
 
@@ -2003,49 +2059,6 @@ export default function ClienteInboxPage() {
   }
 
   const activeLead = detail?.lead || null;
-  const aiEvidenceTop = useMemo(() => {
-    const source = activeLead?.aiFieldEvidence || {};
-    return Object.entries(source)
-      .map(([field, raw]) => {
-        const evidence =
-          raw && typeof raw === "object"
-            ? (raw as { value?: unknown; source?: unknown; confidence?: unknown; capturedAt?: unknown })
-            : null;
-        const value = typeof evidence?.value === "string" ? evidence.value.trim() : "";
-        const src = typeof evidence?.source === "string" ? evidence.source : "";
-        const confidence =
-          typeof evidence?.confidence === "number" && Number.isFinite(evidence.confidence)
-            ? evidence.confidence
-            : null;
-        return {
-          field,
-          value: value || "--",
-          source: src,
-          confidence,
-          capturedAt: evidence?.capturedAt,
-        };
-      })
-      .sort((a, b) => (b.confidence ?? -1) - (a.confidence ?? -1))
-      .slice(0, 6);
-  }, [activeLead?.aiFieldEvidence]);
-  const aiChecklistProgress = useMemo(() => {
-    const checklist = activeLead?.aiCaptureChecklist;
-    if (!checklist) return { done: 0, total: 0 };
-    const keys = [
-      "nome",
-      "tipoEmpresa",
-      "objetivo",
-      "orcamento",
-      "urgencia",
-      "decisor",
-      "canaisAtuais",
-      "cidade",
-      "tamanhoTime",
-      "servicoInteresse",
-    ] as const;
-    const done = keys.filter((key) => Boolean(checklist[key])).length;
-    return { done, total: keys.length };
-  }, [activeLead?.aiCaptureChecklist]);
   const leadTasks = detail?.leadTasks || [];
   const leadNotes = detail?.leadNotes || [];
   const leadBudgets = detail?.leadBudgets || [];
@@ -2055,81 +2068,573 @@ export default function ClienteInboxPage() {
   const teamMembers = detail?.teamMembers || [];
   const timeline = activeLead?.timeline || [];
   const activeSla = activeChat ? getSlaState(activeChat) : { breached: false, label: "sem SLA" };
+  const activeResponseState = activeChat ? getConversationResponseState(activeChat) : { label: "Nova conversa", tone: "info" as const };
+  const activeCallHref = buildTelUrl(activeLead?.telefone || activeChat?.contactPhone);
 
-  const focusSignals = useMemo(() => {
-    const items: Array<{
-      id: string;
-      href: string;
-      title: string;
-      detail: string;
-      badge: string;
-      tone: "neutral" | "success" | "warning" | "danger" | "info";
-    }> = [];
+  const contextPanelContent = (
+    <div className="space-y-4">
+      <PanelCard className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <CardTitle
+            title="Cliente e oportunidade"
+            subtitle="Dados principais, contexto comercial e proximas acoes desta conversa"
+          />
+          <StateBadge
+            label={activeLead ? "cliente vinculado" : "sem lead vinculado"}
+            tone={activeLead ? "success" : "warning"}
+          />
+        </div>
 
-    if (inboxStats.slaBreached > 0) {
-      items.push({
-        id: "sla",
-        href: "/cliente/painel/inbox?queue=sla_breached",
-        title: "SLA estourado",
-        detail: `${inboxStats.slaBreached} conversa(s) precisam de resposta imediata.`,
-        badge: "urgente",
-        tone: "danger",
-      });
-    }
+        {loadingDetail ? (
+          <div className="py-8 text-center text-[var(--cliente-card-text-soft)]">
+            <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+          </div>
+        ) : activeLead ? (
+          <>
+            <div className="mt-4 rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <div className="flex items-start gap-3">
+                <ContactAvatar
+                  name={activeLead.nome || activeChat?.contactName}
+                  phone={activeLead.telefone || activeChat?.contactPhone}
+                  photoUrl={activeChat?.contactPhotoUrl}
+                  size="md"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-base font-semibold text-[var(--cliente-card-text)]">
+                    {activeLead.nome || activeChat?.contactName || "Contato"}
+                  </p>
+                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
+                    {activeLead.empresa || activeLead.origem || "Sem empresa informada"}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <StateBadge label={formatChannelLabel(activeLead.channel || activeChat?.channel)} tone="neutral" />
+                    <StateBadge
+                      label={getPipelineStageLabel(
+                        normalizePipelineStageId(activeLead.pipelineStage || activeLead.stage || "captado")
+                      )}
+                      tone="info"
+                    />
+                    <StateBadge label={activeLead.heat || "sem temperatura"} tone={getHeatTone(activeLead.heat)} />
+                    <StateBadge
+                      label={formatPriorityLabel(activeLead.priority)}
+                      tone={getPriorityTone(activeLead.priority)}
+                    />
+                  </div>
+                </div>
+              </div>
 
-    if (inboxStats.unassigned > 0) {
-      items.push({
-        id: "unassigned",
-        href: "/cliente/painel/inbox?queue=unassigned",
-        title: "Fila sem responsavel",
-        detail: `${inboxStats.unassigned} conversa(s) ainda nao foram atribuidas.`,
-        badge: "fila",
-        tone: "warning",
-      });
-    }
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Responsavel</p>
+                  <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">
+                    {activeLead.owner || activeChat?.assignedUserName || activeChat?.ownerName || "Sem responsavel"}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Valor potencial</p>
+                  <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">
+                    {formatMoney(activeLead.potentialValue)}
+                  </p>
+                </div>
+              </div>
+            </div>
 
-    if (inboxStats.pending > 0) {
-      items.push({
-        id: "pending",
-        href: "/cliente/painel/inbox?status=pending",
-        title: "Conversas pendentes",
-        detail: `${inboxStats.pending} conversa(s) aguardam a proxima acao do time.`,
-        badge: "pendente",
-        tone: "info",
-      });
-    }
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <Link
+                href={`/cliente/painel/crm?leadId=${encodeURIComponent(activeLead.id)}`}
+                className="inline-flex items-center justify-between gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+              >
+                <span>Abrir ficha completa</span>
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href={`/cliente/painel/comercial?leadId=${encodeURIComponent(activeLead.id)}`}
+                className="inline-flex items-center justify-between gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+              >
+                <span>Criar proposta</span>
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => void handleMoveLeadStage()}
+                disabled={!canOperate || savingLeadStage}
+                className="inline-flex items-center justify-between gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+              >
+                <span>Mover etapa</span>
+                {savingLeadStage ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderKanban className="h-4 w-4" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleTakeover()}
+                disabled={!selectedChat || updatingAi || !canOperate}
+                className="inline-flex items-center justify-between gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+              >
+                <span>Assumir atendimento</span>
+                {updatingAi ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserRound className="h-4 w-4" />}
+              </button>
+              {activeCallHref ? (
+                <button
+                  type="button"
+                  onClick={() => void handleCreateCallTask()}
+                  disabled={savingLeadTask || !canOperate}
+                  className="inline-flex items-center justify-between gap-2 rounded-[18px] border border-emerald-300/20 bg-emerald-500/10 px-3 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-500/16 disabled:opacity-60"
+                >
+                  <span>Ligar e registrar</span>
+                  {savingLeadTask ? <Loader2 className="h-4 w-4 animate-spin" /> : <PhoneCall className="h-4 w-4" />}
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
+            Esta conversa ainda nao tem um lead com contexto comercial completo. As mensagens continuam disponiveis normalmente.
+          </div>
+        )}
+      </PanelCard>
 
-    if (inboxStats.highPriority > 0) {
-      items.push({
-        id: "priority",
-        href: "/cliente/painel/inbox?priority=high",
-        title: "Alta prioridade",
-        detail: `${inboxStats.highPriority} conversa(s) marcadas como prioridade alta.`,
-        badge: "prioridade",
-        tone: "warning",
-      });
-    }
+      <PanelCard className="p-4">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle title="Acoes da conversa" subtitle="Status, IA, responsavel e operacao sem sair do atendimento" />
+          <StateBadge label={canOperate ? "editavel" : "somente leitura"} tone={canOperate ? "info" : "neutral"} />
+        </div>
 
-    if (activeLead?.id) {
-      items.push({
-        id: "lead_context",
-        href: `/cliente/painel/comercial?leadId=${encodeURIComponent(activeLead.id)}`,
-        title: "Contato atual com contexto comercial",
-        detail: "Abrir proposta, financeiro e negociacao sem perder o fio da conversa.",
-        badge: "contato",
-        tone: "success",
-      });
-    }
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void handleQuickStatus("pending")}
+            disabled={!selectedChat || savingMeta || !canOperate}
+            className="inbox-thread-action inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+          >
+            Marcar pendente
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleQuickStatus("resolved")}
+            disabled={!selectedChat || savingMeta || !canOperate}
+            className="inbox-thread-action inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-500/16 disabled:opacity-50"
+          >
+            Marcar resolvida
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleToggleAi()}
+            disabled={!selectedChat || updatingAi || !canOperate}
+            className="inbox-thread-action inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+          >
+            {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : aiPaused ? <PlayCircle className="h-3.5 w-3.5" /> : <PauseCircle className="h-3.5 w-3.5" />}
+            {aiPaused ? "Retomar IA" : "Pausar IA"}
+          </button>
+          {aiRetryAvailable ? (
+            <button
+              type="button"
+              onClick={() => void handleRetryAi()}
+              disabled={!selectedChat || retryingAi || updatingAi || !canOperate || aiPaused}
+              className="inbox-thread-action inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+            >
+              {retryingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Reprocessar IA
+            </button>
+          ) : null}
+        </div>
 
-    return items.slice(0, 5);
-  }, [activeLead?.id, inboxStats.highPriority, inboxStats.pending, inboxStats.slaBreached, inboxStats.unassigned]);
+        <div className="mt-4 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Estado da IA</p>
+              <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{aiStateDescription}</p>
+            </div>
+            <StateBadge
+              label={activeChat?.aiState?.humanOwnerUserId ? "Atendimento humano" : aiPaused ? "IA pausada" : "IA ativa"}
+              tone={activeChat?.aiState?.humanOwnerUserId ? "warning" : aiPaused ? "warning" : "ai"}
+            />
+          </div>
+          {handoffNotifyHint ? (
+            <div className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-500/10 px-3 py-3 text-xs text-amber-700">
+              {handoffNotifyHint}
+            </div>
+          ) : null}
+        </div>
+
+        <details className="mt-4 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4" open={allowAdvanced}>
+          <summary className="cursor-pointer list-none text-sm font-semibold text-[var(--cliente-card-text)]">
+            Detalhes avancados da conversa
+          </summary>
+          <div className="mt-4 grid gap-3">
+            <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+              <span>Status</span>
+              <select
+                value={metaForm.status}
+                onChange={(event) => setMetaForm((current) => ({ ...current, status: event.target.value }))}
+                disabled={!canOperate}
+                className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
+              >
+                {STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
+                    {formatStatusLabel(status)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+              <span>Prioridade</span>
+              <select
+                value={metaForm.priority}
+                onChange={(event) => setMetaForm((current) => ({ ...current, priority: event.target.value }))}
+                disabled={!canOperate}
+                className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
+              >
+                {PRIORITY_OPTIONS.map((priority) => (
+                  <option key={priority} value={priority}>
+                    {formatPriorityLabel(priority)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+              <span>Responsavel</span>
+              <select
+                value={metaForm.assignedUserId}
+                onChange={(event) => setMetaForm((current) => ({ ...current, assignedUserId: event.target.value }))}
+                disabled={!canOperate}
+                className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
+              >
+                <option value="">Sem atribuicao</option>
+                {teamMembers.map((member) => (
+                  <option key={member.userId} value={member.userId}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+              <span>Tags</span>
+              <input
+                value={metaForm.tagsInput}
+                onChange={(event) => setMetaForm((current) => ({ ...current, tagsInput: event.target.value }))}
+                disabled={!canOperate}
+                placeholder="vip, proposta, urgente"
+                className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => void handleSaveMeta()}
+              disabled={savingMeta || !canOperate}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
+            >
+              {savingMeta ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Salvar operacao
+            </button>
+          </div>
+        </details>
+      </PanelCard>
+
+      <PanelCard className="p-4">
+        <CardTitle title="Propostas e financeiro" subtitle="Tudo o que ajuda a avancar a venda no contexto da conversa" />
+
+        {activeLead ? (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <CommercialMetric
+                label="Propostas"
+                value={String(commercialSummary.budgets ?? 0)}
+                icon={FileText}
+                hint={`${commercialSummary.approvedBudgets ?? 0} aprovadas`}
+              />
+              <CommercialMetric
+                label="Valor aprovado"
+                value={formatMoney(commercialSummary.approvedValue ?? 0)}
+                icon={BadgeDollarSign}
+                hint="volume comercial ganho"
+              />
+              <CommercialMetric
+                label="Receita paga"
+                value={formatMoney(commercialSummary.paidRevenue ?? 0)}
+                icon={Receipt}
+                hint="valor recebido"
+              />
+              <CommercialMetric
+                label="Receita pendente"
+                value={formatMoney(commercialSummary.pendingRevenue ?? 0)}
+                icon={Receipt}
+                hint="proximos recebimentos"
+              />
+            </div>
+
+            <details className="mt-4 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4" open>
+              <summary className="cursor-pointer list-none text-sm font-semibold text-[var(--cliente-card-text)]">
+                Propostas abertas
+              </summary>
+              <div className="mt-4 space-y-3">
+                {leadBudgets.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-sm text-[var(--cliente-card-text-soft)]">
+                    Nenhuma proposta vinculada a este contato ainda.
+                  </p>
+                ) : (
+                  leadBudgets.map((budget) => (
+                    <div key={budget.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{budget.titulo || "Proposta"}</p>
+                          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                            validade {formatDate(budget.validade)} / atualizada {formatDateTime(budget.updatedAt)}
+                          </p>
+                        </div>
+                        <StateBadge
+                          label={budget.status || "Rascunho"}
+                          tone={budget.status === "Aprovado" ? "success" : budget.status === "Perdido" ? "danger" : "neutral"}
+                        />
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{formatMoney(Number(budget.valorTotal || 0))}</p>
+                        {budget.resumo ? (
+                          <p className="line-clamp-1 max-w-[62%] text-right text-xs text-[var(--cliente-card-text-soft)]">{budget.resumo}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+
+            <details className="mt-4 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+              <summary className="cursor-pointer list-none text-sm font-semibold text-[var(--cliente-card-text)]">
+                Financeiro recente
+              </summary>
+              <div className="mt-4 space-y-3">
+                {leadFinance.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-sm text-[var(--cliente-card-text-soft)]">
+                    Nenhum lancamento comercial associado a este contato.
+                  </p>
+                ) : (
+                  leadFinance.map((item) => (
+                    <div key={item.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.descricao || "Lancamento"}</p>
+                          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                            {item.categoria || item.tipo || "Comercial"} / vencimento {formatDate(item.vencimento)}
+                          </p>
+                        </div>
+                        <StateBadge
+                          label={item.status || "pendente"}
+                          tone={String(item.status || "").toLowerCase() === "pago" ? "success" : "warning"}
+                        />
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                        <p className="font-semibold text-[var(--cliente-card-text)]">{formatMoney(Number(item.valor || 0))}</p>
+                        <p className="text-xs text-[var(--cliente-card-text-soft)]">{item.meioPagamento || "Sem meio de pagamento"}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+          </>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
+            Vincule um cliente a conversa para enxergar propostas, receita e pendencias financeiras aqui.
+          </div>
+        )}
+      </PanelCard>
+
+      <PanelCard className="p-4">
+        <CardTitle title="Proxima acao e historico" subtitle="Tarefas, notas e eventos conectados a este atendimento" />
+
+        <details className="mt-4 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4" open>
+          <summary className="cursor-pointer list-none text-sm font-semibold text-[var(--cliente-card-text)]">
+            Tarefas e proxima acao
+          </summary>
+          <div className="mt-4 space-y-3">
+            {leadTasks.length === 0 ? (
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhuma tarefa criada para este contato ainda.</p>
+            ) : (
+              leadTasks.map((task) => (
+                <div key={task.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{task.title || "Tarefa"}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <StateBadge label={formatTaskType(task.type)} tone="neutral" />
+                        <StateBadge label={formatPriorityLabel(task.priority)} tone={getTaskTone(task)} />
+                        <StateBadge label={task.status === "done" ? "Concluida" : "Pendente"} tone={getTaskTone(task)} />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleLeadTask(task)}
+                      disabled={!canOperate || updatingTaskId === task.id}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+                    >
+                      {updatingTaskId === task.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : task.status === "done" ? (
+                        <CircleDashed className="h-3.5 w-3.5" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      )}
+                      {task.status === "done" ? "Reabrir" : "Concluir"}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                    prazo {formatDateTime(task.dueAt || task.createdAt)}
+                  </p>
+                </div>
+              ))
+            )}
+
+            {activeLead ? (
+              <form onSubmit={handleCreateLeadTask} className="space-y-3 border-t border-[var(--cliente-border)] pt-4">
+                <input
+                  value={leadTaskTitle}
+                  onChange={(event) => setLeadTaskTitle(event.target.value)}
+                  placeholder="Ex: Retornar proposta ainda hoje"
+                  disabled={!canOperate}
+                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+                />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <input
+                    type="datetime-local"
+                    value={leadTaskDueAt}
+                    onChange={(event) => setLeadTaskDueAt(event.target.value)}
+                    disabled={!canOperate}
+                    className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
+                  />
+                  <select
+                    value={leadTaskType}
+                    onChange={(event) => setLeadTaskType(event.target.value as (typeof TASK_TYPES)[number])}
+                    disabled={!canOperate}
+                    className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
+                  >
+                    {TASK_TYPES.map((taskType) => (
+                      <option key={taskType} value={taskType}>
+                        {formatTaskType(taskType)}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={leadTaskPriority}
+                    onChange={(event) => setLeadTaskPriority(event.target.value as (typeof TASK_PRIORITIES)[number])}
+                    disabled={!canOperate}
+                    className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
+                  >
+                    {TASK_PRIORITIES.map((taskPriority) => (
+                      <option key={taskPriority} value={taskPriority}>
+                        {formatPriorityLabel(taskPriority)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  disabled={!canOperate || savingLeadTask || !leadTaskTitle.trim()}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+                >
+                  {savingLeadTask ? <Loader2 className="h-4 w-4 animate-spin" /> : <NotebookPen className="h-4 w-4" />}
+                  Criar tarefa
+                </button>
+              </form>
+            ) : null}
+          </div>
+        </details>
+
+        <details className="mt-4 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-[var(--cliente-card-text)]">
+            Notas rapidas
+          </summary>
+          <form onSubmit={handleCreateInternalNote} className="mt-4 space-y-3">
+            <textarea
+              value={internalNoteText}
+              onChange={(event) => setInternalNoteText(event.target.value)}
+              placeholder="Registrar contexto interno desta conversa"
+              disabled={!canOperate}
+              rows={3}
+              className="client-input w-full rounded-2xl border px-3 py-3 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+            />
+            <button
+              type="submit"
+              disabled={!canOperate || savingNote || !internalNoteText.trim()}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+            >
+              {savingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <NotebookPen className="h-4 w-4" />}
+              Salvar nota interna
+            </button>
+          </form>
+
+          {activeLead ? (
+            <form onSubmit={handleCreateLeadNote} className="mt-4 space-y-3 border-t border-[var(--cliente-border)] pt-4">
+              <textarea
+                value={leadNoteText}
+                onChange={(event) => setLeadNoteText(event.target.value)}
+                placeholder="Registrar nota comercial no perfil do cliente"
+                disabled={!canOperate}
+                rows={3}
+                className="client-input w-full rounded-2xl border px-3 py-3 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+              />
+              <button
+                type="submit"
+                disabled={!canOperate || savingLeadNote || !leadNoteText.trim()}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+              >
+                {savingLeadNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <NotebookPen className="h-4 w-4" />}
+                Salvar nota comercial
+              </button>
+            </form>
+          ) : null}
+        </details>
+
+        <NoteCard
+          title="Notas internas"
+          subtitle="Contexto operacional desta conversa"
+          notes={chatNotes}
+          emptyLabel="Nenhuma nota interna registrada para este chat."
+        />
+
+        <div className="pt-4">
+          <NoteCard
+            title="Notas comerciais"
+            subtitle="Anotacoes persistidas no CRM do contato"
+            notes={leadNotes}
+            emptyLabel="Nenhuma nota comercial registrada para o contato."
+          />
+        </div>
+
+        <details className="mt-4 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-[var(--cliente-card-text)]">
+            Historico recente
+          </summary>
+          <div className="mt-4 space-y-3">
+            {timeline.length === 0 ? (
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhum evento recente no contato.</p>
+            ) : (
+              timeline.slice(0, 8).map((event) => (
+                <div key={event.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{event.title || "Evento"}</p>
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                      {formatDateTime(event.createdAt)}
+                    </p>
+                  </div>
+                  {event.detail ? <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{event.detail}</p> : null}
+                </div>
+              ))
+            )}
+          </div>
+        </details>
+      </PanelCard>
+    </div>
+  );
 
   if (!selectedChat && !loadingChats && chats.length === 0) {
     return (
       <div className="inbox-refined client-daily-page space-y-5">
         <SectionHeader
-          title="Inbox"
-          subtitle="Operacao de atendimento, apoio humano e contexto comercial no mesmo painel."
+          title="Conversas"
+          subtitle="Atenda clientes, veja o contexto comercial e avance oportunidades sem sair do chat."
         />
         <EmptyState
           title="Nenhuma conversa encontrada"
@@ -2142,59 +2647,23 @@ export default function ClienteInboxPage() {
   return (
     <div className="inbox-refined client-daily-page space-y-6">
       <SectionHeader
-        title="Inbox"
-        subtitle={
-          allowAdvanced
-            ? "Atendimento com contexto completo, filtros e painis operacionais."
-            : "Atendimento diario com foco em conversas, resposta e atribuicao."
-        }
+        title="Conversas"
+        subtitle="Atenda clientes e avance oportunidades no mesmo fluxo."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
-              <button
-                type="button"
-                onClick={() => setExperienceMode("essencial")}
-                className={cn(
-                  "rounded-[16px] px-3.5 py-2 text-xs font-semibold transition",
-                  !allowAdvanced
-                    ? "bg-[var(--cliente-accent)] text-white"
-                    : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
-                )}
-              >
-                Uso diario
-              </button>
-              <button
-                type="button"
-                onClick={() => setExperienceMode("completo")}
-                className={cn(
-                  "rounded-[16px] px-3.5 py-2 text-xs font-semibold transition",
-                  allowAdvanced
-                    ? "bg-[var(--cliente-accent)] text-white"
-                    : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
-                )}
-              >
-                Analise completa
-              </button>
-            </div>
-            {allowAdvanced ? (
-              <button
-                type="button"
-                onClick={() => setShowOpsSummary((current) => !current)}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-[18px] border px-3 py-2.5 text-xs font-semibold transition",
-                  showOpsSummary
-                    ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
-                    : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-panel-soft)]"
-                )}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                {showOpsSummary ? "Ocultar resumo" : "Mostrar resumo"}
-              </button>
-            ) : null}
-            <StateBadge
-              label={aiPaused ? "IA pausada nesta conversa" : "IA ativa nesta conversa"}
-              tone={aiPaused ? "warning" : "success"}
-            />
+            <button
+              type="button"
+              onClick={() => setExperienceMode(allowAdvanced ? "essencial" : "completo")}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-[18px] border px-3 py-2.5 text-xs font-semibold transition",
+                allowAdvanced
+                  ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]"
+                  : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-card-text)]"
+              )}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {allowAdvanced ? "Ocultar avancado" : "Mostrar avancado"}
+            </button>
             {allowAdvanced && canManageQueue ? (
               <button
                 type="button"
@@ -2210,6 +2679,10 @@ export default function ClienteInboxPage() {
                 Distribuir fila
               </button>
             ) : null}
+            <StateBadge
+              label={activeResponseState.label}
+              tone={activeResponseState.tone}
+            />
             <button
               type="button"
               onClick={() => void refreshSelected(true)}
@@ -2229,186 +2702,11 @@ export default function ClienteInboxPage() {
         </div>
       ) : null}
 
-      {showOpsSummary ? (
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            label="Abertas"
-            value={inboxStats.open.toLocaleString("pt-BR")}
-            icon={Sparkles}
-            trend="em operacao agora"
-          />
-          <MetricCard
-            label="Pendentes"
-            value={inboxStats.pending.toLocaleString("pt-BR")}
-            icon={Clock3}
-            trend="aguardando proxima acao"
-          />
-          <MetricCard
-            label="Sem dono"
-            value={inboxStats.unassigned.toLocaleString("pt-BR")}
-            icon={UserRound}
-            trend="fila para distribuir"
-          />
-          <MetricCard
-            label="SLA"
-            value={inboxStats.slaBreached.toLocaleString("pt-BR")}
-            icon={Flag}
-            trend="conversas estouradas"
-          />
-        </section>
-      ) : null}
-
-      {allowAdvanced && showOpsSummary ? (
-        <section className="grid gap-3 xl:grid-cols-5">
-          {focusSignals.length === 0 ? (
-            <PanelCard className="p-4 xl:col-span-5">
-              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Inbox sem gargalos relevantes no momento</p>
-              <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-                O atendimento atual nao mostra fila critica, SLA estourado ou operacao sem responsavel.
-              </p>
-            </PanelCard>
-          ) : (
-            focusSignals.map((item) => (
-              <Link
-                key={item.id}
-                href={item.href}
-                className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
-                    <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
-                  </div>
-                  <StateBadge label={item.badge} tone={item.tone} />
-                </div>
-              </Link>
-            ))
-          )}
-        </section>
-      ) : null}
-
-      {error ? (
-        <PanelCard className="inbox-notice inbox-notice-danger p-4 text-sm">
-          {error}
-        </PanelCard>
-      ) : null}
-
-      {showOpsSummary && allowAdvanced ? (
-      <PanelCard className="inbox-ops-panel p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-[260px] flex-1">
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Estado operacional da IA nesta conversa</p>
-            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{aiStateDescription}</p>
-            {activeChat?.aiState?.lastProcessedAt || activeChat?.aiState?.lastDecision || activeChat?.aiState?.lastJobStatus ? (
-              <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">
-                {activeChat?.aiState?.lastJobStatus ? (
-                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
-                    tarefa {String(activeChat.aiState.lastJobStatus).replaceAll("_", " ")}
-                  </span>
-                ) : null}
-                {activeChat?.aiState?.lastDecision ? (
-                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
-                    decisao {String(activeChat.aiState.lastDecision).replaceAll("_", " ")}
-                  </span>
-                ) : null}
-                {activeChat?.aiState?.lastProcessedAt ? (
-                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
-                    ultimo ciclo {formatDateTime(activeChat.aiState.lastProcessedAt)}
-                  </span>
-                ) : null}
-                {handoffNotifyMeta ? (
-                  <span
-                    className={cn(
-                      "rounded-full border px-2 py-1",
-                      handoffNotifyMeta.tone === "danger"
-                        ? "border-rose-300/30 text-rose-100"
-                        : handoffNotifyMeta.tone === "warning"
-                        ? "border-amber-300/30 text-amber-100"
-                        : handoffNotifyMeta.tone === "success"
-                        ? "border-emerald-300/30 text-emerald-100"
-                        : "border-[var(--cliente-border)] text-[var(--cliente-card-text-soft)]"
-                    )}
-                  >
-                    {handoffNotifyMeta.label}
-                  </span>
-                ) : null}
-                {typeof activeChat?.aiState?.lastHandoffNotifySuccessCount === "number" ? (
-                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
-                    alerta ok {activeChat.aiState.lastHandoffNotifySuccessCount}
-                  </span>
-                ) : null}
-                {typeof activeChat?.aiState?.lastHandoffNotifyFailureCount === "number" &&
-                Number(activeChat.aiState.lastHandoffNotifyFailureCount || 0) > 0 ? (
-                  <span className="rounded-full border border-[var(--cliente-border)] px-2 py-1">
-                    alerta falha {activeChat.aiState.lastHandoffNotifyFailureCount}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-            <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
-              Quando a conversa entra em transferencia ou pausa manual, a IA para de responder ate ser retomada novamente.
-            </p>
-            {handoffNotifyHint ? (
-              <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                {handoffNotifyHint}
-              </div>
-            ) : null}
-          </div>
-          <div className="flex flex-col items-start gap-2 sm:items-end">
-            <StateBadge
-              label={activeChat?.aiState?.humanOwnerUserId ? "Takeover humano" : aiPaused ? "IA pausada" : "IA pronta"}
-              tone={activeChat?.aiState?.humanOwnerUserId ? "warning" : aiPaused ? "warning" : "success"}
-            />
-            {aiPaused ? (
-              <button
-                type="button"
-                onClick={() => void handleToggleAi()}
-                disabled={!selectedChatId || updatingAi || !canOperate}
-                className="inbox-thread-action inbox-thread-action-success inline-flex items-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/12 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/18 disabled:opacity-50"
-              >
-                {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
-                {activeChat?.aiState?.humanOwnerUserId ? "Liberar transferencia e retomar IA" : "Retomar IA agora"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => void handleToggleAi()}
-                disabled={!selectedChatId || updatingAi || !canOperate}
-                className="inbox-thread-action inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
-              >
-                {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PauseCircle className="h-3.5 w-3.5" />}
-                Pausar IA agora
-              </button>
-            )}
-            {aiRetryAvailable ? (
-              <button
-                type="button"
-                onClick={() => void handleRetryAi()}
-                disabled={!selectedChatId || retryingAi || updatingAi || !canOperate || aiPaused}
-                className="inbox-thread-action inbox-thread-action-info inline-flex items-center gap-2 rounded-xl border border-sky-300/20 bg-sky-500/12 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/18 disabled:opacity-50"
-              >
-                {retryingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                Reprocessar ultima mensagem
-              </button>
-            ) : null}
-              {handoffNotifyHint ? (
-                <Link
-                  href="/cliente/painel/ia"
-                className="inbox-thread-action inbox-thread-action-warning inline-flex items-center gap-2 rounded-xl border border-amber-300/20 bg-amber-500/12 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/18"
-              >
-                  Ajustar alerta de transferencia
-                </Link>
-              ) : null}
-          </div>
-        </div>
-      </PanelCard>
-      ) : null}
-
       <section
         className={cn(
           "grid min-h-[82vh] min-w-0 grid-cols-1 gap-4 xl:h-[calc(100vh-8rem)] xl:min-h-0 xl:grid-cols-[minmax(320px,380px)_minmax(0,1.7fr)]",
-          showSidePanel
-            ? "2xl:grid-cols-[minmax(320px,380px)_minmax(0,1.8fr)_minmax(280px,332px)]"
+          showDesktopContextPanel
+            ? "2xl:grid-cols-[minmax(320px,380px)_minmax(0,1.7fr)_minmax(320px,380px)]"
             : "2xl:grid-cols-[minmax(320px,380px)_minmax(0,1.8fr)]"
         )}
       >
@@ -2418,8 +2716,7 @@ export default function ClienteInboxPage() {
         )}>
           <div className="border-b border-[var(--cliente-border)] p-4">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle title="Conversas" subtitle={`${filteredChats.length} visiveis agora`} />
-              <StateBadge label={`${inboxStats.highPriority} prioritarias`} tone="danger" />
+              <CardTitle title="Conversas" subtitle={`${filteredChats.length} conversas visiveis`} />
             </div>
 
             <div className="mt-4 space-y-3">
@@ -2433,22 +2730,53 @@ export default function ClienteInboxPage() {
                 />
               </label>
 
-              <div className="flex flex-wrap gap-1.5">
-                {STATUS_FILTERS.map((filter) => (
-                  <button
-                    key={filter}
-                    type="button"
-                    onClick={() => setStatusFilter(filter)}
-                    className={cn(
-                      "inbox-filter-pill rounded-full border px-3 py-1.5 text-[10px] font-semibold tracking-normal transition",
-                      statusFilter === filter
-                        ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
-                        : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)]"
-                    )}
-                  >
-                    {formatStatusFilterLabel(filter)}
-                  </button>
-                ))}
+              <ClientTabs
+                value={statusFilter}
+                onChange={(value) => setStatusFilter(value as StatusFilter)}
+                className="w-full"
+                items={STATUS_FILTERS.map((filter) => ({
+                  value: filter,
+                  label: formatStatusFilterLabel(filter),
+                }))}
+              />
+
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQueueFilter(queueFilter === "assigned_waiting" ? "all" : "assigned_waiting")}
+                  className={cn(
+                    "inbox-filter-pill rounded-[18px] border px-3 py-2 text-left text-[11px] font-semibold transition",
+                    queueFilter === "assigned_waiting"
+                      ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+                      : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)]"
+                  )}
+                >
+                  Precisa de resposta
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQueueFilter(queueFilter === "unassigned" ? "all" : "unassigned")}
+                  className={cn(
+                    "inbox-filter-pill rounded-[18px] border px-3 py-2 text-left text-[11px] font-semibold transition",
+                    queueFilter === "unassigned"
+                      ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]"
+                      : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)]"
+                  )}
+                >
+                  Sem responsavel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPriorityFilter(priorityFilter === "high" ? "all" : "high")}
+                  className={cn(
+                    "inbox-filter-pill rounded-[18px] border px-3 py-2 text-left text-[11px] font-semibold transition",
+                    priorityFilter === "high"
+                      ? "border-[var(--cliente-warning)]/35 bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]"
+                      : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)]"
+                  )}
+                >
+                  Alta prioridade
+                </button>
               </div>
 
               {allowAdvanced ? (
@@ -2458,7 +2786,7 @@ export default function ClienteInboxPage() {
                   className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
-                  {showAdvancedFilters ? "Ocultar filtros avancados" : "Mostrar filtros avancados"}
+                  {showAdvancedFilters ? "Ocultar filtros" : "Mais filtros"}
                 </button>
               ) : null}
 
@@ -2485,9 +2813,7 @@ export default function ClienteInboxPage() {
                       className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
                     >
                       {QUEUE_FILTERS.map((option) => (
-                        <option key={option} value={option}>
-                          {formatQueueFilterLabel(option)}
-                        </option>
+                        <option key={option} value={option}>{formatQueueFilterLabel(option)}</option>
                       ))}
                     </select>
 
@@ -2589,10 +2915,14 @@ export default function ClienteInboxPage() {
                       {activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
                     </h3>
                     <StateBadge label={formatChannelLabel(activeChat?.channel)} tone="neutral" />
-                    <StateBadge label={formatStatusLabel(activeChat?.status)} tone={getStatusTone(activeChat?.status)} />
-                    <StateBadge label={activeSla.label} tone={activeSla.breached ? "danger" : "info"} />
+                    <StateBadge label={activeResponseState.label} tone={activeResponseState.tone} />
+                    {activeChat?.aiState?.humanOwnerUserId ? (
+                      <StateBadge label="Atendimento humano" tone="warning" />
+                    ) : aiPaused ? (
+                      <StateBadge label="IA pausada" tone="warning" />
+                    ) : null}
                   </div>
-                  {showSidePanel ? (
+                  {activeLead ? (
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <div className="inline-flex min-w-0 items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1.5 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.45)]">
                       <ContactAvatar
@@ -2619,84 +2949,45 @@ export default function ClienteInboxPage() {
                     <span>|</span>
                     <span>{formatQueueStatusLabel(activeChat?.queueStatus)}</span>
                     <span>|</span>
+                    <span>{activeSla.label}</span>
+                    <span>|</span>
                     <span>Ultima atividade {formatRelative(activeChat?.lastMessageTime)}</span>
                   </div>
                 </div>
               </div>
 
-              {allowAdvanced ? (
-              <div className="hidden flex-wrap gap-2 xl:flex">
+              <div className="flex flex-wrap gap-2">
+                {activeCallHref ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateCallTask()}
+                    disabled={savingLeadTask || !canOperate}
+                    className="inline-flex items-center gap-2 rounded-[18px] border border-emerald-300/20 bg-emerald-500/10 px-3 py-2.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-500/16 disabled:opacity-60"
+                  >
+                    {savingLeadTask ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneCall className="h-3.5 w-3.5" />}
+                    Ligar
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  onClick={() => void handleToggleAi()}
-                  disabled={!selectedChat || updatingAi || !canOperate}
-                  className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
+                  onClick={() => setShowDetailsDrawer(true)}
+                  disabled={!showContextPanel}
+                  className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50 2xl:hidden"
                 >
-                  {updatingAi ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : aiPaused ? (
-                    <PlayCircle className="h-3.5 w-3.5" />
-                  ) : (
-                    <PauseCircle className="h-3.5 w-3.5" />
-                  )}
-                  {aiPaused ? "Retomar IA" : "Pausar IA"}
+                  <PanelRightOpen className="h-3.5 w-3.5" />
+                  Ver cliente
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleTakeover()}
-                  disabled={!selectedChat || updatingAi || !canOperate}
-                  className="inline-flex items-center gap-2 rounded-[18px] border border-amber-300/20 bg-amber-500/10 px-3 py-2.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/16 disabled:opacity-50"
+                  onClick={() => void refreshSelected(true)}
+                  className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
                 >
-                  {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserRound className="h-3.5 w-3.5" />}
-                  Assumir transferencia
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleQuickStatus("pending")}
-                  disabled={!selectedChat || savingMeta || !canOperate}
-                  className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
-                >
-                  Marcar pendente
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleQuickStatus("resolved")}
-                  disabled={!selectedChat || savingMeta || !canOperate}
-                  className="rounded-[18px] border border-emerald-300/20 bg-emerald-500/10 px-3 py-2.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/16 disabled:opacity-50"
-                >
-                  Resolver
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Atualizar
                 </button>
               </div>
-              ) : null}
             </div>
 
-            {showSidePanel && activeLead ? (
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <div className="inbox-thread-stat rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Contato</p>
-                  <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">{activeLead.nome || "Contato"}</p>
-                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
-                    {activeLead.empresa || activeLead.origem || "Sem empresa"}
-                  </p>
-                </div>
-                <div className="inbox-thread-stat rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Etapa do funil</p>
-                  <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">
-                    {getPipelineStageLabel(
-                      normalizePipelineStageId(activeLead.pipelineStage || activeLead.stage || "captado")
-                    )}
-                  </p>
-                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{activeLead.owner || "Sem dono comercial"}</p>
-                </div>
-                <div className="inbox-thread-stat rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Valor potencial</p>
-                  <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">
-                    {formatMoney(activeLead.potentialValue)}
-                  </p>
-                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Pontuacao {activeLead.score ?? "--"}</p>
-                </div>
-              </div>
-            ) : null}
           </div>
 
           <div
@@ -2730,11 +3021,11 @@ export default function ClienteInboxPage() {
             className="inbox-thread-composer inbox-chat-composer shrink-0 border-t border-[var(--cliente-border)] p-4"
           >
             {whatsappWindowClosed ? (
-              <div className="rounded-2xl border border-amber-300/25 bg-amber-500/10 p-3 text-amber-100">
+              <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-warning)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--cliente-warning)_14%,transparent)] p-3 text-[var(--cliente-card-text)]">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-amber-50">Enviar follow-up aprovado</p>
-                    <p className="mt-1 text-xs leading-5 text-amber-100/82">
+                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Enviar follow-up aprovado</p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-muted)]">
                       A janela de 24h fechou. Para chamar o contato agora, envie um template aprovado na Meta.
                     </p>
                   </div>
@@ -2742,7 +3033,7 @@ export default function ClienteInboxPage() {
                     href="https://business.facebook.com/wa/manage/message-templates/"
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center rounded-full border border-amber-200/30 bg-amber-200/12 px-2.5 py-1 text-xs font-semibold text-amber-50 transition hover:bg-amber-200/18"
+                    className="inline-flex items-center rounded-full border border-[color:color-mix(in_srgb,var(--cliente-warning)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--cliente-warning)_14%,transparent)] px-2.5 py-1 text-xs font-semibold text-[var(--cliente-warning)] transition hover:brightness-95"
                   >
                     Gerenciar templates
                   </a>
@@ -2750,38 +3041,38 @@ export default function ClienteInboxPage() {
 
                 <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(180px,1fr)_92px_minmax(180px,1fr)_auto]">
                   <label className="min-w-0">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100/70">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">
                       Template
                     </span>
                     <input
                       value={templateName}
                       onChange={(event) => setTemplateName(event.target.value)}
                       placeholder="Ex: follow_up_geral"
-                      className="w-full rounded-xl border border-amber-200/20 bg-[#111b21]/55 px-3 py-2 text-sm text-amber-50 outline-none placeholder:text-amber-100/40 focus:border-amber-200/45"
+                      className="client-input w-full rounded-xl border border-[color:color-mix(in_srgb,var(--cliente-warning)_22%,transparent)] px-3 py-2 text-sm outline-none focus:border-[color:color-mix(in_srgb,var(--cliente-warning)_42%,transparent)]"
                       disabled={sendingTemplate || !canOperate}
                     />
                   </label>
                   <label>
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100/70">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">
                       Idioma
                     </span>
                     <input
                       value={templateLanguage}
                       onChange={(event) => setTemplateLanguage(event.target.value)}
                       placeholder="pt_BR"
-                      className="w-full rounded-xl border border-amber-200/20 bg-[#111b21]/55 px-3 py-2 text-sm text-amber-50 outline-none placeholder:text-amber-100/40 focus:border-amber-200/45"
+                      className="client-input w-full rounded-xl border border-[color:color-mix(in_srgb,var(--cliente-warning)_22%,transparent)] px-3 py-2 text-sm outline-none focus:border-[color:color-mix(in_srgb,var(--cliente-warning)_42%,transparent)]"
                       disabled={sendingTemplate || !canOperate}
                     />
                   </label>
                   <label className="min-w-0">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100/70">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">
                       Variaveis, se tiver
                     </span>
                     <input
                       value={templateParamsText}
                       onChange={(event) => setTemplateParamsText(event.target.value)}
                       placeholder="Ex: Savio, proposta"
-                      className="w-full rounded-xl border border-amber-200/20 bg-[#111b21]/55 px-3 py-2 text-sm text-amber-50 outline-none placeholder:text-amber-100/40 focus:border-amber-200/45"
+                      className="client-input w-full rounded-xl border border-[color:color-mix(in_srgb,var(--cliente-warning)_22%,transparent)] px-3 py-2 text-sm outline-none focus:border-[color:color-mix(in_srgb,var(--cliente-warning)_42%,transparent)]"
                       disabled={sendingTemplate || !canOperate}
                     />
                   </label>
@@ -2817,593 +3108,21 @@ export default function ClienteInboxPage() {
           </form>
         </PanelCard>
 
-        {showSidePanel ? (
-        <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden overflow-y-auto 2xl:sticky 2xl:top-4 2xl:max-h-[calc(100vh-8rem)]">
-          <PanelCard className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle
-                title="Resumo do contato"
-                subtitle="Dados comerciais, etapa e contexto de conta"
-              />
-              {activeLead ? (
-                <StateBadge label="conectado ao CRM" tone="success" />
-              ) : (
-                <StateBadge label="sem contato vinculado" tone="warning" />
-              )}
-            </div>
-
-            {loadingDetail ? (
-              <div className="py-8 text-center text-[var(--cliente-card-text-soft)]">
-                <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-              </div>
-            ) : activeLead ? (
-              <>
-                <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-                  <InfoRow label="Nome" value={activeLead.nome || "Contato"} />
-                  <InfoRow label="Telefone" value={activeLead.telefone || activeChat?.contactPhone || "--"} />
-                  <InfoRow label="Email" value={activeLead.email || "--"} />
-                  <InfoRow label="Empresa" value={activeLead.empresa || "--"} />
-                  <InfoRow label="Origem" value={activeLead.origem || formatChannelLabel(activeLead.channel)} />
-                  <InfoRow label="Responsavel" value={activeLead.owner || activeChat?.assignedUserName || "Sem dono"} />
-                </div>
-
-                {aiEvidenceTop.length > 0 || aiChecklistProgress.total > 0 ? (
-                  <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                        IA rastreabilidade
-                      </p>
-                      {aiChecklistProgress.total > 0 ? (
-                        <StateBadge
-                          label={`lista ${aiChecklistProgress.done}/${aiChecklistProgress.total}`}
-                          tone={aiChecklistProgress.done >= Math.ceil(aiChecklistProgress.total * 0.6) ? "success" : "warning"}
-                        />
-                      ) : null}
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      {aiEvidenceTop.map((item) => (
-                        <div key={item.field} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                              {item.field.replaceAll("_", " ").replaceAll(".", " / ")}
-                            </p>
-                            <StateBadge
-                              label={typeof item.confidence === "number" ? `${Math.round(item.confidence * 100)}%` : "--"}
-                              tone={getEvidenceConfidenceTone(item.confidence)}
-                            />
-                          </div>
-                          <p className="mt-1 text-sm text-[var(--cliente-card-text)]">{item.value}</p>
-                          <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">
-                            {humanizeEvidenceSource(item.source)} | {formatDateTime(item.capturedAt)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="mt-4 grid gap-3">
-                  <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                    <span>Etapa do funil</span>
-                    <select
-                      value={leadStage}
-                      onChange={(event) => setLeadStage(event.target.value)}
-                      disabled={!canOperate}
-                      className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
-                    >
-                      {DEFAULT_PIPELINE_STAGES.map((stage) => (
-                        <option key={stage.id} value={stage.id}>
-                          {stage.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => void handleMoveLeadStage()}
-                    disabled={!canOperate || savingLeadStage}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
-                  >
-                    {savingLeadStage ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <FolderKanban className="h-4 w-4" />
-                    )}
-                    Atualizar etapa
-                  </button>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <StateBadge label={getPipelineStageLabel(leadStage)} tone="info" />
-                  <StateBadge label={`Pontuacao ${activeLead.score ?? "--"}`} tone="neutral" />
-                  <StateBadge label={activeLead.heat || "sem temperatura"} tone={getHeatTone(activeLead.heat)} />
-                  <StateBadge
-                    label={formatPriorityLabel(activeLead.priority)}
-                    tone={getPriorityTone(activeLead.priority)}
-                  />
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {(activeLead.tags || []).length > 0 ? (
-                    activeLead.tags?.map((tag) => <StateBadge key={tag} label={tag} tone="neutral" />)
-                  ) : (
-                    <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem tags comerciais no contato.</p>
-                  )}
-                </div>
-
-                <div className="mt-4 grid gap-2">
-                  <Link
-                    href={`/cliente/painel/crm?leadId=${encodeURIComponent(activeLead.id)}`}
-                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
-                  >
-                    <span>Abrir CRM</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  <Link
-                    href={`/cliente/painel/pipeline?leadId=${encodeURIComponent(activeLead.id)}`}
-                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
-                  >
-                    <span>Ver no pipeline</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  <Link
-                    href={`/cliente/painel/comercial?leadId=${encodeURIComponent(activeLead.id)}`}
-                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
-                  >
-                    <span>Abrir comercial</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  {activeLead.telefone || activeChat?.contactPhone ? (
-                    <a
-                      href={`https://wa.me/${encodeURIComponent(String(activeLead.telefone || activeChat?.contactPhone || "").replace(/\D/g, ""))}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-between gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
-                    >
-                      <span>Abrir no WhatsApp</span>
-                      <ArrowRight className="h-4 w-4" />
-                    </a>
-                  ) : null}
-                  <Link
-                    href={`/cliente/painel/metricas`}
-                    className="inline-flex items-center justify-between gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
-                  >
-                    <span>Ver metricas da operacao</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <div className="mt-4 rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
-                Esta conversa ainda nao esta associada a um contato com perfil comercial completo.
-              </div>
-            )}
-          </PanelCard>
-
-          <PanelCard className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle
-                title="Operacao da conversa"
-                subtitle="Responsavel, status, prioridade e tags do atendimento"
-              />
-              <StateBadge
-                label={canOperate ? "editavel" : "somente leitura"}
-                tone={canOperate ? "info" : "neutral"}
-              />
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                <span>Status</span>
-                <select
-                  value={metaForm.status}
-                  onChange={(event) => setMetaForm((current) => ({ ...current, status: event.target.value }))}
-                  disabled={!canOperate}
-                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
-                >
-                  {STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {formatStatusLabel(status)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                <span>Prioridade</span>
-                <select
-                  value={metaForm.priority}
-                  onChange={(event) => setMetaForm((current) => ({ ...current, priority: event.target.value }))}
-                  disabled={!canOperate}
-                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
-                >
-                  {PRIORITY_OPTIONS.map((priority) => (
-                    <option key={priority} value={priority}>
-                      {formatPriorityLabel(priority)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                <span>Responsavel</span>
-                <select
-                  value={metaForm.assignedUserId}
-                  onChange={(event) =>
-                    setMetaForm((current) => ({ ...current, assignedUserId: event.target.value }))
-                  }
-                  disabled={!canOperate}
-                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
-                >
-                  <option value="">Sem atribuicao</option>
-                  {teamMembers.map((member) => (
-                    <option key={member.userId} value={member.userId}>
-                      {member.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                <span>Tags</span>
-                <input
-                  value={metaForm.tagsInput}
-                  onChange={(event) => setMetaForm((current) => ({ ...current, tagsInput: event.target.value }))}
-                  disabled={!canOperate}
-                  placeholder="vip, proposta, urgente"
-                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
-                />
-              </label>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handleSaveMeta()}
-              disabled={savingMeta || !canOperate}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
-            >
-              {savingMeta ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4" />
-              )}
-              Salvar operacao
-            </button>
-          </PanelCard>
-
-          <PanelCard className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle
-                title="Comercial conectado"
-                subtitle="Propostas, receita e pendencias do contato dentro da conversa"
-              />
-              <StateBadge
-                label={activeLead ? "sincronizado" : "aguardando contato"}
-                tone={activeLead ? "success" : "warning"}
-              />
-            </div>
-
-            {activeLead ? (
-              <>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <CommercialMetric
-                    label="Propostas"
-                    value={String(commercialSummary.budgets ?? 0)}
-                    icon={FileText}
-                    hint={`${commercialSummary.approvedBudgets ?? 0} aprovadas`}
-                  />
-                  <CommercialMetric
-                    label="Valor aprovado"
-                    value={formatMoney(commercialSummary.approvedValue ?? 0)}
-                    icon={BadgeDollarSign}
-                    hint="volume comercial ganho"
-                  />
-                  <CommercialMetric
-                    label="Receita paga"
-                    value={formatMoney(commercialSummary.paidRevenue ?? 0)}
-                    icon={Receipt}
-                    hint="valor recebido"
-                  />
-                  <CommercialMetric
-                    label="Receita pendente"
-                    value={formatMoney(commercialSummary.pendingRevenue ?? 0)}
-                    icon={Clock3}
-                    hint={`${commercialSummary.financeItems ?? 0} lancamentos`}
-                  />
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Propostas recentes</p>
-                    <Link
-                      href={`/cliente/painel/comercial?leadId=${encodeURIComponent(activeLead.id)}`}
-                      className="text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
-                    >
-                      Abrir comercial
-                    </Link>
-                  </div>
-                  {leadBudgets.length === 0 ? (
-                    <p className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 text-sm text-[var(--cliente-card-text-soft)]">
-                      Nenhuma proposta vinculada a este contato ainda.
-                    </p>
-                  ) : (
-                    leadBudgets.map((budget) => (
-                      <div key={budget.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{budget.titulo || "Proposta"}</p>
-                            <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                              validade {formatDate(budget.validade)} / atualizada {formatDateTime(budget.updatedAt)}
-                            </p>
-                          </div>
-                          <StateBadge
-                            label={budget.status || "Rascunho"}
-                            tone={
-                              budget.status === "Aprovado"
-                                ? "success"
-                                : budget.status === "Perdido"
-                                  ? "danger"
-                                  : "neutral"
-                            }
-                          />
-                        </div>
-                        <div className="mt-3 flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{formatMoney(Number(budget.valorTotal || 0))}</p>
-                          {budget.resumo ? (
-                            <p className="line-clamp-1 max-w-[62%] text-right text-xs text-[var(--cliente-card-text-soft)]">{budget.resumo}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className="mt-4 space-y-3 border-t border-[var(--cliente-border)] pt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Financeiro recente</p>
-                    <StateBadge label={`${leadFinance.length}`} tone="neutral" />
-                  </div>
-                  {leadFinance.length === 0 ? (
-                    <p className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 text-sm text-[var(--cliente-card-text-soft)]">
-                      Nenhum lancamento comercial associado a este contato.
-                    </p>
-                  ) : (
-                    leadFinance.map((item) => (
-                      <div key={item.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.descricao || "Lancamento"}</p>
-                            <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                              {item.categoria || item.tipo || "Comercial"} / vencimento {formatDate(item.vencimento)}
-                            </p>
-                          </div>
-                          <StateBadge
-                            label={item.status || "pendente"}
-                            tone={String(item.status || "").toLowerCase() === "pago" ? "success" : "warning"}
-                          />
-                        </div>
-                        <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                          <p className="font-semibold text-[var(--cliente-card-text)]">{formatMoney(Number(item.valor || 0))}</p>
-                          <p className="text-xs text-[var(--cliente-card-text-soft)]">{item.meioPagamento || "Sem meio de pagamento"}</p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="mt-4 rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
-                Vincule um contato a conversa para enxergar propostas, receita e pendencias financeiras aqui.
-              </div>
-            )}
-          </PanelCard>
-
-          <PanelCard className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle
-                title="Tarefas do contato"
-                subtitle="Retorno, proposta e pendencias sem sair do inbox"
-              />
-              <StateBadge label={`${leadTasks.length}`} tone="neutral" />
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {leadTasks.length === 0 ? (
-                <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhuma tarefa criada para este contato ainda.</p>
-              ) : (
-                leadTasks.map((task) => (
-                  <div key={task.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{task.title || "Tarefa"}</p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <StateBadge label={formatTaskType(task.type)} tone="neutral" />
-                          <StateBadge label={formatPriorityLabel(task.priority)} tone={getTaskTone(task)} />
-                          <StateBadge
-                            label={task.status === "done" ? "Concluida" : "Pendente"}
-                            tone={getTaskTone(task)}
-                          />
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleLeadTask(task)}
-                        disabled={!canOperate || updatingTaskId === task.id}
-                        className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
-                      >
-                        {updatingTaskId === task.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : task.status === "done" ? (
-                          <CircleDashed className="h-3.5 w-3.5" />
-                        ) : (
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                        )}
-                        {task.status === "done" ? "Reabrir" : "Concluir"}
-                      </button>
-                    </div>
-                    <p className="mt-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                      prazo {formatDateTime(task.dueAt || task.createdAt)}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-            {activeLead ? (
-              <form onSubmit={handleCreateLeadTask} className="mt-4 space-y-3 border-t border-[var(--cliente-border)] pt-4">
-                <input
-                  value={leadTaskTitle}
-                  onChange={(event) => setLeadTaskTitle(event.target.value)}
-                  placeholder="Ex: Retornar proposta ainda hoje"
-                  disabled={!canOperate}
-                  className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
-                />
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <input
-                    type="datetime-local"
-                    value={leadTaskDueAt}
-                    onChange={(event) => setLeadTaskDueAt(event.target.value)}
-                    disabled={!canOperate}
-                    className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
-                  />
-                  <select
-                    value={leadTaskType}
-                    onChange={(event) => setLeadTaskType(event.target.value as (typeof TASK_TYPES)[number])}
-                    disabled={!canOperate}
-                    className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
-                  >
-                    {TASK_TYPES.map((taskType) => (
-                      <option key={taskType} value={taskType}>
-                        {formatTaskType(taskType)}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={leadTaskPriority}
-                    onChange={(event) =>
-                      setLeadTaskPriority(event.target.value as (typeof TASK_PRIORITIES)[number])
-                    }
-                    disabled={!canOperate}
-                    className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
-                  >
-                    {TASK_PRIORITIES.map((taskPriority) => (
-                      <option key={taskPriority} value={taskPriority}>
-                        {formatPriorityLabel(taskPriority)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  type="submit"
-                  disabled={!canOperate || savingLeadTask || !leadTaskTitle.trim()}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
-                >
-                  {savingLeadTask ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <NotebookPen className="h-4 w-4" />
-                  )}
-                  Criar tarefa
-                </button>
-              </form>
-            ) : null}
-          </PanelCard>
-
-          <PanelCard className="p-4">
-            <CardTitle
-              title="Notas e inteligencia operacional"
-              subtitle="Notas internas da conversa e observacoes do contato"
-            />
-
-            <form onSubmit={handleCreateInternalNote} className="mt-4 space-y-3">
-              <textarea
-                value={internalNoteText}
-                onChange={(event) => setInternalNoteText(event.target.value)}
-                placeholder="Registrar contexto interno desta conversa"
-                disabled={!canOperate}
-                rows={3}
-                className="client-input w-full rounded-2xl border px-3 py-3 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
-              />
-              <button
-                type="submit"
-                disabled={!canOperate || savingNote || !internalNoteText.trim()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
-              >
-                {savingNote ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <NotebookPen className="h-4 w-4" />
-                )}
-                Salvar nota interna
-              </button>
-            </form>
-
-            {activeLead ? (
-              <form onSubmit={handleCreateLeadNote} className="mt-4 space-y-3 border-t border-[var(--cliente-border)] pt-4">
-                <textarea
-                  value={leadNoteText}
-                  onChange={(event) => setLeadNoteText(event.target.value)}
-                  placeholder="Registrar nota comercial no perfil do contato"
-                  disabled={!canOperate}
-                  rows={3}
-                  className="client-input w-full rounded-2xl border px-3 py-3 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
-                />
-                <button
-                  type="submit"
-                  disabled={!canOperate || savingLeadNote || !leadNoteText.trim()}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
-                >
-                  {savingLeadNote ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <NotebookPen className="h-4 w-4" />
-                  )}
-                  Salvar nota do contato
-                </button>
-              </form>
-            ) : null}
-          </PanelCard>
-
-          <NoteCard
-            title="Notas internas"
-            subtitle="Contexto operacional desta conversa"
-            notes={chatNotes}
-            emptyLabel="Nenhuma nota interna registrada para este chat."
-          />
-
-          <NoteCard
-            title="Notas comerciais"
-            subtitle="Anotacoes persistidas no CRM do contato"
-            notes={leadNotes}
-            emptyLabel="Nenhuma nota comercial registrada para o contato."
-          />
-
-          <PanelCard className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle title="Historico recente" subtitle="Eventos do contato conectados a esta conversa" />
-              <StateBadge label={`${timeline.length}`} tone="neutral" />
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {timeline.length === 0 ? (
-                <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhum evento recente no contato.</p>
-              ) : (
-                timeline.slice(0, 8).map((event) => (
-                  <div key={event.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{event.title || "Evento"}</p>
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                        {formatDateTime(event.createdAt)}
-                      </p>
-                    </div>
-                    {event.detail ? <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{event.detail}</p> : null}
-                  </div>
-                ))
-              )}
-            </div>
-          </PanelCard>
-        </div>
+        {showDesktopContextPanel ? (
+          <div className="hidden min-h-0 min-w-0 overflow-x-hidden overflow-y-auto 2xl:block 2xl:sticky 2xl:top-4 2xl:max-h-[calc(100vh-8rem)]">
+            {contextPanelContent}
+          </div>
         ) : null}
       </section>
+
+      <CustomerProfileDrawer
+        open={showDetailsDrawer}
+        onClose={() => setShowDetailsDrawer(false)}
+        title="Cliente e oportunidade"
+        subtitle="Contexto comercial da conversa atual"
+      >
+        {contextPanelContent}
+      </CustomerProfileDrawer>
     </div>
   );
 }

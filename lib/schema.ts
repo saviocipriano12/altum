@@ -31,7 +31,7 @@ type ItemListSchemaOptions = {
 
 const normalizeSiteUrl = (value: string): string => value.replace(/\/$/, "");
 
-export const getSiteUrl = (): string => normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000");
+export const getSiteUrl = (): string => normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag");
 
 export const toAbsoluteUrl = (siteUrl: string, pathOrUrl: string): string => {
   if (!pathOrUrl) return siteUrl;

@@ -96,7 +96,7 @@ export default async function OpenGraphImage({ params }: OgImageProps) {
           }}
         >
           <div>Engenharia de vendas com IA</div>
-          <div>altumia.com.br</div>
+          <div>altum.ag</div>
         </div>
       </div>
     ),

@@ -117,7 +117,7 @@ function getSafeSiteUrl(req: Request) {
     }
   } catch {}
 
-  return "http://localhost:3000";
+  return "https://altum.ag";
 }
 
 async function generateInviteLinkWithFallback(input: { req: Request; email: string }) {

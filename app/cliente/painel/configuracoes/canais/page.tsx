@@ -75,6 +75,7 @@ type IntegrationPendingItem = {
 type WhatsAppChannelResponse = {
   channel?: {
     id?: string;
+    provider?: string;
     displayName?: string;
     phoneNumber?: string;
     phoneNumberId?: string;
@@ -143,7 +144,7 @@ const CONNECTORS: ConnectorDefinition[] = [
   {
     type: "whatsapp",
     label: "WhatsApp",
-    description: "Canal oficial para webhook, inbox e envio manual por tenant.",
+    description: "Multiplos numeros oficiais ou flexiveis para inbox, IA e roteamento por tenant.",
     provider: "meta_whatsapp",
     icon: MessageSquare,
     primaryLabel: "phoneNumberId",
@@ -356,6 +357,29 @@ function buildConnectorOperationalRows(input: {
   return rows;
 }
 
+const WHATSAPP_PROVIDER_OPTIONS = [
+  {
+    value: "meta_whatsapp",
+    label: "Oficial Meta",
+    description: "Cloud API/BSP com templates, webhooks oficiais e melhor estabilidade.",
+  },
+  {
+    value: "whatsapp_qr",
+    label: "Flexivel por QR",
+    description: "Numero comum ou Business App via gateway de sessao conectado por QR.",
+  },
+  {
+    value: "whatsapp_gateway",
+    label: "Gateway externo",
+    description: "Adaptador HTTP para provedores como Evolution, Z-API ou infra propria.",
+  },
+] as const;
+
+function whatsappProviderLabel(value?: string) {
+  const normalized = String(value || "meta_whatsapp").toLowerCase();
+  return WHATSAPP_PROVIDER_OPTIONS.find((option) => option.value === normalized)?.label || "WhatsApp";
+}
+
 function buildConnectorPlaybook(definition: ConnectorDefinition, channel: ChannelItem | null) {
   const inboxHref = `/cliente/painel/inbox?channel=${encodeURIComponent(definition.type)}`;
   const crmHref = `/cliente/painel/crm?channel=${encodeURIComponent(definition.type)}`;
@@ -404,6 +428,7 @@ export default function ClienteCanaisPage() {
   const [checkingConversions, setCheckingConversions] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncingCampaigns, setSyncingCampaigns] = useState(false);
+  const [checkingWhatsAppSession, setCheckingWhatsAppSession] = useState(false);
   const [loadingPending, setLoadingPending] = useState(false);
   const [completingPending, setCompletingPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -415,11 +440,24 @@ export default function ClienteCanaisPage() {
   const [conversionHealth, setConversionHealth] = useState<ConversionHealthResponse | null>(null);
   const [pendingSelection, setPendingSelection] = useState<IntegrationPendingItem | null>(null);
   const [pendingOptionId, setPendingOptionId] = useState("");
+  const [whatsAppSession, setWhatsAppSession] = useState<{
+    status?: string;
+    qr?: string;
+    message?: string;
+  } | null>(null);
+  const [selectedWhatsAppChannelId, setSelectedWhatsAppChannelId] = useState("");
   const [whatsAppMasked, setWhatsAppMasked] = useState<{ access?: string; verify?: string; secret?: string }>({});
   const [whatsAppForm, setWhatsAppForm] = useState({
+    channelId: "",
+    provider: "meta_whatsapp",
     displayName: "WhatsApp",
     phoneNumber: "",
     phoneNumberId: "",
+    gatewayEndpoint: "",
+    sessionStatusEndpoint: "",
+    qrCodeEndpoint: "",
+    callEndpoint: "",
+    sessionId: "",
     accessToken: "",
     verifyToken: "",
     appSecret: "",
@@ -445,10 +483,20 @@ export default function ClienteCanaisPage() {
     () => CONNECTORS.find((item) => item.type === selectedType) || CONNECTORS[0],
     [selectedType]
   );
-  const selectedChannel = useMemo(
-    () => channels.find((item) => item.type === selectedType) || null,
-    [channels, selectedType]
+  const whatsAppChannels = useMemo(
+    () => channels.filter((item) => item.type === "whatsapp"),
+    [channels]
   );
+  const selectedChannel = useMemo(() => {
+    if (selectedType === "whatsapp") {
+      return (
+        whatsAppChannels.find((item) => item.id === selectedWhatsAppChannelId) ||
+        whatsAppChannels[0] ||
+        null
+      );
+    }
+    return channels.find((item) => item.type === selectedType) || null;
+  }, [channels, selectedType, selectedWhatsAppChannelId, whatsAppChannels]);
 
   useEffect(() => {
     if (!tenant?.tenantId) return;
@@ -476,11 +524,15 @@ export default function ClienteCanaisPage() {
           setError(channelsData.error || "Falha ao carregar canais.");
         } else {
           setChannels(channelsData.items || []);
+          const firstWhatsApp = (channelsData.items || []).find((item) => item.type === "whatsapp");
+          if (firstWhatsApp?.id) setSelectedWhatsAppChannelId((current) => current || firstWhatsApp.id || "");
         }
 
         if (whatsAppRes.ok && whatsAppData.channel) {
           setWhatsAppForm((current) => ({
             ...current,
+            channelId: whatsAppData.channel?.id || current.channelId,
+            provider: whatsAppData.channel?.provider || current.provider,
             displayName: whatsAppData.channel?.displayName || "WhatsApp",
             phoneNumber: whatsAppData.channel?.phoneNumber || "",
             phoneNumberId: whatsAppData.channel?.phoneNumberId || "",
@@ -508,6 +560,34 @@ export default function ClienteCanaisPage() {
       mounted = false;
     };
   }, [tenant?.tenantId]);
+
+  useEffect(() => {
+    if (selectedType !== "whatsapp") return;
+    if (!selectedChannel) return;
+    setWhatsAppForm((current) => ({
+      ...current,
+      channelId: selectedChannel.id || "",
+      provider: selectedChannel.provider || "meta_whatsapp",
+      displayName: selectedChannel.displayName || "WhatsApp",
+      phoneNumber: selectedChannel.phoneNumber || "",
+      phoneNumberId: selectedChannel.phoneNumberId || "",
+      gatewayEndpoint: selectedChannel.metadata?.gatewayEndpoint || "",
+      sessionStatusEndpoint: selectedChannel.metadata?.sessionStatusEndpoint || "",
+      qrCodeEndpoint: selectedChannel.metadata?.qrCodeEndpoint || "",
+      callEndpoint: selectedChannel.metadata?.callEndpoint || "",
+      sessionId: selectedChannel.metadata?.sessionId || "",
+      status: selectedChannel.status || "active",
+      accessToken: "",
+      verifyToken: "",
+      appSecret: "",
+    }));
+    setWhatsAppMasked({
+      access: selectedChannel.accessTokenMasked || "",
+      verify: selectedChannel.verifyTokenMasked || "",
+      secret: selectedChannel.appSecretMasked || "",
+    });
+    setWhatsAppSession(null);
+  }, [selectedChannel, selectedType]);
 
   useEffect(() => {
     if (selectedType === "whatsapp") return;
@@ -601,11 +681,8 @@ export default function ClienteCanaisPage() {
   }, [tenant?.tenantId]);
 
   const configuredCount = useMemo(() => {
-    const activeTypes = new Set(channels.filter((item) => item.status === "active").map((item) => item.type || ""));
-    if (whatsAppForm.phoneNumberId && !activeTypes.has("whatsapp")) {
-      activeTypes.add("whatsapp");
-    }
-    return activeTypes.size;
+    const activeChannels = channels.filter((item) => item.status === "active").length;
+    return activeChannels + (channels.some((item) => item.type === "whatsapp") || !whatsAppForm.phoneNumberId ? 0 : 1);
   }, [channels, whatsAppForm.phoneNumberId]);
 
   const activeConnectors = useMemo(
@@ -672,7 +749,14 @@ export default function ClienteCanaisPage() {
     if (!tenant?.tenantId) return;
     const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels`);
     const data = (await res.json()) as ChannelsResponse;
-    if (res.ok) setChannels(data.items || []);
+    if (res.ok) {
+      const items = data.items || [];
+      setChannels(items);
+      setSelectedWhatsAppChannelId((current) => {
+        if (current && items.some((item) => item.id === current)) return current;
+        return items.find((item) => item.type === "whatsapp")?.id || "";
+      });
+    }
     await refreshConversionHealth();
   }, [refreshConversionHealth, tenant?.tenantId]);
 
@@ -789,6 +873,40 @@ export default function ClienteCanaisPage() {
     }
   }
 
+  async function checkWhatsAppSession(action: "status" | "qr") {
+    if (!tenant?.tenantId || !selectedChannel?.id || selectedType !== "whatsapp") return;
+    setCheckingWhatsAppSession(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const res = await authedFetch(
+        `/api/tenant/${tenant.tenantId}/channels/${encodeURIComponent(selectedChannel.id)}/whatsapp-session?action=${action}`
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        status?: string;
+        qr?: string;
+        message?: string;
+      };
+      if (!res.ok) {
+        setError(data.error || "Falha ao consultar sessao WhatsApp.");
+        return;
+      }
+      setWhatsAppSession({
+        status: data.status,
+        qr: data.qr,
+        message: data.message,
+      });
+      setNotice(action === "qr" ? "QR da sessao atualizado." : "Status da sessao atualizado.");
+      await refreshChannels();
+    } catch {
+      setError("Falha ao consultar sessao WhatsApp.");
+    } finally {
+      setCheckingWhatsAppSession(false);
+    }
+  }
+
   async function completePendingSelectionFlow() {
     if (!pendingSelection?.pendingId || !pendingOptionId) return;
     setCompletingPending(true);
@@ -831,18 +949,56 @@ export default function ClienteCanaisPage() {
     setNotice(null);
 
     try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels/whatsapp`, {
+      const isOfficial = whatsAppForm.provider === "meta_whatsapp";
+      const hasAccessToken = Boolean(whatsAppForm.accessToken.trim() || selectedChannel?.hasAccessToken);
+      const hasVerifyToken = Boolean(whatsAppForm.verifyToken.trim() || selectedChannel?.hasVerifyToken);
+      const hasAppSecret = Boolean(whatsAppForm.appSecret.trim() || selectedChannel?.hasAppSecret);
+      if (isOfficial && (!whatsAppForm.phoneNumberId.trim() || !hasAccessToken || !hasVerifyToken || !hasAppSecret)) {
+        setError("No modo oficial, informe phoneNumberId, Access Token, Verify Token e App Secret.");
+        return;
+      }
+      if (!isOfficial && (!whatsAppForm.gatewayEndpoint.trim() || !hasAccessToken)) {
+        setError("No modo flexivel, informe o endpoint do gateway e o token de acesso.");
+        return;
+      }
+
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(whatsAppForm),
+        body: JSON.stringify({
+          channelId: whatsAppForm.channelId || undefined,
+          type: "whatsapp",
+          provider: whatsAppForm.provider,
+          displayName: whatsAppForm.displayName,
+          phoneNumber: whatsAppForm.phoneNumber,
+          phoneNumberId: whatsAppForm.phoneNumberId,
+          accessToken: whatsAppForm.accessToken,
+          status: whatsAppForm.status,
+          metadata: {
+            gatewayEndpoint: whatsAppForm.gatewayEndpoint,
+            sessionStatusEndpoint: whatsAppForm.sessionStatusEndpoint,
+            qrCodeEndpoint: whatsAppForm.qrCodeEndpoint,
+            callEndpoint: whatsAppForm.callEndpoint,
+            sessionId: whatsAppForm.sessionId,
+            verifyToken: whatsAppForm.verifyToken,
+            appSecret: whatsAppForm.appSecret,
+          },
+        }),
       });
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as { error?: string; channelId?: string };
       if (!res.ok) {
         setError(data.error || "Falha ao salvar canal WhatsApp.");
         return;
       }
 
-      setWhatsAppForm((current) => ({ ...current, accessToken: "", verifyToken: "", appSecret: "" }));
+      setSelectedWhatsAppChannelId(data.channelId || "");
+      setWhatsAppForm((current) => ({
+        ...current,
+        channelId: data.channelId || current.channelId,
+        accessToken: "",
+        verifyToken: "",
+        appSecret: "",
+      }));
       setNotice("Canal WhatsApp salvo com sucesso.");
       await refreshChannels();
     } catch {
@@ -948,7 +1104,13 @@ export default function ClienteCanaisPage() {
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {CONNECTORS.map((connector) => {
               const item = connector.type === "whatsapp"
-                ? channels.find((channel) => channel.type === "whatsapp") || { status: whatsAppForm.phoneNumberId ? whatsAppForm.status : "draft" }
+                ? {
+                    status: whatsAppChannels.some((channel) => channel.status === "active")
+                      ? "active"
+                      : whatsAppForm.phoneNumberId
+                        ? whatsAppForm.status
+                        : "draft",
+                  }
                 : channels.find((channel) => channel.type === connector.type);
               const Icon = connector.icon;
               const isSelected = connector.type === selectedType;
@@ -983,6 +1145,11 @@ export default function ClienteCanaisPage() {
                   </div>
                   <p className="mt-4 text-sm font-semibold text-white">{connector.label}</p>
                   <p className="mt-1 text-sm leading-6 text-white/56">{connector.description}</p>
+                  {connector.type === "whatsapp" && whatsAppChannels.length ? (
+                    <p className="mt-3 text-xs font-medium text-emerald-100/80">
+                      {whatsAppChannels.length} numero(s) configurado(s)
+                    </p>
+                  ) : null}
                 </button>
               );
             })}
@@ -1062,15 +1229,148 @@ export default function ClienteCanaisPage() {
             <form onSubmit={onSubmitWhatsApp} className="mt-4 space-y-3">
               <ConnectorReadiness title="Readiness do WhatsApp" rows={selectedReadinessRows} />
               <ConnectorGuidance summary={selectedPlaybook.summary} links={selectedPlaybook.links} />
+              {whatsAppChannels.length ? (
+                <label className="settings-channels-field block space-y-1">
+                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Numero configurado</span>
+                  <select
+                    value={selectedWhatsAppChannelId}
+                    onChange={(event) => setSelectedWhatsAppChannelId(event.target.value)}
+                    className="settings-channels-select w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-[var(--cliente-border-strong)] focus:bg-black/45"
+                  >
+                    {whatsAppChannels.map((channel) => (
+                      <option key={channel.id || channel.phoneNumberId} value={channel.id || ""}>
+                        {channel.displayName || "WhatsApp"} / {whatsappProviderLabel(channel.provider)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <div className="grid gap-2 sm:grid-cols-3">
+                {WHATSAPP_PROVIDER_OPTIONS.map((option) => {
+                  const active = whatsAppForm.provider === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setWhatsAppForm((current) => ({ ...current, provider: option.value }))}
+                      disabled={!canManage}
+                      className={`rounded-2xl border p-3 text-left transition ${
+                        active
+                          ? "border-emerald-300/35 bg-emerald-500/12 text-emerald-50"
+                          : "border-white/10 bg-white/[0.03] text-white/68 hover:bg-white/[0.06]"
+                      } disabled:opacity-60`}
+                    >
+                      <p className="text-sm font-semibold">{option.label}</p>
+                      <p className="mt-1 text-xs leading-5 opacity-75">{option.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
               <Field label="Nome do canal" value={whatsAppForm.displayName} onChange={(value) => setWhatsAppForm((current) => ({ ...current, displayName: value }))} placeholder="WhatsApp Comercial" disabled={!canManage} />
-              <Field label="Numero (opcional)" value={whatsAppForm.phoneNumber} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumber: value }))} placeholder="+55 11 99999-9999" disabled={!canManage} />
-              <Field label="phoneNumberId" value={whatsAppForm.phoneNumberId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumberId: value }))} placeholder="123456789012345" required disabled={!canManage} />
+              <Field label="Numero" value={whatsAppForm.phoneNumber} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumber: value }))} placeholder="+55 11 99999-9999" disabled={!canManage} />
+              {whatsAppForm.provider === "meta_whatsapp" ? (
+                <Field label="phoneNumberId" value={whatsAppForm.phoneNumberId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumberId: value }))} placeholder="123456789012345" required disabled={!canManage} />
+              ) : (
+                <Field label="Endpoint do gateway" value={whatsAppForm.gatewayEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, gatewayEndpoint: value }))} placeholder="https://seu-gateway.com/messages/send" required disabled={!canManage} />
+              )}
+              {whatsAppForm.provider !== "meta_whatsapp" ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Endpoint de status" value={whatsAppForm.sessionStatusEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, sessionStatusEndpoint: value }))} placeholder="https://seu-gateway.com/session/status" disabled={!canManage} />
+                  <Field label="Endpoint de QR" value={whatsAppForm.qrCodeEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, qrCodeEndpoint: value }))} placeholder="https://seu-gateway.com/session/qr" disabled={!canManage} />
+                  <Field label="Endpoint de ligacao" value={whatsAppForm.callEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, callEndpoint: value }))} placeholder="https://seu-gateway.com/calls/start" disabled={!canManage} />
+                  <Field label="ID da sessao" value={whatsAppForm.sessionId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, sessionId: value }))} placeholder="comercial-01" disabled={!canManage} />
+                </div>
+              ) : null}
               <SelectField label="Status" value={whatsAppForm.status} onChange={(value) => setWhatsAppForm((current) => ({ ...current, status: value }))} disabled={!canManage} />
-              <SecretField label="Access Token" value={whatsAppForm.accessToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, accessToken: value }))} placeholder={whatsAppMasked.access || "EAAG..."} required disabled={!canManage} />
-              <SecretField label="Verify Token" value={whatsAppForm.verifyToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, verifyToken: value }))} placeholder={whatsAppMasked.verify || "verify-token"} required disabled={!canManage} />
-              <SecretField label="App Secret" value={whatsAppForm.appSecret} onChange={(value) => setWhatsAppForm((current) => ({ ...current, appSecret: value }))} placeholder={whatsAppMasked.secret || "app-secret"} required disabled={!canManage} />
+              <SecretField label={whatsAppForm.provider === "meta_whatsapp" ? "Access Token" : "Token do gateway"} value={whatsAppForm.accessToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, accessToken: value }))} placeholder={whatsAppMasked.access || "token"} required={!selectedChannel?.hasAccessToken} disabled={!canManage} />
+              {whatsAppForm.provider === "meta_whatsapp" ? (
+                <>
+                  <SecretField label="Verify Token" value={whatsAppForm.verifyToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, verifyToken: value }))} placeholder={whatsAppMasked.verify || "verify-token"} required={!selectedChannel?.hasVerifyToken} disabled={!canManage} />
+                  <SecretField label="App Secret" value={whatsAppForm.appSecret} onChange={(value) => setWhatsAppForm((current) => ({ ...current, appSecret: value }))} placeholder={whatsAppMasked.secret || "app-secret"} required={!selectedChannel?.hasAppSecret} disabled={!canManage} />
+                </>
+              ) : (
+                <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-3 text-xs leading-5 text-emerald-50/80">
+                  O gateway deve receber POST JSON com tenantId, channelId, provider, to, type e text/template. Assim o inbox e a IA continuam usando a mesma operacao.
+                </div>
+              )}
 
-              <SaveButton saving={saving} label="Salvar canal WhatsApp" disabled={!canManage} />
+              {whatsAppForm.provider !== "meta_whatsapp" && selectedChannel?.id ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Sessao do WhatsApp</p>
+                      <p className="mt-1 text-xs text-white/52">
+                        Monitore a conexao do numero flexivel e gere QR sem sair da Altum.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void checkWhatsAppSession("status")}
+                        disabled={checkingWhatsAppSession}
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/72 transition hover:bg-white/[0.08] disabled:opacity-60"
+                      >
+                        {checkingWhatsAppSession ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        Status
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void checkWhatsAppSession("qr")}
+                        disabled={checkingWhatsAppSession}
+                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-500/15 disabled:opacity-60"
+                      >
+                        Gerar QR
+                      </button>
+                    </div>
+                  </div>
+                  {whatsAppSession ? (
+                    <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StateBadge label={whatsAppSession.status || "sem status"} tone={whatsAppSession.status === "connected" ? "success" : whatsAppSession.status === "error" ? "danger" : "warning"} />
+                        {whatsAppSession.message ? <span className="text-xs text-white/52">{whatsAppSession.message}</span> : null}
+                      </div>
+                      {whatsAppSession.qr ? (
+                        whatsAppSession.qr.startsWith("http") || whatsAppSession.qr.startsWith("data:image") ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={whatsAppSession.qr} alt="QR do WhatsApp" className="mt-3 h-44 w-44 rounded-xl border border-white/10 bg-white p-2" />
+                        ) : (
+                          <pre className="mt-3 max-h-40 overflow-auto rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-white/70">{whatsAppSession.qr}</pre>
+                        )
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-2">
+                <SaveButton saving={saving} label={whatsAppForm.channelId ? "Salvar numero" : "Adicionar WhatsApp"} disabled={!canManage} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedWhatsAppChannelId("");
+                    setWhatsAppMasked({});
+                    setWhatsAppForm({
+                      channelId: "",
+                      provider: "meta_whatsapp",
+                      displayName: "WhatsApp",
+                      phoneNumber: "",
+                      phoneNumberId: "",
+                      gatewayEndpoint: "",
+                      sessionStatusEndpoint: "",
+                      qrCodeEndpoint: "",
+                      callEndpoint: "",
+                      sessionId: "",
+                      accessToken: "",
+                      verifyToken: "",
+                      appSecret: "",
+                      status: "active",
+                    });
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-4 py-2 text-sm font-semibold text-white/72 transition hover:bg-white/[0.08]"
+                >
+                  Novo numero
+                </button>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Link
                   href="/cliente/painel/inbox?channel=whatsapp"

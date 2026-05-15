@@ -141,6 +141,7 @@ export async function POST(req: Request, context: { params: Promise<{ pendingId:
         userId: pending.userId,
         tokenPayload: {
           access_token: pending.oauthToken,
+          refresh_token: pending.oauthRefreshToken,
           scope: pending.oauthScope,
         },
         customerId: selected.customerId,

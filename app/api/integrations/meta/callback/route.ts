@@ -65,10 +65,11 @@ export async function GET(req: Request) {
   const deniedDescription = clean(url.searchParams.get("error_description"), 300);
 
   const fallbackRedirect = "/cliente/painel/configuracoes/canais";
+  const clientRedirect = (path: string, query: Record<string, string>) => buildClientRedirect(path, query, baseUrl);
   try {
     if (!state) {
       return NextResponse.redirect(
-        buildClientRedirect(fallbackRedirect, {
+        clientRedirect(fallbackRedirect, {
           integration: "meta",
           result: "error",
           message: "state_ausente",
@@ -80,7 +81,7 @@ export async function GET(req: Request) {
 
     if (deniedReason || !code) {
       return NextResponse.redirect(
-        buildClientRedirect(oauth.redirectPath, {
+        clientRedirect(oauth.redirectPath, {
           tenantId: oauth.tenantId,
           integration: "meta",
           result: "error",
@@ -198,7 +199,7 @@ export async function GET(req: Request) {
         adAccounts: oauth.channelType === "meta_ads" ? adAccountOptions : [],
       });
       return NextResponse.redirect(
-        buildClientRedirect(oauth.redirectPath, {
+        clientRedirect(oauth.redirectPath, {
           tenantId: oauth.tenantId,
           integration: "meta",
           result: "select",
@@ -225,7 +226,7 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.redirect(
-      buildClientRedirect(oauth.redirectPath, {
+      clientRedirect(oauth.redirectPath, {
         tenantId: oauth.tenantId,
         integration: "meta",
         result: "success",
@@ -237,7 +238,7 @@ export async function GET(req: Request) {
   } catch (error) {
     const message = error instanceof Error ? clean(error.message, 280) : "Erro no callback Meta.";
     return NextResponse.redirect(
-      buildClientRedirect(fallbackRedirect, {
+      clientRedirect(fallbackRedirect, {
         integration: "meta",
         result: "error",
         message,

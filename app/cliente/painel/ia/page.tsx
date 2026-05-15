@@ -1251,58 +1251,91 @@ export default function ClienteIaPage() {
   return (
     <div className="ia-refined client-daily-page space-y-6">
       <SectionHeader
-        title="IA"
-        subtitle="Configure o agente, revise a base comercial e acompanhe como ele esta decidindo na pratica."
-        action={<StateBadge label={settings.enabled ? "IA automatica ativa" : "IA automatica pausada"} tone={settings.enabled ? "success" : "warning"} />}
+        title="Assistente Altum"
+        subtitle="Defina como a IA atende, quando chama humano e quais limites comerciais ela deve respeitar."
+        action={<StateBadge label={settings.enabled ? "Assistente ativo" : "Assistente pausado"} tone={settings.enabled ? "success" : "warning"} />}
       />
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Docs ativos" value={String(kbDocs.length)} icon={Sparkles} trend="base comercial" />
-        <MetricCard label="Guardrails" value={String((settings.guardrails || []).length)} icon={ShieldCheck} trend="regras de governanca" />
-        <MetricCard label="Respostas" value={String(logSummary.responded)} icon={Bot} trend="ultima janela" />
-        <MetricCard label="Handoffs" value={String(logSummary.handoff)} icon={Waypoints} trend="transferencias humanas" />
-        <MetricCard label="Baixa confianca" value={String(logSummary.lowConfidence)} icon={Bot} trend={`latencia media ${latencyLabel(logSummary.avgLatency)}`} />
-        <MetricCard label="Qualidade media" value={`${Math.round(logSummary.avgQuality * 100)}%`} icon={Sparkles} trend="curta, progressiva e sem vazamento" />
+      <section className="hidden gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+        <PanelCard tone="spotlight" className="p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="inline-flex rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/84">
+                Assistencia com contexto
+              </p>
+              <h2 className="mt-4 text-[1.75rem] font-semibold tracking-[-0.045em] text-white md:text-[2.15rem]">
+                A IA da Altum deve parecer ajuda comercial pratica, nao configuracao tecnica exposta para todo mundo.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72">
+                O mais importante aqui e o que ela sabe, como ela responde e quando pede apoio humano.
+              </p>
+            </div>
+            <div className="grid min-w-[250px] gap-3 sm:grid-cols-2 xl:w-[320px]">
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Base ativa</p><p className="mt-2 text-base font-semibold text-white">{String(kbDocs.length)}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Respostas</p><p className="mt-2 text-base font-semibold text-white">{String(logSummary.responded)}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Escaladas</p><p className="mt-2 text-base font-semibold text-white">{String(logSummary.handoff)}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Qualidade media</p><p className="mt-2 text-base font-semibold text-white">{`${Math.round(logSummary.avgQuality * 100)}%`}</p></div>
+            </div>
+          </div>
+        </PanelCard>
+
+        <PanelCard tone="ai" className="p-5">
+          <CardTitle title="O que revisar primeiro" subtitle="Uma ordem simples para manter o assistente util e seguro." />
+          <div className="mt-4 space-y-3">
+            <Link href="/cliente/painel/produtos-servicos" className="block rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-white"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Produtos & Servicos</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Ensine o que a empresa vende, para quem serve e como recomendar.</p></Link>
+            <Link href="/cliente/painel/conhecimento" className="block rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-white"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Base de conhecimento</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Organize politicas, processos e perguntas frequentes que sustentam as respostas.</p></Link>
+            <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Escaladas humanas</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Defina quando a IA chama uma pessoa e para quem envia o contexto.</p></div>
+            <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">4. Qualidade das respostas</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Acompanhe baixa confianca e melhore os pontos que travam o atendimento.</p></div>
+          </div>
+        </PanelCard>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="hidden gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Base ativa" value={String(kbDocs.length)} icon={Sparkles} trend="conhecimento comercial" tone="ai" />
+        <MetricCard label="Regras de seguranca" value={String((settings.guardrails || []).length)} icon={ShieldCheck} trend="governanca aplicada" tone="warning" />
+        <MetricCard label="Respostas" value={String(logSummary.responded)} icon={Bot} trend="ultima janela" tone="success" />
+        <MetricCard label="Escaladas" value={String(logSummary.handoff)} icon={Waypoints} trend="apoio humano" tone="warning" />
+        <MetricCard label="Baixa confianca" value={String(logSummary.lowConfidence)} icon={Bot} trend={`latencia media ${latencyLabel(logSummary.avgLatency)}`} tone="danger" />
+      </section>
+
+      <section className="hidden gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Plano IA" value={tierLabel(settings.tier)} icon={Sparkles} trend={settings.runtimePolicy?.conversationModel || "motor base"} />
         <MetricCard label="Autonomia" value={settings.autonomyMode || "hybrid"} icon={ShieldCheck} trend={responseStyleLabel(settings.responseStyle)} />
         <MetricCard label="Budget IA" value={`$${Number(settings.monthlyBudgetUsd || 0).toFixed(0)}`} icon={Bot} trend={`${usageSummary.total} execucoes registradas`} />
         <MetricCard label="Lane premium" value={String(usageSummary.premiumLane)} icon={Waypoints} trend={`${usageSummary.rulesLane} em rules lane`} />
       </section>
 
-      <PanelCard className="ia-guide-card p-5 md:p-6">
+      <PanelCard className="hidden p-5 md:p-6">
         <CardTitle
-          title="Como configurar sem se perder"
-          subtitle="Pense nesta pagina em tres blocos: motor, comportamento e base de conhecimento."
+          title="Como ensinar a Altum"
+          subtitle="A configuracao comum deve focar no negocio: oferta, conhecimento e comportamento."
         />
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <div className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Motor</p>
+          <Link href="/cliente/painel/produtos-servicos" className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Oferta</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-              Escolha OpenAI como motor principal e mantenha ALTUM Rules como reserva para nao deixar o tenant sem resposta.
+              Cadastre produtos, servicos, duvidas, objecoes e oportunidades de upsell.
             </p>
-          </div>
+          </Link>
           <div className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
             <p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Comportamento</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-              Ajuste tom, objetivo, guardrails e handoff. Isso define como a IA conversa e quando ela chama o humano.
+              Ajuste tom, objetivo, limites de atuacao e quando a IA deve chamar humano.
             </p>
           </div>
-          <div className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Base</p>
+          <Link href="/cliente/painel/conhecimento" className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Conhecimento</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-              Cadastre FAQ, ofertas e politicas curtas. A IA responde melhor quando a base esta escrita como conversa, nao como documento interno.
+              Organize politicas, processos, perguntas frequentes e regras comerciais.
             </p>
-          </div>
+          </Link>
         </div>
       </PanelCard>
 
-      <PanelCard className="ia-preview-card p-5 md:p-6">
+      <PanelCard className="hidden p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <CardTitle
-            title="Preview comercial do agente"
+            title="Simular atendimento"
             subtitle="Teste a IA com cenarios reais de SDR antes de publicar em producao."
           />
           <StateBadge
@@ -1620,7 +1653,7 @@ export default function ClienteIaPage() {
         </div>
       </PanelCard>
 
-      <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+      <section className="hidden gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PanelCard className="p-5">
           <CardTitle title="Ajustes rapidos" subtitle="Sinais que pedem atencao antes de continuar refinando o agente" />
           <div className="mt-4 space-y-3">
@@ -1741,15 +1774,26 @@ export default function ClienteIaPage() {
         </PanelCard>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-        <PanelCard className="p-5">
+      <section className="max-w-5xl">
+        <PanelCard className="p-5 md:p-6">
           <form onSubmit={handleSaveSettings} className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Configuracao essencial da IA</h3>
-              <span className="inline-flex items-center gap-1 text-xs text-[var(--cliente-card-text-soft)]">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Configuracao ativa
-              </span>
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--cliente-border)] pb-4">
+              <div>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Comportamento do assistente</h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)]">
+                  Esta tela controla apenas o atendimento da IA. Produtos e base de conhecimento ficam em suas areas proprias.
+                </p>
+              </div>
+              {canManage ? (
+                <button
+                  type="submit"
+                  disabled={savingSettings}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
+                >
+                  {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Salvar
+                </button>
+              ) : null}
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -1967,30 +2011,41 @@ export default function ClienteIaPage() {
               ) : null}
             </div>
 
-            <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+            <div className="pt-2">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Atendimento</p>
+            </div>
+
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <span>Responder automaticamente</span>
               <input
                 type="checkbox"
                 checked={settings.enabled}
                 onChange={(event) => setSettings((prev) => ({ ...prev, enabled: event.target.checked }))}
                 disabled={!canManage}
               />
-              IA habilitada para responder automaticamente
             </label>
 
-            <Field label="Tom de voz" value={settings.toneOfVoice} onChange={(value) => setSettings((prev) => ({ ...prev, toneOfVoice: value }))} placeholder="consultivo, claro e humano" disabled={!canManage} />
-            <Field label="Nome do agente" value={settings.agentName || ""} onChange={(value) => setSettings((prev) => ({ ...prev, agentName: value }))} placeholder="Ex: Laura da clinica, Agente da imobiliaria" disabled={!canManage} />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Nome do agente" value={settings.agentName || ""} onChange={(value) => setSettings((prev) => ({ ...prev, agentName: value }))} placeholder="Ex: Assistente da loja" disabled={!canManage} />
+              <Field label="Tom de voz" value={settings.toneOfVoice} onChange={(value) => setSettings((prev) => ({ ...prev, toneOfVoice: value }))} placeholder="consultivo, claro e humano" disabled={!canManage} />
+            </div>
             <Field label="Resumo do negocio" value={settings.businessSummary} onChange={(value) => setSettings((prev) => ({ ...prev, businessSummary: value }))} placeholder="o que a empresa vende, para quem e com qual foco" disabled={!canManage} />
             <Field label="Objetivo principal da IA" value={settings.objective || ""} onChange={(value) => setSettings((prev) => ({ ...prev, objective: value }))} placeholder="qualificar, orientar, vender e encaminhar" disabled={!canManage} />
-            <Field label="WhatsApp responsavel (handoff)" value={settings.responsiblePhone} onChange={(value) => setSettings((prev) => ({ ...prev, responsiblePhone: value }))} placeholder="5511999999999" disabled={!canManage} />
+
+            <div className="pt-3">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Humano e audio</p>
+            </div>
+
+            <Field label="WhatsApp para chamar humano" value={settings.responsiblePhone} onChange={(value) => setSettings((prev) => ({ ...prev, responsiblePhone: value }))} placeholder="5511999999999" disabled={!canManage} />
             <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+                <span>Responder audio com audio</span>
                 <input
                   type="checkbox"
                   checked={settings.voiceReplyEnabled === true}
                   onChange={(event) => setSettings((prev) => ({ ...prev, voiceReplyEnabled: event.target.checked }))}
                   disabled={!canManage}
                 />
-                Responder com audio quando o lead enviar audio
               </label>
               <label className="block text-xs text-[var(--cliente-card-text-soft)]">
                 Voz da IA
@@ -2013,17 +2068,21 @@ export default function ClienteIaPage() {
                 </select>
               </label>
             </div>
-            <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <span>Notificar responsaveis quando chamar humano</span>
               <input
                 type="checkbox"
                 checked={settings.handoffNotifyEnabled !== false}
                 onChange={(event) => setSettings((prev) => ({ ...prev, handoffNotifyEnabled: event.target.checked }))}
                 disabled={!canManage}
               />
-              Notificar responsaveis via WhatsApp quando a IA pedir handoff
             </label>
+            <div className="pt-3">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Limites e qualificacao</p>
+            </div>
+
             <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-              WhatsApps para notificar no handoff (um por linha)
+              WhatsApps para notificar quando chamar humano
               <textarea
                 value={handoffNotifyPhonesText}
                 onChange={(event) => setHandoffNotifyPhonesText(event.target.value)}
@@ -2034,7 +2093,8 @@ export default function ClienteIaPage() {
               />
             </label>
 
-            <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <span>Follow-up automatico por template quando fechar a janela de 24h</span>
               <input
                 type="checkbox"
                 checked={settings.whatsappTemplateFollowUpEnabled !== false}
@@ -2043,7 +2103,6 @@ export default function ClienteIaPage() {
                 }
                 disabled={!canManage}
               />
-              Follow-up automatico por template quando fechar a janela de 24h
             </label>
             <div className="grid gap-3 md:grid-cols-2">
               <Field
@@ -2074,7 +2133,7 @@ export default function ClienteIaPage() {
             </label>
 
             <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-              Guardrails (uma regra por linha)
+              Limites de atuacao
               <textarea
                 value={guardrailsText}
                 onChange={(event) => setGuardrailsText(event.target.value)}
@@ -2086,7 +2145,7 @@ export default function ClienteIaPage() {
             </label>
 
             <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-              Perguntas obrigatorias da IA
+              Perguntas importantes para qualificar
               <textarea
                 value={mandatoryQuestionsText}
                 onChange={(event) => setMandatoryQuestionsText(event.target.value)}
@@ -2098,7 +2157,7 @@ export default function ClienteIaPage() {
             </label>
 
             <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-              Assuntos que exigem handoff humano
+              Assuntos que exigem chamar humano
               <textarea
                 value={escalationTopicsText}
                 onChange={(event) => setEscalationTopicsText(event.target.value)}
@@ -2113,16 +2172,16 @@ export default function ClienteIaPage() {
               <button
                 type="submit"
                 disabled={savingSettings}
-                className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-3 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
               >
                 {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Salvar configuracoes
+                Salvar comportamento
               </button>
             ) : null}
           </form>
         </PanelCard>
 
-        <PanelCard className="p-5">
+        <PanelCard className="hidden p-5">
           <form onSubmit={handleAddKbDoc} className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Base de conhecimento</h3>
@@ -2321,7 +2380,7 @@ export default function ClienteIaPage() {
         </PanelCard>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+      <section className="hidden gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <PanelCard className="p-5">
           <div className="flex items-center justify-between gap-3">
             <CardTitle title="Documentos cadastrados" subtitle="Base ativa com busca e manutencao por tipo" />

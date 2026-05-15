@@ -534,7 +534,7 @@ async function ensureSocialLeadAndChat(input: {
 }) {
   const sourceType = `${input.event.channelType}_${input.event.eventType}`.toLowerCase();
   const sourceId = `${input.event.channelType}:${input.event.eventType}:${input.event.eventId}`;
-  const sourceLabel = input.channel.displayName || `${input.event.channelType} social`;
+  const sourceLabel = input.event.channelType === "instagram" ? "instagram_organico" : "facebook_organico";
   const messageText =
     input.event.eventType === "comment" ? cleanText(input.event.text, 1400) : "Novo seguidor capturado";
 

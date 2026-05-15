@@ -19,6 +19,12 @@ export const TENANT_SCOPED_COLLECTIONS = [
   "capture_submissions",
   "orcamentos",
   "financeiro",
+  "ecommerce_connections",
+  "ecommerce_products",
+  "ecommerce_orders",
+  "ecommerce_abandoned_carts",
+  "ecommerce_events",
+  "ecommerce_commercial_actions",
   "whatsapp_webhook_events",
   "meta_webhook_events",
 ] as const;
@@ -80,6 +86,10 @@ export type TenantSettings = {
     guardrails?: string[] | string;
     mandatoryQuestions?: string[] | string;
     escalationTopics?: string[] | string;
+    whatsappTemplateFollowUpEnabled?: boolean;
+    whatsappTemplateFollowUpName?: string;
+    whatsappTemplateFollowUpLanguage?: string;
+    whatsappTemplateFollowUpParams?: string[] | string;
     operatingProfile?: {
       tier?: "essential" | "growth" | "premium" | "elite" | "enterprise";
       autonomyMode?: "copilot" | "hybrid" | "autonomous";

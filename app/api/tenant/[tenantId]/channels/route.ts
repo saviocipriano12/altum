@@ -5,7 +5,7 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { isGoogleAdsServerConfigured } from "@/app/lib/server/google-ads";
 import { encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
-import { normalizeConnectionStatus } from "@/app/lib/server/integration-oauth";
+import { getMetaEnv, normalizeConnectionStatus } from "@/app/lib/server/integration-oauth";
 
 type ChannelBody = {
   channelId?: string;
@@ -64,6 +64,10 @@ function cleanConnectionStatus(value: unknown) {
   return normalizeConnectionStatus(value, "draft");
 }
 
+function hasConnectionStatusInput(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function cleanMetadata(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
   return Object.entries(input).reduce<Record<string, string>>((acc, [key, value]) => {
@@ -73,6 +77,26 @@ function cleanMetadata(input: unknown) {
     acc[normalizedKey] = normalizedValue;
     return acc;
   }, {});
+}
+
+function normalizeWhatsAppProvider(value: unknown) {
+  const normalized = clean(value, 80).toLowerCase();
+  if (
+    normalized === "meta_whatsapp" ||
+    normalized === "whatsapp_cloud_api" ||
+    normalized === "whatsapp_business_cloud_api"
+  ) {
+    return "meta_whatsapp";
+  }
+  if (
+    normalized === "whatsapp_qr" ||
+    normalized === "whatsapp_session" ||
+    normalized === "whatsapp_gateway" ||
+    normalized === "external_whatsapp"
+  ) {
+    return normalized;
+  }
+  return normalized || "meta_whatsapp";
 }
 
 function cleanPublicMetadata(input: unknown) {
@@ -94,6 +118,11 @@ function removeSecretMetadata(input: Record<string, string>) {
     acc[key] = value;
     return acc;
   }, {});
+}
+
+function cleanOrExisting(value: unknown, existing: unknown, max = 200) {
+  const cleaned = clean(value, max);
+  return cleaned || clean(existing, max);
 }
 
 function toIso(value: unknown) {
@@ -134,10 +163,18 @@ function buildChannelReadiness(input: {
   hasVerifyToken: boolean;
   hasAppSecret: boolean;
   serverReady: boolean;
+  provider?: string;
+  metadata?: Record<string, string>;
 }) {
   const normalizedType = clean(input.type, 60).toLowerCase();
   const isActive = clean(input.status, 40).toLowerCase() === "active";
   const hasMetaMapping = Boolean(input.externalAccountId || input.pageId);
+  const provider = normalizeWhatsAppProvider(input.provider);
+  const gatewayEndpoint =
+    clean(input.metadata?.gatewayEndpoint, 500) ||
+    clean(input.metadata?.endpointUrl, 500) ||
+    clean(input.metadata?.apiBaseUrl, 500) ||
+    clean(input.metadata?.webhookUrl, 500);
 
   const readiness: ChannelReadiness = {
     inboundReady: false,
@@ -150,8 +187,14 @@ function buildChannelReadiness(input: {
 
   if (normalizedType === "whatsapp") {
     readiness.requiresWebhook = true;
-    readiness.inboundReady = isActive && Boolean(input.phoneNumberId) && input.hasVerifyToken && input.hasAppSecret;
-    readiness.outboundReady = isActive && Boolean(input.phoneNumberId) && input.hasAccessToken;
+    if (provider === "meta_whatsapp") {
+      readiness.inboundReady = isActive && Boolean(input.phoneNumberId) && input.hasVerifyToken && input.hasAppSecret;
+      readiness.outboundReady = isActive && Boolean(input.phoneNumberId) && input.hasAccessToken;
+      readiness.routingReady = readiness.inboundReady && readiness.outboundReady;
+      return readiness;
+    }
+    readiness.inboundReady = isActive && Boolean(gatewayEndpoint);
+    readiness.outboundReady = isActive && Boolean(gatewayEndpoint) && input.hasAccessToken;
     readiness.routingReady = readiness.inboundReady && readiness.outboundReady;
     return readiness;
   }
@@ -185,6 +228,51 @@ function buildChannelReadiness(input: {
   }
 
   return readiness;
+}
+
+function isOAuthManaged(metadata: Record<string, string>) {
+  return clean(metadata.oauthManaged, 20).toLowerCase() === "true";
+}
+
+function resolveEffectiveConnectionStatus(input: {
+  type: string;
+  status: string;
+  storedConnectionStatus: string;
+  readiness: ChannelReadiness;
+  hasAccessToken: boolean;
+  hasRefreshToken: boolean;
+  hasMapping: boolean;
+  hasLastError: boolean;
+}) {
+  const stored = cleanConnectionStatus(input.storedConnectionStatus);
+  const type = clean(input.type, 60).toLowerCase();
+  const isActive = clean(input.status, 40).toLowerCase() === "active";
+
+  if (stored !== "draft") return stored;
+  if (!isActive) return stored;
+
+  if (type === "instagram" || type === "messenger") {
+    if (input.hasLastError) return "webhook_pending";
+    if (input.readiness.routingReady) return "ready";
+    if (input.hasAccessToken && input.hasMapping) return "webhook_pending";
+  }
+
+  if (type === "meta_ads") {
+    if (input.readiness.inboundReady && input.readiness.syncReady) return "ready";
+    if (input.readiness.syncReady || (input.hasAccessToken && input.hasMapping)) return "connected";
+  }
+
+  if (type === "google_ads") {
+    if (input.readiness.syncReady) return "ready";
+    if ((input.hasRefreshToken || input.hasAccessToken) && input.hasMapping) return "connected";
+  }
+
+  if (type === "whatsapp") {
+    if (input.readiness.routingReady) return "ready";
+    if (input.readiness.outboundReady) return "webhook_pending";
+  }
+
+  return stored;
 }
 
 export async function GET(
@@ -263,6 +351,9 @@ export async function GET(
       return acc;
     }, {});
 
+    const metaEnv = getMetaEnv();
+    const metaPlatformWebhookReady = Boolean(metaEnv.verifyToken && metaEnv.appSecret);
+
     const items = snap.docs
       .map((doc) => {
         const data = doc.data() as Record<string, unknown>;
@@ -283,10 +374,15 @@ export async function GET(
         const externalAccountId = String(data.externalAccountId || "");
         const hasAccessToken = hasStoredSecret(data.accessToken);
         const hasRefreshToken = hasStoredSecret(data.refreshToken);
+        const usesGlobalMetaWebhook =
+          isOAuthManaged(metadata) &&
+          (type === "instagram" || type === "messenger" || type === "meta_ads") &&
+          metaPlatformWebhookReady;
         const hasVerifyToken = Boolean(
           clean(data.verifyToken, 400) || clean(metadata.verifyToken, 400) || clean(metadata.webhookVerifyToken, 400)
-        );
-        const hasAppSecret = hasStoredSecret(data.appSecret) || Boolean(clean(metadata.appSecret, 400));
+        ) || usesGlobalMetaWebhook;
+        const hasAppSecret =
+          hasStoredSecret(data.appSecret) || Boolean(clean(metadata.appSecret, 400)) || usesGlobalMetaWebhook;
         const serverReady = type !== "google_ads" ? true : isGoogleAdsServerConfigured();
         const readiness = buildChannelReadiness({
           type,
@@ -299,7 +395,24 @@ export async function GET(
           hasVerifyToken,
           hasAppSecret,
           serverReady,
+          provider: String(data.provider || ""),
+          metadata,
         });
+        const storedConnectionStatus = cleanConnectionStatus(data.connectionStatus);
+        const effectiveConnectionStatus = resolveEffectiveConnectionStatus({
+          type,
+          status,
+          storedConnectionStatus,
+          readiness,
+          hasAccessToken,
+          hasRefreshToken,
+          hasMapping: Boolean(externalAccountId || pageId),
+          hasLastError: Boolean(clean(data.lastError, 500)),
+        });
+        const effectiveReadiness =
+          (type === "instagram" || type === "messenger") && effectiveConnectionStatus === "webhook_pending"
+            ? { ...readiness, inboundReady: false, routingReady: false }
+            : readiness;
         return {
           id: doc.id,
           tenantId: String(data.tenantId || tenantId),
@@ -307,7 +420,7 @@ export async function GET(
           provider: String(data.provider || ""),
           displayName: String(data.displayName || data.type || "Canal"),
           status,
-          connectionStatus: cleanConnectionStatus(data.connectionStatus),
+          connectionStatus: effectiveConnectionStatus,
           phoneNumber: String(data.phoneNumber || ""),
           phoneNumberId,
           username: String(data.username || ""),
@@ -330,12 +443,12 @@ export async function GET(
           campaignSnapshotCount: campaignStats.snapshotCount,
           lastCampaignDateRef: campaignStats.lastDateRef,
           serverReady,
-          inboundReady: readiness.inboundReady,
-          outboundReady: readiness.outboundReady,
-          routingReady: readiness.routingReady,
-          syncReady: readiness.syncReady,
-          requiresWebhook: readiness.requiresWebhook,
-          requiresExternalMapping: readiness.requiresExternalMapping,
+          inboundReady: effectiveReadiness.inboundReady,
+          outboundReady: effectiveReadiness.outboundReady,
+          routingReady: effectiveReadiness.routingReady,
+          syncReady: effectiveReadiness.syncReady,
+          requiresWebhook: effectiveReadiness.requiresWebhook,
+          requiresExternalMapping: effectiveReadiness.requiresExternalMapping,
           metadata: cleanPublicMetadata(data.metadata),
         };
       })
@@ -386,7 +499,21 @@ export async function POST(
       }
     }
 
-    if (!channelRef) {
+    if (!channelRef && type === "whatsapp") {
+      const phoneNumberId = clean(body.phoneNumberId, 160);
+      if (phoneNumberId) {
+        const sameNumberSnap = await adminDb
+          .collection("tenant_channels")
+          .where("tenantId", "==", tenantId)
+          .where("type", "==", type)
+          .where("phoneNumberId", "==", phoneNumberId)
+          .limit(1)
+          .get();
+        if (!sameNumberSnap.empty) channelRef = sameNumberSnap.docs[0].ref;
+      }
+    }
+
+    if (!channelRef && type !== "whatsapp") {
       const sameTypeSnap = await adminDb
         .collection("tenant_channels")
         .where("tenantId", "==", tenantId)
@@ -397,38 +524,63 @@ export async function POST(
       channelRef = sameTypeSnap.empty ? adminDb.collection("tenant_channels").doc() : sameTypeSnap.docs[0].ref;
     }
 
+    if (!channelRef) {
+      channelRef = adminDb.collection("tenant_channels").doc();
+    }
+
+    const currentChannelSnap = await channelRef.get();
+    const currentChannelData = currentChannelSnap.exists
+      ? (currentChannelSnap.data() as Record<string, unknown>)
+      : {};
     const metadata = cleanMetadata(body.metadata);
     const verifyToken =
       clean(metadata.verifyToken, 400) || clean(metadata.webhookVerifyToken, 400);
     const appSecret = clean(metadata.appSecret, 400);
 
-    const provider = type === "whatsapp" ? "meta_whatsapp" : clean(body.provider, 80) || type;
+    const provider = type === "whatsapp" ? normalizeWhatsAppProvider(body.provider) : clean(body.provider, 80) || type;
 
-    const payload = {
+    const accessToken = clean(body.accessToken, 4000);
+    const refreshToken = clean(body.refreshToken, 4000);
+
+    const payload: Record<string, unknown> = {
       tenantId,
       type,
       provider,
       displayName: clean(body.displayName, 120) || type,
       status: cleanStatus(body.status),
-      connectionStatus: cleanConnectionStatus(body.connectionStatus),
-      phoneNumber: clean(body.phoneNumber, 80),
-      phoneNumberId: clean(body.phoneNumberId, 160),
-      username: clean(body.username, 160),
-      pageId: clean(body.pageId, 160),
-      externalAccountId: clean(body.externalAccountId, 200),
-      accessToken: encryptSecret(clean(body.accessToken, 4000)),
-      refreshToken: encryptSecret(clean(body.refreshToken, 4000)),
-      verifyToken: verifyToken || null,
-      appSecret: appSecret ? encryptSecret(appSecret) : null,
+      connectionStatus: hasConnectionStatusInput(body.connectionStatus)
+        ? cleanConnectionStatus(body.connectionStatus)
+        : cleanConnectionStatus(currentChannelData.connectionStatus),
+      phoneNumber: cleanOrExisting(body.phoneNumber, currentChannelData.phoneNumber, 80),
+      phoneNumberId: cleanOrExisting(body.phoneNumberId, currentChannelData.phoneNumberId, 160),
+      username: cleanOrExisting(body.username, currentChannelData.username, 160),
+      pageId: cleanOrExisting(body.pageId, currentChannelData.pageId, 160),
+      externalAccountId: cleanOrExisting(body.externalAccountId, currentChannelData.externalAccountId, 200),
       metadata: removeSecretMetadata(metadata),
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: user.uid,
       updatedByName: user.name,
       createdAt: FieldValue.serverTimestamp(),
     };
+    if (verifyToken) payload.verifyToken = verifyToken;
+    if (accessToken) payload.accessToken = encryptSecret(accessToken);
+    if (refreshToken) payload.refreshToken = encryptSecret(refreshToken);
+    if (appSecret) payload.appSecret = encryptSecret(appSecret);
 
     await Promise.all([
       channelRef.set(payload, { merge: true }),
+      ...(type === "whatsapp"
+        ? [
+            adminDb.collection("tenant_settings").doc(tenantId).set(
+              {
+                tenantId,
+                defaultWhatsAppChannelId: channelRef.id,
+                updatedAt: FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            ),
+          ]
+        : []),
       adminDb.collection("audit_logs").add({
         type: "tenant_channel_upsert",
         actorId: user.uid,

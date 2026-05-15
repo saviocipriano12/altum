@@ -26,6 +26,8 @@ type MetaAdLike = {
   name?: string;
 };
 
+type MetaConversationChannelType = "instagram" | "messenger";
+
 function clean(value: unknown, max = 300) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
@@ -44,13 +46,12 @@ function resolveGraphError(payload: unknown, fallback: string) {
 }
 
 async function subscribePageWebhooks(input: {
+  channelType: MetaConversationChannelType;
   pageId: string;
   pageAccessToken: string;
   graphVersion: string;
 }) {
-  const fields =
-    clean(process.env.META_WEBHOOK_SUBSCRIBED_FIELDS, 1000) ||
-    "messages,messaging_postbacks,messaging_optins,messaging_referrals,messaging_handovers,message_reads,message_deliveries,feed";
+  const fields = resolveMetaWebhookFields(input.channelType);
   const response = await fetch(
     `https://graph.facebook.com/${input.graphVersion}/${encodeURIComponent(input.pageId)}/subscribed_apps`,
     {
@@ -65,8 +66,37 @@ async function subscribePageWebhooks(input: {
   );
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
-    throw new Error(resolveGraphError(payload, "Falha ao assinar webhook da Meta."));
+    throw new Error(withMetaPermissionHint(resolveGraphError(payload, "Falha ao assinar webhook da Meta.")));
   }
+}
+
+function resolveMetaWebhookFields(channelType: MetaConversationChannelType) {
+  const globalOverride = clean(process.env.META_WEBHOOK_SUBSCRIBED_FIELDS, 1000);
+  const scopedOverride =
+    channelType === "instagram"
+      ? clean(process.env.META_WEBHOOK_SUBSCRIBED_FIELDS_INSTAGRAM, 1000)
+      : clean(process.env.META_WEBHOOK_SUBSCRIBED_FIELDS_MESSENGER, 1000);
+  if (scopedOverride) return scopedOverride;
+  if (globalOverride) return globalOverride;
+  if (channelType === "instagram") {
+    return "messages,messaging_postbacks";
+  }
+  return "messages,messaging_postbacks,messaging_optins,messaging_referrals,messaging_handovers,message_reads,message_deliveries,feed";
+}
+
+function withMetaPermissionHint(message: string) {
+  const normalized = clean(message, 500).toLowerCase();
+  if (!normalized) return "Falha ao assinar webhook da Meta.";
+  const hasPagesMessagingError = normalized.includes("pages_messaging");
+  const hasAdvancedAccessError =
+    normalized.includes("advanced access") ||
+    normalized.includes("app does not have permission") ||
+    normalized.includes("permission") ||
+    normalized.includes("permissions");
+  if (hasPagesMessagingError || hasAdvancedAccessError) {
+    return `${clean(message, 220)} Verifique permissao pages_messaging e App Review/Advanced Access.`;
+  }
+  return clean(message, 300);
 }
 
 async function upsertMetaChannel(input: {
@@ -173,6 +203,7 @@ export async function finalizeMetaConnection(input: {
   if (pageToSubscribe?.id && pageToSubscribe.access_token) {
     try {
       await subscribePageWebhooks({
+        channelType: input.channelType === "messenger" ? "messenger" : "instagram",
         pageId: clean(pageToSubscribe.id, 200),
         pageAccessToken: clean(pageToSubscribe.access_token, 5000),
         graphVersion: input.graphVersion,

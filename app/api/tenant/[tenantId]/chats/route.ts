@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { syncRecentMessengerConversationsForTenant } from "@/lib/server/meta-conversation-sync";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 
 type ChatStateItem = {
@@ -117,6 +118,10 @@ export async function GET(
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
     assertTenantRole(membership, "client_viewer");
+
+    await syncRecentMessengerConversationsForTenant(tenantId).catch((error) => {
+      console.warn("Falha ao sincronizar conversas recentes do Messenger:", error);
+    });
 
     const snap = await adminDb
       .collection("chats")

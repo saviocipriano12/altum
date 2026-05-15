@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CheckCircle2,
   Loader2,
   MessageSquareCode,
   MoveDown,
@@ -994,12 +993,12 @@ export default function ClienteAutomacoesPage() {
       ) : null}
 
       <SectionHeader
-        title="Automacoes"
-        subtitle="Engine de regras do tenant, com gatilhos operacionais, acoes e historico recente de execucao."
+        title="Fluxos comerciais"
+        subtitle="Regras praticas para retomar conversas, criar tarefas, priorizar oportunidades e apoiar o time comercial."
         action={
           <div className="flex flex-wrap gap-2">
             <StateBadge
-              label={summary.aiEnabled === false ? "IA desativada" : "Automacao rodando"}
+              label={summary.aiEnabled === false ? "IA pausada" : "fluxos ativos"}
               tone={summary.aiEnabled === false ? "warning" : "success"}
             />
             {canManage ? (
@@ -1008,7 +1007,7 @@ export default function ClienteAutomacoesPage() {
                   type="button"
                   onClick={() => void processScheduledQueue()}
                   disabled={processingScheduled}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
+                  className="hidden items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
                 >
                   {processingScheduled ? <Loader2 className="h-4 w-4 animate-spin" /> : <Workflow className="h-4 w-4" />}
                   Rodar fila e watchdog
@@ -1022,7 +1021,7 @@ export default function ClienteAutomacoesPage() {
                   className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-sm font-medium text-[var(--cliente-accent)] transition hover:brightness-95"
                 >
                   <Plus className="h-4 w-4" />
-                  Nova automacao
+                  Novo fluxo
                 </button>
               </>
             ) : null}
@@ -1032,9 +1031,6 @@ export default function ClienteAutomacoesPage() {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Fluxos ativos" value={String(summary.activeAutomations || 0)} icon={Workflow} trend="regras habilitadas" />
-        <MetricCard label="Fila IA" value={String((queue.pending || 0) + (queue.retrying || 0))} icon={MessageSquareCode} trend="jobs de IA aguardando" />
-        <MetricCard label="Fila automacao" value={String((scheduled.pending || 0) + (scheduled.retrying || 0))} icon={Workflow} trend="etapas agendadas" />
-        <MetricCard label="Execucoes OK" value={String(executionStats.success)} icon={CheckCircle2} trend="janela recente" />
         <MetricCard label="Cadencias ativas" value={String(automationStats.withCadence)} icon={Workflow} trend={`${automationStats.immediateOnly} regra(s) imediatas`} />
         <MetricCard
           label="Aguardando resposta"
@@ -1042,15 +1038,15 @@ export default function ClienteAutomacoesPage() {
           icon={MessageSquareCode}
           trend={`${summary.slaBreached || 0} SLA estourado`}
         />
-        <MetricCard label="Erros de regra" value={String(executionStats.errors + (scheduled.deadLetter || 0))} icon={ShieldCheck} trend="precisam revisao" />
+        <MetricCard label="Alertas" value={String(executionStats.errors + (scheduled.deadLetter || 0))} icon={ShieldCheck} trend="pedem revisao" />
       </section>
 
       <section className="grid gap-3 xl:grid-cols-5">
         {focusSignals.length === 0 ? (
           <PanelCard className="p-4 xl:col-span-5">
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Engine operacional sem alertas criticos</p>
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Fluxos sem alertas importantes</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-              Nao ha backlog relevante, fila quebrada ou ausencia total de automacoes neste recorte.
+              Nao ha conversa parada, SLA estourado ou erro relevante neste recorte.
             </p>
           </PanelCard>
         ) : (
@@ -1072,7 +1068,7 @@ export default function ClienteAutomacoesPage() {
         )}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+      <section className="hidden gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <PanelCard className="p-5">
           <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Saude operacional</h3>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1218,10 +1214,10 @@ export default function ClienteAutomacoesPage() {
         />
       ) : null}
 
-      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+      <section className="grid gap-4">
         <PanelCard className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Regras do tenant</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Fluxos cadastrados</h3>
             <StateBadge
               label={filteredAutomations.length ? `${filteredAutomations.length} visiveis` : "sem regras"}
               tone={filteredAutomations.length ? "info" : "warning"}
@@ -1234,7 +1230,7 @@ export default function ClienteAutomacoesPage() {
               <input
                 value={automationSearch}
                 onChange={(event) => setAutomationSearch(event.target.value)}
-                placeholder="Buscar regra por nome, trigger, origem ou canal"
+                placeholder="Buscar fluxo por nome, gatilho, origem ou canal"
                 className="client-input w-full py-2 pl-9 pr-3 text-sm"
               />
             </label>
@@ -1262,9 +1258,9 @@ export default function ClienteAutomacoesPage() {
           </div>
 
           {automations.length === 0 ? (
-            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhuma automacao configurada ainda.</p>
+            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhum fluxo comercial configurado ainda.</p>
           ) : filteredAutomations.length === 0 ? (
-            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhuma automacao corresponde aos filtros atuais.</p>
+            <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhum fluxo corresponde aos filtros atuais.</p>
           ) : (
             <div className="mt-4 space-y-3">
               {filteredAutomations.map((automation) => (
@@ -1377,7 +1373,7 @@ export default function ClienteAutomacoesPage() {
           )}
         </PanelCard>
 
-        <div className="space-y-4">
+        <div className="hidden space-y-4">
           <PanelCard className="p-5">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Execucoes recentes</h3>

@@ -4,7 +4,7 @@ import { segmentPages } from "@/data/segment-pages";
 import { getAllBlogPosts } from "@/lib/blog";
 import { verticals } from "@/lib/verticals";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag").replace(/\/$/, "");
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();

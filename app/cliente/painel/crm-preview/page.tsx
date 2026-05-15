@@ -149,7 +149,7 @@ export default function ClienteCrmPreviewPage() {
   const totalPipeline = useMemo(() => LEADS.reduce((sum, lead) => sum + lead.valorEstimado, 0), []);
 
   return (
-    <div className="space-y-4">
+    <div className="crm-preview-refined client-daily-page space-y-4 [font-family:var(--cliente-font-family)]">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

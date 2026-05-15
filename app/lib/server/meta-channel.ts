@@ -99,8 +99,11 @@ function normalizeMetaChannelDoc(id: string, data: ChannelDoc): MetaChannelConfi
       normalizeString(metadata.verifyToken, 240) ||
       normalizeString(metadata.webhookVerifyToken, 240) ||
       undefined,
-    externalAccountId: normalizeString(data.externalAccountId, 180) || undefined,
-    pageId: normalizeString(data.pageId, 180) || undefined,
+    externalAccountId:
+      normalizeString(data.externalAccountId, 180) ||
+      normalizeString(metadata.instagramBusinessId, 180) ||
+      undefined,
+    pageId: normalizeString(data.pageId, 180) || normalizeString(metadata.pageId, 180) || undefined,
     username: normalizeString(data.username, 180) || undefined,
   };
 }
@@ -130,8 +133,11 @@ function normalizeMetaWebhookChannelDoc(id: string, data: ChannelDoc): MetaWebho
       normalizeString(metadata.verifyToken, 240) ||
       normalizeString(metadata.webhookVerifyToken, 240) ||
       undefined,
-    externalAccountId: normalizeString(data.externalAccountId, 180) || undefined,
-    pageId: normalizeString(data.pageId, 180) || undefined,
+    externalAccountId:
+      normalizeString(data.externalAccountId, 180) ||
+      normalizeString(metadata.instagramBusinessId, 180) ||
+      undefined,
+    pageId: normalizeString(data.pageId, 180) || normalizeString(metadata.pageId, 180) || undefined,
     username: normalizeString(data.username, 180) || undefined,
     metadata,
   };
@@ -161,6 +167,21 @@ async function queryChannelsByField(field: "externalAccountId" | "pageId", value
     .filter((item): item is MetaChannelConfig => Boolean(item));
 }
 
+async function queryChannelsByMetadataField(field: "instagramBusinessId" | "pageId", value: string) {
+  const normalized = normalizeString(value, 180);
+  if (!normalized) return [] as MetaChannelConfig[];
+
+  const snap = await adminDb
+    .collection("tenant_channels")
+    .where(`metadata.${field}`, "==", normalized)
+    .limit(10)
+    .get();
+
+  return snap.docs
+    .map((doc) => normalizeMetaChannelDoc(doc.id, doc.data() as ChannelDoc))
+    .filter((item): item is MetaChannelConfig => Boolean(item));
+}
+
 async function queryWebhookChannelsByField(field: "externalAccountId" | "pageId", value: string) {
   const normalized = normalizeString(value, 180);
   if (!normalized) return [] as MetaWebhookChannelConfig[];
@@ -168,6 +189,21 @@ async function queryWebhookChannelsByField(field: "externalAccountId" | "pageId"
   const snap = await adminDb
     .collection("tenant_channels")
     .where(field, "==", normalized)
+    .limit(10)
+    .get();
+
+  return snap.docs
+    .map((doc) => normalizeMetaWebhookChannelDoc(doc.id, doc.data() as ChannelDoc))
+    .filter((item): item is MetaWebhookChannelConfig => Boolean(item));
+}
+
+async function queryWebhookChannelsByMetadataField(field: "instagramBusinessId" | "pageId", value: string) {
+  const normalized = normalizeString(value, 180);
+  if (!normalized) return [] as MetaWebhookChannelConfig[];
+
+  const snap = await adminDb
+    .collection("tenant_channels")
+    .where(`metadata.${field}`, "==", normalized)
     .limit(10)
     .get();
 
@@ -218,6 +254,8 @@ export async function getMetaAdsChannelForLeadgen(input: {
   const candidates = [
     ...(await queryWebhookChannelsByField("pageId", entryId)),
     ...(await queryWebhookChannelsByField("externalAccountId", entryId)),
+    ...(await queryWebhookChannelsByMetadataField("pageId", entryId)),
+    ...(await queryWebhookChannelsByMetadataField("instagramBusinessId", entryId)),
   ].filter((item) => item.type === "meta_ads");
 
   const byPage = candidates.find((item) => item.pageId === entryId);
@@ -267,6 +305,8 @@ export async function getMetaChannelForTenant(
   const accountCandidates = dedupeChannels([
     ...(await queryChannelsByField("externalAccountId", options?.externalAccountId || "")),
     ...(await queryChannelsByField("pageId", options?.pageId || "")),
+    ...(await queryChannelsByMetadataField("instagramBusinessId", options?.externalAccountId || "")),
+    ...(await queryChannelsByMetadataField("pageId", options?.pageId || "")),
   ]);
 
   const preferredAccountMatch = accountCandidates.find(
@@ -299,6 +339,10 @@ export async function findMetaChannelForWebhook(input: {
     ...(await queryChannelsByField("pageId", input.recipientId || "")),
     ...(await queryChannelsByField("externalAccountId", input.entryId || "")),
     ...(await queryChannelsByField("pageId", input.entryId || "")),
+    ...(await queryChannelsByMetadataField("instagramBusinessId", input.recipientId || "")),
+    ...(await queryChannelsByMetadataField("pageId", input.recipientId || "")),
+    ...(await queryChannelsByMetadataField("instagramBusinessId", input.entryId || "")),
+    ...(await queryChannelsByMetadataField("pageId", input.entryId || "")),
   ]);
 
   if (candidates.length === 0) return null;
@@ -348,4 +392,45 @@ export async function sendMetaConversationText(input: {
   }
 
   return payload;
+}
+
+export async function fetchMetaConversationProfile(input: {
+  channel: MetaChannelConfig;
+  userId: string;
+}) {
+  const userId = normalizeString(input.userId, 180);
+  if (!userId) return null;
+
+  const fieldSets =
+    input.channel.type === "instagram"
+      ? ["name,username,profile_pic", "name,profile_pic", "username,profile_pic"]
+      : ["first_name,last_name,profile_pic", "name,profile_pic"];
+
+  for (const fields of fieldSets) {
+    const url = new URL(`https://graph.facebook.com/${VERSION}/${encodeURIComponent(userId)}`);
+    url.searchParams.set("fields", fields);
+    url.searchParams.set("access_token", input.channel.accessToken);
+
+    const response = await fetch(url, { cache: "no-store" });
+    const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!response.ok) continue;
+
+    const firstName = normalizeString(payload.first_name, 120);
+    const lastName = normalizeString(payload.last_name, 120);
+    const name =
+      normalizeString(payload.name, 180) ||
+      [firstName, lastName].filter(Boolean).join(" ").trim();
+    const username = normalizeString(payload.username, 180);
+    const photoUrl = normalizeString(payload.profile_pic, 1200);
+
+    if (name || username || photoUrl) {
+      return {
+        name,
+        username,
+        photoUrl,
+      };
+    }
+  }
+
+  return null;
 }

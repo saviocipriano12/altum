@@ -15,6 +15,7 @@ export default defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "_benchmark/**",
     "next-env.d.ts",
   ]),
 ]);

@@ -42,7 +42,7 @@
 3. Usuario autoriza no provider.
 4. `callback` valida `state`, troca `code` por token, busca assets e vincula automaticamente.
 5. Canal e salvo/atualizado em `tenant_channels` com `oauthManaged=true`.
-6. Meta: tenta assinatura de webhook da pagina automaticamente.
+6. Meta: tenta assinatura de webhook da pagina automaticamente (campos por canal).
 7. Google: tenta sync inicial de campanha e ajusta `connectionStatus`.
 
 ### Asset Picker (quando ha mais de uma conta)
@@ -74,7 +74,7 @@
 - Mantido formulario de mapeamento para compatibilidade e ajustes finos.
 
 ## Escopos OAuth Meta por canal (padrao)
-- Instagram: `pages_show_list`, `pages_manage_metadata`, `pages_read_engagement`, `instagram_basic`, `instagram_manage_messages`
+- Instagram: `pages_show_list`, `pages_manage_metadata`, `pages_messaging`, `pages_read_engagement`, `instagram_basic`, `instagram_manage_messages`
 - Messenger: `pages_show_list`, `pages_manage_metadata`, `pages_messaging`
 - Meta Ads: `ads_read`, `business_management`, `leads_retrieval`
 - Opcional: `META_INCLUDE_INSTAGRAM_COMMENT_SCOPE=1` para incluir `instagram_manage_comments`.
@@ -100,6 +100,9 @@
 - Canais antigos continuam funcionando.
 - Webhook ainda aceita verify token/app secret por canal como fallback.
 - Possivel migrar gradualmente para `oauthManaged=true`.
+
+## Notas de Fluxo
+- Google Ads com selecao de conta (`pendingId`) preserva `refresh_token` para concluir o vinculo sem perder renovacao de acesso.
 
 ## Troubleshooting Rápido
 - `state_ausente` ou `oauth_state_*`: sessao OAuth expirada ou invalida.

@@ -28,6 +28,10 @@ type Body = {
   guardrails?: string[] | string;
   mandatoryQuestions?: string[] | string;
   escalationTopics?: string[] | string;
+  whatsappTemplateFollowUpEnabled?: boolean;
+  whatsappTemplateFollowUpName?: string;
+  whatsappTemplateFollowUpLanguage?: string;
+  whatsappTemplateFollowUpParams?: string[] | string;
   tier?: AltumAiTier;
   autonomyMode?: AltumAiAutonomyMode;
   reasoningLevel?: AltumAiReasoningLevel;
@@ -165,6 +169,10 @@ function normalizeAiConfig(
     escalationTopics: resolveWithDefaults
       ? (storedEscalationTopics.length ? storedEscalationTopics : businessProfile.ai.escalationTopics)
       : storedEscalationTopics,
+    whatsappTemplateFollowUpEnabled: ai.whatsappTemplateFollowUpEnabled !== false,
+    whatsappTemplateFollowUpName: clean(ai.whatsappTemplateFollowUpName, 120) || "follow_up_geral",
+    whatsappTemplateFollowUpLanguage: clean(ai.whatsappTemplateFollowUpLanguage, 24) || "pt_BR",
+    whatsappTemplateFollowUpParams: parseLines(ai.whatsappTemplateFollowUpParams, 12),
     tier: operatingProfile.tier,
     autonomyMode: operatingProfile.autonomyMode,
     reasoningLevel: operatingProfile.reasoningLevel,
@@ -253,6 +261,18 @@ export async function POST(
         body.escalationTopics === undefined
           ? current.escalationTopics
           : parseLines(body.escalationTopics, 12),
+      whatsappTemplateFollowUpEnabled:
+        typeof body.whatsappTemplateFollowUpEnabled === "boolean"
+          ? body.whatsappTemplateFollowUpEnabled
+          : current.whatsappTemplateFollowUpEnabled,
+      whatsappTemplateFollowUpName:
+        clean(body.whatsappTemplateFollowUpName, 120) || current.whatsappTemplateFollowUpName,
+      whatsappTemplateFollowUpLanguage:
+        clean(body.whatsappTemplateFollowUpLanguage, 24) || current.whatsappTemplateFollowUpLanguage,
+      whatsappTemplateFollowUpParams:
+        body.whatsappTemplateFollowUpParams === undefined
+          ? current.whatsappTemplateFollowUpParams
+          : parseLines(body.whatsappTemplateFollowUpParams, 12),
       operatingProfile: normalizeTenantAiOperatingProfile({
         tier: body.tier ?? current.tier,
         autonomyMode: body.autonomyMode ?? current.autonomyMode,

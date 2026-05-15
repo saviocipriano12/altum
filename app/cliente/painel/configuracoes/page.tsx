@@ -5,10 +5,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bell,
   BellOff,
+  BookOpenText,
   Bot,
   Building2,
   Loader2,
   MessageSquare,
+  Package,
+  Plug,
   RefreshCw,
   Send,
   Shuffle,
@@ -417,7 +420,7 @@ export default function ClienteConfiguracoesPage() {
         id: "company",
         href: "/cliente/painel/configuracoes/empresa",
         title: "Completar perfil da empresa",
-        description: "Preencha dados de marca, nicho e contato para handoff, widgets e operacao comercial.",
+        description: "Preencha nome, nicho e contato da empresa para a operacao ficar completa.",
         badge: "perfil",
         tone: "warning",
       });
@@ -427,8 +430,8 @@ export default function ClienteConfiguracoesPage() {
       items.push({
         id: "users",
         href: "/cliente/painel/configuracoes/usuarios",
-        title: "Adicionar equipe ao tenant",
-        description: "Sem usuarios ativos, o inbox e a distribuicao nao conseguem operar com ownership real.",
+        title: "Adicionar equipe",
+        description: "Sem usuarios ativos, a operacao nao consegue responder e distribuir conversas direito.",
         badge: "equipe",
         tone: "danger",
       });
@@ -437,7 +440,7 @@ export default function ClienteConfiguracoesPage() {
         id: "availability",
         href: "/cliente/painel/configuracoes/usuarios",
         title: "Ninguem esta online para atendimento",
-        description: "Revise disponibilidade dos membros para ativar distribuicao e takeover com menos atrito.",
+        description: "Revise disponibilidade da equipe para evitar conversas paradas.",
         badge: "escala",
         tone: "warning",
       });
@@ -458,8 +461,8 @@ export default function ClienteConfiguracoesPage() {
       items.push({
         id: "ai",
         href: "/cliente/painel/ia",
-        title: "Revisar governanca da IA",
-        description: "Defina handoff, guardrails e cobertura do agente para reduzir escaladas sem dono.",
+        title: "Revisar o Assistente Altum",
+        description: "Ajuste responsavel, regras e cobertura da IA para reduzir pausas e escaladas.",
         badge: "ia",
         tone: !summary.aiEnabled ? "warning" : "info",
       });
@@ -480,8 +483,8 @@ export default function ClienteConfiguracoesPage() {
       items.push({
         id: "teams",
         href: "/cliente/painel/configuracoes/times",
-        title: "Estruturar times da operacao",
-        description: "Defina ownership por time para distribuir inbound com mais contexto e menos conflito.",
+        title: "Organizar times",
+        description: "Defina os times da operacao para distribuir atendimento com mais clareza.",
         badge: "times",
         tone: "info",
       });
@@ -531,7 +534,7 @@ export default function ClienteConfiguracoesPage() {
       ? [{
       href: "/cliente/painel/configuracoes/usuarios",
       title: "Usuarios e permissoes",
-      description: `${summary.activeUsers} membro(s) com acesso ao tenant.`,
+      description: `${summary.activeUsers} membro(s) com acesso a esta conta.`,
       icon: Users2,
       badge: `${summary.activeUsers} ativos`,
       tone: summary.activeUsers > 0 ? ("info" as const) : ("warning" as const),
@@ -540,8 +543,8 @@ export default function ClienteConfiguracoesPage() {
     ...(hasCapability("manage_settings")
       ? [{
       href: "/cliente/painel/configuracoes/times",
-      title: "Times e ownership",
-      description: `${summary.managedTeams} time(s) configurado(s) para SLA, filas e distribuicao.`,
+      title: "Times e responsaveis",
+      description: `${summary.managedTeams} time(s) configurado(s) para distribuir atendimento e vendas.`,
       icon: UsersRound,
       badge: `${summary.managedTeams} times`,
       tone: summary.managedTeams > 0 ? ("info" as const) : ("warning" as const),
@@ -557,19 +560,43 @@ export default function ClienteConfiguracoesPage() {
       featured: true,
     },
     {
+      href: "/cliente/painel/configuracoes/integracoes",
+      title: "Integrações",
+      description: "Conectores comerciais para ecommerce, canais e ferramentas que alimentam a Altum.",
+      icon: Plug,
+      badge: "conectores",
+      tone: "info" as const,
+    },
+    {
+      href: "/cliente/painel/produtos-servicos",
+      title: "Produtos & Serviços",
+      description: "Ofertas, argumentos, duvidas e upsell que a Altum usa nas conversas.",
+      icon: Package,
+      badge: "oferta",
+      tone: "info" as const,
+    },
+    {
+      href: "/cliente/painel/conhecimento",
+      title: "Base de conhecimento",
+      description: "FAQ, politicas e documentos que alimentam as respostas do Assistente Altum.",
+      icon: BookOpenText,
+      badge: "conteudo",
+      tone: "info" as const,
+    },
+    {
       href: "/cliente/painel/configuracoes/social",
-      title: "Automacoes sociais",
-      description: "Respostas de DM, comentario e novo seguidor com horario ativo, opt-out e logs por tenant.",
+      title: "Respostas automaticas",
+      description: "Configure respostas para DM, comentario e novo seguidor sem complicar a operacao.",
       icon: Bot,
       badge: "social",
       tone: "info" as const,
     },
     {
       href: "/cliente/painel/ia",
-      title: "Politicas da IA",
+      title: "Assistente Altum",
       description: summary.aiEnabled
-        ? `${summary.guardrails} guardrail(s) e handoff ${summary.hasAiOwner ? "configurado" : "pendente"}.`
-        : "IA pausada. Revise tom, guardrails e handoff.",
+        ? `${summary.guardrails} regra(s) ativas e ${summary.hasAiOwner ? "responsavel definido" : "responsavel pendente"}.`
+        : "IA pausada. Revise comportamento e responsavel.",
       icon: Bot,
       badge: summary.aiEnabled ? "IA ativa" : "IA pausada",
       tone: summary.aiEnabled ? ("success" as const) : ("warning" as const),
@@ -588,8 +615,8 @@ export default function ClienteConfiguracoesPage() {
     <div className="settings-refined client-daily-page space-y-6">
       <SectionHeader
         title="Configuracoes"
-        subtitle="Governanca do tenant, conectores, usuarios e politicas operacionais em um unico lugar."
-        action={<StateBadge label="Tenant configuravel" tone="info" />}
+        subtitle="Ajuste empresa, equipe, canais e operacao. O avancado fica fora da rotina diaria."
+        action={<StateBadge label="Ajustes do negocio" tone="info" />}
       />
 
       {loading ? (
@@ -606,7 +633,40 @@ export default function ClienteConfiguracoesPage() {
 
       {!loading ? (
         <>
-          <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <section className="hidden grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+            <PanelCard tone="spotlight" className="p-5 md:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="max-w-2xl">
+                  <p className="inline-flex rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/84">
+                    Estrutura da operacao
+                  </p>
+                  <h2 className="mt-4 text-[1.75rem] font-semibold tracking-[-0.045em] text-white md:text-[2.15rem]">
+                    Deixe empresa, equipe, canais e implantacao prontos sem expor complexidade demais para o cliente comum.
+                  </h2>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72">
+                    Esta tela existe para organizar a base do workspace. O trabalho diario continua em Conversas, Clientes & Oportunidades e Agenda.
+                  </p>
+                </div>
+                <div className="grid min-w-[250px] gap-3 sm:grid-cols-2 xl:w-[320px]">
+                  <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Go-live</p><p className="mt-2 text-base font-semibold text-white">{effectiveReadinessScore}%</p></div>
+                  <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Usuarios ativos</p><p className="mt-2 text-base font-semibold text-white">{summary.activeUsers}</p></div>
+                  <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Canais ativos</p><p className="mt-2 text-base font-semibold text-white">{summary.activeChannels}</p></div>
+                  <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Forms ativos</p><p className="mt-2 text-base font-semibold text-white">{summary.activeForms}</p></div>
+                </div>
+              </div>
+            </PanelCard>
+
+            <PanelCard tone="brand" className="p-5">
+              <CardTitle title="O que ajustar primeiro" subtitle="Ordem sugerida para nao travar implantacao nem atendimento." />
+              <div className="mt-4 space-y-3">
+                <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Empresa e equipe</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Defina perfil da conta, usuarios e ownership antes de abrir operacao.</p></div>
+                <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Canais e SLA</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Conecte canais, ajuste tempo de resposta e distribua a fila corretamente.</p></div>
+                <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Assistente e implantacao</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Revise IA e checklist de prontidao antes de liberar o tenant para uso mais intenso.</p></div>
+              </div>
+            </PanelCard>
+          </section>
+
+          <section className="hidden grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
             <PanelCard className="settings-hero-card p-5 md:p-6">
               <CardTitle title="Go-live definitivo" subtitle="Gate critico, score e evidencias para entender em 1 tela o que falta para vender e operar este tenant." />
               <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
@@ -711,7 +771,77 @@ export default function ClienteConfiguracoesPage() {
           </section>
 
           <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-            <PanelCard className="settings-map-card p-5 md:p-6">
+            <PanelCard className="p-5 md:p-6 xl:col-span-2">
+              <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                <div>
+                  <CardTitle title="Ajustes recomendados" subtitle="Comece pelo que mais destrava a operacao comercial." />
+                  <div className="mt-4 space-y-3">
+                    {actionItems.length === 0 ? (
+                      <div className="rounded-2xl border border-emerald-300/35 bg-emerald-500/8 px-4 py-3">
+                        <p className="text-sm font-semibold text-emerald-700">Base principal pronta</p>
+                        <p className="mt-1 text-sm text-emerald-700/80">
+                          Empresa, canais, equipe e operacao ja estao configurados para o uso diario.
+                        </p>
+                      </div>
+                    ) : (
+                      actionItems.map((item) => (
+                        <Link
+                          key={item.id}
+                          href={item.href}
+                          className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.description}</p>
+                            </div>
+                            <StateBadge label={item.badge} tone={item.tone} />
+                          </div>
+                        </Link>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <CardTitle title="Atalhos de operacao" subtitle="Entradas rapidas para revisar a conta sem misturar com a rotina." />
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <Link
+                      href="/cliente/painel/inbox"
+                      className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                    >
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Revisar conversas</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
+                        {summary.activeBacklog} conversa(s) abertas nos canais conectados.
+                      </p>
+                    </Link>
+                    <Link
+                      href="/cliente/painel/metricas"
+                      className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                    >
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Ver relatorios</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Acompanhe fila, SLA e volume da operacao.</p>
+                    </Link>
+                    <Link
+                      href="/cliente/painel/go-live"
+                      className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                    >
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Implantacao</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Checklist e status da conta em segunda camada.</p>
+                    </Link>
+                    <Link
+                      href="/cliente/painel/ia"
+                      className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                    >
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Assistente Altum</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Revise controles da IA, escaladas e automacoes quando necessario.</p>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </PanelCard>
+
+            <PanelCard className="settings-map-card hidden p-5 md:p-6">
               <CardTitle title="Mapa de prontidao" subtitle="Leitura objetiva dos modulos que sustentam o piloto." />
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {(readiness?.modules || []).map((item) => (
@@ -732,7 +862,7 @@ export default function ClienteConfiguracoesPage() {
               </div>
             </PanelCard>
 
-            <PanelCard className="settings-checklist-card p-5 md:p-6">
+            <PanelCard className="settings-checklist-card hidden p-5 md:p-6">
               <CardTitle title="Checklist acionavel" subtitle="Pendencias mais importantes para fechar o setup do tenant." />
               <div className="mt-4 space-y-3">
                 {(readiness?.blockers || actionItems).length === 0 ? (
@@ -760,7 +890,7 @@ export default function ClienteConfiguracoesPage() {
               </div>
             </PanelCard>
 
-            <PanelCard className="settings-roadmap-card p-5 md:p-6">
+            <PanelCard className="settings-roadmap-card hidden p-5 md:p-6">
               <CardTitle title="Proxima fase do produto" subtitle="Capacidades que ainda nao existem de verdade e entram na proxima construcao." />
               <div className="mt-4 space-y-3">
                 {(readiness?.nextBuildItems || []).map((item) => (
@@ -781,7 +911,7 @@ export default function ClienteConfiguracoesPage() {
               </div>
             </PanelCard>
 
-            <PanelCard className="settings-shortcuts-shell p-5 md:p-6">
+            <PanelCard className="settings-shortcuts-shell hidden p-5 md:p-6">
               <CardTitle title="Atalhos operacionais" subtitle="Entradas rapidas para revisar setup e operacao viva do tenant." />
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <ShortcutCard

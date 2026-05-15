@@ -48,7 +48,7 @@ const cases: CaseItem[] = [
     title: "Vitta Prime — LP de Alta Conversão",
     subtitle: "Saúde e bem-estar com copy estratégica e design leve.",
     image: "/cases/vittaprime-1600.jpg",
-    url: "http://localhost:3000/cases/vitta",
+    url: "/cases/vitta",
     kpi: "+82% leads qualificados",
     tags: ["Landing Page", "Copywriting", "Conversão", "Figma"],
     bullets: [

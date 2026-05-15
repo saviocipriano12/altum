@@ -8,20 +8,20 @@ import { ClienteSidebar } from "@/app/cliente/painel/components/cliente-sidebar"
 import { ClienteShellProvider, useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { ClienteTopbar } from "@/app/cliente/painel/components/cliente-topbar";
 
-function ClientePainelShell({ children }: { children: React.ReactNode }) {
+function ClientAppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
   const { density } = useClienteShell();
   const compact = density === "compact";
-  const isAdminSurface = /^\/cliente\/painel\/(ia|automacoes|conhecimento)(\/|$)/.test(pathname || "");
-  const clientArea = isAdminSurface ? "admin" : "daily";
+  const isAssistantSurface = /^\/cliente\/painel\/(ia|automacoes|conhecimento|perguntar-altum)(\/|$)/.test(pathname || "");
+  const clientArea = isAssistantSurface ? "assistant" : "daily";
 
   return (
     <div
       data-client-area={clientArea}
       className="relative min-h-screen overflow-hidden bg-[var(--cliente-bg)] text-[var(--cliente-text)] [font-family:var(--cliente-font-family)] transition-[background-color,color] duration-300"
     >
-      <div className="client-shell-ambient pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="client-shell-ambient pointer-events-none absolute inset-0 hidden overflow-hidden lg:block">
         <div className="absolute inset-0 bg-[var(--cliente-bg)]" />
         <div className="absolute inset-x-0 top-0 h-[460px] bg-[linear-gradient(180deg,var(--cliente-accent-glow),transparent_74%)]" />
         <div className="absolute right-[-8vw] top-[9vh] h-[30rem] w-[30rem] rounded-full bg-[var(--cliente-accent-glow)] blur-3xl" />
@@ -36,7 +36,7 @@ function ClientePainelShell({ children }: { children: React.ReactNode }) {
       <ClienteCommandPalette />
 
       <div className="relative transition-[padding] duration-300 lg:pl-[var(--cliente-sidebar-width)]">
-        <main className={`min-h-screen transition-[padding] duration-300 ${compact ? "px-3 pb-24 pt-[122px] sm:pb-20 lg:px-6 lg:pb-8 xl:pt-[102px]" : "px-4 pb-28 pt-[136px] sm:pb-24 lg:px-7 lg:pb-10 xl:pt-[108px]"}`}>
+        <main className={`min-h-screen transition-[padding] duration-300 ${compact ? "px-3 pb-24 pt-[88px] sm:pb-20 sm:pt-[122px] lg:px-6 lg:pb-8 xl:pt-[102px]" : "px-3 pb-28 pt-[88px] sm:px-4 sm:pb-24 sm:pt-[136px] lg:px-7 lg:pb-10 xl:pt-[108px]"}`}>
           <div className={`mx-auto max-w-[1560px] ${compact ? "space-y-3.5" : "space-y-5"}`}>
             {children}
           </div>
@@ -51,7 +51,7 @@ function ClientePainelShell({ children }: { children: React.ReactNode }) {
 export default function ClientePainelLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClienteShellProvider>
-      <ClientePainelShell>{children}</ClientePainelShell>
+      <ClientAppShell>{children}</ClientAppShell>
     </ClienteShellProvider>
   );
 }

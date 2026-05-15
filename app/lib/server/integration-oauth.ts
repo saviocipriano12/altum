@@ -52,6 +52,20 @@ function randomToken(bytes = 24) {
   return crypto.randomBytes(bytes).toString("base64url");
 }
 
+function toDate(value: unknown) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "object" && "toDate" in value && typeof (value as { toDate?: unknown }).toDate === "function") {
+    const date = (value as { toDate: () => Date }).toDate();
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === "number" || typeof value === "string") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+}
+
 export function normalizeConnectionStatus(value: unknown, fallback: ConnectionStatus = "draft"): ConnectionStatus {
   const normalized = clean(value, 40).toLowerCase();
   return (CONNECTION_STATUSES as readonly string[]).includes(normalized)
@@ -73,10 +87,11 @@ export function getAppBaseUrl(req?: Request) {
   return "";
 }
 
-export function buildClientRedirect(path: string, query: Record<string, string>) {
+export function buildClientRedirect(path: string, query: Record<string, string>, baseUrl?: string) {
   const params = new URLSearchParams(query);
   const qs = params.toString();
-  return `${path}${qs ? `?${qs}` : ""}`;
+  const relativeUrl = `${path}${qs ? `?${qs}` : ""}`;
+  return baseUrl ? new URL(relativeUrl, baseUrl).toString() : relativeUrl;
 }
 
 export function getMetaEnv() {
@@ -101,6 +116,7 @@ const DEFAULT_META_OAUTH_SCOPES: Record<MetaOAuthChannelType, string[]> = {
   instagram: [
     "pages_show_list",
     "pages_manage_metadata",
+    "pages_messaging",
     "pages_read_engagement",
     "instagram_basic",
     "instagram_manage_messages",
@@ -224,8 +240,8 @@ export async function consumeIntegrationOAuthState(state: string, provider: Inte
     throw new Error("oauth_state_already_used");
   }
 
-  const expiresAt = data.expiresAt instanceof Date ? data.expiresAt : new Date(String(data.expiresAt || ""));
-  if (!(expiresAt instanceof Date) || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() < Date.now()) {
+  const expiresAt = toDate(data.expiresAt);
+  if (!expiresAt || expiresAt.getTime() < Date.now()) {
     throw new Error("oauth_state_expired");
   }
 

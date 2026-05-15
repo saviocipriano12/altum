@@ -21,6 +21,14 @@ type TenantSettings = {
   state?: string;
   timezone?: string;
   businessHours?: string;
+  dailyReport?: {
+    enabled?: boolean;
+    ownerName?: string;
+    ownerPhone?: string;
+    sendHour?: string;
+    templateName?: string;
+    templateLanguage?: string;
+  };
 };
 
 export default function ClienteEmpresaPage() {
@@ -136,6 +144,75 @@ export default function ClienteEmpresaPage() {
                 </div>
                 <Field label="Timezone" value={form.timezone || "America/Sao_Paulo"} onChange={(value) => setForm((current) => ({ ...current, timezone: value }))} />
                 <Field label="Horario comercial" value={form.businessHours || "Seg-Sex 09:00-18:00"} onChange={(value) => setForm((current) => ({ ...current, businessHours: value }))} />
+
+                <div className="rounded-2xl border border-white/12 bg-white/[0.03] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white/92">Fechamento do Dia Altum</p>
+                      <p className="mt-1 text-sm text-white/58">
+                        Relatorio executivo enviado no WhatsApp do dono com resumo, alertas e plano para amanha.
+                      </p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/20 px-3 py-1.5 text-xs text-white/72">
+                      <input
+                        type="checkbox"
+                        checked={form.dailyReport?.enabled !== false}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            dailyReport: { ...(current.dailyReport || {}), enabled: event.target.checked },
+                          }))
+                        }
+                      />
+                      Ativo
+                    </label>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <Field
+                      label="Nome do dono"
+                      value={form.dailyReport?.ownerName || form.responsibleName || ""}
+                      onChange={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          dailyReport: { ...(current.dailyReport || {}), ownerName: value },
+                        }))
+                      }
+                    />
+                    <Field
+                      label="WhatsApp do dono"
+                      value={form.dailyReport?.ownerPhone || form.phone || ""}
+                      onChange={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          dailyReport: { ...(current.dailyReport || {}), ownerPhone: value },
+                        }))
+                      }
+                    />
+                    <Field
+                      label="Horario de envio"
+                      value={form.dailyReport?.sendHour || "18:30"}
+                      onChange={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          dailyReport: { ...(current.dailyReport || {}), sendHour: value },
+                        }))
+                      }
+                    />
+                    <Field
+                      label="Template WhatsApp"
+                      value={form.dailyReport?.templateName || "fechamento_dia_altum"}
+                      onChange={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          dailyReport: { ...(current.dailyReport || {}), templateName: value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-white/45">
+                    O template deve estar aprovado como utilidade no WhatsApp Business e aceitar variaveis de dono, data, resumo, alertas, plano e link.
+                  </p>
+                </div>
 
                 <button
                   type="submit"

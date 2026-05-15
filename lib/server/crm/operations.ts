@@ -5,6 +5,7 @@ import { buildLeadHandoffContext } from "@/lib/server/crm/handoff";
 import { buildLeadStagePolicy, comparePipelineStages, loadTenantPipelineConfig } from "@/lib/server/crm/pipeline";
 import { evaluateLeadQualification } from "@/lib/server/crm/qualification";
 import { buildLeadSchedulingAdapter } from "@/lib/server/crm/scheduling";
+import { runPipelineStageSideEffects } from "@/lib/server/crm/stage-effects";
 
 type GenericRow = { id: string } & Record<string, unknown>;
 
@@ -282,6 +283,19 @@ export async function syncLeadCommercialState(input: {
       actorId: input.actorId || "crm_automation",
       actorName: input.actorName || "CRM Automation",
       createdAt: FieldValue.serverTimestamp(),
+    });
+    await runPipelineStageSideEffects({
+      tenantId: input.tenantId,
+      leadId: input.leadId,
+      previousStage: currentStage,
+      nextStage: analysis.qualification.recommendedStage,
+      actorId: input.actorId || "crm_automation",
+      actorName: input.actorName || "CRM Automation",
+      source: "crm_auto_stage_advance",
+      metadata: {
+        reasonCode: "qualification_stage_upgrade",
+        score: analysis.qualification.score,
+      },
     });
   }
 

@@ -24,6 +24,9 @@ const hotspotRouteReferences: Array<{ surface: string; route: string }> = [
   { surface: 'cliente/automacoes', route: '/api/tenant/[tenantId]/automations/[automationId]' },
   { surface: 'cliente/automacoes', route: '/api/tenant/[tenantId]/automations/process' },
 
+  { surface: 'cliente/relatorios', route: '/api/tenant/[tenantId]/daily-reports' },
+  { surface: 'jobs/relatorios', route: '/api/internal/jobs/daily-reports/send' },
+
   { surface: 'cliente/captacao', route: '/api/tenant/[tenantId]/capture/forms' },
   { surface: 'cliente/captacao', route: '/api/tenant/[tenantId]/capture/forms/[formId]' },
   { surface: 'cliente/captacao', route: '/api/tenant/[tenantId]/users' },

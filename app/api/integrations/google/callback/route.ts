@@ -81,11 +81,12 @@ export async function GET(req: Request) {
   const deniedReason = clean(url.searchParams.get("error"), 120);
 
   const fallbackRedirect = "/cliente/painel/configuracoes/canais";
+  const clientRedirect = (path: string, query: Record<string, string>) => buildClientRedirect(path, query, baseUrl);
 
   try {
     if (!state) {
       return NextResponse.redirect(
-        buildClientRedirect(fallbackRedirect, {
+        clientRedirect(fallbackRedirect, {
           integration: "google",
           result: "error",
           message: "state_ausente",
@@ -96,7 +97,7 @@ export async function GET(req: Request) {
     const oauth = await consumeIntegrationOAuthState(state, "google");
     if (deniedReason || !code) {
       return NextResponse.redirect(
-        buildClientRedirect(oauth.redirectPath, {
+        clientRedirect(oauth.redirectPath, {
           tenantId: oauth.tenantId,
           integration: "google",
           result: "error",
@@ -173,6 +174,7 @@ export async function GET(req: Request) {
         channelType: "google_ads",
         redirectPath: oauth.redirectPath,
         oauthToken: clean(tokenPayload.access_token, 5000),
+        oauthRefreshToken: clean(tokenPayload.refresh_token, 5000),
         oauthScope: clean(tokenPayload.scope, 1200),
         googleCustomers: mappedCustomers.map((item) => {
           const preview = previewByCustomer.get(item.customerId);
@@ -187,7 +189,7 @@ export async function GET(req: Request) {
         }),
       });
       return NextResponse.redirect(
-        buildClientRedirect(oauth.redirectPath, {
+        clientRedirect(oauth.redirectPath, {
           tenantId: oauth.tenantId,
           integration: "google",
           result: "select",
@@ -209,7 +211,7 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.redirect(
-      buildClientRedirect(oauth.redirectPath, {
+      clientRedirect(oauth.redirectPath, {
         tenantId: oauth.tenantId,
         integration: "google",
         result: "success",
@@ -221,7 +223,7 @@ export async function GET(req: Request) {
   } catch (error) {
     const message = error instanceof Error ? clean(error.message, 280) : "Erro no callback Google.";
     return NextResponse.redirect(
-      buildClientRedirect(fallbackRedirect, {
+      clientRedirect(fallbackRedirect, {
         integration: "google",
         result: "error",
         message,

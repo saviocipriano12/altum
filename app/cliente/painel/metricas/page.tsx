@@ -216,6 +216,15 @@ function queueHref(filter: "all" | "sla_breached" | "unassigned" | "assigned_wai
   return `/cliente/painel/inbox?queue=${encodeURIComponent(filter)}`;
 }
 
+function todayDateKey() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export default function ClienteMetricasPage() {
   const { tenant, hasCapability } = useClienteTenant();
   const { experienceMode, setExperienceMode } = useClienteShell();
@@ -519,10 +528,17 @@ export default function ClienteMetricasPage() {
   return (
     <div className="metricas-refined client-daily-page space-y-6">
       <SectionHeader
-        title="Metricas"
-        subtitle="Leitura clara de desempenho, atendimento e operacao para decidir rapido o que manter e o que ajustar."
+        title="Relatorios"
+        subtitle="Leitura clara de desempenho, atendimento e resultado comercial para decidir rapido o que manter e o que ajustar."
         action={
           <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/cliente/painel/relatorios/dia/${todayDateKey()}`}
+              className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-medium text-[var(--cliente-accent)] transition hover:brightness-95"
+            >
+              <Radar className="h-3.5 w-3.5" />
+              Fechamento do dia
+            </Link>
             {RANGE_OPTIONS.map((option) => (
               <button
                 key={option}
@@ -565,7 +581,7 @@ export default function ClienteMetricasPage() {
               onClick={() => setExperienceMode(allowAdvanced ? "essencial" : "completo")}
               className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
-              {allowAdvanced ? "Modo essencial" : "Modo completo"}
+              {allowAdvanced ? "Voltar ao essencial" : "Abrir visao avancada"}
             </button>
           </div>
         }
@@ -635,6 +651,51 @@ export default function ClienteMetricasPage() {
         </PanelCard>
       </section>
 
+      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+        <PanelCard tone="spotlight" className="p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="inline-flex rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/84">
+                Janela de performance
+              </p>
+              <h2 className="mt-4 text-[1.75rem] font-semibold tracking-[-0.045em] text-white md:text-[2.15rem]">
+                Entenda se a operacao esta respondendo, convertendo e gerando retorno sem abrir um console tecnico.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72">
+                O que importa aqui e o que cresce, o que caiu e onde agir hoje para recuperar ritmo comercial.
+              </p>
+            </div>
+            <div className="grid min-w-[250px] gap-3 sm:grid-cols-2 xl:w-[320px]">
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Conversao</p><p className="mt-2 text-base font-semibold text-white">{percent(Number(metrics.conversionRate || 0))}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">ROI</p><p className="mt-2 text-base font-semibold text-white">{`${Number(metrics.roi || 0).toFixed(2)}x`}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Receita</p><p className="mt-2 text-base font-semibold text-white">{currency(Number(metrics.paidRevenue || 0))}</p></div>
+              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">SLA vencido</p><p className="mt-2 text-base font-semibold text-white">{String(operations.overdueChats || 0)}</p></div>
+            </div>
+          </div>
+        </PanelCard>
+
+        <PanelCard tone="brand" className="p-5">
+          <CardTitle title="Resumo do que agir" subtitle="Leitura curta para nao se perder nos numeros." />
+          <div className="mt-4 space-y-3">
+            {prioritySignals.length === 0 ? (
+              <EmptyState title="Sem gargalos relevantes" description="A operacao nao mostra sinais criticos nesta janela." />
+            ) : (
+              prioritySignals.slice(0, 3).map((item) => (
+                <Link key={item.id} href={item.href} className="block rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.detail}</p>
+                    </div>
+                    <StateBadge label={item.badge} tone={item.tone} />
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        </PanelCard>
+      </section>
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Link href="/cliente/painel/crm" className="block">
           <MetricCard
@@ -642,6 +703,7 @@ export default function ClienteMetricasPage() {
             value={String(metrics.totalLeads || 0)}
             icon={ChartNoAxesCombined}
             trend={deltaLabel(Number(comparisons.leadsDeltaPct || 0))}
+            tone="brand"
           />
         </Link>
         <Link href="/cliente/painel/crm?stage=ganho" className="block">
@@ -650,6 +712,7 @@ export default function ClienteMetricasPage() {
             value={percent(Number(metrics.conversionRate || 0))}
             icon={Radar}
             trend={deltaLabel(Number(comparisons.conversionDeltaPct || 0))}
+            tone="success"
           />
         </Link>
         <Link href="/cliente/painel/inbox" className="block">
@@ -658,6 +721,7 @@ export default function ClienteMetricasPage() {
             value={`${Number(metrics.avgFirstResponseMinutes || 0).toFixed(1)} min`}
             icon={CircleGauge}
             trend={`${metrics.conversations || 0} conversas`}
+            tone="warning"
           />
         </Link>
         <Link href="/cliente/painel/comercial?financeStatus=pago" className="block">
@@ -666,6 +730,7 @@ export default function ClienteMetricasPage() {
             value={`${Number(metrics.roi || 0).toFixed(2)}x`}
             icon={ArrowUpRight}
             trend={deltaLabel(Number(comparisons.roiDeltaPct || 0))}
+            tone="ai"
           />
         </Link>
         <Link href="/cliente/painel/comercial?financeStatus=pago" className="block">
@@ -674,6 +739,7 @@ export default function ClienteMetricasPage() {
             value={currency(Number(metrics.paidRevenue || 0))}
             icon={BarChart3}
             trend={`investimento ${currency(Number(traffic.spend || 0))}`}
+            tone="success"
           />
         </Link>
         <Link href="/cliente/painel/logs" className="block">
@@ -682,6 +748,7 @@ export default function ClienteMetricasPage() {
             value={operationalStatus}
             icon={ChartNoAxesCombined}
             trend={operationalHealth.reason || "situacao operacional"}
+            tone={operationalStatus === "down" ? "danger" : operationalStatus === "degraded" ? "warning" : "brand"}
           />
         </Link>
       </section>

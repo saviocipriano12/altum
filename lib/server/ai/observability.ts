@@ -386,6 +386,20 @@ export function classifyAiQueueError(error: unknown): AiErrorClassification {
   const normalized = message.toLowerCase();
 
   if (
+    normalized.includes("instagram_manage_messages") ||
+    normalized.includes("advanced access") ||
+    normalized.includes("recipient user does not have role on app") ||
+    normalized.includes("permissão") ||
+    normalized.includes("permissao")
+  ) {
+    return {
+      errorCode: "auth_invalid",
+      reasonCode: "meta_permission_denied",
+      message: message || "Meta bloqueou a resposta automatica por permissao do app.",
+    };
+  }
+
+  if (
     normalized.includes("unauthorized") ||
     normalized.includes("forbidden") ||
     normalized.includes("authentication") ||

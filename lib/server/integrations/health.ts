@@ -64,10 +64,25 @@ async function verifyGoogleRefreshToken(refreshToken: string) {
   return { ok: true, reason: "" };
 }
 
-async function subscribeMetaPageWebhook(input: { pageId: string; pageToken: string; graphVersion: string }) {
-  const fields =
-    clean(process.env.META_WEBHOOK_SUBSCRIBED_FIELDS, 1000) ||
-    "messages,messaging_postbacks,messaging_optins,messaging_referrals,messaging_handovers,message_reads,message_deliveries,feed";
+function resolveMetaWebhookFields(channelType: "instagram" | "messenger") {
+  const globalOverride = clean(process.env.META_WEBHOOK_SUBSCRIBED_FIELDS, 1000);
+  const scopedOverride =
+    channelType === "instagram"
+      ? clean(process.env.META_WEBHOOK_SUBSCRIBED_FIELDS_INSTAGRAM, 1000)
+      : clean(process.env.META_WEBHOOK_SUBSCRIBED_FIELDS_MESSENGER, 1000);
+  if (scopedOverride) return scopedOverride;
+  if (globalOverride) return globalOverride;
+  if (channelType === "instagram") return "messages,messaging_postbacks";
+  return "messages,messaging_postbacks,messaging_optins,messaging_referrals,messaging_handovers,message_reads,message_deliveries,feed";
+}
+
+async function subscribeMetaPageWebhook(input: {
+  channelType: "instagram" | "messenger";
+  pageId: string;
+  pageToken: string;
+  graphVersion: string;
+}) {
+  const fields = resolveMetaWebhookFields(input.channelType);
   const response = await fetch(
     `https://graph.facebook.com/${input.graphVersion}/${encodeURIComponent(input.pageId)}/subscribed_apps`,
     {
@@ -169,6 +184,8 @@ export async function runTenantIntegrationHealthCheck(input: {
       const accessToken = clean(decryptSecret(data.accessToken), 5000);
       const pageId = clean(data.pageId, 180);
       const oauthManaged = clean(metadata.oauthManaged, 20) === "true";
+      const storedStatus = normalizeConnectionStatus(data.connectionStatus, "draft");
+      const storedError = clean(data.lastError, 500);
       if (!accessToken) {
         result = {
           channelId: doc.id,
@@ -180,28 +197,48 @@ export async function runTenantIntegrationHealthCheck(input: {
       } else {
         const check = await verifyMetaAccessToken(accessToken, graphVersion);
         const hasMapping = Boolean(clean(data.externalAccountId, 180) || pageId);
-        const hasWebhookSignal = oauthManaged || Boolean(pageId);
         result = {
           channelId: doc.id,
           type,
           ok: check.ok && hasMapping,
-          status: check.ok ? (hasMapping ? (hasWebhookSignal ? "ready" : "webhook_pending") : "connected") : "reauth_required",
+          status: check.ok ? (hasMapping ? "connected" : "connected") : "reauth_required",
           reason: check.reason || (hasMapping ? "" : "Canal sem mapeamento de asset."),
         };
 
-        if (
-          input.attemptRepair &&
-          check.ok &&
-          hasMapping &&
-          oauthManaged &&
-          pageId &&
-          (result.status === "webhook_pending" || result.status === "degraded")
-        ) {
-          const repair = await subscribeMetaPageWebhook({ pageId, pageToken: accessToken, graphVersion });
-          if (repair.ok) {
-            result = { ...result, ok: true, status: "ready", reason: "" };
-          } else if (!result.reason) {
-            result = { ...result, reason: repair.reason };
+        if (check.ok && hasMapping) {
+          if (type === "instagram" || type === "messenger") {
+            const shouldRepairWebhook =
+              input.attemptRepair &&
+              oauthManaged &&
+              pageId &&
+              storedStatus !== "ready";
+
+            if (shouldRepairWebhook) {
+              const repair = await subscribeMetaPageWebhook({
+                channelType: type,
+                pageId,
+                pageToken: accessToken,
+                graphVersion,
+              });
+              result = repair.ok
+                ? { ...result, ok: true, status: "ready", reason: "" }
+                : { ...result, ok: false, status: "webhook_pending", reason: repair.reason };
+            } else if (storedStatus === "ready") {
+              result = { ...result, ok: true, status: "ready", reason: "" };
+            } else {
+              result = {
+                ...result,
+                ok: false,
+                status: "webhook_pending",
+                reason:
+                  storedError ||
+                  (pageId
+                    ? "Webhook ainda nao validado. Clique em Testar conexao para assinar a pagina."
+                    : "Canal sem pageId para assinatura de webhook."),
+              };
+            }
+          } else if (type === "meta_ads") {
+            result = { ...result, ok: true, status: storedStatus === "ready" ? "ready" : "connected", reason: "" };
           }
         }
       }

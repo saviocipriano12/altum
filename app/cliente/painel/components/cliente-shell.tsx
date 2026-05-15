@@ -78,7 +78,6 @@ export function ClienteShellProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-    document.documentElement.style.colorScheme = theme;
   }, [theme]);
 
   useEffect(() => {
@@ -118,11 +117,12 @@ export function ClienteShellProvider({ children }: { children: ReactNode }) {
   const shellStyle = {
     "--cliente-sidebar-width": `${value.sidebarWidth}px`,
     "--cliente-density-scale": density === "compact" ? 0.92 : 1,
+    colorScheme: theme,
   } as CSSProperties;
 
   return (
     <ClienteShellContext.Provider value={value}>
-      <div data-client-theme={theme} data-client-experience={experienceMode} data-client-style="v2" style={shellStyle}>
+      <div className="client-portal" data-client-theme={theme} data-client-experience={experienceMode} data-client-style="v2" style={shellStyle}>
         {children}
       </div>
     </ClienteShellContext.Provider>
