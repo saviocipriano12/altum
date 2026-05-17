@@ -91,11 +91,11 @@ export default function ClienteLoginPage() {
     return (
       <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#050505] text-white">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-16 top-[-120px] h-[280px] w-[280px] rounded-full bg-[#EB5002]/25 blur-3xl" />
-          <div className="absolute right-[-80px] top-[120px] h-[240px] w-[240px] rounded-full bg-[#C10801]/20 blur-3xl" />
-          <div className="absolute inset-0 opacity-25 [background:repeating-linear-gradient(90deg,rgba(235,80,2,0.16)_0px,rgba(235,80,2,0.16)_1px,transparent_1px,transparent_10px)]" />
+          <div className="absolute -left-16 top-[-120px] h-[280px] w-[280px] rounded-full bg-[#2563EB]/25 blur-3xl" />
+          <div className="absolute right-[-80px] top-[120px] h-[240px] w-[240px] rounded-full bg-[#7C3AED]/20 blur-3xl" />
+          <div className="absolute inset-0 opacity-20 [background:repeating-linear-gradient(90deg,rgba(96,165,250,0.14)_0px,rgba(96,165,250,0.14)_1px,transparent_1px,transparent_10px)]" />
         </div>
-        <Loader2 className="relative h-7 w-7 animate-spin text-[#EB5002]" />
+        <Loader2 className="relative h-7 w-7 animate-spin text-[#60A5FA]" />
       </div>
     );
   }
@@ -103,20 +103,20 @@ export default function ClienteLoginPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#050505] p-4 text-white">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-20 top-[-140px] h-[340px] w-[340px] rounded-full bg-[#EB5002]/25 blur-3xl" />
-        <div className="absolute right-[-120px] top-[130px] h-[300px] w-[300px] rounded-full bg-[#C10801]/20 blur-3xl" />
-        <div className="absolute inset-0 opacity-20 [background:repeating-linear-gradient(90deg,rgba(235,80,2,0.16)_0px,rgba(235,80,2,0.16)_1px,transparent_1px,transparent_10px)]" />
+        <div className="absolute -left-20 top-[-140px] h-[340px] w-[340px] rounded-full bg-[#2563EB]/25 blur-3xl" />
+        <div className="absolute right-[-120px] top-[130px] h-[300px] w-[300px] rounded-full bg-[#7C3AED]/20 blur-3xl" />
+        <div className="absolute inset-0 opacity-20 [background:repeating-linear-gradient(90deg,rgba(96,165,250,0.14)_0px,rgba(96,165,250,0.14)_1px,transparent_1px,transparent_10px)]" />
       </div>
 
       <div className="relative w-full max-w-[460px] rounded-3xl border border-white/10 bg-black/55 p-8 backdrop-blur-xl">
         <div className="mb-7 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#EB5002]/30 bg-[#EB5002]/12 px-3 py-1 text-[11px] uppercase tracking-wider text-[#F9F9F9]">
-            <ShieldCheck className="h-3.5 w-3.5 text-[#EB5002]" />
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#60A5FA]/30 bg-[#2563EB]/14 px-3 py-1 text-[11px] uppercase tracking-wider text-[#F9F9F9]">
+            <ShieldCheck className="h-3.5 w-3.5 text-[#60A5FA]" />
             Portal do Cliente ALTUM
           </div>
           <h1 className="mt-4 text-3xl font-bold">Acesse seu painel</h1>
           <p className="mt-2 text-sm text-white/60">
-            Acompanhe campanhas, contratos, pagamentos e entregas em tempo real.
+            Atenda conversas, acompanhe clientes e avance oportunidades com IA em tempo real.
           </p>
         </div>
 
@@ -124,7 +124,7 @@ export default function ClienteLoginPage() {
           <div>
             <label className="text-xs text-white/65">E-mail</label>
             <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-3 py-2">
-              <Mail className="h-4 w-4 text-[#EB5002]" />
+              <Mail className="h-4 w-4 text-[#60A5FA]" />
               <input
                 type="email"
                 required
@@ -139,7 +139,7 @@ export default function ClienteLoginPage() {
           <div>
             <label className="text-xs text-white/65">Senha</label>
             <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-3 py-2">
-              <Lock className="h-4 w-4 text-[#EB5002]" />
+              <Lock className="h-4 w-4 text-[#60A5FA]" />
               <input
                 type="password"
                 required
@@ -158,14 +158,14 @@ export default function ClienteLoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#EB5002] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#D94A02] disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2563EB,#7C3AED)] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
             Entrar no portal
           </button>
         </form>
 
-        <p className="mt-6 text-center text-[11px] uppercase tracking-[0.16em] text-white/35">ALTUM Infrastructure v1.0</p>
+        <p className="mt-6 text-center text-[11px] uppercase tracking-[0.16em] text-white/35">ALTUM Operacao Comercial v1.0</p>
       </div>
     </div>
   );

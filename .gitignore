@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.qa-artifacts/
 /_benchmark/
 
 # next.js
