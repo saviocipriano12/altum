@@ -472,9 +472,9 @@ export default function ClienteConfiguracoesPage() {
       items.push({
         id: "ops",
         href: "/cliente/painel/configuracoes/operacao",
-        title: "Ajustar SLA e time padrao",
-        description: "Feche regras operacionais para distribuicao consistente e resposta dentro da meta.",
-        badge: "SLA",
+        title: "Ajustar tempo de resposta e time padrao",
+        description: "Defina para onde cada conversa vai e em quanto tempo o cliente precisa ser respondido.",
+        badge: "atendimento",
         tone: "info",
       });
     }
@@ -603,8 +603,8 @@ export default function ClienteConfiguracoesPage() {
     },
     {
       href: "/cliente/painel/configuracoes/operacao",
-      title: "Operacao e SLA",
-      description: `Modo ${settings?.inboxRules?.mode || "manual"} • SLA ${settings?.inboxRules?.defaultResponseSlaMinutes || 15} min.`,
+      title: "Operacao de atendimento",
+      description: `Modo ${settings?.inboxRules?.mode || "manual"} - meta de resposta ${settings?.inboxRules?.defaultResponseSlaMinutes || 15} min.`,
       icon: Shuffle,
       badge: settings?.inboxRules?.businessHoursOnly ? "horario comercial" : "24/7",
       tone: "info" as const,
@@ -615,7 +615,7 @@ export default function ClienteConfiguracoesPage() {
     <div className="settings-refined client-daily-page space-y-6">
       <SectionHeader
         title="Configuracoes"
-        subtitle="Ajuste empresa, equipe, canais e operacao. O avancado fica fora da rotina diaria."
+        subtitle="Ajuste empresa, equipe, canais e rotina de atendimento sem misturar com suporte tecnico."
         action={<StateBadge label="Ajustes do negocio" tone="info" />}
       />
 
@@ -660,15 +660,15 @@ export default function ClienteConfiguracoesPage() {
               <CardTitle title="O que ajustar primeiro" subtitle="Ordem sugerida para nao travar implantacao nem atendimento." />
               <div className="mt-4 space-y-3">
                 <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Empresa e equipe</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Defina perfil da conta, usuarios e ownership antes de abrir operacao.</p></div>
-                <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Canais e SLA</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Conecte canais, ajuste tempo de resposta e distribua a fila corretamente.</p></div>
-                <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Assistente e implantacao</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Revise IA e checklist de prontidao antes de liberar o tenant para uso mais intenso.</p></div>
+                <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Canais e atendimento</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Conecte canais, ajuste tempo de resposta e distribua a fila corretamente.</p></div>
+                <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Assistente e implantacao</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Revise IA e checklist de prontidao antes de liberar a conta para uso mais intenso.</p></div>
               </div>
             </PanelCard>
           </section>
 
           <section className="hidden grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
             <PanelCard className="settings-hero-card p-5 md:p-6">
-              <CardTitle title="Go-live definitivo" subtitle="Gate critico, score e evidencias para entender em 1 tela o que falta para vender e operar este tenant." />
+              <CardTitle title="Liberacao da conta" subtitle="Uma leitura simples do que falta para vender e operar com seguranca." />
               <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -728,7 +728,7 @@ export default function ClienteConfiguracoesPage() {
             </PanelCard>
 
             <PanelCard className="settings-insights-card p-5 md:p-6">
-              <CardTitle title="Leitura operacional" subtitle="O que falta ajustar para o tenant rodar com mais autonomia." />
+              <CardTitle title="Leitura operacional" subtitle="O que falta ajustar para a conta rodar com mais autonomia." />
               <div className="mt-4 space-y-3">
                 {(readiness?.insights || []).length > 0 ? (
                   readiness?.insights?.map((item) => (
@@ -748,19 +748,19 @@ export default function ClienteConfiguracoesPage() {
                       title="Governanca da IA"
                       description={
                         summary.aiEnabled && summary.hasAiOwner
-                          ? "A IA ja tem handoff configurado e pode operar com menos risco."
-                          : "Revise o numero responsavel e os guardrails para evitar handoffs sem dono."
+                          ? "A IA ja sabe quando chamar uma pessoa e pode operar com menos risco."
+                          : "Revise o responsavel e as regras para evitar escaladas sem dono."
                       }
                     />
                     <Insight
                       title="Fluxo da operacao"
-                      description={`Distribuicao atual em modo ${settings?.inboxRules?.mode || "manual"} com SLA de ${settings?.inboxRules?.defaultResponseSlaMinutes || 15} minutos.`}
+                      description={`Distribuicao atual em modo ${settings?.inboxRules?.mode || "manual"} com meta de resposta de ${settings?.inboxRules?.defaultResponseSlaMinutes || 15} minutos.`}
                     />
                     <Insight
                       title="Carga atual dos canais"
                       description={
                         summary.activeBacklog > 0
-                          ? `${summary.activeBacklog} conversa(s) abertas estao conectadas aos canais do tenant neste momento.`
+                          ? `${summary.activeBacklog} conversa(s) abertas estao conectadas aos canais da conta neste momento.`
                           : "Ainda nao ha backlog ativo nos canais conectados."
                       }
                     />
@@ -820,7 +820,7 @@ export default function ClienteConfiguracoesPage() {
                       className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
                     >
                       <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Ver relatorios</p>
-                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Acompanhe fila, SLA e volume da operacao.</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Acompanhe fila, vendas e volume da operacao.</p>
                     </Link>
                     <Link
                       href="/cliente/painel/go-live"
@@ -863,7 +863,7 @@ export default function ClienteConfiguracoesPage() {
             </PanelCard>
 
             <PanelCard className="settings-checklist-card hidden p-5 md:p-6">
-              <CardTitle title="Checklist acionavel" subtitle="Pendencias mais importantes para fechar o setup do tenant." />
+              <CardTitle title="Checklist acionavel" subtitle="Pendencias mais importantes para fechar a configuracao da conta." />
               <div className="mt-4 space-y-3">
                 {(readiness?.blockers || actionItems).length === 0 ? (
                   <Insight
@@ -912,7 +912,7 @@ export default function ClienteConfiguracoesPage() {
             </PanelCard>
 
             <PanelCard className="settings-shortcuts-shell hidden p-5 md:p-6">
-              <CardTitle title="Atalhos operacionais" subtitle="Entradas rapidas para revisar setup e operacao viva do tenant." />
+              <CardTitle title="Atalhos operacionais" subtitle="Entradas rapidas para revisar configuracao e operacao viva da conta." />
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <ShortcutCard
                   href="/cliente/painel/inbox"
@@ -922,17 +922,17 @@ export default function ClienteConfiguracoesPage() {
                 <ShortcutCard
                   href="/cliente/painel/automacoes"
                   title="Revisar automacoes"
-                  detail="ajustar playbooks e filas do tenant"
+                  detail="ajustar fluxos e filas da conta"
                 />
                 <ShortcutCard
                   href="/cliente/painel/ia"
                   title="Governanca da IA"
-                  detail={`${summary.guardrails} guardrail(s) e ${summary.hasAiOwner ? "handoff configurado" : "handoff pendente"}`}
+                  detail={`${summary.guardrails} regra(s) e ${summary.hasAiOwner ? "responsavel definido" : "responsavel pendente"}`}
                 />
                 <ShortcutCard
                   href="/cliente/painel/metricas"
                   title="Ver metricas"
-                  detail="validar fila, SLA e produtividade"
+                  detail="validar fila, resposta e produtividade"
                 />
                 <ShortcutCard
                   href="/cliente/painel/captacao"
@@ -943,7 +943,7 @@ export default function ClienteConfiguracoesPage() {
             </PanelCard>
 
             <PanelCard className="settings-notifications-card p-5 md:p-6">
-              <CardTitle title="Notificacoes criticas" subtitle="Controle de push web para alertas operacionais do tenant" />
+              <CardTitle title="Notificacoes criticas" subtitle="Alertas importantes para quem opera a conta" />
               <div className="mt-4 space-y-3">
                 <ReadinessRow
                   label="Push no servidor"

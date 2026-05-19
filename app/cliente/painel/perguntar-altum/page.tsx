@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowUpRight, Bot, Database, Loader2, Send, Sparkles } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { CardTitle, ClientActionButton, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
+import { CardTitle, ClientActionButton, PanelCard, StateBadge } from "@/app/cliente/painel/components/ui";
 
 type InsightResponse = {
   title?: string;
@@ -27,11 +27,11 @@ type Message = {
 
 const STARTER_QUESTIONS = [
   "O que preciso fazer hoje?",
-  "Onde estou perdendo oportunidades?",
-  "Quais produtos precisam de mais contexto?",
-  "Como estao minhas conversas no WhatsApp?",
-  "O que a IA nao esta sabendo responder?",
-  "Como estao minhas campanhas?",
+  "Quais clientes devo priorizar agora?",
+  "Onde estou perdendo vendas?",
+  "Quais campanhas trouxeram melhores contatos?",
+  "Quais conversas precisam de resposta?",
+  "O que falta para a IA vender melhor?",
 ];
 
 function metricLabel(key: string) {
@@ -59,6 +59,22 @@ function metricValue(key: string, value: number) {
   return String(value);
 }
 
+function sourceLabel(collection: string) {
+  const labels: Record<string, string> = {
+    leads: "Clientes",
+    chats: "Conversas",
+    lead_tasks: "Retornos",
+    appointments: "Agenda",
+    kb_docs: "Base e ofertas",
+    ai_logs: "Assistente",
+    financeiro: "Financeiro",
+    campaigns: "Campanhas",
+    campaign_snapshots: "Campanhas",
+    ecommerce_connections: "E-commerce",
+  };
+  return labels[collection] || collection.replaceAll("_", " ");
+}
+
 export default function PerguntarAltumPage() {
   const { tenant, hasCapability } = useClienteTenant();
   const [messages, setMessages] = useState<Message[]>([
@@ -67,7 +83,7 @@ export default function PerguntarAltumPage() {
       role: "assistant",
       title: "Perguntar a Altum",
       text:
-        "Pergunte sobre operacao, conversas, clientes, campanhas, produtos, conhecimento e IA. Eu respondo com base nos dados do tenant e mostro as fontes usadas.",
+        "Pergunte sobre clientes, conversas, campanhas, produtos, agenda, vendas e IA. Eu leio os dados da conta e devolvo uma resposta pratica para decidir o proximo passo.",
       sources: [
         { collection: "leads" },
         { collection: "chats" },
@@ -132,20 +148,30 @@ export default function PerguntarAltumPage() {
   }
 
   return (
-    <div className="client-daily-page space-y-5">
-      <SectionHeader
-        title="Perguntar a Altum"
-        subtitle="Converse com a inteligencia da operacao para entender prioridades, gargalos e dados do negocio."
-        action={
+    <div className="client-daily-page space-y-6">
+      <section className="overflow-hidden rounded-[30px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,#f5f3ff_82%,var(--cliente-card)),color-mix(in_srgb,#eff6ff_72%,var(--cliente-panel-soft)))] p-5 shadow-[0_24px_70px_-48px_rgba(124,58,237,0.42)] md:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-5">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap gap-2">
+              <StateBadge label="Perguntar a Altum" tone="ai" />
+              <StateBadge label="decisao com dados" tone="info" />
+            </div>
+            <h1 className="mt-5 text-3xl font-black leading-tight tracking-[-0.03em] text-[var(--cliente-card-text)] md:text-5xl">
+              Pergunte como gestor e receba uma resposta com proximo passo.
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)] md:text-base">
+              Use a Altum para entender prioridades, gargalos, campanhas, clientes parados e oportunidades que merecem atencao agora.
+            </p>
+          </div>
           <Link
             href="/cliente/painel/metricas"
-            className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-hover)]"
+            className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
           >
             Ver relatorios
             <ArrowUpRight className="h-4 w-4" />
           </Link>
-        }
-      />
+        </div>
+      </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
         <PanelCard className="flex min-h-[68vh] flex-col overflow-hidden p-0">
@@ -156,11 +182,11 @@ export default function PerguntarAltumPage() {
                   <Bot className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Altum Insights</p>
-                  <p className="text-sm text-[var(--cliente-card-text-muted)]">Respostas baseadas nos dados da conta</p>
+                  <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Altum</p>
+                  <p className="text-sm text-[var(--cliente-card-text-muted)]">Respostas para decidir e agir</p>
                 </div>
               </div>
-              <StateBadge label="fontes internas" tone="ai" />
+              <StateBadge label="dados da conta" tone="ai" />
             </div>
           </div>
 
@@ -183,7 +209,7 @@ export default function PerguntarAltumPage() {
                 {message.role === "assistant" && message.sources?.length ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {message.sources.map((source) => (
-                      <StateBadge key={`${message.id}_${source.collection}`} label={source.collection} tone="neutral" />
+                      <StateBadge key={`${message.id}_${source.collection}`} label={sourceLabel(source.collection)} tone="neutral" />
                     ))}
                   </div>
                 ) : null}
@@ -208,7 +234,7 @@ export default function PerguntarAltumPage() {
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 disabled={!canAsk || loading}
-                placeholder="Pergunte: quais oportunidades devo priorizar hoje?"
+                placeholder="Pergunte: quais clientes devo priorizar hoje?"
                 className="client-input rounded-2xl border px-4 py-3 text-sm outline-none"
               />
               <ClientActionButton type="submit" tone="ai" disabled={!canAsk || loading || !question.trim()}>
@@ -221,7 +247,7 @@ export default function PerguntarAltumPage() {
 
         <div className="space-y-4">
           <PanelCard tone="ai" className="p-5">
-            <CardTitle title="Perguntas rapidas" subtitle="Comece por leituras que ajudam a decidir o proximo passo." />
+            <CardTitle title="Perguntas prontas" subtitle="Atalhos para decidir mais rapido." />
             <div className="mt-4 space-y-2">
               {suggestions.map((item) => (
                 <button
@@ -238,7 +264,7 @@ export default function PerguntarAltumPage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Ultima leitura" subtitle="Sinais numericos que sustentam a resposta mais recente." />
+            <CardTitle title="Numeros da resposta" subtitle="Indicadores que ajudam a conferir a leitura." />
             <div className="mt-4 grid gap-2">
               {lastAssistant?.metrics && Object.keys(lastAssistant.metrics).length ? (
                 Object.entries(lastAssistant.metrics)
@@ -257,12 +283,12 @@ export default function PerguntarAltumPage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Fontes usadas" subtitle="A resposta vem de colecoes internas, nao de chute solto." />
+            <CardTitle title="De onde veio" subtitle="A resposta mostra quais areas da conta foram consultadas." />
             <div className="mt-4 flex flex-wrap gap-2">
               {(lastAssistant?.sources || []).map((source) => (
                 <span key={source.collection} className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--cliente-card-text-muted)]">
                   <Database className="h-3.5 w-3.5 text-[var(--cliente-primary)]" />
-                  {source.collection}
+                  {sourceLabel(source.collection)}
                 </span>
               ))}
             </div>
@@ -272,9 +298,9 @@ export default function PerguntarAltumPage() {
             <div className="flex items-start gap-3">
               <Sparkles className="mt-1 h-5 w-5 text-white" />
               <div>
-                <p className="text-sm font-semibold text-white">Proxima evolucao</p>
+                <p className="text-sm font-semibold text-white">Use como rotina diaria</p>
                 <p className="mt-2 text-sm leading-6 text-white/76">
-                  Esta area esta pronta para ganhar raciocinio generativo com citacoes, mas ja comeca lendo a operacao real com precisao.
+                  Comece perguntando o que fazer hoje, depois aprofunde por cliente, campanha, conversa ou produto.
                 </p>
               </div>
             </div>

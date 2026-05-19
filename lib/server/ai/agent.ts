@@ -150,6 +150,8 @@ type TenantAiConfig = {
   handoffNotifyPhones: string[];
   voiceReplyEnabled: boolean;
   voiceReplyVoice: string;
+  voiceReplyMode: "audio_only" | "smart" | "always";
+  voiceReplyMaxChars: number;
   whatsappTemplateFollowUpEnabled: boolean;
   whatsappTemplateFollowUpName: string;
   whatsappTemplateFollowUpLanguage: string;
@@ -629,6 +631,7 @@ function shouldOfferResponseFormatChoice(input: {
 function shouldProactivelySendVoiceReply(input: {
   preference: ResponseFormatPreference | null;
   voiceReplyEnabled: boolean;
+  voiceReplyMode?: "audio_only" | "smart" | "always";
   shouldUseWhatsApp: boolean;
   serviceWindowClosed: boolean;
   hasChannel: boolean;
@@ -653,6 +656,8 @@ function shouldProactivelySendVoiceReply(input: {
   if (inboundType === "audio") return { shouldSend: true, reason: "inbound_audio" };
   if (input.preference === "text") return { shouldSend: false, reason: "lead_prefers_text" };
   if (input.preference === "audio") return { shouldSend: true, reason: "lead_prefers_audio" };
+  if (input.voiceReplyMode === "audio_only") return { shouldSend: false, reason: "voice_audio_only_mode" };
+  if (input.voiceReplyMode === "always") return { shouldSend: true, reason: "voice_always_mode" };
 
   const intent = sanitizeText(input.plannerIntent, 80).toLowerCase();
   const responseGoal = sanitizeText(input.responseGoal, 80).toLowerCase();
@@ -668,6 +673,59 @@ function shouldProactivelySendVoiceReply(input: {
   return commerciallyGoodMoments
     ? { shouldSend: true, reason: "commercial_moment_voice" }
     : { shouldSend: false, reason: "prefer_text_default" };
+}
+
+function shouldPlanAudioResponse(input: {
+  preference: ResponseFormatPreference | null;
+  voiceReplyEnabled: boolean;
+  voiceReplyMode?: "audio_only" | "smart" | "always";
+  inboundMessageType?: string | null;
+}) {
+  if (!input.voiceReplyEnabled) return false;
+  const inboundType = sanitizeText(input.inboundMessageType, 40).toLowerCase();
+  if (inboundType === "audio") return true;
+  if (input.preference === "text") return false;
+  if (input.preference === "audio") return true;
+  return input.voiceReplyMode === "always";
+}
+
+function prepareOutboundTextForAudioDelivery(text: string, inboundText: string) {
+  let cleaned = sanitizeText(text, 1800);
+  const normalizedInbound = normalizeResponsePreferenceText(inboundText);
+  const askedForAudio =
+    /\b(audio|voz|falado|falar|locucao)\b/.test(normalizedInbound) &&
+    /\b(quero|manda|mandar|pode|poderia|responde|responder|prefiro)\b/.test(normalizedInbound);
+
+  const blockedPatterns = [
+    /\b(consigo|posso)\s+(sim\s+)?(te\s+)?(responder|enviar|mandar)[^.?!]{0,80}\baudio\b[^.?!]{0,140}\b(prefiro|melhor)\b[^.?!]*(\.|!|\?)/gi,
+    /\b(aqui no whatsapp|por aqui)\s+(eu\s+)?prefiro\s+(manter\s+)?(o\s+)?texto[^.?!]*(\.|!|\?)/gi,
+    /\bmas\s+(aqui no whatsapp|por aqui)[^.?!]{0,120}\btexto\b[^.?!]*(\.|!|\?)/gi,
+    /\bpara garantir clareza[^.?!]{0,160}\btexto\b[^.?!]*(\.|!|\?)/gi,
+    /\bnao\s+(consigo|posso)\s+(enviar|mandar|responder)\s+(por\s+)?audio[^.?!]*(\.|!|\?)/gi,
+  ];
+
+  for (const pattern of blockedPatterns) {
+    cleaned = cleaned.replace(pattern, " ");
+  }
+  cleaned = sanitizeText(cleaned, 1800);
+
+  if (!cleaned || /\b(prefiro|melhor)\b[^.?!]{0,100}\btexto\b/i.test(cleaned)) {
+    return askedForAudio
+      ? "Claro, vou te responder por audio. Me conta o principal ponto que voce quer resolver agora para eu seguir direto."
+      : "Perfeito, vou te responder por audio de forma curta e direta. Me conta o ponto principal para eu te orientar melhor.";
+  }
+
+  return cleaned;
+}
+
+function prepareOutboundTextForVoiceUnavailable(text: string, inboundText: string) {
+  const cleaned = prepareOutboundTextForAudioDelivery(text, inboundText)
+    .replace(/^claro,\s*vou\s+te\s+responder\s+por\s+audio\.?\s*/i, "")
+    .replace(/^perfeito,\s*vou\s+te\s+responder\s+por\s+audio[^.?!]*(\.|!|\?)\s*/i, "")
+    .trim();
+  return `O envio de audio nao ficou disponivel nesta conversa agora. Para nao te deixar esperando: ${
+    cleaned || "me conta o ponto principal que voce quer resolver e eu te ajudo por aqui."
+  }`;
 }
 
 function safeLogDocId(tenantId: string, chatId: string, messageId: string) {
@@ -864,6 +922,10 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
     handoffNotifyPhones: parsePhoneLines(ai.handoffNotifyPhones, 8),
     voiceReplyEnabled: ai.voiceReplyEnabled === true,
     voiceReplyVoice: sanitizeText(ai.voiceReplyVoice, 40) || "alloy",
+    voiceReplyMode: ["audio_only", "smart", "always"].includes(sanitizeText(ai.voiceReplyMode, 40))
+      ? (sanitizeText(ai.voiceReplyMode, 40) as "audio_only" | "smart" | "always")
+      : "smart",
+    voiceReplyMaxChars: Math.max(260, Math.min(1400, Number(ai.voiceReplyMaxChars || 760) || 760)),
     whatsappTemplateFollowUpEnabled: ai.whatsappTemplateFollowUpEnabled !== false,
     whatsappTemplateFollowUpName: sanitizeText(ai.whatsappTemplateFollowUpName, 120) || "follow_up_geral",
     whatsappTemplateFollowUpLanguage: sanitizeText(ai.whatsappTemplateFollowUpLanguage, 24) || "pt_BR",
@@ -2866,6 +2928,9 @@ async function addMessage(input: {
   templateName?: string | null;
   templateLanguage?: string | null;
   templateParams?: string[] | null;
+  voiceReply?: boolean;
+  voiceReplyVoice?: string | null;
+  voiceReplyTranscript?: string | null;
 }) {
   const cleanText = sanitizeText(input.text, 1800);
   if (!cleanText && !["audio", "image", "video", "document"].includes(String(input.type || ""))) return;
@@ -2890,6 +2955,9 @@ async function addMessage(input: {
       templateName: input.templateName || null,
       templateLanguage: input.templateLanguage || null,
       templateParams: Array.isArray(input.templateParams) ? input.templateParams.slice(0, 20) : null,
+      voiceReply: input.voiceReply === true,
+      voiceReplyVoice: input.voiceReplyVoice || null,
+      voiceReplyTranscript: input.voiceReplyTranscript || null,
       createdAt: FieldValue.serverTimestamp(),
     }),
     adminDb.collection("chats").doc(input.chatId).set(
@@ -4001,6 +4069,17 @@ export async function handleIncomingMessage(
     sanitizeText(runtimeState?.preferredName, 80) ||
     (looksLikeHumanName(chatData.contactName) ? sanitizeText(chatData.contactName, 120) : "") ||
     undefined;
+  const plannedResponsePreference = inferResponseFormatPreference({
+    inboundText,
+    messageType,
+    previousAskedAt: chatState.responseFormatPreferenceAskedAt || null,
+  }).preference;
+  const plannedAudioResponse = shouldPlanAudioResponse({
+    preference: plannedResponsePreference || chatState.responseFormatPreference || null,
+    voiceReplyEnabled: aiConfig.voiceReplyEnabled === true,
+    voiceReplyMode: aiConfig.voiceReplyMode,
+    inboundMessageType: incomingMessage.type as string | null,
+  });
 
   let llmRun: Awaited<ReturnType<typeof runConversationAgent>> | null = null;
   let unexpectedProviderError = "";
@@ -4031,6 +4110,7 @@ export async function handleIncomingMessage(
           autonomyMode: aiConfig.autonomyMode,
           reasoningLevel: aiConfig.reasoningLevel,
           responseStyle: aiConfig.responseStyle,
+          plannedResponseFormat: plannedAudioResponse ? "audio" : "text",
           conversation,
           kbDocs,
           preferredProviders: aiConfig.preferredProviders,
@@ -4707,7 +4787,38 @@ export async function handleIncomingMessage(
     conversation,
     mandatoryQuestions: aiConfig.mandatoryQuestions,
   });
-  const shouldAskResponseFormatNow = shouldOfferResponseFormatChoice({
+  const whatsappServiceWindowClosed = shouldUseWhatsApp
+    ? isWhatsAppServiceWindowClosed(chatData.lastClientMessageAt)
+    : false;
+  const voiceReplyDecision = shouldProactivelySendVoiceReply({
+    preference: resolvedResponsePreference,
+    voiceReplyEnabled: aiConfig.voiceReplyEnabled === true,
+    voiceReplyMode: aiConfig.voiceReplyMode,
+    shouldUseWhatsApp,
+    serviceWindowClosed: whatsappServiceWindowClosed,
+    hasChannel: Boolean(whatsappChannel),
+    hasLeadPhone: Boolean(leadPhone),
+    inboundMessageType: incomingMessage.type as string | null,
+    plannerIntent: plannerDecision.intent,
+    responseGoal: plannerDecision.responseGoal,
+    commercialTemperature: plannerDecision.commercialTemperature,
+    recommendedOffer: recommendedOfferResolved,
+  });
+  const inboundMessageType = sanitizeText(incomingMessage.type, 40).toLowerCase();
+  const voiceRequestedThisTurn = resolvedResponsePreference === "audio" || inboundMessageType === "audio";
+  const voiceAvailableThisTurn =
+    aiConfig.voiceReplyEnabled === true &&
+    shouldUseWhatsApp &&
+    !whatsappServiceWindowClosed &&
+    Boolean(whatsappChannel) &&
+    Boolean(leadPhone);
+  const shouldSendVoiceReply = voiceReplyDecision.shouldSend || (voiceRequestedThisTurn && voiceAvailableThisTurn);
+  const voiceReplyDecisionReason = voiceReplyDecision.shouldSend
+    ? voiceReplyDecision.reason
+    : shouldSendVoiceReply
+      ? "explicit_voice_request"
+      : voiceReplyDecision.reason;
+  const shouldAskResponseFormatNow = !shouldSendVoiceReply && shouldOfferResponseFormatChoice({
     chatState,
     messageType,
     inboundText,
@@ -4725,7 +4836,14 @@ export async function handleIncomingMessage(
       : responseFormatPrompt;
   }
   let finalOutboundText = secondaryResponseText ? `${responseText}\n${secondaryResponseText}` : responseText;
-  const openQuestionForMemory = secondaryResponseText || responseText;
+  if (shouldSendVoiceReply) {
+    finalOutboundText = prepareOutboundTextForAudioDelivery(finalOutboundText, inboundText);
+    secondaryResponseText = "";
+  } else if (voiceRequestedThisTurn) {
+    finalOutboundText = prepareOutboundTextForVoiceUnavailable(finalOutboundText, inboundText);
+    secondaryResponseText = "";
+  }
+  const openQuestionForMemory = finalOutboundText;
   const conversationSummary = buildPersistentConversationSummary({
     llmMemorySummary: llmResult?.memorySummary || null,
     preferredName: preferredContactName || null,
@@ -4747,29 +4865,11 @@ export async function handleIncomingMessage(
     runtimeState,
   });
 
-  const whatsappServiceWindowClosed = shouldUseWhatsApp
-    ? isWhatsAppServiceWindowClosed(chatData.lastClientMessageAt)
-    : false;
   let sentAsTemplate = false;
   let sentTemplateName: string | null = null;
   let sentTemplateLanguage: string | null = null;
   let sentTemplateParams: string[] = [];
   let sentTemplateMetaMessageId: string | null = null;
-  const voiceReplyDecision = shouldProactivelySendVoiceReply({
-    preference: resolvedResponsePreference,
-    voiceReplyEnabled: aiConfig.voiceReplyEnabled === true,
-    shouldUseWhatsApp,
-    serviceWindowClosed: whatsappServiceWindowClosed,
-    hasChannel: Boolean(whatsappChannel),
-    hasLeadPhone: Boolean(leadPhone),
-    inboundMessageType: incomingMessage.type as string | null,
-    plannerIntent: plannerDecision.intent,
-    responseGoal: plannerDecision.responseGoal,
-    commercialTemperature: plannerDecision.commercialTemperature,
-    recommendedOffer: recommendedOfferResolved,
-  });
-  const shouldSendVoiceReply = voiceReplyDecision.shouldSend;
-  const voiceReplyDecisionReason = voiceReplyDecision.reason;
   let voiceReplySent = false;
   let voiceReplyError: string | null = null;
 
@@ -4834,12 +4934,13 @@ export async function handleIncomingMessage(
             tenantId,
             chatId,
             voice: aiConfig.voiceReplyVoice,
+            maxChars: aiConfig.voiceReplyMaxChars,
           });
 
           await addMessage({
             chatId,
             tenantId,
-            text: "[Resposta em audio enviada]",
+            text: voiceSent.text || finalOutboundText,
             sender: "agent",
             type: "audio",
             channel: chatChannel,
@@ -4848,12 +4949,17 @@ export async function handleIncomingMessage(
             mediaUrl: voiceSent.signedUrl,
             mediaName: "Resposta em audio ALTUM",
             mediaMimeType: voiceSent.contentType,
+            mediaSize: voiceSent.size,
             metaMessageId: voiceSent.metaMessageId,
+            voiceReply: true,
+            voiceReplyVoice: voiceSent.voice,
+            voiceReplyTranscript: voiceSent.text,
           });
           voiceReplySent = true;
         } catch (error) {
           voiceReplyError =
             error instanceof Error ? sanitizeText(error.message, 220) : "voice_reply_send_failed";
+          finalOutboundText = `Tentei enviar em audio, mas o envio falhou agora. Para nao te deixar esperando: ${prepareOutboundTextForAudioDelivery(finalOutboundText, inboundText)}`;
           console.error("Falha ao enviar resposta em voz da IA:", error);
           if (leadId) {
             await createAiInternalNotificationOnce({
@@ -4874,7 +4980,7 @@ export async function handleIncomingMessage(
         await sendMetaTextMessage({
           channel: whatsappChannel,
           to: leadPhone,
-          text: responseText,
+          text: shouldSendVoiceReply || voiceRequestedThisTurn ? finalOutboundText : responseText,
         });
       }
     }
@@ -4882,7 +4988,7 @@ export async function handleIncomingMessage(
     await sendMetaConversationText({
       channel: metaChannel,
       recipientId: metaRecipientId,
-      text: responseText,
+      text: voiceRequestedThisTurn ? finalOutboundText : responseText,
     });
   }
 
@@ -4890,7 +4996,7 @@ export async function handleIncomingMessage(
     await addMessage({
       chatId,
       tenantId,
-      text: sentAsTemplate ? finalOutboundText : responseText,
+      text: sentAsTemplate ? finalOutboundText : shouldSendVoiceReply || voiceRequestedThisTurn ? finalOutboundText : responseText,
       sender: "agent",
       type: sentAsTemplate ? "template" : "text",
       channel: chatChannel,
@@ -5109,6 +5215,10 @@ export async function handleIncomingMessage(
       voiceReplySent,
       voiceReplyError,
       voiceReplyDecisionReason,
+      voiceRequestedThisTurn,
+      voiceAvailableThisTurn,
+      voiceReplyMode: aiConfig.voiceReplyMode,
+      voiceReplyMaxChars: aiConfig.voiceReplyMaxChars,
       responseFormatPreference: resolvedResponsePreference || null,
       inferredResponsePreferenceReason: inferredResponsePreference.reason,
       responseFormatPromptSent,

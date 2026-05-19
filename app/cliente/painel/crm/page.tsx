@@ -574,7 +574,7 @@ export default function ClienteCrmPage() {
       });
       return nextLeads;
     } catch {
-      setError("Falha ao carregar CRM do tenant.");
+      setError("Falha ao carregar clientes da conta.");
       setLeads([]);
       setAiLogs([]);
       return [];
@@ -1400,7 +1400,7 @@ export default function ClienteCrmPage() {
       <div className="crm-refined client-daily-page space-y-5">
         <ClientOpportunitiesHeader activeView="list" />
         {importPanel}
-        <EmptyState title="Nenhum contato encontrado" description="Quando novos contatos entrarem no tenant, o CRM operacional aparecera aqui." />
+        <EmptyState title="Nenhum contato encontrado" description="Quando novos contatos entrarem, eles aparecerao aqui com etapa, responsavel e proximo passo." />
       </div>
     );
   }
@@ -1411,7 +1411,7 @@ export default function ClienteCrmPage() {
         activeView="list"
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {loadingDetail ? <StateBadge label="sincronizando contato" tone="info" /> : null}
+            {loadingDetail ? <StateBadge label="atualizando contato" tone="info" /> : null}
             <button
               type="button"
               onClick={() => setExperienceMode(experienceMode === "essencial" ? "completo" : "essencial")}
@@ -1421,7 +1421,7 @@ export default function ClienteCrmPage() {
                   : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-card-text)]"
               }`}
             >
-              {experienceMode === "completo" ? "Ocultar opcoes avancadas" : "Mostrar opcoes avancadas"}
+              {experienceMode === "completo" ? "Modo simples" : "Mais opcoes"}
             </button>
           </div>
         }
@@ -1821,7 +1821,7 @@ export default function ClienteCrmPage() {
           <div className="border-b border-[var(--cliente-border)] p-4">
             <div className="flex items-center justify-between gap-3">
               <CardTitle title="Base de contatos" subtitle={`${filteredLeads.length} visiveis`} />
-              <StateBadge label={`${leads.length} no tenant`} tone="info" />
+              <StateBadge label={`${leads.length} contatos`} tone="info" />
             </div>
             <label className="mt-4 flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
               <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
@@ -2022,7 +2022,7 @@ export default function ClienteCrmPage() {
                   <div className="mt-4 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="text-sm text-[var(--cliente-card-text-muted)]">
-                        Detalhes de IA, rastreabilidade e governanca ficam ocultos para reduzir ruido visual.
+                        Detalhes de IA e auditoria ficam ocultos para reduzir ruido visual.
                       </p>
                       <button
                         type="button"
@@ -2033,7 +2033,7 @@ export default function ClienteCrmPage() {
                             : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)]"
                         }`}
                       >
-                        {showAdvancedLeadInsights ? "Ocultar detalhes avancados" : "Mostrar detalhes avancados"}
+                        {showAdvancedLeadInsights ? "Ocultar detalhes" : "Mostrar detalhes"}
                       </button>
                     </div>
                   </div>
@@ -2043,7 +2043,7 @@ export default function ClienteCrmPage() {
                   <div className="mt-4 grid gap-3 xl:grid-cols-3">
                     <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <CardTitle title="Qualificacao IA" subtitle="Score operacional com motivo explicito." />
+                        <CardTitle title="Leitura da IA" subtitle="Prioridade comercial com motivo claro." />
                         {leadQualification?.band ? (
                           <StateBadge label={leadQualification.label || leadQualification.band} tone={getQualificationTone(leadQualification.band)} />
                         ) : null}
@@ -2074,8 +2074,8 @@ export default function ClienteCrmPage() {
 
                     <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <CardTitle title="Governanca da etapa" subtitle="SLA, retorno e responsavel da etapa atual." />
-                        {leadStagePolicy?.slaBreached ? <StateBadge label="SLA vencido" tone="danger" /> : <StateBadge label="em janela" tone="info" />}
+                        <CardTitle title="Ritmo da etapa" subtitle="Prazo, retorno e responsavel da etapa atual." />
+                        {leadStagePolicy?.slaBreached ? <StateBadge label="prazo vencido" tone="danger" /> : <StateBadge label="em dia" tone="info" />}
                       </div>
                       <div className="mt-4 grid gap-4 sm:grid-cols-2">
                         <QuickContext
@@ -2086,17 +2086,17 @@ export default function ClienteCrmPage() {
                         <QuickContext
                           title="Retorno"
                           value={leadStagePolicy?.followUpHours ? `${leadStagePolicy.followUpHours}h` : "--"}
-                          detail={leadStagePolicy?.slaHours ? `SLA da etapa: ${leadStagePolicy.slaHours}h` : "Sem SLA configurado"}
+                          detail={leadStagePolicy?.slaHours ? `Meta da etapa: ${leadStagePolicy.slaHours}h` : "Sem meta configurada"}
                         />
                       </div>
                       <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">
-                        Vencimento do SLA: {leadStagePolicy?.slaDueAt ? formatDateTime(leadStagePolicy.slaDueAt) : "Nao configurado"}
+                        Prazo da etapa: {leadStagePolicy?.slaDueAt ? formatDateTime(leadStagePolicy.slaDueAt) : "Nao configurado"}
                       </p>
                     </div>
 
                     <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <CardTitle title="Transferencia para humano" subtitle="Contexto pronto para assumirmos sem perder historico." />
+                        <CardTitle title="Chamar humano" subtitle="Contexto pronto para assumir sem perder historico." />
                         <StateBadge label={leadHandoff?.status === "ready" ? "pronto" : "monitorando"} tone={leadHandoff?.status === "ready" ? "danger" : "info"} />
                       </div>
                       <p className="mt-4 text-sm text-[var(--cliente-card-text)]">{leadHandoff?.reasonLabel || "Aguardando gatilho de transferencia."}</p>

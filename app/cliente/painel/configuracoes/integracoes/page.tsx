@@ -19,16 +19,43 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { CardTitle, ClientActionButton, EmptyState, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
+import {
+  BrandIcon,
+  type BrandIconId,
+  CardTitle,
+  ClientActionButton,
+  EmptyState,
+  MetricCard,
+  PanelCard,
+  SectionHeader,
+  StateBadge,
+} from "@/app/cliente/painel/components/ui";
 
 const ECOMMERCE_PLATFORMS = [
-  { id: "shopify", label: "Shopify" },
-  { id: "nuvemshop", label: "Nuvemshop" },
-  { id: "woocommerce", label: "WooCommerce" },
-  { id: "vtex", label: "VTEX" },
-  { id: "tray", label: "Tray" },
-  { id: "loja_integrada", label: "Loja Integrada" },
+  { id: "shopify", label: "Shopify", detail: "Produtos, pedidos e checkout", brand: "shopify" },
+  { id: "nuvemshop", label: "Nuvemshop", detail: "Loja, catalogo e pedidos", brand: "nuvemshop" },
+  { id: "woocommerce", label: "WooCommerce", detail: "WordPress + ecommerce", brand: "woocommerce" },
+  { id: "vtex", label: "VTEX", detail: "Comercio enterprise", brand: "vtex" },
+  { id: "tray", label: "Tray", detail: "Loja, pedidos e carrinhos", brand: "tray" },
+  { id: "loja_integrada", label: "Loja Integrada", detail: "Catalogo e pedidos", brand: "loja_integrada" },
+] as const;
+
+const CHANNEL_INTEGRATIONS: Array<{
+  id: BrandIconId;
+  title: string;
+  detail: string;
+  status: string;
+}> = [
+  { id: "whatsapp", title: "WhatsApp", detail: "Atendimento, mensagens, templates e contexto para a IA.", status: "Ativo em Canais" },
+  { id: "instagram", title: "Instagram", detail: "DMs, comentarios, captacao social e automacoes.", status: "Ativo em Canais" },
+  { id: "messenger", title: "Messenger", detail: "Conversas sociais conectadas ao atendimento.", status: "Ativo em Canais" },
+  { id: "meta", title: "Meta Ads", detail: "Campanhas, origem e sinais de conversao.", status: "Ativo em Campanhas" },
+  { id: "google", title: "Google Ads", detail: "Midia paga, busca e atribuicao comercial.", status: "Ativo em Campanhas" },
 ];
+
+function platformMeta(provider: string) {
+  return ECOMMERCE_PLATFORMS.find((platform) => platform.id === provider) || ECOMMERCE_PLATFORMS[0];
+}
 
 type EcommerceConnection = {
   id: string;
@@ -341,6 +368,22 @@ export default function ClienteIntegracoesPage() {
       {error ? <div className="rounded-2xl border border-[var(--cliente-danger)]/25 bg-[var(--cliente-danger-soft)] px-4 py-3 text-sm text-[var(--cliente-danger)]">{error}</div> : null}
       {notice ? <div className="rounded-2xl border border-[var(--cliente-success)]/25 bg-[var(--cliente-success-soft)] px-4 py-3 text-sm text-[var(--cliente-success)]">{notice}</div> : null}
 
+      <PanelCard tone="brand" className="overflow-hidden p-5 md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Ecossistema conectado</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)]">
+              Canais, anuncios e lojas deixam de ser configuracoes soltas e viram uma operacao unica de conversa, venda e acompanhamento.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(["whatsapp", "instagram", "messenger", "meta", "google", "shopify", "nuvemshop", "woocommerce"] as BrandIconId[]).map((brand) => (
+              <BrandIcon key={brand} id={brand} size="md" />
+            ))}
+          </div>
+        </div>
+      </PanelCard>
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Lojas" value={String(summary.totalConnections || 0)} icon={ShoppingBag} trend={`${summary.activeConnections || 0} ativas`} tone="brand" />
         <MetricCard label="Produtos" value={String(summary.products || 0)} icon={Store} trend="usados pela IA no atendimento" tone="success" />
@@ -356,19 +399,33 @@ export default function ClienteIntegracoesPage() {
           </div>
 
           <div className="mt-5 grid gap-3">
-            <label className="grid gap-1.5 text-sm font-medium text-[var(--cliente-card-text)]">
-              Plataforma
-              <select
-                value={form.provider}
-                onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value }))}
-                disabled={!canManage || saving}
-                className="client-input rounded-2xl border px-3 py-2.5 text-sm outline-none"
-              >
-                {ECOMMERCE_PLATFORMS.map((platform) => (
-                  <option key={platform.id} value={platform.id}>{platform.label}</option>
-                ))}
-              </select>
-            </label>
+            <div>
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Plataforma</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {ECOMMERCE_PLATFORMS.map((platform) => {
+                  const active = form.provider === platform.id;
+                  return (
+                    <button
+                      key={platform.id}
+                      type="button"
+                      disabled={!canManage || saving}
+                      onClick={() => setForm((current) => ({ ...current, provider: platform.id }))}
+                      className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:opacity-60 ${
+                        active
+                          ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-primary-soft)] shadow-[0_14px_30px_-24px_var(--cliente-primary-glow)]"
+                          : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                      }`}
+                    >
+                      <BrandIcon id={platform.brand} size="sm" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-[var(--cliente-card-text)]">{platform.label}</span>
+                        <span className="mt-0.5 block truncate text-xs text-[var(--cliente-card-text-soft)]">{platform.detail}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <label className="grid gap-1.5 text-sm font-medium text-[var(--cliente-card-text)]">
               Nome da loja
               <input
@@ -490,9 +547,15 @@ export default function ClienteIntegracoesPage() {
             <StateBadge label="configuravel hoje" tone="success" />
           </div>
           <div className="mt-5 space-y-3">
-            <IntegrationRow title="WhatsApp" detail="Atendimento, mensagens, templates e contexto para a IA." status="Ativo em Canais" />
-            <IntegrationRow title="Instagram e Messenger" detail="DMs, comentarios, captacao social e automacoes sociais." status="Ativo em Canais" />
-            <IntegrationRow title="Meta Ads e Google Ads" detail="Origem, campanhas, atribuicao e leitura de performance." status="Ativo em Canais" />
+            {CHANNEL_INTEGRATIONS.map((integration) => (
+              <IntegrationRow
+                key={integration.id}
+                brand={integration.id}
+                title={integration.title}
+                detail={integration.detail}
+                status={integration.status}
+              />
+            ))}
           </div>
           <Link
             href="/cliente/painel/configuracoes/canais"
@@ -556,16 +619,20 @@ function ConnectionCard({
   onUpdate: (connectionId: string, patch: Record<string, unknown>) => Promise<void>;
 }) {
   const active = connection.status === "active";
+  const meta = platformMeta(connection.provider);
   return (
     <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{connection.displayName || connection.providerLabel}</p>
-            <StateBadge label={connection.providerLabel} tone="info" />
-            <StateBadge label={connection.status} tone={statusTone(connection.status)} />
+        <div className="flex min-w-0 items-start gap-3">
+          <BrandIcon id={meta.brand} size="md" />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{connection.displayName || connection.providerLabel}</p>
+              <StateBadge label={connection.providerLabel || meta.label} tone="info" />
+              <StateBadge label={connection.status} tone={statusTone(connection.status)} />
+            </div>
+            <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{connection.storeUrl || "URL da loja nao informada"}</p>
           </div>
-          <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{connection.storeUrl || "URL da loja nao informada"}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -758,13 +825,26 @@ function RecentList({
   );
 }
 
-function IntegrationRow({ title, detail, status }: { title: string; detail: string; status: string }) {
+function IntegrationRow({
+  brand,
+  title,
+  detail,
+  status,
+}: {
+  brand: BrandIconId;
+  title: string;
+  detail: string;
+  status: string;
+}) {
   return (
     <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="flex min-w-0 items-start gap-3">
+          <BrandIcon id={brand} size="md" />
+          <div className="min-w-0">
           <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
           <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{detail}</p>
+          </div>
         </div>
         <StateBadge label={status} tone="info" />
       </div>

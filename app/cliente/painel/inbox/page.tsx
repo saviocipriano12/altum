@@ -496,7 +496,7 @@ function formatStatusFilterLabel(filter: StatusFilter) {
 
 function formatQueueStatusLabel(queueStatus?: string) {
   const value = String(queueStatus || "").toLowerCase();
-  if (value === "sla_breached") return "SLA estourado";
+  if (value === "sla_breached") return "Prazo vencido";
   if (value === "assigned_waiting") return "Aguardando resposta";
   if (value === "assigned") return "Em atendimento";
   if (value === "unassigned") return "Sem responsavel";
@@ -507,7 +507,7 @@ function formatQueueStatusLabel(queueStatus?: string) {
 }
 
 function formatQueueFilterLabel(filter: QueueFilter) {
-  if (filter === "sla_breached") return "SLA estourado";
+  if (filter === "sla_breached") return "Prazo vencido";
   if (filter === "unassigned") return "Sem responsavel";
   if (filter === "assigned_waiting") return "Aguardando resposta";
   if (filter === "assigned") return "Em atendimento";
@@ -623,33 +623,33 @@ function aiErrorStatusMessage(code: string, mode: "retrying" | "dead_letter") {
   const retrying = mode === "retrying";
   if (code === "quota_exceeded") {
     return retrying
-      ? "IA sem quota/saldo no provider atual. Ajuste billing ou troque para modelo economico no painel IA."
-      : "IA parou por falta de quota/saldo no provider. Ajuste billing/modelo e clique em Reprocessar ultima mensagem.";
+      ? "A IA atingiu o limite de uso atual. Revise o plano ou reduza o consumo no Assistente Altum."
+      : "A IA pausou por limite de uso. Revise o plano e clique em Reprocessar ultima mensagem.";
   }
   if (code === "auth_invalid") {
     return retrying
-      ? "IA com credencial invalida/expirada no provider ou canal atual. Revise chave/API token do tenant."
-      : "IA parou por credencial invalida/expirada no provider/canal. Atualize a chave/API token e reprocese.";
+      ? "A IA precisa de ajuste de acesso no servico conectado. Revise o canal ou chame o suporte."
+      : "A IA pausou por ajuste pendente no servico conectado. Atualize o acesso e reprocese.";
   }
   if (code === "rate_limited") {
     return retrying
-      ? "IA aguardando janela do provider por limite de requisicoes (rate limit)."
-      : "IA excedeu limite de requisicoes no provider e entrou em fila de falha.";
+      ? "A IA esta aguardando uma nova janela de uso do servico."
+      : "A IA excedeu o limite momentaneo do servico e precisa de nova tentativa.";
   }
   if (code === "timeout") {
     return retrying
-      ? "IA enfrentou timeout no provider e esta tentando novamente."
-      : "IA parou por timeout repetido no provider. Tente reprocessar agora.";
+      ? "A IA demorou para responder e esta tentando novamente."
+      : "A IA demorou varias vezes para responder. Tente reprocessar agora.";
   }
   if (code === "provider_unavailable") {
     return retrying
-      ? "Provider de IA indisponivel no momento; tentativa automatica em andamento."
-      : "Provider de IA indisponivel por tempo prolongado. Reprocessamento manual recomendado.";
+      ? "O servico de IA esta instavel no momento; nova tentativa em andamento."
+      : "O servico de IA ficou instavel por tempo prolongado. Reprocessamento manual recomendado.";
   }
   if (code === "network_error") {
     return retrying
-      ? "Instabilidade de rede entre plataforma e provider; nova tentativa em andamento."
-      : "Falha de rede persistente no envio ao provider. Reprocessamento manual recomendado.";
+      ? "Instabilidade de rede; nova tentativa em andamento."
+      : "Falha de rede persistente. Reprocessamento manual recomendado.";
   }
   if (code === "payload_invalid") {
     return retrying
@@ -716,7 +716,7 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
     const base = aiErrorStatusMessage(lastJobErrorCode, "retrying");
     const detail =
       (!lastJobErrorCode || lastJobErrorCode === "unknown_error") && lastJobError
-        ? ` Detalhe tecnico: ${compactAiError(lastJobError)}.`
+        ? ` Detalhe: ${compactAiError(lastJobError)}.`
         : "";
     return `${base}${detail}`;
   }
@@ -725,7 +725,7 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
     const base = aiErrorStatusMessage(lastJobErrorCode, "dead_letter");
     const detail =
       (!lastJobErrorCode || lastJobErrorCode === "unknown_error") && lastJobError
-        ? ` Detalhe tecnico: ${compactAiError(lastJobError)}.`
+        ? ` Detalhe: ${compactAiError(lastJobError)}.`
         : "";
     return `${base}${detail}`;
   }
@@ -779,7 +779,7 @@ function getSlaState(chat: ChatItem) {
   const agentAt = toDate(chat.lastAgentMessageAt);
   const explicitDueAt = toDate(chat.slaDueAt);
   if (!clientAt) {
-    return { breached: false, label: "sem SLA" };
+    return { breached: false, label: "sem prazo" };
   }
   if (agentAt && agentAt.getTime() >= clientAt.getTime()) {
     return { breached: false, label: "em dia" };
@@ -788,10 +788,10 @@ function getSlaState(chat: ChatItem) {
   const dueAt = explicitDueAt || new Date(clientAt.getTime() + 15 * 60 * 1000);
   const remainingMs = dueAt.getTime() - Date.now();
   if (remainingMs <= 0) {
-    return { breached: true, label: "SLA estourado" };
+    return { breached: true, label: "prazo vencido" };
   }
 
-  return { breached: false, label: `SLA ${Math.ceil(remainingMs / 60000)}m` };
+  return { breached: false, label: `${Math.ceil(remainingMs / 60000)}m para responder` };
 }
 
 function getConversationResponseState(chat: ChatItem) {
@@ -2638,7 +2638,7 @@ export default function ClienteInboxPage() {
         />
         <EmptyState
           title="Nenhuma conversa encontrada"
-          description="Quando novas mensagens chegarem no WhatsApp ou nos canais conectados deste tenant, elas aparecerao aqui com contexto, SLA e controle operacional."
+          description="Quando novas mensagens chegarem no WhatsApp ou nos canais conectados, elas aparecerao aqui com cliente, historico e proximo passo."
         />
       </div>
     );
@@ -2662,7 +2662,7 @@ export default function ClienteInboxPage() {
               )}
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
-              {allowAdvanced ? "Ocultar avancado" : "Mostrar avancado"}
+              {allowAdvanced ? "Modo simples" : "Mais opcoes"}
             </button>
             {allowAdvanced && canManageQueue ? (
               <button
@@ -2676,7 +2676,7 @@ export default function ClienteInboxPage() {
                 ) : (
                   <UserRound className="h-3.5 w-3.5" />
                 )}
-                Distribuir fila
+                Distribuir conversas
               </button>
             ) : null}
             <StateBadge
@@ -3126,5 +3126,3 @@ export default function ClienteInboxPage() {
     </div>
   );
 }
-
-

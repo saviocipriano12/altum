@@ -46,6 +46,7 @@ export type ConversationAgentInput = {
   autonomyMode: AltumAiAutonomyMode;
   reasoningLevel: AltumAiReasoningLevel;
   responseStyle: AltumAiResponseStyle;
+  plannedResponseFormat?: "audio" | "text";
   conversation: ConversationMessage[];
   kbDocs: KnowledgeDoc[];
   preferredProviders: AltumAiProvider[];
@@ -291,6 +292,9 @@ function buildPrompt(input: ConversationAgentInput) {
     "Nao use menus de opcoes; faca pergunta precisa e contextual.",
     "Se o lead responder curto, trate como continuidade do assunto vivo. Nao reinicie nem repita bloco.",
     "Quando faltar contexto, faca no maximo uma pergunta curta e realmente util.",
+    input.plannedResponseFormat === "audio"
+      ? "A plataforma vai entregar esta resposta em audio. Nao diga que prefere texto, nao explique limitacao de audio e nao pergunte se o lead quer audio; apenas responda com uma fala curta, natural e pronta para ser ouvida."
+      : "",
     "Nao use bordoes de vendedor nem frases institucionais repetitivas.",
     "Nao invente oferta, preco, prazo, prova social ou promessa.",
     styleDirective(input.responseStyle),

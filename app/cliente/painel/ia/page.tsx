@@ -2,7 +2,26 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Loader2, PencilLine, RefreshCw, Save, Search, ShieldCheck, Sparkles, Trash2, UploadCloud, Waypoints } from "lucide-react";
+import {
+  AlertTriangle,
+  BookOpen,
+  Bot,
+  CheckCircle2,
+  Headphones,
+  Loader2,
+  MessageCircle,
+  Mic2,
+  PencilLine,
+  RefreshCw,
+  Save,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+  UploadCloud,
+  Waypoints,
+} from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
@@ -20,6 +39,8 @@ type AiSettings = {
   handoffNotifyPhones?: string[];
   voiceReplyEnabled?: boolean;
   voiceReplyVoice?: string;
+  voiceReplyMode?: "audio_only" | "smart" | "always";
+  voiceReplyMaxChars?: number;
   guardrails: string[];
   mandatoryQuestions?: string[];
   escalationTopics?: string[];
@@ -302,6 +323,8 @@ const EMPTY_SETTINGS: AiSettings = {
   handoffNotifyPhones: [],
   voiceReplyEnabled: false,
   voiceReplyVoice: "alloy",
+  voiceReplyMode: "smart",
+  voiceReplyMaxChars: 760,
   guardrails: [],
   mandatoryQuestions: [],
   escalationTopics: [],
@@ -320,6 +343,15 @@ const EMPTY_SETTINGS: AiSettings = {
   monthlyBudgetUsd: 100,
   monthlyUsageCap: 1500,
 };
+
+function audioBase64ToObjectUrl(base64: string, mimeType = "audio/mpeg") {
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+}
 
 const PROVIDER_OPTIONS = [
   { id: "openai", label: "OpenAI" },
@@ -584,6 +616,12 @@ export default function ClienteIaPage() {
   const [runningPreview, setRunningPreview] = useState(false);
   const [runningPreviewBatch, setRunningPreviewBatch] = useState(false);
   const [previewBatchResults, setPreviewBatchResults] = useState<PreviewBatchRun[]>([]);
+  const [voicePreviewText, setVoicePreviewText] = useState("Oi! Aqui e a Altum. Estou te mandando um audio curto para mostrar como a IA pode responder pelo WhatsApp.");
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState("");
+  const [voicePreviewTranscript, setVoicePreviewTranscript] = useState("");
+  const [voicePreviewStatus, setVoicePreviewStatus] = useState("");
+  const [voicePreviewError, setVoicePreviewError] = useState("");
+  const [runningVoicePreview, setRunningVoicePreview] = useState(false);
 
   const canManage = hasCapability("manage_ai");
   const canEditKb = hasCapability("manage_ai");
@@ -808,8 +846,8 @@ export default function ClienteIaPage() {
     if (!settings.enabled) {
       items.push({
         id: "paused",
-        title: "Autopilot pausado",
-        detail: "Reative a IA para voltar a cobrir atendimentos automaticos do tenant.",
+        title: "Assistente pausado",
+        detail: "Reative a IA para voltar a cobrir atendimentos automaticos da operacao.",
         tone: "warning",
         badge: "pausado",
         action: () => setDecisionFilter("all"),
@@ -878,6 +916,58 @@ export default function ClienteIaPage() {
     settings.enabled,
     settings.responsiblePhone,
   ]);
+
+  const readinessItems = useMemo(
+    () => [
+      {
+        id: "assistant",
+        label: "Assistente ligado",
+        detail: settings.enabled ? "Atende automaticamente" : "IA pausada",
+        done: settings.enabled,
+      },
+      {
+        id: "offer",
+        label: "Oferta ensinada",
+        detail: kbDocs.length > 0 ? `${kbDocs.length} itens na base` : "Cadastre produtos e respostas",
+        done: kbDocs.length > 0,
+      },
+      {
+        id: "handoff",
+        label: "Humano definido",
+        detail: settings.responsiblePhone || "Sem responsavel",
+        done: Boolean(settings.responsiblePhone),
+      },
+      {
+        id: "voice",
+        label: "Audio preparado",
+        detail: settings.voiceReplyEnabled ? "Voz liberada no WhatsApp" : "Voz desativada",
+        done: Boolean(settings.voiceReplyEnabled),
+      },
+      {
+        id: "quality",
+        label: "Qualidade monitorada",
+        detail: logSummary.lowConfidence > 0 ? `${logSummary.lowConfidence} ponto(s) para revisar` : "Sem alerta recente",
+        done: logSummary.lowConfidence === 0,
+      },
+    ],
+    [kbDocs.length, logSummary.lowConfidence, settings.enabled, settings.responsiblePhone, settings.voiceReplyEnabled]
+  );
+
+  const readinessScore = useMemo(() => {
+    const done = readinessItems.filter((item) => item.done).length;
+    return {
+      done,
+      total: readinessItems.length,
+      percent: Math.round((done / Math.max(1, readinessItems.length)) * 100),
+    };
+  }, [readinessItems]);
+
+  const voiceModeLabel =
+    settings.voiceReplyMode === "always"
+      ? "Sempre que possivel"
+      : settings.voiceReplyMode === "audio_only"
+        ? "Quando o cliente usa audio"
+        : "Momentos importantes";
 
   function applyBusinessProfileDefaults() {
     if (!canManage) return;
@@ -987,6 +1077,76 @@ export default function ClienteIaPage() {
       setError("Falha ao executar bateria de cenarios da IA.");
     } finally {
       setRunningPreviewBatch(false);
+    }
+  }
+
+  async function handleRunVoicePreview() {
+    if (!tenant?.tenantId) {
+      setVoicePreviewError("Nao encontrei o workspace para gerar o teste.");
+      return;
+    }
+    if (!canManage) {
+      setVoicePreviewError("Seu usuario nao tem permissao para gerar teste de voz.");
+      return;
+    }
+    if (!voicePreviewText.trim()) {
+      setVoicePreviewError("Digite uma frase para testar a voz.");
+      return;
+    }
+
+    setRunningVoicePreview(true);
+    setError(null);
+    setSuccess(null);
+    setVoicePreviewUrl("");
+    setVoicePreviewTranscript("");
+    setVoicePreviewError("");
+    setVoicePreviewStatus("Gerando audio de teste...");
+
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/ai-voice/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: voicePreviewText,
+          voice: settings.voiceReplyVoice || "alloy",
+          maxChars: settings.voiceReplyMaxChars || 760,
+        }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        audioUrl?: string;
+        audioBase64?: string;
+        audioMimeType?: string;
+        audioByteLength?: number;
+        transcript?: string;
+        warning?: string;
+      };
+      if (!res.ok) {
+        setVoicePreviewError(payload.error || "Falha ao gerar teste de audio.");
+        setVoicePreviewStatus("");
+        return;
+      }
+      if (!payload.audioBase64 && !payload.audioUrl) {
+        setVoicePreviewError("O audio foi solicitado, mas a API nao devolveu um arquivo valido para tocar.");
+        setVoicePreviewStatus("");
+        return;
+      }
+      const previewUrl = payload.audioBase64
+        ? audioBase64ToObjectUrl(payload.audioBase64, payload.audioMimeType || "audio/mpeg")
+        : payload.audioUrl || "";
+      setVoicePreviewUrl(previewUrl);
+      setVoicePreviewTranscript(payload.transcript || "");
+      setVoicePreviewStatus(
+        payload.warning
+          ? `Audio gerado (${Math.round(Number(payload.audioByteLength || 0) / 1024)} KB). Carregando no player local.`
+          : `Audio pronto (${Math.round(Number(payload.audioByteLength || 0) / 1024)} KB). Carregando no player.`
+      );
+      setSuccess("Audio de teste gerado.");
+    } catch (previewError) {
+      setVoicePreviewError(previewError instanceof Error ? previewError.message : "Falha ao gerar teste de audio.");
+      setVoicePreviewStatus("");
+    } finally {
+      setRunningVoicePreview(false);
     }
   }
 
@@ -1249,53 +1409,111 @@ export default function ClienteIaPage() {
   }
 
   return (
-    <div className="ia-refined client-daily-page space-y-6">
+    <div className="ia-refined ia-product-page client-daily-page space-y-6">
       <SectionHeader
         title="Assistente Altum"
-        subtitle="Defina como a IA atende, quando chama humano e quais limites comerciais ela deve respeitar."
+        subtitle="Controle como a IA atende, vende, manda audio e chama uma pessoa quando precisa."
         action={<StateBadge label={settings.enabled ? "Assistente ativo" : "Assistente pausado"} tone={settings.enabled ? "success" : "warning"} />}
       />
 
-      <section className="hidden gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <PanelCard tone="spotlight" className="p-5 md:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-2xl">
-              <p className="inline-flex rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/84">
-                Assistencia com contexto
+      <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
+        <PanelCard tone="spotlight" className="overflow-hidden p-0">
+          <div className="relative p-5 md:p-7">
+            <div className="absolute right-6 top-6 hidden h-32 w-32 rounded-full border border-white/12 bg-white/8 md:block" />
+            <div className="relative max-w-3xl">
+              <p className="inline-flex items-center gap-2 rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/84">
+                <Sparkles className="h-3.5 w-3.5" />
+                Operacao comercial com IA
               </p>
-              <h2 className="mt-4 text-[1.75rem] font-semibold tracking-[-0.045em] text-white md:text-[2.15rem]">
-                A IA da Altum deve parecer ajuda comercial pratica, nao configuracao tecnica exposta para todo mundo.
+              <h2 className="mt-4 text-[1.8rem] font-semibold tracking-[-0.04em] text-white md:text-[2.45rem]">
+                Configure o jeito da IA atender, vender e pedir ajuda.
               </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72">
-                O mais importante aqui e o que ela sabe, como ela responde e quando pede apoio humano.
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/74">
+                A tela agora prioriza decisao pratica: o assistente esta pronto, sabe o que vender,
+                consegue mandar audio e tem um humano responsavel quando a conversa pede cuidado.
               </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <a
+                  href="#ia-comportamento"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-white/90"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Ajustar IA
+                </a>
+                <a
+                  href="#ia-audio"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/18"
+                >
+                  <Mic2 className="h-4 w-4" />
+                  Ajustar audio
+                </a>
+                <Link
+                  href="/cliente/painel/produtos-servicos"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/18"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Ensinar ofertas
+                </Link>
+              </div>
             </div>
-            <div className="grid min-w-[250px] gap-3 sm:grid-cols-2 xl:w-[320px]">
-              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Base ativa</p><p className="mt-2 text-base font-semibold text-white">{String(kbDocs.length)}</p></div>
-              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Respostas</p><p className="mt-2 text-base font-semibold text-white">{String(logSummary.responded)}</p></div>
-              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Escaladas</p><p className="mt-2 text-base font-semibold text-white">{String(logSummary.handoff)}</p></div>
-              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Qualidade media</p><p className="mt-2 text-base font-semibold text-white">{`${Math.round(logSummary.avgQuality * 100)}%`}</p></div>
+
+            <div className="relative mt-6 grid gap-3 sm:grid-cols-4">
+              <div className="rounded-[20px] border border-white/14 bg-white/12 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/64">Prontidao</p>
+                <p className="mt-2 text-xl font-semibold text-white">{readinessScore.percent}%</p>
+              </div>
+              <div className="rounded-[20px] border border-white/14 bg-white/12 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/64">Base</p>
+                <p className="mt-2 text-xl font-semibold text-white">{kbDocs.length}</p>
+              </div>
+              <div className="rounded-[20px] border border-white/14 bg-white/12 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/64">Audio</p>
+                <p className="mt-2 text-sm font-semibold text-white">{settings.voiceReplyEnabled ? voiceModeLabel : "Pausado"}</p>
+              </div>
+              <div className="rounded-[20px] border border-white/14 bg-white/12 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/64">Humano</p>
+                <p className="mt-2 text-sm font-semibold text-white">{settings.responsiblePhone ? "Definido" : "Pendente"}</p>
+              </div>
             </div>
           </div>
         </PanelCard>
 
         <PanelCard tone="ai" className="p-5">
-          <CardTitle title="O que revisar primeiro" subtitle="Uma ordem simples para manter o assistente util e seguro." />
-          <div className="mt-4 space-y-3">
-            <Link href="/cliente/painel/produtos-servicos" className="block rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-white"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Produtos & Servicos</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Ensine o que a empresa vende, para quem serve e como recomendar.</p></Link>
-            <Link href="/cliente/painel/conhecimento" className="block rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-white"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Base de conhecimento</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Organize politicas, processos e perguntas frequentes que sustentam as respostas.</p></Link>
-            <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Escaladas humanas</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Defina quando a IA chama uma pessoa e para quem envia o contexto.</p></div>
-            <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">4. Qualidade das respostas</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Acompanhe baixa confianca e melhore os pontos que travam o atendimento.</p></div>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle title="Pronto para operar" subtitle={`${readinessScore.done}/${readinessScore.total} pontos essenciais completos`} />
+            <StateBadge label={`${readinessScore.percent}%`} tone={readinessScore.percent >= 80 ? "success" : "warning"} />
+          </div>
+          <div className="mt-4 space-y-2">
+            {readinessItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-start gap-3 rounded-2xl border border-[var(--cliente-border)] bg-white/80 px-4 py-3"
+              >
+                <span
+                  className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
+                    item.done
+                      ? "bg-emerald-500/12 text-emerald-600"
+                      : "bg-amber-500/12 text-amber-600"
+                  }`}
+                >
+                  {item.done ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-[var(--cliente-card-text)]">{item.label}</span>
+                  <span className="mt-1 block truncate text-xs text-[var(--cliente-card-text-soft)]">{item.detail}</span>
+                </span>
+              </div>
+            ))}
           </div>
         </PanelCard>
       </section>
 
-      <section className="hidden gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Base ativa" value={String(kbDocs.length)} icon={Sparkles} trend="conhecimento comercial" tone="ai" />
-        <MetricCard label="Regras de seguranca" value={String((settings.guardrails || []).length)} icon={ShieldCheck} trend="governanca aplicada" tone="warning" />
-        <MetricCard label="Respostas" value={String(logSummary.responded)} icon={Bot} trend="ultima janela" tone="success" />
-        <MetricCard label="Escaladas" value={String(logSummary.handoff)} icon={Waypoints} trend="apoio humano" tone="warning" />
-        <MetricCard label="Baixa confianca" value={String(logSummary.lowConfidence)} icon={Bot} trend={`latencia media ${latencyLabel(logSummary.avgLatency)}`} tone="danger" />
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Respostas da IA" value={String(logSummary.responded)} icon={Bot} trend="atendimentos recentes" tone="success" />
+        <MetricCard label="Pediu contexto" value={String(logSummary.askMore)} icon={MessageCircle} trend="qualificacao antes de vender" tone="ai" />
+        <MetricCard label="Chamou humano" value={String(logSummary.handoff)} icon={Headphones} trend={settings.responsiblePhone ? "responsavel definido" : "sem responsavel"} tone="warning" />
+        <MetricCard label="Audio da IA" value={settings.voiceReplyEnabled ? "Ativo" : "Pausado"} icon={Mic2} trend={voiceModeLabel} tone="ai" />
+        <MetricCard label="Risco" value={String(logSummary.lowConfidence)} icon={ShieldCheck} trend={`latencia ${latencyLabel(logSummary.avgLatency)}`} tone={logSummary.lowConfidence > 0 ? "danger" : "success"} />
       </section>
 
       <section className="hidden gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1305,34 +1523,89 @@ export default function ClienteIaPage() {
         <MetricCard label="Lane premium" value={String(usageSummary.premiumLane)} icon={Waypoints} trend={`${usageSummary.rulesLane} em rules lane`} />
       </section>
 
-      <PanelCard className="hidden p-5 md:p-6">
-        <CardTitle
-          title="Como ensinar a Altum"
-          subtitle="A configuracao comum deve focar no negocio: oferta, conhecimento e comportamento."
-        />
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <Link href="/cliente/painel/produtos-servicos" className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Oferta</p>
-            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-              Cadastre produtos, servicos, duvidas, objecoes e oportunidades de upsell.
-            </p>
-          </Link>
-          <div className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Comportamento</p>
-            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-              Ajuste tom, objetivo, limites de atuacao e quando a IA deve chamar humano.
-            </p>
+      <section className="grid gap-4 xl:grid-cols-[0.88fr_1.12fr]">
+        <PanelCard className="p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CardTitle title="Comando do assistente" subtitle="O que define se a IA pode operar com seguranca no WhatsApp." />
+            <StateBadge label={settings.enabled ? "publicado" : "pausado"} tone={settings.enabled ? "success" : "warning"} />
           </div>
-          <Link href="/cliente/painel/conhecimento" className="ia-guide-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]">
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Conhecimento</p>
-            <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-              Organize politicas, processos, perguntas frequentes e regras comerciais.
-            </p>
-          </Link>
-        </div>
-      </PanelCard>
+          <div className="mt-5 space-y-3">
+            <OperationRow
+              icon={Bot}
+              title="Atendimento automatico"
+              value={settings.enabled ? "Ativo" : "Pausado"}
+              detail={settings.enabled ? "A IA pode responder quando a conversa estiver dentro das regras." : "A equipe humana fica responsavel pelas respostas."}
+              tone={settings.enabled ? "success" : "warning"}
+            />
+            <OperationRow
+              icon={Mic2}
+              title="Resposta por audio"
+              value={settings.voiceReplyEnabled ? voiceModeLabel : "Desativada"}
+              detail={settings.voiceReplyEnabled ? `${settings.voiceReplyMaxChars || 760} caracteres por audio` : "Ative quando a operacao vender melhor por voz."}
+              tone={settings.voiceReplyEnabled ? "info" : "neutral"}
+            />
+            <OperationRow
+              icon={Headphones}
+              title="Escalada para humano"
+              value={settings.responsiblePhone ? "Configurada" : "Pendente"}
+              detail={settings.responsiblePhone || "Defina quem assume conversas sensiveis."}
+              tone={settings.responsiblePhone ? "success" : "warning"}
+            />
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <a
+              href="#ia-comportamento"
+              className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Ajustar operacao
+            </a>
+            <a
+              href="#ia-audio"
+              className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+            >
+              <Mic2 className="h-4 w-4" />
+              Testar voz
+            </a>
+          </div>
+        </PanelCard>
 
-      <PanelCard className="hidden p-5 md:p-6">
+        <PanelCard className="p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CardTitle title="Conhecimento que sustenta as respostas" subtitle="A IA melhora quando entende oferta, regras comerciais e quando precisa chamar alguem." />
+            <StateBadge label={`${kbDocs.length} itens`} tone={kbDocs.length > 0 ? "success" : "warning"} />
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <Link
+              href="/cliente/painel/produtos-servicos"
+              className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+            >
+              <BookOpen className="h-5 w-5 text-[var(--cliente-accent)]" />
+              <p className="mt-3 text-sm font-semibold text-[var(--cliente-card-text)]">Ofertas</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">Produtos, servicos, precos, materiais e recomendacoes.</p>
+            </Link>
+            <Link
+              href="/cliente/painel/conhecimento"
+              className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+            >
+              <ShieldCheck className="h-5 w-5 text-violet-600" />
+              <p className="mt-3 text-sm font-semibold text-[var(--cliente-card-text)]">Regras</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">Politicas, perguntas frequentes e limites de resposta.</p>
+            </Link>
+            <a
+              href="#ia-comportamento"
+              className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+            >
+              <Waypoints className="h-5 w-5 text-amber-600" />
+              <p className="mt-3 text-sm font-semibold text-[var(--cliente-card-text)]">Escaladas</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">Assuntos que exigem uma pessoa no atendimento.</p>
+            </a>
+          </div>
+        </PanelCard>
+      </section>
+
+      <div id="ia-teste" className="hidden">
+      <PanelCard className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <CardTitle
             title="Simular atendimento"
@@ -1582,6 +1855,7 @@ export default function ClienteIaPage() {
           </div>
         </div>
       </PanelCard>
+      </div>
 
       <PanelCard className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1653,15 +1927,15 @@ export default function ClienteIaPage() {
         </div>
       </PanelCard>
 
-      <section className="hidden gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+      <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PanelCard className="p-5">
-          <CardTitle title="Ajustes rapidos" subtitle="Sinais que pedem atencao antes de continuar refinando o agente" />
+          <CardTitle title="O que precisa de atencao" subtitle="Prioridades simples para deixar o assistente mais confiavel." />
           <div className="mt-4 space-y-3">
             {actionSignals.length === 0 ? (
               <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                 <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Sem alertas criticos no console</p>
                 <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-                  O agente esta sem sinais relevantes de risco, base ociosa ou handoff excessivo nesta leitura.
+                  O assistente esta sem sinais relevantes de risco, base sem uso ou escalada excessiva nesta leitura.
                 </p>
               </div>
             ) : (
@@ -1686,19 +1960,19 @@ export default function ClienteIaPage() {
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Contexto desta leitura" subtitle="Recortes e filtros ativos nesta revisao" />
+          <CardTitle title="Como ler esta tela" subtitle="Resumo dos recortes usados para revisar o comportamento da IA." />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <IaContext title="Filtro de logs" value={decisionFilter === "all" ? "Todos" : decisionLabel(decisionFilter)} detail="decisao observada" />
-            <IaContext title="Risco" value={logRiskFilter === "all" ? "Todos" : logRiskFilter} detail="recorte analitico" />
-            <IaContext title="Uso da base" value={kbUsageFilter === "all" ? "Todos" : kbUsageFilter} detail="documentos no painel" />
-            <IaContext title="Handoff" value={settings.responsiblePhone || "pendente"} detail="responsavel configurado" />
+            <IaContext title="Conversas" value={decisionFilter === "all" ? "Todas" : decisionLabel(decisionFilter)} detail="tipo de decisao analisada" />
+            <IaContext title="Risco" value={logRiskFilter === "all" ? "Todos" : logRiskFilter === "low_confidence" ? "Baixa confianca" : "Handoff"} detail="onde procurar melhoria" />
+            <IaContext title="Conhecimento" value={kbUsageFilter === "all" ? "Toda base" : kbUsageFilter === "used" ? "Usado" : "Sem uso"} detail="uso da base pela IA" />
+            <IaContext title="Responsavel" value={settings.responsiblePhone || "pendente"} detail="quem assume quando a IA pede ajuda" />
           </div>
         </PanelCard>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <PanelCard className="p-5">
-          <CardTitle title="Saude do agente" subtitle="Leitura executiva do comportamento atual da IA no tenant" />
+          <CardTitle title="Operacao em andamento" subtitle="Leitura executiva do que a IA esta fazendo nas conversas." />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <HealthTile
               label="Modo operacional"
@@ -1707,7 +1981,7 @@ export default function ClienteIaPage() {
               tone={settings.enabled ? "success" : "warning"}
             />
             <HealthTile
-              label="Handoff configurado"
+              label="Humano configurado"
               value={settings.responsiblePhone ? "Pronto" : "Pendente"}
               detail={settings.responsiblePhone || "defina o numero do responsavel"}
               tone={settings.responsiblePhone ? "info" : "warning"}
@@ -1715,19 +1989,19 @@ export default function ClienteIaPage() {
             <HealthTile
               label="Base ativa"
               value={`${kbDocs.length} docs`}
-              detail={`${docsSummary.faq} faq • ${docsSummary.catalog} catalogo • ${docsSummary.policy} politicas`}
+              detail={`${docsSummary.faq} FAQ, ${docsSummary.catalog} catalogo, ${docsSummary.policy} politicas`}
               tone={kbDocs.length > 0 ? "success" : "warning"}
             />
             <HealthTile
-              label="Cobertura KB"
+              label="Uso do conhecimento"
               value={`${aiCoverage.used}/${kbDocs.length || 0}`}
-              detail="docs usados nos logs recentes"
+              detail="itens usados nas respostas recentes"
               tone={aiCoverage.used > 0 ? "info" : "warning"}
             />
             <HealthTile
-              label="Risco operacional"
+              label="Pontos de atencao"
               value={String(logSummary.lowConfidence)}
-              detail="logs com baixa confianca"
+              detail="conversas com baixa confianca"
               tone={logSummary.lowConfidence > 0 ? "danger" : "success"}
             />
           </div>
@@ -1736,7 +2010,7 @@ export default function ClienteIaPage() {
               href="/cliente/painel/inbox"
               className="flex items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
-              <span>Ir para inbox operacional</span>
+              <span>Abrir conversas</span>
               <span className="text-[var(--cliente-card-text-soft)]">→</span>
             </Link>
             <Link
@@ -1750,18 +2024,18 @@ export default function ClienteIaPage() {
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Leitura de decisao" subtitle="Como a IA esta respondendo, pedindo contexto e escalando para humano" />
+          <CardTitle title="Como a IA decidiu" subtitle="Distribuicao entre respostas, perguntas adicionais e chamadas para humano." />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <HealthTile label="Respondeu" value={String(logSummary.responded)} detail="respostas enviadas" tone="success" />
             <HealthTile label="Pediu contexto" value={String(logSummary.askMore)} detail="qualificacao adicional" tone="info" />
-            <HealthTile label="Handoff" value={String(logSummary.handoff)} detail="escaladas ao humano" tone="warning" />
+            <HealthTile label="Chamou humano" value={String(logSummary.handoff)} detail="conversas assumidas pela equipe" tone="warning" />
             <HealthTile label="Latencia media" value={latencyLabel(logSummary.avgLatency)} detail="tempo medio de resposta" tone="neutral" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <HealthTile
               label="Motivo dominante"
               value={aiCoverage.topReason}
-              detail="principal causa de handoff"
+              detail="principal motivo para chamar a equipe"
               tone={logSummary.handoff > 0 ? "warning" : "success"}
             />
             <HealthTile
@@ -1774,28 +2048,40 @@ export default function ClienteIaPage() {
         </PanelCard>
       </section>
 
-      <section className="max-w-5xl">
-        <PanelCard className="p-5 md:p-6">
-          <form onSubmit={handleSaveSettings} className="space-y-3">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--cliente-border)] pb-4">
+      <section id="ia-comportamento" className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <PanelCard className="p-6 md:p-7">
+          <form onSubmit={handleSaveSettings} className="space-y-6">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--cliente-border)] pb-5">
               <div>
-                <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Comportamento do assistente</h3>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)]">
-                  Esta tela controla apenas o atendimento da IA. Produtos e base de conhecimento ficam em suas areas proprias.
+                <h3 className="text-xl font-semibold tracking-[-0.02em] text-[var(--cliente-card-text)]">Publicacao e regras do assistente</h3>
+                <p className="mt-2 max-w-3xl text-[15px] leading-7 text-[var(--cliente-card-text-muted)]">
+                  Ajuste o que a IA pode fazer no atendimento, como fala, quando usa audio e quando chama a equipe.
                 </p>
               </div>
               {canManage ? (
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-[var(--cliente-accent)] px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_32px_-22px_var(--cliente-primary-glow)] transition hover:brightness-95 disabled:opacity-60"
                 >
                   {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Salvar
+                  Publicar ajustes
                 </button>
               ) : null}
             </div>
 
+            <details className="rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[15px] font-semibold text-[var(--cliente-card-text)]">
+                <span className="inline-flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
+                  Avancado: custo, modelos e provedores
+                </span>
+                <StateBadge label="tecnico" tone="neutral" />
+              </summary>
+              <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                Use esta parte apenas quando precisar controlar custo, motor de IA ou limite de execucoes.
+              </p>
+              <div className="mt-5 space-y-4">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-xs text-[var(--cliente-card-text-soft)]">
                 Nivel de IA
@@ -1980,7 +2266,7 @@ export default function ClienteIaPage() {
               </label>
             </div>
 
-            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+            <div className="rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
               <div className="flex flex-wrap items-center gap-2">
                 <StateBadge label={tierLabel(settings.tier)} tone="info" />
                 <StateBadge label={settings.autonomyMode || "hybrid"} tone="neutral" />
@@ -2005,55 +2291,120 @@ export default function ClienteIaPage() {
                 Padrao novo: OpenAI usa `gpt-4.1-mini` por economia. Modelo mais caro so entra se voce escolher explicitamente aqui.
               </p>
               {!settings.allowPremiumModels ? (
-                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                  Trava de custo ativa: modelos premium ficam bloqueados para este tenant.
-                </p>
+              <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                Trava de custo ativa: modelos premium ficam bloqueados para este tenant.
+              </p>
               ) : null}
             </div>
+              </div>
+            </details>
 
-            <div className="pt-2">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Atendimento</p>
+            <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+              <div className="rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
+                <p className="text-base font-semibold text-[var(--cliente-card-text)]">Modo de atuacao</p>
+                <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">Escolha quanta liberdade a IA tem antes de chamar sua equipe.</p>
+                <div className="mt-4 grid gap-2">
+                  {[
+                    { value: "copilot", label: "Assistida", detail: "Apoia o atendimento, mas evita assumir decisoes sensiveis." },
+                    { value: "hybrid", label: "Equilibrada", detail: "Responde, qualifica e chama humano quando precisa." },
+                    { value: "autonomous", label: "Autonoma", detail: "Atua com mais liberdade dentro das regras comerciais." },
+                  ].map((option) => {
+                    const active = (settings.autonomyMode || "hybrid") === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={!canManage}
+                        onClick={() => setSettings((prev) => ({ ...prev, autonomyMode: option.value as AiSettings["autonomyMode"] }))}
+                        className={`rounded-2xl border px-4 py-3 text-left transition disabled:opacity-60 ${
+                          active
+                            ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
+                            : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] hover:border-[var(--cliente-border-strong)]"
+                        }`}
+                      >
+                        <span className="block text-[15px] font-semibold text-[var(--cliente-card-text)]">{option.label}</span>
+                        <span className="mt-1 block text-sm leading-6 text-[var(--cliente-card-text-soft)]">{option.detail}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
+                <p className="text-base font-semibold text-[var(--cliente-card-text)]">Estilo de resposta</p>
+                <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">Defina como a IA deve soar para o cliente final.</p>
+                <div className="mt-4 grid gap-2">
+                  {[
+                    { value: "concise", label: "Direta", detail: "Curta, objetiva e sem excesso de explicacao." },
+                    { value: "consultative", label: "Consultiva", detail: "Entende contexto antes de recomendar." },
+                    { value: "premium_sales", label: "Premium", detail: "Mais cuidadosa, comercial e posicionada." },
+                    { value: "closer", label: "Fechadora", detail: "Mais firme para conduzir proximo passo." },
+                  ].map((option) => {
+                    const active = (settings.responseStyle || "consultative") === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={!canManage}
+                        onClick={() => setSettings((prev) => ({ ...prev, responseStyle: option.value as AiSettings["responseStyle"] }))}
+                        className={`rounded-2xl border px-4 py-3 text-left transition disabled:opacity-60 ${
+                          active
+                            ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_28%,transparent)] bg-[var(--cliente-ai-soft)]"
+                            : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] hover:border-[var(--cliente-border-strong)]"
+                        }`}
+                      >
+                        <span className="block text-[15px] font-semibold text-[var(--cliente-card-text)]">{option.label}</span>
+                        <span className="mt-1 block text-sm leading-6 text-[var(--cliente-card-text-soft)]">{option.detail}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
-              <span>Responder automaticamente</span>
-              <input
-                type="checkbox"
-                checked={settings.enabled}
-                onChange={(event) => setSettings((prev) => ({ ...prev, enabled: event.target.checked }))}
-                disabled={!canManage}
-              />
-            </label>
+            <div className="pt-1">
+              <p className="text-base font-semibold text-[var(--cliente-card-text)]">Atendimento</p>
+              <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">Defina se a IA pode responder e qual postura ela deve ter na conversa.</p>
+            </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <SwitchRow
+              title="Responder automaticamente"
+              detail={settings.enabled ? "A IA pode atender conversas novas quando estiver dentro das regras." : "As conversas ficam com a equipe humana ate voce reativar."}
+              checked={settings.enabled}
+              onChange={(checked) => setSettings((prev) => ({ ...prev, enabled: checked }))}
+              disabled={!canManage}
+              icon={Bot}
+            />
+
+            <div className="grid gap-4 md:grid-cols-2">
               <Field label="Nome do agente" value={settings.agentName || ""} onChange={(value) => setSettings((prev) => ({ ...prev, agentName: value }))} placeholder="Ex: Assistente da loja" disabled={!canManage} />
               <Field label="Tom de voz" value={settings.toneOfVoice} onChange={(value) => setSettings((prev) => ({ ...prev, toneOfVoice: value }))} placeholder="consultivo, claro e humano" disabled={!canManage} />
             </div>
             <Field label="Resumo do negocio" value={settings.businessSummary} onChange={(value) => setSettings((prev) => ({ ...prev, businessSummary: value }))} placeholder="o que a empresa vende, para quem e com qual foco" disabled={!canManage} />
             <Field label="Objetivo principal da IA" value={settings.objective || ""} onChange={(value) => setSettings((prev) => ({ ...prev, objective: value }))} placeholder="qualificar, orientar, vender e encaminhar" disabled={!canManage} />
 
-            <div className="pt-3">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Humano e audio</p>
+            <div id="ia-audio" className="pt-2">
+              <p className="text-base font-semibold text-[var(--cliente-card-text)]">Humano e audio</p>
+              <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">Configure voz, responsavel humano e quando a IA deve sair do texto.</p>
             </div>
 
             <Field label="WhatsApp para chamar humano" value={settings.responsiblePhone} onChange={(value) => setSettings((prev) => ({ ...prev, responsiblePhone: value }))} placeholder="5511999999999" disabled={!canManage} />
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
-                <span>Responder audio com audio</span>
-                <input
-                  type="checkbox"
-                  checked={settings.voiceReplyEnabled === true}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, voiceReplyEnabled: event.target.checked }))}
-                  disabled={!canManage}
-                />
-              </label>
-              <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+            <div className="grid gap-4 md:grid-cols-2">
+              <SwitchRow
+                title="Permitir audio da IA"
+                detail={settings.voiceReplyEnabled ? "A IA pode responder em audio quando fizer sentido." : "A IA responde apenas em texto."}
+                checked={settings.voiceReplyEnabled === true}
+                onChange={(checked) => setSettings((prev) => ({ ...prev, voiceReplyEnabled: checked }))}
+                disabled={!canManage}
+                icon={Mic2}
+              />
+              <label className="block text-sm font-semibold text-[var(--cliente-card-text)]">
                 Voz da IA
                 <select
                   value={settings.voiceReplyVoice || "alloy"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, voiceReplyVoice: event.target.value }))}
                   disabled={!canManage || settings.voiceReplyEnabled !== true}
-                  className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
+                  className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] outline-none disabled:opacity-60"
                 >
                   <option value="alloy">Alloy</option>
                   <option value="ash">Ash</option>
@@ -2068,17 +2419,123 @@ export default function ClienteIaPage() {
                 </select>
               </label>
             </div>
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
-              <span>Notificar responsaveis quando chamar humano</span>
-              <input
-                type="checkbox"
-                checked={settings.handoffNotifyEnabled !== false}
-                onChange={(event) => setSettings((prev) => ({ ...prev, handoffNotifyEnabled: event.target.checked }))}
-                disabled={!canManage}
+            <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Quando enviar audio</p>
+                <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">Escolha o comportamento mais natural para sua operacao.</p>
+                <div className="mt-3 grid gap-2">
+                  {[
+                    { value: "audio_only", label: "Responder audio com audio", detail: "Melhor para nao invadir conversas em texto." },
+                    { value: "smart", label: "Momentos importantes", detail: "Usa audio em venda, objecao e retomada." },
+                    { value: "always", label: "Sempre que possivel", detail: "Mais forte para operacoes que vendem por voz." },
+                  ].map((option) => {
+                    const active = (settings.voiceReplyMode || "smart") === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={!canManage || settings.voiceReplyEnabled !== true}
+                        onClick={() =>
+                          setSettings((prev) => ({ ...prev, voiceReplyMode: option.value as AiSettings["voiceReplyMode"] }))
+                        }
+                        className={`rounded-2xl border px-4 py-3 text-left transition disabled:opacity-60 ${
+                          active
+                            ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
+                            : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] hover:border-[var(--cliente-border-strong)]"
+                        }`}
+                      >
+                        <span className="block text-[15px] font-semibold text-[var(--cliente-card-text)]">{option.label}</span>
+                        <span className="mt-1 block text-sm leading-6 text-[var(--cliente-card-text-soft)]">{option.detail}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <Field
+                label="Tamanho maximo do audio"
+                value={String(settings.voiceReplyMaxChars || 760)}
+                onChange={(value) => setSettings((prev) => ({ ...prev, voiceReplyMaxChars: Number(value) || 760 }))}
+                placeholder="760"
+                disabled={!canManage || settings.voiceReplyEnabled !== true}
               />
-            </label>
-            <div className="pt-3">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Limites e qualificacao</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <CardTitle title="Teste de voz" subtitle="Gere um audio antes de liberar a IA em conversa real." />
+                <StateBadge label={settings.voiceReplyEnabled ? "voz ativa" : "voz pausada"} tone={settings.voiceReplyEnabled ? "success" : "warning"} />
+              </div>
+              <textarea
+                value={voicePreviewText}
+                onChange={(event) => setVoicePreviewText(event.target.value)}
+                disabled={!canManage}
+                rows={3}
+                className="client-input mt-4 w-full rounded-2xl border px-4 py-3 text-[15px] leading-7 outline-none"
+                placeholder="Digite uma frase curta para ouvir a voz da IA."
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleRunVoicePreview()}
+                  disabled={!canManage || runningVoicePreview || !voicePreviewText.trim()}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
+                >
+                  {runningVoicePreview ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  {runningVoicePreview ? "Gerando audio..." : "Gerar audio de teste"}
+                </button>
+                <span className="text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                  O texto e limpo e encurtado para soar natural no WhatsApp.
+                </span>
+              </div>
+              {voicePreviewStatus ? (
+                <div className="mt-3 rounded-2xl border border-[var(--cliente-success)]/25 bg-[var(--cliente-success-soft)] px-4 py-3 text-sm font-semibold text-[var(--cliente-success)]">
+                  {voicePreviewStatus}
+                </div>
+              ) : null}
+              {voicePreviewError ? (
+                <div className="mt-3 rounded-2xl border border-[var(--cliente-danger)]/25 bg-[var(--cliente-danger-soft)] px-4 py-3 text-sm font-semibold text-[var(--cliente-danger)]">
+                  {voicePreviewError}
+                </div>
+              ) : null}
+              {voicePreviewUrl ? (
+                <div className="mt-4 rounded-[24px] border border-[var(--cliente-border-strong)] bg-[var(--cliente-panel-soft)] p-4">
+                  <p className="mb-3 text-sm font-semibold text-[var(--cliente-card-text)]">Clique no play para ouvir</p>
+                  <audio
+                    key={voicePreviewUrl}
+                    controls
+                    preload="metadata"
+                    src={voicePreviewUrl}
+                    className="w-full"
+                    onLoadedMetadata={(event) => {
+                      const duration = event.currentTarget.duration;
+                      setVoicePreviewStatus(
+                        Number.isFinite(duration) && duration > 0
+                          ? `Audio pronto para ouvir (${Math.round(duration)}s).`
+                          : "Audio carregado. Se o tempo ainda aparecer 0:00, clique no play para validar o navegador."
+                      );
+                    }}
+                    onCanPlay={() => setVoicePreviewStatus("Audio pronto para ouvir.")}
+                    onError={() => {
+                      setVoicePreviewStatus("");
+                      setVoicePreviewError("O arquivo foi gerado, mas o navegador nao conseguiu carregar o audio. Gere novamente.");
+                    }}
+                  />
+                  {voicePreviewTranscript ? (
+                    <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{voicePreviewTranscript}</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <SwitchRow
+              title="Avisar responsaveis quando chamar humano"
+              detail="Quando a IA precisar de ajuda, a equipe recebe o contexto para assumir a conversa."
+              checked={settings.handoffNotifyEnabled !== false}
+              onChange={(checked) => setSettings((prev) => ({ ...prev, handoffNotifyEnabled: checked }))}
+              disabled={!canManage}
+              icon={Headphones}
+            />
+            <div className="pt-2">
+              <p className="text-base font-semibold text-[var(--cliente-card-text)]">Limites e qualificacao</p>
+              <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">Regras simples para a IA vender melhor sem prometer o que nao deve.</p>
             </div>
 
             <label className="block text-xs text-[var(--cliente-card-text-soft)]">
@@ -2088,22 +2545,21 @@ export default function ClienteIaPage() {
                 onChange={(event) => setHandoffNotifyPhonesText(event.target.value)}
                 rows={3}
                 disabled={!canManage}
-                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
+                className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] leading-7 outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
                 placeholder={"5511999999999\n5511888888888"}
               />
             </label>
 
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
-              <span>Follow-up automatico por template quando fechar a janela de 24h</span>
-              <input
-                type="checkbox"
-                checked={settings.whatsappTemplateFollowUpEnabled !== false}
-                onChange={(event) =>
-                  setSettings((prev) => ({ ...prev, whatsappTemplateFollowUpEnabled: event.target.checked }))
-                }
-                disabled={!canManage}
-              />
-            </label>
+            <SwitchRow
+              title="Retomar conversa depois de 24h"
+              detail="Usa o template aprovado do WhatsApp quando a janela normal da conversa fechar."
+              checked={settings.whatsappTemplateFollowUpEnabled !== false}
+              onChange={(checked) =>
+                setSettings((prev) => ({ ...prev, whatsappTemplateFollowUpEnabled: checked }))
+              }
+              disabled={!canManage}
+              icon={RefreshCw}
+            />
             <div className="grid gap-3 md:grid-cols-2">
               <Field
                 label="Template padrao (24h+)"
@@ -2127,7 +2583,7 @@ export default function ClienteIaPage() {
                 onChange={(event) => setFollowUpTemplateParamsText(event.target.value)}
                 rows={3}
                 disabled={!canManage}
-                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
+                className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] leading-7 outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
                 placeholder={"Exemplo sem variavel\nou\n{{nome}}"}
               />
             </label>
@@ -2139,7 +2595,7 @@ export default function ClienteIaPage() {
                 onChange={(event) => setGuardrailsText(event.target.value)}
                 rows={5}
                 disabled={!canManage}
-                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
+                className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] leading-7 outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
                 placeholder="Nao conceder desconto sem aprovacao\nNao prometer prazo sem validar operacao"
               />
             </label>
@@ -2151,7 +2607,7 @@ export default function ClienteIaPage() {
                 onChange={(event) => setMandatoryQuestionsText(event.target.value)}
                 rows={4}
                 disabled={!canManage}
-                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
+                className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] leading-7 outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
                 placeholder="Qual o servico desejado?\nQual prazo voce precisa?\nQual faixa de investimento?"
               />
             </label>
@@ -2163,7 +2619,7 @@ export default function ClienteIaPage() {
                 onChange={(event) => setEscalationTopicsText(event.target.value)}
                 rows={4}
                 disabled={!canManage}
-                className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
+                className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] leading-7 outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
                 placeholder="pedido de desconto especial\ncliente irritado\nnegociacao fora da politica"
               />
             </label>
@@ -2172,14 +2628,69 @@ export default function ClienteIaPage() {
               <button
                 type="submit"
                 disabled={savingSettings}
-                className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-2xl bg-[var(--cliente-accent)] px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_32px_-22px_var(--cliente-primary-glow)] transition hover:brightness-95 disabled:opacity-60"
               >
                 {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Salvar comportamento
+                Publicar ajustes
               </button>
             ) : null}
           </form>
         </PanelCard>
+
+        <aside className="space-y-5 xl:sticky xl:top-28 xl:self-start">
+          <PanelCard className="p-6">
+            <CardTitle title="Resumo da publicacao" subtitle="O que esta valendo agora para o atendimento." />
+            <div className="mt-4 space-y-3">
+              <IaContext
+                title="Status"
+                value={settings.enabled ? "Atendendo" : "Pausado"}
+                detail={settings.enabled ? "A IA pode responder automaticamente." : "A equipe segue no controle manual."}
+              />
+              <IaContext
+                title="Tom"
+                value={responseStyleLabel(settings.responseStyle)}
+                detail={settings.toneOfVoice || "consultivo e objetivo"}
+              />
+              <IaContext
+                title="Audio"
+                value={settings.voiceReplyEnabled ? voiceModeLabel : "Desligado"}
+                detail={settings.voiceReplyEnabled ? `Voz ${settings.voiceReplyVoice || "alloy"}` : "Respostas apenas em texto."}
+              />
+              <IaContext
+                title="Humano"
+                value={settings.responsiblePhone ? "Com responsavel" : "Sem responsavel"}
+                detail={settings.responsiblePhone || "Configure um WhatsApp de apoio."}
+              />
+            </div>
+          </PanelCard>
+
+          <PanelCard className="p-6">
+            <CardTitle title="Acoes recomendadas" subtitle="Atalhos para melhorar a IA sem mexer em configuracao tecnica." />
+            <div className="mt-4 space-y-2">
+              <Link
+                href="/cliente/painel/produtos-servicos"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-[15px] font-semibold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+              >
+                <span>Atualizar ofertas</span>
+                <BookOpen className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
+              </Link>
+              <Link
+                href="/cliente/painel/conhecimento"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-[15px] font-semibold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+              >
+                <span>Revisar conhecimento</span>
+                <ShieldCheck className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
+              </Link>
+              <Link
+                href="/cliente/painel/inbox"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-[15px] font-semibold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+              >
+                <span>Ver conversas</span>
+                <MessageCircle className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
+              </Link>
+            </div>
+          </PanelCard>
+        </aside>
 
         <PanelCard className="hidden p-5">
           <form onSubmit={handleAddKbDoc} className="space-y-3">
@@ -2496,7 +3007,7 @@ export default function ClienteIaPage() {
 
         <PanelCard className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <CardTitle title="Logs recentes da IA" subtitle="Rastreabilidade de decisao, contexto e handoff" />
+            <CardTitle title="Historico de decisoes" subtitle="Veja o que a IA recebeu, respondeu e quando chamou uma pessoa." />
             <StateBadge label={`${filteredLogs.length}/${logs.length} registros`} tone="info" />
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_220px_220px]">
@@ -2692,6 +3203,74 @@ function HealthTile({
   );
 }
 
+function OperationRow({
+  icon: Icon,
+  title,
+  value,
+  detail,
+  tone,
+}: {
+  icon: typeof Bot;
+  title: string;
+  value: string;
+  detail: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "info";
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]">
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</span>
+          <StateBadge label={value} tone={tone} />
+        </span>
+        <span className="mt-1 block text-xs leading-5 text-[var(--cliente-card-text-soft)]">{detail}</span>
+      </span>
+    </div>
+  );
+}
+
+function SwitchRow({
+  title,
+  detail,
+  checked,
+  onChange,
+  disabled = false,
+  icon: Icon,
+}: {
+  title: string;
+  detail: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  icon?: typeof Bot;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-4 rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-5 py-4 text-sm transition hover:border-[var(--cliente-border-strong)]">
+      <span className="flex min-w-0 items-center gap-3">
+        {Icon ? (
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--cliente-accent-soft)] text-[var(--cliente-accent)]">
+            <Icon className="h-4 w-4" />
+          </span>
+        ) : null}
+        <span className="min-w-0">
+          <span className="block text-[15px] font-semibold text-[var(--cliente-card-text)]">{title}</span>
+          <span className="mt-1 block text-sm leading-6 text-[var(--cliente-card-text-soft)]">{detail}</span>
+        </span>
+      </span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        disabled={disabled}
+        className="h-5 w-5 shrink-0 rounded border-[var(--cliente-border)] bg-transparent accent-[var(--cliente-primary)]"
+      />
+    </label>
+  );
+}
+
 function Field({
   label,
   value,
@@ -2706,14 +3285,14 @@ function Field({
   disabled?: boolean;
 }) {
   return (
-    <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+    <label className="block text-sm font-semibold text-[var(--cliente-card-text)]">
       {label}
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
+        className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
       />
     </label>
   );
@@ -2729,10 +3308,10 @@ function IaContext({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{title}</p>
-      <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">{value}</p>
-      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--cliente-card-text-soft)]">{title}</p>
+      <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">{value}</p>
+      <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">{detail}</p>
     </div>
   );
 }

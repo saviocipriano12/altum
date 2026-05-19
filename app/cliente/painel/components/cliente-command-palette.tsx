@@ -98,7 +98,7 @@ const NAV_ITEMS: NavItem[] = [
     capability: "manage_settings",
   },
   { key: "implantacao", label: "Configuracoes - Implantacao", href: "/cliente/painel/go-live", icon: <Rocket className="h-4 w-4" /> },
-  { key: "logs", label: "Configuracoes - Logs tecnicos", href: "/cliente/painel/logs", icon: <FileText className="h-4 w-4" /> },
+  { key: "avancado", label: "Configuracoes - Avancado", href: "/cliente/painel/logs", icon: <FileText className="h-4 w-4" /> },
 ];
 
 export function ClienteCommandPalette() {
@@ -197,7 +197,7 @@ export function ClienteCommandPalette() {
               />
               <PaletteItem
                 icon={<Settings className="h-4 w-4" />}
-                label={experienceMode === "essencial" ? "Mostrar areas avancadas" : "Mostrar visao simplificada"}
+                label={experienceMode === "essencial" ? "Mostrar mais opcoes" : "Voltar para visao simples"}
                 hint="Navegacao"
                 onSelect={() => {
                   toggleExperienceMode();

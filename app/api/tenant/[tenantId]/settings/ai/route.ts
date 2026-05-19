@@ -25,6 +25,8 @@ type Body = {
   handoffNotifyPhones?: string[] | string;
   voiceReplyEnabled?: boolean;
   voiceReplyVoice?: string;
+  voiceReplyMode?: "audio_only" | "smart" | "always";
+  voiceReplyMaxChars?: number;
   guardrails?: string[] | string;
   mandatoryQuestions?: string[] | string;
   escalationTopics?: string[] | string;
@@ -101,6 +103,18 @@ function parseNotifyPhones(value: unknown) {
   return Array.from(new Set(parseLines(value, 8).map((item) => clean(item, 40)).filter(Boolean))).slice(0, 8);
 }
 
+function normalizeVoiceReplyMode(value: unknown) {
+  const normalized = clean(value, 40).toLowerCase();
+  if (normalized === "audio_only" || normalized === "smart" || normalized === "always") return normalized;
+  return "smart";
+}
+
+function normalizeVoiceReplyMaxChars(value: unknown) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 760;
+  return Math.max(260, Math.min(1400, Math.round(numeric)));
+}
+
 function pruneUndefinedDeep<T>(value: T): T {
   if (Array.isArray(value)) {
     return value
@@ -160,6 +174,8 @@ function normalizeAiConfig(
     handoffNotifyPhones: parseNotifyPhones(ai.handoffNotifyPhones),
     voiceReplyEnabled: ai.voiceReplyEnabled === true,
     voiceReplyVoice: storedVoiceReplyVoice || "alloy",
+    voiceReplyMode: normalizeVoiceReplyMode(ai.voiceReplyMode),
+    voiceReplyMaxChars: normalizeVoiceReplyMaxChars(ai.voiceReplyMaxChars),
     guardrails: resolveWithDefaults
       ? (storedGuardrails.length ? storedGuardrails : businessProfile.ai.guardrails)
       : storedGuardrails,
@@ -251,6 +267,10 @@ export async function POST(
           ? body.voiceReplyEnabled
           : current.voiceReplyEnabled,
       voiceReplyVoice: clean(body.voiceReplyVoice, 40) || current.voiceReplyVoice,
+      voiceReplyMode:
+        body.voiceReplyMode === undefined ? current.voiceReplyMode : normalizeVoiceReplyMode(body.voiceReplyMode),
+      voiceReplyMaxChars:
+        body.voiceReplyMaxChars === undefined ? current.voiceReplyMaxChars : normalizeVoiceReplyMaxChars(body.voiceReplyMaxChars),
       guardrails:
         body.guardrails === undefined ? current.guardrails : parseGuardrails(body.guardrails),
       mandatoryQuestions:

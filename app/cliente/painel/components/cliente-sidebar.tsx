@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
-import { StateBadge } from "@/app/cliente/painel/components/ui";
+import { BrandIcon } from "@/app/cliente/painel/components/ui";
 
 type Props = {
   isOpen: boolean;
@@ -39,7 +39,7 @@ type NavItem = {
   description: string;
   aliases?: NavAlias[];
   capability?: string;
-  tone?: "default" | "ai";
+  tone?: "default" | "success" | "warning" | "ai" | "brand";
 };
 
 const PRIMARY_NAV: NavItem[] = [
@@ -54,6 +54,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Conversas",
     icon: MessageSquare,
     description: "Atenda clientes e avance oportunidades sem sair do chat.",
+    tone: "success",
   },
   {
     href: "/cliente/painel/crm",
@@ -71,6 +72,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Agenda",
     icon: CalendarDays,
     description: "Compromissos, retornos e proximas acoes em um so lugar.",
+    tone: "warning",
     aliases: [
       { href: "/cliente/painel/agenda", label: "Compromissos" },
       { href: "/cliente/painel/follow-ups", label: "Tarefas" },
@@ -82,12 +84,14 @@ const PRIMARY_NAV: NavItem[] = [
     icon: Package,
     description: "O que a empresa vende, como explicar e quando recomendar.",
     capability: "manage_ai",
+    tone: "brand",
   },
   {
     href: "/cliente/painel/campanhas",
     label: "Campanhas",
     icon: Sparkles,
     description: "Aquisicao, outbound e reativacao com status claro.",
+    tone: "brand",
     aliases: [{ href: "/cliente/painel/captacao", label: "Captacao" }],
   },
   {
@@ -235,7 +239,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[var(--cliente-text-soft)]">Atendimento e vendas em um fluxo unico.</p>
               </div>
-              <StateBadge label="cliente" tone="info" />
+              <BrandIcon id="altum" size={compactMode ? "sm" : "md"} />
             </div>
           </div>
         </div>
@@ -245,11 +249,23 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
             {visibleNav.map((item) => {
               const active = itemMatches(pathname, item);
               const Icon = item.icon;
-              const aiTone = item.tone === "ai";
+              const itemTone = item.tone || "default";
+              const activeDot =
+                itemTone === "ai"
+                  ? "bg-[var(--cliente-ai)]"
+                  : itemTone === "success"
+                    ? "bg-[var(--cliente-success)]"
+                    : itemTone === "warning"
+                      ? "bg-[var(--cliente-warning)]"
+                      : "bg-[var(--cliente-primary)]";
               const iconClasses = active
-                ? aiTone
+                ? itemTone === "ai"
                   ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_24%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]"
-                  : "border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,transparent)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"
+                  : itemTone === "success"
+                    ? "border-[color:color-mix(in_srgb,var(--cliente-success)_24%,transparent)] bg-[var(--cliente-whatsapp-soft)] text-[var(--cliente-success)]"
+                    : itemTone === "warning"
+                      ? "border-[color:color-mix(in_srgb,var(--cliente-warning)_24%,transparent)] bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]"
+                      : "border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,transparent)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"
                 : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-text-soft)] group-hover:text-[var(--cliente-text)]";
 
               return (
@@ -275,7 +291,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                           <div className="flex items-center gap-2">
                             <p className="truncate text-sm font-semibold">{item.label}</p>
                             {active ? (
-                              <span className={`h-2 w-2 rounded-full ${aiTone ? "bg-[var(--cliente-ai)]" : "bg-[var(--cliente-primary)]"}`} />
+                              <span className={`h-2 w-2 rounded-full ${activeDot}`} />
                             ) : null}
                           </div>
                         </div>

@@ -8,6 +8,7 @@ type Body = {
   type?: "faq" | "catalog" | "policy";
   content?: string;
   tags?: string[] | string;
+  mediaItems?: MediaItemBody[];
   mediaUrl?: string | null;
   mediaType?: string | null;
   mediaTitle?: string | null;
@@ -24,6 +25,16 @@ type Body = {
   crossSellKeys?: string[] | string;
   priority?: number | null;
   availability?: "active" | "seasonal" | "paused" | string | null;
+};
+
+type MediaItemBody = {
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  mediaTitle?: string | null;
+  mediaStoragePath?: string | null;
+  mediaMimeType?: string | null;
+  mediaSize?: number | null;
+  usage?: "auto" | "suggest" | "blocked" | string | null;
 };
 
 function clean(value: unknown, max = 800) {
@@ -80,6 +91,12 @@ function normalizeMediaType(value: unknown) {
   return "";
 }
 
+function normalizeMediaUsage(value: unknown) {
+  const normalized = clean(value, 40).toLowerCase();
+  if (normalized === "auto" || normalized === "suggest" || normalized === "blocked") return normalized;
+  return "suggest";
+}
+
 function numericValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : null;
 }
@@ -92,6 +109,31 @@ function normalizeAvailability(value: unknown) {
   const normalized = clean(value, 30).toLowerCase();
   if (normalized === "active" || normalized === "seasonal" || normalized === "paused") return normalized;
   return "active";
+}
+
+function normalizeMediaItems(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const data = item as Record<string, unknown>;
+      const mediaUrl = clean(data.mediaUrl, 1200);
+      const mediaType = normalizeMediaType(data.mediaType);
+      if (!mediaUrl || !mediaType) return null;
+
+      return {
+        mediaUrl,
+        mediaType,
+        mediaTitle: clean(data.mediaTitle, 160) || null,
+        mediaStoragePath: clean(data.mediaStoragePath, 600) || null,
+        mediaMimeType: clean(data.mediaMimeType, 140) || null,
+        mediaSize: numericValue(data.mediaSize),
+        usage: normalizeMediaUsage(data.usage),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
 }
 
 export async function GET(
@@ -125,6 +167,7 @@ export async function GET(
         mediaStoragePath: clean(data.mediaStoragePath, 600) || null,
         mediaMimeType: clean(data.mediaMimeType, 140) || null,
         mediaSize: numericValue(data.mediaSize),
+        mediaItems: normalizeMediaItems(data.mediaItems),
         serviceKey: clean(data.serviceKey, 120) || null,
         productName: clean(data.productName, 160) || null,
         productCategory: clean(data.productCategory, 120) || null,
@@ -171,6 +214,7 @@ export async function POST(
     if (!content) {
       return NextResponse.json({ error: "Campo obrigatorio: content." }, { status: 400 });
     }
+    const mediaItems = normalizeMediaItems(body.mediaItems);
 
     const docRef = await adminDb.collection("kb_docs").add({
       tenantId,
@@ -183,6 +227,7 @@ export async function POST(
       mediaStoragePath: clean(body.mediaStoragePath, 600) || null,
       mediaMimeType: clean(body.mediaMimeType, 140) || null,
       mediaSize: numericValue(body.mediaSize),
+      mediaItems,
       serviceKey: clean(body.serviceKey, 120) || null,
       productName: clean(body.productName, 160) || null,
       productCategory: clean(body.productCategory, 120) || null,

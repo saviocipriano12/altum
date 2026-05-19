@@ -5,21 +5,25 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   CalendarClock,
+  CalendarDays,
   CheckCircle2,
   Clock3,
   Loader2,
+  MapPin,
   Plus,
+  Search,
+  UserRound,
   Video,
+  XCircle,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import {
   CardTitle,
+  ClientActionButton,
   EmptyState,
   MetricCard,
   PanelCard,
-  SectionHeader,
   StateBadge,
 } from "@/app/cliente/painel/components/ui";
 
@@ -48,11 +52,27 @@ type AppointmentItem = {
   ownerName?: string | null;
 };
 
+const STATUS_OPTIONS = [
+  { value: "scheduled", label: "Marcado" },
+  { value: "confirmed", label: "Confirmado" },
+  { value: "completed", label: "Concluido" },
+  { value: "canceled", label: "Cancelado" },
+  { value: "no_show", label: "Nao compareceu" },
+] as const;
+
+const TYPE_OPTIONS = [
+  { value: "reuniao", label: "Reuniao" },
+  { value: "call", label: "Ligacao" },
+  { value: "demo", label: "Demonstracao" },
+  { value: "visita", label: "Visita" },
+] as const;
+
 function formatDateTime(value?: string | null) {
   if (!value) return "Sem horario";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("pt-BR", {
+    weekday: "short",
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -60,41 +80,69 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-function toStatusTone(status?: string) {
+function statusLabel(status?: string) {
+  return STATUS_OPTIONS.find((item) => item.value === status)?.label || "Marcado";
+}
+
+function typeLabel(type?: string) {
+  return TYPE_OPTIONS.find((item) => item.value === type)?.label || "Reuniao";
+}
+
+function statusTone(status?: string) {
   if (status === "completed") return "success" as const;
   if (status === "canceled" || status === "no_show") return "danger" as const;
   if (status === "confirmed") return "info" as const;
   return "warning" as const;
 }
 
+function isSameDay(value?: string | null) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const now = new Date();
+  return date.toDateString() === now.toDateString();
+}
+
+function isOpenAppointment(item: AppointmentItem) {
+  return item.status !== "completed" && item.status !== "canceled" && item.status !== "no_show";
+}
+
+function appointmentTime(item: AppointmentItem) {
+  return item.startAt ? new Date(item.startAt).getTime() : 0;
+}
+
+function makeDefaultStart() {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() + 60);
+  date.setSeconds(0, 0);
+  return date.toISOString().slice(0, 16);
+}
+
 export default function ClienteAgendaPage() {
   const { tenant, hasCapability } = useClienteTenant();
-  const { experienceMode } = useClienteShell();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const statusFromQuery = searchParams.get("status") || "all";
-  const ownerFromQuery = searchParams.get("owner") || "all";
+  const leadIdFromQuery = searchParams.get("leadId") || "";
+  const viewFromQuery = searchParams.get("view") || "today";
   const canOperate = hasCapability("edit_leads");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [items, setItems] = useState<AppointmentItem[]>([]);
   const [leads, setLeads] = useState<LeadItem[]>([]);
-  const [statusFilter, setStatusFilter] = useState(statusFromQuery || "all");
-  const [ownerFilter, setOwnerFilter] = useState(ownerFromQuery || "all");
+  const [view, setView] = useState(viewFromQuery);
+  const [search, setSearch] = useState("");
   const [form, setForm] = useState({
-    leadId: "",
+    leadId: leadIdFromQuery,
     title: "",
     type: "reuniao",
-    status: "scheduled",
-    startAt: "",
-    endAt: "",
+    startAt: makeDefaultStart(),
     location: "",
     meetingUrl: "",
     notes: "",
-    ownerUserId: "",
   });
 
   const loadData = useCallback(async () => {
@@ -113,6 +161,7 @@ export default function ClienteAgendaPage() {
         setError(appointmentsPayload.error || leadsPayload.error || "Falha ao carregar agenda.");
         return;
       }
+
       setItems(appointmentsPayload.items || []);
       setLeads(leadsPayload.items || []);
     } catch {
@@ -127,59 +176,76 @@ export default function ClienteAgendaPage() {
   }, [loadData]);
 
   useEffect(() => {
-    const next = new URLSearchParams();
-    if (statusFilter !== "all") next.set("status", statusFilter);
-    if (ownerFilter !== "all") next.set("owner", ownerFilter);
-    const nextQuery = next.toString();
-    const currentQuery = searchParams.toString();
-    if (nextQuery === currentQuery) return;
-    router.replace(nextQuery ? `/cliente/painel/agenda?${nextQuery}` : "/cliente/painel/agenda");
-  }, [ownerFilter, router, searchParams, statusFilter]);
+    const nextView = ["today", "next", "confirm", "done", "all"].includes(viewFromQuery) ? viewFromQuery : "today";
+    setView((current) => (current === nextView ? current : nextView));
+  }, [viewFromQuery]);
 
-  const summary = useMemo(() => {
-    const now = Date.now();
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    return {
-      total: items.length,
-      today: items.filter((item) => {
-        const date = item.startAt ? new Date(item.startAt).getTime() : 0;
-        return date > 0 && date <= today.getTime() && item.status !== "completed" && item.status !== "canceled";
-      }).length,
-      upcoming: items.filter((item) => {
-        const date = item.startAt ? new Date(item.startAt).getTime() : 0;
-        return date > now && item.status !== "completed" && item.status !== "canceled";
-      }).length,
-      completed: items.filter((item) => item.status === "completed").length,
-    };
+  useEffect(() => {
+    if (!leadIdFromQuery) return;
+    setForm((current) => (current.leadId === leadIdFromQuery ? current : { ...current, leadId: leadIdFromQuery }));
+  }, [leadIdFromQuery]);
+
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => appointmentTime(a) - appointmentTime(b));
   }, [items]);
 
+  const now = Date.now();
+  const nextSevenDays = now + 7 * 24 * 60 * 60 * 1000;
+
+  const summary = useMemo(() => {
+    const open = items.filter(isOpenAppointment);
+    return {
+      today: open.filter((item) => isSameDay(item.startAt)).length,
+      next: open.filter((item) => {
+        const time = appointmentTime(item);
+        return time > now && time <= nextSevenDays;
+      }).length,
+      confirm: open.filter((item) => item.status === "scheduled").length,
+      done: items.filter((item) => item.status === "completed").length,
+    };
+  }, [items, nextSevenDays, now]);
+
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      if (statusFilter !== "all" && item.status !== statusFilter) return false;
-      if (ownerFilter !== "all" && item.ownerUserId !== ownerFilter) return false;
+    const term = search.trim().toLowerCase();
+    return sortedItems.filter((item) => {
+      if (view === "today" && !isSameDay(item.startAt)) return false;
+      if (view === "next") {
+        const time = appointmentTime(item);
+        if (!isOpenAppointment(item) || time <= now || time > nextSevenDays) return false;
+      }
+      if (view === "confirm" && item.status !== "scheduled") return false;
+      if (view === "done" && item.status !== "completed") return false;
+      if (term) {
+        const haystack = `${item.title || ""} ${item.leadName || ""} ${item.leadCompany || ""} ${item.ownerName || ""} ${item.location || ""}`.toLowerCase();
+        if (!haystack.includes(term)) return false;
+      }
       return true;
     });
-  }, [items, ownerFilter, statusFilter]);
+  }, [nextSevenDays, now, search, sortedItems, view]);
 
   const ownerOptions = useMemo(() => {
     return Array.from(
       new Map(
-        [
-          ...items
-            .filter((item) => item.ownerUserId)
-            .map((item) => [String(item.ownerUserId), String(item.ownerName || "Sem responsavel")] as const),
-          ...leads
-            .filter((item) => item.ownerId)
-            .map((item) => [String(item.ownerId), String(item.owner || "Sem responsavel")] as const),
-        ]
+        leads
+          .filter((lead) => lead.ownerId)
+          .map((lead) => [String(lead.ownerId), String(lead.owner || "Responsavel")] as const)
       )
     ).map(([value, label]) => ({ value, label }));
-  }, [items, leads]);
+  }, [leads]);
+
+  const selectedLead = useMemo(() => leads.find((lead) => lead.id === form.leadId), [form.leadId, leads]);
+
+  function setViewAndUrl(nextView: string) {
+    setView(nextView);
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("view", nextView);
+    router.replace(`/cliente/painel/agenda?${next.toString()}`);
+  }
 
   async function createAppointment(event: FormEvent) {
     event.preventDefault();
     if (!tenant?.tenantId || !canOperate) return;
+
     try {
       setSaving(true);
       setError(null);
@@ -188,36 +254,38 @@ export default function ClienteAgendaPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...form,
           leadId: form.leadId || null,
-          endAt: form.endAt || null,
+          title: form.title.trim(),
+          type: form.type,
+          status: "scheduled",
+          startAt: form.startAt,
+          endAt: null,
           location: form.location || null,
           meetingUrl: form.meetingUrl || null,
           notes: form.notes || null,
-          ownerUserId: form.ownerUserId || null,
+          ownerUserId: selectedLead?.ownerId || null,
         }),
       });
       const payload = (await res.json().catch(() => ({}))) as { error?: string };
+
       if (!res.ok) {
-        setError(payload.error || "Falha ao criar agendamento.");
+        setError(payload.error || "Falha ao criar compromisso.");
         return;
       }
+
       setForm({
-        leadId: "",
+        leadId: leadIdFromQuery || "",
         title: "",
         type: "reuniao",
-        status: "scheduled",
-        startAt: "",
-        endAt: "",
+        startAt: makeDefaultStart(),
         location: "",
         meetingUrl: "",
         notes: "",
-        ownerUserId: "",
       });
-      setNotice("Agendamento criado.");
+      setNotice("Compromisso criado na agenda.");
       await loadData();
     } catch {
-      setError("Falha ao criar agendamento.");
+      setError("Falha ao criar compromisso.");
     } finally {
       setSaving(false);
     }
@@ -225,18 +293,26 @@ export default function ClienteAgendaPage() {
 
   async function updateStatus(appointmentId: string, status: string) {
     if (!tenant?.tenantId || !canOperate) return;
-    const res = await authedFetch(`/api/tenant/${tenant.tenantId}/appointments/${appointmentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    const payload = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) {
-      setError(payload.error || "Falha ao atualizar agendamento.");
-      return;
+    try {
+      setBusyId(appointmentId);
+      setError(null);
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/appointments/${appointmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao atualizar compromisso.");
+        return;
+      }
+      setNotice("Agenda atualizada.");
+      await loadData();
+    } catch {
+      setError("Falha ao atualizar compromisso.");
+    } finally {
+      setBusyId(null);
     }
-    setNotice("Agendamento atualizado.");
-    await loadData();
   }
 
   if (loading) {
@@ -248,189 +324,227 @@ export default function ClienteAgendaPage() {
   }
 
   return (
-    <div className="agenda-refined client-daily-page space-y-5">
-      <SectionHeader
-        title="Agenda"
-        subtitle="Reunioes, agendamentos e slots operacionais ligados aos leads do tenant."
-        action={<StateBadge label="Agenda comercial" tone="info" />}
-      />
-
-      {error ? <div className="agenda-notice agenda-notice-danger rounded-[24px] border px-4 py-3 text-sm">{error}</div> : null}
-      {notice ? <div className="agenda-notice agenda-notice-success rounded-[24px] border px-4 py-3 text-sm">{notice}</div> : null}
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Agendamentos" value={String(summary.total)} icon={CalendarClock} trend="historico do tenant" />
-        <MetricCard label="Hoje" value={String(summary.today)} icon={Clock3} trend="pedem acompanhamento" />
-        <MetricCard label="Proximos" value={String(summary.upcoming)} icon={Video} trend="janela futura" />
-        <MetricCard label="Concluidos" value={String(summary.completed)} icon={CheckCircle2} trend="ciclo fechado" />
+    <div className="agenda-refined client-daily-page space-y-6">
+      <section className="overflow-hidden rounded-[30px] border border-[color:color-mix(in_srgb,#2563eb_18%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,#eff6ff_86%,var(--cliente-card)),color-mix(in_srgb,#ecfdf5_68%,var(--cliente-panel-soft)))] p-5 shadow-[0_24px_70px_-48px_rgba(37,99,235,0.5)] md:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-5">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap gap-2">
+              <StateBadge label="Agenda" tone="info" />
+              <StateBadge label="Compromissos e reunioes" tone="success" />
+            </div>
+            <h1 className="mt-5 text-3xl font-black leading-tight tracking-[-0.03em] text-[var(--cliente-card-text)] md:text-5xl">
+              O que esta marcado, quem precisa confirmar e qual compromisso vem agora.
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)] md:text-base">
+              Uma agenda simples para o time saber onde entrar, quem atender e quando concluir cada compromisso.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/cliente/painel/follow-ups" className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
+              Ver retornos
+            </Link>
+            <Link href="/cliente/painel/crm" className="inline-flex items-center gap-2 rounded-[16px] bg-[#2563eb] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1d4ed8]">
+              Abrir clientes
+            </Link>
+          </div>
+        </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-        {experienceMode === "completo" ? (
-        <PanelCard className="agenda-surface-card agenda-form-card p-5 md:p-6">
-          <form onSubmit={createAppointment} className="space-y-3">
-            <CardTitle title="Novo agendamento" subtitle="Reuniao, call de fechamento ou atendimento operacional." />
-            <select
-              value={form.leadId}
-              onChange={(event) => {
-                const nextLeadId = event.target.value;
-                const lead = leads.find((item) => item.id === nextLeadId);
-                setForm((current) => ({
-                  ...current,
-                  leadId: nextLeadId,
-                  ownerUserId: current.ownerUserId || lead?.ownerId || "",
-                  title: current.title || (lead?.nome ? `Reuniao com ${lead.nome}` : current.title),
-                }));
-              }}
-              disabled={!canOperate}
-              className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none"
-            >
-              <option value="">Sem lead vinculado</option>
-              {leads.map((lead) => (
-                <option key={lead.id} value={lead.id}>
-                  {lead.nome || "Lead"} {lead.empresa ? `• ${lead.empresa}` : ""}
-                </option>
-              ))}
-            </select>
-            <input
-              value={form.title}
-              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-              disabled={!canOperate}
-              placeholder="Ex: Reuniao de fechamento"
-              className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none"
-            />
-            <div className="grid gap-3 md:grid-cols-3">
-              <select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
-                <option value="reuniao">reuniao</option>
-                <option value="call">call</option>
-                <option value="demo">demo</option>
-                <option value="visita">visita</option>
-              </select>
-              <select value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
-                <option value="scheduled">scheduled</option>
-                <option value="confirmed">confirmed</option>
-                <option value="completed">completed</option>
-                <option value="canceled">canceled</option>
-                <option value="no_show">no_show</option>
-              </select>
-              <select value={form.ownerUserId} onChange={(event) => setForm((current) => ({ ...current, ownerUserId: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
-                <option value="">Responsavel automatico</option>
-                {ownerOptions.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <input type="datetime-local" value={form.startAt} onChange={(event) => setForm((current) => ({ ...current, startAt: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
-              <input type="datetime-local" value={form.endAt} onChange={(event) => setForm((current) => ({ ...current, endAt: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
-            </div>
-            <input value={form.location} onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))} disabled={!canOperate} placeholder="Local ou sala" className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
-            <input value={form.meetingUrl} onChange={(event) => setForm((current) => ({ ...current, meetingUrl: event.target.value }))} disabled={!canOperate} placeholder="https://meet.google.com/..." className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
-            <textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} disabled={!canOperate} placeholder="Observacoes operacionais do encontro" rows={4} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
-            <button type="submit" disabled={!canOperate || saving || !form.title.trim() || !form.startAt} className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Salvar agendamento
-            </button>
-          </form>
-        </PanelCard>
-        ) : (
-          <PanelCard className="agenda-surface-card agenda-form-card p-5 md:p-6">
-            <CardTitle title="Criacao rapida" subtitle="Modo essencial ativo: formulario completo oculto para reduzir ruido." />
-            <p className="mt-3 text-sm text-[var(--cliente-card-text-soft)]">
-              Troque para modo completo no topo para criar agendamento com todos os campos.
-            </p>
-          </PanelCard>
-        )}
+      {error ? <div className="rounded-[22px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-100">{error}</div> : null}
+      {notice ? <div className="rounded-[22px] border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">{notice}</div> : null}
 
-        <PanelCard className="agenda-surface-card agenda-ops-card p-5 md:p-6">
-          <CardTitle title="Agenda operacional" subtitle="Acompanhamento por status e ownership." />
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
-              <option value="all">Todos os status</option>
-              <option value="scheduled">scheduled</option>
-              <option value="confirmed">confirmed</option>
-              <option value="completed">completed</option>
-              <option value="canceled">canceled</option>
-              <option value="no_show">no_show</option>
-            </select>
-            <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
-              <option value="all">Todos os responsaveis</option>
-              {ownerOptions.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Hoje" value={String(summary.today)} icon={CalendarDays} trend="compromissos do dia" tone="brand" />
+        <MetricCard label="Proximos 7 dias" value={String(summary.next)} icon={Clock3} trend="agenda futura" tone="neutral" />
+        <MetricCard label="Para confirmar" value={String(summary.confirm)} icon={CalendarClock} trend="ainda nao confirmado" tone={summary.confirm ? "warning" : "success"} />
+        <MetricCard label="Concluidos" value={String(summary.done)} icon={CheckCircle2} trend="reunioes finalizadas" tone="success" />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <PanelCard className="p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CardTitle title="Compromissos" subtitle="Escolha um recorte e execute a agenda." />
+            <label className="flex min-w-[240px] items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <Search className="h-4 w-4" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar cliente, empresa ou local"
+                className="w-full bg-transparent text-sm text-[var(--cliente-card-text)] outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+              />
+            </label>
           </div>
 
-          <div className="mt-4 space-y-3">
-            {filteredItems.length === 0 ? (
-              <EmptyState title="Nenhum agendamento neste recorte" description="Crie a primeira reuniao para ligar comercial, CRM e follow-up numa agenda real." />
-            ) : (
+          <div className="mt-4 grid gap-2 sm:grid-cols-5">
+            {[
+              { value: "today", label: "Hoje" },
+              { value: "next", label: "Proximos" },
+              { value: "confirm", label: "Confirmar" },
+              { value: "done", label: "Concluidos" },
+              { value: "all", label: "Todos" },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setViewAndUrl(option.value)}
+                className={`rounded-[16px] border px-3 py-2.5 text-sm font-bold transition ${
+                  view === option.value
+                    ? "border-[#2563eb] bg-[color:color-mix(in_srgb,#2563eb_11%,var(--cliente-card))] text-[#2563eb]"
+                    : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-hover)]"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {filteredItems.length ? (
               filteredItems.map((item) => (
-                <div key={item.id} className="agenda-entry-card rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 md:p-5">
+                <article key={item.id} className="rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:bg-[var(--cliente-surface-hover)]">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title || "Agendamento"}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                        {item.leadName || "Sem lead"} • {formatDateTime(item.startAt)}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-base font-black text-[var(--cliente-card-text)]">{item.title || typeLabel(item.type)}</p>
+                        <StateBadge label={statusLabel(item.status)} tone={statusTone(item.status)} />
+                      </div>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
+                        {formatDateTime(item.startAt)} {item.leadName ? `| ${item.leadName}` : ""}
                       </p>
                     </div>
-                    <StateBadge label={item.status || "scheduled"} tone={toStatusTone(item.status)} />
+                    <StateBadge label={typeLabel(item.type)} tone="info" />
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--cliente-card-text-soft)]">
-                    {item.ownerName ? <span>{item.ownerName}</span> : null}
-                    {item.type ? <span>• {item.type}</span> : null}
-                    {item.location ? <span>• {item.location}</span> : null}
+
+                  <div className="mt-3 grid gap-2 md:grid-cols-3">
+                    <InfoPill icon={UserRound} label={item.ownerName || "Sem responsavel"} />
+                    <InfoPill icon={MapPin} label={item.location || "Sem local definido"} />
+                    <InfoPill icon={Video} label={item.meetingUrl ? "Link de reuniao pronto" : "Sem link de reuniao"} />
                   </div>
-                  {item.notes ? <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">{item.notes}</p> : null}
-                  <div className="mt-3 flex flex-wrap gap-2">
+
+                  {item.notes ? <p className="mt-3 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{item.notes}</p> : null}
+
+                  <div className="mt-4 flex flex-wrap gap-2">
                     {item.leadId ? (
                       <>
-                        <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="agenda-action-pill rounded-full border px-3.5 py-2 text-xs font-medium transition">
-                          Abrir lead
+                        <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
+                          Abrir cliente
                         </Link>
-                        <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(item.leadId)}`} className="agenda-action-pill rounded-full border px-3.5 py-2 text-xs font-medium transition">
+                        <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(item.leadId)}`} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
                           Ver conversa
                         </Link>
                       </>
                     ) : null}
                     {item.meetingUrl ? (
-                      <a href={item.meetingUrl} target="_blank" rel="noreferrer" className="agenda-action-pill rounded-full border px-3.5 py-2 text-xs font-medium transition">
-                        Abrir reuniao
+                      <a href={item.meetingUrl} target="_blank" rel="noreferrer" className="rounded-xl border border-[#2563eb]/25 bg-[#2563eb]/10 px-3 py-2 text-xs font-bold text-[#2563eb] transition hover:bg-[#2563eb]/15">
+                        Entrar na reuniao
                       </a>
                     ) : null}
+                    {canOperate && item.status !== "completed" ? (
+                      <button type="button" onClick={() => void updateStatus(item.id, "completed")} disabled={busyId === item.id} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60">
+                        {busyId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                        Concluir
+                      </button>
+                    ) : null}
+                    {canOperate && item.status === "scheduled" ? (
+                      <button type="button" onClick={() => void updateStatus(item.id, "confirmed")} disabled={busyId === item.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)] disabled:opacity-60">
+                        Confirmar
+                      </button>
+                    ) : null}
+                    {canOperate && isOpenAppointment(item) ? (
+                      <button type="button" onClick={() => void updateStatus(item.id, "canceled")} disabled={busyId === item.id} className="inline-flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-600 transition hover:bg-red-500/15 disabled:opacity-60">
+                        <XCircle className="h-4 w-4" />
+                        Cancelar
+                      </button>
+                    ) : null}
                   </div>
-                  {canOperate ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {["scheduled", "confirmed", "completed", "canceled", "no_show"].map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          onClick={() => void updateStatus(item.id, status)}
-                          className={`agenda-status-button rounded-full border px-3.5 py-2 text-xs font-medium transition ${
-                            item.status === status
-                              ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)]/10 text-[var(--cliente-accent)]"
-                              : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)]"
-                          }`}
-                        >
-                          {status}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
+                </article>
               ))
+            ) : (
+              <EmptyState title="Nada neste recorte" description="Troque o filtro ou crie um compromisso para o cliente certo." />
             )}
           </div>
         </PanelCard>
+
+        <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+          <PanelCard tone="brand" className="p-5">
+            <form onSubmit={createAppointment} className="space-y-3">
+              <CardTitle title="Marcar compromisso" subtitle="Poucos campos, sem complicar a rotina." />
+              <select
+                value={form.leadId}
+                onChange={(event) => {
+                  const nextLeadId = event.target.value;
+                  const lead = leads.find((item) => item.id === nextLeadId);
+                  setForm((current) => ({
+                    ...current,
+                    leadId: nextLeadId,
+                    title: current.title || (lead?.nome ? `Reuniao com ${lead.nome}` : current.title),
+                  }));
+                }}
+                disabled={!canOperate}
+                className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none"
+              >
+                <option value="">Sem cliente vinculado</option>
+                {leads.map((lead) => (
+                  <option key={lead.id} value={lead.id}>
+                    {lead.nome || "Cliente"} {lead.empresa ? `- ${lead.empresa}` : ""}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={form.title}
+                onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                disabled={!canOperate}
+                placeholder="Ex: Reuniao de fechamento"
+                className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none"
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none">
+                  {TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <input type="datetime-local" value={form.startAt} onChange={(event) => setForm((current) => ({ ...current, startAt: event.target.value }))} disabled={!canOperate} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
+              </div>
+              <input value={form.location} onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))} disabled={!canOperate} placeholder="Local ou cidade" className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
+              <input value={form.meetingUrl} onChange={(event) => setForm((current) => ({ ...current, meetingUrl: event.target.value }))} disabled={!canOperate} placeholder="Link da reuniao, se tiver" className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
+              <textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} disabled={!canOperate} placeholder="O que precisa ser lembrado antes da conversa?" rows={4} className="client-input w-full rounded-2xl border px-3 py-2.5 text-sm outline-none" />
+              <ClientActionButton type="submit" tone="primary" disabled={!canOperate || saving || !form.title.trim() || !form.startAt} className="w-full justify-center">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Salvar na agenda
+              </ClientActionButton>
+            </form>
+          </PanelCard>
+
+          <PanelCard className="p-5">
+            <CardTitle title="Responsaveis" subtitle="Use para conferir quem esta cuidando dos clientes." />
+            <div className="mt-4 space-y-2">
+              {ownerOptions.length ? (
+                ownerOptions.slice(0, 6).map((owner) => (
+                  <div key={owner.value} className="flex items-center justify-between rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
+                    <span className="text-sm font-bold text-[var(--cliente-card-text)]">{owner.label}</span>
+                    <StateBadge label="time" tone="neutral" />
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-sm text-[var(--cliente-card-text-muted)]">
+                  Os responsaveis aparecem quando os clientes forem atribuidos no CRM.
+                </p>
+              )}
+            </div>
+          </PanelCard>
+        </aside>
       </section>
     </div>
   );
 }
 
-
-
-
+function InfoPill({ icon: Icon, label }: { icon: typeof UserRound; label: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)]">
+      <Icon className="h-4 w-4 text-[#2563eb]" />
+      <span className="truncate">{label}</span>
+    </div>
+  );
+}

@@ -5,19 +5,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
-  CalendarClock,
+  ArrowRight,
+  CalendarCheck,
   CheckCircle2,
+  Clock3,
   Loader2,
-  ListTodo,
+  MessageCircle,
   Search,
-  Sparkles,
+  Target,
+  UserRound,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
-import { CardTitle, EmptyState, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
-import { ClientOpportunitiesHeader } from "@/app/cliente/painel/components/client-opportunities-header";
-import { getBusinessProfile, getBusinessProfilePlaybookPreset, type BusinessProfileId } from "@/lib/business-profiles";
+import { CardTitle, EmptyState, MetricCard, PanelCard, StateBadge } from "@/app/cliente/painel/components/ui";
 import { getPipelineStageLabel } from "@/lib/pipeline";
 
 type FollowUpItem = {
@@ -26,12 +26,12 @@ type FollowUpItem = {
   title: string;
   type: string;
   priority: string;
+  dynamicPriority?: string;
   status: "pending" | "done";
   dueAt?: unknown;
-  createdAt?: unknown;
-  updatedAt?: unknown;
   overdue?: boolean;
   dueToday?: boolean;
+  silenceHours?: number;
   lead?: {
     id: string;
     nome: string;
@@ -53,32 +53,22 @@ type FollowUpsResponse = {
     overdue?: number;
     dueToday?: number;
     highPriority?: number;
+    dynamicUrgent?: number;
+    dynamicHigh?: number;
     proposal?: number;
   };
   items?: FollowUpItem[];
   error?: string;
 };
 
-type TenantSettingsResponse = {
-  settings?: {
-    businessProfileId?: BusinessProfileId | string;
-  };
-};
-
-type AiSignalLog = {
-  id: string;
-  leadId?: string;
-  chatId?: string;
-  decision?: "respond" | "ask_more" | "handoff" | "skip";
-  confidence?: number | null;
-  nextAction?: string | null;
-  extractedFields?: Record<string, string> | null;
-  createdAt?: unknown;
-};
+type ViewKey = "now" | "today" | "proposal" | "all" | "done";
 
 function toDate(value: unknown) {
   if (!value) return null;
-  if (typeof value === "number") return new Date(value);
+  if (typeof value === "string" || typeof value === "number") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
   if (
     typeof value === "object" &&
     value &&
@@ -98,10 +88,15 @@ function toDate(value: unknown) {
   return null;
 }
 
+function dateMillis(value: unknown) {
+  return toDate(value)?.getTime() || 0;
+}
+
 function formatDateTime(value: unknown) {
   const date = toDate(value);
-  if (!date) return "Sem data";
+  if (!date) return "Sem prazo";
   return date.toLocaleString("pt-BR", {
+    weekday: "short",
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -109,53 +104,73 @@ function formatDateTime(value: unknown) {
   });
 }
 
-function priorityTone(value?: string) {
-  const priority = String(value || "").toLowerCase();
+function typeLabel(value?: string) {
+  const type = String(value || "follow_up").toLowerCase();
+  if (type === "ligacao" || type === "call") return "Ligar";
+  if (type === "reuniao") return "Reuniao";
+  if (type === "proposta") return "Proposta";
+  if (type === "pendencia") return "Pendencia";
+  return "Retorno";
+}
+
+function priorityLabel(item: FollowUpItem) {
+  const priority = String(item.dynamicPriority || item.priority || "medium").toLowerCase();
+  if (priority === "urgent") return "Urgente";
+  if (priority === "high") return "Alta";
+  if (priority === "low") return "Baixa";
+  return "Media";
+}
+
+function priorityTone(item: FollowUpItem) {
+  const priority = String(item.dynamicPriority || item.priority || "medium").toLowerCase();
+  if (priority === "urgent") return "danger" as const;
   if (priority === "high") return "warning" as const;
   if (priority === "low") return "neutral" as const;
   return "info" as const;
 }
 
-function typeLabel(value?: string) {
-  const type = String(value || "follow_up").toLowerCase();
-  if (type === "ligacao") return "ligacao";
-  if (type === "reuniao") return "reuniao";
-  if (type === "proposta") return "proposta";
-  if (type === "pendencia") return "pendencia";
-  return "retorno";
+function dueTone(item: FollowUpItem) {
+  if (item.status === "done") return "success" as const;
+  if (item.overdue) return "danger" as const;
+  if (item.dueToday) return "warning" as const;
+  return "neutral" as const;
+}
+
+function dueLabel(item: FollowUpItem) {
+  if (item.status === "done") return "Concluido";
+  if (item.overdue) return "Atrasado";
+  if (item.dueToday) return "Hoje";
+  return formatDateTime(item.dueAt);
+}
+
+function isProposal(item: FollowUpItem) {
+  const type = String(item.type || "").toLowerCase();
+  const stage = String(item.lead?.pipelineStage || "").toLowerCase();
+  return type === "proposta" || stage.includes("proposta") || stage.includes("fechamento");
+}
+
+function isUrgent(item: FollowUpItem) {
+  const dynamic = String(item.dynamicPriority || "").toLowerCase();
+  return item.status === "pending" && (item.overdue || dynamic === "urgent" || dynamic === "high");
 }
 
 export default function ClienteFollowUpsPage() {
   const { tenant, hasCapability } = useClienteTenant();
-  const { experienceMode, setExperienceMode } = useClienteShell();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const searchFromQuery = searchParams.get("q") || "";
-  const statusFromQuery = searchParams.get("status") || "all";
-  const typeFromQuery = searchParams.get("type") || "all";
+  const canOperate = hasCapability("edit_leads");
+  const viewFromQuery = searchParams.get("view") || searchParams.get("status") || "now";
   const ownerFromQuery = searchParams.get("owner") || "all";
-  const priorityFromQuery = searchParams.get("priority") || "all";
+  const queryFromUrl = searchParams.get("q") || "";
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [data, setData] = useState<FollowUpsResponse>({});
-  const [search, setSearch] = useState(searchFromQuery);
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "done" | "overdue" | "today">(
-    statusFromQuery === "pending" ||
-      statusFromQuery === "done" ||
-      statusFromQuery === "overdue" ||
-      statusFromQuery === "today"
-      ? statusFromQuery
-      : "all"
-  );
-  const [typeFilter, setTypeFilter] = useState<"all" | string>(typeFromQuery);
-  const [ownerFilter, setOwnerFilter] = useState(ownerFromQuery || "all");
-  const [priorityFilter, setPriorityFilter] = useState(priorityFromQuery || "all");
+  const [view, setView] = useState<ViewKey>(normalizeView(viewFromQuery));
+  const [owner, setOwner] = useState(ownerFromQuery);
+  const [search, setSearch] = useState(queryFromUrl);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
-  const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
-  const [aiLogs, setAiLogs] = useState<AiSignalLog[]>([]);
-  const [showAdvancedDesk, setShowAdvancedDesk] = useState(false);
-  const canOperate = hasCapability("edit_leads");
-  const allowAdvanced = experienceMode === "completo";
 
   const loadData = useCallback(async () => {
     if (!tenant?.tenantId) return;
@@ -163,20 +178,15 @@ export default function ClienteFollowUpsPage() {
     try {
       setLoading(true);
       setError(null);
-      const [followUpsRes, settingsRes, aiLogsRes] = await Promise.all([
-        authedFetch(`/api/tenant/${tenant.tenantId}/follow-ups`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`),
-      ]);
-      const payload = (await followUpsRes.json()) as FollowUpsResponse;
-      const settingsPayload = (await settingsRes.json()) as TenantSettingsResponse;
-      const aiLogsPayload = (await aiLogsRes.json().catch(() => ({}))) as { items?: AiSignalLog[] };
-      if (!followUpsRes.ok) throw new Error(payload.error || "Falha ao carregar retornos.");
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/follow-ups`);
+      const payload = (await res.json()) as FollowUpsResponse;
+      if (!res.ok) {
+        setError(payload.error || "Falha ao carregar retornos.");
+        return;
+      }
       setData(payload);
-      setBusinessProfileId((settingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
-      setAiLogs(aiLogsRes.ok ? aiLogsPayload.items || [] : []);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Falha ao carregar retornos.");
+    } catch {
+      setError("Falha ao carregar retornos.");
     } finally {
       setLoading(false);
     }
@@ -187,161 +197,100 @@ export default function ClienteFollowUpsPage() {
   }, [loadData]);
 
   useEffect(() => {
-    if (searchFromQuery !== search) setSearch(searchFromQuery);
-    if (
-      statusFromQuery === "pending" ||
-      statusFromQuery === "done" ||
-      statusFromQuery === "overdue" ||
-      statusFromQuery === "today"
-    ) {
-      if (statusFromQuery !== statusFilter) setStatusFilter(statusFromQuery);
-    } else if (statusFilter !== "all") {
-      setStatusFilter("all");
-    }
-    if ((typeFromQuery || "all") !== typeFilter) setTypeFilter(typeFromQuery || "all");
-    if ((ownerFromQuery || "all") !== ownerFilter) setOwnerFilter(ownerFromQuery || "all");
-    if ((priorityFromQuery || "all") !== priorityFilter) setPriorityFilter(priorityFromQuery || "all");
-  }, [ownerFilter, ownerFromQuery, priorityFilter, priorityFromQuery, searchFromQuery, statusFromQuery, typeFromQuery, search, statusFilter, typeFilter]);
+    const nextView = normalizeView(viewFromQuery);
+    setView((current) => (current === nextView ? current : nextView));
+    setOwner((current) => (current === ownerFromQuery ? current : ownerFromQuery));
+    setSearch((current) => (current === queryFromUrl ? current : queryFromUrl));
+  }, [ownerFromQuery, queryFromUrl, viewFromQuery]);
 
   useEffect(() => {
     const next = new URLSearchParams();
+    if (view !== "now") next.set("view", view);
+    if (owner !== "all") next.set("owner", owner);
     if (search.trim()) next.set("q", search.trim());
-    if (statusFilter !== "all") next.set("status", statusFilter);
-    if (typeFilter !== "all") next.set("type", typeFilter);
-    if (ownerFilter !== "all") next.set("owner", ownerFilter);
-    if (priorityFilter !== "all") next.set("priority", priorityFilter);
-    const nextQuery = next.toString();
-    const currentQuery = searchParams.toString();
-    if (nextQuery === currentQuery) return;
-    router.replace(nextQuery ? `/cliente/painel/follow-ups?${nextQuery}` : "/cliente/painel/follow-ups");
-  }, [ownerFilter, priorityFilter, router, search, searchParams, statusFilter, typeFilter]);
+    const query = next.toString();
+    const current = searchParams.toString();
+    if (query === current) return;
+    router.replace(query ? `/cliente/painel/follow-ups?${query}` : "/cliente/painel/follow-ups");
+  }, [owner, router, search, searchParams, view]);
 
   const items = useMemo(() => data.items || [], [data.items]);
-  const summary = data.summary || {};
-  const businessProfile = useMemo(() => getBusinessProfile(businessProfileId), [businessProfileId]);
-  const playbookPreset = useMemo(() => getBusinessProfilePlaybookPreset(businessProfileId), [businessProfileId]);
+  const pendingItems = useMemo(() => items.filter((item) => item.status === "pending"), [items]);
+  const summary = useMemo(() => {
+    return {
+      pending: pendingItems.length,
+      overdue: pendingItems.filter((item) => item.overdue).length,
+      today: pendingItems.filter((item) => item.dueToday).length,
+      proposals: pendingItems.filter(isProposal).length,
+      done: items.filter((item) => item.status === "done").length,
+    };
+  }, [items, pendingItems]);
 
-  const filteredItems = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-    return items.filter((item) => {
-      if (statusFilter === "pending" && item.status !== "pending") return false;
-      if (statusFilter === "done" && item.status !== "done") return false;
-      if (statusFilter === "overdue" && !item.overdue) return false;
-      if (statusFilter === "today" && !item.dueToday) return false;
-      if (typeFilter !== "all" && item.type !== typeFilter) return false;
-      if (ownerFilter === "unassigned" && item.lead?.ownerId) return false;
-      if (ownerFilter !== "all" && ownerFilter !== "unassigned" && item.lead?.ownerId !== ownerFilter) return false;
-      if (priorityFilter !== "all" && String(item.priority || "").toLowerCase() !== priorityFilter) return false;
-      if (
-        normalizedSearch &&
-        !`${item.title} ${item.type} ${item.lead?.nome || ""} ${item.lead?.empresa || ""} ${item.lead?.owner || ""}`
-          .toLowerCase()
-          .includes(normalizedSearch)
-      ) {
-        return false;
-      }
-      return true;
-    });
-  }, [items, ownerFilter, priorityFilter, search, statusFilter, typeFilter]);
-
-  const typeOptions = useMemo(() => {
-    return Array.from(new Set(items.map((item) => item.type).filter(Boolean))).sort();
-  }, [items]);
   const ownerOptions = useMemo(() => {
     return Array.from(
       new Map(
         items
           .filter((item) => item.lead?.ownerId)
-          .map((item) => [String(item.lead?.ownerId), String(item.lead?.owner || "Sem responsavel")])
+          .map((item) => [String(item.lead?.ownerId), String(item.lead?.owner || "Responsavel")] as const)
       )
     ).map(([value, label]) => ({ value, label }));
   }, [items]);
+
   const ownerLoad = useMemo(() => {
     return Array.from(
-      items.reduce((acc, item) => {
-        const key = String(item.lead?.ownerId || "unassigned");
+      pendingItems.reduce((acc, item) => {
+        const key = item.lead?.ownerId || "unassigned";
         const current = acc.get(key) || {
           id: key,
-          name: String(item.lead?.owner || "Sem responsavel"),
+          name: item.lead?.owner || "Sem responsavel",
           total: 0,
-          overdue: 0,
-          high: 0,
+          late: 0,
         };
         current.total += 1;
-        if (item.overdue) current.overdue += 1;
-        if (String(item.priority || "").toLowerCase() === "high") current.high += 1;
+        if (item.overdue) current.late += 1;
         acc.set(key, current);
         return acc;
-      }, new Map<string, { id: string; name: string; total: number; overdue: number; high: number }>())
+      }, new Map<string, { id: string; name: string; total: number; late: number }>())
     )
       .map(([, value]) => value)
-      .sort((a, b) => b.total - a.total)
+      .sort((a, b) => b.late - a.late || b.total - a.total)
       .slice(0, 6);
-  }, [items]);
-  const nextWindow = useMemo(() => {
-    const now = Date.now();
-    const tomorrow = now + 48 * 60 * 60 * 1000;
+  }, [pendingItems]);
+
+  const filteredItems = useMemo(() => {
+    const term = search.trim().toLowerCase();
     return items.filter((item) => {
-      if (item.status !== "pending") return false;
-      const due = toDate(item.dueAt)?.getTime() || 0;
-      return due && due >= now && due <= tomorrow;
-    }).length;
-  }, [items]);
-  const recommendedMode = useMemo<"urgent" | "today" | "proposal">(() => {
-    if ((summary.overdue || 0) > 0 || (summary.highPriority || 0) > 0) return "urgent";
-    if ((summary.dueToday || 0) > 0) return "today";
-    return "proposal";
-  }, [summary.dueToday, summary.highPriority, summary.overdue]);
-  const recommendedModeLabel = useMemo(() => {
-    if (recommendedMode === "urgent") return "Resolver vencidos";
-    if (recommendedMode === "today") return "Executar agenda do dia";
-    return "Avancar propostas";
-  }, [recommendedMode]);
-  const recommendedModeTone = useMemo<"warning" | "info" | "success">(() => {
-    if (recommendedMode === "urgent") return "warning";
-    if (recommendedMode === "today") return "info";
-    return "success";
-  }, [recommendedMode]);
-  const deskAiSuggestions = useMemo(() => {
-    const activeLeadIds = new Set(items.filter((item) => item.status === "pending").map((item) => item.leadId).filter(Boolean));
-    return aiLogs
-      .filter((item) => item.leadId && activeLeadIds.has(item.leadId) && item.nextAction)
-      .slice(0, 4);
-  }, [aiLogs, items]);
+      if (view === "now" && !isUrgent(item)) return false;
+      if (view === "today" && !(item.status === "pending" && item.dueToday)) return false;
+      if (view === "proposal" && !(item.status === "pending" && isProposal(item))) return false;
+      if (view === "all" && item.status !== "pending") return false;
+      if (view === "done" && item.status !== "done") return false;
+      if (owner === "unassigned" && item.lead?.ownerId) return false;
+      if (owner !== "all" && owner !== "unassigned" && item.lead?.ownerId !== owner) return false;
+      if (term) {
+        const haystack = `${item.title} ${item.type} ${item.lead?.nome || ""} ${item.lead?.empresa || ""} ${item.lead?.owner || ""}`.toLowerCase();
+        if (!haystack.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [items, owner, search, view]);
 
-  useEffect(() => {
-    if (!allowAdvanced) {
-      setShowAdvancedDesk(false);
-    }
-  }, [allowAdvanced]);
-
-  function applySimpleScenario(mode: "urgent" | "today" | "proposal") {
-    setSearch("");
-    setOwnerFilter("all");
-    if (mode === "urgent") {
-      setStatusFilter("overdue");
-      setPriorityFilter("high");
-      setTypeFilter("all");
-      return;
-    }
-
-    if (mode === "proposal") {
-      setStatusFilter("pending");
-      setPriorityFilter("all");
-      setTypeFilter("proposta");
-      return;
-    }
-
-    setStatusFilter("today");
-    setPriorityFilter("all");
-    setTypeFilter("all");
-  }
+  const orderedItems = useMemo(() => {
+    return [...filteredItems].sort((a, b) => {
+      if (a.status !== b.status) return a.status === "done" ? 1 : -1;
+      if (Number(a.overdue) !== Number(b.overdue)) return Number(b.overdue) - Number(a.overdue);
+      if (Number(a.dueToday) !== Number(b.dueToday)) return Number(b.dueToday) - Number(a.dueToday);
+      return dateMillis(a.dueAt) - dateMillis(b.dueAt);
+    });
+  }, [filteredItems]);
 
   async function toggleTask(item: FollowUpItem) {
     if (!tenant?.tenantId || !item.leadId || !canOperate) return;
 
     try {
       setBusyTaskId(item.id);
+      setError(null);
+      setNotice(null);
       const nextStatus = item.status === "done" ? "pending" : "done";
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/${item.leadId}/tasks/${item.id}`, {
         method: "PATCH",
@@ -349,10 +298,14 @@ export default function ClienteFollowUpsPage() {
         body: JSON.stringify({ status: nextStatus }),
       });
       const payload = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(payload.error || "Falha ao atualizar retorno.");
+      if (!res.ok) {
+        setError(payload.error || "Falha ao atualizar retorno.");
+        return;
+      }
+      setNotice(nextStatus === "done" ? "Retorno concluido." : "Retorno reaberto.");
       await loadData();
-    } catch (taskError) {
-      setError(taskError instanceof Error ? taskError.message : "Falha ao atualizar retorno.");
+    } catch {
+      setError("Falha ao atualizar retorno.");
     } finally {
       setBusyTaskId(null);
     }
@@ -360,8 +313,8 @@ export default function ClienteFollowUpsPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[45vh] items-center justify-center text-[var(--cliente-card-text-soft)]">
-        <Loader2 className="h-5 w-5 animate-spin" />
+      <div className="flex min-h-[45vh] items-center justify-center">
+        <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
       </div>
     );
   }
@@ -369,14 +322,10 @@ export default function ClienteFollowUpsPage() {
   if (error) {
     return (
       <EmptyState
-        title="Falha ao carregar painel de retornos"
+        title="Falha ao carregar retornos"
         description={error}
         action={
-          <button
-            type="button"
-            onClick={() => void loadData()}
-            className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
-          >
+          <button type="button" onClick={() => void loadData()} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]">
             Tentar novamente
           </button>
         }
@@ -386,566 +335,240 @@ export default function ClienteFollowUpsPage() {
 
   return (
     <div className="followups-refined client-daily-page space-y-6">
-      <ClientOpportunitiesHeader activeView="agenda" />
-      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <PanelCard tone="spotlight" className="p-5 md:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-2xl">
-              <p className="inline-flex rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/84">
-                Proximas acoes
-              </p>
-              <h2 className="mt-4 text-[1.75rem] font-semibold tracking-[-0.045em] text-white md:text-[2.15rem]">
-                Organize retornos, compromissos e propostas em uma agenda comercial facil de operar.
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72">
-                Esta area existe para responder o que vence hoje, o que atrasou e o que pode virar avancos no funil.
-              </p>
+      <section className="overflow-hidden rounded-[30px] border border-[color:color-mix(in_srgb,#2563eb_18%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,#eff6ff_84%,var(--cliente-card)),color-mix(in_srgb,#f5f3ff_70%,var(--cliente-panel-soft)))] p-5 shadow-[0_24px_70px_-48px_rgba(37,99,235,0.5)] md:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-5">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap gap-2">
+              <StateBadge label="Follow-ups" tone="info" />
+              <StateBadge label="O que fazer agora" tone="warning" />
             </div>
-            <div className="grid min-w-[250px] gap-3 sm:grid-cols-2 xl:w-[320px]">
-              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Pendentes</p><p className="mt-2 text-base font-semibold text-white">{String(summary.pending || 0)}</p></div>
-              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Vencidos</p><p className="mt-2 text-base font-semibold text-white">{String(summary.overdue || 0)}</p></div>
-              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Para hoje</p><p className="mt-2 text-base font-semibold text-white">{String(summary.dueToday || 0)}</p></div>
-              <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Modo sugerido</p><p className="mt-2 text-base font-semibold text-white">{recommendedModeLabel}</p></div>
-            </div>
+            <h1 className="mt-5 text-3xl font-black leading-tight tracking-[-0.03em] text-[var(--cliente-card-text)] md:text-5xl">
+              Retornos claros para nao perder venda por falta de proximo passo.
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)] md:text-base">
+              Comece pelos atrasados, resolva o que vence hoje e acompanhe propostas sem linguagem tecnica.
+            </p>
           </div>
-        </PanelCard>
-
-        <PanelCard tone="brand" className="p-5">
-          <CardTitle title="Fluxo rapido" subtitle="Uma forma simples de operar sem se perder nos retornos." />
-          <div className="mt-4 grid gap-3">
-            <button type="button" onClick={() => applySimpleScenario("urgent")} className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 text-left shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)]">
-              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Resolver vencidos</p>
-              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Comece pelo que ja saiu do prazo.</p>
-            </button>
-            <button type="button" onClick={() => applySimpleScenario("today")} className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 text-left shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)]">
-              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Executar agenda do dia</p>
-              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Passe pelos retornos da janela atual.</p>
-            </button>
-            <button type="button" onClick={() => applySimpleScenario("proposal")} className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 text-left shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)]">
-              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Avancar propostas</p>
-              <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Feche follow-ups mais proximos de conversao.</p>
-            </button>
-          </div>
-        </PanelCard>
-      </section>
-      {allowAdvanced ? (
-        <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-          <PanelCard className="p-5 md:p-6">
-            <SectionHeader
-              title="Fluxo guiado"
-              subtitle="Se estiver em duvida, siga esse fluxo rapido para nao perder contato."
-              action={<StateBadge label="3 passos" tone="info" />}
-            />
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="followups-scenario-card rounded-2xl border border-rose-300/20 bg-rose-500/10 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-100/80">Passo 1</p>
-                <p className="mt-2 text-sm font-medium text-[var(--cliente-card-text)]">Resolver vencidos</p>
-                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Puxa imediatamente tudo que ja estourou prazo.</p>
-                <button
-                  type="button"
-                  onClick={() => applySimpleScenario("urgent")}
-                  className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-100 transition hover:bg-rose-500/20"
-                >
-                  Ver vencidos agora
-                </button>
-              </div>
-
-              <div className="followups-scenario-card rounded-2xl border border-amber-300/20 bg-amber-500/10 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-100/80">Passo 2</p>
-                <p className="mt-2 text-sm font-medium text-[var(--cliente-card-text)]">Executar agenda do dia</p>
-                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Trata os retornos pendentes antes de abrir novas frentes.</p>
-                <button
-                  type="button"
-                  onClick={() => applySimpleScenario("today")}
-                  className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition hover:bg-amber-500/20"
-                >
-                  Ver pendentes do dia
-                </button>
-              </div>
-
-              <div className="followups-scenario-card rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100/80">Passo 3</p>
-                <p className="mt-2 text-sm font-medium text-[var(--cliente-card-text)]">Avancar propostas</p>
-                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Foco em contatos que ja estao perto de fechar.</p>
-                <button
-                  type="button"
-                  onClick={() => applySimpleScenario("proposal")}
-                  className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-500/20"
-                >
-                  Ver propostas abertas
-                </button>
-              </div>
-            </div>
-            <div className="followups-recommended-card mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100/80">
-                    Modo recomendado agora
-                  </p>
-                  <p className="mt-1 text-sm text-[var(--cliente-card-text)]">{recommendedModeLabel}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => applySimpleScenario(recommendedMode)}
-                  className="rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-500/20"
-                >
-                  Aplicar modo recomendado
-                </button>
-              </div>
-            </div>
-          </PanelCard>
-
-          <PanelCard className="p-5 md:p-6">
-            <SectionHeader title="Configuracao rapida" subtitle="Como operar sem travar no excesso de informacao." />
-            <div className="space-y-3 text-sm text-[var(--cliente-card-text-muted)]">
-              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-                <p className="font-medium text-[var(--cliente-card-text)]">1. Defina quem responde cada fila</p>
-                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Sem responsavel claro, o retorno sempre estoura. Use a distribuicao no inbox.</p>
-              </div>
-              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-                <p className="font-medium text-[var(--cliente-card-text)]">2. Trabalhe por prioridade e prazo</p>
-                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Primeiro vencidos, depois hoje, depois propostas. Esse fluxo evita perda de contato.</p>
-              </div>
-              <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-                <p className="font-medium text-[var(--cliente-card-text)]">3. Feche ciclo no CRM</p>
-                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Toda interacao precisa atualizar etapa/nota para a IA aprender e priorizar melhor.</p>
-              </div>
-            </div>
-          </PanelCard>
-        </section>
-      ) : (
-        <section>
-          <PanelCard className="p-5 md:p-6">
-            <SectionHeader
-              title="Agenda essencial"
-              subtitle="Fluxo direto para operar sem ruido e sem desvio."
-              action={<StateBadge label={recommendedModeLabel} tone={recommendedModeTone} />}
-            />
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => applySimpleScenario("urgent")}
-                className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
-              >
-                Ver vencidos
-              </button>
-              <button
-                type="button"
-                onClick={() => applySimpleScenario("today")}
-                className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
-              >
-                Ver agenda de hoje
-              </button>
-              <button
-                type="button"
-                onClick={() => applySimpleScenario("proposal")}
-                className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
-              >
-                Ver propostas
-              </button>
-            </div>
-            <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-              <p className="text-sm text-[var(--cliente-card-text-muted)]">
-                Para calibrar playbook, regras e contexto avancado do painel, ative o modo completo.
-              </p>
-              <button
-                type="button"
-                onClick={() => setExperienceMode("completo")}
-                className="mt-3 rounded-xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-accent)] transition hover:brightness-95"
-              >
-                Abrir modo completo
-              </button>
-            </div>
-          </PanelCard>
-        </section>
-      )}
-
-      <section className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
-        <PanelCard className="p-5 md:p-6">
-          <SectionHeader
-            title="Painel de retornos"
-            subtitle="Proximos passos comerciais, tarefas vencidas e cadencia operacional do tenant."
-            action={<StateBadge label={`${summary.pending || 0} pendentes`} tone={(summary.pending || 0) > 0 ? "warning" : "success"} />}
-          />
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="Pendentes" value={String(summary.pending || 0)} icon={ListTodo} trend="tarefas abertas" />
-            <MetricCard label="Vencidos" value={String(summary.overdue || 0)} icon={AlertTriangle} trend="prioridade imediata" tone="warning" />
-            <MetricCard label="Hoje" value={String(summary.dueToday || 0)} icon={CalendarClock} trend="janela atual" tone="brand" />
-            <MetricCard label="Etapa proposta" value={String(summary.proposal || 0)} icon={Sparkles} trend="retorno comercial" tone="ai" />
-          </div>
-        </PanelCard>
-
-        <PanelCard className="p-5 md:p-6">
-          <SectionHeader title="Leitura executiva" subtitle="O que tratar primeiro para nao perder oportunidade." />
-          <div className="space-y-3">
-            <SignalCard title="Atencao imediata" detail={`${summary.overdue || 0} retorno(s) vencidos e ${summary.highPriority || 0} de alta prioridade.`} tone={(summary.overdue || 0) > 0 ? "danger" : "neutral"} />
-            <SignalCard title="Ritmo do dia" detail={`${summary.dueToday || 0} tarefa(s) vencem hoje e pedem revisao do painel.`} tone={(summary.dueToday || 0) > 0 ? "warning" : "neutral"} />
-            <SignalCard title="Backlog concluido" detail={`${summary.done || 0} retorno(s) ja foram fechados no periodo atual.`} tone={(summary.done || 0) > 0 ? "success" : "neutral"} />
-            <SignalCard title="Proximas 48h" detail={`${nextWindow} retorno(s) entram na janela critica das proximas 48 horas.`} tone={nextWindow > 0 ? "info" : "neutral"} />
-          </div>
-        </PanelCard>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <PanelCard className="p-5 md:p-6">
-          <SectionHeader
-            title="Modo operacional dos retornos"
-            subtitle="O painel comercial fica mais assertivo quando seguimos o contexto natural do negocio."
-            action={
-              <div className="flex items-center gap-2">
-                <StateBadge label={businessProfile.label} tone="info" />
-                {allowAdvanced ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvancedDesk((current) => !current)}
-                    className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1.5 text-xs text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
-                  >
-                    {showAdvancedDesk ? "Ocultar avancado" : "Mostrar avancado"}
-                  </button>
-                ) : null}
-              </div>
-            }
-          />
-          {allowAdvanced && showAdvancedDesk ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Movimento esperado</p>
-              <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{businessProfile.commercialMotion}</p>
-
-              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Metricas mais naturais</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {businessProfile.metrics.slice(0, 4).map((metric) => (
-                  <span key={metric} className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1 text-xs text-[var(--cliente-card-text-muted)]">
-                    {metric}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Campos para validar no contato</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {businessProfile.crm.leadFields.slice(0, 6).map((field) => (
-                  <span key={field} className="rounded-full border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] px-3 py-1 text-xs text-[var(--cliente-accent)]">
-                    {field}
-                  </span>
-                ))}
-              </div>
-
-              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Perguntas que nao podem faltar</p>
-              <div className="mt-2 space-y-2">
-                {businessProfile.ai.mandatoryQuestions.slice(0, 3).map((question) => (
-                  <div key={question} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text-muted)]">
-                    {question}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          ) : (
-            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-              <p className="text-sm text-[var(--cliente-card-text-muted)]">
-                O modo avancado fica escondido para manter a operacao simples no dia a dia.
-                {allowAdvanced
-                  ? " Quando precisar calibrar playbook, campos e narrativa comercial, clique em Mostrar avancado."
-                  : " Ative o modo completo no topo para liberar calibracoes detalhadas."}
-              </p>
-            </div>
-          )}
-        </PanelCard>
-
-        {allowAdvanced ? (
-        <PanelCard className="p-5 md:p-6">
-          <SectionHeader title="Playbook sugerido" subtitle="Atalhos para retomar negociacao sem perder a narrativa comercial." />
-          <div className="space-y-3">
-            {playbookPreset.offers.slice(0, 2).map((offer) => (
-              <div key={`${offer.title}-${offer.category}`} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-[var(--cliente-card-text)]">{offer.title}</p>
-                  <StateBadge label={offer.category} tone="info" />
-                </div>
-                <p className="mt-2 text-xs text-[var(--cliente-card-text-muted)]">
-                  Entrar quando: {offer.whenToOffer}
-                </p>
-                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                  Faixa sugerida: R$ {offer.priceFrom.toLocaleString("pt-BR")} a R$ {offer.priceTo.toLocaleString("pt-BR")}
-                </p>
-              </div>
-            ))}
-
-            <div className="rounded-2xl border border-amber-300/14 bg-amber-500/10 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-100/70">Cena de retorno</p>
-              <p className="mt-2 text-sm text-amber-50">
-                {playbookPreset.scripts[0]?.situation || "Sem script sugerido para este perfil."}
-              </p>
-              <p className="mt-1 text-xs leading-6 text-amber-100/72">
-                {playbookPreset.scripts[0]?.script || "Quando o time calibrar mais o playbook, essa area passa a refletir o melhor caminho de retomada."}
-              </p>
-            </div>
-          </div>
-        </PanelCard>
-        ) : null}
-      </section>
-
-      {allowAdvanced && deskAiSuggestions.length ? (
-        <section>
-          <PanelCard className="p-5 md:p-6">
-            <SectionHeader
-              title="Sugestoes da IA para o painel"
-              subtitle="Ultimos proximos passos detectados pela IA para contatos que seguem em retorno."
-              action={<StateBadge label={`${deskAiSuggestions.length} sinais`} tone="info" />}
-            />
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {deskAiSuggestions.map((log) => {
-                const relatedItem = items.find((item) => item.leadId === log.leadId);
-                return (
-                  <div key={log.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-                    <p className="text-sm font-medium text-[var(--cliente-card-text)]">{relatedItem?.lead?.nome || "Contato"}</p>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{log.nextAction}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {Object.entries(log.extractedFields || {}).slice(0, 3).map(([field, value]) => (
-                        <span key={`${log.id}_${field}`} className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1 text-xs text-[var(--cliente-card-text-muted)]">
-                          {field}: {value}
-                        </span>
-                      ))}
-                    </div>
-                    {relatedItem?.leadId ? (
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                        <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(relatedItem.leadId)}`} className="text-[var(--cliente-accent)] hover:text-[var(--cliente-accent)]">
-                          CRM
-                        </Link>
-                        <Link href={`/cliente/painel/comercial?leadId=${encodeURIComponent(relatedItem.leadId)}`} className="text-[var(--cliente-accent)] hover:text-[var(--cliente-accent)]">
-                          Comercial
-                        </Link>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </PanelCard>
-        </section>
-      ) : null}
-
-      <section className="grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
-      <PanelCard className="p-5 md:p-6">
-        <SectionHeader title="Fila ativa" subtitle="Filtre por status, tipo e caia no modulo certo sem perder contexto." />
-
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <label className="xl:col-span-2 flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
-            <Search className="h-4 w-4" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar contato, empresa, responsavel ou tarefa"
-              className="w-full bg-transparent text-sm text-[var(--cliente-card-text)] outline-none placeholder:text-[var(--cliente-card-text-soft)]"
-            />
-          </label>
-
-          <FilterSelect
-            label="Status"
-            value={statusFilter}
-            options={[
-              { value: "all", label: "Todos" },
-              { value: "pending", label: "Pendentes" },
-              { value: "today", label: "Vencem hoje" },
-              { value: "overdue", label: "Vencidos" },
-              { value: "done", label: "Concluidos" },
-            ]}
-            onChange={(value) => setStatusFilter(value as "all" | "pending" | "done" | "overdue" | "today")}
-          />
-          <FilterSelect
-            label="Tipo"
-            value={typeFilter}
-            options={[{ value: "all", label: "Todos" }, ...typeOptions.map((item) => ({ value: item, label: typeLabel(item) }))]}
-            onChange={(value) => setTypeFilter(value)}
-          />
-          <FilterSelect
-            label="Responsavel"
-            value={ownerFilter}
-            options={[{ value: "all", label: "Todos" }, { value: "unassigned", label: "Sem responsavel" }, ...ownerOptions]}
-            onChange={(value) => setOwnerFilter(value)}
-          />
-          <FilterSelect
-            label="Prioridade"
-            value={priorityFilter}
-            options={[
-              { value: "all", label: "Todas" },
-              { value: "high", label: "Alta" },
-              { value: "medium", label: "Media" },
-              { value: "low", label: "Baixa" },
-            ]}
-            onChange={(value) => setPriorityFilter(value)}
-          />
-          <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-3">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Acao rapida</p>
-            <Link href="/cliente/painel/crm" className="mt-1 inline-flex text-sm text-[var(--cliente-accent)] hover:text-[var(--cliente-accent)]">
-              Criar retorno no CRM
+          <div className="flex flex-wrap gap-2">
+            <Link href="/cliente/painel/agenda" className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
+              Ver compromissos
+            </Link>
+            <Link href="/cliente/painel/crm" className="inline-flex items-center gap-2 rounded-[16px] bg-[#2563eb] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1d4ed8]">
+              Abrir clientes
             </Link>
           </div>
         </div>
+      </section>
 
-        <div className="mt-4 space-y-3">
-          {filteredItems.length ? (
-            filteredItems.map((item) => (
-              <article key={item.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
-                      <StateBadge label={typeLabel(item.type)} tone="info" />
-                      <StateBadge label={item.status === "done" ? "concluido" : item.overdue ? "vencido" : "pendente"} tone={item.status === "done" ? "success" : item.overdue ? "danger" : "warning"} />
-                      <StateBadge label={String(item.priority || "medium")} tone={priorityTone(item.priority)} />
+      {notice ? <div className="rounded-[22px] border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">{notice}</div> : null}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Fazer agora" value={String(summary.overdue)} icon={AlertTriangle} trend="atrasados" tone={summary.overdue ? "danger" : "success"} />
+        <MetricCard label="Hoje" value={String(summary.today)} icon={CalendarCheck} trend="vencem no dia" tone="brand" />
+        <MetricCard label="Propostas" value={String(summary.proposals)} icon={Target} trend="perto de venda" tone="warning" />
+        <MetricCard label="Pendentes" value={String(summary.pending)} icon={Clock3} trend="fila aberta" tone="neutral" />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <PanelCard className="p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CardTitle title="Lista de retornos" subtitle="Filtre pelo momento e conclua o que ja foi resolvido." />
+            <label className="flex min-w-[260px] items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
+              <Search className="h-4 w-4" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar cliente, empresa ou responsavel"
+                className="w-full bg-transparent text-sm text-[var(--cliente-card-text)] outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-5">
+            {[
+              { value: "now", label: "Agora" },
+              { value: "today", label: "Hoje" },
+              { value: "proposal", label: "Propostas" },
+              { value: "all", label: "Pendentes" },
+              { value: "done", label: "Concluidos" },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setView(option.value as ViewKey)}
+                className={`rounded-[16px] border px-3 py-2.5 text-sm font-bold transition ${
+                  view === option.value
+                    ? "border-[#2563eb] bg-[color:color-mix(in_srgb,#2563eb_11%,var(--cliente-card))] text-[#2563eb]"
+                    : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-hover)]"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+            <select value={owner} onChange={(event) => setOwner(event.target.value)} className="client-input rounded-2xl border px-3 py-2.5 text-sm outline-none">
+              <option value="all">Todos os responsaveis</option>
+              <option value="unassigned">Sem responsavel</option>
+              {ownerOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <Link href="/cliente/painel/crm" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
+              Criar retorno no CRM
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {orderedItems.length ? (
+              orderedItems.map((item) => (
+                <article key={item.id} className="rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:bg-[var(--cliente-surface-hover)]">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-base font-black text-[var(--cliente-card-text)]">{item.title || "Retorno"}</p>
+                        <StateBadge label={typeLabel(item.type)} tone="info" />
+                        <StateBadge label={dueLabel(item)} tone={dueTone(item)} />
+                        <StateBadge label={priorityLabel(item)} tone={priorityTone(item)} />
+                      </div>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
+                        {item.lead?.nome || "Cliente"} {item.lead?.empresa ? `| ${item.lead.empresa}` : ""}
+                      </p>
                     </div>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                      {item.lead?.nome || "Contato"} {item.lead?.empresa ? `| ${item.lead.empresa}` : ""} {item.lead?.owner ? `| ${item.lead.owner}` : ""}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => void toggleTask(item)}
                       disabled={busyTaskId === item.id || !canOperate}
-                      className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+                      className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        item.status === "done"
+                          ? "border border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text)] hover:bg-[var(--cliente-surface-hover)]"
+                          : "bg-emerald-600 text-white hover:bg-emerald-700"
+                      }`}
                     >
                       {busyTaskId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                       {!canOperate ? "Somente leitura" : item.status === "done" ? "Reabrir" : "Concluir"}
                     </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 md:grid-cols-3">
+                    <InfoPill icon={Clock3} label={formatDateTime(item.dueAt)} />
+                    <InfoPill icon={UserRound} label={item.lead?.owner || "Sem responsavel"} />
+                    <InfoPill icon={Target} label={getPipelineStageLabel(item.lead?.pipelineStage || "captado")} />
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
                     {item.leadId ? (
                       <>
-                        <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]">
-                          CRM
+                        <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
+                          Abrir cliente
                         </Link>
-                        <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]">
-                          Inbox
-                        </Link>
-                        <Link href={`/cliente/painel/comercial?leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]">
-                          Comercial
+                        <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
+                          <MessageCircle className="h-4 w-4" />
+                          Conversa
                         </Link>
                       </>
                     ) : null}
                   </div>
-                </div>
-
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
-                  <InfoTile label="Prazo" value={item.dueAt ? formatDateTime(item.dueAt) : "Sem prazo"} />
-                  <InfoTile label="Etapa" value={getPipelineStageLabel(item.lead?.pipelineStage || "captado")} />
-                  <InfoTile label="Temperatura" value={String(item.lead?.heat || "morno")} />
-                </div>
-              </article>
-            ))
-          ) : (
-            <EmptyState title="Nenhum retorno encontrado" description="Ajuste os filtros ou crie novas tarefas a partir do CRM e do inbox." />
-          )}
-        </div>
-      </PanelCard>
-
-      <div className="space-y-4">
-        <PanelCard className="p-5">
-          <SectionHeader title="Carga por responsavel" subtitle="Quem esta carregando o painel comercial." />
-          <div className="space-y-3">
-            {ownerLoad.length ? (
-              ownerLoad.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setOwnerFilter(item.id)}
-                  className="w-full rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 text-left transition hover:bg-[var(--cliente-surface-muted)]"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.name}</p>
-                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                        {item.overdue} vencido(s) | {item.high} alta prioridade
-                      </p>
-                    </div>
-                    <StateBadge label={String(item.total)} tone={item.overdue > 0 ? "warning" : "info"} />
-                  </div>
-                </button>
+                </article>
               ))
             ) : (
-              <EmptyState title="Sem responsaveis mapeados" description="Os retornos atribuidos passam a aparecer aqui." />
+              <EmptyState title="Nenhum retorno aqui" description="Troque o filtro ou crie um retorno dentro do cliente no CRM." />
             )}
           </div>
         </PanelCard>
 
-        <PanelCard className="p-5">
-          <SectionHeader title="Playbook rapido" subtitle="Atalhos para fechar pendencias sem perder contexto." />
-          <div className="space-y-3">
-            <QuickLink href="/cliente/painel/inbox?queue=awaiting_reply" title="Cobrar resposta" description="Abrir conversas aguardando retorno para puxar o retorno no canal certo." />
-            <QuickLink href="/cliente/painel/comercial?budgetStatus=sent" title="Propostas em aberto" description="Tratar retornos na etapa mais quente do funil comercial." />
-            <QuickLink href="/cliente/painel/crm?priority=high" title="Contatos prioritarios" description="Cruzar retorno com contexto completo do contato antes da abordagem." />
-          </div>
-        </PanelCard>
-      </div>
+        <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+          <PanelCard tone="warning" className="p-5">
+            <CardTitle title="Como usar" subtitle="A rotina fica simples quando segue esta ordem." />
+            <div className="mt-4 space-y-2">
+              <PlanStep number="1" title="Resolva atrasados" detail="Evita perder clientes que ja esperam resposta." onClick={() => setView("now")} />
+              <PlanStep number="2" title="Passe pelo dia" detail="Veja tudo que precisa acontecer hoje." onClick={() => setView("today")} />
+              <PlanStep number="3" title="Cuide das propostas" detail="Priorize contatos mais perto de venda." onClick={() => setView("proposal")} />
+            </div>
+          </PanelCard>
+
+          <PanelCard className="p-5">
+            <CardTitle title="Por responsavel" subtitle="Quem tem retorno aberto agora." />
+            <div className="mt-4 space-y-2">
+              {ownerLoad.length ? (
+                ownerLoad.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setOwner(item.id)}
+                    className="w-full rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-left transition hover:bg-[var(--cliente-surface-hover)]"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-[var(--cliente-card-text)]">{item.name}</p>
+                        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.late} atrasado(s)</p>
+                      </div>
+                      <StateBadge label={String(item.total)} tone={item.late ? "warning" : "info"} />
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <p className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-sm text-[var(--cliente-card-text-muted)]">
+                  Sem retornos pendentes por responsavel.
+                </p>
+              )}
+            </div>
+          </PanelCard>
+
+          <PanelCard className="p-5">
+            <CardTitle title="Atalhos" subtitle="Ir direto para onde resolve." />
+            <div className="mt-4 grid gap-2">
+              <Shortcut href="/cliente/painel/agenda" icon={CalendarCheck} label="Compromissos marcados" />
+              <Shortcut href="/cliente/painel/inbox" icon={MessageCircle} label="Conversas abertas" />
+              <Shortcut href="/cliente/painel/crm" icon={UserRound} label="Clientes e oportunidades" />
+            </div>
+          </PanelCard>
+        </aside>
       </section>
     </div>
   );
 }
 
-function SignalCard({ title, detail, tone }: { title: string; detail: string; tone: "neutral" | "success" | "warning" | "danger" | "info" }) {
+function normalizeView(value: string): ViewKey {
+  if (value === "today") return "today";
+  if (value === "proposal") return "proposal";
+  if (value === "all" || value === "pending") return "all";
+  if (value === "done") return "done";
+  return "now";
+}
+
+function InfoPill({ icon: Icon, label }: { icon: typeof Search; label: string }) {
   return (
-    <div className="followups-signal-card rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-[var(--cliente-card-text)]">{title}</p>
-          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
-        </div>
-        <StateBadge label="painel" tone={tone} />
+    <div className="flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)]">
+      <Icon className="h-4 w-4 text-[#2563eb]" />
+      <span className="truncate">{label}</span>
+    </div>
+  );
+}
+
+function PlanStep({ number, title, detail, onClick }: { number: string; title: string; detail: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="w-full rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3 text-left transition hover:-translate-y-0.5 hover:bg-[var(--cliente-surface-hover)]">
+      <div className="flex gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[14px] bg-[#2563eb] text-xs font-black text-white">{number}</span>
+        <span>
+          <span className="block text-sm font-black text-[var(--cliente-card-text)]">{title}</span>
+          <span className="mt-1 block text-xs leading-5 text-[var(--cliente-card-text-muted)]">{detail}</span>
+        </span>
       </div>
-    </div>
+    </button>
   );
 }
 
-function InfoTile({ label, value }: { label: string; value: string }) {
+function Shortcut({ href, icon: Icon, label }: { href: string; icon: typeof Search; label: string }) {
   return (
-    <div className="followups-info-tile rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">{label}</p>
-      <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{value}</p>
-    </div>
-  );
-}
-
-function FilterSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: Array<{ value: string; label: string }>;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="followups-filter rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text-soft)]">
-      <span className="block uppercase tracking-[0.16em]">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full bg-transparent text-sm text-[var(--cliente-card-text)] outline-none"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value} className="bg-[var(--cliente-surface)] text-[var(--cliente-card-text)]">
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function QuickLink({ href, title, description }: { href: string; title: string; description: string }) {
-  return (
-    <Link
-      href={href}
-      className="followups-quick-link block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-muted)]"
-    >
-      <p className="text-sm font-medium text-[var(--cliente-card-text)]">{title}</p>
-      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{description}</p>
+    <Link href={href} className="flex items-center gap-3 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
+      <Icon className="h-4 w-4 text-[#2563eb]" />
+      {label}
     </Link>
   );
 }
-

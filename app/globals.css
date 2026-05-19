@@ -7,13 +7,13 @@
 
 [data-client-theme="dark"] {
   --cliente-font-family: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, Roboto, sans-serif;
-  --cliente-bg: #0b1220;
-  --cliente-bg-elevated: #111b2f;
-  --cliente-panel: rgba(10, 18, 32, 0.92);
-  --cliente-panel-solid: #101a2c;
-  --cliente-panel-soft: rgba(17, 27, 47, 0.94);
-  --cliente-surface: #101a2c;
-  --cliente-card: rgba(15, 23, 42, 0.97);
+  --cliente-bg: #07111f;
+  --cliente-bg-elevated: #0d1b31;
+  --cliente-panel: rgba(8, 18, 34, 0.92);
+  --cliente-panel-solid: #0e1c31;
+  --cliente-panel-soft: rgba(15, 28, 49, 0.94);
+  --cliente-surface: #0e1c31;
+  --cliente-card: rgba(13, 24, 43, 0.97);
   --cliente-card-text: #f8fafc;
   --cliente-card-text-muted: rgba(226, 232, 240, 0.92);
   --cliente-card-text-soft: rgba(148, 163, 184, 0.92);
@@ -21,14 +21,14 @@
   --cliente-sidebar-card: rgba(15, 23, 42, 0.96);
   --cliente-topbar: rgba(8, 15, 29, 0.84);
   --cliente-border: rgba(148, 163, 184, 0.18);
-  --cliente-border-strong: rgba(249, 115, 22, 0.36);
+  --cliente-border-strong: rgba(37, 99, 235, 0.34);
   --cliente-text: #f8fafc;
   --cliente-text-muted: rgba(226, 232, 240, 0.94);
   --cliente-text-soft: rgba(148, 163, 184, 0.92);
-  --cliente-primary: #f97316;
-  --cliente-primary-hover: #ea580c;
-  --cliente-primary-soft: rgba(249, 115, 22, 0.16);
-  --cliente-primary-glow: rgba(249, 115, 22, 0.18);
+  --cliente-primary: #2563eb;
+  --cliente-primary-hover: #1d4ed8;
+  --cliente-primary-soft: rgba(37, 99, 235, 0.16);
+  --cliente-primary-glow: rgba(37, 99, 235, 0.18);
   --cliente-success: #22c55e;
   --cliente-success-soft: rgba(34, 197, 94, 0.14);
   --cliente-ai: #8b5cf6;
@@ -38,6 +38,15 @@
   --cliente-warning-soft: rgba(245, 158, 11, 0.14);
   --cliente-danger: #ef4444;
   --cliente-danger-soft: rgba(239, 68, 68, 0.14);
+  --cliente-whatsapp: #25d366;
+  --cliente-whatsapp-soft: rgba(37, 211, 102, 0.14);
+  --cliente-meta: #0866ff;
+  --cliente-meta-soft: rgba(8, 102, 255, 0.13);
+  --cliente-google: #4285f4;
+  --cliente-google-soft: rgba(66, 133, 244, 0.13);
+  --cliente-instagram-soft: rgba(225, 48, 108, 0.14);
+  --cliente-commerce: #00a86b;
+  --cliente-commerce-soft: rgba(0, 168, 107, 0.13);
   --cliente-accent: var(--cliente-primary);
   --cliente-accent-strong: var(--cliente-primary-hover);
   --cliente-accent-soft: var(--cliente-primary-soft);
@@ -55,9 +64,9 @@
 
 [data-client-theme="light"] {
   --cliente-font-family: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, Roboto, sans-serif;
-  --cliente-bg: #f6f8fb;
-  --cliente-bg-elevated: #eef3f9;
-  --cliente-panel: rgba(246, 248, 251, 0.92);
+  --cliente-bg: #f5f8fc;
+  --cliente-bg-elevated: #edf4ff;
+  --cliente-panel: rgba(245, 248, 252, 0.92);
   --cliente-panel-solid: #ffffff;
   --cliente-panel-soft: rgba(248, 250, 252, 0.98);
   --cliente-surface: #ffffff;
@@ -69,14 +78,14 @@
   --cliente-sidebar-card: rgba(255, 255, 255, 0.98);
   --cliente-topbar: rgba(248, 250, 252, 0.88);
   --cliente-border: #e5e7eb;
-  --cliente-border-strong: rgba(249, 115, 22, 0.3);
+  --cliente-border-strong: rgba(37, 99, 235, 0.28);
   --cliente-text: #0f172a;
   --cliente-text-muted: #334155;
   --cliente-text-soft: #64748b;
-  --cliente-primary: #f97316;
-  --cliente-primary-hover: #ea580c;
-  --cliente-primary-soft: rgba(249, 115, 22, 0.12);
-  --cliente-primary-glow: rgba(249, 115, 22, 0.12);
+  --cliente-primary: #2563eb;
+  --cliente-primary-hover: #1d4ed8;
+  --cliente-primary-soft: rgba(37, 99, 235, 0.11);
+  --cliente-primary-glow: rgba(37, 99, 235, 0.12);
   --cliente-success: #16a34a;
   --cliente-success-soft: rgba(22, 163, 74, 0.12);
   --cliente-ai: #7c3aed;
@@ -86,6 +95,15 @@
   --cliente-warning-soft: rgba(217, 119, 6, 0.12);
   --cliente-danger: #ef4444;
   --cliente-danger-soft: rgba(239, 68, 68, 0.12);
+  --cliente-whatsapp: #16a34a;
+  --cliente-whatsapp-soft: rgba(22, 163, 74, 0.12);
+  --cliente-meta: #0866ff;
+  --cliente-meta-soft: rgba(8, 102, 255, 0.1);
+  --cliente-google: #4285f4;
+  --cliente-google-soft: rgba(66, 133, 244, 0.1);
+  --cliente-instagram-soft: rgba(225, 48, 108, 0.11);
+  --cliente-commerce: #059669;
+  --cliente-commerce-soft: rgba(5, 150, 105, 0.11);
   --cliente-accent: var(--cliente-primary);
   --cliente-accent-strong: var(--cliente-primary-hover);
   --cliente-accent-soft: var(--cliente-primary-soft);
@@ -369,15 +387,15 @@ body {
 }
 
 [data-client-area="daily"] {
-  --cliente-accent-glow: rgba(249, 115, 22, 0.12);
-  --cliente-accent-secondary-glow: rgba(124, 58, 237, 0.035);
+  --cliente-accent-glow: rgba(37, 99, 235, 0.12);
+  --cliente-accent-secondary-glow: rgba(124, 58, 237, 0.045);
   --cliente-shadow-soft: 0 6px 18px rgba(2, 6, 23, 0.16);
   --cliente-shadow-hard: 0 18px 38px rgba(2, 6, 23, 0.24);
 }
 
 [data-client-theme="light"] [data-client-area="daily"] {
-  --cliente-accent-glow: rgba(249, 115, 22, 0.1);
-  --cliente-accent-secondary-glow: rgba(124, 58, 237, 0.045);
+  --cliente-accent-glow: rgba(37, 99, 235, 0.1);
+  --cliente-accent-secondary-glow: rgba(124, 58, 237, 0.05);
   --cliente-shadow-soft: 0 10px 24px rgba(15, 23, 42, 0.06);
   --cliente-shadow-hard: 0 22px 48px rgba(15, 23, 42, 0.1);
 }
@@ -1040,6 +1058,50 @@ body {
   border-color: color-mix(in srgb, var(--cliente-border) 88%, transparent);
   background: color-mix(in srgb, var(--cliente-panel-soft) 96%, white 4%);
   color: var(--cliente-card-text-muted);
+}
+
+.ia-product-page {
+  --ia-readable-label: var(--cliente-card-text);
+}
+
+.ia-product-page label {
+  font-size: 0.92rem;
+  line-height: 1.35;
+  font-weight: 650;
+  color: var(--ia-readable-label);
+}
+
+.ia-product-page .client-input,
+.ia-product-page input,
+.ia-product-page select,
+.ia-product-page textarea {
+  font-size: 0.95rem;
+}
+
+.ia-product-page .client-input {
+  min-height: 46px;
+  border-radius: 16px;
+}
+
+.ia-product-page textarea.client-input {
+  line-height: 1.65;
+  min-height: 112px;
+}
+
+.ia-product-page .client-card-title-text {
+  font-size: 0.84rem;
+  letter-spacing: 0.06em;
+  color: var(--cliente-card-text);
+}
+
+.ia-product-page .client-card-title p {
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.ia-product-page .client-state-badge {
+  font-size: 0.76rem;
+  padding: 0.38rem 0.7rem;
 }
 
 .knowledge-refined .knowledge-danger-button {
