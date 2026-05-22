@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
@@ -10,14 +9,29 @@ import {
   CheckCircle2,
   Clock3,
   Loader2,
-  MessageCircle,
+  MessageSquareText,
+  RefreshCw,
   Search,
-  Target,
-  UserRound,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { CardTitle, EmptyState, MetricCard, PanelCard, StateBadge } from "@/app/cliente/painel/components/ui";
+import {
+  CrmAvatar,
+  CrmBadge,
+  CrmButton,
+  CrmEmpty,
+  CrmHero,
+  CrmInput,
+  CrmLinkButton,
+  CrmMetric,
+  CrmNotice,
+  CrmPanel,
+  CrmSectionTitle,
+  CrmSelect,
+  CrmWorkspace,
+  formatCrmDate,
+  toCrmDate,
+} from "@/app/cliente/painel/components/crm-workspace";
 import { getPipelineStageLabel } from "@/lib/pipeline";
 
 type FollowUpItem = {
@@ -54,7 +68,6 @@ type FollowUpsResponse = {
     dueToday?: number;
     highPriority?: number;
     dynamicUrgent?: number;
-    dynamicHigh?: number;
     proposal?: number;
   };
   items?: FollowUpItem[];
@@ -63,512 +76,230 @@ type FollowUpsResponse = {
 
 type ViewKey = "now" | "today" | "proposal" | "all" | "done";
 
-function toDate(value: unknown) {
-  if (!value) return null;
-  if (typeof value === "string" || typeof value === "number") {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-  if (
-    typeof value === "object" &&
-    value &&
-    "toDate" in value &&
-    typeof (value as { toDate?: () => Date }).toDate === "function"
-  ) {
-    return (value as { toDate: () => Date }).toDate();
-  }
-  if (
-    typeof value === "object" &&
-    value &&
-    "_seconds" in value &&
-    typeof (value as { _seconds?: number })._seconds === "number"
-  ) {
-    return new Date((value as { _seconds: number })._seconds * 1000);
-  }
-  return null;
-}
+const views: Array<{ id: ViewKey; label: string }> = [
+  { id: "now", label: "Prioridade" },
+  { id: "today", label: "Hoje" },
+  { id: "proposal", label: "Propostas" },
+  { id: "all", label: "Pendentes" },
+  { id: "done", label: "Concluidos" },
+];
 
-function dateMillis(value: unknown) {
-  return toDate(value)?.getTime() || 0;
-}
-
-function formatDateTime(value: unknown) {
-  const date = toDate(value);
-  if (!date) return "Sem prazo";
-  return date.toLocaleString("pt-BR", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function typeLabel(value?: string) {
-  const type = String(value || "follow_up").toLowerCase();
-  if (type === "ligacao" || type === "call") return "Ligar";
-  if (type === "reuniao") return "Reuniao";
-  if (type === "proposta") return "Proposta";
-  if (type === "pendencia") return "Pendencia";
-  return "Retorno";
-}
-
-function priorityLabel(item: FollowUpItem) {
-  const priority = String(item.dynamicPriority || item.priority || "medium").toLowerCase();
-  if (priority === "urgent") return "Urgente";
-  if (priority === "high") return "Alta";
-  if (priority === "low") return "Baixa";
-  return "Media";
-}
-
-function priorityTone(item: FollowUpItem) {
-  const priority = String(item.dynamicPriority || item.priority || "medium").toLowerCase();
-  if (priority === "urgent") return "danger" as const;
-  if (priority === "high") return "warning" as const;
-  if (priority === "low") return "neutral" as const;
-  return "info" as const;
-}
-
-function dueTone(item: FollowUpItem) {
-  if (item.status === "done") return "success" as const;
-  if (item.overdue) return "danger" as const;
-  if (item.dueToday) return "warning" as const;
-  return "neutral" as const;
-}
-
-function dueLabel(item: FollowUpItem) {
-  if (item.status === "done") return "Concluido";
-  if (item.overdue) return "Atrasado";
-  if (item.dueToday) return "Hoje";
-  return formatDateTime(item.dueAt);
+function millis(value: unknown) {
+  return toCrmDate(value)?.getTime() || 0;
 }
 
 function isProposal(item: FollowUpItem) {
-  const type = String(item.type || "").toLowerCase();
-  const stage = String(item.lead?.pipelineStage || "").toLowerCase();
-  return type === "proposta" || stage.includes("proposta") || stage.includes("fechamento");
+  return `${item.title} ${item.type}`.toLowerCase().includes("proposta");
 }
 
 function isUrgent(item: FollowUpItem) {
-  const dynamic = String(item.dynamicPriority || "").toLowerCase();
-  return item.status === "pending" && (item.overdue || dynamic === "urgent" || dynamic === "high");
+  const priority = String(item.dynamicPriority || item.priority || "").toLowerCase();
+  return item.status === "pending" && (item.overdue || item.dueToday || priority === "urgent" || priority === "high" || isProposal(item));
+}
+
+function priorityTone(item: FollowUpItem) {
+  const priority = String(item.dynamicPriority || item.priority || "").toLowerCase();
+  if (item.overdue || priority === "urgent") return "red" as const;
+  if (item.dueToday || priority === "high") return "orange" as const;
+  if (priority === "low") return "neutral" as const;
+  return "blue" as const;
 }
 
 export default function ClienteFollowUpsPage() {
   const { tenant, hasCapability } = useClienteTenant();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const canOperate = hasCapability("edit_leads");
-  const viewFromQuery = searchParams.get("view") || searchParams.get("status") || "now";
-  const ownerFromQuery = searchParams.get("owner") || "all";
-  const queryFromUrl = searchParams.get("q") || "";
 
+  const [items, setItems] = useState<FollowUpItem[]>([]);
+  const [summary, setSummary] = useState<FollowUpsResponse["summary"]>({});
+  const [view, setView] = useState<ViewKey>("now");
+  const [search, setSearch] = useState("");
+  const [owner, setOwner] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [data, setData] = useState<FollowUpsResponse>({});
-  const [view, setView] = useState<ViewKey>(normalizeView(viewFromQuery));
-  const [owner, setOwner] = useState(ownerFromQuery);
-  const [search, setSearch] = useState(queryFromUrl);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!tenant?.tenantId) return;
-
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/follow-ups`);
       const payload = (await res.json()) as FollowUpsResponse;
-      if (!res.ok) {
-        setError(payload.error || "Falha ao carregar retornos.");
-        return;
-      }
-      setData(payload);
-    } catch {
-      setError("Falha ao carregar retornos.");
+      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao carregar retornos.");
+      setItems(payload.items || []);
+      setSummary(payload.summary || {});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao carregar retornos.");
     } finally {
       setLoading(false);
     }
   }, [tenant?.tenantId]);
 
   useEffect(() => {
-    void loadData();
+    loadData();
   }, [loadData]);
 
-  useEffect(() => {
-    const nextView = normalizeView(viewFromQuery);
-    setView((current) => (current === nextView ? current : nextView));
-    setOwner((current) => (current === ownerFromQuery ? current : ownerFromQuery));
-    setSearch((current) => (current === queryFromUrl ? current : queryFromUrl));
-  }, [ownerFromQuery, queryFromUrl, viewFromQuery]);
-
-  useEffect(() => {
-    const next = new URLSearchParams();
-    if (view !== "now") next.set("view", view);
-    if (owner !== "all") next.set("owner", owner);
-    if (search.trim()) next.set("q", search.trim());
-    const query = next.toString();
-    const current = searchParams.toString();
-    if (query === current) return;
-    router.replace(query ? `/cliente/painel/follow-ups?${query}` : "/cliente/painel/follow-ups");
-  }, [owner, router, search, searchParams, view]);
-
-  const items = useMemo(() => data.items || [], [data.items]);
-  const pendingItems = useMemo(() => items.filter((item) => item.status === "pending"), [items]);
-  const summary = useMemo(() => {
-    return {
-      pending: pendingItems.length,
-      overdue: pendingItems.filter((item) => item.overdue).length,
-      today: pendingItems.filter((item) => item.dueToday).length,
-      proposals: pendingItems.filter(isProposal).length,
-      done: items.filter((item) => item.status === "done").length,
-    };
-  }, [items, pendingItems]);
-
-  const ownerOptions = useMemo(() => {
-    return Array.from(
-      new Map(
-        items
-          .filter((item) => item.lead?.ownerId)
-          .map((item) => [String(item.lead?.ownerId), String(item.lead?.owner || "Responsavel")] as const)
-      )
-    ).map(([value, label]) => ({ value, label }));
+  const owners = useMemo(() => {
+    const map = new Map<string, string>();
+    items.forEach((item) => {
+      if (item.lead?.ownerId) map.set(item.lead.ownerId, item.lead.owner || "Responsavel");
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [items]);
-
-  const ownerLoad = useMemo(() => {
-    return Array.from(
-      pendingItems.reduce((acc, item) => {
-        const key = item.lead?.ownerId || "unassigned";
-        const current = acc.get(key) || {
-          id: key,
-          name: item.lead?.owner || "Sem responsavel",
-          total: 0,
-          late: 0,
-        };
-        current.total += 1;
-        if (item.overdue) current.late += 1;
-        acc.set(key, current);
-        return acc;
-      }, new Map<string, { id: string; name: string; total: number; late: number }>())
-    )
-      .map(([, value]) => value)
-      .sort((a, b) => b.late - a.late || b.total - a.total)
-      .slice(0, 6);
-  }, [pendingItems]);
 
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return items.filter((item) => {
-      if (view === "now" && !isUrgent(item)) return false;
-      if (view === "today" && !(item.status === "pending" && item.dueToday)) return false;
-      if (view === "proposal" && !(item.status === "pending" && isProposal(item))) return false;
-      if (view === "all" && item.status !== "pending") return false;
-      if (view === "done" && item.status !== "done") return false;
-      if (owner === "unassigned" && item.lead?.ownerId) return false;
-      if (owner !== "all" && owner !== "unassigned" && item.lead?.ownerId !== owner) return false;
-      if (term) {
-        const haystack = `${item.title} ${item.type} ${item.lead?.nome || ""} ${item.lead?.empresa || ""} ${item.lead?.owner || ""}`.toLowerCase();
-        if (!haystack.includes(term)) return false;
-      }
-      return true;
-    });
+    return items
+      .filter((item) => {
+        if (view === "now" && !isUrgent(item)) return false;
+        if (view === "today" && !(item.status === "pending" && item.dueToday)) return false;
+        if (view === "proposal" && !(item.status === "pending" && isProposal(item))) return false;
+        if (view === "all" && item.status !== "pending") return false;
+        if (view === "done" && item.status !== "done") return false;
+        if (owner === "unassigned" && item.lead?.ownerId) return false;
+        if (owner !== "all" && owner !== "unassigned" && item.lead?.ownerId !== owner) return false;
+        if (!term) return true;
+        return `${item.title} ${item.type} ${item.lead?.nome || ""} ${item.lead?.empresa || ""} ${item.lead?.owner || ""}`.toLowerCase().includes(term);
+      })
+      .sort((a, b) => {
+        if (a.status !== b.status) return a.status === "done" ? 1 : -1;
+        if (Number(a.overdue) !== Number(b.overdue)) return Number(b.overdue) - Number(a.overdue);
+        if (Number(a.dueToday) !== Number(b.dueToday)) return Number(b.dueToday) - Number(a.dueToday);
+        return millis(a.dueAt) - millis(b.dueAt);
+      });
   }, [items, owner, search, view]);
-
-  const orderedItems = useMemo(() => {
-    return [...filteredItems].sort((a, b) => {
-      if (a.status !== b.status) return a.status === "done" ? 1 : -1;
-      if (Number(a.overdue) !== Number(b.overdue)) return Number(b.overdue) - Number(a.overdue);
-      if (Number(a.dueToday) !== Number(b.dueToday)) return Number(b.dueToday) - Number(a.dueToday);
-      return dateMillis(a.dueAt) - dateMillis(b.dueAt);
-    });
-  }, [filteredItems]);
 
   async function toggleTask(item: FollowUpItem) {
     if (!tenant?.tenantId || !item.leadId || !canOperate) return;
-
+    setBusyTaskId(item.id);
+    setError(null);
+    setNotice(null);
+    const nextStatus = item.status === "done" ? "pending" : "done";
     try {
-      setBusyTaskId(item.id);
-      setError(null);
-      setNotice(null);
-      const nextStatus = item.status === "done" ? "pending" : "done";
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/${item.leadId}/tasks/${item.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: nextStatus }),
       });
-      const payload = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        setError(payload.error || "Falha ao atualizar retorno.");
-        return;
-      }
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao atualizar retorno.");
       setNotice(nextStatus === "done" ? "Retorno concluido." : "Retorno reaberto.");
       await loadData();
-    } catch {
-      setError("Falha ao atualizar retorno.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao atualizar retorno.");
     } finally {
       setBusyTaskId(null);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[45vh] items-center justify-center">
-        <Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-accent)]" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <EmptyState
-        title="Falha ao carregar retornos"
-        description={error}
-        action={
-          <button type="button" onClick={() => void loadData()} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]">
-            Tentar novamente
-          </button>
-        }
-      />
-    );
-  }
-
   return (
-    <div className="followups-refined client-daily-page space-y-6">
-      <section className="overflow-hidden rounded-[30px] border border-[color:color-mix(in_srgb,#2563eb_18%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,#eff6ff_84%,var(--cliente-card)),color-mix(in_srgb,#f5f3ff_70%,var(--cliente-panel-soft)))] p-5 shadow-[0_24px_70px_-48px_rgba(37,99,235,0.5)] md:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap gap-2">
-              <StateBadge label="Follow-ups" tone="info" />
-              <StateBadge label="O que fazer agora" tone="warning" />
-            </div>
-            <h1 className="mt-5 text-3xl font-black leading-tight tracking-[-0.03em] text-[var(--cliente-card-text)] md:text-5xl">
-              Retornos claros para nao perder venda por falta de proximo passo.
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)] md:text-base">
-              Comece pelos atrasados, resolva o que vence hoje e acompanhe propostas sem linguagem tecnica.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/cliente/painel/agenda" className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
-              Ver compromissos
-            </Link>
-            <Link href="/cliente/painel/crm" className="inline-flex items-center gap-2 rounded-[16px] bg-[#2563eb] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1d4ed8]">
-              Abrir clientes
-            </Link>
-          </div>
+    <CrmWorkspace>
+      <CrmHero
+        active="Atividades"
+        title="Proximas acoes do CRM, sem perder venda no caminho."
+        description="A mesa de atividades mostra atrasos, retornos de hoje e propostas que precisam de cuidado comercial."
+        assistantTitle="Fila inteligente"
+        assistantSubtitle="Retornos em ordem"
+        assistantText="A Altum organiza atrasos, retornos de hoje e propostas para o time executar sem procurar tarefa em varias telas."
+        action={
+          <>
+            <CrmButton type="button" onClick={loadData}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Atualizar
+            </CrmButton>
+            <CrmLinkButton href="/cliente/painel/agenda" tone="primary">
+              Agenda
+              <ArrowRight className="h-4 w-4" />
+            </CrmLinkButton>
+          </>
+        }
+      >
+        <div className="grid gap-3 md:grid-cols-4">
+          <CrmMetric label="Pendentes" value={String(summary?.pending ?? 0)} detail="retornos abertos" icon={Clock3} tone="blue" />
+          <CrmMetric label="Vencidos" value={String(summary?.overdue ?? 0)} detail="precisam resposta" icon={AlertTriangle} tone={(summary?.overdue || 0) > 0 ? "red" : "neutral"} />
+          <CrmMetric label="Hoje" value={String(summary?.dueToday ?? 0)} detail="na agenda do time" icon={CalendarCheck} tone="orange" />
+          <CrmMetric label="Propostas" value={String(summary?.proposal ?? 0)} detail="com chance comercial" icon={MessageSquareText} tone="purple" />
         </div>
-      </section>
+      </CrmHero>
 
-      {notice ? <div className="rounded-[22px] border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">{notice}</div> : null}
+      {error ? <CrmNotice tone="red">{error}</CrmNotice> : null}
+      {notice ? <CrmNotice tone="green">{notice}</CrmNotice> : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Fazer agora" value={String(summary.overdue)} icon={AlertTriangle} trend="atrasados" tone={summary.overdue ? "danger" : "success"} />
-        <MetricCard label="Hoje" value={String(summary.today)} icon={CalendarCheck} trend="vencem no dia" tone="brand" />
-        <MetricCard label="Propostas" value={String(summary.proposals)} icon={Target} trend="perto de venda" tone="warning" />
-        <MetricCard label="Pendentes" value={String(summary.pending)} icon={Clock3} trend="fila aberta" tone="neutral" />
-      </section>
+      <CrmPanel padded={false} className="overflow-hidden">
+        <div className="border-b border-[var(--cliente-border)] p-5">
+          <CrmSectionTitle
+            eyebrow="Atividades"
+            title="Fila de trabalho"
+            description="Tudo que precisa ser feito para responder, vender e acompanhar clientes."
+            action={!canOperate ? <CrmBadge tone="orange">somente leitura</CrmBadge> : null}
+          />
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <PanelCard className="p-5 md:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <CardTitle title="Lista de retornos" subtitle="Filtre pelo momento e conclua o que ja foi resolvido." />
-            <label className="flex min-w-[260px] items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
-              <Search className="h-4 w-4" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar cliente, empresa ou responsavel"
-                className="w-full bg-transparent text-sm text-[var(--cliente-card-text)] outline-none placeholder:text-[var(--cliente-card-text-soft)]"
-              />
-            </label>
+          <div className="mt-5 flex flex-col gap-3 lg:flex-row">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--cliente-card-text-muted)]" />
+              <CrmInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contato, empresa, responsavel..." className="w-full pl-9" />
+            </div>
+            <CrmSelect value={owner} onChange={(event) => setOwner(event.target.value)} className="lg:w-[220px]">
+              <option value="all">Todos responsaveis</option>
+              <option value="unassigned">Sem responsavel</option>
+              {owners.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </CrmSelect>
           </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-5">
-            {[
-              { value: "now", label: "Agora" },
-              { value: "today", label: "Hoje" },
-              { value: "proposal", label: "Propostas" },
-              { value: "all", label: "Pendentes" },
-              { value: "done", label: "Concluidos" },
-            ].map((option) => (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {views.map((item) => (
               <button
-                key={option.value}
+                key={item.id}
                 type="button"
-                onClick={() => setView(option.value as ViewKey)}
-                className={`rounded-[16px] border px-3 py-2.5 text-sm font-bold transition ${
-                  view === option.value
-                    ? "border-[#2563eb] bg-[color:color-mix(in_srgb,#2563eb_11%,var(--cliente-card))] text-[#2563eb]"
-                    : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-hover)]"
-                }`}
+                onClick={() => setView(item.id)}
+                className={`rounded-full border px-3 py-2 text-xs font-black transition ${view === item.id ? "border-[var(--cliente-primary)] bg-[var(--cliente-primary)] text-white" : "border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)]"}`}
               >
-                {option.label}
+                {item.label}
               </button>
             ))}
           </div>
+        </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
-            <select value={owner} onChange={(event) => setOwner(event.target.value)} className="client-input rounded-2xl border px-3 py-2.5 text-sm outline-none">
-              <option value="all">Todos os responsaveis</option>
-              <option value="unassigned">Sem responsavel</option>
-              {ownerOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <Link href="/cliente/painel/crm" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
-              Criar retorno no CRM
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
+        <div className="divide-y divide-[var(--cliente-border)]">
+          {loading ? <div className="p-5"><CrmEmpty title="Carregando atividades" /></div> : null}
+          {!loading && filteredItems.length === 0 ? <div className="p-5"><CrmEmpty title="Nenhuma atividade neste recorte" description="Altere os filtros ou volte para a visao de prioridade." /></div> : null}
+          {filteredItems.map((item) => (
+            <article key={item.id} className="grid gap-4 px-5 py-4 transition hover:bg-[var(--cliente-surface-muted)] lg:grid-cols-[minmax(0,1fr)_180px_170px_140px] lg:items-center">
+              <div className="min-w-0">
+                <CrmAvatar name={item.lead?.nome || "Contato"} subtitle={item.lead?.empresa || item.lead?.telefone || "Sem empresa"} />
+                <p className="mt-3 text-sm font-black text-[var(--cliente-card-text)]">{item.title || "Retorno comercial"}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <CrmBadge tone={priorityTone(item)}>{item.overdue ? "vencido" : item.dueToday ? "hoje" : "retorno"}</CrmBadge>
+                  {item.lead?.pipelineStage ? <CrmBadge tone="blue">{getPipelineStageLabel(item.lead.pipelineStage)}</CrmBadge> : null}
+                  {item.lead?.owner ? <CrmBadge>{item.lead.owner}</CrmBadge> : null}
+                </div>
+              </div>
 
-          <div className="mt-5 space-y-3">
-            {orderedItems.length ? (
-              orderedItems.map((item) => (
-                <article key={item.id} className="rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:bg-[var(--cliente-surface-hover)]">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-base font-black text-[var(--cliente-card-text)]">{item.title || "Retorno"}</p>
-                        <StateBadge label={typeLabel(item.type)} tone="info" />
-                        <StateBadge label={dueLabel(item)} tone={dueTone(item)} />
-                        <StateBadge label={priorityLabel(item)} tone={priorityTone(item)} />
-                      </div>
-                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
-                        {item.lead?.nome || "Cliente"} {item.lead?.empresa ? `| ${item.lead.empresa}` : ""}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void toggleTask(item)}
-                      disabled={busyTaskId === item.id || !canOperate}
-                      className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                        item.status === "done"
-                          ? "border border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text)] hover:bg-[var(--cliente-surface-hover)]"
-                          : "bg-emerald-600 text-white hover:bg-emerald-700"
-                      }`}
-                    >
-                      {busyTaskId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                      {!canOperate ? "Somente leitura" : item.status === "done" ? "Reabrir" : "Concluir"}
-                    </button>
-                  </div>
+              <div>
+                <p className="text-[11px] font-black uppercase text-[var(--cliente-card-text-soft)]">Prazo</p>
+                <p className="mt-1 text-sm font-bold text-[var(--cliente-card-text)]">{formatCrmDate(item.dueAt, "Sem prazo")}</p>
+              </div>
 
-                  <div className="mt-3 grid gap-2 md:grid-cols-3">
-                    <InfoPill icon={Clock3} label={formatDateTime(item.dueAt)} />
-                    <InfoPill icon={UserRound} label={item.lead?.owner || "Sem responsavel"} />
-                    <InfoPill icon={Target} label={getPipelineStageLabel(item.lead?.pipelineStage || "captado")} />
-                  </div>
+              <div className="flex flex-wrap gap-2">
+                <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
+                  Ficha
+                </Link>
+                <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
+                  Conversa
+                </Link>
+              </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {item.leadId ? (
-                      <>
-                        <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
-                          Abrir cliente
-                        </Link>
-                        <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
-                          <MessageCircle className="h-4 w-4" />
-                          Conversa
-                        </Link>
-                      </>
-                    ) : null}
-                  </div>
-                </article>
-              ))
-            ) : (
-              <EmptyState title="Nenhum retorno aqui" description="Troque o filtro ou crie um retorno dentro do cliente no CRM." />
-            )}
-          </div>
-        </PanelCard>
-
-        <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-          <PanelCard tone="warning" className="p-5">
-            <CardTitle title="Como usar" subtitle="A rotina fica simples quando segue esta ordem." />
-            <div className="mt-4 space-y-2">
-              <PlanStep number="1" title="Resolva atrasados" detail="Evita perder clientes que ja esperam resposta." onClick={() => setView("now")} />
-              <PlanStep number="2" title="Passe pelo dia" detail="Veja tudo que precisa acontecer hoje." onClick={() => setView("today")} />
-              <PlanStep number="3" title="Cuide das propostas" detail="Priorize contatos mais perto de venda." onClick={() => setView("proposal")} />
-            </div>
-          </PanelCard>
-
-          <PanelCard className="p-5">
-            <CardTitle title="Por responsavel" subtitle="Quem tem retorno aberto agora." />
-            <div className="mt-4 space-y-2">
-              {ownerLoad.length ? (
-                ownerLoad.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setOwner(item.id)}
-                    className="w-full rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-left transition hover:bg-[var(--cliente-surface-hover)]"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-black text-[var(--cliente-card-text)]">{item.name}</p>
-                        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.late} atrasado(s)</p>
-                      </div>
-                      <StateBadge label={String(item.total)} tone={item.late ? "warning" : "info"} />
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <p className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-sm text-[var(--cliente-card-text-muted)]">
-                  Sem retornos pendentes por responsavel.
-                </p>
-              )}
-            </div>
-          </PanelCard>
-
-          <PanelCard className="p-5">
-            <CardTitle title="Atalhos" subtitle="Ir direto para onde resolve." />
-            <div className="mt-4 grid gap-2">
-              <Shortcut href="/cliente/painel/agenda" icon={CalendarCheck} label="Compromissos marcados" />
-              <Shortcut href="/cliente/painel/inbox" icon={MessageCircle} label="Conversas abertas" />
-              <Shortcut href="/cliente/painel/crm" icon={UserRound} label="Clientes e oportunidades" />
-            </div>
-          </PanelCard>
-        </aside>
-      </section>
-    </div>
-  );
-}
-
-function normalizeView(value: string): ViewKey {
-  if (value === "today") return "today";
-  if (value === "proposal") return "proposal";
-  if (value === "all" || value === "pending") return "all";
-  if (value === "done") return "done";
-  return "now";
-}
-
-function InfoPill({ icon: Icon, label }: { icon: typeof Search; label: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)]">
-      <Icon className="h-4 w-4 text-[#2563eb]" />
-      <span className="truncate">{label}</span>
-    </div>
-  );
-}
-
-function PlanStep({ number, title, detail, onClick }: { number: string; title: string; detail: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className="w-full rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3 text-left transition hover:-translate-y-0.5 hover:bg-[var(--cliente-surface-hover)]">
-      <div className="flex gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[14px] bg-[#2563eb] text-xs font-black text-white">{number}</span>
-        <span>
-          <span className="block text-sm font-black text-[var(--cliente-card-text)]">{title}</span>
-          <span className="mt-1 block text-xs leading-5 text-[var(--cliente-card-text-muted)]">{detail}</span>
-        </span>
-      </div>
-    </button>
-  );
-}
-
-function Shortcut({ href, icon: Icon, label }: { href: string; icon: typeof Search; label: string }) {
-  return (
-    <Link href={href} className="flex items-center gap-3 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
-      <Icon className="h-4 w-4 text-[#2563eb]" />
-      {label}
-    </Link>
+              <CrmButton type="button" tone={item.status === "done" ? "secondary" : "green"} disabled={!canOperate || busyTaskId === item.id} onClick={() => toggleTask(item)}>
+                {busyTaskId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                {item.status === "done" ? "Reabrir" : "Concluir"}
+              </CrmButton>
+            </article>
+          ))}
+        </div>
+      </CrmPanel>
+    </CrmWorkspace>
   );
 }

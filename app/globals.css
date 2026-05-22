@@ -2225,3 +2225,78 @@ html { scroll-behavior: smooth; }
 [data-client-style="v2"] a[href]:hover .client-panel-card {
   box-shadow: 0 24px 52px -36px rgba(15, 23, 42, 0.2);
 }
+
+[data-client-theme="light"] .pipeline-inverted {
+  --cliente-card: rgba(8, 13, 26, 0.96);
+  --cliente-panel-soft: rgba(15, 23, 42, 0.82);
+  --cliente-surface-muted: rgba(15, 23, 42, 0.66);
+  --cliente-surface-hover: rgba(30, 41, 59, 0.92);
+  --cliente-border: rgba(148, 163, 184, 0.22);
+  --cliente-border-strong: rgba(96, 165, 250, 0.58);
+  --cliente-card-text: #f8fafc;
+  --cliente-card-text-soft: #cbd5e1;
+  --cliente-card-text-muted: #94a3b8;
+  --cliente-primary: #60a5fa;
+  --cliente-primary-hover: #3b82f6;
+  --cliente-primary-soft: rgba(96, 165, 250, 0.16);
+  --cliente-success: #34d399;
+  --cliente-success-soft: rgba(52, 211, 153, 0.14);
+  --cliente-warning: #f59e0b;
+  --cliente-warning-soft: rgba(245, 158, 11, 0.16);
+  --cliente-danger: #fb7185;
+  --cliente-danger-soft: rgba(251, 113, 133, 0.14);
+  --cliente-ai: #c084fc;
+  --cliente-ai-soft: rgba(192, 132, 252, 0.14);
+  color: var(--cliente-card-text);
+}
+
+[data-client-theme="dark"] .pipeline-inverted {
+  --cliente-card: rgba(255, 255, 255, 0.98);
+  --cliente-panel-soft: rgba(248, 250, 252, 0.9);
+  --cliente-surface-muted: rgba(241, 245, 249, 0.92);
+  --cliente-surface-hover: rgba(226, 232, 240, 0.96);
+  --cliente-border: rgba(15, 23, 42, 0.12);
+  --cliente-border-strong: rgba(37, 99, 235, 0.44);
+  --cliente-card-text: #0f172a;
+  --cliente-card-text-soft: #475569;
+  --cliente-card-text-muted: #64748b;
+  --cliente-primary: #2563eb;
+  --cliente-primary-hover: #1d4ed8;
+  --cliente-primary-soft: rgba(37, 99, 235, 0.1);
+  --cliente-success: #059669;
+  --cliente-success-soft: rgba(5, 150, 105, 0.1);
+  --cliente-warning: #d97706;
+  --cliente-warning-soft: rgba(217, 119, 6, 0.12);
+  --cliente-danger: #dc2626;
+  --cliente-danger-soft: rgba(220, 38, 38, 0.1);
+  --cliente-ai: #7c3aed;
+  --cliente-ai-soft: rgba(124, 58, 237, 0.1);
+  color: var(--cliente-card-text);
+}
+
+.pipeline-inverted {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--cliente-primary) 18%, transparent), transparent 34rem),
+    radial-gradient(circle at bottom right, color-mix(in srgb, var(--cliente-ai) 14%, transparent), transparent 30rem),
+    color-mix(in srgb, var(--cliente-card) 26%, transparent);
+}
+
+.pipeline-inverted .pipeline-board-shell {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 92%, transparent), color-mix(in srgb, var(--cliente-panel-soft) 94%, transparent));
+  box-shadow:
+    0 28px 72px -52px color-mix(in srgb, var(--cliente-primary) 44%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.pipeline-inverted .pipeline-column {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 22px 44px -34px rgba(15, 23, 42, 0.34);
+}
+
+.pipeline-inverted .pipeline-card {
+  box-shadow:
+    0 18px 36px -30px rgba(15, 23, 42, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}

@@ -36,7 +36,7 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
       <ClienteCommandPalette />
 
       <div className="relative transition-[padding] duration-300 lg:pl-[var(--cliente-sidebar-width)]">
-        <main className={`min-h-screen transition-[padding] duration-300 ${compact ? "px-3 pb-24 pt-[88px] sm:pb-20 sm:pt-[122px] lg:px-6 lg:pb-8 xl:pt-[102px]" : "px-3 pb-28 pt-[88px] sm:px-4 sm:pb-24 sm:pt-[136px] lg:px-7 lg:pb-10 xl:pt-[108px]"}`}>
+        <main className={`min-h-screen transition-[padding] duration-300 ${compact ? "px-3 pb-24 pt-[88px] sm:pb-20 sm:pt-[122px] lg:px-6 lg:pb-8 xl:pt-[126px]" : "px-3 pb-28 pt-[88px] sm:px-4 sm:pb-24 sm:pt-[136px] lg:px-7 lg:pb-10 xl:pt-[132px]"}`}>
           <div className={`mx-auto max-w-[1560px] ${compact ? "space-y-3.5" : "space-y-5"}`}>
             {children}
           </div>

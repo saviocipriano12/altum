@@ -40,7 +40,7 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
   }
 
   return (
-    <header className="client-glass client-topbar fixed left-0 right-0 top-0 z-30 border-b border-[var(--cliente-border)] bg-[var(--cliente-topbar)]/95 backdrop-blur-xl lg:left-[var(--cliente-sidebar-width)]">
+    <header className="client-glass client-topbar fixed left-0 right-0 top-0 z-30 border-b border-[var(--cliente-border)] bg-[var(--cliente-topbar)]/95 backdrop-blur-xl lg:left-[var(--cliente-sidebar-width)] lg:right-5 lg:top-5 lg:rounded-[24px] lg:border">
       <div className="flex h-[72px] items-center gap-2 px-3 sm:gap-3 lg:h-[88px] lg:px-5">
         <button
           type="button"

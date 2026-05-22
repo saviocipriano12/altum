@@ -40,6 +40,7 @@ type NavItem = {
   aliases?: NavAlias[];
   capability?: string;
   tone?: "default" | "success" | "warning" | "ai" | "brand";
+  group: "daily" | "growth" | "intelligence" | "system";
 };
 
 const PRIMARY_NAV: NavItem[] = [
@@ -48,6 +49,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Inicio",
     icon: LayoutGrid,
     description: "Prioridades, numeros fortes e acoes do dia.",
+    group: "daily",
   },
   {
     href: "/cliente/painel/inbox",
@@ -55,6 +57,7 @@ const PRIMARY_NAV: NavItem[] = [
     icon: MessageSquare,
     description: "Atenda clientes e avance oportunidades sem sair do chat.",
     tone: "success",
+    group: "daily",
   },
   {
     href: "/cliente/painel/crm",
@@ -66,6 +69,7 @@ const PRIMARY_NAV: NavItem[] = [
       { href: "/cliente/painel/pipeline", label: "Kanban", capability: "manage_pipeline" },
       { href: "/cliente/painel/comercial", label: "Propostas", capability: "manage_commercial" },
     ],
+    group: "daily",
   },
   {
     href: "/cliente/painel/agenda",
@@ -77,6 +81,7 @@ const PRIMARY_NAV: NavItem[] = [
       { href: "/cliente/painel/agenda", label: "Compromissos" },
       { href: "/cliente/painel/follow-ups", label: "Tarefas" },
     ],
+    group: "daily",
   },
   {
     href: "/cliente/painel/produtos-servicos",
@@ -85,6 +90,7 @@ const PRIMARY_NAV: NavItem[] = [
     description: "O que a empresa vende, como explicar e quando recomendar.",
     capability: "manage_ai",
     tone: "brand",
+    group: "growth",
   },
   {
     href: "/cliente/painel/campanhas",
@@ -93,12 +99,14 @@ const PRIMARY_NAV: NavItem[] = [
     description: "Aquisicao, outbound e reativacao com status claro.",
     tone: "brand",
     aliases: [{ href: "/cliente/painel/captacao", label: "Captacao" }],
+    group: "growth",
   },
   {
     href: "/cliente/painel/metricas",
     label: "Relatorios",
     icon: Target,
     description: "KPIs e leitura comercial com menos ruido tecnico.",
+    group: "growth",
   },
   {
     href: "/cliente/painel/perguntar-altum",
@@ -107,6 +115,7 @@ const PRIMARY_NAV: NavItem[] = [
     description: "Converse com a inteligencia da operacao e encontre proximas acoes.",
     tone: "ai",
     capability: "manage_ai",
+    group: "intelligence",
   },
   {
     href: "/cliente/painel/ia",
@@ -121,6 +130,7 @@ const PRIMARY_NAV: NavItem[] = [
       { href: "/cliente/painel/handoffs", label: "Escaladas" },
       { href: "/cliente/painel/automacoes", label: "Automacoes", capability: "manage_automations" },
     ],
+    group: "intelligence",
   },
   {
     href: "/cliente/painel/configuracoes",
@@ -128,10 +138,17 @@ const PRIMARY_NAV: NavItem[] = [
     icon: Settings,
     description: "Empresa, equipe, canais e ajustes do workspace.",
     capability: "manage_settings",
+    group: "system",
   },
 ];
 
 const ADVANCED_LINKS: NavAlias[] = [];
+const NAV_GROUPS: Array<{ id: NavItem["group"]; label: string }> = [
+  { id: "daily", label: "Operacao diaria" },
+  { id: "growth", label: "Crescimento" },
+  { id: "intelligence", label: "Inteligencia" },
+  { id: "system", label: "Sistema" },
+];
 
 function isActive(pathname: string, href: string) {
   if (href === "/cliente/painel") return pathname === href;
@@ -172,6 +189,14 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
     () => ADVANCED_LINKS.filter((item) => !item.capability || hasCapability(item.capability)),
     [hasCapability]
   );
+  const groupedNav = useMemo(
+    () =>
+      NAV_GROUPS.map((group) => ({
+        ...group,
+        items: visibleNav.filter((item) => item.group === group.id),
+      })).filter((group) => group.items.length > 0),
+    [visibleNav]
+  );
 
   return (
     <>
@@ -184,8 +209,8 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
       <aside
         data-client-nav="sidebar"
-        className={`client-glass fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-[var(--cliente-border)] bg-[var(--cliente-sidebar)] shadow-[var(--cliente-shadow-hard)] transition-[width,transform] duration-300 lg:translate-x-0 ${
-          compactMode ? "w-[306px] lg:w-[92px]" : "w-[306px]"
+        className={`client-glass fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-[var(--cliente-border)] bg-[var(--cliente-sidebar)] shadow-[var(--cliente-shadow-hard)] transition-[width,transform] duration-300 lg:bottom-5 lg:left-5 lg:top-5 lg:h-[calc(100dvh-2.5rem)] lg:rounded-[28px] lg:border lg:translate-x-0 ${
+          compactMode ? "w-[306px] lg:w-[88px]" : "w-[306px]"
         } ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top_right,var(--cliente-primary-soft),transparent_50%)] opacity-90" />
@@ -245,69 +270,74 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
         </div>
 
         <nav className="client-scrollbar mt-5 flex-1 overflow-y-auto px-3 pb-4">
-          <div className="space-y-2">
-            {visibleNav.map((item) => {
-              const active = itemMatches(pathname, item);
-              const Icon = item.icon;
-              const itemTone = item.tone || "default";
-              const activeDot =
-                itemTone === "ai"
-                  ? "bg-[var(--cliente-ai)]"
-                  : itemTone === "success"
-                    ? "bg-[var(--cliente-success)]"
-                    : itemTone === "warning"
-                      ? "bg-[var(--cliente-warning)]"
-                      : "bg-[var(--cliente-primary)]";
-              const iconClasses = active
-                ? itemTone === "ai"
-                  ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_24%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]"
-                  : itemTone === "success"
-                    ? "border-[color:color-mix(in_srgb,var(--cliente-success)_24%,transparent)] bg-[var(--cliente-whatsapp-soft)] text-[var(--cliente-success)]"
-                    : itemTone === "warning"
-                      ? "border-[color:color-mix(in_srgb,var(--cliente-warning)_24%,transparent)] bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]"
-                      : "border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,transparent)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"
-                : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-text-soft)] group-hover:text-[var(--cliente-text)]";
+          <div className="space-y-4">
+            {groupedNav.map((group) => (
+              <div key={group.id} className={compactMode ? "space-y-2" : "rounded-[24px] border border-[var(--cliente-border)] bg-[color:color-mix(in_srgb,var(--cliente-sidebar-card)_62%,transparent)] p-2"}>
+                {!compactMode ? (
+                  <p className="px-2 pb-2 pt-1 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">
+                    {group.label}
+                  </p>
+                ) : null}
+                <div className="space-y-1.5">
+                  {group.items.map((item) => {
+                    const active = itemMatches(pathname, item);
+                    const Icon = item.icon;
+                    const itemTone = item.tone || "default";
+                    const activeTone =
+                      itemTone === "ai"
+                        ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_24%,transparent)] bg-[var(--cliente-ai)] text-white shadow-[0_18px_38px_-24px_var(--cliente-ai-glow)]"
+                        : itemTone === "success"
+                          ? "border-[color:color-mix(in_srgb,var(--cliente-success)_26%,transparent)] bg-[var(--cliente-success)] text-white shadow-[0_18px_38px_-26px_rgba(34,197,94,0.45)]"
+                          : itemTone === "warning"
+                            ? "border-[color:color-mix(in_srgb,var(--cliente-warning)_28%,transparent)] bg-[var(--cliente-warning)] text-white shadow-[0_18px_38px_-26px_rgba(245,158,11,0.45)]"
+                            : "border-[color:color-mix(in_srgb,var(--cliente-primary)_24%,transparent)] bg-[var(--cliente-primary)] text-white shadow-[0_18px_38px_-26px_var(--cliente-primary-glow)]";
+                    const iconClasses = active
+                      ? "border-white/18 bg-white/16 text-white"
+                      : itemTone === "ai"
+                        ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]"
+                        : itemTone === "success"
+                          ? "border-[color:color-mix(in_srgb,var(--cliente-success)_18%,transparent)] bg-[var(--cliente-whatsapp-soft)] text-[var(--cliente-success)]"
+                          : itemTone === "warning"
+                            ? "border-[color:color-mix(in_srgb,var(--cliente-warning)_18%,transparent)] bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]"
+                            : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-text-soft)] group-hover:text-[var(--cliente-text)]";
 
-              return (
-                <div key={item.href}>
-                  <Link
-                    href={item.href}
-                    prefetch={false}
-                    onClick={onClose}
-                    className={`group relative block rounded-[26px] border px-3.5 py-3.5 transition ${
-                      active
-                        ? "border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,transparent)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-text)] shadow-[0_18px_40px_-30px_rgba(37,99,235,0.26)]"
-                        : "border-transparent text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-text)]"
-                    } ${compactMode ? "px-2" : ""}`}
-                    title={compactMode ? item.label : undefined}
-                  >
-                    <div className={`flex items-center ${compactMode ? "justify-center" : "gap-3"}`}>
-                      <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[18px] border transition ${iconClasses}`}>
-                        <Icon className="h-4.5 w-4.5" />
-                      </span>
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        prefetch={false}
+                        onClick={onClose}
+                        className={`group relative block rounded-[20px] border px-3 py-3 transition ${
+                          active
+                            ? activeTone
+                            : "border-transparent text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-text)]"
+                        } ${compactMode ? "px-2" : ""}`}
+                        title={compactMode ? item.label : undefined}
+                      >
+                        <div className={`flex items-center ${compactMode ? "justify-center" : "gap-3"}`}>
+                          <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[15px] border transition ${iconClasses}`}>
+                            <Icon className="h-4.5 w-4.5" />
+                          </span>
 
-                      {!compactMode ? (
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="truncate text-sm font-semibold">{item.label}</p>
-                            {active ? (
-                              <span className={`h-2 w-2 rounded-full ${activeDot}`} />
-                            ) : null}
-                          </div>
+                          {!compactMode ? (
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-bold">{item.label}</p>
+                              {active ? <p className="mt-0.5 truncate text-[11px] font-medium text-white/78">{item.description}</p> : null}
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
-                    </div>
 
-                    {compactMode ? (
-                      <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-text)] shadow-[var(--cliente-shadow-soft)] group-hover:block lg:group-hover:block">
-                        {item.label}
-                      </span>
-                    ) : null}
-                  </Link>
-
+                        {compactMode ? (
+                          <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-text)] shadow-[var(--cliente-shadow-soft)] group-hover:block lg:group-hover:block">
+                            {item.label}
+                          </span>
+                        ) : null}
+                      </Link>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </nav>
 
