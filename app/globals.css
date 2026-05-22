@@ -2227,60 +2227,75 @@ html { scroll-behavior: smooth; }
 }
 
 .pipeline-inverted {
-  --pipeline-canvas: color-mix(in srgb, var(--cliente-panel-soft) 78%, transparent);
-  --pipeline-canvas-border: var(--cliente-border);
-  --pipeline-column-bg: var(--cliente-surface-muted);
-  --pipeline-column-text: var(--cliente-card-text);
-  --pipeline-column-muted: var(--cliente-card-text-soft);
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--cliente-primary) 10%, transparent), transparent 34rem),
     radial-gradient(circle at bottom right, color-mix(in srgb, var(--cliente-ai) 8%, transparent), transparent 30rem),
-    var(--pipeline-canvas);
+    color-mix(in srgb, var(--cliente-card) 26%, transparent);
 }
 
 [data-client-theme="light"] .pipeline-inverted {
-  --pipeline-canvas: #0b1220;
-  --pipeline-canvas-border: rgba(148, 163, 184, 0.24);
-  --pipeline-column-bg: rgba(15, 23, 42, 0.76);
-  --pipeline-column-text: #f8fafc;
-  --pipeline-column-muted: #cbd5e1;
+  --cliente-card: rgba(8, 13, 26, 0.96);
+  --cliente-panel-soft: rgba(15, 23, 42, 0.82);
+  --cliente-surface-muted: rgba(15, 23, 42, 0.66);
+  --cliente-surface-hover: rgba(30, 41, 59, 0.92);
+  --cliente-border: rgba(148, 163, 184, 0.22);
+  --cliente-border-strong: rgba(96, 165, 250, 0.58);
+  --cliente-card-text: #f8fafc;
+  --cliente-card-text-soft: #cbd5e1;
+  --cliente-card-text-muted: #94a3b8;
+  --cliente-primary: #60a5fa;
+  --cliente-primary-hover: #3b82f6;
+  --cliente-primary-soft: rgba(96, 165, 250, 0.16);
+  --cliente-success: #34d399;
+  --cliente-success-soft: rgba(52, 211, 153, 0.14);
+  --cliente-warning: #f59e0b;
+  --cliente-warning-soft: rgba(245, 158, 11, 0.16);
+  --cliente-danger: #fb7185;
+  --cliente-danger-soft: rgba(251, 113, 133, 0.14);
+  --cliente-ai: #c084fc;
+  --cliente-ai-soft: rgba(192, 132, 252, 0.14);
+  color: var(--cliente-card-text);
 }
 
 [data-client-theme="dark"] .pipeline-inverted {
-  --pipeline-canvas: #f8fafc;
-  --pipeline-canvas-border: rgba(15, 23, 42, 0.12);
-  --pipeline-column-bg: rgba(226, 232, 240, 0.82);
-  --pipeline-column-text: #0f172a;
-  --pipeline-column-muted: #475569;
+  --cliente-card: rgba(255, 255, 255, 0.98);
+  --cliente-panel-soft: rgba(248, 250, 252, 0.9);
+  --cliente-surface-muted: rgba(241, 245, 249, 0.92);
+  --cliente-surface-hover: rgba(226, 232, 240, 0.96);
+  --cliente-border: rgba(15, 23, 42, 0.12);
+  --cliente-border-strong: rgba(37, 99, 235, 0.44);
+  --cliente-card-text: #0f172a;
+  --cliente-card-text-soft: #475569;
+  --cliente-card-text-muted: #64748b;
+  --cliente-primary: #2563eb;
+  --cliente-primary-hover: #1d4ed8;
+  --cliente-primary-soft: rgba(37, 99, 235, 0.1);
+  --cliente-success: #059669;
+  --cliente-success-soft: rgba(5, 150, 105, 0.1);
+  --cliente-warning: #d97706;
+  --cliente-warning-soft: rgba(217, 119, 6, 0.12);
+  --cliente-danger: #dc2626;
+  --cliente-danger-soft: rgba(220, 38, 38, 0.1);
+  --cliente-ai: #7c3aed;
+  --cliente-ai-soft: rgba(124, 58, 237, 0.1);
+  color: var(--cliente-card-text);
 }
 
 .pipeline-inverted .pipeline-board-shell {
-  border-color: var(--pipeline-canvas-border);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--pipeline-canvas) 94%, transparent), color-mix(in srgb, var(--pipeline-canvas) 100%, transparent));
+    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 92%, transparent), color-mix(in srgb, var(--cliente-panel-soft) 94%, transparent));
   box-shadow:
     0 28px 72px -52px color-mix(in srgb, var(--cliente-primary) 44%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .pipeline-inverted .pipeline-column {
-  border-color: var(--pipeline-canvas-border);
-  background: var(--pipeline-column-bg);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 22px 44px -34px rgba(15, 23, 42, 0.34);
 }
 
-.pipeline-inverted .pipeline-column > header h2 {
-  color: var(--pipeline-column-text);
-}
-
-.pipeline-inverted .pipeline-column > header p {
-  color: var(--pipeline-column-muted);
-}
-
 .pipeline-inverted .pipeline-card {
-  background: var(--cliente-card);
   box-shadow:
     0 18px 36px -30px rgba(15, 23, 42, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);

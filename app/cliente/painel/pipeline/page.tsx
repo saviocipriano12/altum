@@ -163,7 +163,7 @@ export default function ClientePipelinePage() {
 
   return (
     <CrmWorkspace>
-      <div className="space-y-5">
+      <div className="pipeline-inverted space-y-5 rounded-[30px] p-1 sm:p-2">
         <CrmHero
           active="Funil"
           title="Funil comercial com leitura forte e foco em fechamento."
@@ -194,7 +194,7 @@ export default function ClientePipelinePage() {
 
         {error ? <CrmNotice tone="red">{error}</CrmNotice> : null}
 
-        <section className="pipeline-inverted grid gap-5 rounded-[30px] p-1 sm:p-2 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
           <CrmPanel padded={false} className="pipeline-board-shell overflow-hidden">
           <div className="border-b border-[var(--cliente-border)] p-5">
             <CrmSectionTitle
