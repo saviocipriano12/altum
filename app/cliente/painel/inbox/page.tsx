@@ -1,23 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
   BadgeDollarSign,
+  Bot,
   Download,
   ExternalLink,
   CheckCircle2,
+  Clock3,
   CircleDashed,
   FileText,
   FolderKanban,
   Image as ImageIcon,
   Loader2,
+  MessageCircle,
   Mic,
+  MoreVertical,
   NotebookPen,
+  Paperclip,
   PanelRightOpen,
   PauseCircle,
   PhoneCall,
@@ -27,7 +32,9 @@ import {
   Search,
   Send,
   SlidersHorizontal,
+  SmilePlus,
   UserRound,
+  X,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
@@ -37,7 +44,6 @@ import {
   CardTitle,
   EmptyState,
   PanelCard,
-  SectionHeader,
   StateBadge,
   ClientTabs,
 } from "@/app/cliente/painel/components/ui";
@@ -95,6 +101,11 @@ type ChatItem = {
   assignedUserName?: string | null;
   tags?: string[];
   leadId?: string;
+  leadHeat?: string;
+  leadTemperature?: string;
+  leadNextAction?: string;
+  leadPriority?: string;
+  leadStage?: string;
   unreadCount?: number;
   aiState?: ChatAiState;
 };
@@ -193,6 +204,19 @@ type LeadSummary = {
   empresa?: string;
   origem?: string;
   channel?: string;
+  sourceLabel?: string;
+  campaignName?: string;
+  campaignId?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmContent?: string;
+  gclid?: string;
+  fbclid?: string;
+  first_touch?: Record<string, unknown>;
+  last_touch?: Record<string, unknown>;
+  attribution?: Record<string, unknown>;
+  customFields?: Record<string, string | number | boolean | null>;
   stage?: string;
   pipelineStage?: string;
   owner?: string;
@@ -227,6 +251,13 @@ type LeadSummary = {
     servicoInteresse?: boolean;
     updatedAt?: unknown;
   };
+  aiConversationStage?: string;
+  aiNextAction?: string;
+  aiRecommendedOffer?: string;
+  aiResponseGoal?: string;
+  aiCommercialTemperature?: string;
+  aiLeadSummary?: string;
+  aiPlannerConfidence?: number | null;
   timeline?: TimelineEvent[];
 };
 
@@ -280,6 +311,7 @@ type MessageListPayload = {
 };
 
 const INBOX_CHANNEL_ORDER = ["whatsapp", "instagram", "messenger", "site_chat", "site_form"] as const;
+const QUICK_EMOJIS = ["👍", "🙏", "😊", "🔥", "✅", "🤝", "💚", "👏", "🚀", "😉", "📌", "💬"];
 const INBOX_CHANNEL_SET = new Set<string>(INBOX_CHANNEL_ORDER);
 const STATUS_FILTERS = ["all", "open", "pending", "resolved", "archived"] as const;
 const STATUS_OPTIONS = ["open", "pending", "resolved", "archived"] as const;
@@ -299,6 +331,28 @@ function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
+const CONTACT_AVATAR_THEMES = [
+  { bg: "linear-gradient(135deg,#d9fdd3,#a7f3d0)", text: "#075e54", ring: "rgba(0,166,106,0.22)" },
+  { bg: "linear-gradient(135deg,#dbeafe,#bfdbfe)", text: "#1d4ed8", ring: "rgba(37,99,235,0.2)" },
+  { bg: "linear-gradient(135deg,#ede9fe,#ddd6fe)", text: "#6d28d9", ring: "rgba(109,40,217,0.18)" },
+  { bg: "linear-gradient(135deg,#fee2e2,#fecaca)", text: "#b91c1c", ring: "rgba(185,28,28,0.16)" },
+  { bg: "linear-gradient(135deg,#ffedd5,#fed7aa)", text: "#c2410c", ring: "rgba(194,65,12,0.16)" },
+  { bg: "linear-gradient(135deg,#ccfbf1,#99f6e4)", text: "#0f766e", ring: "rgba(15,118,110,0.18)" },
+];
+
+function getAvatarTheme(seed: string) {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+  return CONTACT_AVATAR_THEMES[hash % CONTACT_AVATAR_THEMES.length];
+}
+
+function getPhoneTail(value?: string) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.length >= 2 ? digits.slice(-2) : "";
+}
+
 function ContactAvatar({
   name,
   phone,
@@ -315,7 +369,10 @@ function ContactAvatar({
   const src = String(photoUrl || "").trim();
   const canRenderImage = src && !imageFailed;
   const displayName = String(name || "").trim();
+  const seed = displayName || phone || "Contato";
+  const theme = getAvatarTheme(seed);
   const fallbackInitials = isPhoneLike(displayName || phone) ? "" : getInitials(displayName || phone);
+  const fallbackLabel = fallbackInitials || getPhoneTail(phone || displayName);
 
   useEffect(() => {
     setImageFailed(false);
@@ -338,12 +395,19 @@ function ContactAvatar({
 
   return (
     <div
+      style={
+        {
+          "--avatar-bg": theme.bg,
+          "--avatar-text": theme.text,
+          "--avatar-ring": theme.ring,
+        } as CSSProperties
+      }
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-[linear-gradient(135deg,rgba(37,211,102,0.14),rgba(134,150,160,0.1))] font-semibold text-[var(--cliente-card-text)]",
+        "flex shrink-0 items-center justify-center rounded-full border border-white bg-[var(--avatar-bg)] font-black text-[var(--avatar-text)] shadow-[0_0_0_1px_var(--avatar-ring),0_8px_18px_-13px_rgba(15,23,42,0.55)]",
         dimension
       )}
     >
-      {fallbackInitials || <UserRound className={size === "sm" ? "h-4 w-4" : "h-5 w-5"} />}
+      {fallbackLabel || <UserRound className={size === "sm" ? "h-4 w-4" : "h-5 w-5"} />}
     </div>
   );
 }
@@ -407,6 +471,92 @@ function formatDate(value?: string) {
   if (!value) return "--";
   const parsed = new Date(`${value}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString("pt-BR");
+}
+
+function cleanInboxText(value: unknown, max = 180) {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value).slice(0, max);
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, max);
+}
+
+function readInboxRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function resolveInboxAttribution(lead?: LeadSummary | null) {
+  const attribution = readInboxRecord(lead?.attribution);
+  const firstTouch = readInboxRecord(lead?.first_touch || attribution.firstTouch);
+  const lastTouch = readInboxRecord(lead?.last_touch || attribution.lastTouch);
+  const customFields = readInboxRecord(lead?.customFields);
+  const source =
+    cleanInboxText(lead?.sourceLabel) ||
+    cleanInboxText(lead?.origem) ||
+    cleanInboxText(lead?.utmSource || attribution.source || lastTouch.source || firstTouch.source) ||
+    cleanInboxText(lead?.channel);
+  const campaign =
+    cleanInboxText(lead?.campaignName) ||
+    cleanInboxText(lead?.utmCampaign || attribution.campaign || lastTouch.campaign || firstTouch.campaign) ||
+    cleanInboxText(customFields.campaign || customFields.utm_campaign);
+  const medium = cleanInboxText(lead?.utmMedium || attribution.medium || lastTouch.medium || firstTouch.medium);
+  const clickId =
+    cleanInboxText(lead?.gclid || attribution.gclid || lastTouch.gclid || firstTouch.gclid) ||
+    cleanInboxText(lead?.fbclid || attribution.fbclid || lastTouch.fbclid || firstTouch.fbclid);
+
+  return {
+    source: source || "Nao registrado",
+    campaign: campaign || "Sem campanha",
+    medium: medium || "Nao registrado",
+    clickId: clickId ? "Registrado" : "Nao registrado",
+  };
+}
+
+function resolveAiEvidence(lead?: LeadSummary | null) {
+  const evidence = lead?.aiFieldEvidence || {};
+  const getValue = (keys: string[]) => {
+    for (const key of keys) {
+      const value = cleanInboxText(evidence[key]?.value, 160);
+      if (value) return value;
+    }
+    return "Nao capturado";
+  };
+
+  return [
+    { label: "Interesse", value: getValue(["serviceInterest", "activeTopic", "primaryGoal"]) },
+    { label: "Urgencia", value: getValue(["urgency"]) },
+    { label: "Orcamento", value: getValue(["budgetBand"]) },
+    { label: "Decisor", value: getValue(["decisionMaker"]) },
+  ];
+}
+
+function formatAiAction(value?: string | null) {
+  const clean = cleanInboxText(value, 120);
+  if (!clean) return "Sem acao sugerida";
+  const labels: Record<string, string> = {
+    assumir_handoff_humano: "Humano deve assumir",
+    qualificar_contexto_minimo: "Qualificar melhor",
+    aprofundar_oportunidade: "Aprofundar oportunidade",
+    tratar_objecao_suave: "Tratar objecao",
+    preparar_proposta_comercial: "Preparar proposta",
+    agendar_proximo_passo: "Agendar proximo passo",
+    conduzir_para_proximo_passo: "Conduzir proximo passo",
+  };
+  return labels[clean] || clean.replaceAll("_", " ");
+}
+
+function getTemperatureTone(value?: string | null) {
+  const normalized = cleanInboxText(value, 40).toLowerCase();
+  if (normalized === "hot") return "danger" as const;
+  if (normalized === "warm") return "warning" as const;
+  if (normalized === "cold") return "neutral" as const;
+  return "info" as const;
+}
+
+function formatTemperature(value?: string | null) {
+  const normalized = cleanInboxText(value, 40).toLowerCase();
+  if (normalized === "hot") return "quente";
+  if (normalized === "warm") return "morno";
+  if (normalized === "cold") return "frio";
+  return "em leitura";
 }
 
 function formatDuration(seconds?: number | null) {
@@ -516,10 +666,10 @@ function formatQueueFilterLabel(filter: QueueFilter) {
 }
 
 function formatAiFilterLabel(filter: AiFilter) {
-  if (filter === "ai_active") return "IA ativa";
-  if (filter === "ai_paused") return "IA pausada";
+  if (filter === "ai_active") return "Assistente ativo";
+  if (filter === "ai_paused") return "Assistente pausado";
   if (filter === "human_owned") return "Com atendimento humano";
-  return "IA + humano";
+  return "Assistente + humano";
 }
 
 function formatTaskType(type?: string) {
@@ -705,7 +855,7 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
 
   if (chat.aiState.aiEnabled === false || isStillPaused) {
     const suffix = pausedUntil ? ` ate ${formatDateTime(pausedUntil)}` : "";
-    return `IA pausada${updatedByName ? ` por ${updatedByName}` : ""}${suffix}.`;
+    return `Assistente pausado${updatedByName ? ` por ${updatedByName}` : ""}${suffix}.`;
   }
 
   if (lastJobStatus === "pending" || lastJobStatus === "processing") {
@@ -748,16 +898,16 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
 
   const handoffNotifyStatus = normalizeHandoffNotifyStatus(chat.aiState.lastHandoffNotifyStatus);
   if (handoffNotifyStatus === "skipped_no_channel") {
-    return "IA ativa, mas a ultima transferencia nao conseguiu notificar humano por falta de canal WhatsApp ativo.";
+    return "Assistente ativo, mas a ultima escalada nao conseguiu notificar humano por falta de canal WhatsApp ativo.";
   }
   if (handoffNotifyStatus === "skipped_no_recipients") {
-    return "IA ativa, mas a ultima transferencia nao conseguiu notificar humano por falta de telefone de responsavel.";
+    return "Assistente ativo, mas a ultima escalada nao conseguiu notificar humano por falta de telefone de responsavel.";
   }
   if (handoffNotifyStatus === "skipped_disabled") {
-    return "IA ativa, mas a notificacao de transferencia esta desativada nas configuracoes.";
+    return "Assistente ativo, mas a notificacao de escalada esta desativada nas configuracoes.";
   }
   if (handoffNotifyStatus === "partial_failure" || handoffNotifyStatus === "failed") {
-    return "IA ativa, mas o ultimo alerta de transferencia teve falha de entrega para parte do time.";
+    return "Assistente ativo, mas o ultimo alerta de escalada teve falha de entrega para parte do time.";
   }
 
   return "IA pronta para respostas automaticas nesta conversa.";
@@ -807,6 +957,136 @@ function getConversationResponseState(chat: ChatItem) {
   return { label: "Nova conversa", tone: "info" as const };
 }
 
+type MobileLeadTag = {
+  label: string;
+  tone: "hot" | "warm" | "cold" | "human" | "reply" | "risk" | "neutral";
+};
+
+function normalizeLeadTemperatureLabel(value?: string) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["hot", "quente", "alta", "high"].includes(normalized)) return "Quente";
+  if (["warm", "morno", "media", "medium"].includes(normalized)) return "Morno";
+  if (["cold", "frio", "baixa", "low"].includes(normalized)) return "Frio";
+  return "";
+}
+
+function getMobileLeadTags(chat: ChatItem, responseState: ReturnType<typeof getConversationResponseState>, sla: ReturnType<typeof getSlaState>) {
+  const tags: MobileLeadTag[] = [];
+  const temperature = normalizeLeadTemperatureLabel(chat.leadTemperature || chat.leadHeat);
+  const priority = String(chat.leadPriority || chat.priority || "").trim().toLowerCase();
+  const nextAction = String(chat.leadNextAction || "").trim().toLowerCase();
+
+  if (chat.aiState?.humanOwnerUserId || nextAction.includes("humano") || nextAction.includes("handoff")) {
+    tags.push({ label: "Humano", tone: "human" });
+  }
+
+  if (responseState.label === "Precisa de resposta") {
+    tags.push({ label: "Responder", tone: "reply" });
+  } else if (responseState.label === "Aguardando cliente") {
+    tags.push({ label: "Aguardando", tone: "neutral" });
+  }
+
+  if (temperature) {
+    tags.push({
+      label: temperature,
+      tone: temperature === "Quente" ? "hot" : temperature === "Morno" ? "warm" : "cold",
+    });
+  } else if (priority === "high") {
+    tags.push({ label: "Urgente", tone: "risk" });
+  }
+
+  if (sla.breached) {
+    tags.push({ label: "Atrasado", tone: "risk" });
+  }
+
+  return tags.slice(0, 3);
+}
+
+function MobileLeadTagPill({ tag }: { tag: MobileLeadTag }) {
+  const toneClass = {
+    hot: "bg-[#ffe1df] text-[#b42318]",
+    warm: "bg-[#fff3c4] text-[#a15c07]",
+    cold: "bg-[#dbeafe] text-[#1d4ed8]",
+    human: "bg-[#ede9fe] text-[#6d28d9]",
+    reply: "bg-[#d9fdd3] text-[#147d45]",
+    risk: "bg-[#ffe4c7] text-[#c2410c]",
+    neutral: "bg-[#eef2f6] text-[#54656f]",
+  }[tag.tone];
+
+  return (
+    <span className={cn("inbox-mobile-lead-tag inline-flex h-5 max-w-[6.8rem] items-center rounded-full px-2 text-[10px] font-bold leading-none", toneClass)}>
+      <span className="truncate">{tag.label}</span>
+    </span>
+  );
+}
+
+function InboxHero({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-success)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-success)_13%,var(--cliente-card)),var(--cliente-card)_52%,color-mix(in_srgb,var(--cliente-primary)_9%,var(--cliente-card)))] shadow-[var(--cliente-shadow-soft)]">
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:p-5">
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <StateBadge label="Engajamento" tone="success" />
+            <StateBadge label="Assistente + humano" tone="ai" />
+          </div>
+          <h1 className="max-w-4xl text-2xl font-extrabold leading-tight text-[var(--cliente-card-text)] md:text-[2rem]">
+            {title}
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">
+            {subtitle}
+          </p>
+        </div>
+        {action ? <div className="flex flex-wrap justify-start gap-2 lg:justify-end">{action}</div> : null}
+      </div>
+    </section>
+  );
+}
+
+function InboxMetricCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: typeof Bot;
+  tone: "success" | "warning" | "danger" | "info" | "ai";
+}) {
+  const toneClass = {
+    success: "border-[color:color-mix(in_srgb,var(--cliente-success)_18%,transparent)] bg-[var(--cliente-success-soft)] text-[var(--cliente-success)]",
+    warning: "border-[color:color-mix(in_srgb,var(--cliente-warning)_18%,transparent)] bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]",
+    danger: "border-[color:color-mix(in_srgb,var(--cliente-danger)_18%,transparent)] bg-[var(--cliente-danger-soft)] text-[var(--cliente-danger)]",
+    info: "border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,transparent)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]",
+    ai: "border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]",
+  }[tone];
+
+  return (
+    <PanelCard className="min-h-[122px] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase text-[var(--cliente-card-text-soft)]">{label}</p>
+          <p className="mt-3 text-2xl font-black text-[var(--cliente-card-text)]">{value}</p>
+          <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
+        </div>
+        <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border ${toneClass}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+    </PanelCard>
+  );
+}
+
 function ConversationListItem({
   chat,
   active,
@@ -819,6 +1099,7 @@ function ConversationListItem({
   const sla = getSlaState(chat);
   const aiPaused = isAiPaused(chat);
   const responseState = getConversationResponseState(chat);
+  const mobileLeadTags = getMobileLeadTags(chat, responseState, sla);
   const unreadCount =
     typeof chat.unreadCount === "number" && chat.unreadCount > 0
       ? chat.unreadCount
@@ -856,7 +1137,14 @@ function ConversationListItem({
                   <span className="h-2 w-2 rounded-full bg-[var(--cliente-accent)]" />
                 ) : null}
               </div>
-              <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
+              {mobileLeadTags.length ? (
+                <div className="inbox-mobile-lead-tags mt-1.5 hidden min-w-0 items-center gap-1.5 overflow-hidden">
+                  {mobileLeadTags.map((tag) => (
+                    <MobileLeadTagPill key={`${tag.tone}-${tag.label}`} tag={tag} />
+                  ))}
+                </div>
+              ) : null}
+              <div className="inbox-conversation-owner mt-1 flex items-center gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
                 <span>{chat.assignedUserName || chat.ownerName || "Sem responsavel"}</span>
                 {chat.contactCompany ? (
                   <>
@@ -884,13 +1172,13 @@ function ConversationListItem({
             {getMessagePreview(chat)}
           </p>
 
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="inbox-conversation-badges mt-2 flex flex-wrap items-center gap-2">
             <StateBadge label={responseState.label} tone={responseState.tone} />
             {sla.breached ? <StateBadge label={sla.label} tone="danger" /> : null}
-            {aiPaused ? <StateBadge label="IA pausada" tone="warning" /> : null}
+            {aiPaused ? <StateBadge label="Assistente pausado" tone="warning" /> : null}
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-[var(--cliente-card-text-soft)]">
+          <div className="inbox-conversation-footer mt-3 flex items-center justify-between gap-3 text-[11px] text-[var(--cliente-card-text-soft)]">
             <span>{formatChannelLabel(chat.channel)}</span>
             <span className="truncate text-right">{chat.tags?.slice(0, 1).join(" / ") || formatStatusLabel(chat.status)}</span>
           </div>
@@ -1039,6 +1327,40 @@ function AudioAttachment({ message }: { message: MessageItem }) {
   );
 }
 
+function VideoAttachment({ message }: { message: MessageItem }) {
+  const [videoFailed, setVideoFailed] = useState(false);
+  const mediaUrl = buildMessageMediaUrl(message);
+  const unavailableReason = getMessageMediaUnavailableReason(message);
+
+  useEffect(() => {
+    setVideoFailed(false);
+  }, [mediaUrl]);
+
+  if (!mediaUrl || message.mediaStatus === "missing" || videoFailed) {
+    return (
+      <MessageMediaFallback
+        type="video"
+        reason={videoFailed ? "Nao foi possivel carregar o video protegido." : unavailableReason}
+      />
+    );
+  }
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]">
+      <video
+        src={mediaUrl}
+        controls
+        preload="metadata"
+        className="max-h-[420px] w-full bg-black object-contain"
+        onError={() => setVideoFailed(true)}
+      />
+      <div className="border-t border-[var(--cliente-border)] px-3 py-2 text-[11px] text-[var(--cliente-card-text-soft)]">
+        {[message.mediaName || "Video", formatFileSize(message.mediaSize)].filter(Boolean).join(" / ")}
+      </div>
+    </div>
+  );
+}
+
 function DocumentAttachment({ message }: { message: MessageItem }) {
   const mediaUrl = buildMessageMediaUrl(message);
   const downloadUrl = buildMessageDownloadUrl(message);
@@ -1114,6 +1436,8 @@ function MessageBubble({
       ? "Audio"
       : type === "image"
         ? "Imagem"
+        : type === "video"
+          ? "Video"
         : type === "document"
           ? "Documento"
           : type === "template"
@@ -1124,6 +1448,8 @@ function MessageBubble({
       ? Mic
       : type === "image"
         ? ImageIcon
+        : type === "video"
+          ? ImageIcon
         : type === "document"
           ? FileText
           : type === "template"
@@ -1142,7 +1468,7 @@ function MessageBubble({
               : "inbox-message-in rounded-[28px] rounded-bl-[10px]"
         )}
       >
-        <div className="flex items-center gap-2 text-[11px] text-current opacity-60">
+        <div className="inbox-message-meta flex items-center gap-2 text-[11px] text-current opacity-60">
           <span className="font-semibold uppercase tracking-[0.14em]">
             {isAgent ? "Time" : isSystem ? "Sistema" : "Contato"}
           </span>
@@ -1162,6 +1488,7 @@ function MessageBubble({
           ) : null}
         </div>
         {type === "image" ? <ImageAttachment message={message} /> : null}
+        {type === "video" ? <VideoAttachment message={message} /> : null}
         {type === "audio" ? <AudioAttachment message={message} /> : null}
         {type === "document" ? <DocumentAttachment message={message} /> : null}
         {shouldRenderText ? (
@@ -1251,11 +1578,16 @@ export default function ClienteInboxPage() {
   const searchParams = useSearchParams();
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendingTemplate, setSendingTemplate] = useState(false);
+  const [sendingMedia, setSendingMedia] = useState(false);
+  const [recordingAudio, setRecordingAudio] = useState(false);
   const [updatingAi, setUpdatingAi] = useState(false);
   const [retryingAi, setRetryingAi] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
@@ -1265,6 +1597,8 @@ export default function ClienteInboxPage() {
   const [savingLeadStage, setSavingLeadStage] = useState(false);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   const [distributing, setDistributing] = useState(false);
+  const [loadingAiSettings, setLoadingAiSettings] = useState(false);
+  const [updatingGlobalAi, setUpdatingGlobalAi] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [chats, setChats] = useState<ChatItem[]>([]);
@@ -1273,6 +1607,9 @@ export default function ClienteInboxPage() {
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [detail, setDetail] = useState<ChatDetailPayload | null>(null);
   const [messageText, setMessageText] = useState("");
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState("");
   const [templateName, setTemplateName] = useState("follow_up_geral");
   const [templateLanguage, setTemplateLanguage] = useState("pt_BR");
   const [templateParamsText, setTemplateParamsText] = useState("");
@@ -1290,6 +1627,7 @@ export default function ClienteInboxPage() {
     priority: "medium",
     assignedUserId: "",
     tagsInput: "",
+    photoUrl: "",
   });
   const [leadStage, setLeadStage] = useState(DEFAULT_PIPELINE_STAGES[0].id);
   const [leadTaskTitle, setLeadTaskTitle] = useState("");
@@ -1298,6 +1636,7 @@ export default function ClienteInboxPage() {
   const [leadTaskType, setLeadTaskType] = useState<(typeof TASK_TYPES)[number]>("follow_up");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
+  const [globalAiResponsePaused, setGlobalAiResponsePaused] = useState(false);
 
   const initialChatId = searchParams.get("chatId");
   const leadIdFromQuery = searchParams.get("leadId");
@@ -1308,10 +1647,17 @@ export default function ClienteInboxPage() {
   const channelFromQuery = searchParams.get("channel");
   const assignedUserFromQuery = searchParams.get("assignedUser");
   const canOperate = hasCapability("respond_inbox");
+  const canManageAi = hasCapability("manage_ai");
   const canManageQueue = hasCapability("manage_settings") || hasCapability("manage_users");
   const allowAdvanced = experienceMode === "completo";
   const showContextPanel = Boolean(selectedChatId);
   const showDesktopContextPanel = Boolean(selectedChatId);
+
+  useEffect(() => {
+    return () => {
+      if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+    };
+  }, [mediaPreviewUrl]);
 
   useEffect(() => {
     if (!allowAdvanced) {
@@ -1379,6 +1725,52 @@ export default function ClienteInboxPage() {
     }
   }, [tenant?.tenantId]);
 
+  const loadTenantAiSettings = useCallback(async () => {
+    if (!tenant?.tenantId) return;
+    setLoadingAiSettings(true);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`);
+      const payload = (await res.json().catch(() => ({}))) as {
+        ai?: { responsePaused?: boolean };
+      };
+      if (!res.ok) return;
+      setGlobalAiResponsePaused(payload.ai?.responsePaused === true);
+    } catch {
+      setGlobalAiResponsePaused(false);
+    } finally {
+      setLoadingAiSettings(false);
+    }
+  }, [tenant?.tenantId]);
+
+  async function handleToggleGlobalAiResponses() {
+    if (!tenant?.tenantId || !canManageAi) return;
+
+    const nextPaused = !globalAiResponsePaused;
+    setUpdatingGlobalAi(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ responsePaused: nextPaused }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        ai?: { responsePaused?: boolean };
+      };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao alterar respostas automaticas da IA.");
+        return;
+      }
+      setGlobalAiResponsePaused(payload.ai?.responsePaused === true);
+      await loadChats({ silent: true });
+    } catch {
+      setError("Falha ao alterar respostas automaticas da IA.");
+    } finally {
+      setUpdatingGlobalAi(false);
+    }
+  }
+
   const loadSelectedChat = useCallback(
     async (chatId: string, options?: { withMessages?: boolean; silent?: boolean }) => {
       if (!tenant?.tenantId) return;
@@ -1420,6 +1812,7 @@ export default function ClienteInboxPage() {
           priority: detailPayload.chat.priority || "medium",
           assignedUserId: detailPayload.chat.assignedTo || detailPayload.chat.ownerId || "",
           tagsInput: (detailPayload.chat.tags || []).join(", "),
+          photoUrl: detailPayload.chat.contactPhotoUrl || "",
         });
         setLeadStage(
           normalizePipelineStageId(
@@ -1511,7 +1904,8 @@ export default function ClienteInboxPage() {
   useEffect(() => {
     void loadChats();
     void loadTenantChannels();
-  }, [loadChats, loadTenantChannels]);
+    void loadTenantAiSettings();
+  }, [loadChats, loadTenantChannels, loadTenantAiSettings]);
 
   useEffect(() => {
     if (!selectedChatId) {
@@ -1574,6 +1968,8 @@ export default function ClienteInboxPage() {
   const aiStateDescription = useMemo(() => getAiStateDescription(activeChat), [activeChat]);
   const aiRetryAvailable = useMemo(() => shouldOfferAiRetry(activeChat), [activeChat]);
   const whatsappWindowClosed = useMemo(() => isWhatsAppServiceWindowClosed(activeChat), [activeChat]);
+  const activeChannel = String(activeChat?.channel || "whatsapp").trim().toLowerCase();
+  const canSendMediaInChat = activeChannel === "whatsapp" && !whatsappWindowClosed;
   const handoffNotifyHint = useMemo(
     () => getHandoffNotifyStatusHint(activeChat?.aiState?.lastHandoffNotifyStatus),
     [activeChat?.aiState?.lastHandoffNotifyStatus]
@@ -1645,6 +2041,81 @@ export default function ClienteInboxPage() {
     ).map(([userId, name]) => ({ userId, name }));
   }, [chats]);
 
+  function clearMediaSelection() {
+    if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+    setMediaPreviewUrl("");
+    setMediaFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleFileSelected(file: File | null) {
+    clearMediaSelection();
+    if (!file) return;
+    setMediaFile(file);
+    if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
+      setMediaPreviewUrl(URL.createObjectURL(file));
+    }
+  }
+
+  function appendEmoji(emoji: string) {
+    setMessageText((current) => `${current}${emoji}`);
+    setEmojiOpen(false);
+  }
+
+  async function startAudioRecording() {
+    if (!canOperate || !selectedChatId || recordingAudio || !canSendMediaInChat) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("Gravacao de audio nao esta disponivel neste navegador.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        audioChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        setRecordingAudio(false);
+        if (blob.size <= 0) return;
+        const file = new File([blob], `audio-${Date.now()}.webm`, { type: blob.type || "audio/webm" });
+        handleFileSelected(file);
+      };
+
+      recorder.start();
+      setRecordingAudio(true);
+      setError(null);
+    } catch {
+      setRecordingAudio(false);
+      setError("Nao foi possivel acessar o microfone.");
+    }
+  }
+
+  function stopAudioRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    recorder.stop();
+  }
+
+  function cancelAudioRecording() {
+    const recorder = mediaRecorderRef.current;
+    audioChunksRef.current = [];
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stream.getTracks().forEach((track) => track.stop());
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    mediaRecorderRef.current = null;
+    setRecordingAudio(false);
+  }
+
   async function handleSend(event: FormEvent) {
     event.preventDefault();
     if (!tenant?.tenantId || !selectedChatId || !messageText.trim() || !canOperate) return;
@@ -1675,6 +2146,50 @@ export default function ClienteInboxPage() {
     } finally {
       setSending(false);
     }
+  }
+
+  async function handleSendMedia(event: FormEvent) {
+    event.preventDefault();
+    if (!tenant?.tenantId || !selectedChatId || !mediaFile || !canOperate) return;
+    if (whatsappWindowClosed) {
+      setError("A janela de 24h do WhatsApp encerrou. Para retomar, use um template aprovado.");
+      return;
+    }
+
+    setSendingMedia(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", mediaFile);
+      if (messageText.trim()) form.append("caption", messageText.trim());
+
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-media`, {
+        method: "POST",
+        body: form,
+      });
+      const payload = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao enviar midia.");
+        return;
+      }
+
+      setMessageText("");
+      clearMediaSelection();
+      await refreshSelected(true);
+      scrollMessagesToBottom("smooth");
+    } catch {
+      setError("Falha ao enviar midia.");
+    } finally {
+      setSendingMedia(false);
+    }
+  }
+
+  function handleComposerSubmit(event: FormEvent) {
+    if (mediaFile) {
+      void handleSendMedia(event);
+      return;
+    }
+    void handleSend(event);
   }
 
   async function handleSendTemplate(event: FormEvent) {
@@ -1812,12 +2327,22 @@ export default function ClienteInboxPage() {
           priority: metaForm.priority,
           assignedUserId: metaForm.assignedUserId || null,
           tags: normalizeTags(metaForm.tagsInput),
+          photoUrl: metaForm.photoUrl.trim() || undefined,
         }),
       });
       const payload = (await res.json()) as { error?: string };
       if (!res.ok) {
         setError(payload.error || "Falha ao atualizar operacao da conversa.");
         return;
+      }
+
+      const savedPhotoUrl = metaForm.photoUrl.trim();
+      if (savedPhotoUrl) {
+        setChats((current) =>
+          current.map((chat) =>
+            chat.id === selectedChatId ? { ...chat, contactPhotoUrl: savedPhotoUrl } : chat
+          )
+        );
       }
 
       await refreshSelected(false);
@@ -1842,6 +2367,7 @@ export default function ClienteInboxPage() {
           priority: metaForm.priority,
           assignedUserId: metaForm.assignedUserId || null,
           tags: normalizeTags(metaForm.tagsInput),
+          photoUrl: metaForm.photoUrl.trim() || undefined,
         }),
       });
       const payload = (await res.json()) as { error?: string };
@@ -2067,9 +2593,19 @@ export default function ClienteInboxPage() {
   const chatNotes = detail?.notes || [];
   const teamMembers = detail?.teamMembers || [];
   const timeline = activeLead?.timeline || [];
-  const activeSla = activeChat ? getSlaState(activeChat) : { breached: false, label: "sem SLA" };
+  const activeAttribution = useMemo(() => resolveInboxAttribution(activeLead), [activeLead]);
+  const activeAiEvidence = useMemo(() => resolveAiEvidence(activeLead), [activeLead]);
+  const activeSla = activeChat ? getSlaState(activeChat) : { breached: false, label: "sem prazo" };
   const activeResponseState = activeChat ? getConversationResponseState(activeChat) : { label: "Nova conversa", tone: "info" as const };
   const activeCallHref = buildTelUrl(activeLead?.telefone || activeChat?.contactPhone);
+  const conversationsNeedingReply = chats.filter((chat) => getConversationResponseState(chat).label === "Precisa de resposta").length;
+  const breachedConversations = chats.filter((chat) => getSlaState(chat).breached).length;
+  const unassignedConversations = chats.filter((chat) => {
+    const queue = String(chat.queueStatus || "").toLowerCase();
+    return queue === "unassigned" || (!chat.assignedTo && !chat.ownerId);
+  }).length;
+  const aiPausedConversations = chats.filter((chat) => isAiPaused(chat)).length;
+  const linkedLeadConversations = chats.filter((chat) => chat.leadId).length;
 
   const contextPanelContent = (
     <div className="space-y-4">
@@ -2135,6 +2671,59 @@ export default function ClienteInboxPage() {
                   <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">
                     {formatMoney(activeLead.potentialValue)}
                   </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-[20px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,var(--cliente-border))] bg-[var(--cliente-card)] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--cliente-primary)]">Origem e campanha</p>
+                    <p className="mt-2 truncate text-sm font-black text-[var(--cliente-card-text)]">{activeAttribution.campaign}</p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                      {activeAttribution.source} / {activeAttribution.medium}
+                    </p>
+                  </div>
+                  <StateBadge label={activeAttribution.clickId === "Registrado" ? "click rastreado" : "sem click id"} tone={activeAttribution.clickId === "Registrado" ? "success" : "warning"} />
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-[20px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--cliente-ai)]">O que a IA ja entendeu</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Use isso para responder sem repetir perguntas desnecessarias.</p>
+                  </div>
+                  <StateBadge label={activeLead.aiCaptureChecklist ? "qualificando" : "sem captura"} tone={activeLead.aiCaptureChecklist ? "ai" : "neutral"} />
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-ai)_16%,var(--cliente-border))] bg-[var(--cliente-card)] p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StateBadge label={formatTemperature(activeLead.aiCommercialTemperature)} tone={getTemperatureTone(activeLead.aiCommercialTemperature)} />
+                    <StateBadge label={activeLead.aiResponseGoal || "sem objetivo"} tone="ai" />
+                    {typeof activeLead.aiPlannerConfidence === "number" ? (
+                      <StateBadge label={`${Math.round(activeLead.aiPlannerConfidence * 100)}% confianca`} tone={activeLead.aiPlannerConfidence >= 0.7 ? "success" : "warning"} />
+                    ) : null}
+                  </div>
+                  <p className="mt-3 text-sm font-black text-[var(--cliente-card-text)]">
+                    {formatAiAction(activeLead.aiNextAction)}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                    Oferta provavel: {activeLead.aiRecommendedOffer || "ainda nao definida"}
+                  </p>
+                  {activeLead.aiLeadSummary ? (
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                      {activeLead.aiLeadSummary}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  {activeAiEvidence.map((item) => (
+                    <div key={item.label} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">{item.label}</p>
+                      <p className="mt-1 truncate text-xs font-bold text-[var(--cliente-card-text)]">{item.value}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -2222,7 +2811,7 @@ export default function ClienteInboxPage() {
             className="inbox-thread-action inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
           >
             {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : aiPaused ? <PlayCircle className="h-3.5 w-3.5" /> : <PauseCircle className="h-3.5 w-3.5" />}
-            {aiPaused ? "Retomar IA" : "Pausar IA"}
+            {aiPaused ? "Retomar assistente" : "Pausar assistente"}
           </button>
           {aiRetryAvailable ? (
             <button
@@ -2232,7 +2821,7 @@ export default function ClienteInboxPage() {
               className="inbox-thread-action inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
             >
               {retryingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              Reprocessar IA
+              Reprocessar assistente
             </button>
           ) : null}
         </div>
@@ -2240,11 +2829,11 @@ export default function ClienteInboxPage() {
         <div className="mt-4 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Estado da IA</p>
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Estado do assistente</p>
               <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{aiStateDescription}</p>
             </div>
             <StateBadge
-              label={activeChat?.aiState?.humanOwnerUserId ? "Atendimento humano" : aiPaused ? "IA pausada" : "IA ativa"}
+              label={activeChat?.aiState?.humanOwnerUserId ? "Atendimento humano" : aiPaused ? "Assistente pausado" : "Assistente ativo"}
               tone={activeChat?.aiState?.humanOwnerUserId ? "warning" : aiPaused ? "warning" : "ai"}
             />
           </div>
@@ -2318,6 +2907,28 @@ export default function ClienteInboxPage() {
                 placeholder="vip, proposta, urgente"
                 className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
               />
+            </label>
+
+            <label className="space-y-2 text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+              <span>Foto real do contato</span>
+              <div className="flex items-center gap-3">
+                <ContactAvatar
+                  name={activeLead?.nome || activeChat?.contactName}
+                  phone={activeLead?.telefone || activeChat?.contactPhone}
+                  photoUrl={metaForm.photoUrl || activeChat?.contactPhotoUrl}
+                  size="md"
+                />
+                <input
+                  value={metaForm.photoUrl}
+                  onChange={(event) => setMetaForm((current) => ({ ...current, photoUrl: event.target.value }))}
+                  disabled={!canOperate}
+                  placeholder="https://..."
+                  className="client-input min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
+                />
+              </div>
+              <span className="block text-[11px] normal-case leading-5 tracking-normal text-[var(--cliente-card-text-soft)]">
+                Use uma URL publica de foto real. Quando Instagram, Facebook, Google ou CRM entregarem foto, a Altum tambem usa automaticamente.
+              </span>
             </label>
 
             <button
@@ -2597,7 +3208,7 @@ export default function ClienteInboxPage() {
         <div className="pt-4">
           <NoteCard
             title="Notas comerciais"
-            subtitle="Anotacoes persistidas no CRM do contato"
+            subtitle="Anotacoes persistidas na ficha do contato"
             notes={leadNotes}
             emptyLabel="Nenhuma nota comercial registrada para o contato."
           />
@@ -2631,69 +3242,119 @@ export default function ClienteInboxPage() {
 
   if (!selectedChat && !loadingChats && chats.length === 0) {
     return (
-      <div className="inbox-refined client-daily-page space-y-5">
-        <SectionHeader
-          title="Conversas"
-          subtitle="Atenda clientes, veja o contexto comercial e avance oportunidades sem sair do chat."
-        />
-        <EmptyState
-          title="Nenhuma conversa encontrada"
-          description="Quando novas mensagens chegarem no WhatsApp ou nos canais conectados, elas aparecerao aqui com cliente, historico e proximo passo."
-        />
+      <div className="inbox-refined client-daily-page min-h-[100dvh] bg-white xl:min-h-0 xl:space-y-5 xl:bg-transparent">
+        <div className="hidden xl:block">
+          <InboxHero
+            title="Atender para converter"
+            subtitle="WhatsApp, Instagram e site entram na mesma mesa. A IA cuida do volume, o humano entra onde a venda precisa de criterio."
+          />
+        </div>
+        <div className="flex min-h-[100dvh] flex-col xl:min-h-0">
+          <div className="border-b border-[var(--cliente-border)] px-4 py-4 xl:hidden">
+            <h1 className="text-[22px] font-bold tracking-normal text-[#111b21]">Conversas</h1>
+            <p className="mt-1 text-sm text-[#667781]">Nenhuma conversa ainda</p>
+          </div>
+          <div className="flex flex-1 items-center justify-center p-6">
+            <EmptyState
+              title="Nenhuma conversa encontrada"
+              description="Quando novas mensagens chegarem no WhatsApp ou nos canais conectados, elas aparecerao aqui."
+            />
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="inbox-refined client-daily-page space-y-6">
-      <SectionHeader
-        title="Conversas"
-        subtitle="Atenda clientes e avance oportunidades no mesmo fluxo."
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setExperienceMode(allowAdvanced ? "essencial" : "completo")}
-              className={cn(
-                "inline-flex items-center gap-2 rounded-[18px] border px-3 py-2.5 text-xs font-semibold transition",
-                allowAdvanced
-                  ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]"
-                  : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-card-text)]"
-              )}
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              {allowAdvanced ? "Modo simples" : "Mais opcoes"}
-            </button>
-            {allowAdvanced && canManageQueue ? (
+    <div className="inbox-refined client-daily-page space-y-4">
+      <div className="hidden xl:block">
+        <InboxHero
+          title="Atender para converter"
+          subtitle="Quem espera resposta, onde a IA atua e qual conversa pode virar venda."
+          action={
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={handleDistributeQueue}
-                disabled={distributing}
-                className="inbox-toolbar-button inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
-              >
-                {distributing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <UserRound className="h-3.5 w-3.5" />
+                onClick={() => setExperienceMode(allowAdvanced ? "essencial" : "completo")}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-[18px] border px-3 py-2.5 text-xs font-semibold transition",
+                  allowAdvanced
+                    ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]"
+                    : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-card-text)]"
                 )}
-                Distribuir conversas
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {allowAdvanced ? "Modo simples" : "Mais opcoes"}
               </button>
-            ) : null}
-            <StateBadge
-              label={activeResponseState.label}
-              tone={activeResponseState.tone}
-            />
-            <button
-              type="button"
-              onClick={() => void refreshSelected(true)}
-              className="inbox-toolbar-button inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Atualizar
-            </button>
-          </div>
-        }
-      />
+              {allowAdvanced && canManageQueue ? (
+                <button
+                  type="button"
+                  onClick={handleDistributeQueue}
+                  disabled={distributing}
+                  className="inbox-toolbar-button inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
+                >
+                  {distributing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <UserRound className="h-3.5 w-3.5" />
+                  )}
+                  Distribuir conversas
+                </button>
+              ) : null}
+              <StateBadge
+                label={activeResponseState.label}
+                tone={activeResponseState.tone}
+              />
+              <button
+                type="button"
+                onClick={() => void refreshSelected(true)}
+                className="inbox-toolbar-button inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Atualizar
+              </button>
+            </div>
+          }
+        />
+      </div>
+
+      <div className="hidden gap-3 md:grid-cols-2 xl:grid xl:grid-cols-5">
+        <InboxMetricCard
+          label="Conversas ativas"
+          value={String(chats.length)}
+          detail={`${filteredChats.length} visiveis agora`}
+          icon={PanelRightOpen}
+          tone="info"
+        />
+        <InboxMetricCard
+          label="Precisa resposta"
+          value={String(conversationsNeedingReply)}
+          detail={breachedConversations ? `${breachedConversations} fora do prazo` : "fila sob controle"}
+          icon={Clock3}
+          tone={conversationsNeedingReply ? "warning" : "success"}
+        />
+        <InboxMetricCard
+          label="Sem responsavel"
+          value={String(unassignedConversations)}
+          detail="distribuir para nao perder lead"
+          icon={UserRound}
+          tone={unassignedConversations ? "warning" : "success"}
+        />
+        <InboxMetricCard
+          label="Assistente pausado"
+          value={String(aiPausedConversations)}
+          detail="conversas em modo humano"
+          icon={Bot}
+          tone={aiPausedConversations ? "ai" : "success"}
+        />
+        <InboxMetricCard
+          label="Com oportunidade"
+          value={String(linkedLeadConversations)}
+          detail="conectadas a oportunidades"
+          icon={FolderKanban}
+          tone="info"
+        />
+      </div>
 
       {error ? (
         <div className="inbox-notice inbox-notice-danger flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
@@ -2704,43 +3365,101 @@ export default function ClienteInboxPage() {
 
       <section
         className={cn(
-          "grid min-h-[82vh] min-w-0 grid-cols-1 gap-4 xl:h-[calc(100vh-8rem)] xl:min-h-0 xl:grid-cols-[minmax(320px,380px)_minmax(0,1.7fr)]",
+          "grid min-w-0 grid-cols-1 gap-0 xl:h-[calc(100vh-7rem)] xl:min-h-0 xl:grid-cols-[minmax(320px,370px)_minmax(0,1.7fr)] xl:gap-3",
+          selectedChatId ? "min-h-0" : "min-h-[82vh]",
           showDesktopContextPanel
-            ? "2xl:grid-cols-[minmax(320px,380px)_minmax(0,1.7fr)_minmax(320px,380px)]"
-            : "2xl:grid-cols-[minmax(320px,380px)_minmax(0,1.8fr)]"
+            ? "2xl:grid-cols-[minmax(320px,370px)_minmax(0,1.7fr)_minmax(320px,360px)]"
+            : "2xl:grid-cols-[minmax(320px,370px)_minmax(0,1.8fr)]"
         )}
       >
         <PanelCard className={cn(
-          "inbox-rail inbox-whatsapp-list min-h-0 min-w-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:flex xl:max-h-[calc(100vh-8rem)]",
+          "inbox-rail inbox-whatsapp-list min-h-0 min-w-0 flex-col overflow-hidden max-xl:min-h-[100dvh] max-xl:rounded-none max-xl:border-0 max-xl:shadow-none xl:sticky xl:top-4 xl:flex xl:max-h-[calc(100vh-8rem)]",
           selectedChatId ? "hidden" : "flex"
         )}>
-          <div className="border-b border-[var(--cliente-border)] p-4">
+          <div className="inbox-mobile-list-header border-b border-[var(--cliente-border)] p-3.5 sm:p-4">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle title="Conversas" subtitle={`${filteredChats.length} conversas visiveis`} />
+              <div className="flex min-w-0 items-center gap-2">
+                <Link
+                  href="/cliente/painel"
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-1 rounded-full px-2 text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)] sm:hidden"
+                  aria-label="Voltar para Inicio"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                  <span className="text-xs font-semibold">Inicio</span>
+                </Link>
+                <div className="min-w-0">
+                  <h1 className="truncate text-[22px] font-bold tracking-normal text-[#111b21] sm:text-base sm:text-[var(--cliente-card-text)]">
+                    Conversas
+                  </h1>
+                  <p className="mt-0.5 text-xs text-[#667781] sm:text-[var(--cliente-card-text-soft)]">
+                    {filteredChats.length} conversas
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {canManageAi ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleGlobalAiResponses()}
+                    disabled={updatingGlobalAi || loadingAiSettings}
+                    className={cn(
+                      "inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-bold transition disabled:opacity-55",
+                      globalAiResponsePaused
+                        ? "bg-[#d9fdd3] text-[#147d45] hover:brightness-95"
+                        : "bg-[#ede9fe] text-[#6d28d9] hover:brightness-95"
+                    )}
+                    aria-label={globalAiResponsePaused ? "Retomar IA em todas as conversas" : "Pausar IA em todas as conversas"}
+                    title={globalAiResponsePaused ? "Retomar respostas automaticas. A auditoria continua ativa." : "Pausar respostas automaticas em todas as conversas. A auditoria continua ativa."}
+                  >
+                    {updatingGlobalAi || loadingAiSettings ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : globalAiResponsePaused ? (
+                      <PlayCircle className="h-3.5 w-3.5" />
+                    ) : (
+                      <PauseCircle className="h-3.5 w-3.5" />
+                    )}
+                    <span className="hidden min-[360px]:inline">{globalAiResponsePaused ? "Retomar IA" : "Pausar IA"}</span>
+                    <span className="min-[360px]:hidden">IA</span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters((current) => !current)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] sm:hidden"
+                  aria-label="Mostrar filtros"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="hidden sm:block">
+                <CardTitle title="Conversas" subtitle={`${filteredChats.length} conversas visiveis`} />
+              </div>
             </div>
 
-            <div className="mt-4 space-y-3">
-              <label className="client-input flex items-center gap-2 rounded-[20px] border px-3.5 py-3 text-sm text-[var(--cliente-card-text-muted)]">
+            <div className="mt-3 space-y-3 sm:mt-4">
+              <label className="client-input inbox-mobile-search flex items-center gap-2 rounded-full border px-3.5 py-3 text-sm text-[var(--cliente-card-text-muted)] sm:rounded-[20px]">
                 <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Buscar por nome, telefone, tag..."
+                  placeholder="Buscar"
                   className="w-full bg-transparent outline-none placeholder:text-[var(--cliente-card-text-soft)]"
                 />
               </label>
 
-              <ClientTabs
-                value={statusFilter}
-                onChange={(value) => setStatusFilter(value as StatusFilter)}
-                className="w-full"
-                items={STATUS_FILTERS.map((filter) => ({
-                  value: filter,
-                  label: formatStatusFilterLabel(filter),
-                }))}
-              />
+              <div className={cn(showAdvancedFilters ? "block" : "hidden", "sm:block")}>
+                <ClientTabs
+                  value={statusFilter}
+                  onChange={(value) => setStatusFilter(value as StatusFilter)}
+                  className="w-full"
+                  items={STATUS_FILTERS.map((filter) => ({
+                    value: filter,
+                    label: formatStatusFilterLabel(filter),
+                  }))}
+                />
+              </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className={cn("grid-cols-3 gap-2", showAdvancedFilters ? "grid" : "hidden", "sm:grid")}>
                 <button
                   type="button"
                   onClick={() => setQueueFilter(queueFilter === "assigned_waiting" ? "all" : "assigned_waiting")}
@@ -2783,7 +3502,7 @@ export default function ClienteInboxPage() {
                 <button
                   type="button"
                   onClick={() => setShowAdvancedFilters((current) => !current)}
-                  className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
+                  className="hidden items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] sm:inline-flex"
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
                   {showAdvancedFilters ? "Ocultar filtros" : "Mais filtros"}
@@ -2863,7 +3582,7 @@ export default function ClienteInboxPage() {
               ) : null}
             </div>
           </div>
-          <div className="flex-1 overflow-x-hidden overflow-y-auto">
+          <div className="flex-1 overflow-x-hidden overflow-y-auto max-xl:pb-24">
             {loadingChats ? (
               <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
@@ -2889,16 +3608,16 @@ export default function ClienteInboxPage() {
         </PanelCard>
 
         <PanelCard className={cn(
-          "inbox-thread-shell min-h-0 min-w-0 flex-col overflow-hidden xl:flex",
-          selectedChatId ? "flex h-[calc(100dvh-7rem)] xl:h-full" : "hidden"
+          "inbox-thread-shell min-h-0 min-w-0 flex-col overflow-hidden max-xl:rounded-none max-xl:border-0 max-xl:shadow-none xl:flex",
+          selectedChatId ? "flex h-[100dvh] xl:h-full" : "hidden"
         )}>
-          <div className="inbox-thread-header inbox-chat-header border-b border-[var(--cliente-border)] p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex min-w-0 items-start gap-3">
+          <div className="inbox-thread-header inbox-chat-header border-b border-[var(--cliente-border)] p-2.5 sm:p-5">
+            <div className="flex items-center justify-between gap-2 sm:items-start sm:gap-4">
+              <div className="flex min-w-0 flex-1 items-center gap-2 sm:items-start sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setSelectedChatId(null)}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)] xl:hidden"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)] xl:hidden"
                   aria-label="Voltar para conversas"
                 >
                   <ArrowLeft className="h-5 w-5" />
@@ -2909,21 +3628,29 @@ export default function ClienteInboxPage() {
                   photoUrl={activeChat?.contactPhotoUrl}
                   size="md"
                 />
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="truncate text-base font-semibold tracking-tight text-[var(--cliente-card-text)] sm:text-lg">
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2 sm:flex-wrap">
+                    <h3 className="truncate text-[15px] font-semibold tracking-normal text-[var(--cliente-card-text)] sm:text-lg">
                       {activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
                     </h3>
-                    <StateBadge label={formatChannelLabel(activeChat?.channel)} tone="neutral" />
-                    <StateBadge label={activeResponseState.label} tone={activeResponseState.tone} />
+                    <span className="hidden sm:inline-flex">
+                      <StateBadge label={formatChannelLabel(activeChat?.channel)} tone="neutral" />
+                    </span>
+                    <span className="hidden sm:inline-flex">
+                      <StateBadge label={activeResponseState.label} tone={activeResponseState.tone} />
+                    </span>
                     {activeChat?.aiState?.humanOwnerUserId ? (
-                      <StateBadge label="Atendimento humano" tone="warning" />
+                      <span className="hidden sm:inline-flex">
+                        <StateBadge label="Atendimento humano" tone="warning" />
+                      </span>
                     ) : aiPaused ? (
-                      <StateBadge label="IA pausada" tone="warning" />
+                      <span className="hidden sm:inline-flex">
+                        <StateBadge label="Assistente pausado" tone="warning" />
+                      </span>
                     ) : null}
                   </div>
                   {activeLead ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <div className="mt-3 hidden flex-wrap items-center gap-3 sm:flex">
                     <div className="inline-flex min-w-0 items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1.5 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.45)]">
                       <ContactAvatar
                         name={detail?.company?.name || tenant?.tenantName || "Cliente"}
@@ -2942,51 +3669,95 @@ export default function ClienteInboxPage() {
                     </div>
                   </div>
                   ) : null}
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--cliente-card-text-soft)]">
-                    <span>
-                      Responsavel: {activeChat?.assignedUserName || activeChat?.ownerName || "Sem atribuicao"}
+                  <div className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-[#667781] sm:mt-3 sm:flex-wrap sm:gap-2 sm:text-[var(--cliente-card-text-soft)]">
+                    <span className="hidden sm:inline">
+                      <span className="hidden sm:inline">Responsavel: </span>{activeChat?.assignedUserName || activeChat?.ownerName || "Sem atribuicao"}
                     </span>
-                    <span>|</span>
-                    <span>{formatQueueStatusLabel(activeChat?.queueStatus)}</span>
-                    <span>|</span>
-                    <span>{activeSla.label}</span>
-                    <span>|</span>
-                    <span>Ultima atividade {formatRelative(activeChat?.lastMessageTime)}</span>
+                    <span className="hidden sm:inline">|</span>
+                    <span className="hidden sm:inline">{formatQueueStatusLabel(activeChat?.queueStatus)}</span>
+                    <span className="hidden sm:inline">|</span>
+                    <span className="hidden sm:inline">{activeSla.label}</span>
+                    <span className="hidden sm:inline">|</span>
+                    <span className="truncate sm:hidden">{formatChannelLabel(activeChat?.channel)}</span>
+                    <span className="hidden truncate sm:inline">Ultima atividade {formatRelative(activeChat?.lastMessageTime)}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex shrink-0 items-center gap-1.5 sm:flex-wrap sm:gap-2">
+                {canOperate && !activeChat?.aiState?.humanOwnerUserId ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleTakeover()}
+                    disabled={!selectedChat || updatingAi}
+                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-[#25D366] px-3 text-xs font-bold text-[#07130C] transition hover:brightness-95 disabled:opacity-55 sm:px-3.5"
+                    aria-label="Assumir esta conversa"
+                    title="Assumir esta conversa e pausar respostas automaticas aqui"
+                  >
+                    {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserRound className="h-3.5 w-3.5" />}
+                    <span>Assumir</span>
+                  </button>
+                ) : activeChat?.aiState?.humanOwnerUserId ? (
+                  <span className="hidden h-10 items-center rounded-full bg-[#d9fdd3] px-3 text-xs font-bold text-[#147d45] sm:inline-flex">
+                    Humano
+                  </span>
+                ) : null}
                 {activeCallHref ? (
                   <button
                     type="button"
                     onClick={() => void handleCreateCallTask()}
                     disabled={savingLeadTask || !canOperate}
-                    className="inline-flex items-center gap-2 rounded-[18px] border border-emerald-300/20 bg-emerald-500/10 px-3 py-2.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-500/16 disabled:opacity-60"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-500/10 text-emerald-700 transition hover:bg-emerald-500/16 disabled:opacity-60 sm:w-auto sm:px-3 sm:py-2.5"
+                    aria-label="Ligar"
                   >
                     {savingLeadTask ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneCall className="h-3.5 w-3.5" />}
-                    Ligar
+                    <span className="hidden sm:inline">Ligar</span>
                   </button>
                 ) : null}
                 <button
                   type="button"
                   onClick={() => setShowDetailsDrawer(true)}
                   disabled={!showContextPanel}
-                  className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50 2xl:hidden"
+                  className="inline-flex h-10 w-10 items-center justify-center gap-2 rounded-full border border-transparent bg-transparent text-[#54656f] transition hover:bg-black/5 disabled:opacity-50 sm:w-auto sm:border-[var(--cliente-border)] sm:bg-[var(--cliente-surface-muted)] sm:px-3 sm:text-xs sm:font-semibold sm:text-[var(--cliente-card-text-muted)] sm:hover:bg-[var(--cliente-panel-soft)] 2xl:hidden"
+                  aria-label="Abrir opcoes da conversa"
                 >
-                  <PanelRightOpen className="h-3.5 w-3.5" />
-                  Ver cliente
+                  <MoreVertical className="h-5 w-5 sm:hidden" />
+                  <SlidersHorizontal className="hidden h-3.5 w-3.5 sm:block" />
+                  <span className="hidden sm:inline">Ver cliente</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => void refreshSelected(true)}
-                  className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
+                  className="hidden items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] sm:inline-flex"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                   Atualizar
                 </button>
               </div>
             </div>
+
+            {activeLead ? (
+              <div className="mt-4 hidden gap-2 sm:grid lg:grid-cols-3">
+                <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-primary)_16%,var(--cliente-border))] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-primary)]">Origem</p>
+                  <p className="mt-1 truncate text-sm font-black text-[var(--cliente-card-text)]">{activeAttribution.campaign}</p>
+                  <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{activeAttribution.source}</p>
+                </div>
+                <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-ai)_16%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] px-3 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-ai)]">Proxima acao</p>
+                    <StateBadge label={formatTemperature(activeLead.aiCommercialTemperature)} tone={getTemperatureTone(activeLead.aiCommercialTemperature)} />
+                  </div>
+                  <p className="mt-1 truncate text-sm font-black text-[var(--cliente-card-text)]">{formatAiAction(activeLead.aiNextAction)}</p>
+                  <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{activeLead.aiResponseGoal || "sem objetivo da IA"}</p>
+                </div>
+                <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-success)_16%,var(--cliente-border))] bg-[var(--cliente-card)] px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-success)]">Oferta provavel</p>
+                  <p className="mt-1 truncate text-sm font-black text-[var(--cliente-card-text)]">{activeLead.aiRecommendedOffer || "Ainda nao definida"}</p>
+                  <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">Use para responder sem perder o contexto comercial.</p>
+                </div>
+              </div>
+            ) : null}
 
           </div>
 
@@ -3000,14 +3771,15 @@ export default function ClienteInboxPage() {
                 description="Escolha um contato na lista para abrir o atendimento."
               />
             ) : loadingMessages ? (
-              <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
+              <div className="py-10 text-center text-[#667781]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
             ) : messages.length === 0 ? (
-              <EmptyState
-                title="Sem mensagens"
-                description="Esta conversa ainda nao tem historico visivel no inbox."
-              />
+              <div className="mx-auto mt-10 flex max-w-[16rem] flex-col items-center rounded-2xl bg-white/80 px-5 py-5 text-center shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
+                <MessageCircle className="h-6 w-6 text-[#667781]" />
+                <p className="mt-2 text-sm font-semibold text-[#111b21]">Sem mensagens</p>
+                <p className="mt-1 text-xs leading-5 text-[#667781]">O historico desta conversa ainda nao apareceu aqui.</p>
+              </div>
             ) : (
               messages.map((message) => (
                 <MessageBubble key={message.id} message={message} />
@@ -3017,11 +3789,26 @@ export default function ClienteInboxPage() {
           </div>
 
           <form
-            onSubmit={(event) => (whatsappWindowClosed ? void handleSendTemplate(event) : void handleSend(event))}
-            className="inbox-thread-composer inbox-chat-composer shrink-0 border-t border-[var(--cliente-border)] p-4"
+            onSubmit={(event) => (whatsappWindowClosed ? void handleSendTemplate(event) : handleComposerSubmit(event))}
+            className="inbox-thread-composer inbox-chat-composer shrink-0 border-t border-[var(--cliente-border)] p-2.5 sm:p-4"
           >
             {whatsappWindowClosed ? (
-              <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-warning)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--cliente-warning)_14%,transparent)] p-3 text-[var(--cliente-card-text)]">
+              <>
+              <div className="flex items-center gap-2 sm:hidden">
+                <div className="min-w-0 flex-1 rounded-[22px] bg-white px-4 py-2.5 text-sm text-[#54656f]">
+                  <p className="truncate font-semibold text-[#111b21]">Janela de 24h fechada</p>
+                  <p className="truncate text-xs">Use um follow-up aprovado para chamar o contato.</p>
+                </div>
+                <button
+                  type="submit"
+                  disabled={!selectedChatId || sendingTemplate || !templateName.trim() || !canOperate}
+                  className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
+                  aria-label="Enviar follow-up"
+                >
+                  {sendingTemplate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </button>
+              </div>
+              <div className="hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-warning)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--cliente-warning)_14%,transparent)] p-3 text-[var(--cliente-card-text)] sm:block">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Enviar follow-up aprovado</p>
@@ -3086,23 +3873,148 @@ export default function ClienteInboxPage() {
                   </button>
                 </div>
               </div>
+              </>
             ) : (
-              <div className="flex gap-2">
+              <div className="relative">
+                {emojiOpen ? (
+                  <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-20 grid w-[min(22rem,calc(100vw-1.25rem))] grid-cols-6 gap-1 rounded-3xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-2 shadow-[var(--cliente-shadow-hard)]">
+                    {QUICK_EMOJIS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => appendEmoji(emoji)}
+                        className="flex h-10 items-center justify-center rounded-2xl text-xl transition hover:bg-[var(--cliente-surface-muted)]"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                {mediaFile ? (
+                  <div className="mb-2 overflow-hidden rounded-3xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.5)]">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)]">
+                        {mediaPreviewUrl && mediaFile.type.startsWith("image/") ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={mediaPreviewUrl} alt="" className="h-full w-full object-cover" />
+                        ) : mediaPreviewUrl && mediaFile.type.startsWith("video/") ? (
+                          <video src={mediaPreviewUrl} className="h-full w-full object-cover" muted />
+                        ) : mediaFile.type.startsWith("audio/") ? (
+                          <Mic className="h-5 w-5" />
+                        ) : (
+                          <FileText className="h-5 w-5" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{mediaFile.name}</p>
+                        <p className="mt-0.5 text-xs text-[var(--cliente-card-text-soft)]">
+                          {(mediaFile.size / 1024 / 1024).toFixed(1)}MB
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={clearMediaSelection}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)]"
+                        aria-label="Remover anexo"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {recordingAudio ? (
+                  <div className="mb-2 flex items-center justify-between gap-3 rounded-full bg-[#fee2e2] px-3 py-2 text-sm text-[#7f1d1d]">
+                    <span className="inline-flex items-center gap-2 font-semibold">
+                      <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-600" />
+                      Gravando audio
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={cancelAudioRecording}
+                        className="rounded-full px-3 py-1.5 text-xs font-semibold transition hover:bg-white/60"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopAudioRecording}
+                        className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-500"
+                      >
+                        Concluir
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEmojiOpen((current) => !current)}
+                  disabled={!selectedChatId || sending || sendingMedia || recordingAudio || !canOperate}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50"
+                  aria-label="Adicionar emoji"
+                >
+                  <SmilePlus className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={!selectedChatId || sending || sendingMedia || recordingAudio || !canOperate || !canSendMediaInChat}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50"
+                  aria-label="Anexar arquivo"
+                  title={canSendMediaInChat ? "Anexar arquivo" : "Midia disponivel apenas dentro da janela WhatsApp"}
+                >
+                  <Paperclip className="h-5 w-5" />
+                </button>
                 <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip"
+                  className="hidden"
+                  onChange={(event) => handleFileSelected(event.target.files?.[0] || null)}
+                />
+                <textarea
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}
-                  placeholder={canOperate ? "Digite a mensagem" : "Perfil sem permissao para responder"}
-                  className="inbox-chat-input flex-1 rounded-full border border-transparent px-4 py-3 text-sm outline-none focus:border-[#25D366]"
-                  disabled={!selectedChatId || sending || !canOperate}
+                  placeholder={mediaFile ? "Legenda" : canOperate ? "Mensagem" : "Sem permissao para responder"}
+                  rows={1}
+                  className="inbox-chat-input max-h-28 min-h-11 min-w-0 flex-1 resize-none rounded-[22px] border border-transparent px-4 py-3 text-sm outline-none focus:border-[#25D366]"
+                  disabled={!selectedChatId || sending || sendingMedia || !canOperate}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      event.currentTarget.form?.requestSubmit();
+                    }
+                  }}
                 />
+                {!messageText.trim() && !mediaFile ? (
+                  <button
+                    type="button"
+                    onClick={recordingAudio ? stopAudioRecording : () => void startAudioRecording()}
+                    disabled={!selectedChatId || sending || sendingMedia || !canOperate || !canSendMediaInChat}
+                    className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
+                    aria-label={recordingAudio ? "Concluir audio" : "Gravar audio"}
+                    title={canSendMediaInChat ? "Gravar audio" : "Audio disponivel apenas dentro da janela WhatsApp"}
+                  >
+                    <Mic className="h-4 w-4" />
+                  </button>
+                ) : null}
                 <button
                   type="submit"
-                  disabled={!selectedChatId || sending || !messageText.trim() || !canOperate}
-                  className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
+                  disabled={!selectedChatId || sending || sendingMedia || (!messageText.trim() && !mediaFile) || !canOperate}
+                  className={cn(
+                    "h-12 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55 sm:w-auto sm:px-4 sm:py-2",
+                    !messageText.trim() && !mediaFile ? "hidden" : "inline-flex"
+                  )}
+                  aria-label="Enviar mensagem"
                 >
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Enviar
+                  {sending || sendingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  <span className="hidden sm:inline">Enviar</span>
                 </button>
+              </div>
               </div>
             )}
           </form>
@@ -3118,8 +4030,8 @@ export default function ClienteInboxPage() {
       <CustomerProfileDrawer
         open={showDetailsDrawer}
         onClose={() => setShowDetailsDrawer(false)}
-        title="Cliente e oportunidade"
-        subtitle="Contexto comercial da conversa atual"
+        title="Opcoes avancadas"
+        subtitle="Cliente, oportunidade, assistente e controles desta conversa"
       >
         {contextPanelContent}
       </CustomerProfileDrawer>

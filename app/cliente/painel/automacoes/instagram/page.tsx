@@ -139,7 +139,7 @@ function EventCard({
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
         <div className="flex items-center gap-2">
-          <StateBadge label={available ? "api ok" : "nao suportado"} tone={available ? "success" : "warning"} />
+          <StateBadge label={available ? "disponivel" : "limitado"} tone={available ? "success" : "warning"} />
           <StateBadge label={active ? "ativo" : "desligado"} tone={active ? "info" : "neutral"} />
         </div>
       </div>
@@ -290,11 +290,11 @@ export default function InstagramAutomationOpsPage() {
   return (
     <div className="space-y-4">
       <SectionHeader
-        title="Instagram Ops"
-        subtitle="Painel operacional para automacoes de DM, comentario e novo seguidor com visao de status em tempo real."
+        title="Instagram"
+        subtitle="Respostas em DM, comentarios e novos seguidores conectadas ao atendimento e ao funil comercial."
         action={
           <StateBadge
-            label={config.enabled ? "instagram automation ativa" : "instagram automation pausada"}
+            label={config.enabled ? "respostas ativas" : "respostas pausadas"}
             tone={config.enabled ? "success" : "warning"}
           />
         }
@@ -315,7 +315,7 @@ export default function InstagramAutomationOpsPage() {
         <PanelCard className="p-4">
           <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Eventos Instagram</p>
           <p className="mt-3 text-2xl font-semibold text-[var(--cliente-card-text)]">{stats.total}</p>
-          <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">processados nos logs recentes</p>
+          <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">interacoes recentes</p>
         </PanelCard>
 
         <PanelCard className="p-4">
@@ -336,28 +336,28 @@ export default function InstagramAutomationOpsPage() {
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <PanelCard className="p-5">
           <div className="flex items-start justify-between gap-3">
-            <CardTitle title="Acoes rapidas Instagram" subtitle="Liga/desliga os 3 fluxos principais sem sair da operacao." />
+            <CardTitle title="Acoes rapidas Instagram" subtitle="Ligue ou pause os principais fluxos sociais sem sair da operacao." />
             <StateBadge label={canManage ? "editavel" : "somente leitura"} tone={canManage ? "info" : "neutral"} />
           </div>
 
           <div className="mt-4 space-y-3">
             <QuickToggle
               title="Automacao social geral"
-              description="Liga/desliga toda a camada de automacoes sociais do tenant."
+              description="Liga ou desliga respostas automaticas nas redes sociais conectadas."
               enabled={config.enabled}
               onToggle={() => setConfig((current) => (current ? { ...current, enabled: !current.enabled } : current))}
               disabled={!canManage}
             />
             <QuickToggle
               title="Responder DM"
-              description="Resposta automatica em mensagens de Instagram DM."
+              description="Responde mensagens diretas do Instagram com contexto comercial."
               enabled={config.dmAutoReply}
               onToggle={() => setConfig((current) => (current ? { ...current, dmAutoReply: !current.dmAutoReply } : current))}
               disabled={!canManage}
             />
             <QuickToggle
               title="Responder comentario"
-              description="Resposta automatica para comentarios novos em posts/reels."
+              description="Responde comentarios novos e pode puxar a pessoa para a conversa."
               enabled={config.commentAutoReply}
               onToggle={() =>
                 setConfig((current) => (current ? { ...current, commentAutoReply: !current.commentAutoReply } : current))
@@ -366,7 +366,7 @@ export default function InstagramAutomationOpsPage() {
             />
             <QuickToggle
               title="Mensagem para novo seguidor"
-              description="Mensagem de boas-vindas para novos seguidores (quando a API permitir envio)."
+              description="Mensagem de boas-vindas para novos seguidores quando o Instagram permitir."
               enabled={config.newFollowerMessageEnabled}
               onToggle={() =>
                 setConfig((current) =>
@@ -379,7 +379,7 @@ export default function InstagramAutomationOpsPage() {
 
           {instagramChannel?.status !== "active" ? (
             <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-              Canal Instagram ainda nao esta ativo. Conecte em Configuracao completa para liberar os fluxos de DM e comentario.
+              Canal Instagram ainda nao esta ativo. Conecte o canal para liberar respostas em DM e comentarios.
             </div>
           ) : null}
 
@@ -398,14 +398,14 @@ export default function InstagramAutomationOpsPage() {
               className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
               <Settings2 className="h-4 w-4" />
-              Configuracao completa
+              Ajustes completos
             </Link>
             <Link
               href="/cliente/painel/inbox?channel=instagram"
               className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
               <MessageCircleMore className="h-4 w-4" />
-              Abrir inbox Instagram
+              Abrir conversas do Instagram
             </Link>
           </div>
 
@@ -424,17 +424,17 @@ export default function InstagramAutomationOpsPage() {
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Matriz de eventos Instagram" subtitle="O que ja esta operacional e o que depende de limite da API da Meta." />
+          <CardTitle title="O que o Instagram permite" subtitle="Fluxos disponiveis e limites atuais da plataforma Meta." />
           <div className="mt-4 space-y-3">
             <EventCard
               title="DM recebida"
-              description="Suportado: webhook + resposta por IA + log + CRM."
+              description="Disponivel: a DM entra em Conversas, pode receber IA e virar oportunidade."
               available
               active={config.enabled && config.dmAutoReply}
             />
             <EventCard
               title="Comentario em post/reel"
-              description="Suportado: webhook de comentario + resposta automatica publica."
+              description="Disponivel: comentario novo pode receber resposta publica automatica."
               available
               active={config.enabled && config.commentAutoReply}
             />
@@ -446,7 +446,7 @@ export default function InstagramAutomationOpsPage() {
             />
             <EventCard
               title="Usuario salvou post/reel"
-              description="Nao suportado por webhook publico da Meta. Alternativa: gatilho por comentario/DM keyword."
+              description="A Meta nao libera este evento publicamente. Use comentario ou palavra-chave na DM como alternativa."
               available={false}
               active={false}
             />
@@ -456,11 +456,11 @@ export default function InstagramAutomationOpsPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <PanelCard className="p-5">
-          <CardTitle title="Logs recentes do Instagram" subtitle="Ultimos eventos processados no canal Instagram." />
+          <CardTitle title="Historico do Instagram" subtitle="Ultimas interacoes processadas no canal Instagram." />
           <div className="mt-4 space-y-3">
             {instagramLogs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
-                Ainda nao ha eventos de Instagram para este tenant.
+                Ainda nao ha interacoes de Instagram para exibir.
               </div>
             ) : (
               instagramLogs.slice(0, 12).map((log) => (
@@ -521,7 +521,7 @@ export default function InstagramAutomationOpsPage() {
             <PlaybookStep
               done={Boolean(config.enabled && config.newFollowerMessageEnabled)}
               title="4. Ativar mensagem para novo seguidor"
-              detail="Configurar template de boas-vindas e monitorar entrega nos logs."
+              detail="Configurar mensagem de boas-vindas e acompanhar entrega no historico."
             />
             <PlaybookStep
               done={false}
@@ -533,8 +533,8 @@ export default function InstagramAutomationOpsPage() {
             <div className="flex items-start gap-2">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <p>
-                Nem todo evento de engajamento do Instagram e exposto em webhook oficial. O fluxo mais robusto hoje e:
-                DM, comentario e novo seguidor com fallback para palavra-chave.
+                Nem todo evento de engajamento do Instagram fica disponivel para automacao. O fluxo mais robusto hoje e:
+                DM, comentario e novo seguidor, usando palavra-chave quando necessario.
               </p>
             </div>
           </div>

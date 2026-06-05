@@ -33,17 +33,17 @@ const BADGE_TONE: Record<BadgeTone, string> = {
 const CARD_TONE: Record<CardTone, string> = {
   neutral: "border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text)]",
   brand:
-    "border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-primary)_10%,var(--cliente-card)),color-mix(in_srgb,var(--cliente-card)_92%,var(--cliente-panel-soft)_8%))] text-[var(--cliente-card-text)]",
+    "border-[color:color-mix(in_srgb,var(--cliente-primary)_22%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-primary)_14%,var(--cliente-card)),var(--cliente-card))] text-[var(--cliente-card-text)]",
   ai:
-    "border-[color:color-mix(in_srgb,var(--cliente-ai)_20%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-ai)_10%,var(--cliente-card)),color-mix(in_srgb,var(--cliente-card)_92%,var(--cliente-panel-soft)_8%))] text-[var(--cliente-card-text)]",
+    "border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-ai)_14%,var(--cliente-card)),var(--cliente-card))] text-[var(--cliente-card-text)]",
   success:
-    "border-[color:color-mix(in_srgb,var(--cliente-success)_20%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-success)_10%,var(--cliente-card)),color-mix(in_srgb,var(--cliente-card)_92%,var(--cliente-panel-soft)_8%))] text-[var(--cliente-card-text)]",
+    "border-[color:color-mix(in_srgb,var(--cliente-success)_22%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-success)_14%,var(--cliente-card)),var(--cliente-card))] text-[var(--cliente-card-text)]",
   warning:
-    "border-[color:color-mix(in_srgb,var(--cliente-warning)_20%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-warning)_10%,var(--cliente-card)),color-mix(in_srgb,var(--cliente-card)_92%,var(--cliente-panel-soft)_8%))] text-[var(--cliente-card-text)]",
+    "border-[color:color-mix(in_srgb,var(--cliente-warning)_22%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-warning)_14%,var(--cliente-card)),var(--cliente-card))] text-[var(--cliente-card-text)]",
   danger:
-    "border-[color:color-mix(in_srgb,var(--cliente-danger)_20%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-danger)_10%,var(--cliente-card)),color-mix(in_srgb,var(--cliente-card)_92%,var(--cliente-panel-soft)_8%))] text-[var(--cliente-card-text)]",
+    "border-[color:color-mix(in_srgb,var(--cliente-danger)_22%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-danger)_14%,var(--cliente-card)),var(--cliente-card))] text-[var(--cliente-card-text)]",
   spotlight:
-    "border-transparent bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_84%,white_16%),color-mix(in_srgb,var(--cliente-ai)_88%,white_12%))] text-white shadow-[0_28px_54px_-34px_color-mix(in_srgb,var(--cliente-primary)_55%,transparent)]",
+    "border-transparent bg-[linear-gradient(135deg,#0057ff_0%,#00a66a_48%,#8b5cf6_100%)] text-white shadow-[0_28px_54px_-34px_color-mix(in_srgb,var(--cliente-primary)_64%,transparent)]",
 };
 
 export function PanelCard({
@@ -57,7 +57,7 @@ export function PanelCard({
 }) {
   return (
     <section
-      className={`client-glass client-panel-card rounded-[28px] border shadow-[var(--cliente-shadow-soft)] ring-1 ring-white/[0.03] ${CARD_TONE[tone]} ${className}`}
+      className={`client-glass client-panel-card rounded-[24px] border shadow-[var(--cliente-shadow-soft)] ${CARD_TONE[tone]} ${className}`}
     >
       {children}
     </section>
@@ -76,8 +76,8 @@ export function SectionHeader({
   return (
     <header className="client-section-header mb-4 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="client-section-title text-[1.5rem] font-extrabold text-[var(--cliente-card-text)] md:text-[1.75rem]">{title}</h2>
-        {subtitle ? <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
+        <h2 className="client-section-title text-[1.35rem] font-extrabold text-[var(--cliente-card-text)] md:text-[1.62rem]">{title}</h2>
+        {subtitle ? <p className="mt-1.5 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
       </div>
       {action ? <div>{action}</div> : null}
     </header>
@@ -101,9 +101,9 @@ export function MetricCard({
     <PanelCard tone={tone} className="client-metric-card space-y-2 p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className={`client-metric-label text-[10px] font-bold uppercase tracking-[0.16em] ${tone === "spotlight" ? "text-white/78" : "text-[var(--cliente-card-text-soft)]"}`}>{label}</p>
-          <p className={`client-metric-value mt-3 text-[2rem] font-extrabold leading-none md:text-[2.15rem] ${tone === "spotlight" ? "text-white" : "text-[var(--cliente-card-text)]"}`}>{value}</p>
-          {trend ? <p className={`mt-3 text-xs ${tone === "spotlight" ? "text-white/72" : "text-[var(--cliente-card-text-soft)]"}`}>{trend}</p> : null}
+          <p className={`client-metric-label text-[11px] font-bold ${tone === "spotlight" ? "text-white/80" : "text-[var(--cliente-card-text-soft)]"}`}>{label}</p>
+          <p className={`client-metric-value mt-2 text-[1.85rem] font-extrabold leading-none md:text-[2rem] ${tone === "spotlight" ? "text-white" : "text-[var(--cliente-card-text)]"}`}>{value}</p>
+          {trend ? <p className={`mt-2 text-xs ${tone === "spotlight" ? "text-white/74" : "text-[var(--cliente-card-text-soft)]"}`}>{trend}</p> : null}
         </div>
         {Icon ? (
           <span
@@ -138,7 +138,7 @@ export function StateBadge({
 }) {
   return (
     <span
-      className={`client-state-badge inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-[0.02em] ${BADGE_TONE[tone]}`}
+      className={`client-state-badge inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-normal ${BADGE_TONE[tone]}`}
     >
       {label}
     </span>
@@ -168,15 +168,15 @@ export function EmptyState({
 export function CardTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="client-card-title">
-      <h3 className="client-card-title-text text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{title}</h3>
-      {subtitle ? <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{subtitle}</p> : null}
+      <h3 className="client-card-title-text text-[11px] font-bold text-[var(--cliente-card-text-soft)]">{title}</h3>
+      {subtitle ? <p className="mt-1.5 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-muted)]">{subtitle}</p> : null}
     </div>
   );
 }
 
 const ACTION_BUTTON_TONE: Record<ActionButtonTone, string> = {
   primary: "border-transparent bg-[var(--cliente-primary)] text-white hover:bg-[var(--cliente-primary-hover)] hover:border-[var(--cliente-primary-hover)]",
-  secondary: "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text)] hover:border-[var(--cliente-primary)]/25 hover:bg-[var(--cliente-surface-hover)]",
+  secondary: "border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text)] hover:border-[var(--cliente-primary)]/25 hover:bg-[var(--cliente-surface-hover)]",
   ghost: "border-transparent bg-transparent text-[var(--cliente-card-text-muted)] hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-card-text)]",
   success: "border-transparent bg-[var(--cliente-success)] text-white hover:brightness-95",
   ai: "border-transparent bg-[var(--cliente-ai)] text-white hover:brightness-95",

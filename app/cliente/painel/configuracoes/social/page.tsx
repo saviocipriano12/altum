@@ -233,8 +233,8 @@ export default function ClienteSocialAutomationsPage() {
   return (
     <div className="space-y-4">
       <SectionHeader
-        title="Automacoes Sociais"
-        subtitle="Gerencie DMs, comentarios e mensagens de novo seguidor por tenant, com janela ativa e opt-out."
+        title="Respostas sociais"
+        subtitle="Controle como a Altum responde DMs, comentarios e novos seguidores sem perder contexto comercial."
         action={<StateBadge label={config.enabled ? "social ativo" : "social pausado"} tone={config.enabled ? "success" : "warning"} />}
       />
 
@@ -260,7 +260,7 @@ export default function ClienteSocialAutomationsPage() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <ToggleCard
               label="Automacoes sociais"
-              description="Liga ou desliga a camada social automatica por tenant."
+              description="Liga ou desliga respostas automaticas nas redes sociais conectadas."
               checked={config.enabled}
               onChange={(checked) => setConfig((current) => (current ? { ...current, enabled: checked } : current))}
               disabled={!canManage}
@@ -284,7 +284,7 @@ export default function ClienteSocialAutomationsPage() {
             />
             <ToggleCard
               label="Novo seguidor"
-              description="Tenta enviar mensagem automatica de boas-vindas para novos seguidores."
+              description="Envia mensagem de boas-vindas quando o canal permitir."
               checked={config.newFollowerMessageEnabled}
               onChange={(checked) =>
                 setConfig((current) => (current ? { ...current, newFollowerMessageEnabled: checked } : current))
@@ -296,7 +296,7 @@ export default function ClienteSocialAutomationsPage() {
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Field
-              label="Timezone"
+              label="Fuso horario"
               value={config.activeHours.timezone}
               onChange={(value) =>
                 setConfig((current) =>
@@ -371,7 +371,7 @@ export default function ClienteSocialAutomationsPage() {
 
           <div className="mt-4 grid gap-3">
             <TextAreaField
-              label="Keywords de opt-out"
+              label="Palavras para parar resposta"
               value={config.optOutKeywords.join(", ")}
               onChange={(value) =>
                 setConfig((current) =>
@@ -389,7 +389,7 @@ export default function ClienteSocialAutomationsPage() {
               disabled={!canManage}
             />
             <TextAreaField
-              label="Keywords de intencao: preco"
+              label="Palavras de interesse: preco"
               value={config.commentIntentPricingKeywords.join(", ")}
               onChange={(value) =>
                 setConfig((current) =>
@@ -407,7 +407,7 @@ export default function ClienteSocialAutomationsPage() {
               disabled={!canManage}
             />
             <TextAreaField
-              label="Keywords de intencao: compra"
+              label="Palavras de interesse: compra"
               value={config.commentIntentPurchaseKeywords.join(", ")}
               onChange={(value) =>
                 setConfig((current) =>
@@ -425,7 +425,7 @@ export default function ClienteSocialAutomationsPage() {
               disabled={!canManage}
             />
             <TextAreaField
-              label="Keywords de intencao: agendamento"
+              label="Palavras de interesse: agendamento"
               value={config.commentIntentSchedulingKeywords.join(", ")}
               onChange={(value) =>
                 setConfig((current) =>
@@ -443,13 +443,13 @@ export default function ClienteSocialAutomationsPage() {
               disabled={!canManage}
             />
             <TextAreaField
-              label="Prompt para DM"
+              label="Instrucao para DMs"
               value={config.dmPrompt}
               onChange={(value) => setConfig((current) => (current ? { ...current, dmPrompt: value } : current))}
               disabled={!canManage}
             />
             <TextAreaField
-              label="Prompt para comentarios"
+              label="Instrucao para comentarios"
               value={config.commentPrompt}
               onChange={(value) => setConfig((current) => (current ? { ...current, commentPrompt: value } : current))}
               disabled={!canManage}
@@ -510,7 +510,7 @@ export default function ClienteSocialAutomationsPage() {
                         {channel.displayName || (channel.type === "instagram" ? "Instagram" : "Messenger")}
                       </p>
                       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                        {channel.type} · {channel.externalAccountId || channel.pageId || "sem id externo"}
+                        {channel.type} | {channel.externalAccountId || channel.pageId || "conta ainda nao mapeada"}
                       </p>
                     </div>
                     <StateBadge
@@ -522,7 +522,7 @@ export default function ClienteSocialAutomationsPage() {
               ))
             ) : (
               <div className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
-                Nenhum canal social ativo. Conecte Instagram/Messenger em Configuracoes de Canais para habilitar automacoes.
+                Nenhum canal social ativo. Conecte Instagram ou Messenger em Canais para habilitar respostas automaticas.
               </div>
             )}
           </div>
@@ -540,11 +540,11 @@ export default function ClienteSocialAutomationsPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <PanelCard className="p-5">
-          <CardTitle title="Logs recentes" subtitle="Ultimos eventos sociais processados por tenant." />
+              <CardTitle title="Historico recente" subtitle="Ultimas interacoes sociais processadas pela Altum." />
           <div className="mt-4 space-y-3">
             {logs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4 text-sm text-[var(--cliente-card-text-soft)]">
-                Nenhum evento social registrado ainda para este tenant.
+                Nenhuma interacao social registrada ainda.
               </div>
             ) : (
               logs.map((log) => (

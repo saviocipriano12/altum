@@ -292,7 +292,7 @@ export default function ClienteTimesPage() {
               <UsersRound className="h-4 w-4" />
             </div>
             <p className="mt-3 text-sm font-semibold text-white/92">Cobertura dos times</p>
-            <p className="mt-1 text-sm text-white/58">Compare o que ja esta configurado com os times usados pelos membros do tenant.</p>
+            <p className="mt-1 text-sm text-white/58">Compare o que ja esta configurado com os times usados pelos membros da equipe.</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <StateBadge label={`${coverage.configured} configurados`} tone={coverage.configured > 0 ? "info" : "warning"} />
               <StateBadge label={`${coverage.referenced} referenciados`} tone="neutral" />

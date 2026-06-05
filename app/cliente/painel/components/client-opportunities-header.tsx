@@ -9,9 +9,9 @@ import {
 type OpportunitiesView = "list" | "kanban" | "agenda" | "proposals";
 
 const viewToRoute: Record<OpportunitiesView, CrmRouteLabel> = {
-  list: "Lista",
+  list: "Clientes",
   kanban: "Funil",
-  agenda: "Atividades",
+  agenda: "Retornos",
   proposals: "Propostas",
 };
 
@@ -25,8 +25,8 @@ export function ClientOpportunitiesHeader({
   return (
     <CrmHero
       active={viewToRoute[activeView]}
-      title="Clientes, oportunidades, conversas e propostas em um CRM familiar."
-      description="A Altum organiza a operacao comercial como um CRM tradicional, com IA aplicada ao que o time precisa fazer agora."
+      title="Vender com contexto, proxima acao e IA trabalhando junto."
+      description="Clientes, oportunidades, propostas, retornos e agenda ficam conectados para o time vender sem perder historico."
       action={action}
     />
   );

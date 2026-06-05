@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
 
 type Body = {
   status?: string;
@@ -16,6 +17,11 @@ type Body = {
 function clean(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+function isPaidStatus(value: unknown) {
+  const status = clean(value, 50).toLowerCase();
+  return status === "pago" || status === "paid" || status === "recebido" || status === "confirmado";
 }
 
 export async function PATCH(
@@ -99,7 +105,27 @@ export async function PATCH(
       });
     }
 
-    if (leadId && patch.status === "pago") {
+    const becamePaid = patch.status !== undefined && isPaidStatus(patch.status) && !isPaidStatus(current.status);
+    if (leadId && becamePaid) {
+      await setLeadPipelineStageWithEffects({
+        tenantId,
+        leadId,
+        nextStage: "ganho",
+        actorId: user.uid,
+        actorName: user.name,
+        source: "finance_paid",
+        metadata: {
+          financeId,
+          financeStatus: patch.status,
+          financeValue: current.valor ?? null,
+          paymentMethod: patch.meioPagamento ?? current.meioPagamento ?? null,
+        },
+        patch: {
+          paymentStatus: patch.status,
+          paidAt: FieldValue.serverTimestamp(),
+        },
+      });
+
       await runLeadAutomations({
         tenantId,
         trigger: "finance_paid",

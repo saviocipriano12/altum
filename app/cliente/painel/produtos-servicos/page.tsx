@@ -192,7 +192,10 @@ export default function ClienteProdutosServicosPage() {
     const withMedia = docs.filter((item) => mediaCount(item) > 0).length;
     const imported = docs.filter((item) => sourceFromDoc(item) !== "manual").length;
     const withoutOfferPath = docs.filter((item) => item.availability !== "paused" && !(item.upsellKeys || []).length && !(item.crossSellKeys || []).length).length;
-    return { total: docs.length, active, thin, withMedia, imported, withoutOfferPath };
+    const withPrice = docs.filter((item) => typeof item.priceFrom === "number" || typeof item.priceTo === "number").length;
+    const aiReady = docs.filter((item) => item.availability !== "paused" && !isThin(item) && mediaCount(item) > 0 && (typeof item.priceFrom === "number" || typeof item.priceTo === "number")).length;
+    const readinessScore = active ? Math.round((aiReady / active) * 100) : 0;
+    return { total: docs.length, active, thin, withMedia, imported, withoutOfferPath, withPrice, aiReady, readinessScore };
   }, [docs]);
 
   const filteredDocs = useMemo(() => {
@@ -247,35 +250,35 @@ export default function ClienteProdutosServicosPage() {
   }
 
   return (
-    <div className="client-daily-page space-y-5">
-      <section className="overflow-hidden rounded-[32px] border border-[color:color-mix(in_srgb,#2563eb_18%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,#eff6ff_84%,var(--cliente-card)),color-mix(in_srgb,#eef2ff_70%,var(--cliente-panel-soft)))] p-5 shadow-[0_24px_70px_-46px_rgba(37,99,235,0.5)] dark:bg-[linear-gradient(135deg,color-mix(in_srgb,#1e3a8a_34%,var(--cliente-card)),color-mix(in_srgb,#312e81_24%,var(--cliente-panel-soft)))] md:p-7">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+    <div className="produtos-refined client-daily-page space-y-4">
+      <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_12%,var(--cliente-card)),var(--cliente-card)_52%,color-mix(in_srgb,var(--cliente-success)_8%,var(--cliente-card)))] p-4 shadow-[var(--cliente-shadow-soft)] md:p-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <StateBadge label="Catalogo comercial" tone="info" />
+              <StateBadge label="Oferta comercial" tone="info" />
               <StateBadge label="IA pronta para vender" tone="ai" />
             </div>
-            <h1 className="mt-5 max-w-3xl text-3xl font-black leading-tight tracking-[-0.03em] text-[var(--cliente-card-text)] md:text-5xl">
-              Produtos e servicos que a Altum consegue explicar, recomendar e enviar.
+            <h1 className="mt-4 max-w-3xl text-2xl font-black leading-tight tracking-normal text-[var(--cliente-card-text)] md:text-3xl">
+              Produtos, servicos e ofertas que a IA consegue vender.
             </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)] md:text-base">
-              Centralize ofertas, argumentos, materiais e regras comerciais para atendimento, oportunidades, campanhas e relatorios trabalharem com a mesma verdade.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)]">
+              Nome, preco, publico, materiais e proximas ofertas em uma base comercial simples.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-4 flex flex-wrap gap-2">
               {canManage ? (
                 <Link
                   href="/cliente/painel/produtos-servicos/novo"
-                  className="inline-flex items-center justify-center gap-2 rounded-[18px] bg-[#2563eb] px-5 py-3 text-sm font-bold text-white shadow-[0_18px_36px_-22px_rgba(37,99,235,0.75)] transition hover:-translate-y-0.5 hover:bg-[#1d4ed8]"
+                  className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-[var(--cliente-shadow-soft)] transition hover:-translate-y-0.5 hover:bg-[var(--cliente-primary-hover)]"
                 >
                   <Plus className="h-4 w-4" />
-                  Cadastrar produto
+                  Cadastrar oferta
                 </Link>
               ) : null}
               <Link
                 href="/cliente/painel/conhecimento"
-                className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-5 py-3 text-sm font-bold text-[var(--cliente-card-text)] shadow-[var(--cliente-shadow-soft)] transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,#2563eb_28%,var(--cliente-border))]"
+                className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--cliente-primary)_28%,var(--cliente-border))]"
               >
-                Base de conhecimento
+                Ensinar a IA
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
             </div>
@@ -302,7 +305,7 @@ export default function ClienteProdutosServicosPage() {
       ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Ativos" value={String(stats.active)} icon={CheckCircle2} trend="visiveis para atendimento" tone="success" />
+        <MetricCard label="IA venderia" value={`${stats.readinessScore}%`} icon={Bot} trend={`${stats.aiReady} oferta(s) prontas`} tone={stats.readinessScore >= 70 ? "success" : "warning"} />
         <MetricCard label="Materiais" value={String(stats.withMedia)} icon={FileText} trend="podem apoiar a conversa" tone="brand" />
         <MetricCard label="Sem trilha" value={String(stats.withoutOfferPath)} icon={Boxes} trend="sem upsell ou complemento" tone={stats.withoutOfferPath ? "warning" : "success"} />
         <MetricCard label="Precisam contexto" value={String(stats.thin)} icon={Sparkles} trend="melhore a recomendacao da IA" tone={stats.thin ? "warning" : "success"} />
@@ -311,13 +314,13 @@ export default function ClienteProdutosServicosPage() {
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <PanelCard className="p-5 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <CardTitle title="Oferta comercial" subtitle="Lista operacional para consultar, editar e organizar o que a empresa vende." />
+            <CardTitle title="Oferta comercial" subtitle="Produtos, servicos, planos e pacotes que sustentam atendimento, campanhas e venda." />
             <ClientTabs value={kindFilter} onChange={(value) => setKindFilter(value as CatalogKind | "all")} items={KIND_OPTIONS} />
           </div>
 
           <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition focus-within:border-[color:color-mix(in_srgb,#2563eb_40%,var(--cliente-border))]">
-              <Search className="h-4 w-4 text-[#2563eb]" />
+            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-sm text-[var(--cliente-card-text-muted)] transition focus-within:border-[color:color-mix(in_srgb,var(--cliente-primary)_40%,var(--cliente-border))]">
+              <Search className="h-4 w-4 text-[var(--cliente-primary)]" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
@@ -347,7 +350,7 @@ export default function ClienteProdutosServicosPage() {
                 return (
                   <article
                     key={item.id}
-                    className="group overflow-hidden rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[0_16px_40px_-34px_rgba(15,23,42,0.35)] transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,#2563eb_26%,var(--cliente-border))] hover:shadow-[0_22px_54px_-38px_rgba(37,99,235,0.45)]"
+                    className="group overflow-hidden rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)] transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--cliente-primary)_26%,var(--cliente-border))]"
                   >
                     <div className="border-b border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
@@ -360,11 +363,11 @@ export default function ClienteProdutosServicosPage() {
 
                     <div className="p-4">
                       <div className="flex gap-3">
-                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-[color:color-mix(in_srgb,#2563eb_16%,var(--cliente-border))] bg-[color:color-mix(in_srgb,#2563eb_10%,var(--cliente-card))] text-[#2563eb]">
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_16%,var(--cliente-border))] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]">
                           <MediaIcon className="h-5 w-5" />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <Link href={`/cliente/painel/produtos-servicos/${item.id}`} className="block truncate text-lg font-black tracking-[-0.025em] text-[var(--cliente-card-text)] hover:text-[#2563eb]">
+                          <Link href={`/cliente/painel/produtos-servicos/${item.id}`} className="block truncate text-base font-black tracking-normal text-[var(--cliente-card-text)] hover:text-[var(--cliente-primary)]">
                             {item.productName || "Item sem nome"}
                           </Link>
                           <p className="mt-1 line-clamp-2 text-sm leading-5 text-[var(--cliente-card-text-muted)]">
@@ -385,7 +388,7 @@ export default function ClienteProdutosServicosPage() {
                       <div className="mt-4 flex flex-wrap justify-end gap-2">
                         <Link
                           href={`/cliente/painel/produtos-servicos/${item.id}`}
-                          className="inline-flex items-center gap-2 rounded-xl border border-[color:color-mix(in_srgb,#2563eb_22%,var(--cliente-border))] bg-[color:color-mix(in_srgb,#2563eb_8%,var(--cliente-card))] px-3 py-2 text-xs font-bold text-[#2563eb] transition hover:border-[#2563eb]"
+                          className="inline-flex items-center gap-2 rounded-xl border border-[color:color-mix(in_srgb,var(--cliente-primary)_22%,var(--cliente-border))] bg-[var(--cliente-primary-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-primary)] transition hover:border-[var(--cliente-primary)]"
                         >
                           <ArrowUpRight className="h-4 w-4" />
                           Ver ficha
@@ -393,7 +396,7 @@ export default function ClienteProdutosServicosPage() {
                         {canManage ? (
                           <Link
                             href={`/cliente/painel/produtos-servicos/novo?docId=${item.id}`}
-                            className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:border-[color:color-mix(in_srgb,#2563eb_28%,var(--cliente-border))] hover:bg-[var(--cliente-surface-hover)]"
+                            className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:border-[color:color-mix(in_srgb,var(--cliente-primary)_28%,var(--cliente-border))] hover:bg-[var(--cliente-surface-hover)]"
                           >
                             <PencilLine className="h-4 w-4" />
                             Editar
@@ -421,7 +424,7 @@ export default function ClienteProdutosServicosPage() {
                 description="Cadastre produtos, servicos, planos ou pacotes para a IA entender melhor a oferta da empresa."
                 action={
                   canManage ? (
-                    <Link href="/cliente/painel/produtos-servicos/novo" className="inline-flex items-center justify-center gap-2 rounded-[16px] bg-[#2563eb] px-4 py-2.5 text-sm font-bold text-white">
+                    <Link href="/cliente/painel/produtos-servicos/novo" className="inline-flex items-center justify-center gap-2 rounded-[16px] bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-bold text-white">
                       <Plus className="h-4 w-4" />
                       Cadastrar primeiro item
                     </Link>
@@ -433,12 +436,27 @@ export default function ClienteProdutosServicosPage() {
         </PanelCard>
 
         <aside className="space-y-4">
+          <PanelCard tone={stats.readinessScore >= 70 ? "success" : "warning"} className="p-5">
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]">
+                <Bot className="h-5 w-5" />
+              </span>
+              <CardTitle title="Prontidao da IA" subtitle={`${stats.aiReady} de ${stats.active} oferta(s) ativas estao prontas para venda assistida.`} />
+            </div>
+            <div className="mt-4 space-y-2">
+              <ReadinessRow label="Descricao e publico" done={stats.thin === 0 && stats.active > 0} detail={stats.thin ? `${stats.thin} item(ns) precisam contexto.` : "Contexto suficiente para recomendar."} />
+              <ReadinessRow label="Preco ou faixa" done={stats.withPrice >= stats.active && stats.active > 0} detail={`${stats.withPrice} item(ns) com preco informado.`} />
+              <ReadinessRow label="Material de apoio" done={stats.withMedia >= stats.active && stats.active > 0} detail={`${stats.withMedia} item(ns) com imagem, video ou documento.`} />
+              <ReadinessRow label="Trilha de venda" done={stats.withoutOfferPath === 0 && stats.active > 0} detail={stats.withoutOfferPath ? `${stats.withoutOfferPath} sem upsell ou complemento.` : "Proximas ofertas configuradas."} />
+            </div>
+          </PanelCard>
+
           <PanelCard tone="ai" className="p-5">
             <div className="flex items-start gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]">
                 <Bot className="h-5 w-5" />
               </span>
-              <CardTitle title="Uso pela Altum" subtitle="A IA usa este catalogo para responder duvidas, sugerir ofertas e anexar material quando fizer sentido na conversa." />
+              <CardTitle title="Como a Altum vende melhor" subtitle="A IA usa este catalogo para responder duvidas, sugerir ofertas e anexar material quando fizer sentido." />
             </div>
             <div className="mt-4 space-y-2">
               <UseRow icon={Sparkles} title="Recomendacao" description="Indica produto ou servico pelo contexto do cliente." />
@@ -448,14 +466,14 @@ export default function ClienteProdutosServicosPage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Itens mais completos" subtitle="Bons candidatos para a IA usar com seguranca no atendimento." />
+            <CardTitle title="Prontos para venda" subtitle="Itens com contexto e material para a IA usar com seguranca." />
             <div className="mt-4 space-y-3">
               {strongestItems.length ? (
                 strongestItems.map((item) => (
                   <Link
                     key={item.id}
                     href={`/cliente/painel/produtos-servicos/novo?docId=${item.id}`}
-                    className="block rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[color:color-mix(in_srgb,#2563eb_28%,var(--cliente-border))] hover:bg-[var(--cliente-surface-hover)]"
+                    className="block rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[color:color-mix(in_srgb,var(--cliente-primary)_28%,var(--cliente-border))] hover:bg-[var(--cliente-surface-hover)]"
                   >
                     <p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{item.productName || "Item sem nome"}</p>
                     <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{mediaCount(item)} material(is) pronto(s) para conversa</p>
@@ -470,7 +488,7 @@ export default function ClienteProdutosServicosPage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Proxima melhoria" subtitle="Comece pelos itens que vendem mais ou geram mais duvidas no WhatsApp." />
+            <CardTitle title="Proxima melhoria" subtitle="Comece pelos itens que mais vendem ou geram duvidas no WhatsApp." />
             <div className="mt-4 flex flex-wrap gap-2">
               <StateBadge label={`${stats.thin} precisam contexto`} tone={stats.thin ? "warning" : "success"} />
               <StateBadge label={`${stats.withoutOfferPath} sem trilha`} tone={stats.withoutOfferPath ? "warning" : "success"} />
@@ -506,11 +524,11 @@ function HeroSignal({
           : "border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text)]";
 
   return (
-    <div className={`rounded-[24px] border p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)] ${toneClass}`}>
+    <div className={`rounded-[18px] border p-3 shadow-[var(--cliente-shadow-soft)] ${toneClass}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-75">{label}</p>
-          <p className="mt-3 text-3xl font-black leading-none tracking-[-0.03em]">{value}</p>
+          <p className="text-[10px] font-bold uppercase tracking-normal opacity-75">{label}</p>
+          <p className="mt-2 text-2xl font-black leading-none tracking-normal">{value}</p>
           <p className="mt-2 text-xs opacity-75">{detail}</p>
         </div>
         <Icon className="h-5 w-5 opacity-80" />
@@ -534,13 +552,33 @@ function MiniInfo({
       : tone === "warning"
         ? "border-[color:color-mix(in_srgb,var(--cliente-warning)_20%,transparent)] bg-[var(--cliente-warning-soft)]"
         : tone === "info"
-          ? "border-[color:color-mix(in_srgb,#2563eb_20%,transparent)] bg-[color:color-mix(in_srgb,#2563eb_9%,var(--cliente-card))]"
+          ? "border-[color:color-mix(in_srgb,var(--cliente-primary)_20%,transparent)] bg-[var(--cliente-primary-soft)]"
           : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]";
 
   return (
     <div className={`rounded-[16px] border px-3 py-2 ${toneClass}`}>
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">{label}</p>
       <p className="mt-1 truncate text-xs font-bold text-[var(--cliente-card-text)]">{value}</p>
+    </div>
+  );
+}
+
+function ReadinessRow({ label, done, detail }: { label: string; done: boolean; detail: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+      <span
+        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${
+          done
+            ? "border-[color:color-mix(in_srgb,var(--cliente-success)_20%,transparent)] bg-[var(--cliente-success-soft)] text-[var(--cliente-success)]"
+            : "border-[color:color-mix(in_srgb,var(--cliente-warning)_20%,transparent)] bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]"
+        }`}
+      >
+        <CheckCircle2 className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-bold text-[var(--cliente-card-text)]">{label}</p>
+        <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-muted)]">{detail}</p>
+      </div>
     </div>
   );
 }

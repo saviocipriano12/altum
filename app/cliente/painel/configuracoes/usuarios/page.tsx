@@ -34,12 +34,12 @@ type InviteForm = {
 
 const CAPABILITY_OPTIONS = [
   { id: "view_metrics", label: "Ver métricas" },
-  { id: "respond_inbox", label: "Responder inbox" },
+  { id: "respond_inbox", label: "Responder conversas" },
   { id: "edit_leads", label: "Editar leads" },
-  { id: "manage_pipeline", label: "Gerir pipeline" },
-  { id: "manage_commercial", label: "Gerir comercial" },
+  { id: "manage_pipeline", label: "Gerir clientes e funil" },
+  { id: "manage_commercial", label: "Gerir vendas" },
   { id: "manage_ai", label: "Gerir IA" },
-  { id: "manage_automations", label: "Gerir automações" },
+  { id: "manage_automations", label: "Gerir fluxos" },
   { id: "manage_channels", label: "Gerir canais" },
   { id: "manage_users", label: "Gerir usuários" },
   { id: "manage_settings", label: "Gerir configurações" },
@@ -65,6 +65,16 @@ function availabilityLabel(value?: string) {
   if (value === "busy") return "Ocupado";
   if (value === "offline") return "Offline";
   return "Online";
+}
+
+function capabilityLabel(value: string) {
+  return CAPABILITY_OPTIONS.find((item) => item.id === value)?.label || value;
+}
+
+function userStatusLabel(value?: string) {
+  if (value === "blocked") return "Bloqueado";
+  if (value === "pending") return "Pendente";
+  return "Ativo";
 }
 
 export default function ClienteUsuariosPage() {
@@ -251,7 +261,7 @@ export default function ClienteUsuariosPage() {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Usuários" value={String(stats.total)} icon={UserCog} trend="acessos" />
         <MetricCard label="Admins" value={String(stats.admins)} icon={ShieldCheck} trend="governança" />
-        <MetricCard label="Operadores" value={String(stats.agents)} icon={UserCog} trend="client_agent" />
+        <MetricCard label="Operadores" value={String(stats.agents)} icon={UserCog} trend="atendentes" />
         <MetricCard label="Bloqueados" value={String(stats.blocked)} icon={MailPlus} trend="status inativo" />
       </section>
 
@@ -297,7 +307,7 @@ export default function ClienteUsuariosPage() {
                 </select>
               </label>
               <Field label="Canais permitidos" value={inviteForm.allowedChannels} onChange={(value) => setInviteForm((current) => ({ ...current, allowedChannels: value }))} />
-              <Field label="Limite de chats" value={inviteForm.maxOpenChats} onChange={(value) => setInviteForm((current) => ({ ...current, maxOpenChats: value }))} />
+              <Field label="Limite de conversas" value={inviteForm.maxOpenChats} onChange={(value) => setInviteForm((current) => ({ ...current, maxOpenChats: value }))} />
             </div>
             <div className="settings-users-capabilities space-y-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
               <p className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Permissões do usuário</p>
@@ -374,12 +384,12 @@ export default function ClienteUsuariosPage() {
                     </div>
                   <div className="flex flex-wrap gap-2">
                       <StateBadge label={roleLabel(user.role)} tone={user.role === "client_admin" || user.role === "client_owner" ? "info" : "neutral"} />
-                      <StateBadge label={user.status || "active"} tone={user.status === "blocked" ? "warning" : "success"} />
+                      <StateBadge label={userStatusLabel(user.status)} tone={user.status === "blocked" ? "warning" : "success"} />
                       {(user.allowedChannels || []).slice(0, 2).map((channel) => (
                         <StateBadge key={`${user.id}_${channel}`} label={channel} tone="neutral" />
                       ))}
                       {(user.capabilities || []).slice(0, 2).map((capability) => (
-                        <StateBadge key={`${user.id}_${capability}`} label={capability} tone="info" />
+                        <StateBadge key={`${user.id}_${capability}`} label={capabilityLabel(capability)} tone="info" />
                       ))}
                     </div>
                   </div>

@@ -122,7 +122,7 @@ export function ClienteShellProvider({ children }: { children: ReactNode }) {
 
   return (
     <ClienteShellContext.Provider value={value}>
-      <div className="client-portal" data-client-theme={theme} data-client-experience={experienceMode} data-client-style="v2" style={shellStyle}>
+      <div className="client-portal" data-client-theme={theme} data-client-experience={experienceMode} data-client-style="v3" style={shellStyle}>
         {children}
       </div>
     </ClienteShellContext.Provider>

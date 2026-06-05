@@ -312,8 +312,8 @@ export default function ClienteMetricasPage() {
   const operations = data.operations || {};
   const queueBreakdown = operations.queueBreakdown || {};
   const funnel = useMemo(() => data.funnel || [], [data.funnel]);
-  const channels = data.commercialAttribution?.byChannel || [];
-  const campaigns = data.commercialAttribution?.byCampaign || [];
+  const channels = useMemo(() => data.commercialAttribution?.byChannel || [], [data.commercialAttribution?.byChannel]);
+  const campaigns = useMemo(() => data.commercialAttribution?.byCampaign || [], [data.commercialAttribution?.byCampaign]);
   const trafficSeries = useMemo(() => data.trafficSeries || [], [data.trafficSeries]);
   const windows = data.windows || {};
   const alerts = useMemo(() => readiness.operationalAlerts || [], [readiness.operationalAlerts]);
@@ -332,6 +332,42 @@ export default function ClienteMetricasPage() {
   const maxFunnel = useMemo(() => Math.max(1, ...funnel.map((item) => item.total || 0)), [funnel]);
   const maxSeriesLeads = useMemo(() => Math.max(1, ...trafficSeries.map((item) => item.leads || 0)), [trafficSeries]);
   const maxSeriesSpend = useMemo(() => Math.max(1, ...trafficSeries.map((item) => item.spend || 0)), [trafficSeries]);
+  const decisionSnapshot = useMemo(() => {
+    const bestCampaign =
+      [...campaigns].sort((a, b) => {
+        const saleDiff = Number(b.wonLeads || 0) - Number(a.wonLeads || 0);
+        if (saleDiff !== 0) return saleDiff;
+        const meetingDiff = Number(b.meetings || 0) - Number(a.meetings || 0);
+        if (meetingDiff !== 0) return meetingDiff;
+        return Number(b.qualifiedLeads || 0) - Number(a.qualifiedLeads || 0);
+      })[0] || null;
+    const bestChannel =
+      [...channels].sort((a, b) => {
+        const saleDiff = Number(b.wonLeads || 0) - Number(a.wonLeads || 0);
+        if (saleDiff !== 0) return saleDiff;
+        return Number(b.qualityRate || 0) - Number(a.qualityRate || 0);
+      })[0] || null;
+    const bottleneck =
+      Number(operations.overdueChats || 0) > 0
+        ? `${operations.overdueChats} conversa(s) fora do prazo`
+        : Number(operations.unassignedChats || 0) > 0
+          ? `${operations.unassignedChats} conversa(s) sem responsavel`
+          : spend > 0 && roi < 1
+            ? `retorno abaixo de 1x com ${currency(spend)} investidos`
+            : totalLeads > 0 && conversionRate < 10
+              ? `conversao baixa em ${percent(conversionRate)}`
+              : "sem gargalo critico no periodo";
+    const nextDecision =
+      Number(operations.overdueChats || 0) > 0 || Number(operations.unassignedChats || 0) > 0
+        ? "Arrumar atendimento antes de aumentar investimento."
+        : spend > 0 && roi >= 1
+          ? "Dobrar nas campanhas e canais que ja geraram venda."
+          : totalLeads > 0
+            ? "Melhorar oferta, qualificacao e follow-up antes de escalar midia."
+            : "Criar captura e campanha para gerar os primeiros sinais.";
+
+    return { bestCampaign, bestChannel, bottleneck, nextDecision };
+  }, [campaigns, channels, conversionRate, operations.overdueChats, operations.unassignedChats, roi, spend, totalLeads]);
 
   const executiveRead = useMemo(() => {
     const items: string[] = [];
@@ -353,9 +389,9 @@ export default function ClienteMetricasPage() {
     }
 
     if (Number(operations.overdueChats || 0) > 0) {
-      items.push(`${operations.overdueChats} conversa(s) estao com SLA vencido e podem afetar vendas.`);
+      items.push(`${operations.overdueChats} conversa(s) estao fora do prazo e podem afetar vendas.`);
     } else {
-      items.push("Nao ha SLA vencido relevante no momento.");
+      items.push("Nao ha atendimento atrasado relevante no momento.");
     }
 
     return items;
@@ -375,7 +411,7 @@ export default function ClienteMetricasPage() {
       items.push({
         id: "sla",
         title: "Responder conversas atrasadas",
-        detail: `${operations.overdueChats || 0} conversa(s) com SLA vencido.`,
+        detail: `${operations.overdueChats || 0} conversa(s) fora do prazo.`,
         href: queueHref("sla_breached"),
         tone: "danger",
         badge: "urgente",
@@ -449,7 +485,7 @@ export default function ClienteMetricasPage() {
         return;
       }
 
-      setNotice(`Sync concluido: ${payload.synced || 0} snapshot(s) atualizados.`);
+      setNotice(`Atualizacao concluida: ${payload.synced || 0} campanha(s) revisadas.`);
       await loadMetrics(false);
     } catch {
       setError("Falha ao sincronizar campanhas.");
@@ -470,15 +506,15 @@ export default function ClienteMetricasPage() {
       ["resultado", "investimento", spend],
       ["resultado", "lucro_estimado", profit],
       ["resultado", "roi", roi],
-      ["aquisição", "contatos", totalLeads],
-      ["aquisição", "qualificados", qualifiedLeads],
+      ["aquisicao", "contatos", totalLeads],
+      ["aquisicao", "qualificados", qualifiedLeads],
       ["vendas", "reunioes", meetings],
       ["vendas", "vendas", wonLeads],
       ["vendas", "conversao", conversionRate],
       ["midia", "cpl", cpl],
       ["midia", "custo_por_venda", costPerSale],
       ["operacao", "conversas_ativas", operations.activeChats || 0],
-      ["operacao", "sla_vencido", operations.overdueChats || 0],
+      ["operacao", "fora_do_prazo", operations.overdueChats || 0],
       ["operacao", "sem_responsavel", operations.unassignedChats || 0],
     ];
     const csv = `${rows.map((row) => row.map(escapeCell).join(",")).join("\n")}\n`;
@@ -486,7 +522,7 @@ export default function ClienteMetricasPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `metricas-altum-${tenant?.tenantId || "tenant"}-${rangeDays}d.csv`;
+    anchor.download = `metricas-altum-${tenant?.tenantId || "conta"}-${rangeDays}d.csv`;
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
@@ -513,19 +549,19 @@ export default function ClienteMetricasPage() {
   }
 
   return (
-    <div className="metricas-refined client-daily-page space-y-6">
-      <section className="overflow-hidden rounded-[32px] border border-[color:color-mix(in_srgb,#2563eb_18%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,#eff6ff_84%,var(--cliente-card)),color-mix(in_srgb,#eef2ff_70%,var(--cliente-panel-soft)))] p-5 shadow-[0_24px_70px_-46px_rgba(37,99,235,0.5)] dark:bg-[linear-gradient(135deg,color-mix(in_srgb,#1e3a8a_34%,var(--cliente-card)),color-mix(in_srgb,#312e81_24%,var(--cliente-panel-soft)))] md:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div className="min-w-0 max-w-4xl">
+    <div className="metricas-refined client-daily-page space-y-4">
+      <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_12%,var(--cliente-card)),var(--cliente-card)_52%,color-mix(in_srgb,var(--cliente-ai)_8%,var(--cliente-card)))] p-4 shadow-[var(--cliente-shadow-soft)] md:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
-              <StateBadge label="Cockpit comercial" tone="info" />
+              <StateBadge label="Decidir" tone="info" />
               <StateBadge label={formatDateRange(windows.current?.start, windows.current?.end)} tone="neutral" />
             </div>
-            <h1 className="mt-5 text-3xl font-black leading-tight tracking-[-0.03em] text-[var(--cliente-card-text)] md:text-5xl">
-              Receita, gasto, contatos e vendas sem precisar garimpar dados.
+            <h1 className="mt-4 text-2xl font-black leading-tight tracking-normal text-[var(--cliente-card-text)] md:text-3xl">
+              Decisoes sobre dinheiro, campanha e atendimento.
             </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-6 text-[var(--cliente-card-text-muted)] md:text-base">
-              Veja o que entrou, quanto custou, quanto virou receita e quais ações precisam acontecer agora.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)]">
+              Trafego, conversas, funil e receita em uma leitura comercial unica.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -534,9 +570,9 @@ export default function ClienteMetricasPage() {
                 key={option}
                 type="button"
                 onClick={() => handleRangeChange(option)}
-                className={`rounded-[16px] border px-3 py-2 text-xs font-bold transition ${
+                className={`rounded-[14px] border px-3 py-2 text-xs font-bold transition ${
                   rangeDays === option
-                    ? "border-[#2563eb] bg-[color:color-mix(in_srgb,#2563eb_11%,var(--cliente-card))] text-[#2563eb]"
+                    ? "border-[var(--cliente-primary)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"
                     : "border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-hover)]"
                 }`}
               >
@@ -550,25 +586,32 @@ export default function ClienteMetricasPage() {
             {canSyncCampaigns ? (
               <ClientActionButton type="button" tone="secondary" onClick={() => void handleSyncCampaigns()} disabled={syncing}>
                 {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Atualizar anúncios
+                Atualizar anuncios
               </ClientActionButton>
             ) : null}
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <HeroMetric label="Receita gerada" value={compactCurrency(revenue)} detail={`ROI ${ratioLabel(roi)}`} icon={DollarSign} tone={revenue > 0 ? "success" : "neutral"} />
-          <HeroMetric label="Gasto em mídia" value={compactCurrency(spend)} detail={`CPL ${currency(cpl)}`} icon={Megaphone} tone={spend > 0 ? "info" : "neutral"} />
+          <HeroMetric label="Gasto em midia" value={compactCurrency(spend)} detail={`CPL ${currency(cpl)}`} icon={Megaphone} tone={spend > 0 ? "info" : "neutral"} />
           <HeroMetric label="Contatos" value={String(totalLeads)} detail={`${qualifiedLeads} qualificados`} icon={UsersRound} tone="info" />
-          <HeroMetric label="Vendas" value={String(wonLeads)} detail={`${percent(conversionRate)} conversão`} icon={Target} tone={wonLeads > 0 ? "success" : "warning"} />
+          <HeroMetric label="Vendas" value={String(wonLeads)} detail={`${percent(conversionRate)} conversao`} icon={Target} tone={wonLeads > 0 ? "success" : "warning"} />
         </div>
       </section>
 
       {notice ? <div className="rounded-[24px] border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">{notice}</div> : null}
 
+      <DecisionBoard
+        bestCampaign={decisionSnapshot.bestCampaign}
+        bestChannel={decisionSnapshot.bestChannel}
+        bottleneck={decisionSnapshot.bottleneck}
+        nextDecision={decisionSnapshot.nextDecision}
+      />
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Lucro estimado" value={compactCurrency(profit)} icon={profit >= 0 ? ArrowUpRight : ArrowDownRight} trend={`receita menos mídia`} tone={profit >= 0 ? "success" : "warning"} />
-        <MetricCard label="Reuniões" value={String(meetings)} icon={CalendarDays} trend={`custo ${currency(Number(metrics.costPerMeeting || 0))}`} tone="brand" />
+        <MetricCard label="Lucro estimado" value={compactCurrency(profit)} icon={profit >= 0 ? ArrowUpRight : ArrowDownRight} trend="receita menos midia" tone={profit >= 0 ? "success" : "warning"} />
+        <MetricCard label="Reunioes" value={String(meetings)} icon={CalendarDays} trend={`custo ${currency(Number(metrics.costPerMeeting || 0))}`} tone="brand" />
         <MetricCard label="Custo por venda" value={costPerSale ? currency(costPerSale) : "Sem vendas"} icon={Gauge} trend={deltaLabel(Number(comparisons.saleCostDeltaPct || 0))} tone={costPerSale ? "warning" : "neutral"} />
         <MetricCard label="Tempo de resposta" value={`${Number(metrics.avgFirstResponseMinutes || 0).toFixed(1)} min`} icon={Clock3} trend={`${operations.activeChats || 0} conversas ativas`} tone={Number(metrics.avgFirstResponseMinutes || 0) <= 5 ? "success" : "warning"} />
       </section>
@@ -577,13 +620,13 @@ export default function ClienteMetricasPage() {
         <div className="space-y-4">
           <PanelCard className="p-5 md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle title="Leitura executiva" subtitle="O que importa para decidir agora." />
+              <CardTitle title="Veredito da operacao" subtitle="Sinais que explicam resultado e prioridade." />
               <StateBadge label={`${rangeDays} dias`} tone="info" />
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-3">
               {executiveRead.map((item) => (
                 <div key={item} className="rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-                  <CheckCircle2 className="h-5 w-5 text-[#2563eb]" />
+                  <CheckCircle2 className="h-5 w-5 text-[var(--cliente-primary)]" />
                   <p className="mt-3 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{item}</p>
                 </div>
               ))}
@@ -592,7 +635,7 @@ export default function ClienteMetricasPage() {
 
           <PanelCard className="p-5 md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle title="Aquisição e resultado" subtitle="Contatos, gasto e vendas no mesmo gráfico operacional." />
+              <CardTitle title="Aquisicao e resultado" subtitle="Contatos, gasto e vendas no mesmo grafico operacional." />
               <Link href="/cliente/painel/campanhas" className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
                 Ver campanhas
                 <ArrowUpRight className="h-3.5 w-3.5" />
@@ -604,7 +647,7 @@ export default function ClienteMetricasPage() {
                   <div key={point.key} className="grid gap-2 md:grid-cols-[72px_minmax(0,1fr)_132px] md:items-center">
                     <span className="text-xs font-bold text-[var(--cliente-card-text-soft)]">{point.label}</span>
                     <div className="space-y-1">
-                      <BarLine value={point.leads} max={maxSeriesLeads} className="bg-[#2563eb]" />
+                      <BarLine value={point.leads} max={maxSeriesLeads} className="bg-[var(--cliente-primary)]" />
                       <BarLine value={point.spend} max={maxSeriesSpend} className="bg-[var(--cliente-ai)]" />
                     </div>
                     <span className="text-xs text-[var(--cliente-card-text-muted)]">
@@ -613,14 +656,14 @@ export default function ClienteMetricasPage() {
                   </div>
                 ))
               ) : (
-                <EmptyState title="Sem série no período" description="Assim que houver contatos ou mídia sincronizada, a evolução aparece aqui." />
+                <EmptyState title="Sem serie no periodo" description="Assim que houver contatos ou midia sincronizada, a evolucao aparece aqui." />
               )}
             </div>
           </PanelCard>
 
           <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
             <PanelCard className="p-5">
-              <CardTitle title="Funil de vendas" subtitle="Onde os contatos estão parando." />
+              <CardTitle title="Funil de vendas" subtitle="Onde os contatos estao parando." />
               <div className="mt-4 space-y-3">
                 {funnel.length ? (
                   funnel.map((stage) => (
@@ -630,7 +673,7 @@ export default function ClienteMetricasPage() {
                         <p className="text-sm text-[var(--cliente-card-text-muted)]">{stage.total}</p>
                       </div>
                       <div className="mt-2">
-                        <BarLine value={stage.total} max={maxFunnel} className="bg-[#2563eb]" />
+                        <BarLine value={stage.total} max={maxFunnel} className="bg-[var(--cliente-primary)]" />
                       </div>
                       <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">Valor potencial: {currency(Number(stage.value || 0))}</p>
                     </Link>
@@ -642,14 +685,14 @@ export default function ClienteMetricasPage() {
             </PanelCard>
 
             <PanelCard className="p-5">
-              <CardTitle title="Canais que geram negócio" subtitle="Volume, custo e retorno por origem." />
+              <CardTitle title="Canais que geram negocio" subtitle="Volume, custo e retorno por origem." />
               <div className="mt-4 space-y-2">
                 {channels.length ? (
                   channels.slice(0, 7).map((channel) => (
                     <ChannelRow key={channel.key} item={channel} />
                   ))
                 ) : (
-                  <EmptyState title="Sem atribuição por canal" description="Conecte anúncios ou preencha origem dos contatos para comparar canais." />
+                  <EmptyState title="Sem atribuicao por canal" description="Conecte anuncios ou preencha origem dos contatos para comparar canais." />
                 )}
               </div>
             </PanelCard>
@@ -657,7 +700,7 @@ export default function ClienteMetricasPage() {
 
           <PanelCard className="p-5 md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle title="Campanhas com impacto" subtitle="Quais campanhas trouxeram contato, reunião ou venda." />
+              <CardTitle title="Campanhas com impacto" subtitle="Quais campanhas trouxeram contato, reuniao ou venda." />
               <Link href="/cliente/painel/campanhas" className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
                 Central de campanhas
                 <ArrowUpRight className="h-3.5 w-3.5" />
@@ -669,7 +712,7 @@ export default function ClienteMetricasPage() {
                   <CampaignRow key={campaign.key} item={campaign} />
                 ))
               ) : (
-                <EmptyState title="Sem campanhas atribuídas" description="Quando Meta, Google, UTMs ou formulários gerarem contatos, as campanhas aparecem aqui." />
+                <EmptyState title="Sem campanhas atribuidas" description="Quando Meta, Google, UTMs ou formularios gerarem contatos, as campanhas aparecem aqui." />
               )}
             </div>
           </PanelCard>
@@ -677,7 +720,7 @@ export default function ClienteMetricasPage() {
 
         <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
           <PanelCard tone="warning" className="p-5">
-            <CardTitle title="Ações prioritárias" subtitle="O que mexe no resultado primeiro." />
+            <CardTitle title="Acoes prioritarias" subtitle="O que mexe no resultado primeiro." />
             <div className="mt-4 space-y-2">
               {priorityActions.length ? (
                 priorityActions.map((action) => (
@@ -693,34 +736,34 @@ export default function ClienteMetricasPage() {
                 ))
               ) : (
                 <p className="rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3 text-sm text-[var(--cliente-card-text-muted)]">
-                  Nenhuma ação crítica agora. Acompanhe campanhas e funil.
+                  Nenhuma acao critica agora. Acompanhe campanhas e funil.
                 </p>
               )}
             </div>
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Operação hoje" subtitle="Sinais que afetam venda em tempo real." />
+            <CardTitle title="Operacao hoje" subtitle="Sinais que afetam venda em tempo real." />
             <div className="mt-4 grid gap-2">
               <OperationalRow href={queueHref("all")} label="Conversas ativas" value={String(operations.activeChats || 0)} tone="info" />
-              <OperationalRow href={queueHref("sla_breached")} label="SLA vencido" value={String(operations.overdueChats || 0)} tone={Number(operations.overdueChats || 0) > 0 ? "danger" : "success"} />
-              <OperationalRow href={queueHref("unassigned")} label="Sem responsável" value={String(operations.unassignedChats || 0)} tone={Number(operations.unassignedChats || 0) > 0 ? "warning" : "success"} />
+              <OperationalRow href={queueHref("sla_breached")} label="Fora do prazo" value={String(operations.overdueChats || 0)} tone={Number(operations.overdueChats || 0) > 0 ? "danger" : "success"} />
+              <OperationalRow href={queueHref("unassigned")} label="Sem responsavel" value={String(operations.unassignedChats || 0)} tone={Number(operations.unassignedChats || 0) > 0 ? "warning" : "success"} />
               <OperationalRow href={queueHref("assigned_waiting")} label="Aguardando resposta" value={String(queueBreakdown.assignedWaiting || 0)} tone="warning" />
             </div>
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Qualidade da aquisição" subtitle="Quanto custa chegar em venda." />
+            <CardTitle title="Qualidade da aquisicao" subtitle="Quanto custa chegar em venda." />
             <div className="mt-4 space-y-2">
               <SimpleStat label="Custo por contato" value={currency(cpl)} icon={MousePointerClick} />
               <SimpleStat label="Custo por qualificado" value={currency(Number(metrics.qualifiedCpl || 0))} icon={UsersRound} />
-              <SimpleStat label="Custo por reunião" value={currency(Number(metrics.costPerMeeting || 0))} icon={CalendarDays} />
+              <SimpleStat label="Custo por reuniao" value={currency(Number(metrics.costPerMeeting || 0))} icon={CalendarDays} />
               <SimpleStat label="Custo por venda" value={costPerSale ? currency(costPerSale) : "Sem venda"} icon={Target} />
             </div>
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Atalhos úteis" subtitle="Ir direto para a ação." />
+            <CardTitle title="Atalhos uteis" subtitle="Ir direto para a acao." />
             <div className="mt-4 grid gap-2">
               <Shortcut href="/cliente/painel/campanhas" icon={Megaphone} label="Ajustar campanhas" />
               <Shortcut href="/cliente/painel/crm" icon={PieChart} label="Ver oportunidades" />
@@ -731,6 +774,100 @@ export default function ClienteMetricasPage() {
         </aside>
       </section>
     </div>
+  );
+}
+
+function DecisionBoard({
+  bestCampaign,
+  bestChannel,
+  bottleneck,
+  nextDecision,
+}: {
+  bestCampaign: AttributionGroup | null;
+  bestChannel: AttributionGroup | null;
+  bottleneck: string;
+  nextDecision: string;
+}) {
+  return (
+    <PanelCard className="p-5 md:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <CardTitle title="Decisao executiva" subtitle="A leitura que o gestor precisa antes de mexer em dinheiro, equipe ou campanha." />
+        <StateBadge label="acao recomendada" tone="info" />
+      </div>
+      <div className="mt-4 grid gap-3 xl:grid-cols-4">
+        <DecisionTile
+          icon={Megaphone}
+          label="Melhor campanha"
+          title={bestCampaign?.label || "Sem campanha vencedora"}
+          detail={
+            bestCampaign
+              ? `${bestCampaign.wonLeads} venda(s), ${bestCampaign.meetings} reunioes, ${bestCampaign.qualifiedLeads} qualificados`
+              : "Ainda falta atribuicao de campanha para comparar resultado."
+          }
+          href="/cliente/painel/campanhas"
+          tone={bestCampaign?.wonLeads ? "success" : "warning"}
+        />
+        <DecisionTile
+          icon={PieChart}
+          label="Melhor canal"
+          title={bestChannel ? channelLabel(bestChannel.label) : "Sem canal vencedor"}
+          detail={
+            bestChannel
+              ? `${bestChannel.lastTouchLeads} contatos, ${bestChannel.wonLeads} venda(s), ${percent(bestChannel.winRate)} conversao`
+              : "Preencha origem ou conecte anuncios para medir canais."
+          }
+          href="/cliente/painel/campanhas"
+          tone={bestChannel?.wonLeads ? "success" : "info"}
+        />
+        <DecisionTile
+          icon={Gauge}
+          label="Gargalo principal"
+          title={bottleneck}
+          detail="Resolva este ponto antes de escalar a proxima campanha."
+          href="/cliente/painel/inbox"
+          tone={bottleneck.includes("sem gargalo") ? "success" : "warning"}
+        />
+        <DecisionTile
+          icon={Target}
+          label="Proxima decisao"
+          title={nextDecision}
+          detail="Use esta acao como prioridade da semana."
+          href="/cliente/painel/perguntar-altum"
+          tone="info"
+        />
+      </div>
+    </PanelCard>
+  );
+}
+
+function DecisionTile({
+  icon: Icon,
+  label,
+  title,
+  detail,
+  href,
+  tone,
+}: {
+  icon: typeof DollarSign;
+  label: string;
+  title: string;
+  detail: string;
+  href: string;
+  tone: "success" | "info" | "warning";
+}) {
+  const iconClass = tone === "success" ? "text-[var(--cliente-success)]" : tone === "warning" ? "text-[var(--cliente-warning)]" : "text-[var(--cliente-primary)]";
+
+  return (
+    <Link href={href} className="block rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:-translate-y-0.5 hover:bg-[var(--cliente-surface-hover)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">{label}</p>
+          <p className="mt-2 line-clamp-2 text-sm font-black text-[var(--cliente-card-text)]">{title}</p>
+        </div>
+        <Icon className={`h-5 w-5 shrink-0 ${iconClass}`} />
+      </div>
+      <p className="mt-3 text-sm leading-5 text-[var(--cliente-card-text-muted)]">{detail}</p>
+    </Link>
   );
 }
 
@@ -761,7 +898,7 @@ function HeroMetric({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-75">{label}</p>
-          <p className="mt-3 text-3xl font-black leading-none tracking-[-0.04em]">{value}</p>
+          <p className="mt-3 text-3xl font-black leading-none tracking-normal">{value}</p>
           <p className="mt-2 text-xs opacity-75">{detail}</p>
         </div>
         <Icon className="h-5 w-5 opacity-80" />
@@ -829,7 +966,7 @@ function OperationalRow({ href, label, value, tone }: { href: string; label: str
 function SimpleStat({ label, value, icon: Icon }: { label: string; value: string; icon: typeof DollarSign }) {
   return (
     <div className="flex items-center gap-3 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-      <span className="flex h-9 w-9 items-center justify-center rounded-[14px] bg-[color:color-mix(in_srgb,#2563eb_10%,var(--cliente-card))] text-[#2563eb]">
+      <span className="flex h-9 w-9 items-center justify-center rounded-[14px] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]">
         <Icon className="h-4 w-4" />
       </span>
       <div>
@@ -843,7 +980,7 @@ function SimpleStat({ label, value, icon: Icon }: { label: string; value: string
 function Shortcut({ href, icon: Icon, label }: { href: string; icon: typeof Megaphone; label: string }) {
   return (
     <Link href={href} className="flex items-center gap-3 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]">
-      <Icon className="h-4 w-4 text-[#2563eb]" />
+      <Icon className="h-4 w-4 text-[var(--cliente-primary)]" />
       {label}
     </Link>
   );

@@ -49,6 +49,12 @@ type Body = {
 function summarizeLeadMemoryForPreview(leadMemory: Partial<AltumLeadMemory> | null | undefined) {
   if (!leadMemory) return "";
   return [
+    clean(leadMemory.attributionSourceLabel || leadMemory.attributionSource || leadMemory.attributionChannel, 160)
+      ? `origem: ${clean(leadMemory.attributionSourceLabel || leadMemory.attributionSource || leadMemory.attributionChannel, 160)}`
+      : "",
+    clean(leadMemory.attributionCampaign, 180)
+      ? `campanha: ${clean(leadMemory.attributionCampaign, 180)}`
+      : "",
     clean(leadMemory.preferredName, 120) ? `nome preferido: ${clean(leadMemory.preferredName, 120)}` : "",
     clean(leadMemory.leadTone, 120) ? `tom: ${clean(leadMemory.leadTone, 120)}` : "",
     clean(leadMemory.activeTopic, 120) ? `assunto vivo: ${clean(leadMemory.activeTopic, 120)}` : "",

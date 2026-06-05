@@ -1,5 +1,6 @@
 ﻿import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { extractLeadAttributionSummary } from "@/lib/server/attribution";
 
 export type AltumConversationStage =
   | "greeting"
@@ -41,6 +42,17 @@ export type AltumConversationRuntimeState = {
 export type AltumLeadMemory = {
   tenantId: string;
   leadId: string;
+  attributionSource?: string | null;
+  attributionMedium?: string | null;
+  attributionCampaign?: string | null;
+  attributionCampaignId?: string | null;
+  attributionChannel?: string | null;
+  attributionSourceLabel?: string | null;
+  lastOutboundCampaignId?: string | null;
+  lastOutboundCampaignName?: string | null;
+  lastOutboundTemplateName?: string | null;
+  lastOutboundMessage?: string | null;
+  lastOutboundChannel?: string | null;
   businessType?: string | null;
   primaryGoal?: string | null;
   budgetBand?: string | null;
@@ -425,9 +437,20 @@ export async function getConversationRuntimeState(tenantId: string, chatId: stri
 }
 
 export async function getLeadMemory(tenantId: string, leadId: string): Promise<AltumLeadMemory | null> {
-  const snap = await adminDb.collection("ai_lead_memory").doc(getLeadMemoryDocId(tenantId, leadId)).get();
-  if (!snap.exists) return null;
-  const data = snap.data() as Record<string, unknown>;
+  const [snap, leadSnap] = await Promise.all([
+    adminDb.collection("ai_lead_memory").doc(getLeadMemoryDocId(tenantId, leadId)).get(),
+    adminDb.collection("leads").doc(leadId).get(),
+  ]);
+  if (!snap.exists && !leadSnap.exists) return null;
+  const data = snap.exists ? (snap.data() as Record<string, unknown>) : {};
+  const leadData = leadSnap.exists ? (leadSnap.data() as Record<string, unknown>) : {};
+  const attribution = extractLeadAttributionSummary(leadData);
+  const outboundContext =
+    leadData.lastOutboundCampaignContext &&
+    typeof leadData.lastOutboundCampaignContext === "object" &&
+    !Array.isArray(leadData.lastOutboundCampaignContext)
+      ? (leadData.lastOutboundCampaignContext as Record<string, unknown>)
+      : {};
   const fields =
     data.fields && typeof data.fields === "object" && !Array.isArray(data.fields)
       ? Object.fromEntries(
@@ -440,6 +463,20 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
   return {
     tenantId,
     leadId,
+    attributionSource: attribution.source || null,
+    attributionMedium: attribution.medium || null,
+    attributionCampaign: attribution.campaign || null,
+    attributionCampaignId: attribution.lastTouch.campaignId || attribution.firstTouch.campaignId || null,
+    attributionChannel: attribution.channel || null,
+    attributionSourceLabel: attribution.sourceLabel || null,
+    lastOutboundCampaignId:
+      cleanText(outboundContext.campaignId, 160) || cleanText(leadData.lastOutboundCampaignId, 160) || null,
+    lastOutboundCampaignName:
+      cleanText(outboundContext.campaignName, 180) || cleanText(leadData.lastOutboundCampaignName, 180) || null,
+    lastOutboundTemplateName: cleanText(outboundContext.templateName, 160) || null,
+    lastOutboundMessage:
+      cleanText(outboundContext.persistedText, 360) || cleanText(outboundContext.intendedText, 360) || null,
+    lastOutboundChannel: cleanText(outboundContext.channel, 80) || null,
     businessType: cleanText(data.businessType, 120) || null,
     primaryGoal: cleanText(data.primaryGoal, 180) || null,
     budgetBand: cleanText(data.budgetBand, 120) || null,

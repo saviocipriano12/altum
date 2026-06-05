@@ -201,32 +201,32 @@ export default function ProdutoServicoDetalhePage() {
   const kind = kindFromDoc(item);
 
   return (
-    <div className="client-daily-page space-y-5">
+    <div className="produtos-refined client-daily-page space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/cliente/painel/produtos-servicos" className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
           <ArrowLeft className="h-4 w-4" />
           Catalogo
         </Link>
         {canManage ? (
-          <Link href={`/cliente/painel/produtos-servicos/novo?docId=${item.id}`} className="inline-flex items-center gap-2 rounded-[16px] bg-[#2563eb] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1d4ed8]">
+          <Link href={`/cliente/painel/produtos-servicos/novo?docId=${item.id}`} className="inline-flex items-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[var(--cliente-primary-hover)]">
             <Edit3 className="h-4 w-4" />
             Editar ficha
           </Link>
         ) : null}
       </div>
 
-      <section className="overflow-hidden rounded-[32px] border border-[color:color-mix(in_srgb,#2563eb_18%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,#eff6ff_84%,var(--cliente-card)),color-mix(in_srgb,#eef2ff_70%,var(--cliente-panel-soft)))] p-5 shadow-[0_24px_70px_-46px_rgba(37,99,235,0.5)] dark:bg-[linear-gradient(135deg,color-mix(in_srgb,#1e3a8a_34%,var(--cliente-card)),color-mix(in_srgb,#312e81_24%,var(--cliente-panel-soft)))] md:p-7">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_12%,var(--cliente-card)),var(--cliente-card)_52%,color-mix(in_srgb,var(--cliente-success)_8%,var(--cliente-card)))] p-4 shadow-[var(--cliente-shadow-soft)] md:p-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div>
             <div className="flex flex-wrap gap-2">
               <StateBadge label={kind} tone={kind === "servico" ? "ai" : "success"} />
               <StateBadge label={item.availability === "paused" ? "pausado" : "ativo"} tone={item.availability === "paused" ? "warning" : "success"} />
               <StateBadge label={`${score}% pronto`} tone={score > 75 ? "success" : "warning"} />
             </div>
-            <h1 className="mt-5 text-3xl font-black leading-tight tracking-[-0.03em] text-[var(--cliente-card-text)] md:text-5xl">
+            <h1 className="mt-4 text-2xl font-black leading-tight tracking-normal text-[var(--cliente-card-text)] md:text-3xl">
               {item.productName || "Item sem nome"}
             </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-6 text-[var(--cliente-card-text-muted)] md:text-base">
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--cliente-card-text-muted)]">
               {[item.productCategory, priceLabel(item), item.targetProfile].filter(Boolean).join(" | ")}
             </p>
           </div>
@@ -314,9 +314,9 @@ function QualityRow({ done, label }: { done: boolean; label: string }) {
 
 function MaterialCard({ media, main }: { media: MediaItem; main: boolean }) {
   return (
-    <a href={media.mediaUrl} target="_blank" rel="noreferrer" className="group block rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,#2563eb_28%,var(--cliente-border))] hover:bg-[var(--cliente-surface-hover)]">
+    <a href={media.mediaUrl} target="_blank" rel="noreferrer" className="group block rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--cliente-primary)_28%,var(--cliente-border))] hover:bg-[var(--cliente-surface-hover)]">
       <div className="flex items-start gap-3">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-[color:color-mix(in_srgb,#2563eb_18%,var(--cliente-border))] bg-[color:color-mix(in_srgb,#2563eb_9%,var(--cliente-card))] text-[#2563eb]">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,var(--cliente-border))] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]">
           <MaterialIcon type={media.mediaType} />
         </span>
         <div className="min-w-0">

@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
 
 type Body = {
   status?: string;
@@ -132,14 +133,19 @@ export async function PATCH(
 
       if (nextStage) {
         writes.push(
-          leadRef.set(
-            {
-              pipelineStage: nextStage,
-              stage: nextStage,
-              updatedAt: FieldValue.serverTimestamp(),
+          setLeadPipelineStageWithEffects({
+            tenantId,
+            leadId,
+            nextStage,
+            actorId: user.uid,
+            actorName: user.name,
+            source: "budget_status_update",
+            metadata: {
+              budgetId,
+              budgetStatus: patch.status,
+              budgetValue: cleanMoney(patch.valorTotal ?? budget.valorTotal),
             },
-            { merge: true }
-          )
+          })
         );
       }
     }

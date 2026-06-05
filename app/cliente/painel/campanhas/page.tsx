@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowUpRight,
   BarChart3,
   Bot,
@@ -18,8 +19,10 @@ import {
   PencilLine,
   Play,
   Plus,
+  RefreshCw,
   Save,
   Send,
+  ShieldCheck,
   Sparkles,
   Target,
   Trash2,
@@ -119,9 +122,14 @@ type PaidCampaign = {
   label: string;
   source?: string | null;
   lastTouchLeads: number;
+  firstTouchLeads?: number;
+  assistedLeads?: number;
   qualifiedLeads: number;
   wonLeads: number;
   meetings: number;
+  hotLeads?: number;
+  qualityRate?: number;
+  winRate?: number;
   spend: number;
   clicks: number;
   impressions: number;
@@ -140,6 +148,8 @@ type MetricsSummary = {
     wonLeads: number;
     paidRevenue: number;
     roi: number;
+    conversations?: number;
+    handoffChats?: number;
   };
   traffic?: {
     impressions: number;
@@ -154,6 +164,84 @@ type MetricsSummary = {
     byCampaign?: PaidCampaign[];
     byChannel?: Array<PaidCampaign & { campaignCount?: number | null }>;
   };
+  ai?: {
+    responded?: number;
+    askMore?: number;
+    handoff?: number;
+    skipped?: number;
+    avgConfidence?: number;
+    avgLatencyMs?: number;
+  };
+  operations?: {
+    aiBreakdown?: {
+      active?: number;
+      paused?: number;
+      humanOwned?: number;
+    };
+  };
+};
+
+type ConversionHealthItem = {
+  channelId: string;
+  type: "meta_ads" | "google_ads";
+  displayName: string;
+  ready: boolean;
+  status: string;
+  issues: string[];
+  configuredEvents: string[];
+  recent: {
+    processed: number;
+    failed: number;
+    claimed: number;
+    skipped: number;
+    total: number;
+    lastStatus?: string;
+    lastError?: string;
+    lastEventAt?: string | null;
+  };
+};
+
+type ConversionHealthResponse = {
+  checkedAt?: string;
+  ok?: boolean;
+  summary?: {
+    total: number;
+    ready: number;
+    failedRecent: number;
+    processedRecent: number;
+  };
+  issues?: string[];
+  items?: ConversionHealthItem[];
+  error?: string;
+};
+
+type CampaignOverviewItem = {
+  key: string;
+  campaignId: string;
+  name: string;
+  platform: string;
+  channelId: string;
+  accountLabel: string;
+  status: "active" | "idle" | "stale";
+  latestDateRef: string;
+  last7: { impressions: number; clicks: number; spend: number; leads: number };
+  last30: { impressions: number; clicks: number; spend: number; leads: number };
+  cpl30: number;
+  cpc30: number;
+};
+
+type CampaignOverviewResponse = {
+  checkedAt?: string;
+  summary?: {
+    total: number;
+    active: number;
+    idle: number;
+    stale: number;
+    spend30: number;
+    leads30: number;
+  };
+  items?: CampaignOverviewItem[];
+  error?: string;
 };
 
 type CaptureFormsPayload = {
@@ -228,6 +316,10 @@ function money(value?: number | null) {
   return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function percent(value?: number | null) {
+  return `${Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+}
+
 function listValue(value: string[]) {
   return value.join(", ");
 }
@@ -275,6 +367,7 @@ export default function ClienteCampanhasPage() {
   const searchParams = useSearchParams();
   const campaignFromQuery = searchParams.get("campaignId");
   const canManage = hasCapability("manage_automations");
+  const canSyncCampaigns = hasCapability("view_metrics") || hasCapability("manage_channels");
   const allowAdvanced = experienceMode === "completo";
 
   const [loading, setLoading] = useState(true);
@@ -282,6 +375,7 @@ export default function ClienteCampanhasPage() {
   const [dispatching, setDispatching] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [syncingCampaigns, setSyncingCampaigns] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [audiencePreview, setAudiencePreview] = useState<AudiencePreview | null>(null);
@@ -289,6 +383,8 @@ export default function ClienteCampanhasPage() {
   const [runs, setRuns] = useState<RunItem[]>([]);
   const [users, setUsers] = useState<Array<{ userId?: string; name?: string }>>([]);
   const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
+  const [conversionHealth, setConversionHealth] = useState<ConversionHealthResponse | null>(null);
+  const [campaignOverview, setCampaignOverview] = useState<CampaignOverviewResponse | null>(null);
   const [formsPayload, setFormsPayload] = useState<CaptureFormsPayload | null>(null);
   const [catalogDocs, setCatalogDocs] = useState<CatalogDoc[]>([]);
   const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
@@ -301,9 +397,78 @@ export default function ClienteCampanhasPage() {
   const pipelineStages = useMemo(() => getBusinessProfilePipelineStages(businessProfileId), [businessProfileId]);
   const selected = useMemo(() => items.find((item) => item.id === selectedId) || null, [items, selectedId]);
   const selectedOffer = useMemo(() => catalogDocs.find((item) => item.id === state.offerId) || null, [catalogDocs, state.offerId]);
-  const paidCampaigns = metrics?.commercialAttribution?.byCampaign || [];
+  const paidCampaigns = useMemo(() => metrics?.commercialAttribution?.byCampaign || [], [metrics?.commercialAttribution?.byCampaign]);
   const activeForms = formsPayload?.forms?.filter((form) => form.status === "active").length || 0;
   const totalFormSubmissions = formsPayload?.forms?.reduce((sum, form) => sum + Number(form.submissionsCount || 0), 0) || 0;
+  const growthSnapshot = useMemo(() => {
+    const bestPaidCampaign =
+      [...paidCampaigns].sort((a, b) => {
+        const saleDiff = Number(b.wonLeads || 0) - Number(a.wonLeads || 0);
+        if (saleDiff !== 0) return saleDiff;
+        const meetingDiff = Number(b.meetings || 0) - Number(a.meetings || 0);
+        if (meetingDiff !== 0) return meetingDiff;
+        return Number(b.lastTouchLeads || 0) - Number(a.lastTouchLeads || 0);
+      })[0] || null;
+    const activeOutbound = items.find((item) => item.status === "active") || items[0] || null;
+    const latestForm =
+      [...(formsPayload?.forms || [])].sort((a, b) => {
+        const aDate = a.lastSubmissionAt ? new Date(a.lastSubmissionAt).getTime() : 0;
+        const bDate = b.lastSubmissionAt ? new Date(b.lastSubmissionAt).getTime() : 0;
+        return bDate - aDate;
+      })[0] || null;
+    const readyConnectors = conversionHealth?.summary?.ready || 0;
+    const failedRecent = conversionHealth?.summary?.failedRecent || 0;
+    const conversionReady = paidCampaigns.length > 0 && (metrics?.traffic?.leads || 0) > 0 && readyConnectors > 0 && failedRecent === 0;
+
+    return {
+      bestPaidCampaign,
+      activeOutbound,
+      latestForm,
+      conversionReady,
+    };
+  }, [conversionHealth?.summary?.failedRecent, conversionHealth?.summary?.ready, formsPayload?.forms, items, metrics?.traffic?.leads, paidCampaigns]);
+
+  const conversionHealthSummary = useMemo(() => {
+    const total = conversionHealth?.summary?.total || 0;
+    const ready = conversionHealth?.summary?.ready || 0;
+    const failed = conversionHealth?.summary?.failedRecent || 0;
+    const processed = conversionHealth?.summary?.processedRecent || 0;
+    const issues = conversionHealth?.issues || [];
+    if (!total) {
+      return {
+        label: "Sem pixel conectado",
+        detail: "Meta Ads ou Google Ads ainda nao estao prontos para receber conversoes.",
+        tone: "warning" as const,
+        total,
+        ready,
+        failed,
+        processed,
+        issues,
+      };
+    }
+    if (ready === total && failed === 0) {
+      return {
+        label: "Retorno saudavel",
+        detail: `${processed} conversao(oes) processada(s) recentemente.`,
+        tone: "success" as const,
+        total,
+        ready,
+        failed,
+        processed,
+        issues,
+      };
+    }
+    return {
+      label: ready > 0 ? "Ajuste recomendado" : "Retorno pendente",
+      detail: issues[0] || "Revise os conectores antes de escalar investimento.",
+      tone: failed > 0 ? ("danger" as const) : ("warning" as const),
+      total,
+      ready,
+      failed,
+      processed,
+      issues,
+    };
+  }, [conversionHealth]);
 
   const loadData = useCallback(async () => {
     if (!tenant?.tenantId) return;
@@ -311,13 +476,15 @@ export default function ClienteCampanhasPage() {
     setError(null);
 
     try {
-      const [campaignsRes, usersRes, settingsRes, metricsRes, formsRes, kbRes] = await Promise.all([
+      const [campaignsRes, usersRes, settingsRes, metricsRes, formsRes, kbRes, conversionHealthRes, campaignOverviewRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns`),
         authedFetch(`/api/tenant/${tenant.tenantId}/users`),
         authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
         authedFetch(`/api/tenant/${tenant.tenantId}/metrics-summary?rangeDays=30`),
         authedFetch(`/api/tenant/${tenant.tenantId}/capture/forms`),
         authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/conversions/health`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/overview`),
       ]);
 
       const campaignsPayload = (await campaignsRes.json()) as { items?: Campaign[]; runs?: RunItem[]; error?: string };
@@ -326,6 +493,8 @@ export default function ClienteCampanhasPage() {
       const metricsPayload = (await metricsRes.json().catch(() => null)) as MetricsSummary | null;
       const formsData = (await formsRes.json().catch(() => null)) as CaptureFormsPayload | null;
       const kbPayload = (await kbRes.json().catch(() => ({}))) as { items?: CatalogDoc[] };
+      const conversionHealthPayload = (await conversionHealthRes.json().catch(() => null)) as ConversionHealthResponse | null;
+      const campaignOverviewPayload = (await campaignOverviewRes.json().catch(() => null)) as CampaignOverviewResponse | null;
 
       if (!campaignsRes.ok) {
         setError(campaignsPayload.error || "Falha ao carregar campanhas outbound.");
@@ -339,6 +508,8 @@ export default function ClienteCampanhasPage() {
       setRuns(campaignsPayload.runs || []);
       setUsers((usersPayload.items || []).filter((item) => item.userId));
       setMetrics(metricsRes.ok ? metricsPayload : null);
+      setConversionHealth(conversionHealthRes.ok ? conversionHealthPayload : null);
+      setCampaignOverview(campaignOverviewRes.ok ? campaignOverviewPayload : null);
       setFormsPayload(formsRes.ok ? formsData : null);
       setCatalogDocs((kbPayload.items || []).filter((item) => item.type === "catalog"));
       setBusinessProfileId((settingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
@@ -384,11 +555,12 @@ export default function ClienteCampanhasPage() {
       active,
       sent,
       runs: runs.length,
-      paidCampaigns: paidCampaigns.length,
+      paidCampaigns: campaignOverview?.summary?.total || paidCampaigns.length,
+      activePaidCampaigns: campaignOverview?.summary?.active || 0,
       spend: metrics?.traffic?.spend || 0,
       paidLeads: metrics?.traffic?.leads || 0,
     };
-  }, [items, metrics?.traffic?.leads, metrics?.traffic?.spend, paidCampaigns.length, runs.length]);
+  }, [campaignOverview?.summary?.active, campaignOverview?.summary?.total, items, metrics?.traffic?.leads, metrics?.traffic?.spend, paidCampaigns.length, runs.length]);
 
   const readiness = useMemo(() => {
     const checks = [
@@ -565,6 +737,31 @@ export default function ClienteCampanhasPage() {
     }
   }
 
+  async function handleSyncPaidCampaigns() {
+    if (!tenant?.tenantId || !canSyncCampaigns) return;
+    setSyncingCampaigns(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: 30 }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { error?: string; synced?: number; failed?: number };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao sincronizar campanhas.");
+        return;
+      }
+      await loadData();
+      setNotice(`Campanhas atualizadas: ${payload.synced || 0} fonte(s) sincronizada(s), ${payload.failed || 0} falha(s).`);
+    } catch {
+      setError("Falha ao sincronizar campanhas.");
+    } finally {
+      setSyncingCampaigns(false);
+    }
+  }
+
   function toggleStage(stageId: string) {
     setState((current) => {
       const exists = current.filters.stageIds.includes(stageId);
@@ -587,26 +784,26 @@ export default function ClienteCampanhasPage() {
   }
 
   return (
-    <div className="campanhas-refined client-daily-page space-y-6">
-      <section className="overflow-hidden rounded-[32px] border border-[color:color-mix(in_srgb,#2563eb_18%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,#eff6ff_82%,var(--cliente-card)),color-mix(in_srgb,#eef2ff_70%,var(--cliente-panel-soft)))] p-5 shadow-[0_24px_70px_-46px_rgba(37,99,235,0.48)] dark:bg-[linear-gradient(135deg,color-mix(in_srgb,#1e3a8a_32%,var(--cliente-card)),color-mix(in_srgb,#312e81_24%,var(--cliente-panel-soft)))] md:p-7">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="campanhas-refined client-daily-page space-y-4">
+      <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_12%,var(--cliente-card)),var(--cliente-card)_52%,color-mix(in_srgb,var(--cliente-ai)_8%,var(--cliente-card)))] p-4 shadow-[var(--cliente-shadow-soft)] md:p-5">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div>
             <div className="flex flex-wrap gap-2">
-              <StateBadge label="Central de campanhas" tone="info" />
-              <StateBadge label="WhatsApp, trafego e captacao" tone="ai" />
+              <StateBadge label="Crescimento" tone="info" />
+              <StateBadge label="Trafego -> venda" tone="ai" />
             </div>
-            <h1 className="mt-5 max-w-4xl text-3xl font-black leading-tight tracking-[-0.03em] text-[var(--cliente-card-text)] md:text-5xl">
-              Planeje, dispare e leia campanhas em uma unica operacao comercial.
+            <h1 className="mt-4 max-w-3xl text-2xl font-extrabold leading-tight tracking-normal text-[var(--cliente-card-text)] md:text-[2rem]">
+              Campanhas conectadas ao atendimento e ao dinheiro.
             </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-6 text-[var(--cliente-card-text-muted)] md:text-base">
-              A tela agora une outbound WhatsApp, campanhas pagas, formularios de captacao e ofertas do catalogo para o gestor decidir com mais contexto.
+            <p className="mt-2 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-muted)]">
+              Anuncios, UTMs, formularios, WhatsApp e ofertas em uma leitura comercial.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-5 flex flex-wrap gap-2">
               {canManage ? (
                 <button
                   type="button"
                   onClick={() => handleCreate("reativacao")}
-                  className="inline-flex items-center justify-center gap-2 rounded-[18px] bg-[#2563eb] px-5 py-3 text-sm font-bold text-white shadow-[0_18px_36px_-22px_rgba(37,99,235,0.75)] transition hover:-translate-y-0.5 hover:bg-[#1d4ed8]"
+                  className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[var(--cliente-primary-hover)]"
                 >
                   <Plus className="h-4 w-4" />
                   Nova campanha
@@ -614,14 +811,25 @@ export default function ClienteCampanhasPage() {
               ) : null}
               <Link
                 href="/cliente/painel/captacao"
-                className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-5 py-3 text-sm font-bold text-[var(--cliente-card-text)] shadow-[var(--cliente-shadow-soft)] transition hover:-translate-y-0.5"
+                className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:-translate-y-0.5 hover:bg-[var(--cliente-surface-hover)]"
               >
                 Formularios e captacao
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
+              {canSyncCampaigns ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSyncPaidCampaigns()}
+                  disabled={syncingCampaigns}
+                  className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:-translate-y-0.5 hover:bg-[var(--cliente-surface-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RefreshCw className={syncingCampaigns ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                  Sincronizar anuncios
+                </button>
+              ) : null}
               <Link
                 href="/cliente/painel/configuracoes/integracoes"
-                className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-5 py-3 text-sm font-bold text-[var(--cliente-card-text)] shadow-[var(--cliente-shadow-soft)] transition hover:-translate-y-0.5"
+                className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:-translate-y-0.5 hover:bg-[var(--cliente-surface-hover)]"
               >
                 Integracoes de anuncios
                 <ArrowUpRight className="h-4 w-4" />
@@ -631,7 +839,7 @@ export default function ClienteCampanhasPage() {
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <HeroStat label="Investimento 30d" value={money(summary.spend)} detail={`${summary.paidLeads} leads pagos registrados`} icon={DollarSign} tone="info" />
-            <HeroStat label="Outbound WhatsApp" value={`${summary.active}/${summary.total}`} detail={`${summary.sent} mensagens enviadas`} icon={MessageCircle} tone="success" />
+            <HeroStat label="WhatsApp ativo" value={`${summary.active}/${summary.total}`} detail={`${summary.sent} mensagens enviadas`} icon={MessageCircle} tone="success" />
           </div>
         </div>
       </section>
@@ -640,11 +848,31 @@ export default function ClienteCampanhasPage() {
       {notice ? <div className="rounded-[24px] border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">{notice}</div> : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Campanhas pagas" value={String(summary.paidCampaigns)} icon={BarChart3} trend="Meta, Google e UTMs" tone="brand" />
+        <MetricCard label="Campanhas pagas" value={String(summary.paidCampaigns)} icon={BarChart3} trend={`${summary.activePaidCampaigns} ativa(s) nos ultimos 7 dias`} tone="brand" />
         <MetricCard label="Gasto em midia" value={money(summary.spend)} icon={DollarSign} trend={`CPL ${money(metrics?.traffic?.cpl || 0)}`} tone="brand" />
-        <MetricCard label="WhatsApp outbound" value={String(summary.total)} icon={Megaphone} trend={`${summary.active} ativa(s)`} tone="ai" />
-        <MetricCard label="Captacao" value={String(activeForms)} icon={Globe2} trend={`${totalFormSubmissions} entradas`} tone="success" />
+        <MetricCard label="Campanhas WhatsApp" value={String(summary.total)} icon={Megaphone} trend={`${summary.active} ativa(s)`} tone="ai" />
+        <MetricCard label="Retorno para pixels" value={`${conversionHealthSummary.ready}/${conversionHealthSummary.total}`} icon={ShieldCheck} trend={conversionHealthSummary.label} tone={conversionHealthSummary.tone === "danger" ? "danger" : conversionHealthSummary.tone} />
       </section>
+
+      <GrowthCommandCenter
+        bestPaidCampaign={growthSnapshot.bestPaidCampaign}
+        activeOutbound={growthSnapshot.activeOutbound}
+        latestForm={growthSnapshot.latestForm}
+        conversionReady={growthSnapshot.conversionReady}
+        traffic={metrics?.traffic}
+      />
+
+      <CampaignRealityPanel
+        campaigns={paidCampaigns}
+        overview={campaignOverview}
+        metricsSummary={metrics}
+        health={conversionHealth}
+        summary={conversionHealthSummary}
+        traffic={metrics?.traffic}
+        canSync={canSyncCampaigns}
+        syncing={syncingCampaigns}
+        onSync={() => void handleSyncPaidCampaigns()}
+      />
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
@@ -654,7 +882,7 @@ export default function ClienteCampanhasPage() {
               <StateBadge label="30 dias" tone="info" />
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-3">
-              <ChannelTile icon={MessageCircle} title="WhatsApp outbound" value={`${summary.sent} envios`} detail={`${runs.length} rodada(s) registradas`} href="#outbound" />
+              <ChannelTile icon={MessageCircle} title="WhatsApp" value={`${summary.sent} envios`} detail={`${runs.length} rodada(s) registradas`} href="#outbound" />
               <ChannelTile icon={BarChart3} title="Anuncios e UTM" value={money(summary.spend)} detail={`${paidCampaigns.length} campanha(s) com dados`} href="#midia" />
               <ChannelTile icon={Globe2} title="Formularios" value={`${totalFormSubmissions} entradas`} detail={`${activeForms} formulario(s) ativo(s)`} href="/cliente/painel/captacao" />
             </div>
@@ -663,7 +891,7 @@ export default function ClienteCampanhasPage() {
           <div id="midia">
           <PanelCard className="p-5 md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle title="Campanhas pagas e UTMs" subtitle="Dados vindos de snapshots, Meta/Google e atribuicao comercial." />
+              <CardTitle title="Campanhas pagas e UTMs" subtitle="Gasto, cliques, leads, reunioes e vendas conectados ao comercial." />
               <Link href="/cliente/painel/configuracoes/integracoes" className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
                 Configurar fontes
                 <ArrowUpRight className="h-3.5 w-3.5" />
@@ -700,7 +928,7 @@ export default function ClienteCampanhasPage() {
           <div id="outbound">
           <PanelCard className="p-5 md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle title="Construtor de campanha WhatsApp" subtitle="Fluxo guiado: objetivo, publico, mensagem e revisao antes do disparo." />
+              <CardTitle title="Campanha WhatsApp guiada" subtitle="Objetivo, publico, mensagem e revisao antes de chamar a base." />
               <StateBadge label={`${readiness.score}% pronto`} tone={readiness.score >= 75 ? "success" : "warning"} />
             </div>
 
@@ -839,21 +1067,20 @@ export default function ClienteCampanhasPage() {
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]">
                 <Bot className="h-5 w-5" />
               </span>
-              <CardTitle title="O que esta tela faz hoje" subtitle="Leitura baseada no codigo atual da plataforma." />
+              <CardTitle title="Proximos movimentos" subtitle="Acoes que ajudam a transformar campanha em venda." />
             </div>
-            <div className="mt-4 space-y-2 text-sm leading-6 text-[var(--cliente-card-text-muted)]">
-              <p>1. Lista e edita campanhas outbound salvas em `outbound_campaigns`.</p>
-              <p>2. Segmenta leads por etapa, origem, tags, responsavel e temperatura.</p>
-              <p>3. Simula audiencia antes do envio, checando telefone e consentimento.</p>
-              <p>4. Dispara mensagens no WhatsApp e registra rodadas em `outbound_campaign_runs`.</p>
-              <p>5. Agora tambem mostra campanhas pagas, formularios e ofertas do catalogo.</p>
+            <div className="mt-4 space-y-2">
+              <GrowthAction href="/cliente/painel/configuracoes/canais" title="Garantir pixel e conversoes" detail="Meta, Google e UTMs precisam voltar para a Altum." tone="info" />
+              <GrowthAction href="/cliente/painel/captacao" title="Criar captura para novos leads" detail="Formulario ou pagina simples para cada campanha." tone="success" />
+              <GrowthAction href="#outbound" title="Reativar contatos parados" detail="Chame a base certa pelo WhatsApp com objetivo claro." tone="ai" />
+              <GrowthAction href="/cliente/painel/metricas" title="Ver o que gerou dinheiro" detail="Compare leads, reunioes, vendas e custo por resultado." tone="warning" />
             </div>
           </PanelCard>
 
           <PanelCard className="p-5">
             <CardTitle title="Canais conectados" subtitle="Resumo das frentes de campanha que a Altum consegue ler." />
             <div className="mt-4 space-y-2">
-              <IntegrationRow label="WhatsApp outbound" value={`${summary.total} campanha(s)`} ready={summary.total > 0} />
+              <IntegrationRow label="Campanhas WhatsApp" value={`${summary.total} campanha(s)`} ready={summary.total > 0} />
               <IntegrationRow label="Meta/Google/UTM" value={`${paidCampaigns.length} campanha(s)`} ready={paidCampaigns.length > 0} />
               <IntegrationRow label="Formularios" value={`${activeForms} ativo(s)`} ready={activeForms > 0} />
               <IntegrationRow label="Catalogo de ofertas" value={`${catalogDocs.length} item(ns)`} ready={catalogDocs.length > 0} />
@@ -895,7 +1122,7 @@ function HeroStat({ label, value, detail, icon: Icon, tone }: { label: string; v
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-75">{label}</p>
-          <p className="mt-3 text-2xl font-black leading-none tracking-[-0.03em]">{value}</p>
+          <p className="mt-3 text-2xl font-black leading-none tracking-normal">{value}</p>
           <p className="mt-2 text-xs opacity-75">{detail}</p>
         </div>
         <Icon className="h-5 w-5 opacity-80" />
@@ -904,18 +1131,384 @@ function HeroStat({ label, value, detail, icon: Icon, tone }: { label: string; v
   );
 }
 
+function CampaignRealityPanel({
+  campaigns,
+  overview,
+  metricsSummary,
+  health,
+  summary,
+  traffic,
+  canSync,
+  syncing,
+  onSync,
+}: {
+  campaigns: PaidCampaign[];
+  overview: CampaignOverviewResponse | null;
+  metricsSummary: MetricsSummary | null;
+  health: ConversionHealthResponse | null;
+  summary: {
+    label: string;
+    detail: string;
+    tone: "success" | "warning" | "danger";
+    total: number;
+    ready: number;
+    failed: number;
+    processed: number;
+    issues: string[];
+  };
+  traffic?: MetricsSummary["traffic"];
+  canSync: boolean;
+  syncing: boolean;
+  onSync: () => void;
+}) {
+  const topCampaigns = campaigns.slice(0, 5);
+  const activeOverview = (overview?.items || []).filter((item) => item.status === "active");
+  const visibleOverview = activeOverview.length ? activeOverview.slice(0, 5) : (overview?.items || []).slice(0, 5);
+  const totalSales = campaigns.reduce((sum, item) => sum + Number(item.wonLeads || 0), 0);
+  const totalMeetings = campaigns.reduce((sum, item) => sum + Number(item.meetings || 0), 0);
+  const healthItems = health?.items || [];
+  const aiResponded = metricsSummary?.ai?.responded || 0;
+  const humanOwned = metricsSummary?.operations?.aiBreakdown?.humanOwned || metricsSummary?.metrics?.handoffChats || 0;
+  const conversations = metricsSummary?.metrics?.conversations || 0;
+  const revenue = metricsSummary?.metrics?.paidRevenue || 0;
+
+  return (
+    <PanelCard className="p-5 md:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <CardTitle
+          title="Campanhas ativas e retorno de dados"
+          subtitle="A leitura diaria para saber onde investir, onde pausar e se os pixels estao aprendendo com vendas reais."
+        />
+        <div className="flex flex-wrap gap-2">
+          <StateBadge label={`${activeOverview.length} campanha(s) ativa(s)`} tone={activeOverview.length > 0 ? "success" : "warning"} />
+          <StateBadge label={summary.label} tone={summary.tone} />
+          {canSync ? (
+            <button
+              type="button"
+              onClick={onSync}
+              disabled={syncing}
+              className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw className={syncing ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+              Atualizar
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <MiniMetric label="Investimento" value={money(traffic?.spend || 0)} />
+        <MiniMetric label="Leads pagos" value={String(traffic?.leads || 0)} />
+        <MiniMetric label="Reunioes" value={String(totalMeetings)} />
+        <MiniMetric label="Vendas" value={String(totalSales)} />
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-4">
+        <MiniMetric label="Conversas" value={String(conversations)} />
+        <MiniMetric label="IA respondeu" value={String(aiResponded)} />
+        <MiniMetric label="Humano assumiu" value={String(humanOwned)} />
+        <MiniMetric label="Receita paga" value={money(revenue)} />
+      </div>
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-2">
+          {topCampaigns.length || visibleOverview.length ? (
+            <>
+              {topCampaigns.map((campaign) => <ActiveCampaignRow key={campaign.key} campaign={campaign} />)}
+              {visibleOverview
+                .filter((item) => !topCampaigns.some((campaign) => campaign.label.toLowerCase() === item.name.toLowerCase()))
+                .map((item) => <CampaignOverviewRow key={item.key} item={item} />)}
+            </>
+          ) : (
+            <EmptyState
+              title="Nenhuma campanha ativa com leitura comercial"
+              description="Quando Meta, Google, UTMs ou formularios trouxerem leads, a Altum mostra investimento, atendimento, reunioes e vendas aqui."
+            />
+          )}
+        </div>
+
+        <div className="rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+          <div className="flex items-start gap-3">
+            <span className={`rounded-[18px] border p-3 ${
+              summary.tone === "success"
+                ? "border-[color:color-mix(in_srgb,var(--cliente-success)_20%,transparent)] bg-[var(--cliente-success-soft)] text-[var(--cliente-success)]"
+                : summary.tone === "danger"
+                  ? "border-[color:color-mix(in_srgb,var(--cliente-danger)_20%,transparent)] bg-[var(--cliente-danger-soft)] text-[var(--cliente-danger)]"
+                  : "border-[color:color-mix(in_srgb,var(--cliente-warning)_20%,transparent)] bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]"
+            }`}>
+              {summary.tone === "success" ? <ShieldCheck className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-black text-[var(--cliente-card-text)]">{summary.label}</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{summary.detail}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <MiniMetric label="Prontos" value={`${summary.ready}/${summary.total}`} />
+            <MiniMetric label="Enviados" value={String(summary.processed)} />
+            <MiniMetric label="Falhas" value={String(summary.failed)} />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {healthItems.length ? (
+              healthItems.map((item) => <ConversionConnectorRow key={item.channelId} item={item} />)
+            ) : (
+              <Link
+                href="/cliente/painel/configuracoes/canais"
+                className="block rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
+              >
+                Conectar Meta Ads ou Google Ads
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    </PanelCard>
+  );
+}
+
+function ActiveCampaignRow({ campaign }: { campaign: PaidCampaign }) {
+  const hasSale = Number(campaign.wonLeads || 0) > 0;
+  const hasMeeting = Number(campaign.meetings || 0) > 0;
+  const tone = hasSale ? "success" : hasMeeting ? "warning" : "info";
+
+  return (
+    <div className="rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_520px]">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StateBadge label={campaign.source || "UTM"} tone="info" />
+            <StateBadge label={hasSale ? "gerou venda" : hasMeeting ? "gerou reuniao" : "em leitura"} tone={tone} />
+          </div>
+          <p className="mt-3 truncate text-base font-black text-[var(--cliente-card-text)]">{campaign.label}</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+            {campaign.lastTouchLeads} leads, {campaign.qualifiedLeads} qualificados, {campaign.meetings} reunioes, {campaign.wonLeads} vendas.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <MiniMetric label="Gasto" value={money(campaign.spend)} />
+          <MiniMetric label="CPL" value={money(campaign.cpl)} />
+          <MiniMetric label="Custo venda" value={campaign.wonLeads > 0 ? money(campaign.costPerSale) : "--"} />
+          <MiniMetric label="Conversao" value={percent(campaign.winRate)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CampaignOverviewRow({ item }: { item: CampaignOverviewItem }) {
+  const statusLabel =
+    item.status === "active" ? "ativa" : item.status === "idle" ? "sem movimento recente" : "sem dados recentes";
+  const tone = item.status === "active" ? "success" : item.status === "idle" ? "warning" : "neutral";
+
+  return (
+    <div className="rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_520px]">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StateBadge label={item.platform === "google_ads" ? "Google Ads" : item.platform === "meta_ads" ? "Meta Ads" : "Midia paga"} tone="info" />
+            <StateBadge label={statusLabel} tone={tone} />
+          </div>
+          <p className="mt-3 truncate text-base font-black text-[var(--cliente-card-text)]">{item.name}</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+            Ultimo sinal em {item.latestDateRef || "--"} no conector {item.accountLabel || item.channelId || "--"}.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <MiniMetric label="7d gasto" value={money(item.last7.spend)} />
+          <MiniMetric label="7d leads" value={String(item.last7.leads)} />
+          <MiniMetric label="30d gasto" value={money(item.last30.spend)} />
+          <MiniMetric label="30d CPL" value={item.last30.leads > 0 ? money(item.cpl30) : "--"} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConversionConnectorRow({ item }: { item: ConversionHealthItem }) {
+  return (
+    <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-black text-[var(--cliente-card-text)]">{item.displayName}</p>
+          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+            {item.configuredEvents.length ? `${item.configuredEvents.length} evento(s) configurado(s)` : "Eventos ainda nao configurados"}
+          </p>
+        </div>
+        <StateBadge label={item.ready ? "pronto" : "pendente"} tone={item.ready ? "success" : "warning"} />
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <MiniMetric label="OK" value={String(item.recent.processed)} />
+        <MiniMetric label="Falha" value={String(item.recent.failed)} />
+        <MiniMetric label="Ultimo" value={formatDate(item.recent.lastEventAt)} />
+      </div>
+      {item.issues.length ? (
+        <p className="mt-3 text-xs leading-5 text-[var(--cliente-danger)]">{item.issues[0]}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function GrowthCommandCenter({
+  bestPaidCampaign,
+  activeOutbound,
+  latestForm,
+  conversionReady,
+  traffic,
+}: {
+  bestPaidCampaign: PaidCampaign | null;
+  activeOutbound: Campaign | null;
+  latestForm: NonNullable<CaptureFormsPayload["forms"]>[number] | null;
+  conversionReady: boolean;
+  traffic?: MetricsSummary["traffic"];
+}) {
+  return (
+    <PanelCard className="p-5 md:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <CardTitle
+          title="Mesa de crescimento"
+          subtitle="Campanhas ativas, entrada de leads e retorno para anuncios em uma leitura simples."
+        />
+        <StateBadge label={conversionReady ? "conversoes com sinal" : "conversoes pendentes"} tone={conversionReady ? "success" : "warning"} />
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-4">
+        <CampaignSignalCard
+          icon={BarChart3}
+          label="Campanha paga em destaque"
+          title={bestPaidCampaign?.label || "Nenhuma campanha paga ativa"}
+          detail={
+            bestPaidCampaign
+              ? `${money(bestPaidCampaign.spend)} investidos, ${bestPaidCampaign.lastTouchLeads} leads, ${bestPaidCampaign.meetings} reunioes, ${bestPaidCampaign.wonLeads} vendas`
+              : "Conecte Meta, Google ou UTMs para enxergar gasto, leads e vendas."
+          }
+          href="/cliente/painel/configuracoes/canais"
+          tone={bestPaidCampaign ? "info" : "warning"}
+        />
+        <CampaignSignalCard
+          icon={MessageCircle}
+          label="WhatsApp comercial"
+          title={activeOutbound?.name || "Nenhuma campanha WhatsApp"}
+          detail={
+            activeOutbound
+              ? `${activeOutbound.status === "active" ? "Ativa" : "Pausada"} - ${activeOutbound.lastRunSummary?.sent || 0} envios na ultima rodada`
+              : "Crie uma campanha de reativacao, proposta ou pos-venda."
+          }
+          href="#outbound"
+          tone={activeOutbound?.status === "active" ? "success" : "ai"}
+        />
+        <CampaignSignalCard
+          icon={Globe2}
+          label="Captura de leads"
+          title={latestForm?.name || "Nenhuma captura recebendo lead"}
+          detail={
+            latestForm
+              ? `${latestForm.submissionsCount || 0} entradas - ultima em ${formatDate(latestForm.lastSubmissionAt)}`
+              : "Crie pagina ou formulario para cada campanha preservar origem e UTM."
+          }
+          href="/cliente/painel/captacao"
+          tone={latestForm ? "success" : "warning"}
+        />
+        <CampaignSignalCard
+          icon={Target}
+          label="Retorno para anuncios"
+          title={conversionReady ? "Origem e leads detectados" : "Falta sinal de conversao"}
+          detail={
+            conversionReady
+              ? `${traffic?.leads || 0} leads pagos, CPL ${money(traffic?.cpl || 0)} e dados prontos para decisao.`
+              : "Quando lead, reuniao e venda voltarem para Meta/Google, a campanha aprende melhor."
+          }
+          href="/cliente/painel/configuracoes/canais"
+          tone={conversionReady ? "success" : "warning"}
+        />
+      </div>
+    </PanelCard>
+  );
+}
+
+function CampaignSignalCard({
+  icon: Icon,
+  label,
+  title,
+  detail,
+  href,
+  tone,
+}: {
+  icon: typeof Megaphone;
+  label: string;
+  title: string;
+  detail: string;
+  href: string;
+  tone: "info" | "success" | "warning" | "ai";
+}) {
+  const toneClass =
+    tone === "success"
+      ? "text-[var(--cliente-success)]"
+      : tone === "warning"
+        ? "text-[var(--cliente-warning)]"
+        : tone === "ai"
+          ? "text-[var(--cliente-ai)]"
+          : "text-[#2563eb]";
+
+  const content = (
+    <div className="h-full rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-hover)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">{label}</p>
+          <p className="mt-2 line-clamp-2 text-sm font-black text-[var(--cliente-card-text)]">{title}</p>
+        </div>
+        <Icon className={`h-5 w-5 shrink-0 ${toneClass}`} />
+      </div>
+      <p className="mt-3 text-sm leading-5 text-[var(--cliente-card-text-muted)]">{detail}</p>
+    </div>
+  );
+
+  if (href.startsWith("#")) return <a href={href}>{content}</a>;
+  return <Link href={href}>{content}</Link>;
+}
+
 function ChannelTile({ icon: Icon, title, value, detail, href }: { icon: typeof Megaphone; title: string; value: string; detail: string; href: string }) {
   const content = (
     <div className="h-full rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,#2563eb_26%,var(--cliente-border))] hover:bg-[var(--cliente-surface-hover)]">
       <Icon className="h-5 w-5 text-[#2563eb]" />
       <p className="mt-3 text-sm font-black text-[var(--cliente-card-text)]">{title}</p>
-      <p className="mt-2 text-xl font-black tracking-[-0.03em] text-[var(--cliente-card-text)]">{value}</p>
+      <p className="mt-2 text-xl font-black tracking-normal text-[var(--cliente-card-text)]">{value}</p>
       <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{detail}</p>
     </div>
   );
 
   if (href.startsWith("#")) return <a href={href}>{content}</a>;
   return <Link href={href}>{content}</Link>;
+}
+
+function GrowthAction({
+  href,
+  title,
+  detail,
+  tone,
+}: {
+  href: string;
+  title: string;
+  detail: string;
+  tone: "info" | "success" | "warning" | "ai";
+}) {
+  return (
+    <Link
+      href={href}
+      className="block rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3 transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-hover)]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-black text-[var(--cliente-card-text)]">{title}</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{detail}</p>
+        </div>
+        <StateBadge label="acao" tone={tone} />
+      </div>
+    </Link>
+  );
 }
 
 function MiniMetric({ label, value }: { label: string; value: string }) {

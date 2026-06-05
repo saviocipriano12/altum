@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  BarChart3,
   Bot,
   CalendarDays,
   ChevronLeft,
@@ -13,7 +14,7 @@ import {
   Package,
   Settings,
   Sparkles,
-  Target,
+  TrendingUp,
   Users,
   X,
 } from "lucide-react";
@@ -40,7 +41,7 @@ type NavItem = {
   aliases?: NavAlias[];
   capability?: string;
   tone?: "default" | "success" | "warning" | "ai" | "brand";
-  group: "daily" | "growth" | "intelligence" | "system";
+  group: "operate" | "grow" | "intelligence" | "system";
 };
 
 const PRIMARY_NAV: NavItem[] = [
@@ -48,65 +49,70 @@ const PRIMARY_NAV: NavItem[] = [
     href: "/cliente/painel",
     label: "Inicio",
     icon: LayoutGrid,
-    description: "Prioridades, numeros fortes e acoes do dia.",
-    group: "daily",
+    description: "Prioridades, dinheiro, conversas e proximas acoes do dia.",
+    group: "operate",
   },
   {
     href: "/cliente/painel/inbox",
     label: "Conversas",
     icon: MessageSquare,
-    description: "Atenda clientes e avance oportunidades sem sair do chat.",
+    description: "WhatsApp, Instagram e site com IA e humano no mesmo fluxo.",
     tone: "success",
-    group: "daily",
+    group: "operate",
   },
   {
     href: "/cliente/painel/crm",
     label: "Clientes & Oportunidades",
     icon: Users,
-    description: "Lista, kanban e propostas do mesmo relacionamento comercial.",
+    description: "Leads, oportunidades, funil, propostas e proximos passos.",
     aliases: [
       { href: "/cliente/painel/crm", label: "Lista" },
-      { href: "/cliente/painel/pipeline", label: "Kanban", capability: "manage_pipeline" },
+      { href: "/cliente/painel/pipeline", label: "Funil", capability: "manage_pipeline" },
       { href: "/cliente/painel/comercial", label: "Propostas", capability: "manage_commercial" },
     ],
-    group: "daily",
+    group: "operate",
   },
   {
     href: "/cliente/painel/agenda",
     label: "Agenda",
     icon: CalendarDays,
-    description: "Compromissos, retornos e proximas acoes em um so lugar.",
+    description: "Reunioes, retornos, confirmacoes e compromissos comerciais.",
     tone: "warning",
     aliases: [
       { href: "/cliente/painel/agenda", label: "Compromissos" },
-      { href: "/cliente/painel/follow-ups", label: "Tarefas" },
+      { href: "/cliente/painel/follow-ups", label: "Retornos" },
     ],
-    group: "daily",
+    group: "operate",
   },
   {
     href: "/cliente/painel/produtos-servicos",
     label: "Produtos & Servicos",
     icon: Package,
-    description: "O que a empresa vende, como explicar e quando recomendar.",
+    description: "Ofertas, argumentos, materiais e regras para a IA vender melhor.",
+    tone: "success",
     capability: "manage_ai",
-    tone: "brand",
-    group: "growth",
+    group: "operate",
   },
   {
     href: "/cliente/painel/campanhas",
     label: "Campanhas",
-    icon: Sparkles,
-    description: "Aquisicao, outbound e reativacao com status claro.",
+    icon: TrendingUp,
+    description: "Trafego, captacao, UTMs e resultado comercial.",
     tone: "brand",
-    aliases: [{ href: "/cliente/painel/captacao", label: "Captacao" }],
-    group: "growth",
+    aliases: [
+      { href: "/cliente/painel/campanhas", label: "Campanhas" },
+      { href: "/cliente/painel/captacao", label: "Captacao" },
+      { href: "/cliente/painel/configuracoes/integracoes", label: "Integracoes" },
+      { href: "/cliente/painel/configuracoes/canais", label: "Canais", capability: "manage_channels" },
+    ],
+    group: "grow",
   },
   {
     href: "/cliente/painel/metricas",
     label: "Relatorios",
-    icon: Target,
-    description: "KPIs e leitura comercial com menos ruido tecnico.",
-    group: "growth",
+    icon: BarChart3,
+    description: "O que gerou dinheiro, onde travou e qual decisao tomar.",
+    group: "grow",
   },
   {
     href: "/cliente/painel/perguntar-altum",
@@ -121,14 +127,13 @@ const PRIMARY_NAV: NavItem[] = [
     href: "/cliente/painel/ia",
     label: "Assistente Altum",
     icon: Bot,
-    description: "IA, base de conhecimento, automacoes e escaladas.",
+    description: "Ensinar, simular e controlar a IA que opera o negocio.",
     tone: "ai",
     capability: "manage_ai",
     aliases: [
-      { href: "/cliente/painel/ia", label: "IA", capability: "manage_ai" },
-      { href: "/cliente/painel/conhecimento", label: "Base", capability: "manage_ai" },
+      { href: "/cliente/painel/ia", label: "Controle", capability: "manage_ai" },
+      { href: "/cliente/painel/conhecimento", label: "Conhecimento", capability: "manage_ai" },
       { href: "/cliente/painel/handoffs", label: "Escaladas" },
-      { href: "/cliente/painel/automacoes", label: "Automacoes", capability: "manage_automations" },
     ],
     group: "intelligence",
   },
@@ -136,7 +141,7 @@ const PRIMARY_NAV: NavItem[] = [
     href: "/cliente/painel/configuracoes",
     label: "Configuracoes",
     icon: Settings,
-    description: "Empresa, equipe, canais e ajustes do workspace.",
+    description: "Empresa, equipe, canais, integracoes e implantacao.",
     capability: "manage_settings",
     group: "system",
   },
@@ -144,10 +149,10 @@ const PRIMARY_NAV: NavItem[] = [
 
 const ADVANCED_LINKS: NavAlias[] = [];
 const NAV_GROUPS: Array<{ id: NavItem["group"]; label: string }> = [
-  { id: "daily", label: "Operacao diaria" },
-  { id: "growth", label: "Crescimento" },
-  { id: "intelligence", label: "Inteligencia" },
-  { id: "system", label: "Sistema" },
+  { id: "operate", label: "Operacao diaria" },
+  { id: "grow", label: "Crescimento" },
+  { id: "intelligence", label: "IA aplicada" },
+  { id: "system", label: "Conta" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -209,24 +214,22 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
       <aside
         data-client-nav="sidebar"
-        className={`client-glass fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-[var(--cliente-border)] bg-[var(--cliente-sidebar)] shadow-[var(--cliente-shadow-hard)] transition-[width,transform] duration-300 lg:bottom-5 lg:left-5 lg:top-5 lg:h-[calc(100dvh-2.5rem)] lg:rounded-[28px] lg:border lg:translate-x-0 ${
-          compactMode ? "w-[306px] lg:w-[88px]" : "w-[306px]"
+        className={`client-glass fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-[var(--cliente-border)] bg-[var(--cliente-sidebar)] shadow-[var(--cliente-shadow-hard)] transition-[width,transform] duration-300 lg:bottom-5 lg:left-5 lg:top-5 lg:h-[calc(100dvh-2.5rem)] lg:rounded-[24px] lg:border lg:translate-x-0 ${
+          compactMode ? "w-[292px] lg:w-[82px]" : "w-[292px]"
         } ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top_right,var(--cliente-primary-soft),transparent_50%)] opacity-90" />
-        <div className="pointer-events-none absolute -right-16 top-20 h-44 w-44 rounded-full bg-[var(--cliente-primary-glow)] blur-3xl" />
-        <div className="pointer-events-none absolute -left-12 bottom-12 h-40 w-40 rounded-full bg-[var(--cliente-ai-glow)] blur-3xl" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--cliente-border-strong),transparent)]" />
 
-        <div className="relative flex h-[82px] items-center gap-3 border-b border-[var(--cliente-border)] px-4">
-          <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_24%,transparent)] bg-[var(--cliente-panel-soft)] p-1.5 shadow-[0_18px_34px_-18px_var(--cliente-primary-glow)]">
+        <div className="relative flex h-[72px] items-center gap-3 border-b border-[var(--cliente-border)] px-4">
+          <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[16px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_24%,transparent)] bg-[var(--cliente-panel-soft)] p-1.5 shadow-[0_18px_34px_-18px_var(--cliente-primary-glow)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/favicon.ico" alt="Altum" className="h-full w-full rounded-[13px] object-contain" />
           </div>
 
           {!compactMode ? (
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[11px] font-black uppercase tracking-[0.22em] text-[var(--cliente-text)]">Altum</p>
-              <p className="truncate text-[10px] tracking-[0.16em] text-[var(--cliente-text-soft)]">Operacao comercial com IA</p>
+              <p className="truncate text-sm font-extrabold text-[var(--cliente-text)]">Altum</p>
+              <p className="truncate text-[11px] text-[var(--cliente-text-soft)]">Operacao comercial com IA</p>
             </div>
           ) : null}
 
@@ -234,7 +237,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
             <button
               type="button"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="hidden rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-text-muted)] transition hover:border-[var(--cliente-primary)]/25 hover:bg-[var(--cliente-surface-hover)] hover:text-[var(--cliente-text)] lg:inline-flex"
+              className="hidden rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-2 text-[var(--cliente-text-muted)] transition hover:border-[var(--cliente-primary)]/25 hover:bg-[var(--cliente-surface-hover)] hover:text-[var(--cliente-text)] lg:inline-flex"
               title={compactMode ? "Expandir menu" : "Recolher menu"}
             >
               {compactMode ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -250,31 +253,30 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
           </div>
         </div>
 
-        <div className="px-4 pt-4">
+        <div className="px-4 pt-3">
           <div
-            className={`client-glass overflow-hidden rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-sidebar-card)] shadow-[var(--cliente-shadow-soft)] ${
-              compactMode ? "px-2 py-3" : "px-4 py-4"
+            className={`overflow-hidden rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-sidebar-card)] ${
+              compactMode ? "px-2 py-2.5" : "px-3 py-3"
             }`}
           >
             <div className={`flex items-center ${compactMode ? "justify-center" : "justify-between gap-3"}`}>
               <div className={compactMode ? "hidden" : "min-w-0"}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--cliente-text-soft)]">Conta</p>
-                <p className="mt-2 truncate text-[1rem] font-semibold tracking-[-0.02em] text-[var(--cliente-text)]">
+                <p className="text-[10px] font-bold text-[var(--cliente-text-soft)]">Conta</p>
+                <p className="mt-1 truncate text-sm font-semibold tracking-normal text-[var(--cliente-text)]">
                   {tenant?.tenantName || tenant?.clientName || "Cliente"}
                 </p>
-                <p className="mt-1 text-xs leading-5 text-[var(--cliente-text-soft)]">Atendimento e vendas em um fluxo unico.</p>
               </div>
               <BrandIcon id="altum" size={compactMode ? "sm" : "md"} />
             </div>
           </div>
         </div>
 
-        <nav className="client-scrollbar mt-5 flex-1 overflow-y-auto px-3 pb-4">
-          <div className="space-y-4">
+        <nav className="client-scrollbar mt-4 flex-1 overflow-y-auto px-3 pb-4">
+          <div className="space-y-3">
             {groupedNav.map((group) => (
-              <div key={group.id} className={compactMode ? "space-y-2" : "rounded-[24px] border border-[var(--cliente-border)] bg-[color:color-mix(in_srgb,var(--cliente-sidebar-card)_62%,transparent)] p-2"}>
+              <div key={group.id} className={compactMode ? "space-y-2" : "space-y-1.5"}>
                 {!compactMode ? (
-                  <p className="px-2 pb-2 pt-1 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--cliente-text-soft)]">
+                  <p className="px-2 text-[10px] font-bold text-[var(--cliente-text-soft)]">
                     {group.label}
                   </p>
                 ) : null}
@@ -307,7 +309,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                         href={item.href}
                         prefetch={false}
                         onClick={onClose}
-                        className={`group relative block rounded-[20px] border px-3 py-3 transition ${
+                        className={`group relative block rounded-[16px] border px-2.5 py-2.5 transition ${
                           active
                             ? activeTone
                             : "border-transparent text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-text)]"
@@ -315,7 +317,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                         title={compactMode ? item.label : undefined}
                       >
                         <div className={`flex items-center ${compactMode ? "justify-center" : "gap-3"}`}>
-                          <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[15px] border transition ${iconClasses}`}>
+                          <span className={`inline-flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-[13px] border transition ${iconClasses}`}>
                             <Icon className="h-4.5 w-4.5" />
                           </span>
 
@@ -341,6 +343,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
           </div>
         </nav>
 
+        {advancedLinks.length ? (
         <div className="border-t border-[var(--cliente-border)] px-4 py-4">
           <div className={`rounded-[28px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] ${compactMode ? "flex justify-center px-2 py-3" : "p-4"}`}>
             {compactMode ? (
@@ -348,7 +351,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
             ) : (
               <div className="space-y-3">
                 <div>
-                  <p className="text-[1rem] font-semibold tracking-[-0.02em] text-[var(--cliente-text)]">Avancado</p>
+                  <p className="text-[1rem] font-semibold tracking-normal text-[var(--cliente-text)]">Avancado</p>
                 </div>
 
                 {advancedLinks.length ? (
@@ -374,6 +377,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
             )}
           </div>
         </div>
+        ) : null}
       </aside>
     </>
   );

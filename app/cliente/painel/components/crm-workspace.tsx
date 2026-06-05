@@ -25,18 +25,18 @@ const toneClasses: Record<CrmTone, string> = {
 };
 
 export const CRM_ROUTES = [
-  { label: "Lista", href: "/cliente/painel/crm", icon: List },
+  { label: "Clientes", href: "/cliente/painel/crm", icon: List },
   { label: "Funil", href: "/cliente/painel/pipeline", icon: Columns3 },
   { label: "Propostas", href: "/cliente/painel/comercial", icon: FileText },
-  { label: "Atividades", href: "/cliente/painel/follow-ups", icon: Sparkles },
+  { label: "Retornos", href: "/cliente/painel/follow-ups", icon: Sparkles },
   { label: "Agenda", href: "/cliente/painel/agenda", icon: CalendarDays },
 ] as const;
 
 export type CrmRouteLabel = (typeof CRM_ROUTES)[number]["label"];
 
-export function CrmWorkspace({ children }: { children: ReactNode }) {
+export function CrmWorkspace({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className="crm-workspace space-y-5 pb-10 text-[var(--cliente-card-text)]">
+    <div className={`crm-workspace crm-refined space-y-4 pb-10 text-[var(--cliente-card-text)] ${className}`}>
       {children}
     </div>
   );
@@ -48,9 +48,9 @@ export function CrmHero({
   description,
   children,
   action,
-  assistantTitle = "Assistente Altum",
+  assistantTitle = "Altum na venda",
   assistantSubtitle = "Sinais e proximas acoes",
-  assistantText = "A IA aparece como apoio de operacao: prioriza contatos, sugere retornos e ajuda o time a vender sem mostrar configuracao tecnica.",
+  assistantText = "A IA aparece como apoio pratico: prioriza contatos, sugere retornos e ajuda o time a vender sem abrir configuracao tecnica.",
   assistantBadge = "ao vivo",
 }: {
   active: CrmRouteLabel;
@@ -64,23 +64,23 @@ export function CrmHero({
   assistantBadge?: string;
 }) {
   return (
-    <section className="overflow-hidden rounded-[24px] border border-[var(--cliente-border)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-card)_97%,white_3%),color-mix(in_srgb,var(--cliente-primary)_6%,var(--cliente-card))_54%,color-mix(in_srgb,var(--cliente-ai)_6%,var(--cliente-card)))] shadow-[var(--cliente-shadow-soft)]">
-      <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:p-6">
+    <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_10%,var(--cliente-card)),var(--cliente-card)_58%,color-mix(in_srgb,var(--cliente-ai)_8%,var(--cliente-card)))] shadow-[var(--cliente-shadow-soft)]">
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:p-5">
         <div className="min-w-0">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <CrmBadge tone="blue">Operacao comercial com IA</CrmBadge>
-            <CrmBadge>CRM Altum</CrmBadge>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <CrmBadge tone="blue">Conversao</CrmBadge>
+            <CrmBadge tone="purple">IA aplicada</CrmBadge>
           </div>
-          <h1 className="max-w-5xl text-[2rem] font-black leading-[1.04] tracking-normal text-[var(--cliente-card-text)] md:text-[2.45rem]">
+          <h1 className="max-w-4xl text-2xl font-extrabold leading-tight tracking-normal text-[var(--cliente-card-text)] md:text-[2rem]">
             {title}
           </h1>
-          <p className="mt-3 max-w-4xl text-base leading-7 text-[var(--cliente-card-text-soft)]">
+          <p className="mt-2 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">
             {description}
           </p>
-          {action ? <div className="mt-5 flex flex-wrap gap-2">{action}</div> : null}
+          {action ? <div className="mt-4 flex flex-wrap gap-2">{action}</div> : null}
         </div>
 
-        <aside className="rounded-[20px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[linear-gradient(180deg,var(--cliente-ai-soft),color-mix(in_srgb,var(--cliente-card)_74%,var(--cliente-ai-soft)))] p-4">
+        <aside className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--cliente-ai)] text-white">
@@ -93,16 +93,16 @@ export function CrmHero({
             </div>
             <CrmBadge tone="purple">{assistantBadge}</CrmBadge>
           </div>
-          <p className="mt-4 text-sm leading-6 text-[var(--cliente-card-text)]">
+          <p className="mt-3 text-sm leading-5 text-[var(--cliente-card-text)]">
             {assistantText}
           </p>
         </aside>
       </div>
 
-      <div className="border-t border-[var(--cliente-border)] bg-[color:color-mix(in_srgb,var(--cliente-panel-soft)_74%,transparent)] px-3 py-3">
+      <div className="border-t border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2.5">
         <CrmTabs active={active} />
       </div>
-      {children ? <div className="border-t border-[var(--cliente-border)] p-4 lg:p-5">{children}</div> : null}
+      {children ? <div className="border-t border-[var(--cliente-border)] p-3 lg:p-4">{children}</div> : null}
     </section>
   );
 }
@@ -127,7 +127,7 @@ export function CrmTabs({ active }: { active: CrmRouteLabel }) {
           <Link
             key={item.href}
             href={href}
-            className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-3 py-3 text-sm font-bold transition ${
+            className={`inline-flex items-center justify-center gap-2 rounded-[14px] px-3 py-2.5 text-sm font-bold transition ${
               isActive
                 ? "bg-[var(--cliente-primary)] text-white shadow-[0_16px_28px_-24px_var(--cliente-accent-glow)]"
                 : "text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-card)] hover:text-[var(--cliente-card-text)]"
@@ -152,7 +152,7 @@ export function CrmPanel({
   padded?: boolean;
 }) {
   return (
-    <section className={`rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)] ${padded ? "p-5" : ""} ${className}`}>
+    <section className={`rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)] ${padded ? "p-4" : ""} ${className}`}>
       {children}
     </section>
   );
@@ -172,9 +172,9 @@ export function CrmSectionTitle({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        {eyebrow ? <p className="text-[11px] font-black uppercase text-[var(--cliente-primary)]">{eyebrow}</p> : null}
-        <h2 className="mt-1 text-xl font-black tracking-normal text-[var(--cliente-card-text)] md:text-2xl">{title}</h2>
-        {description ? <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">{description}</p> : null}
+        {eyebrow ? <p className="text-[11px] font-bold text-[var(--cliente-primary)]">{eyebrow}</p> : null}
+        <h2 className="mt-1 text-lg font-extrabold tracking-normal text-[var(--cliente-card-text)] md:text-xl">{title}</h2>
+        {description ? <p className="mt-1 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">{description}</p> : null}
       </div>
       {action ? <div className="flex shrink-0 flex-wrap gap-2">{action}</div> : null}
     </div>
@@ -195,11 +195,11 @@ export function CrmMetric({
   tone?: CrmTone;
 }) {
   return (
-    <CrmPanel className="min-h-[116px] p-4">
+    <CrmPanel className="min-h-[104px] p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-black uppercase text-[var(--cliente-card-text-soft)]">{label}</p>
-          <p className="mt-3 truncate text-2xl font-black text-[var(--cliente-card-text)]">{value}</p>
+          <p className="text-[11px] font-bold text-[var(--cliente-card-text-soft)]">{label}</p>
+          <p className="mt-2 truncate text-xl font-extrabold text-[var(--cliente-card-text)]">{value}</p>
           {detail ? <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{detail}</p> : null}
         </div>
         {Icon ? (
@@ -308,7 +308,7 @@ export function CrmAvatar({ name, subtitle, size = "md" }: { name?: string | nul
         {initials(name || subtitle || "Altum")}
       </span>
       <div className="min-w-0">
-        <p className="truncate text-sm font-black text-[var(--cliente-card-text)]">{name || "Contato sem nome"}</p>
+        <p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{name || "Contato sem nome"}</p>
         {subtitle ? <p className="mt-0.5 truncate text-xs text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
       </div>
     </div>
@@ -318,7 +318,7 @@ export function CrmAvatar({ name, subtitle, size = "md" }: { name?: string | nul
 export function CrmEmpty({ title, description }: { title: string; description?: string }) {
   return (
     <div className="rounded-[18px] border border-dashed border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-6 text-center">
-      <p className="text-sm font-black text-[var(--cliente-card-text)]">{title}</p>
+      <p className="text-sm font-bold text-[var(--cliente-card-text)]">{title}</p>
       {description ? <p className="mx-auto mt-1 max-w-lg text-sm leading-6 text-[var(--cliente-card-text-soft)]">{description}</p> : null}
     </div>
   );

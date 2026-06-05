@@ -3,42 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
-import {
-  LayoutDashboard,
-  Users,
-  FileText,
-  CheckSquare,
-  BrainCircuit,
-  Target,
-  DollarSign,
-  MessageSquare,
-  Settings,
-  UserCog,
-  LineChart,
-} from "lucide-react";
+import { Search } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-
-type CommandItem = {
-  key: string;
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-  adminOnly?: boolean;
-};
-
-const NAV_ITEMS: CommandItem[] = [
-  { key: "dashboard", label: "Dashboard", href: "/admin/dashboard", icon: <LayoutDashboard size={16} /> },
-  { key: "prospeccao", label: "Prospeccao", href: "/admin/prospeccao", icon: <Target size={16} /> },
-  { key: "chat", label: "Inbox WhatsApp", href: "/admin/chat", icon: <MessageSquare size={16} /> },
-  { key: "campanhas", label: "Campanhas", href: "/admin/campanhas", icon: <LineChart size={16} />, adminOnly: true },
-  { key: "clientes", label: "Clientes", href: "/admin/clientes", icon: <Users size={16} /> },
-  { key: "orcamentos", label: "Orcamentos", href: "/admin/orcamentos", icon: <FileText size={16} /> },
-  { key: "financeiro", label: "Financeiro", href: "/admin/financeiro", icon: <DollarSign size={16} /> },
-  { key: "atividades", label: "Atividades", href: "/admin/atividades", icon: <CheckSquare size={16} /> },
-  { key: "ia", label: "IA da Plataforma", href: "/admin/ia", icon: <BrainCircuit size={16} /> },
-  { key: "config", label: "Configuracoes", href: "/admin/config", icon: <Settings size={16} />, adminOnly: true },
-  { key: "equipe", label: "Equipe", href: "/admin/equipe", icon: <UserCog size={16} />, adminOnly: true },
-];
+import {
+  ADMIN_NAV_SECTIONS,
+  filterAdminNavItems,
+  type AdminNavItem,
+} from "@/components/admin/admin-navigation";
 
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -46,16 +17,18 @@ export default function CommandPalette() {
   const router = useRouter();
   const { isAdmin } = useAuth();
 
-  const items = useMemo(
-    () => NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin),
-    [isAdmin]
-  );
+  const items = useMemo(() => filterAdminNavItems(isAdmin), [isAdmin]);
 
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setOpen((value) => !value);
+      }
+
+      if (event.key === "Escape") {
+        setOpen(false);
+        setInputValue("");
       }
     };
 
@@ -74,39 +47,47 @@ export default function CommandPalette() {
     };
   }, []);
 
-  const go = (path: string) => {
+  function go(path: string) {
     setOpen(false);
     setInputValue("");
     router.push(path);
-  };
+  }
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh]">
-      <Command className="w-full max-w-xl rounded-xl border border-white/10 bg-[#0B0B0B] text-white shadow-2xl">
-        <Command.Input
-          value={inputValue}
-          onValueChange={setInputValue}
-          placeholder="Buscar acao ou navegar..."
-          className="w-full px-4 py-3 bg-transparent outline-none text-sm border-b border-white/10 placeholder:text-white/40"
-        />
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 px-4 pt-[13vh] backdrop-blur-sm">
+      <Command className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl shadow-slate-950/20">
+        <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
+          <Search size={17} className="text-slate-400" />
+          <Command.Input
+            value={inputValue}
+            onValueChange={setInputValue}
+            placeholder="Buscar modulo, acao ou area da agencia..."
+            className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
+          />
+          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] text-slate-500">
+            Esc
+          </span>
+        </div>
 
-        <Command.List className="max-h-[320px] overflow-y-auto p-2">
-          <Command.Empty className="p-4 text-sm text-white/50">
+        <Command.List className="max-h-[420px] overflow-y-auto p-2">
+          <Command.Empty className="p-4 text-sm text-slate-500">
             Nenhum resultado encontrado.
           </Command.Empty>
 
-          <Command.Group heading="Navegacao">
-            {items.map((item) => (
-              <Item
-                key={item.key}
-                icon={item.icon}
-                label={item.label}
-                onSelect={() => go(item.href)}
-              />
-            ))}
-          </Command.Group>
+          {ADMIN_NAV_SECTIONS.map((section) => {
+            const sectionItems = items.filter((item) => item.section === section.key);
+            if (sectionItems.length === 0) return null;
+
+            return (
+              <Command.Group key={section.key} heading={section.label}>
+                {sectionItems.map((item) => (
+                  <Item key={item.href} item={item} onSelect={() => go(item.href)} />
+                ))}
+              </Command.Group>
+            );
+          })}
         </Command.List>
       </Command>
     </div>
@@ -114,21 +95,27 @@ export default function CommandPalette() {
 }
 
 function Item({
-  icon,
-  label,
+  item,
   onSelect,
 }: {
-  icon: React.ReactNode;
-  label: string;
+  item: AdminNavItem;
   onSelect: () => void;
 }) {
+  const Icon = item.icon;
+
   return (
     <Command.Item
+      value={`${item.label} ${item.description}`}
       onSelect={onSelect}
-      className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg cursor-pointer data-[selected=true]:bg-blue-600 data-[selected=true]:text-white"
+      className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-700 data-[selected=true]:bg-blue-50 data-[selected=true]:text-blue-800"
     >
-      {icon}
-      <span>{label}</span>
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-500">
+        <Icon size={16} />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate font-semibold">{item.label}</span>
+        <span className="mt-0.5 block truncate text-xs text-slate-500">{item.description}</span>
+      </span>
     </Command.Item>
   );
 }

@@ -154,7 +154,7 @@ export function ClienteGlobalSearch() {
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar modulo, contato, proposta ou conversa"
+          placeholder="Buscar cliente, conversa, oportunidade ou proposta"
           className="w-full bg-transparent text-sm text-[var(--cliente-text)] outline-none placeholder:text-[var(--cliente-text-soft)] xl:w-[320px]"
         />
         <span className="hidden items-center gap-1 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2 py-1 text-[10px] font-semibold text-[var(--cliente-text-soft)] lg:inline-flex">
@@ -164,7 +164,7 @@ export function ClienteGlobalSearch() {
       </label>
 
       {open ? (
-        <div className="client-glass absolute right-0 top-[calc(100%+14px)] z-40 w-full max-w-[560px] rounded-[32px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)]/96 p-3.5 shadow-[var(--cliente-shadow-hard)] xl:w-[560px]">
+        <div className="client-glass absolute right-0 top-[calc(100%+12px)] z-40 w-full max-w-[560px] rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-solid)] p-3 shadow-[var(--cliente-shadow-hard)] xl:w-[560px]">
           {loading ? (
             <div className="flex items-center justify-center py-8 text-[var(--cliente-text-muted)]">
               <Loader2 className="h-4 w-4 animate-spin" />

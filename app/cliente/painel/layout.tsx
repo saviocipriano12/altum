@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ClienteBottomNav } from "@/app/cliente/painel/components/cliente-bottom-nav";
 import { ClienteCommandPalette } from "@/app/cliente/painel/components/cliente-command-palette";
@@ -14,7 +14,13 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
   const { density } = useClienteShell();
   const compact = density === "compact";
   const isAssistantSurface = /^\/cliente\/painel\/(ia|automacoes|conhecimento|perguntar-altum)(\/|$)/.test(pathname || "");
-  const clientArea = isAssistantSurface ? "assistant" : "daily";
+  const isInboxSurface = /^\/cliente\/painel\/inbox(\/|$)/.test(pathname || "");
+  const clientArea = isInboxSurface ? "inbox" : isAssistantSurface ? "assistant" : "daily";
+  const mainPaddingClass = isInboxSurface
+    ? "px-0 pb-0 pt-0 lg:px-7 lg:pb-10 xl:pt-[104px]"
+    : compact
+      ? "px-3 pb-24 pt-[80px] sm:pb-20 sm:pt-[102px] lg:px-6 lg:pb-8 xl:pt-[104px]"
+      : "px-3 pb-28 pt-[80px] sm:px-4 sm:pb-24 sm:pt-[108px] lg:px-7 lg:pb-10 xl:pt-[104px]";
 
   return (
     <div
@@ -23,27 +29,28 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
     >
       <div className="client-shell-ambient pointer-events-none absolute inset-0 hidden overflow-hidden lg:block">
         <div className="absolute inset-0 bg-[var(--cliente-bg)]" />
-        <div className="absolute inset-x-0 top-0 h-[460px] bg-[linear-gradient(180deg,var(--cliente-accent-glow),transparent_74%)]" />
-        <div className="absolute right-[-8vw] top-[9vh] h-[30rem] w-[30rem] rounded-full bg-[var(--cliente-accent-glow)] blur-3xl" />
-        <div className="absolute left-[-11vw] top-[42vh] h-[24rem] w-[24rem] rounded-full bg-[var(--cliente-accent-secondary-glow)] blur-3xl" />
-        <div className="absolute inset-y-0 right-0 w-[48vw] bg-[linear-gradient(90deg,transparent,var(--cliente-accent-secondary-glow))]" />
-        <div className="absolute left-[14vw] top-[12vh] h-[18rem] w-[18rem] rounded-full bg-[color-mix(in_srgb,var(--cliente-accent-soft)_58%,transparent)] blur-3xl" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,var(--cliente-bg)_78%)]" />
+        <div className="absolute inset-0 opacity-[0.55] [background-image:linear-gradient(to_right,rgba(15,23,42,0.045)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.04)_1px,transparent_1px)] [background-size:28px_28px]" />
+        <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(37,99,235,0.22),transparent)]" />
+        <div className="absolute bottom-0 left-0 right-0 h-40 bg-[linear-gradient(180deg,transparent,var(--cliente-bg))]" />
       </div>
 
       <ClienteSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <ClienteTopbar onOpenMenu={() => setSidebarOpen(true)} />
+      <div className={isInboxSurface ? "max-xl:hidden" : ""}>
+        <ClienteTopbar onOpenMenu={() => setSidebarOpen(true)} />
+      </div>
       <ClienteCommandPalette />
 
       <div className="relative transition-[padding] duration-300 lg:pl-[var(--cliente-sidebar-width)]">
-        <main className={`min-h-screen transition-[padding] duration-300 ${compact ? "px-3 pb-24 pt-[88px] sm:pb-20 sm:pt-[122px] lg:px-6 lg:pb-8 xl:pt-[126px]" : "px-3 pb-28 pt-[88px] sm:px-4 sm:pb-24 sm:pt-[136px] lg:px-7 lg:pb-10 xl:pt-[132px]"}`}>
-          <div className={`mx-auto max-w-[1560px] ${compact ? "space-y-3.5" : "space-y-5"}`}>
+        <main className={`min-h-screen transition-[padding] duration-300 ${mainPaddingClass}`}>
+          <div className={`${isInboxSurface ? "mx-0 max-w-none" : "mx-auto max-w-[1520px]"} ${compact ? "space-y-3" : "space-y-4"}`}>
             {children}
           </div>
         </main>
       </div>
 
-      <ClienteBottomNav />
+      <Suspense fallback={null}>
+        <ClienteBottomNav />
+      </Suspense>
     </div>
   );
 }

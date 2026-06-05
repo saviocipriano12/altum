@@ -139,6 +139,7 @@ type ConversationMessage = {
 
 type TenantAiConfig = {
   enabled: boolean;
+  responsePaused: boolean;
   businessProfileId: BusinessProfileId;
   businessProfileLabel: string;
   agentName: string;
@@ -358,6 +359,22 @@ function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeSta
 function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
   if (!leadMemory) return "";
   return [
+    leadMemory.attributionSourceLabel || leadMemory.attributionSource || leadMemory.attributionChannel
+      ? `origem do lead: ${[
+          leadMemory.attributionSourceLabel,
+          leadMemory.attributionSource,
+          leadMemory.attributionChannel,
+        ].filter(Boolean).join(" / ")}`
+      : "",
+    leadMemory.attributionCampaign
+      ? `campanha de entrada: ${leadMemory.attributionCampaign}${leadMemory.attributionMedium ? ` (${leadMemory.attributionMedium})` : ""}`
+      : "",
+    leadMemory.lastOutboundCampaignName
+      ? `ultimo disparo enviado: ${leadMemory.lastOutboundCampaignName}${
+          leadMemory.lastOutboundTemplateName ? ` / template ${leadMemory.lastOutboundTemplateName}` : ""
+        }${leadMemory.lastOutboundChannel ? ` / canal ${leadMemory.lastOutboundChannel}` : ""}`
+      : "",
+    leadMemory.lastOutboundMessage ? `mensagem do ultimo disparo: ${leadMemory.lastOutboundMessage}` : "",
     leadMemory.preferredName ? `nome preferido: ${leadMemory.preferredName}` : "",
     leadMemory.leadTone ? `tom mais recorrente: ${leadMemory.leadTone}` : "",
     leadMemory.activeTopic ? `assunto principal recente: ${leadMemory.activeTopic}` : "",
@@ -371,7 +388,7 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
     leadMemory.summary ? `resumo: ${leadMemory.summary}` : "",
   ]
     .filter(Boolean)
-    .slice(0, 6)
+    .slice(0, 8)
     .join(" | ");
 }
 
@@ -904,6 +921,7 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
 
   return {
     enabled: ai.enabled !== false,
+    responsePaused: ai.responsePaused === true,
     businessProfileId,
     businessProfileLabel: businessProfile.label,
     agentName:
@@ -4343,6 +4361,180 @@ export async function handleIncomingMessage(
         },
         { merge: true }
       );
+  }
+
+  if (aiConfig.responsePaused) {
+    const suppressedOutboundText = sanitizeText(choice.responseText, 1200);
+    const quality = scoreAltumConversationQuality({
+      inboundText,
+      outboundText: suppressedOutboundText,
+      plan: plannerDecision,
+      runtimeState,
+    });
+    const executedActions = await executeAltumAgentActions({
+      tenantId,
+      chatId,
+      leadId,
+      plan: plannerDecision,
+      runtimeState,
+      extractedFields,
+      inboundText,
+      businessProfileId: aiConfig.businessProfileId,
+      leadName: sanitizeText(chatData.contactName, 120) || null,
+      leadOwnerId: sanitizeText(chatData.ownerId || chatData.assignedUserId, 160) || null,
+      leadOwnerName: sanitizeText(chatData.ownerName || chatData.assignedUserName, 120) || null,
+    });
+    const pausedSummary = buildPersistentConversationSummary({
+      llmMemorySummary: llmResult?.memorySummary || null,
+      preferredName: preferredContactName || null,
+      leadTone: extractedFields?.leadTone || runtimeState?.leadTone || leadMemory?.leadTone || null,
+      activeTopic: extractedFields?.activeTopic || runtimeState?.activeTopic || leadMemory?.activeTopic || null,
+      conversationMaturity: plannerDecision.stateAfter,
+      businessType: extractedFields?.businessType || extractedFields?.niche || leadMemory?.businessType || null,
+      primaryGoal: extractedFields?.primaryGoal || extractedFields?.goal || leadMemory?.primaryGoal || null,
+      currentChannels: extractedFields?.currentChannels || leadMemory?.currentChannels || null,
+      dominantObjection: plannerDecision.objectionType || leadMemory?.dominantObjection || null,
+      openQuestion: "",
+      recommendedOffer: recommendedOfferResolved,
+      nextAction,
+    });
+
+    await saveAiLog({
+      logDocId,
+      tenantId,
+      chatId,
+      messageId,
+      leadId,
+      decision: "skip",
+      reason: "tenant_ai_response_paused",
+      inboundText,
+      outboundText: suppressedOutboundText,
+      toolCalls: [
+        "kb_docs",
+        "offer_engine",
+        "chat_state",
+        "tenant_settings.ai.responsePaused",
+        ...providerFallbackToolCalls,
+      ],
+      confidence: choice.confidence,
+      matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+      extractedFields,
+      nextAction,
+      latencyMs: Date.now() - startedAt,
+      provider: effectiveProvider,
+      model: effectiveModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+      plannerIntent: plannerDecision.intent,
+      stateBefore: plannerDecision.stateBefore,
+      stateAfter: plannerDecision.stateAfter,
+      responseGoal: plannerDecision.responseGoal,
+      recommendedOffer: recommendedOfferResolved,
+      objectionType: plannerDecision.objectionType || null,
+      commercialTemperature: plannerDecision.commercialTemperature || null,
+      llmTurnGoal: llmResult?.turnGoal || null,
+      llmMemorySummary: llmResult?.memorySummary || null,
+      conversationLedBy: choice.ledBy,
+      qualityScore: quality.score,
+      qualityNotes: ["Resposta automatica pausada no tenant.", ...quality.notes],
+    });
+    await logAiUsage({
+      tenantId,
+      scope: "conversation",
+      provider: effectiveProvider,
+      model: effectiveModel,
+      agentId: "sales_autopilot_v1",
+      chatId,
+      leadId,
+      messageId,
+      aiLogId: logDocId,
+      decision: "skip",
+      confidence: choice.confidence,
+      latencyMs: Date.now() - startedAt,
+      inputTokens: llmResult?.inputTokens ?? 0,
+      outputTokens: llmResult?.outputTokens ?? 0,
+      estimatedCostUsd: llmResult?.estimatedCostUsd ?? 0,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+      status: "success",
+      metadata: {
+        reason: "tenant_ai_response_paused",
+        runtimePolicy: aiConfig.runtimePolicy,
+        fallbackUsed: providerFallbackTriggered,
+        providerChainError,
+        usageGuardTriggered,
+        matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+        extractedFields,
+        nextAction,
+        plannerIntent: plannerDecision.intent,
+        stateBefore: plannerDecision.stateBefore,
+        stateAfter: plannerDecision.stateAfter,
+        responseGoal: plannerDecision.responseGoal,
+        recommendedOffer: recommendedOfferResolved,
+        executedActions,
+      },
+    });
+    await trackAltumAgentLearning({
+      tenantId,
+      chatId,
+      leadId,
+      aiLogId: logDocId,
+      decision: "skip",
+      intent: plannerDecision.intent,
+      responseGoal: plannerDecision.responseGoal,
+      stateAfter: plannerDecision.stateAfter,
+      recommendedOffer: recommendedOfferResolved,
+      objectionType: plannerDecision.objectionType || null,
+      nextAction,
+      confidence: choice.confidence,
+      commercialTemperature: plannerDecision.commercialTemperature || null,
+      qualityScore: quality.score,
+    });
+    await upsertConversationRuntimeState({
+      tenantId,
+      chatId,
+      leadId,
+      inboundText,
+      outboundText: "",
+      decision: "skip",
+      reason: "tenant_ai_response_paused",
+      confidence: choice.confidence,
+      nextAction,
+      stage: plannerDecision.stateAfter,
+      intent: plannerDecision.intent,
+      responseGoal: plannerDecision.responseGoal,
+      recommendedOffer: recommendedOfferResolved,
+      objectionType: plannerDecision.objectionType || null,
+      turnGoal: llmResult?.turnGoal || null,
+      memorySummary: llmResult?.memorySummary || null,
+      summary: pausedSummary,
+      extractedFields,
+    });
+
+    if (leadId) {
+      await upsertLeadMemory({
+        tenantId,
+        leadId,
+        extractedFields,
+        nextAction,
+        recommendedOffer: recommendedOfferResolved,
+        dominantIntent: plannerDecision.intent,
+        dominantObjection: plannerDecision.objectionType || null,
+        preferredName: preferredContactName || null,
+        leadTone: extractedFields?.leadTone || runtimeState?.leadTone || null,
+        activeTopic: extractedFields?.activeTopic || runtimeState?.activeTopic || null,
+        openQuestion: "",
+        conversationMaturity: plannerDecision.stateAfter,
+        memorySummary: llmResult?.memorySummary || null,
+        summary: pausedSummary,
+      });
+    }
+
+    return { decision: "skip", reason: "tenant_ai_response_paused" };
   }
 
   if (choice.decision === "handoff" || plannerDecision.decision === "handoff") {

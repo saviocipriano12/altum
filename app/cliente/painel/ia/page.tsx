@@ -4,11 +4,13 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  BookOpen,
+  ArrowRight,
   Bot,
   CheckCircle2,
+  FileText,
   Headphones,
   Loader2,
+  Megaphone,
   MessageCircle,
   Mic2,
   PencilLine,
@@ -18,6 +20,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Target,
   Trash2,
   UploadCloud,
   Waypoints,
@@ -130,6 +133,30 @@ type AiUsageSummary = {
   premiumLane: number;
   conversationRuns: number;
   fallbackRuns: number;
+};
+
+type CampaignOverviewResponse = {
+  summary?: {
+    total?: number;
+    active?: number;
+    idle?: number;
+    stale?: number;
+    spend30?: number;
+    leads30?: number;
+  };
+  items?: Array<{
+    key: string;
+    name: string;
+    platform: string;
+    status: "active" | "idle" | "stale";
+    last30?: {
+      spend?: number;
+      leads?: number;
+      clicks?: number;
+      impressions?: number;
+    };
+  }>;
+  error?: string;
 };
 
 type ActionSignal = {
@@ -354,63 +381,63 @@ function audioBase64ToObjectUrl(base64: string, mimeType = "audio/mpeg") {
 }
 
 const PROVIDER_OPTIONS = [
-  { id: "openai", label: "OpenAI" },
-  { id: "anthropic", label: "Anthropic" },
-  { id: "gemini", label: "Gemini" },
-  { id: "mistral", label: "Mistral" },
-  { id: "altum_rules", label: "ALTUM Rules" },
+  { id: "openai", label: "Padrao Altum" },
+  { id: "anthropic", label: "Backup premium" },
+  { id: "gemini", label: "Backup rapido" },
+  { id: "mistral", label: "Backup leve" },
+  { id: "altum_rules", label: "Regras internas" },
 ] as const;
 
 const CONVERSATION_MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
   openai: [
-    { value: "", label: "Padrao economico (gpt-4.1-mini)" },
-    { value: "gpt-4o-mini", label: "gpt-4o-mini" },
-    { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
-    { value: "gpt-5-mini", label: "gpt-5-mini" },
-    { value: "gpt-5.4", label: "gpt-5.4" },
+    { value: "", label: "Equilibrio recomendado" },
+    { value: "gpt-4o-mini", label: "Rapido economico" },
+    { value: "gpt-4.1-mini", label: "Equilibrado" },
+    { value: "gpt-5-mini", label: "Mais profundo" },
+    { value: "gpt-5.4", label: "Maxima qualidade" },
   ],
   anthropic: [
     { value: "", label: "Padrao automatico" },
-    { value: "claude-sonnet-4", label: "claude-sonnet-4" },
-    { value: "claude-opus-4", label: "claude-opus-4" },
+    { value: "claude-sonnet-4", label: "Premium equilibrado" },
+    { value: "claude-opus-4", label: "Premium profundo" },
   ],
   gemini: [
     { value: "", label: "Padrao automatico" },
-    { value: "gemini-2.5-pro", label: "gemini-2.5-pro" },
-    { value: "gemini-2.5-flash", label: "gemini-2.5-flash" },
+    { value: "gemini-2.5-pro", label: "Analise profunda" },
+    { value: "gemini-2.5-flash", label: "Resposta rapida" },
   ],
   mistral: [
     { value: "", label: "Padrao automatico" },
-    { value: "mistral-small", label: "mistral-small" },
-    { value: "mistral-large", label: "mistral-large" },
+    { value: "mistral-small", label: "Leve economico" },
+    { value: "mistral-large", label: "Leve avancado" },
   ],
-  altum_rules: [{ value: "", label: "ALTUM Rules" }],
+  altum_rules: [{ value: "", label: "Regras internas da Altum" }],
 };
 
 const EXTRACTION_MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
   openai: [
-    { value: "", label: "Padrao economico (gpt-4.1-mini)" },
-    { value: "gpt-4o-mini", label: "gpt-4o-mini" },
-    { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
-    { value: "gpt-5-mini", label: "gpt-5-mini" },
-    { value: "gpt-5.4", label: "gpt-5.4" },
+    { value: "", label: "Equilibrio recomendado" },
+    { value: "gpt-4o-mini", label: "Leitura rapida" },
+    { value: "gpt-4.1-mini", label: "Leitura equilibrada" },
+    { value: "gpt-5-mini", label: "Leitura profunda" },
+    { value: "gpt-5.4", label: "Leitura premium" },
   ],
   anthropic: [
     { value: "", label: "Padrao automatico" },
-    { value: "claude-sonnet-4", label: "claude-sonnet-4" },
-    { value: "claude-opus-4", label: "claude-opus-4" },
+    { value: "claude-sonnet-4", label: "Premium equilibrado" },
+    { value: "claude-opus-4", label: "Premium profundo" },
   ],
   gemini: [
     { value: "", label: "Padrao automatico" },
-    { value: "gemini-2.5-flash", label: "gemini-2.5-flash" },
-    { value: "gemini-2.5-pro", label: "gemini-2.5-pro" },
+    { value: "gemini-2.5-flash", label: "Leitura rapida" },
+    { value: "gemini-2.5-pro", label: "Leitura profunda" },
   ],
   mistral: [
     { value: "", label: "Padrao automatico" },
-    { value: "mistral-small", label: "mistral-small" },
-    { value: "mistral-large", label: "mistral-large" },
+    { value: "mistral-small", label: "Leve economico" },
+    { value: "mistral-large", label: "Leve avancado" },
   ],
-  altum_rules: [{ value: "", label: "ALTUM Rules" }],
+  altum_rules: [{ value: "", label: "Regras internas da Altum" }],
 };
 
 function toDate(value: unknown) {
@@ -575,6 +602,7 @@ export default function ClienteIaPage() {
   const [followUpTemplateParamsText, setFollowUpTemplateParamsText] = useState("");
   const [kbDocs, setKbDocs] = useState<KbDoc[]>([]);
   const [logs, setLogs] = useState<AiLog[]>([]);
+  const [campaignOverview, setCampaignOverview] = useState<CampaignOverviewResponse>({});
   const [usageSummary, setUsageSummary] = useState<AiUsageSummary>({
     total: 0,
     estimatedCostUsd: 0,
@@ -633,11 +661,12 @@ export default function ClienteIaPage() {
       setLoading(true);
       setError(null);
 
-      const [settingsRes, kbRes, logsRes, usageRes] = await Promise.all([
+      const [settingsRes, kbRes, logsRes, usageRes, campaignsRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`),
         authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
         authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`),
         authedFetch(`/api/tenant/${tenant.tenantId}/ai-usage`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/overview`),
       ]);
       const tenantSettingsRes = await authedFetch(`/api/tenant/${tenant.tenantId}/settings`);
 
@@ -645,6 +674,7 @@ export default function ClienteIaPage() {
       const kbPayload = (await kbRes.json()) as { items?: KbDoc[]; error?: string };
       const logsPayload = (await logsRes.json()) as { items?: AiLog[]; error?: string };
       const usagePayload = (await usageRes.json()) as { summary?: AiUsageSummary; error?: string };
+      const campaignsPayload = (await campaignsRes.json().catch(() => ({}))) as CampaignOverviewResponse;
       const tenantSettingsPayload = (await tenantSettingsRes.json().catch(() => ({}))) as TenantSettingsPayload;
       setBusinessProfileId((tenantSettingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
 
@@ -676,7 +706,7 @@ export default function ClienteIaPage() {
       if (logsRes.ok) {
         setLogs(logsPayload.items || []);
       } else {
-        setError(logsPayload.error || "Falha ao carregar logs de IA.");
+      setError(logsPayload.error || "Falha ao carregar auditoria do assistente.");
       }
 
       if (usageRes.ok) {
@@ -688,6 +718,12 @@ export default function ClienteIaPage() {
           conversationRuns: 0,
           fallbackRuns: 0,
         });
+      }
+
+      if (campaignsRes.ok) {
+        setCampaignOverview(campaignsPayload || {});
+      } else {
+        setCampaignOverview({});
       }
     } catch {
       setError("Falha ao carregar modulo IA.");
@@ -857,10 +893,10 @@ export default function ClienteIaPage() {
     if (!settings.responsiblePhone) {
       items.push({
         id: "handoff_owner",
-        title: "Handoff sem responsavel",
+        title: "Escalada sem responsavel",
         detail: "Defina o numero do responsavel para evitar escaladas sem dono.",
         tone: "danger",
-        badge: "handoff",
+        badge: "responsavel",
         action: () => setDecisionFilter("handoff"),
       });
     }
@@ -868,8 +904,8 @@ export default function ClienteIaPage() {
     if (logSummary.lowConfidence > 0) {
       items.push({
         id: "low_confidence",
-        title: "Logs de baixa confianca",
-        detail: `${logSummary.lowConfidence} interacao(oes) merecem revisao de base e guardrails.`,
+        title: "Respostas que precisam melhorar",
+        detail: `${logSummary.lowConfidence} interacao(oes) merecem revisao de base e regras de atendimento.`,
         tone: "warning",
         badge: "risco",
         action: () => {
@@ -882,8 +918,8 @@ export default function ClienteIaPage() {
     if (logSummary.handoff > logSummary.responded) {
       items.push({
         id: "handoff_excess",
-        title: "Handoff acima de resposta",
-        detail: `${logSummary.handoff} handoff(s) para ${logSummary.responded} resposta(s) automaticas.`,
+        title: "Muitas conversas indo para humano",
+        detail: `${logSummary.handoff} escalada(s) para ${logSummary.responded} resposta(s) automaticas.`,
         tone: "warning",
         badge: "escalada",
         action: () => {
@@ -961,6 +997,66 @@ export default function ClienteIaPage() {
       percent: Math.round((done / Math.max(1, readinessItems.length)) * 100),
     };
   }, [readinessItems]);
+
+  const commercialBrain = useMemo(() => {
+    const campaignSummary = campaignOverview.summary || {};
+    const activeCampaigns = Number(campaignSummary.active || 0);
+    const leads30 = Number(campaignSummary.leads30 || 0);
+    const spend30 = Number(campaignSummary.spend30 || 0);
+    const catalogReady = kbDocs.filter((doc) => doc.type === "catalog" && doc.productName && doc.content.trim().length >= 80).length;
+    const mandatoryQuestionsReady = (settings.mandatoryQuestions || []).filter(Boolean).length;
+    const extractedSignals = logs.filter((log) => log.extractedFields && Object.keys(log.extractedFields).length > 0).length;
+
+    return [
+      {
+        id: "campaigns",
+        icon: Megaphone,
+        title: "Campanhas e origem",
+        value: activeCampaigns > 0 ? `${activeCampaigns} ativa(s)` : "Sem sinal ativo",
+        detail:
+          activeCampaigns > 0
+            ? `${leads30} lead(s) e ${spend30.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} em 30 dias.`
+            : "Conecte Meta/Google ou sincronize campanhas para a IA entender de onde o lead veio.",
+        tone: activeCampaigns > 0 ? "success" : "warning",
+        href: "/cliente/painel/campanhas",
+      },
+      {
+        id: "offers",
+        icon: FileText,
+        title: "Oferta ensinada",
+        value: catalogReady > 0 ? `${catalogReady} pronta(s)` : "Incompleta",
+        detail:
+          catalogReady > 0
+            ? "A IA tem produtos/servicos com contexto comercial para recomendar."
+            : "Ensine servicos, publico, preco e materiais para a IA vender com clareza.",
+        tone: catalogReady > 0 ? "success" : "warning",
+        href: "/cliente/painel/produtos-servicos",
+      },
+      {
+        id: "qualification",
+        icon: Target,
+        title: "Qualificacao",
+        value: mandatoryQuestionsReady > 0 ? `${mandatoryQuestionsReady} pergunta(s)` : "Livre demais",
+        detail:
+          mandatoryQuestionsReady > 0
+            ? `${extractedSignals} conversa(s) recentes preencheram dados de negocio.`
+            : "Defina perguntas obrigatorias para capturar dor, urgencia, perfil e valor.",
+        tone: mandatoryQuestionsReady > 0 ? "info" : "warning",
+        href: "#ia-comportamento",
+      },
+      {
+        id: "handoff",
+        icon: Headphones,
+        title: "Humano certo",
+        value: settings.responsiblePhone ? "Definido" : "Pendente",
+        detail: settings.responsiblePhone
+          ? "Quando a conversa pedir cuidado, a IA sabe quem chamar."
+          : "Sem responsavel claro, uma oportunidade sensivel pode ficar sem dono.",
+        tone: settings.responsiblePhone ? "success" : "danger",
+        href: "#ia-comportamento",
+      },
+    ] as const;
+  }, [campaignOverview.summary, kbDocs, logs, settings.mandatoryQuestions, settings.responsiblePhone]);
 
   const voiceModeLabel =
     settings.voiceReplyMode === "always"
@@ -1412,25 +1508,23 @@ export default function ClienteIaPage() {
     <div className="ia-refined ia-product-page client-daily-page space-y-6">
       <SectionHeader
         title="Assistente Altum"
-        subtitle="Controle como a IA atende, vende, manda audio e chama uma pessoa quando precisa."
+        subtitle="Ensine como a IA deve atender, qualificar, vender e chamar uma pessoa quando a conversa pedir cuidado."
         action={<StateBadge label={settings.enabled ? "Assistente ativo" : "Assistente pausado"} tone={settings.enabled ? "success" : "warning"} />}
       />
 
       <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
         <PanelCard tone="spotlight" className="overflow-hidden p-0">
           <div className="relative p-5 md:p-7">
-            <div className="absolute right-6 top-6 hidden h-32 w-32 rounded-full border border-white/12 bg-white/8 md:block" />
             <div className="relative max-w-3xl">
               <p className="inline-flex items-center gap-2 rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/84">
                 <Sparkles className="h-3.5 w-3.5" />
-                Operacao comercial com IA
+                Assistente comercial
               </p>
-              <h2 className="mt-4 text-[1.8rem] font-semibold tracking-[-0.04em] text-white md:text-[2.45rem]">
-                Configure o jeito da IA atender, vender e pedir ajuda.
+              <h2 className="mt-4 text-[1.8rem] font-semibold tracking-normal text-white md:text-[2.45rem]">
+                A IA atendendo, qualificando e preparando venda com contexto.
               </h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-white/74">
-                A tela agora prioriza decisao pratica: o assistente esta pronto, sabe o que vender,
-                consegue mandar audio e tem um humano responsavel quando a conversa pede cuidado.
+                Veja se a IA esta pronta, se sabe o que vender, se pode mandar audio e quem assume quando a conversa pede cuidado humano.
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <a
@@ -1438,7 +1532,7 @@ export default function ClienteIaPage() {
                   className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-white/90"
                 >
                   <SlidersHorizontal className="h-4 w-4" />
-                  Ajustar IA
+                  Ajustar assistente
                 </a>
                 <a
                   href="#ia-audio"
@@ -1451,7 +1545,7 @@ export default function ClienteIaPage() {
                   href="/cliente/painel/produtos-servicos"
                   className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/18"
                 >
-                  <BookOpen className="h-4 w-4" />
+                  <FileText className="h-4 w-4" />
                   Ensinar ofertas
                 </Link>
               </div>
@@ -1509,12 +1603,73 @@ export default function ClienteIaPage() {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Respostas da IA" value={String(logSummary.responded)} icon={Bot} trend="atendimentos recentes" tone="success" />
+        <MetricCard label="Respostas" value={String(logSummary.responded)} icon={Bot} trend="atendimentos recentes" tone="success" />
         <MetricCard label="Pediu contexto" value={String(logSummary.askMore)} icon={MessageCircle} trend="qualificacao antes de vender" tone="ai" />
         <MetricCard label="Chamou humano" value={String(logSummary.handoff)} icon={Headphones} trend={settings.responsiblePhone ? "responsavel definido" : "sem responsavel"} tone="warning" />
         <MetricCard label="Audio da IA" value={settings.voiceReplyEnabled ? "Ativo" : "Pausado"} icon={Mic2} trend={voiceModeLabel} tone="ai" />
-        <MetricCard label="Risco" value={String(logSummary.lowConfidence)} icon={ShieldCheck} trend={`latencia ${latencyLabel(logSummary.avgLatency)}`} tone={logSummary.lowConfidence > 0 ? "danger" : "success"} />
+        <MetricCard label="Revisar" value={String(logSummary.lowConfidence)} icon={ShieldCheck} trend="baixa confianca recente" tone={logSummary.lowConfidence > 0 ? "danger" : "success"} />
       </section>
+
+      <PanelCard className="p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle
+              title="Cerebro comercial"
+              subtitle="O que o assistente precisa saber para continuar uma conversa baseada em campanha, oferta, qualificacao e proximo passo."
+            />
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+              Este bloco mostra se o assistente entende de onde o lead veio, o que oferecer, o que perguntar e quando chamar uma pessoa.
+            </p>
+          </div>
+          <Link
+            href="/cliente/painel/perguntar-altum"
+            className="inline-flex items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+          >
+            Perguntar sobre o assistente
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {commercialBrain.map((item) => {
+            const Icon = item.icon;
+            const content = (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <StateBadge label={item.value} tone={item.tone} />
+                </div>
+                <p className="mt-4 text-sm font-black text-[var(--cliente-card-text)]">{item.title}</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-soft)]">{item.detail}</p>
+              </>
+            );
+
+            if (item.href.startsWith("#")) {
+              return (
+                <a
+                  key={item.id}
+                  href={item.href}
+                  className="rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--cliente-ai)_24%,var(--cliente-border))] hover:bg-[var(--cliente-panel-soft)]"
+                >
+                  {content}
+                </a>
+              );
+            }
+
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                className="rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--cliente-ai)_24%,var(--cliente-border))] hover:bg-[var(--cliente-panel-soft)]"
+              >
+                {content}
+              </Link>
+            );
+          })}
+        </div>
+      </PanelCard>
 
       <section className="hidden gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Plano IA" value={tierLabel(settings.tier)} icon={Sparkles} trend={settings.runtimePolicy?.conversationModel || "motor base"} />
@@ -1580,7 +1735,7 @@ export default function ClienteIaPage() {
               href="/cliente/painel/produtos-servicos"
               className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
             >
-              <BookOpen className="h-5 w-5 text-[var(--cliente-accent)]" />
+              <FileText className="h-5 w-5 text-[var(--cliente-accent)]" />
               <p className="mt-3 text-sm font-semibold text-[var(--cliente-card-text)]">Ofertas</p>
               <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">Produtos, servicos, precos, materiais e recomendacoes.</p>
             </Link>
@@ -1861,7 +2016,7 @@ export default function ClienteIaPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <CardTitle
             title={`Modo do negocio: ${businessProfile.label}`}
-            subtitle="Esse perfil agora orienta o objetivo comercial, o tom, as perguntas obrigatorias e os guardrails sugeridos."
+            subtitle="Esse perfil agora orienta o objetivo comercial, o tom, as perguntas obrigatorias e as regras sugeridas."
           />
           <div className="flex flex-wrap gap-2">
             <StateBadge label={businessProfile.id} tone="info" />
@@ -1891,7 +2046,7 @@ export default function ClienteIaPage() {
             </div>
           </div>
           <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Guardrails centrais</p>
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Regras centrais</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {businessProfile.ai.guardrails.slice(0, 3).map((rule) => (
                 <StateBadge key={rule} label={rule} tone="warning" />
@@ -1963,7 +2118,7 @@ export default function ClienteIaPage() {
           <CardTitle title="Como ler esta tela" subtitle="Resumo dos recortes usados para revisar o comportamento da IA." />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <IaContext title="Conversas" value={decisionFilter === "all" ? "Todas" : decisionLabel(decisionFilter)} detail="tipo de decisao analisada" />
-            <IaContext title="Risco" value={logRiskFilter === "all" ? "Todos" : logRiskFilter === "low_confidence" ? "Baixa confianca" : "Handoff"} detail="onde procurar melhoria" />
+            <IaContext title="Risco" value={logRiskFilter === "all" ? "Todos" : logRiskFilter === "low_confidence" ? "Baixa confianca" : "Escalada"} detail="onde procurar melhoria" />
             <IaContext title="Conhecimento" value={kbUsageFilter === "all" ? "Toda base" : kbUsageFilter === "used" ? "Usado" : "Sem uso"} detail="uso da base pela IA" />
             <IaContext title="Responsavel" value={settings.responsiblePhone || "pendente"} detail="quem assume quando a IA pede ajuda" />
           </div>
@@ -2053,7 +2208,7 @@ export default function ClienteIaPage() {
           <form onSubmit={handleSaveSettings} className="space-y-6">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--cliente-border)] pb-5">
               <div>
-                <h3 className="text-xl font-semibold tracking-[-0.02em] text-[var(--cliente-card-text)]">Publicacao e regras do assistente</h3>
+                <h3 className="text-xl font-semibold tracking-normal text-[var(--cliente-card-text)]">Publicacao e regras do assistente</h3>
                 <p className="mt-2 max-w-3xl text-[15px] leading-7 text-[var(--cliente-card-text-muted)]">
                   Ajuste o que a IA pode fazer no atendimento, como fala, quando usa audio e quando chama a equipe.
                 </p>
@@ -2074,12 +2229,12 @@ export default function ClienteIaPage() {
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[15px] font-semibold text-[var(--cliente-card-text)]">
                 <span className="inline-flex items-center gap-2">
                   <SlidersHorizontal className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
-                  Avancado: custo, modelos e provedores
+                  Controle de custos e qualidade
                 </span>
-                <StateBadge label="tecnico" tone="neutral" />
+                <StateBadge label="opcional" tone="neutral" />
               </summary>
               <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-soft)]">
-                Use esta parte apenas quando precisar controlar custo, motor de IA ou limite de execucoes.
+                Use esta parte apenas quando precisar limitar gasto, ajustar profundidade de resposta ou controlar volume mensal.
               </p>
               <div className="mt-5 space-y-4">
             <div className="grid gap-3 md:grid-cols-2">
@@ -2107,7 +2262,7 @@ export default function ClienteIaPage() {
                   disabled={!canManage}
                   className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 >
-                  <option value="copilot">Copilot</option>
+                  <option value="copilot">Assistida</option>
                   <option value="hybrid">Hibrido</option>
                   <option value="autonomous">Autonomo</option>
                 </select>
@@ -2176,7 +2331,7 @@ export default function ClienteIaPage() {
             </label>
 
             <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-              Motores preferidos
+                Ordem de processamento
               <div className="mt-2 flex flex-wrap gap-2">
                 {PROVIDER_OPTIONS.map((provider) => {
                   const active = (settings.preferredProviders || []).includes(provider.id as NonNullable<AiSettings["preferredProviders"]>[number]);
@@ -2221,7 +2376,7 @@ export default function ClienteIaPage() {
                           : "border-rose-500/30 bg-rose-500/10 text-rose-300"
                       }`}
                     >
-                      {provider.label}: {status?.ready ? "pronto" : "sem chave"}
+                      {provider.label}: {status?.ready ? "disponivel" : "indisponivel"}
                     </span>
                   );
                 })}
@@ -2230,7 +2385,7 @@ export default function ClienteIaPage() {
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-                Modelo principal da conversa
+                Qualidade da conversa
                 <select
                   value={settings.conversationModelOverride || ""}
                   onChange={(event) =>
@@ -2248,7 +2403,7 @@ export default function ClienteIaPage() {
               </label>
 
               <label className="block text-xs text-[var(--cliente-card-text-soft)]">
-                Modelo de extracao
+                Leitura de informacoes
                 <select
                   value={settings.extractionModelOverride || ""}
                   onChange={(event) =>
@@ -2274,25 +2429,25 @@ export default function ClienteIaPage() {
                 <StateBadge label={responseStyleLabel(settings.responseStyle)} tone="success" />
               </div>
               <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">
-                Motor atual da IA: {settings.runtimePolicy?.primaryProvider || "openai"} / {settings.runtimePolicy?.conversationModel || "gpt-4.1-mini"}.
+                Operacao atual: {settings.allowPremiumModels ? "qualidade flexivel com controle de custo" : "modo economico protegido"}.
               </p>
               <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
-                Extracao atual: {settings.runtimePolicy?.extractionModel || "gpt-4.1-mini"}.
+                Leitura comercial ativa para captar necessidade, urgencia, proximo passo e dados do cliente.
               </p>
               <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                Busca {settings.runtimePolicy?.retrievalMode || "keyword"} • ferramentas {settings.runtimePolicy?.supportsToolCalling ? "ligadas" : "desligadas"} • budget {settings.runtimePolicy?.budgetMode || "balanced"}.
+                Base de conhecimento, regras de atendimento e limite mensal trabalham juntos para manter a operacao previsivel.
               </p>
               {settings.runtimePolicy?.modelGuardrailApplied ? (
                 <p className="mt-1 text-xs text-amber-300">
-                  Guardrail ativo: modelo premium reduzido automaticamente para modo economico.
+                  Protecao de custo ativa: a Altum reduziu automaticamente o gasto desta conta.
                 </p>
               ) : null}
               <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
-                Padrao novo: OpenAI usa `gpt-4.1-mini` por economia. Modelo mais caro so entra se voce escolher explicitamente aqui.
+                Padrao recomendado: manter equilibrio entre velocidade, qualidade e custo. Use modo premium apenas quando fizer sentido comercial.
               </p>
               {!settings.allowPremiumModels ? (
               <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                Trava de custo ativa: modelos premium ficam bloqueados para este tenant.
+                Trava de custo ativa: modelos premium ficam bloqueados para esta conta.
               </p>
               ) : null}
             </div>
@@ -2672,7 +2827,7 @@ export default function ClienteIaPage() {
                 className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3.5 text-[15px] font-semibold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
               >
                 <span>Atualizar ofertas</span>
-                <BookOpen className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
+                <FileText className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
               </Link>
               <Link
                 href="/cliente/painel/conhecimento"
@@ -2983,15 +3138,25 @@ export default function ClienteIaPage() {
         </PanelCard>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+      <details className="ia-advanced-section rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4 shadow-[var(--cliente-shadow-soft)]">
+        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-black text-[var(--cliente-card-text)]">Auditoria avancada do assistente</p>
+            <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
+              Historico, motivos de escalada e detalhes de decisao ficam aqui para revisao tecnica ou investigacao.
+            </p>
+          </div>
+          <StateBadge label="avancado" tone="neutral" />
+        </summary>
+        <section className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <PanelCard className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <CardTitle title="Motivos de handoff" subtitle="Principais causas de escalada para humano" />
+            <CardTitle title="Motivos de escalada" subtitle="Principais causas para chamar uma pessoa da equipe" />
             <StateBadge label={`${handoffReasons.length} mapeados`} tone="warning" />
           </div>
           <div className="mt-4 space-y-2">
             {handoffReasons.length === 0 ? (
-              <p className="text-sm text-[var(--cliente-card-text-soft)]">Ainda nao houve handoffs recentes com motivo consolidado.</p>
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Ainda nao houve escaladas recentes com motivo consolidado.</p>
             ) : (
               handoffReasons.map((item) => (
                 <div key={item.reason} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
@@ -3028,8 +3193,8 @@ export default function ClienteIaPage() {
               <option value="all">Todas as decisoes</option>
               <option value="respond">Responder</option>
               <option value="ask_more">Perguntar mais</option>
-              <option value="handoff">Handoff</option>
-              <option value="skip">Skip</option>
+              <option value="handoff">Chamar humano</option>
+              <option value="skip">Ignorar</option>
             </select>
             <select
               value={logRiskFilter}
@@ -3038,12 +3203,12 @@ export default function ClienteIaPage() {
             >
               <option value="all">Todos os riscos</option>
               <option value="low_confidence">Baixa confianca</option>
-              <option value="handoff_only">Somente handoff</option>
+              <option value="handoff_only">Somente escaladas</option>
             </select>
           </div>
           <div className="mt-3 space-y-2">
             {filteredLogs.length === 0 ? (
-              <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhum log recente encontrado.</p>
+              <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhum registro recente encontrado.</p>
             ) : (
               filteredLogs.map((log) => (
                 <article key={log.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
@@ -3054,7 +3219,7 @@ export default function ClienteIaPage() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <StateBadge label={decisionLabel(log.decision)} tone={decisionTone(log.decision)} />
-                      <StateBadge label={`conf ${confidenceLabel(log.confidence)}`} tone="neutral" />
+                      <StateBadge label={`confianca ${confidenceLabel(log.confidence)}`} tone="neutral" />
                     </div>
                   </div>
 
@@ -3164,7 +3329,8 @@ export default function ClienteIaPage() {
             )}
           </div>
         </PanelCard>
-      </section>
+        </section>
+      </details>
 
       {error ? (
         <p className="rounded-[22px] border border-rose-400/18 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">

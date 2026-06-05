@@ -4,7 +4,6 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
-  BookOpen,
   Building2,
   CheckCircle2,
   FileText,
@@ -341,10 +340,10 @@ export default function ClienteConhecimentoPage() {
   }
 
   return (
-    <div className="client-daily-page space-y-5">
+    <div className="client-daily-page space-y-4">
       <SectionHeader
-        title="Base de conhecimento"
-        subtitle="Organize politicas, perguntas e processos para a Altum responder com seguranca e sem improviso."
+        title="Base do assistente"
+        subtitle="Organize respostas, politicas e processos para o atendimento vender com mais clareza."
         action={
           <Link
             href="/cliente/painel/produtos-servicos"
@@ -357,7 +356,7 @@ export default function ClienteConhecimentoPage() {
       />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Conhecimentos" value={String(stats.total)} icon={BookOpen} trend={`${stats.used} usados pela IA`} tone="ai" />
+        <MetricCard label="Conteudos" value={String(stats.total)} icon={FileText} trend={`${stats.used} usados pelo assistente`} tone="ai" />
         <MetricCard label="Perguntas" value={String(stats.faq)} icon={HelpCircle} trend="duvidas e respostas" tone="success" />
         <MetricCard label="Politicas" value={String(stats.policies)} icon={ShieldCheck} trend="regras da empresa" tone="warning" />
         <MetricCard label="Produtos" value={String(stats.catalog)} icon={Building2} trend="geridos em Produtos & Servicos" tone="brand" />
@@ -367,7 +366,7 @@ export default function ClienteConhecimentoPage() {
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
         <PanelCard className="p-5 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <CardTitle title="Biblioteca" subtitle="Tudo que sustenta as respostas e decisoes do Assistente Altum." />
+            <CardTitle title="Biblioteca" subtitle="Tudo que sustenta as respostas e decisoes comerciais do Assistente Altum." />
             <ClientTabs
               value={areaFilter}
               onChange={setAreaFilter}
@@ -400,7 +399,7 @@ export default function ClienteConhecimentoPage() {
                           <StateBadge label={`${totalUsage} usos`} tone={totalUsage ? "success" : "neutral"} />
                           <StateBadge label={`atualizado ${formatDate(doc.updatedAt || doc.createdAt)}`} tone="neutral" />
                         </div>
-                        <h3 className="mt-3 text-lg font-semibold tracking-[-0.02em] text-[var(--cliente-card-text)]">{titleFromDoc(doc)}</h3>
+                        <h3 className="mt-3 text-lg font-semibold tracking-normal text-[var(--cliente-card-text)]">{titleFromDoc(doc)}</h3>
                         <p className="mt-2 line-clamp-4 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{bodyFromDoc(doc)}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {(doc.tags || []).filter((tag) => !tag.startsWith("area:")).slice(0, 8).map((tag) => (
@@ -446,7 +445,7 @@ export default function ClienteConhecimentoPage() {
                 );
               })
             ) : (
-              <EmptyState title="Nenhum conhecimento encontrado" description="Adicione respostas, politicas ou processos para melhorar a precisao da IA." />
+              <EmptyState title="Nenhum conteudo encontrado" description="Adicione respostas, politicas ou processos para melhorar a seguranca do atendimento." />
             )}
           </div>
         </PanelCard>
@@ -489,7 +488,7 @@ export default function ClienteConhecimentoPage() {
                   />
                 </div>
                 <FieldInput label="Titulo" value={form.title} onChange={(value) => setForm((current) => ({ ...current, title: value }))} placeholder="Ex: Como explicamos prazo de entrega" />
-                <FieldTextArea label="Conteudo" value={form.content} onChange={(value) => setForm((current) => ({ ...current, content: value }))} placeholder="Resposta, politica, processo ou regra que a IA deve seguir." />
+                <FieldTextArea label="Conteudo" value={form.content} onChange={(value) => setForm((current) => ({ ...current, content: value }))} placeholder="Resposta, politica, processo ou regra que o assistente deve seguir." />
                 <FieldInput label="Tags" value={form.tags} onChange={(value) => setForm((current) => ({ ...current, tags: value }))} placeholder="preco, garantia, prazo" />
 
                 <div className="flex flex-wrap justify-end gap-2">
@@ -552,7 +551,7 @@ export default function ClienteConhecimentoPage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Escaladas que pedem conhecimento" subtitle="Use estes sinais para criar respostas ou politicas novas." />
+            <CardTitle title="Escaladas que pedem conteudo" subtitle="Use estes sinais para criar respostas ou politicas novas." />
             <div className="mt-4 space-y-2">
               {topHandoff.length ? (
                 topHandoff.map((item) => (

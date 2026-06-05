@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { decryptSecret, encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
 import { recordInboundLead } from "@/lib/server/lead-intake";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
+import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
 
 export const ECOMMERCE_PROVIDERS = ["shopify", "nuvemshop", "woocommerce", "vtex", "tray", "loja_integrada"] as const;
 
@@ -267,6 +268,36 @@ function topicHas(topic: string, words: string[]) {
   return words.some((word) => normalized.includes(word));
 }
 
+function isPaidEcommerceOrder(order: NormalizedOrder) {
+  const status = normalize(`${order.paymentStatus} ${order.status}`, 180).replace(/[^a-z0-9]+/g, "_");
+  const hasToken = (values: string[]) =>
+    values.some((value) => new RegExp(`(^|_)${value}(_|$)`).test(status));
+
+  if (
+    hasToken([
+      "unpaid",
+      "not_paid",
+      "partially_paid",
+      "partial",
+      "pending",
+      "pendente",
+      "authorized",
+      "autorizado",
+      "refunded",
+      "estornado",
+      "voided",
+      "canceled",
+      "cancelado",
+    ])
+  ) {
+    return false;
+  }
+
+  return hasToken(
+    ["paid", "pago", "received", "recebido", "confirmed", "confirmado", "approved", "aprovado"]
+  );
+}
+
 function tagsFrom(value: unknown) {
   if (Array.isArray(value)) return value.map((item) => clean(item, 60)).filter(Boolean).slice(0, 20);
   return clean(value, 500)
@@ -517,8 +548,6 @@ async function syncOrderToCommercial(input: {
     adminDb.collection("leads").doc(lead.leadId).set(
       {
         priority: order.trackingCode ? "medium" : "high",
-        pipelineStage: "ganho",
-        stage: "ganho",
         commercialState: {
           lastEcommerceOrderId: order.externalOrderId,
           lastEcommerceOrderNumber: order.orderNumber,
@@ -574,6 +603,25 @@ async function syncOrderToCommercial(input: {
       metadata: { provider: input.provider, orderId: order.externalOrderId },
     }),
   ]);
+
+  const paidOrder = isPaidEcommerceOrder(order);
+  await setLeadPipelineStageWithEffects({
+    tenantId: input.tenantId,
+    leadId: lead.leadId,
+    nextStage: paidOrder ? "ganho" : "proposta",
+    actorId: "ecommerce_webhook",
+    actorName: "Ecommerce",
+    source: paidOrder ? "ecommerce_order_paid" : "ecommerce_order_created",
+    metadata: {
+      connectionId: input.connectionId,
+      provider: input.provider,
+      orderId: order.externalOrderId,
+      orderNumber: order.orderNumber,
+      orderStatus: order.status,
+      paymentStatus: order.paymentStatus,
+      totalPrice: order.totalPrice,
+    },
+  });
 
   if (order.trackingCode || order.trackingUrl) {
     await Promise.all([

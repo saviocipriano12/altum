@@ -619,11 +619,11 @@ export default function NovoProdutoServicoPage() {
   }
 
   return (
-    <div className="client-daily-page space-y-5">
+    <div className="produtos-refined client-daily-page space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/cliente/painel/produtos-servicos"
-          className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text-muted)] transition hover:border-[color:color-mix(in_srgb,#2563eb_28%,var(--cliente-border))] hover:bg-[var(--cliente-surface-hover)]"
+          className="inline-flex items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text-muted)] transition hover:border-[color:color-mix(in_srgb,var(--cliente-primary)_28%,var(--cliente-border))] hover:bg-[var(--cliente-surface-hover)]"
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar ao catalogo
@@ -639,7 +639,7 @@ export default function NovoProdutoServicoPage() {
                 <StateBadge label="Cadastro rapido" tone="info" />
                 <StateBadge label="ate 30 itens" tone="neutral" />
               </div>
-              <h2 className="mt-3 text-xl font-black tracking-[-0.03em] text-[var(--cliente-card-text)]">
+              <h2 className="mt-3 text-xl font-black tracking-normal text-[var(--cliente-card-text)]">
                 Cole uma lista e crie varios produtos em segundos.
               </h2>
               <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-muted)]">
@@ -650,7 +650,7 @@ export default function NovoProdutoServicoPage() {
                 onChange={(event) => setBulkText(event.target.value)}
                 rows={4}
                 placeholder={"Plano Growth | Atendimento | 497 | lojas com WhatsApp intenso | IA para responder, vender e organizar oportunidades\nConsultoria de vendas | Servicos | 1200 | negocios B2B | Diagnostico e plano comercial"}
-                className="client-input mt-4 w-full resize-y rounded-[20px] border px-4 py-3 text-sm leading-6 outline-none transition focus:border-[color:color-mix(in_srgb,#2563eb_46%,var(--cliente-border))]"
+                className="client-input mt-4 w-full resize-y rounded-[18px] border px-4 py-3 text-sm leading-6 outline-none transition focus:border-[color:color-mix(in_srgb,var(--cliente-primary)_46%,var(--cliente-border))]"
               />
             </div>
             <div className="rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
@@ -664,7 +664,7 @@ export default function NovoProdutoServicoPage() {
                 type="button"
                 onClick={() => void submitBulkCatalog()}
                 disabled={bulkCreating || !bulkText.trim()}
-                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[18px] bg-[#2563eb] px-4 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-[var(--cliente-primary)] px-4 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[var(--cliente-primary-hover)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {bulkCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Criar produtos em lote
@@ -677,28 +677,28 @@ export default function NovoProdutoServicoPage() {
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <form className="space-y-4" onSubmit={submitCatalog}>
           <PanelCard className="overflow-hidden">
-            <div className="border-b border-[var(--cliente-border)] bg-[linear-gradient(135deg,color-mix(in_srgb,#2563eb_11%,var(--cliente-card)),color-mix(in_srgb,var(--cliente-ai)_9%,var(--cliente-panel-soft)))] p-5 md:p-7">
+            <div className="border-b border-[var(--cliente-border)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_10%,var(--cliente-card)),var(--cliente-card)_58%,color-mix(in_srgb,var(--cliente-ai)_8%,var(--cliente-card)))] p-4 md:p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <StateBadge label="Produtos & Servicos" tone="info" />
                     <StateBadge label={`${completion}% completo`} tone={completion > 70 ? "success" : "warning"} />
                   </div>
-                  <h1 className="mt-4 text-3xl font-black leading-tight tracking-[-0.03em] text-[var(--cliente-card-text)] md:text-4xl">
+                  <h1 className="mt-3 text-2xl font-black leading-tight tracking-normal text-[var(--cliente-card-text)] md:text-3xl">
                     {docId ? "Editar oferta comercial" : "Cadastrar produto ou servico"}
                   </h1>
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)]">
                     Monte uma ficha que um vendedor entenderia em segundos e que a IA consiga usar para responder, recomendar e enviar material no atendimento.
                   </p>
                 </div>
-                <ClientActionButton type="submit" tone="primary" disabled={saving} className="bg-[#2563eb] hover:bg-[#1d4ed8]">
+                <ClientActionButton type="submit" tone="primary" disabled={saving} className="bg-[var(--cliente-primary)] hover:bg-[var(--cliente-primary-hover)]">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {docId ? "Atualizar" : "Salvar cadastro"}
                 </ClientActionButton>
               </div>
             </div>
 
-            <div className="space-y-6 p-5 md:p-7">
+            <div className="space-y-5 p-4 md:p-5">
               {error ? (
                 <p className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">
                   {error}
@@ -727,11 +727,11 @@ export default function NovoProdutoServicoPage() {
                         onClick={() => updateForm("kind", item.value as CatalogKind)}
                         className={`min-h-[116px] rounded-[22px] border p-4 text-left transition hover:-translate-y-0.5 ${
                           active
-                            ? "border-[#2563eb] bg-[color:color-mix(in_srgb,#2563eb_11%,var(--cliente-card))] shadow-[0_18px_42px_-34px_rgba(37,99,235,0.72)]"
-                            : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] hover:border-[color:color-mix(in_srgb,#2563eb_24%,var(--cliente-border))]"
+                            ? "border-[var(--cliente-primary)] bg-[var(--cliente-primary-soft)] shadow-[var(--cliente-shadow-soft)]"
+                            : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] hover:border-[color:color-mix(in_srgb,var(--cliente-primary)_24%,var(--cliente-border))]"
                         }`}
                       >
-                        <Icon className={`h-5 w-5 ${active ? "text-[#2563eb]" : "text-[var(--cliente-card-text-soft)]"}`} />
+                        <Icon className={`h-5 w-5 ${active ? "text-[var(--cliente-primary)]" : "text-[var(--cliente-card-text-soft)]"}`} />
                         <p className="mt-3 text-sm font-black text-[var(--cliente-card-text)]">{item.label}</p>
                         <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{item.detail}</p>
                       </button>
@@ -791,7 +791,7 @@ export default function NovoProdutoServicoPage() {
 
               <FormSection icon={UploadCloud} title="Material para conversa" description="Suba imagem, video ou documento que a IA e o time podem usar como apoio comercial.">
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-                  <div className="rounded-[24px] border border-dashed border-[color:color-mix(in_srgb,#2563eb_28%,var(--cliente-border))] bg-[color:color-mix(in_srgb,#2563eb_6%,var(--cliente-card))] p-5">
+                  <div className="rounded-[22px] border border-dashed border-[color:color-mix(in_srgb,var(--cliente-primary)_28%,var(--cliente-border))] bg-[var(--cliente-primary-soft)] p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <p className="text-sm font-black text-[var(--cliente-card-text)]">Arquivo principal do cadastro</p>
@@ -799,7 +799,7 @@ export default function NovoProdutoServicoPage() {
                           Imagens ate 12 MB, videos ate 64 MB e documentos ate 24 MB. Use material que ajude a fechar a venda.
                         </p>
                       </div>
-                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-[16px] bg-[#2563eb] px-4 py-2.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#1d4ed8]">
+                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-[16px] bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[var(--cliente-primary-hover)]">
                         {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
                         {uploading ? "Enviando" : "Escolher arquivos"}
                         <input
@@ -892,7 +892,7 @@ export default function NovoProdutoServicoPage() {
                 >
                   Cancelar
                 </Link>
-                <ClientActionButton type="submit" tone="primary" disabled={saving} className="bg-[#2563eb] hover:bg-[#1d4ed8]">
+                <ClientActionButton type="submit" tone="primary" disabled={saving} className="bg-[var(--cliente-primary)] hover:bg-[var(--cliente-primary-hover)]">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {docId ? "Atualizar" : "Salvar cadastro"}
                 </ClientActionButton>
@@ -960,11 +960,11 @@ function FormSection({
   return (
     <section className="rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4 shadow-[0_16px_42px_-38px_rgba(15,23,42,0.36)] md:p-5">
       <div className="mb-4 flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-[color:color-mix(in_srgb,#2563eb_16%,var(--cliente-border))] bg-[color:color-mix(in_srgb,#2563eb_9%,var(--cliente-card))] text-[#2563eb]">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_16%,var(--cliente-border))] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]">
           <Icon className="h-4.5 w-4.5" />
         </span>
         <div>
-          <h2 className="text-base font-black tracking-[-0.02em] text-[var(--cliente-card-text)]">{title}</h2>
+          <h2 className="text-base font-black tracking-normal text-[var(--cliente-card-text)]">{title}</h2>
           <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{description}</p>
         </div>
       </div>
@@ -991,7 +991,7 @@ function Field({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="client-input mt-2 w-full rounded-[16px] border px-3 py-3 text-sm font-medium normal-case tracking-normal outline-none transition focus:border-[color:color-mix(in_srgb,#2563eb_46%,var(--cliente-border))] placeholder:text-[var(--cliente-card-text-soft)]"
+        className="client-input mt-2 w-full rounded-[16px] border px-3 py-3 text-sm font-medium normal-case tracking-normal outline-none transition focus:border-[color:color-mix(in_srgb,var(--cliente-primary)_46%,var(--cliente-border))] placeholder:text-[var(--cliente-card-text-soft)]"
       />
     </label>
   );
@@ -1018,7 +1018,7 @@ function TextArea({
         onChange={(event) => onChange(event.target.value)}
         rows={rows}
         placeholder={placeholder}
-        className="client-input mt-2 w-full resize-y rounded-[16px] border px-3 py-3 text-sm font-medium normal-case leading-6 tracking-normal outline-none transition focus:border-[color:color-mix(in_srgb,#2563eb_46%,var(--cliente-border))] placeholder:text-[var(--cliente-card-text-soft)]"
+        className="client-input mt-2 w-full resize-y rounded-[16px] border px-3 py-3 text-sm font-medium normal-case leading-6 tracking-normal outline-none transition focus:border-[color:color-mix(in_srgb,var(--cliente-primary)_46%,var(--cliente-border))] placeholder:text-[var(--cliente-card-text-soft)]"
       />
     </label>
   );
@@ -1041,7 +1041,7 @@ function SelectField({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="client-input mt-2 w-full rounded-[16px] border px-3 py-3 text-sm font-medium normal-case tracking-normal outline-none transition focus:border-[color:color-mix(in_srgb,#2563eb_46%,var(--cliente-border))]"
+        className="client-input mt-2 w-full rounded-[16px] border px-3 py-3 text-sm font-medium normal-case tracking-normal outline-none transition focus:border-[color:color-mix(in_srgb,var(--cliente-primary)_46%,var(--cliente-border))]"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -1056,7 +1056,7 @@ function SelectField({
 function MediaThumb({ type }: { type: MediaType | "" }) {
   const Icon = type === "image" ? ImageIcon : type === "video" ? Video : type === "document" ? FileText : PlayCircle;
   return (
-    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-[color:color-mix(in_srgb,#2563eb_16%,var(--cliente-border))] bg-[color:color-mix(in_srgb,#2563eb_9%,var(--cliente-card))] text-[#2563eb]">
+    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_16%,var(--cliente-border))] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]">
       <Icon className="h-5 w-5" />
     </span>
   );

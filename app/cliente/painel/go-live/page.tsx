@@ -166,7 +166,7 @@ export default function ClienteGoLivePage() {
     if (validation?.status === "blocked") {
       return `Ultimo bloqueio em ${formatDate(validation.checkedAt)} por ${validation.checkedByName || "usuario nao identificado"}.`;
     }
-    return "Nenhuma validacao definitiva registrada para este tenant.";
+    return "Nenhuma validacao definitiva registrada para esta conta.";
   }, [validation?.approvedAt, validation?.approvedByName, validation?.checkedAt, validation?.checkedByName, validation?.status]);
 
   async function handleValidate() {
@@ -182,19 +182,19 @@ export default function ClienteGoLivePage() {
       if (!response.ok) {
         setFeedback({
           tone: "danger",
-          text: payload.message || payload.error || "Go-live bloqueado. Resolva os itens criticos e tente novamente.",
+          text: payload.message || payload.error || "Liberacao bloqueada. Resolva os itens criticos e tente novamente.",
         });
         return;
       }
 
       setFeedback({
         tone: "success",
-        text: payload.message || "Go-live validado com sucesso para este tenant.",
+        text: payload.message || "Operacao validada com sucesso para esta conta.",
       });
     } catch {
       setFeedback({
         tone: "danger",
-        text: "Falha ao validar o go-live. Tente novamente em alguns instantes.",
+        text: "Falha ao validar a operacao. Tente novamente em alguns instantes.",
       });
     } finally {
       setSaving(false);
@@ -261,11 +261,11 @@ export default function ClienteGoLivePage() {
   return (
     <div className="go-live-refined client-daily-page space-y-4">
       <SectionHeader
-        title="Go-live definitivo"
-        subtitle="Uma tela para validar score, gates criticos, evidencias e bloqueios antes de vender e operar o tenant sem susto."
+        title="Implantacao definitiva"
+        subtitle="Uma tela para validar prontidao, criterios criticos, evidencias e bloqueios antes de vender e operar a conta sem susto."
         action={
           <StateBadge
-            label={pilotReady ? "pronto para venda" : `${Number(snapshot?.summary?.criticalBlockers || 0)} gates bloqueando`}
+            label={pilotReady ? "pronto para venda" : `${Number(snapshot?.summary?.criticalBlockers || 0)} bloqueio(s)`}
             tone={pilotReady ? "success" : "warning"}
           />
         }
@@ -278,9 +278,9 @@ export default function ClienteGoLivePage() {
       ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Score de go-live" value={`${readinessScore}%`} icon={Rocket} trend={pilotReady ? "gate definitivo aprovado" : "fechar checklist critico"} />
-        <MetricCard label="Gates criticos" value={String(criticalChecklist.length)} icon={ShieldCheck} trend={`${criticalChecklist.filter((item) => item.status === "ready").length} aprovados`} />
-        <MetricCard label="Uso IA no mes" value={String(snapshot?.summary?.aiMonthlyRuns || 0)} icon={Wallet} trend={`${formatUsd(snapshot?.summary?.aiMonthlyCostUsd)} consumidos`} />
+        <MetricCard label="Prontidao" value={`${readinessScore}%`} icon={Rocket} trend={pilotReady ? "criterio definitivo aprovado" : "fechar checklist critico"} />
+        <MetricCard label="Criterios criticos" value={String(criticalChecklist.length)} icon={ShieldCheck} trend={`${criticalChecklist.filter((item) => item.status === "ready").length} aprovados`} />
+        <MetricCard label="Uso do assistente no mes" value={String(snapshot?.summary?.aiMonthlyRuns || 0)} icon={Wallet} trend={`${formatUsd(snapshot?.summary?.aiMonthlyCostUsd)} consumidos`} />
         <MetricCard label="Cobertura humana" value={String(snapshot?.summary?.activeUsers || 0)} icon={CheckCircle2} trend={`${snapshot?.summary?.operationalChannels || 0} canal(is) pronto(s)`} />
       </section>
 
@@ -314,7 +314,7 @@ export default function ClienteGoLivePage() {
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <PanelCard className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <CardTitle title={snapshot?.activation?.title || "Go-live"} subtitle={snapshot?.activation?.description || "Valide os criterios criticos antes de liberar o tenant."} />
+            <CardTitle title={snapshot?.activation?.title || "Liberacao da operacao"} subtitle={snapshot?.activation?.description || "Valide os criterios criticos antes de liberar a conta."} />
             <StateBadge label={snapshot?.activation?.status === "approved" ? "validado" : pilotReady ? "pronto para liberar" : "bloqueado"} tone={snapshot?.activation?.status === "approved" ? "success" : pilotReady ? "info" : "warning"} />
           </div>
 
@@ -330,7 +330,7 @@ export default function ClienteGoLivePage() {
               disabled={saving || snapshot?.activation?.gateStatus === "blocked"}
               className="inline-flex items-center justify-center rounded-2xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {saving ? "Validando..." : snapshot?.activation?.status === "approved" ? "Revalidar go-live" : "Liberar go-live"}
+              {saving ? "Validando..." : snapshot?.activation?.status === "approved" ? "Revalidar operacao" : "Liberar operacao"}
             </button>
             <Link href="/cliente/painel/configuracoes" className="inline-flex items-center justify-center rounded-2xl border border-[var(--cliente-border)] px-4 py-2 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]">
               Ajustar setup
@@ -345,14 +345,14 @@ export default function ClienteGoLivePage() {
         </PanelCard>
 
         <PanelCard className="p-5">
-          <CardTitle title="Evidencias de prontidao" subtitle="Os sinais operacionais que sustentam o go-live deste tenant agora." />
+          <CardTitle title="Evidencias de prontidao" subtitle="Os sinais operacionais que sustentam a liberacao desta conta agora." />
           <div className="mt-4 space-y-3">
             <EvidenceRow label="Conhecimento" value={`${snapshot?.summary?.knowledgeDocs || 0}/${snapshot?.summary?.knowledgeDocsMinimum || 0} docs`} tone={Number(snapshot?.summary?.knowledgeDocs || 0) >= Number(snapshot?.summary?.knowledgeDocsMinimum || 0) ? "success" : "warning"} />
-            <EvidenceRow label="Budget IA" value={formatUsd(snapshot?.summary?.aiMonthlyBudgetUsd)} tone={Number(snapshot?.summary?.aiMonthlyBudgetUsd || 0) > 0 ? "info" : "warning"} />
-            <EvidenceRow label="Cap de execucao" value={String(snapshot?.summary?.aiMonthlyUsageCap || 0)} tone={Number(snapshot?.summary?.aiMonthlyUsageCap || 0) > 0 ? "info" : "warning"} />
-            <EvidenceRow label="Handoff IA" value={snapshot?.settings?.ai?.responsiblePhone || "Pendente"} tone={snapshot?.settings?.ai?.responsiblePhone ? "success" : "warning"} />
-            <EvidenceRow label="Owner operacional" value={snapshot?.settings?.responsibleName || "Pendente"} tone={snapshot?.settings?.responsibleName ? "success" : "warning"} />
-            <EvidenceRow label="SLA padrao" value={`${snapshot?.settings?.inboxRules?.defaultResponseSlaMinutes || 0} min`} tone={Number(snapshot?.settings?.inboxRules?.defaultResponseSlaMinutes || 0) > 0 ? "info" : "warning"} />
+            <EvidenceRow label="Orcamento do assistente" value={formatUsd(snapshot?.summary?.aiMonthlyBudgetUsd)} tone={Number(snapshot?.summary?.aiMonthlyBudgetUsd || 0) > 0 ? "info" : "warning"} />
+            <EvidenceRow label="Limite de uso" value={String(snapshot?.summary?.aiMonthlyUsageCap || 0)} tone={Number(snapshot?.summary?.aiMonthlyUsageCap || 0) > 0 ? "info" : "warning"} />
+            <EvidenceRow label="Responsavel humano" value={snapshot?.settings?.ai?.responsiblePhone || "Pendente"} tone={snapshot?.settings?.ai?.responsiblePhone ? "success" : "warning"} />
+            <EvidenceRow label="Responsavel operacional" value={snapshot?.settings?.responsibleName || "Pendente"} tone={snapshot?.settings?.responsibleName ? "success" : "warning"} />
+            <EvidenceRow label="Prazo de resposta" value={`${snapshot?.settings?.inboxRules?.defaultResponseSlaMinutes || 0} min`} tone={Number(snapshot?.settings?.inboxRules?.defaultResponseSlaMinutes || 0) > 0 ? "info" : "warning"} />
           </div>
         </PanelCard>
       </section>
@@ -360,7 +360,7 @@ export default function ClienteGoLivePage() {
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <PanelCard className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <CardTitle title="Checklist executavel" subtitle="Cada criterio mostra status, evidencia atual, meta e se bloqueia o go-live." />
+            <CardTitle title="Checklist executavel" subtitle="Cada criterio mostra status, evidencia atual, meta e se bloqueia a liberacao." />
             <StateBadge label={`${checklist.length} criterios`} tone="info" />
           </div>
           <div className="mt-4 space-y-3">
@@ -397,10 +397,10 @@ export default function ClienteGoLivePage() {
 
         <div className="space-y-4">
           <PanelCard className="p-5">
-            <CardTitle title="O que falta agora" subtitle="Pendencias prioritarias para tirar o tenant do risco alto." />
+            <CardTitle title="O que falta agora" subtitle="Pendencias prioritarias para tirar a conta do risco alto." />
             <div className="mt-4 space-y-3">
               {blockers.length === 0 ? (
-                <EmptyState title="Sem bloqueios criticos" description="O checklist critico esta aprovado. Agora o foco pode ser cadence, refinamento e venda." />
+                <EmptyState title="Sem bloqueios criticos" description="O checklist critico esta aprovado. Agora o foco pode ser cadencia, refinamento e venda." />
               ) : (
                 blockers.map((item) => (
                   <Link
@@ -422,19 +422,19 @@ export default function ClienteGoLivePage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Runbook operacional" subtitle="Ritmo minimo para onboarding e resposta a incidentes, alinhado aos docs do repositorio." />
+            <CardTitle title="Rotina operacional" subtitle="Ritmo minimo para implantacao e resposta a incidentes." />
             <div className="mt-4 space-y-3">
-              <RunbookRow icon={Clock3} title="D0" detail="Fechar owner, canal, IA, conhecimento minimo e limites de uso/custo." />
-              <RunbookRow icon={CheckCircle2} title="D1" detail="Validar fila real, handoff, SLA e primeira rotina de acompanhamento." />
-              <RunbookRow icon={AlertTriangle} title="D7" detail="Revisar consumo de IA, backlog, webhook, automacoes e gargalos de operacao." />
+              <RunbookRow icon={Clock3} title="D0" detail="Fechar responsavel, canal, assistente, conhecimento minimo e limites de uso/custo." />
+              <RunbookRow icon={CheckCircle2} title="D1" detail="Validar conversas reais, escaladas, prazo de resposta e primeira rotina de acompanhamento." />
+              <RunbookRow icon={AlertTriangle} title="D7" detail="Revisar consumo do assistente, conversas paradas, eventos da loja, fluxos e gargalos de operacao." />
             </div>
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Etapas manuais do onboarding" subtitle="Checklist guiado para confirmar governanca de operacao e handoff." />
+            <CardTitle title="Etapas manuais da implantacao" subtitle="Checklist guiado para confirmar governanca de operacao e atendimento humano." />
             <div className="mt-4 space-y-3">
               {manualOnboardingSteps.length === 0 ? (
-                <EmptyState title="Sem etapas manuais" description="As etapas manuais aparecerao aqui quando o tenant exigir confirmacao de governanca." />
+                <EmptyState title="Sem etapas manuais" description="As etapas manuais aparecerao aqui quando a conta exigir confirmacao de governanca." />
               ) : (
                 manualOnboardingSteps.map((step) => (
                   <div key={step.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
@@ -473,10 +473,10 @@ export default function ClienteGoLivePage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Leituras do workspace" subtitle="Resumo rapido do estado atual do tenant." />
+            <CardTitle title="Leituras da conta" subtitle="Resumo rapido do estado atual da operacao." />
             <div className="mt-4 space-y-3">
               {insights.length === 0 ? (
-                <EmptyState title="Sem insights" description="Os alertas operacionais aparecerao aqui conforme o tenant ganhar contexto." />
+                <EmptyState title="Sem leituras ainda" description="Os alertas operacionais aparecerao aqui conforme a conta ganhar contexto." />
               ) : (
                 insights.map((item) => (
                   <div key={item.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
@@ -492,7 +492,7 @@ export default function ClienteGoLivePage() {
 
       <PanelCard className="p-5">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle title="Mapa por modulo" subtitle="Leitura complementar do tenant depois do gate definitivo." />
+          <CardTitle title="Mapa por modulo" subtitle="Leitura complementar da conta depois da liberacao definitiva." />
           <StateBadge label={`${modules.length} modulos`} tone="info" />
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">

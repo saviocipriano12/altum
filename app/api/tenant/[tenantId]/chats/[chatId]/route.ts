@@ -11,6 +11,7 @@ import {
 } from "@/lib/server/tenant";
 import { getChatState } from "@/lib/server/ai/agent";
 import { buildManualQueuePatch } from "@/lib/server/chat-operations";
+import { upsertContactProfile } from "@/lib/server/contact-profile";
 
 type ChatDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -30,6 +31,7 @@ type Body = {
   priority?: string;
   tags?: string[] | string;
   assignedUserId?: string | null;
+  photoUrl?: string | null;
 };
 
 type LeadTaskItem = Record<string, unknown> & {
@@ -69,6 +71,18 @@ const CHAT_PRIORITIES = new Set(["low", "medium", "high"]);
 function cleanString(value: unknown, max = 120) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+function cleanHttpUrl(value: unknown, max = 1000) {
+  const cleaned = cleanString(value, max);
+  if (!cleaned) return "";
+  try {
+    const url = new URL(cleaned);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+    return url.toString().slice(0, max);
+  } catch {
+    return "";
+  }
 }
 
 function phoneKey(value: unknown) {
@@ -203,6 +217,19 @@ async function resolveLead(chat: ChatDoc, tenantId: string) {
     empresa: typeof leadData.empresa === "string" ? leadData.empresa : "",
     origem: typeof leadData.origem === "string" ? leadData.origem : "",
     channel: typeof leadData.channel === "string" ? leadData.channel : "",
+    sourceLabel: typeof leadData.sourceLabel === "string" ? leadData.sourceLabel : "",
+    campaignName: typeof leadData.campaignName === "string" ? leadData.campaignName : "",
+    campaignId: typeof leadData.campaignId === "string" ? leadData.campaignId : "",
+    utmSource: typeof leadData.utmSource === "string" ? leadData.utmSource : "",
+    utmMedium: typeof leadData.utmMedium === "string" ? leadData.utmMedium : "",
+    utmCampaign: typeof leadData.utmCampaign === "string" ? leadData.utmCampaign : "",
+    utmContent: typeof leadData.utmContent === "string" ? leadData.utmContent : "",
+    gclid: typeof leadData.gclid === "string" ? leadData.gclid : "",
+    fbclid: typeof leadData.fbclid === "string" ? leadData.fbclid : "",
+    first_touch: leadData.first_touch && typeof leadData.first_touch === "object" ? leadData.first_touch : null,
+    last_touch: leadData.last_touch && typeof leadData.last_touch === "object" ? leadData.last_touch : null,
+    attribution: leadData.attribution && typeof leadData.attribution === "object" ? leadData.attribution : null,
+    customFields: leadData.customFields && typeof leadData.customFields === "object" ? leadData.customFields : null,
     status: typeof leadData.status === "string" ? leadData.status : "novo",
     stage: typeof leadData.stage === "string" ? leadData.stage : "",
     pipelineStage: typeof leadData.pipelineStage === "string" ? leadData.pipelineStage : "captado",
@@ -218,6 +245,15 @@ async function resolveLead(chat: ChatDoc, tenantId: string) {
           ? leadData.valorPotencial
           : null,
     tags: parseTags(leadData.tags),
+    aiFieldEvidence: leadData.aiFieldEvidence && typeof leadData.aiFieldEvidence === "object" ? leadData.aiFieldEvidence : null,
+    aiCaptureChecklist: leadData.aiCaptureChecklist && typeof leadData.aiCaptureChecklist === "object" ? leadData.aiCaptureChecklist : null,
+    aiConversationStage: typeof leadData.aiConversationStage === "string" ? leadData.aiConversationStage : "",
+    aiNextAction: typeof leadData.aiNextAction === "string" ? leadData.aiNextAction : "",
+    aiRecommendedOffer: typeof leadData.aiRecommendedOffer === "string" ? leadData.aiRecommendedOffer : "",
+    aiResponseGoal: typeof leadData.aiResponseGoal === "string" ? leadData.aiResponseGoal : "",
+    aiCommercialTemperature: typeof leadData.aiCommercialTemperature === "string" ? leadData.aiCommercialTemperature : "",
+    aiLeadSummary: typeof leadData.aiLeadSummary === "string" ? leadData.aiLeadSummary : "",
+    aiPlannerConfidence: typeof leadData.aiPlannerConfidence === "number" ? leadData.aiPlannerConfidence : null,
     updatedAt: leadData.updatedAt || null,
     createdAt: leadData.createdAt || null,
     timeline: timelineSnap.docs.map((doc) => ({
@@ -526,6 +562,12 @@ export async function PATCH(
     const nextPriority = cleanString(body.priority, 40).toLowerCase();
     const nextTags = parseTags(body.tags);
     const assignedUserId = cleanString(body.assignedUserId, 120);
+    const rawPhotoUrl = body.photoUrl === undefined ? undefined : cleanString(body.photoUrl, 1000);
+    const nextPhotoUrl = rawPhotoUrl === undefined ? undefined : cleanHttpUrl(rawPhotoUrl, 1000);
+
+    if (rawPhotoUrl && !nextPhotoUrl) {
+      return NextResponse.json({ error: "Informe uma URL valida para a foto do contato." }, { status: 400 });
+    }
 
     const patch: Record<string, unknown> = {
       updatedAt: FieldValue.serverTimestamp(),
@@ -550,6 +592,15 @@ export async function PATCH(
     if (JSON.stringify(currentTags) !== JSON.stringify(nextTags)) {
       patch.tags = nextTags;
       changes.push(`tags: ${nextTags.length ? nextTags.join(", ") : "sem tags"}`);
+    }
+
+    if (
+      body.photoUrl !== undefined &&
+      nextPhotoUrl &&
+      nextPhotoUrl !== cleanString((chat as Record<string, unknown>).contactPhotoUrl, 1000)
+    ) {
+      patch.contactPhotoUrl = nextPhotoUrl;
+      changes.push("foto do contato atualizada");
     }
 
     let assignedUserName: string | null = null;
@@ -597,6 +648,21 @@ export async function PATCH(
     );
 
     const writes: Promise<unknown>[] = [chatRef.set(patch, { merge: true })];
+
+    if (typeof patch.contactPhotoUrl === "string") {
+      writes.push(
+        upsertContactProfile({
+          tenantId,
+          phone: cleanString(chat.contactPhone, 60),
+          externalProfileId: cleanString((chat as Record<string, unknown>).contactExternalId, 180),
+          leadId: cleanString(chat.leadId, 180),
+          channel: cleanString((chat as Record<string, unknown>).channel, 60),
+          name: cleanString((chat as Record<string, unknown>).contactName, 180),
+          company: cleanString((chat as Record<string, unknown>).contactCompany, 180),
+          photoUrl: patch.contactPhotoUrl,
+        })
+      );
+    }
 
     writes.push(
       adminDb.collection("messages").add({

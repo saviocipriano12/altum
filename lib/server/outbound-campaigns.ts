@@ -1,7 +1,13 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhone } from "@/app/lib/server/phone";
-import { sendTenantChatText, type ChatDispatchActor } from "@/lib/server/chat-dispatch";
+import {
+  sendTenantChatTemplate,
+  sendTenantChatText,
+  type ChatDispatchActor,
+} from "@/lib/server/chat-dispatch";
+import type { WhatsAppTemplateHeaderMedia } from "@/app/lib/server/whatsapp-channel";
+import { hasWhatsAppOptOut } from "@/lib/server/whatsapp-compliance";
 
 export type OutboundCampaignFilters = {
   stageIds: string[];
@@ -17,7 +23,12 @@ export type OutboundCampaignRecord = {
   name: string;
   status: "draft" | "active" | "paused";
   channel: "whatsapp";
+  deliveryMode: "text" | "template";
   messageTemplate: string;
+  templateName: string;
+  languageCode: string;
+  bodyParams: string[];
+  headerMedia: WhatsAppTemplateHeaderMedia | null;
   maxRecipients: number;
   filters: OutboundCampaignFilters;
   lastRunAt: string | null;
@@ -72,6 +83,44 @@ function cleanList(value: unknown, maxItem = 80, max = 20) {
   ).slice(0, max);
 }
 
+function normalizeDeliveryMode(value: unknown) {
+  return clean(value, 40).toLowerCase() === "template" ? "template" : "text";
+}
+
+function normalizeTemplateName(value: unknown) {
+  return clean(value, 512)
+    .replace(/\s+/g, "_")
+    .toLowerCase();
+}
+
+function normalizeLanguageCode(value: unknown) {
+  return clean(value, 24) || "pt_BR";
+}
+
+function normalizeBodyParams(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => clean(item, 500))
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function normalizeHeaderMedia(value: unknown): WhatsAppTemplateHeaderMedia | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const type = clean(raw.type, 40).toLowerCase();
+  if (type !== "image" && type !== "video" && type !== "document") return null;
+  const link = clean(raw.link, 1000);
+  const id = clean(raw.id, 180);
+  if (!link && !id) return null;
+  return {
+    type,
+    ...(link ? { link } : {}),
+    ...(id ? { id } : {}),
+    ...(clean(raw.filename, 180) ? { filename: clean(raw.filename, 180) } : {}),
+  };
+}
+
 function toIso(value: unknown) {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString();
@@ -107,13 +156,19 @@ export function normalizeOutboundCampaignFilters(value: unknown): OutboundCampai
 
 export function normalizeOutboundCampaign(input: { id: string; data: Record<string, unknown> }): OutboundCampaignRecord {
   const status = clean(input.data.status, 20);
+  const deliveryMode = normalizeDeliveryMode(input.data.deliveryMode);
   return {
     id: input.id,
     tenantId: clean(input.data.tenantId, 140),
     name: clean(input.data.name, 160) || "Campanha outbound",
     status: status === "active" || status === "paused" ? status : "draft",
     channel: "whatsapp",
+    deliveryMode,
     messageTemplate: clean(input.data.messageTemplate, 4000),
+    templateName: normalizeTemplateName(input.data.templateName),
+    languageCode: normalizeLanguageCode(input.data.languageCode),
+    bodyParams: normalizeBodyParams(input.data.bodyParams),
+    headerMedia: normalizeHeaderMedia(input.data.headerMedia),
     maxRecipients: Math.max(1, Math.min(500, Number(input.data.maxRecipients || 50))),
     filters: normalizeOutboundCampaignFilters(input.data.filters),
     lastRunAt: toIso(input.data.lastRunAt),
@@ -135,18 +190,29 @@ export function buildOutboundCampaignPatch(input: {
   tenantId: string;
   name?: unknown;
   status?: unknown;
+  deliveryMode?: unknown;
   messageTemplate?: unknown;
+  templateName?: unknown;
+  languageCode?: unknown;
+  bodyParams?: unknown;
+  headerMedia?: unknown;
   maxRecipients?: unknown;
   filters?: unknown;
   actor: { id: string; name: string };
 }) {
   const status = clean(input.status, 20);
+  const deliveryMode = normalizeDeliveryMode(input.deliveryMode);
   return {
     tenantId: clean(input.tenantId, 140),
     name: clean(input.name, 160) || "Campanha outbound",
     status: status === "active" || status === "paused" ? status : "draft",
     channel: "whatsapp",
+    deliveryMode,
     messageTemplate: clean(input.messageTemplate, 4000),
+    templateName: normalizeTemplateName(input.templateName),
+    languageCode: normalizeLanguageCode(input.languageCode),
+    bodyParams: normalizeBodyParams(input.bodyParams),
+    headerMedia: normalizeHeaderMedia(input.headerMedia),
     maxRecipients: Math.max(1, Math.min(500, Number(input.maxRecipients || 50))),
     filters: normalizeOutboundCampaignFilters(input.filters),
     updatedAt: FieldValue.serverTimestamp(),
@@ -175,6 +241,26 @@ function interpolateTemplate(template: string, lead: Record<string, unknown>) {
   return template.replace(/\{(\w+)\}/g, (_, key: string) => replacements[key] || "");
 }
 
+function buildTemplateDisplayText(input: {
+  templateName: string;
+  languageCode: string;
+  bodyParams: string[];
+  headerMedia: WhatsAppTemplateHeaderMedia | null;
+}) {
+  return [
+    `Template Meta: ${input.templateName}`,
+    `Idioma: ${input.languageCode}`,
+    input.bodyParams.length ? `Variaveis: ${input.bodyParams.join(" | ")}` : "",
+    input.headerMedia ? `Midia: ${input.headerMedia.type}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function interpolateBodyParams(params: string[], lead: Record<string, unknown>) {
+  return params.map((param) => interpolateTemplate(param, lead)).filter(Boolean).slice(0, 20);
+}
+
 function normalizeHeatToken(value: string) {
   const token = clean(value, 40).toLowerCase();
   if (!token) return "";
@@ -193,17 +279,6 @@ function readLeadSource(lead: Record<string, unknown>) {
   )
     .toLowerCase()
     .trim();
-}
-
-function hasWhatsAppOptOut(lead: Record<string, unknown>) {
-  const customFields =
-    lead.customFields && typeof lead.customFields === "object"
-      ? (lead.customFields as Record<string, unknown>)
-      : {};
-  const raw = customFields.consent_whatsapp;
-  if (typeof raw === "boolean") return raw === false;
-  const text = clean(raw, 40).toLowerCase();
-  return text === "false" || text === "nao" || text === "no" || text === "0";
 }
 
 function matchLeadFilters(lead: Record<string, unknown>, filters: OutboundCampaignFilters) {
@@ -373,7 +448,11 @@ export async function dispatchOutboundCampaign(input: {
   actor: ChatDispatchActor;
 }) {
   const { campaignRef, campaign } = await loadCampaignContext(input);
-  if (!campaign.messageTemplate.trim()) {
+  if (campaign.deliveryMode === "template" && !campaign.templateName.trim()) {
+    throw new Error("A campanha precisa de um template Meta aprovado para ser enviada.");
+  }
+
+  if (campaign.deliveryMode === "text" && !campaign.messageTemplate.trim()) {
     throw new Error("A campanha precisa de uma mensagem para ser enviada.");
   }
 
@@ -385,6 +464,7 @@ export async function dispatchOutboundCampaign(input: {
     maxRecipients: campaign.maxRecipients,
   });
   const matchedLeads = audience.selected;
+  const runRef = adminDb.collection("outbound_campaign_runs").doc();
 
   let sent = 0;
   let skipped = 0;
@@ -416,21 +496,111 @@ export async function dispatchOutboundCampaign(input: {
         continue;
       }
 
-      await sendTenantChatText({
-        tenantId: input.tenantId,
+      const renderedBodyParams = interpolateBodyParams(campaign.bodyParams, item.data);
+      const renderedMessage =
+        campaign.deliveryMode === "template"
+          ? buildTemplateDisplayText({
+              templateName: campaign.templateName,
+              languageCode: campaign.languageCode,
+              bodyParams: renderedBodyParams,
+              headerMedia: campaign.headerMedia,
+            })
+          : interpolateTemplate(campaign.messageTemplate, item.data);
+      const dispatchResult =
+        campaign.deliveryMode === "template"
+          ? await sendTenantChatTemplate({
+              tenantId: input.tenantId,
+              chatId,
+              templateName: campaign.templateName,
+              languageCode: campaign.languageCode,
+              bodyParams: renderedBodyParams,
+              headerMedia: campaign.headerMedia,
+              actor: input.actor,
+              pauseAi: false,
+            })
+          : await sendTenantChatText({
+              tenantId: input.tenantId,
+              chatId,
+              text: renderedMessage,
+              actor: input.actor,
+              pauseAi: false,
+            });
+
+      const deliveryRef = adminDb.collection("outbound_campaign_deliveries").doc();
+      const campaignContext = {
+        campaignId: input.campaignId,
+        campaignName: campaign.name,
+        runId: runRef.id,
+        deliveryId: deliveryRef.id,
+        channel: "whatsapp",
+        leadId: item.id,
         chatId,
-        text: interpolateTemplate(campaign.messageTemplate, item.data),
-        actor: input.actor,
-        pauseAi: true,
-        pauseMinutes: 180,
-      });
+        phone,
+        intendedText: renderedMessage,
+        persistedText:
+          "persistedText" in dispatchResult && dispatchResult.persistedText
+            ? dispatchResult.persistedText
+            : renderedMessage,
+        outboundType: campaign.deliveryMode,
+        templateName: campaign.deliveryMode === "template" ? campaign.templateName : ("templateName" in dispatchResult ? dispatchResult.templateName || null : null),
+        templateLanguage:
+          campaign.deliveryMode === "template"
+            ? campaign.languageCode
+            : "templateLanguage" in dispatchResult
+              ? dispatchResult.templateLanguage || null
+              : null,
+        templateParams:
+          campaign.deliveryMode === "template"
+            ? renderedBodyParams
+            : "templateParams" in dispatchResult
+              ? dispatchResult.templateParams || []
+              : [],
+        templateHeaderMedia: campaign.deliveryMode === "template" ? campaign.headerMedia : null,
+        metaMessageId: dispatchResult.metaMessageId || null,
+        status: "sent",
+        sentAt: FieldValue.serverTimestamp(),
+        sentBy: input.actor.id,
+        sentByName: input.actor.name,
+      };
+
+      await Promise.all([
+        deliveryRef.set({
+          tenantId: input.tenantId,
+          ...campaignContext,
+          leadName: clean(item.data.nome, 160) || "Lead",
+          leadSource: readLeadSource(item.data),
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+        adminDb.collection("leads").doc(item.id).set(
+          {
+            lastOutboundCampaignContext: campaignContext,
+            lastOutboundCampaignId: input.campaignId,
+            lastOutboundCampaignName: campaign.name,
+            lastOutboundCampaignAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        ),
+        adminDb.collection("chats").doc(chatId).set(
+          {
+            lastOutboundCampaignContext: campaignContext,
+            lastOutboundCampaignId: input.campaignId,
+            lastOutboundCampaignName: campaign.name,
+            lastOutboundCampaignAt: FieldValue.serverTimestamp(),
+            aiCampaignFollowupMode: true,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        ),
+      ]);
 
       await adminDb.collection("lead_events").add({
         tenantId: input.tenantId,
         leadId: item.id,
         type: "outbound_campaign_sent",
         title: `Campanha outbound: ${campaign.name}`,
-        detail: "Mensagem enviada em lote via WhatsApp.",
+        detail: "Mensagem enviada em lote via WhatsApp com contexto salvo para a IA.",
         createdAt: FieldValue.serverTimestamp(),
         actorId: input.actor.id,
         actorName: input.actor.name,
@@ -447,7 +617,6 @@ export async function dispatchOutboundCampaign(input: {
     }
   }
 
-  const runRef = adminDb.collection("outbound_campaign_runs").doc();
   const summary = {
     sent,
     skipped,

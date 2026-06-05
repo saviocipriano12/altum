@@ -164,7 +164,7 @@ type TenantSettingsPayload = {
 
 const TRIGGER_LABELS: Record<AutomationTrigger, string> = {
   lead_created: "Lead criado",
-  lead_stage_changed: "Mudanca de stage",
+  lead_stage_changed: "Mudanca de etapa",
   message_received: "Mensagem recebida",
   waiting_for_reply: "Sem resposta do time",
   ai_next_action: "Sinal operacional da IA",
@@ -194,8 +194,8 @@ const AUTOMATION_TEMPLATE_LABELS: Record<AutomationTemplateKey, { title: string;
     description: "Registra nota comercial, sobe prioridade e cria tarefa de fechamento apos aprovacao.",
   },
   ai_copilot: {
-    title: "Copilot da IA",
-    description: "Quando a IA indicar agenda, proposta ou handoff, a operacao ja recebe tarefa e contexto.",
+    title: "Assistente comercial",
+    description: "Quando a IA indicar agenda, proposta ou escalada, a operacao ja recebe tarefa e contexto.",
   },
   payment_care: {
     title: "Receita confirmada",
@@ -447,7 +447,7 @@ function createTemplateDraft(key: AutomationTemplateKey, profile?: ReturnType<ty
       actions: [
         {
           ...createEmptyAction("add_note"),
-          text: "Automacao: proposta aprovada, lead pronto para fechamento.",
+          text: "Proposta aprovada. Lead pronto para fechamento.",
           sequenceOrder: "1",
         },
         {
@@ -500,8 +500,8 @@ function createTemplateDraft(key: AutomationTemplateKey, profile?: ReturnType<ty
 
   if (key === "ai_copilot") {
     return {
-      name: "Copilot comercial da IA",
-      description: "Converte sinais da IA em tarefa, nota e prioridade para o desk comercial agir mais rapido.",
+      name: "Assistente comercial em acao",
+      description: "Converte sinais da IA em tarefa, nota e prioridade para o time comercial agir mais rapido.",
       trigger: "ai_next_action",
       enabled: true,
       status: "active",
@@ -519,7 +519,7 @@ function createTemplateDraft(key: AutomationTemplateKey, profile?: ReturnType<ty
         },
         {
           ...createEmptyAction("add_note"),
-          text: "Automacao: a IA sinalizou proximo passo operacional. Revisar contexto no CRM e agir no desk.",
+          text: "A IA sinalizou proximo passo comercial. Revisar contexto do cliente e agir no atendimento.",
           sequenceOrder: "2",
         },
         {
@@ -583,7 +583,7 @@ function getExecutionStatusTone(status?: string) {
 }
 
 function formatQueueJobLabel(status: QueueItem["status"]) {
-  if (status === "dead_letter") return "Dead letter";
+  if (status === "dead_letter") return "Precisa revisao";
   if (status === "retrying") return "Tentando de novo";
   if (status === "processing") return "Processando";
   if (status === "done") return "Concluido";
@@ -622,7 +622,7 @@ function summarizeAutomationCadence(actions: AutomationItem["actions"]) {
 function getDraftConditionChips(draft: AutomationDraft) {
   const chips: string[] = [];
 
-  draft.stageIn.forEach((stage) => chips.push(`Stage ${getPipelineStageLabel(stage)}`));
+  draft.stageIn.forEach((stage) => chips.push(`Etapa ${getPipelineStageLabel(stage)}`));
 
   draft.sourceInInput
     .split(",")
@@ -802,7 +802,7 @@ export default function ClienteAutomacoesPage() {
         id: "inactive",
         href: "/cliente/painel/automacoes",
         title: "Nenhuma automacao ativa",
-        detail: "O tenant ainda nao tem regras publicadas para follow-up, prioridade ou mensagens automaticas.",
+        detail: "A operacao ainda nao tem fluxos ativos para follow-up, prioridade ou mensagens automaticas.",
         badge: "setup",
         tone: "warning",
       });
@@ -812,8 +812,8 @@ export default function ClienteAutomacoesPage() {
       items.push({
         id: "reply_backlog",
         href: "/cliente/painel/inbox?queue=assigned_waiting",
-        title: "Backlog aguardando resposta",
-        detail: `${summary.waitingReplyBacklog || 0} conversa(s) podem acionar playbooks de retomada.`,
+        title: "Conversas paradas",
+        detail: `${summary.waitingReplyBacklog || 0} conversa(s) podem acionar retomada comercial.`,
         badge: "follow-up",
         tone: "warning",
       });
@@ -823,8 +823,8 @@ export default function ClienteAutomacoesPage() {
       items.push({
         id: "sla",
         href: "/cliente/painel/inbox?queue=sla_breached",
-        title: "SLA estourado no inbox",
-        detail: `${summary.slaBreached || 0} conversa(s) exigem automacao ou resposta humana imediata.`,
+        title: "Atendimento fora do prazo",
+        detail: `${summary.slaBreached || 0} conversa(s) exigem fluxo automatico ou resposta humana imediata.`,
         badge: "urgente",
         tone: "danger",
       });
@@ -834,8 +834,8 @@ export default function ClienteAutomacoesPage() {
       items.push({
         id: "dead_letter",
         href: "/cliente/painel/automacoes",
-        title: "Fila com falhas permanentes",
-        detail: `${queue.deadLetter || 0} job(s) foram para dead letter e precisam de revisao.`,
+        title: "Conversas com falha de processamento",
+        detail: `${queue.deadLetter || 0} conversa(s) precisam de revisao antes de voltar ao fluxo normal.`,
         badge: "erro",
         tone: "danger",
       });
@@ -998,7 +998,7 @@ export default function ClienteAutomacoesPage() {
         action={
           <div className="flex flex-wrap gap-2">
             <StateBadge
-              label={summary.aiEnabled === false ? "IA pausada" : "fluxos ativos"}
+              label={summary.aiEnabled === false ? "assistente pausado" : "fluxos ativos"}
               tone={summary.aiEnabled === false ? "warning" : "success"}
             />
             {canManage ? (
@@ -1010,7 +1010,7 @@ export default function ClienteAutomacoesPage() {
                   className="hidden items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm font-medium text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
                 >
                   {processingScheduled ? <Loader2 className="h-4 w-4 animate-spin" /> : <Workflow className="h-4 w-4" />}
-                  Rodar fila e watchdog
+                  Processar pendencias
                 </button>
                 <button
                   type="button"
@@ -1036,7 +1036,7 @@ export default function ClienteAutomacoesPage() {
           label="Aguardando resposta"
           value={String(summary.waitingReplyBacklog || 0)}
           icon={MessageSquareCode}
-          trend={`${summary.slaBreached || 0} SLA estourado`}
+          trend={`${summary.slaBreached || 0} fora do prazo`}
         />
         <MetricCard label="Alertas" value={String(executionStats.errors + (scheduled.deadLetter || 0))} icon={ShieldCheck} trend="pedem revisao" />
       </section>
@@ -1046,7 +1046,7 @@ export default function ClienteAutomacoesPage() {
           <PanelCard className="p-4 xl:col-span-5">
             <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Fluxos sem alertas importantes</p>
             <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-              Nao ha conversa parada, SLA estourado ou erro relevante neste recorte.
+              Nao ha conversa parada, atendimento fora do prazo ou alerta relevante neste recorte.
             </p>
           </PanelCard>
         ) : (
@@ -1073,21 +1073,21 @@ export default function ClienteAutomacoesPage() {
           <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Saude operacional</h3>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <HealthRow label="Conversas monitoradas" value={String(summary.monitoredConversations || 0)} />
-            <HealthRow label="Takeovers ativos" value={String(summary.pausedConversations || 0)} />
-            <HealthRow label="Jobs processados" value={String(summary.processedTotal || 0)} />
-            <HealthRow label="Dead letters" value={String(queue.deadLetter || 0)} danger={Boolean(queue.deadLetter)} />
+            <HealthRow label="Atendimento humano" value={String(summary.pausedConversations || 0)} />
+            <HealthRow label="Eventos processados" value={String(summary.processedTotal || 0)} />
+            <HealthRow label="Falhas permanentes" value={String(queue.deadLetter || 0)} danger={Boolean(queue.deadLetter)} />
             <HealthRow label="Agendadas pendentes" value={String((scheduled.pending || 0) + (scheduled.retrying || 0))} />
             <HealthRow label="Agendadas falhas" value={String(scheduled.deadLetter || 0)} danger={Boolean(scheduled.deadLetter)} />
             <HealthRow label="Backlog sem resposta" value={String(summary.waitingReplyBacklog || 0)} />
-            <HealthRow label="SLA estourado" value={String(summary.slaBreached || 0)} danger={Boolean(summary.slaBreached)} />
+            <HealthRow label="Fora do prazo" value={String(summary.slaBreached || 0)} danger={Boolean(summary.slaBreached)} />
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-5">
-            <QueuePill label="Pending" value={queue.pending || 0} />
-            <QueuePill label="Processing" value={queue.processing || 0} />
-            <QueuePill label="Retrying" value={queue.retrying || 0} />
-            <QueuePill label="Scheduled" value={scheduled.pending || 0} />
-            <QueuePill label="Due retry" value={scheduled.retrying || 0} />
+            <QueuePill label="Pendentes" value={queue.pending || 0} />
+            <QueuePill label="Em andamento" value={queue.processing || 0} />
+            <QueuePill label="Tentando de novo" value={queue.retrying || 0} />
+            <QueuePill label="Agendadas" value={scheduled.pending || 0} />
+            <QueuePill label="Retentativas" value={scheduled.retrying || 0} />
           </div>
 
           <div className="mt-4 grid gap-2 md:grid-cols-3">
@@ -1101,7 +1101,7 @@ export default function ClienteAutomacoesPage() {
               href="/cliente/painel/inbox?queue=sla_breached"
               className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-sm text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
             >
-              Ver conversas com SLA estourado
+              Ver conversas fora do prazo
             </Link>
             <Link
               href="/cliente/painel/ia"
@@ -1113,14 +1113,14 @@ export default function ClienteAutomacoesPage() {
         </PanelCard>
 
         <PanelCard className="p-5">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Leitura do sistema</h3>
+          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Leitura operacional</h3>
           <div className="mt-4 space-y-3">
             <Insight
               title="Regras ativas"
               description={
                 automations.length
                   ? `${automations.length} automacoes cadastradas. ${summary.activeAutomations || 0} estao ativas neste momento.`
-                  : "Nenhuma automacao configurada ainda. O tenant depende de operacao manual e fila da IA."
+                  : "Nenhum fluxo configurado ainda. A equipe ainda depende de operacao manual para retomadas e prioridades."
               }
             />
             <Insight
@@ -1135,8 +1135,8 @@ export default function ClienteAutomacoesPage() {
               title="Execucao"
               description={
                 executionStats.errors
-                  ? `${executionStats.errors} execucoes recentes falharam e precisam de ajuste na regra ou no dado do lead.`
-                  : "As execucoes recentes nao mostraram falhas de automacao."
+                  ? `${executionStats.errors} acoes recentes falharam e precisam de ajuste na regra ou no dado do lead.`
+                  : "As acoes recentes nao mostraram falhas de automacao."
               }
             />
           </div>
@@ -1147,7 +1147,7 @@ export default function ClienteAutomacoesPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <CardTitle
             title={`Modo do negocio: ${businessProfile.label}`}
-            subtitle="Os playbooks, etapas e sinais operacionais agora seguem o perfil ativo do tenant."
+            subtitle="Os playbooks, etapas e sinais operacionais seguem o tipo de negocio configurado."
           />
           <StateBadge label={businessProfile.id} tone="info" />
         </div>
@@ -1270,7 +1270,7 @@ export default function ClienteAutomacoesPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{automation.name}</p>
+                  <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{automation.name}</p>
                       <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{automation.description || "Sem descricao operacional."}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1318,7 +1318,7 @@ export default function ClienteAutomacoesPage() {
                         className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-medium text-white">{ACTION_LABELS[action.type]}</p>
+                          <p className="font-medium text-[var(--cliente-card-text)]">{ACTION_LABELS[action.type]}</p>
                           <div className="flex flex-wrap gap-2">
                             <StateBadge label={getCadenceLabel(action.waitInHours)} tone={Number(action.waitInHours || 0) > 0 ? "warning" : "success"} />
                             {typeof action.sequenceOrder === "number" ? (
@@ -1403,7 +1403,7 @@ export default function ClienteAutomacoesPage() {
             </div>
 
             {executions.length === 0 ? (
-              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhuma execucao recente encontrada para este tenant.</p>
+              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhuma execucao recente encontrada para esta operacao.</p>
             ) : filteredExecutions.length === 0 ? (
               <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhuma execucao corresponde aos filtros atuais.</p>
             ) : (
@@ -1415,7 +1415,7 @@ export default function ClienteAutomacoesPage() {
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p className="text-sm font-medium text-white">{execution.automationName || "Automacao"}</p>
+                        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{execution.automationName || "Automacao"}</p>
                         <p className="text-xs text-[var(--cliente-card-text-soft)]">
                           {TRIGGER_LABELS[execution.trigger as AutomationTrigger] || execution.trigger || "Trigger"} | lead {execution.leadId || "-"}
                         </p>
@@ -1442,7 +1442,7 @@ export default function ClienteAutomacoesPage() {
                           href={`/cliente/painel/crm?leadId=${encodeURIComponent(execution.leadId)}`}
                           className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                         >
-                          Abrir lead no CRM
+                          Abrir cliente
                         </Link>
                       ) : null}
                       {execution.chatId ? (
@@ -1450,14 +1450,14 @@ export default function ClienteAutomacoesPage() {
                           href={`/cliente/painel/inbox?chatId=${encodeURIComponent(execution.chatId)}`}
                           className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                         >
-                          Abrir conversa no Inbox
+                          Abrir conversa
                         </Link>
                       ) : execution.leadId ? (
                         <Link
                           href={`/cliente/painel/inbox?leadId=${encodeURIComponent(execution.leadId)}`}
                           className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                         >
-                          Ver contexto no Inbox
+                          Ver contexto da conversa
                         </Link>
                       ) : null}
                     </div>
@@ -1469,32 +1469,32 @@ export default function ClienteAutomacoesPage() {
 
           <PanelCard className="p-5">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Fila recente da IA</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Historico recente do assistente</h3>
               <StateBadge label={queue.deadLetter ? "requer revisao" : "estavel"} tone={queue.deadLetter ? "warning" : "success"} />
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
               <p className="text-sm text-[var(--cliente-card-text-muted)]">
-                Jobs recentes da fila conversacional. Use os links para cair direto na conversa que precisa de atencao.
+                Eventos recentes do assistente. Use os links para cair direto na conversa que precisa de atencao.
               </p>
               <select
                 value={queueStatusFilter}
                 onChange={(event) => setQueueStatusFilter(event.target.value as QueueStatusFilter)}
                 className="client-input px-3 py-2 text-sm"
               >
-                <option value="all">Todos os jobs</option>
+                <option value="all">Todos os eventos</option>
                 <option value="pending">Pendentes</option>
                 <option value="processing">Processando</option>
                 <option value="retrying">Tentando de novo</option>
                 <option value="done">Concluidos</option>
-                <option value="dead_letter">Dead letter</option>
+                <option value="dead_letter">Precisa revisao</option>
               </select>
             </div>
 
             {(data.recentQueue || []).length === 0 ? (
-              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhum job recente encontrado para este tenant.</p>
+              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhum evento recente encontrado para esta operacao.</p>
             ) : filteredQueue.length === 0 ? (
-              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhum job corresponde aos filtros atuais.</p>
+              <p className="mt-3 text-sm text-[var(--cliente-card-text-muted)]">Nenhum evento corresponde aos filtros atuais.</p>
             ) : (
               <div className="mt-4 space-y-2">
                 {filteredQueue.map((job) => (
@@ -1504,7 +1504,7 @@ export default function ClienteAutomacoesPage() {
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p className="text-sm font-medium text-white">Chat {job.chatId || "-"}</p>
+                        <p className="text-sm font-medium text-[var(--cliente-card-text)]">Conversa {job.chatId || "-"}</p>
                         <p className="text-xs text-[var(--cliente-card-text-soft)]">Tentativas {job.attempts}</p>
                       </div>
                       <StateBadge label={formatQueueJobLabel(job.status)} tone={getQueueJobTone(job.status)} />
@@ -1528,7 +1528,7 @@ export default function ClienteAutomacoesPage() {
                           href="/cliente/painel/ia"
                           className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-muted)]"
                         >
-                          Revisar IA e fila
+                          Revisar IA
                         </Link>
                       ) : null}
                     </div>
@@ -1623,8 +1623,8 @@ function AutomationEditor({
     <PanelCard className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <CardTitle
-          title={draft.id ? "Editar automacao" : "Criar automacao"}
-          subtitle="Configure gatilho, condicoes e acoes executadas automaticamente no tenant."
+          title={draft.id ? "Editar fluxo" : "Criar fluxo"}
+          subtitle="Defina quando o fluxo entra, quais contatos ele deve considerar e qual proxima acao acontece."
         />
         <button
           type="button"
@@ -1639,11 +1639,10 @@ function AutomationEditor({
         <div className="rounded-3xl border border-[var(--cliente-border)] bg-[linear-gradient(180deg,rgba(232,80,2,0.14),rgba(12,12,12,0.94))] p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-accent)]">Builder visual</p>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--cliente-accent)]">Construtor visual</p>
               <h3 className="mt-2 text-lg font-semibold text-white">Fluxo operacional da regra</h3>
               <p className="mt-1 max-w-2xl text-sm text-[var(--cliente-card-text-muted)]">
-                Modele entrada, filtros e cadência de ações sem sair da mesma tela. O motor continua o mesmo,
-                mas a leitura agora mostra o que acontece na prática.
+                Modele entrada, filtros e cadencia de acoes sem sair da mesma tela. A leitura mostra o que acontece na pratica.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1663,7 +1662,7 @@ function AutomationEditor({
                 >
                   <div className="flex items-center gap-2">
                     <Workflow className="h-4 w-4 text-[var(--cliente-accent)]" />
-                    <p className="text-sm font-semibold text-white">Gatilho de entrada</p>
+                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Entrada do fluxo</p>
                   </div>
                   <p className="mt-2 text-base font-semibold text-[var(--cliente-card-text)]">{TRIGGER_LABELS[draft.trigger]}</p>
                   <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
@@ -1673,7 +1672,7 @@ function AutomationEditor({
 
                 <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-white">Portas de entrada</p>
+                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Quem entra neste fluxo</p>
                     <StateBadge label={conditionChips.length ? `${conditionChips.length} filtros` : "sem filtros"} tone={conditionChips.length ? "info" : "neutral"} />
                   </div>
                   {conditionChips.length ? (
@@ -1692,7 +1691,7 @@ function AutomationEditor({
 
               <div className="mt-4">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-white">Cadência</p>
+                  <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Cadencia</p>
                   <div className="h-px flex-1 bg-[var(--cliente-border)]" />
                 </div>
                 <div className="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
@@ -1713,7 +1712,7 @@ function AutomationEditor({
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Etapa {index + 1}</p>
-                            <p className="mt-2 text-sm font-semibold text-white">{ACTION_LABELS[action.type]}</p>
+                            <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">{ACTION_LABELS[action.type]}</p>
                           </div>
                           <StateBadge
                             label={getCadenceLabel(asNumber(action.waitInHours))}
@@ -1741,10 +1740,10 @@ function AutomationEditor({
 
             <div className="space-y-4">
               <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Inspector</p>
+                <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Detalhe da etapa</p>
                 {selectedAction ? (
                   <>
-                    <p className="mt-2 text-sm font-semibold text-white">
+                    <p className="mt-2 text-sm font-semibold text-[var(--cliente-card-text)]">
                       Etapa {selectedActionIndex + 1} · {ACTION_LABELS[selectedAction.type]}
                     </p>
                     <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
@@ -1801,12 +1800,12 @@ function AutomationEditor({
 
         <div className="space-y-4">
           <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Identidade da regra</p>
+                <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Nome e entrada do fluxo</p>
             <div className="mt-3 grid gap-3">
               <input
                 value={draft.name}
                 onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-                placeholder="Nome da automacao"
+                placeholder="Nome do fluxo"
                 className="client-input px-3 py-2 text-sm"
               />
               <select
@@ -1833,19 +1832,19 @@ function AutomationEditor({
             <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--cliente-card-text-soft)]">Guia de construcao</p>
             <div className="mt-3 space-y-2 text-sm text-[var(--cliente-card-text-muted)]">
               <p>1. Defina o gatilho que ativa a regra.</p>
-              <p>2. Use filtros para restringir origem, canal, stage e score.</p>
+              <p>2. Use filtros para restringir origem, canal, etapa e score.</p>
               <p>3. Organize a cadência com espera e prioridade para cada etapa.</p>
-              <p>4. Salve e acompanhe a execução nas listas logo abaixo.</p>
+              <p>4. Salve e acompanhe o resultado nas listas logo abaixo.</p>
             </div>
           </div>
         </div>
       </div>
 
       <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-        <p className="text-sm font-semibold text-white">Condicoes</p>
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Filtros do fluxo</p>
         <div className="mt-3 grid gap-3 md:grid-cols-6">
           <label className="space-y-2 text-xs text-[var(--cliente-card-text-soft)]">
-            <span>Stages alvo</span>
+            <span>Etapas alvo</span>
             <select
               multiple
               value={draft.stageIn}
@@ -2142,7 +2141,7 @@ function AutomationEditor({
           className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Salvar automacao
+          Salvar fluxo
         </button>
       </div>
     </PanelCard>

@@ -1,17 +1,42 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   collection,
   onSnapshot,
-  query,
   orderBy,
+  query,
   where,
 } from "firebase/firestore";
-import { db } from "@/firebaseConfig";
+import type { LucideIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Bot,
+  BrainCircuit,
+  CalendarClock,
+  CheckCircle2,
+  CircleDot,
+  ClipboardList,
+  FileText,
+  FolderKanban,
+  Gauge,
+  HandCoins,
+  Handshake,
+  LineChart,
+  MessageSquare,
+  Radio,
+  Rocket,
+  Route,
+  Send,
+  ShieldCheck,
+  Target,
+  Timer,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
-import { useAuth } from "@/context/AuthContext";
-import Link from "next/link";
 import type {
   AgencyActivity,
   AgencyBudget,
@@ -19,25 +44,8 @@ import type {
   AgencyProject,
   TimestampLike,
 } from "@/app/types/domain";
-import {
-  Activity,
-  ArrowRight,
-  BarChart3,
-  Calendar,
-  CheckCircle2,
-  CircleDot,
-  Layers,
-  Rocket,
-  Sparkles,
-  Target,
-  Timer,
-  UserPlus,
-  LineChart,
-  Bot,
-  HandCoins,
-  Handshake,
-  CalendarClock,
-} from "lucide-react";
+import { db } from "@/firebaseConfig";
+import { useAuth } from "@/context/AuthContext";
 
 type PipelineStage =
   | "captado"
@@ -58,25 +66,21 @@ const PIPELINE_STAGES: PipelineStage[] = [
   "perdido",
 ];
 
-function isPipelineStage(value?: string): value is PipelineStage {
-  return PIPELINE_STAGES.includes(value as PipelineStage);
-}
-
-function leadCreatedDate(createdAt?: TimestampLike | number | null) {
-  if (!createdAt) return null;
-  if (typeof createdAt === "number") return new Date(createdAt);
-  if (typeof createdAt === "object" && typeof createdAt.toDate === "function") {
-    return createdAt.toDate();
-  }
-  return null;
-}
+const STAGE_LABEL: Record<PipelineStage, string> = {
+  captado: "Captado",
+  contato_enviado: "Contato enviado",
+  respondido: "Respondido",
+  em_negociacao: "Em negociacao",
+  proposta_enviada: "Proposta enviada",
+  fechado: "Fechado",
+  perdido: "Perdido",
+};
 
 type DashboardLead = AgencyLead & {
   pipelineStage?: PipelineStage | string;
   createdAt?: TimestampLike | number | null;
 };
 
-type DashboardProject = AgencyProject;
 type DashboardBudget = AgencyBudget & { titulo?: string };
 type DashboardActivity = AgencyActivity & { data?: string | null };
 
@@ -100,6 +104,14 @@ type AdminAiSignalsResponse = {
   }>;
 };
 
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function isPipelineStage(value?: string): value is PipelineStage {
+  return PIPELINE_STAGES.includes(value as PipelineStage);
+}
+
 function toDateTime(value?: unknown) {
   if (!value) return null;
   if (typeof value === "number") return new Date(value);
@@ -119,15 +131,52 @@ function toDateTime(value?: unknown) {
   ) {
     return new Date((value as { _seconds: number })._seconds * 1000);
   }
+  if (
+    typeof value === "object" &&
+    value &&
+    "seconds" in value &&
+    typeof (value as { seconds?: number }).seconds === "number"
+  ) {
+    return new Date((value as { seconds: number }).seconds * 1000);
+  }
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
   return null;
 }
 
-export default function DashboardReal() {
+function isToday(date: Date | null) {
+  if (!date) return false;
+  const now = new Date();
+  return (
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear()
+  );
+}
+
+function formatShortDate(value?: unknown) {
+  const date = toDateTime(value);
+  if (!date) return "Sem data";
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function stageOf(lead: DashboardLead): PipelineStage {
+  return isPipelineStage(lead.pipelineStage) ? lead.pipelineStage : "captado";
+}
+
+export default function AdminAgencyCockpit() {
   const { user, isAdmin } = useAuth();
   const [leads, setLeads] = useState<DashboardLead[]>([]);
-  const [projetos, setProjetos] = useState<DashboardProject[]>([]);
-  const [orcamentos, setOrcamentos] = useState<DashboardBudget[]>([]);
-  const [atividades, setAtividades] = useState<DashboardActivity[]>([]);
+  const [projects, setProjects] = useState<AgencyProject[]>([]);
+  const [budgets, setBudgets] = useState<DashboardBudget[]>([]);
+  const [activities, setActivities] = useState<DashboardActivity[]>([]);
   const [aiSignals, setAiSignals] = useState<AdminAiSignalsResponse>({});
   const [aiSignalsLoading, setAiSignalsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -135,9 +184,9 @@ export default function DashboardReal() {
   useEffect(() => {
     if (!user) {
       setLeads([]);
-      setProjetos([]);
-      setOrcamentos([]);
-      setAtividades([]);
+      setProjects([]);
+      setBudgets([]);
+      setActivities([]);
       setLoading(false);
       return;
     }
@@ -162,60 +211,48 @@ export default function DashboardReal() {
       leadsQuery,
       (snap) => {
         setLeads(
-          snap.docs.map((d) => {
-            const data = d.data() as Omit<DashboardLead, "id">;
-            return { id: d.id, ...data };
-          })
+          snap.docs.map((doc) => ({
+            id: doc.id,
+            ...(doc.data() as Omit<DashboardLead, "id">),
+          }))
         );
         setLoading(false);
       },
       () => setLoading(false)
     );
 
-    // PROJETOS
-    const unsubProjetos = onSnapshot(
-      projectsQuery,
-      (snap) => {
-        setProjetos(
-          snap.docs.map((d) => {
-            const data = d.data() as Omit<DashboardProject, "id">;
-            return { id: d.id, ...data };
-          })
-        );
-      }
-    );
+    const unsubProjects = onSnapshot(projectsQuery, (snap) => {
+      setProjects(
+        snap.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as Omit<AgencyProject, "id">),
+        }))
+      );
+    });
 
-    // ORÇAMENTOS
-    const unsubOrcamentos = onSnapshot(
-      budgetsQuery,
-      (snap) => {
-        setOrcamentos(
-          snap.docs.map((d) => {
-            const data = d.data() as Omit<DashboardBudget, "id">;
-            return { id: d.id, ...data };
-          })
-        );
-      }
-    );
+    const unsubBudgets = onSnapshot(budgetsQuery, (snap) => {
+      setBudgets(
+        snap.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as Omit<DashboardBudget, "id">),
+        }))
+      );
+    });
 
-    // ATIVIDADES
-    const unsubAtividades = onSnapshot(
-      activitiesQuery,
-      (snap) => {
-        setAtividades(
-          snap.docs.map((d) => {
-            const data = d.data() as Omit<DashboardActivity, "id">;
-            return { id: d.id, ...data };
-          })
-        );
-      }
-    );
+    const unsubActivities = onSnapshot(activitiesQuery, (snap) => {
+      setActivities(
+        snap.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as Omit<DashboardActivity, "id">),
+        }))
+      );
+    });
 
     return () => {
       unsubLeads();
-      unsubProjetos();
-      unsubOrcamentos();
-      unsubAtividades();
+      unsubProjects();
+      unsubBudgets();
+      unsubActivities();
     };
   }, [user, isAdmin]);
 
@@ -225,11 +262,9 @@ export default function DashboardReal() {
         setAiSignalsLoading(true);
         const response = await authedFetch("/api/admin/ai/signals?limit=120");
         const data = (await response.json().catch(() => ({}))) as AdminAiSignalsResponse;
-        if (response.ok) {
-          setAiSignals(data);
-        }
+        if (response.ok) setAiSignals(data);
       } catch (error) {
-        console.error("Erro ao carregar sinais da IA no dashboard:", error);
+        console.error("Erro ao carregar sinais da IA no admin:", error);
       } finally {
         setAiSignalsLoading(false);
       }
@@ -243,31 +278,7 @@ export default function DashboardReal() {
     }
   }, [user, isAdmin]);
 
-  // ======== MÉTRICAS BÁSICAS ========
-
-  const leadsHoje = useMemo(
-    () => {
-      const hoje = new Date();
-      return leads.filter((l) => {
-        if (!l.createdAt || typeof l.createdAt !== "object" || typeof l.createdAt.toDate !== "function") {
-          return false;
-        }
-        const d = new Date(l.createdAt.toDate());
-        return (
-          d.getDate() === hoje.getDate() &&
-          d.getMonth() === hoje.getMonth() &&
-          d.getFullYear() === hoje.getFullYear()
-        );
-      });
-    },
-    [leads]
-  );
-
-  const atividadesPendentes = atividades.filter((a) => a.status === "pendente");
-
-  // ======== RESUMO DO PIPELINE ========
-
-  const pipelineResumo = useMemo(() => {
+  const pipeline = useMemo(() => {
     const base: Record<PipelineStage, number> = {
       captado: 0,
       contato_enviado: 0,
@@ -278,383 +289,234 @@ export default function DashboardReal() {
       perdido: 0,
     };
 
-    for (const l of leads) {
-      const s: PipelineStage = isPipelineStage(l.pipelineStage)
-        ? l.pipelineStage
-        : "captado";
-      base[s] = (base[s] || 0) + 1;
+    for (const lead of leads) {
+      base[stageOf(lead)] += 1;
     }
 
     return base;
   }, [leads]);
 
-  const totalLeads = leads.length || 1; // evita divisão por zero
-  const totalFechados = pipelineResumo.fechado;
-  const taxaFechamento = Math.round((totalFechados / totalLeads) * 100);
+  const metrics = useMemo(() => {
+    const totalLeads = leads.length;
+    const leadsToday = leads.filter((lead) => isToday(toDateTime(lead.createdAt))).length;
+    const won = pipeline.fechado;
+    const openDeals = pipeline.em_negociacao + pipeline.proposta_enviada + pipeline.respondido;
+    const pendingActivities = activities.filter((activity) => activity.status === "pendente");
+    const overdueActivities = pendingActivities.filter((activity) => {
+      const date = toDateTime(activity.data);
+      return Boolean(date && date.getTime() < Date.now());
+    });
+    const proposalsOpen = budgets.filter(
+      (budget) => budget.status === "rascunho" || budget.status === "enviado"
+    ).length;
 
-  const totalPropostas = orcamentos.length;
+    return {
+      totalLeads,
+      leadsToday,
+      won,
+      closeRate: totalLeads ? Math.round((won / totalLeads) * 100) : 0,
+      openDeals,
+      pendingActivities: pendingActivities.length,
+      overdueActivities: overdueActivities.length,
+      proposalsOpen,
+    };
+  }, [activities, budgets, leads, pipeline]);
+
+  const priorities = useMemo(
+    () => [
+      {
+        label: "Transformar Maps em campanha",
+        detail: `${Math.max(metrics.totalLeads - pipeline.fechado - pipeline.perdido, 0)} leads podem virar audiencia da Altum.`,
+        href: "/admin/prospeccao",
+        icon: Target,
+        tone: "blue" as const,
+      },
+      {
+        label: "Atacar propostas e follow-ups",
+        detail: `${metrics.openDeals} oportunidades abertas e ${metrics.proposalsOpen} propostas ativas.`,
+        href: "/admin/orcamentos",
+        icon: HandCoins,
+        tone: "emerald" as const,
+      },
+      {
+        label: "Reduzir risco operacional",
+        detail:
+          metrics.overdueActivities > 0
+            ? `${metrics.overdueActivities} atividades atrasadas pedem acao.`
+            : "Nenhuma atividade atrasada encontrada agora.",
+        href: "/admin/atividades",
+        icon: AlertTriangle,
+        tone: metrics.overdueActivities > 0 ? ("amber" as const) : ("slate" as const),
+      },
+    ],
+    [metrics, pipeline]
+  );
+
+  const recentLeads = useMemo(() => leads.slice(0, 6), [leads]);
+  const nextActivities = useMemo(() => {
+    return [...activities]
+      .sort((a, b) => String(a.data || "").localeCompare(String(b.data || "")))
+      .slice(0, 5);
+  }, [activities]);
+
   const aiSummary = aiSignals.summary || {};
   const aiTenants = (aiSignals.tenants || []).slice(0, 4);
 
-  // próximas 5 atividades (pendentes primeiro)
-  const proximasAtividades = useMemo(() => {
-    const ordenadas = [...atividades].sort((a, b) =>
-      (a.data || "").localeCompare(b.data || "")
-    );
-    return ordenadas.slice(0, 5);
-  }, [atividades]);
-
-  // últimos 6 leads
-  const ultimosLeads = useMemo(() => leads.slice(0, 6), [leads]);
-
   return (
-    <div className="space-y-8">
-      {/* HERO / SAUDAÇÃO */}
-      <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-black p-5 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-1">
-          <p className="text-xs uppercase tracking-wide text-white/40">
-            Bem-vindo ao painel da
-          </p>
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-wide flex items-center gap-2">
-            ALTUM
-            <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200 inline-flex items-center gap-1">
-              <Activity className="h-3 w-3" />
-              Operação rodando
-            </span>
-          </h1>
-          <p className="text-sm text-white/60 max-w-xl">
-            Visão consolidada de leads, funil comercial, projetos e atividades.
-            Esse painel é o “cockpit” da sua agência.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2 text-xs">
-          <Link
-            href="/admin/prospeccao"
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 font-medium hover:bg-blue-500 transition"
-          >
-            <Sparkles className="h-4 w-4" />
-            Ver máquina de prospecção
-            <ArrowRight className="h-3 w-3" />
-          </Link>
-          <Link
-            href="/admin/atividades"
-            className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 hover:bg-white/10 transition"
-          >
-            <Timer className="h-4 w-4" />
-            Agenda & tarefas
-          </Link>
-        </div>
-      </section>
-
-      {/* KPIs PRINCIPAIS */}
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {/* Leads totais */}
-        <div className="rounded-2xl border border-white/10 bg-[#101010] p-4 space-y-2">
-          <p className="text-[11px] uppercase tracking-wide text-white/50">
-            Leads totais
-          </p>
-          <div className="flex items-baseline gap-2">
-            <p className="text-3xl font-semibold">{leads.length}</p>
-          </div>
-          <p className="text-[11px] text-white/40 flex items-center gap-1">
-            <UserPlus className="h-3 w-3" />
-            Captados pela máquina + cadastros manuais.
-          </p>
-        </div>
-
-        {/* Leads hoje */}
-        <div className="rounded-2xl border border-blue-500/40 bg-blue-950/30 p-4 space-y-2">
-          <p className="text-[11px] uppercase tracking-wide text-blue-200/80">
-            Leads hoje
-          </p>
-          <div className="flex items-baseline gap-2">
-            <p className="text-3xl font-semibold text-blue-300">
-              {leadsHoje.length}
-            </p>
-          </div>
-          <p className="text-[11px] text-blue-200/70 flex items-center gap-1">
-            <Sparkles className="h-3 w-3" />
-            Performance do dia em tempo real.
-          </p>
-        </div>
-
-        {/* Projetos ativos */}
-        <div className="rounded-2xl border border-purple-500/40 bg-purple-950/30 p-4 space-y-2">
-          <p className="text-[11px] uppercase tracking-wide text-purple-200/80">
-            Projetos ativos
-          </p>
-          <p className="text-3xl font-semibold text-purple-200">
-            {projetos.length}
-          </p>
-          <p className="text-[11px] text-purple-200/70 flex items-center gap-1">
-            <Layers className="h-3 w-3" />
-            Demandas em andamento na operação.
-          </p>
-        </div>
-
-        {/* Atividades pendentes */}
-        <div className="rounded-2xl border border-amber-500/40 bg-amber-950/30 p-4 space-y-2">
-          <p className="text-[11px] uppercase tracking-wide text-amber-200/80">
-            Atividades pendentes
-          </p>
-          <p className="text-3xl font-semibold text-amber-200">
-            {atividadesPendentes.length}
-          </p>
-          <p className="text-[11px] text-amber-200/70 flex items-center gap-1">
-            <Timer className="h-3 w-3" />
-            Follow-ups e tarefas que precisam de atenção.
-          </p>
-        </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-2xl border border-white/10 bg-[#101010] p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[11px] uppercase tracking-wide text-white/50">
-                IA operacional ALTUM
-              </p>
-              <p className="text-sm text-white/70">
-                Leitura executiva dos sinais que a IA esta empurrando nos tenants.
+    <div className="mx-auto max-w-[1500px] space-y-6 pb-10">
+      <section className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
+        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-emerald-400 to-purple-500" />
+          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  <Radio className="h-3.5 w-3.5" />
+                  Operacao da agencia
+                </span>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                  {new Date().toLocaleDateString("pt-BR", {
+                    weekday: "long",
+                    day: "2-digit",
+                    month: "long",
+                  })}
+                </span>
+              </div>
+              <h1 className="mt-5 max-w-4xl text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
+                Cockpit Altum para vender, entregar e controlar a agencia
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
+                O admin vira a camada de comando. A operacao completa de conversas,
+                CRM e IA continua no workspace do cliente quando isso for melhor para
+                o usuario e para a estabilidade da plataforma.
               </p>
             </div>
-            <Link
-              href="/admin/ia"
-              className="text-[11px] text-blue-300 hover:text-blue-200 inline-flex items-center gap-1"
-            >
-              Abrir central de IA
-              <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
 
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row xl:flex-col">
+              <ActionButton href="/admin/prospeccao/gerar" icon={Rocket} label="Gerar leads Maps" tone="primary" />
+              <ActionButton href="/admin/templates" icon={FileText} label="Templates Meta" tone="soft" />
+              <ActionButton href="/cliente/painel" icon={MessageSquare} label="Operar workspace" tone="soft" />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+            Diretriz de arquitetura
+          </p>
+          <div className="mt-4 space-y-4">
+            <OperatingLine icon={ShieldCheck} label="Admin" value="Comando, clientes, entrega, financeiro e governanca." />
+            <OperatingLine icon={Users} label="Cliente" value="Conversas, CRM, campanhas operacionais e IA do tenant." />
+            <OperatingLine icon={Bot} label="Altum" value="Usar tenant interno para operar WhatsApp e IA da propria agencia." />
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard icon={UserPlus} label="Leads na agencia" value={String(metrics.totalLeads)} hint={`${metrics.leadsToday} captados hoje`} tone="blue" />
+        <MetricCard icon={Gauge} label="Taxa de fechamento" value={`${metrics.closeRate}%`} hint={`${metrics.won} fechados no historico`} tone="emerald" />
+        <MetricCard icon={FolderKanban} label="Projetos ativos" value={String(projects.length)} hint="Entrega e producao em andamento" tone="purple" />
+        <MetricCard icon={Timer} label="Pendencias" value={String(metrics.pendingActivities)} hint={`${metrics.overdueActivities} atrasadas`} tone={metrics.overdueActivities ? "amber" : "slate"} />
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="space-y-4">
+          <SectionHeader
+            eyebrow="Prioridades de hoje"
+            title="Onde colocar energia agora"
+            actionHref="/admin/atividades"
+            actionLabel="Ver agenda"
+          />
+          <div className="grid gap-3">
+            {priorities.map((item) => (
+              <PriorityCard key={item.label} {...item} />
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <SectionHeader
+            eyebrow="Arsenal da agencia"
+            title="O que existe, o que evolui e o que nasce"
+            actionHref="/admin/prospeccao"
+            actionLabel="Abrir prospeccao"
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <ArsenalCard status="Ativo" icon={Target} title="Maps + CRM de prospeccao" text="Busca, filtra, pontua, salva audiencia e prepara campanha." tone="emerald" />
+            <ArsenalCard status="Ativo" icon={Send} title="Disparo Meta com midia" text="Templates aprovados, variaveis, header de imagem/video/documento e entrega registrada." tone="blue" />
+            <ArsenalCard status="Ativo" icon={Route} title="Contexto para IA" text="Campanha, template e oferta ficam no lead/chat para a IA continuar a resposta." tone="purple" />
+            <ArsenalCard status="Proximo" icon={LineChart} title="Compliance e saude" text="Opt-out, limite por lead, risco de cliente, implantacao, receita e qualidade da IA." tone="amber" />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <SectionHeader
+          eyebrow="Fluxo recomendado"
+          title="Prospectar no Maps sem duplicar a area do cliente"
+          actionHref="/admin/prospeccao/gerar"
+          actionLabel="Gerar nova lista"
+        />
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <WorkflowStep number="01" icon={Target} title="Maps" text="Buscar por nicho, cidade, filtros e qualidade." />
+          <WorkflowStep number="02" icon={BrainCircuit} title="Qualificar" text="Score, heat, motivos e inteligencia comercial." />
+          <WorkflowStep number="03" icon={ClipboardList} title="Lista" text="Salvar como audiencia do tenant Altum." />
+          <WorkflowStep number="04" icon={FileText} title="Template" text="Selecionar template Meta aprovado com midia." />
+          <WorkflowStep number="05" icon={Send} title="Disparo" text="Registrar entrega, status e oferta enviada." />
+          <WorkflowStep number="06" icon={MessageSquare} title="Resposta" text="IA continua no workspace com contexto." />
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-4">
+          <SectionHeader
+            eyebrow="IA operacional"
+            title="Sinais que pedem supervisao da Altum"
+            actionHref="/admin/ia"
+            actionLabel="Abrir IA"
+          />
           <div className="grid gap-3 md:grid-cols-4">
-            <MiniMetric
-              label="Sinais"
-              value={String(aiSummary.totalSignals || 0)}
-              hint="janela recente"
-              icon={Bot}
-            />
-            <MiniMetric
-              label="Handoffs"
-              value={String(aiSummary.handoffs || 0)}
-              hint="escalados"
-              icon={Handshake}
-            />
-            <MiniMetric
-              label="Propostas"
-              value={String(aiSummary.proposalSignals || 0)}
-              hint="sinais comerciais"
-              icon={HandCoins}
-            />
-            <MiniMetric
-              label="Agendas"
-              value={String(aiSummary.scheduleSignals || 0)}
-              hint="proximo passo"
-              icon={CalendarClock}
-            />
+            <MetricCard icon={Bot} label="Sinais" value={String(aiSummary.totalSignals || 0)} hint="janela recente" tone="blue" compact />
+            <MetricCard icon={Handshake} label="Handoffs" value={String(aiSummary.handoffs || 0)} hint="escalados" tone="amber" compact />
+            <MetricCard icon={HandCoins} label="Propostas" value={String(aiSummary.proposalSignals || 0)} hint="intencao comercial" tone="emerald" compact />
+            <MetricCard icon={CalendarClock} label="Agenda" value={String(aiSummary.scheduleSignals || 0)} hint="proximo passo" tone="purple" compact />
           </div>
 
           {aiSignalsLoading ? (
-            <p className="text-xs text-white/45">Carregando sinais de IA...</p>
+            <EmptyState text="Carregando sinais da IA..." />
           ) : aiTenants.length === 0 ? (
-            <p className="text-xs text-white/45">Nenhum tenant com sinal recente da IA.</p>
+            <EmptyState text="Nenhum tenant com sinal recente da IA." />
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               {aiTenants.map((tenant) => (
-                <div
-                  key={tenant.tenantId}
-                  className="rounded-xl border border-white/10 bg-black/40 p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-white">{tenant.tenantName}</p>
-                      <p className="text-[11px] text-white/45">Tenant {tenant.tenantId}</p>
-                    </div>
-                    <p className="text-[11px] text-white/45">
-                      {toDateTime(tenant.lastSignalAt)?.toLocaleString("pt-BR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }) || "sem data"}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 grid gap-2 grid-cols-3 text-[11px] text-white/65">
-                    <span>{tenant.handoffs} handoff</span>
-                    <span>{tenant.proposalSignals} proposta</span>
-                    <span>{tenant.scheduleSignals} agenda</span>
-                  </div>
-
-                  {tenant.legacyClientId ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Link
-                        href={`/admin/clientes/${tenant.legacyClientId}`}
-                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] text-white/75 hover:bg-white/10 transition"
-                      >
-                        Cliente
-                      </Link>
-                      <Link
-                        href={`/admin/clientes/${tenant.legacyClientId}/portal`}
-                        className="rounded-lg border border-blue-500/30 bg-blue-600/10 px-3 py-1.5 text-[11px] text-blue-100 hover:bg-blue-600/20 transition"
-                      >
-                        Portal
-                      </Link>
-                    </div>
-                  ) : null}
-                </div>
+                <TenantSignalCard key={tenant.tenantId} tenant={tenant} />
               ))}
             </div>
           )}
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-[#101010] p-4 space-y-3">
-          <p className="text-[11px] uppercase tracking-wide text-white/50">
-            Leitura executiva da IA
-          </p>
-          <div className="rounded-xl border border-white/10 bg-black/40 p-3">
-            <p className="text-sm font-medium text-white">Onde a ALTUM deve olhar primeiro</p>
-            <p className="mt-2 text-xs text-white/60">
-              Use handoffs para identificar operacoes sensiveis, propostas para atacar fechamento
-              e agendas para destravar proximos passos comerciais.
-            </p>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-black/40 p-3">
-            <p className="text-sm font-medium text-white">Como agir</p>
-            <p className="mt-2 text-xs text-white/60">
-              Quando um tenant concentrar muitos sinais, abra a central de IA e depois o portal do
-              cliente para validar CRM, comercial e automacoes.
-            </p>
-          </div>
-          <Link
-            href="/admin/ia"
-            className="flex items-center justify-between rounded-xl border border-blue-500/30 bg-blue-600/10 px-3 py-3 hover:bg-blue-600/20 transition"
-          >
-            <div className="flex items-center gap-2">
-              <Bot className="h-4 w-4 text-blue-200" />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-blue-100">Abrir supervisao da IA</span>
-                <span className="text-[11px] text-blue-100/75">Ver sinais por tenant e agir no backoffice</span>
-              </div>
-            </div>
-            <ArrowRight className="h-3 w-3 text-blue-100" />
-          </Link>
-        </div>
-      </section>
-
-      {/* GRID PRINCIPAL: FUNIL + LISTAS */}
-      <section className="grid gap-6 lg:grid-cols-3">
-        {/* COLUNA ESQUERDA: RESUMO DO FUNIL / PROPOSTAS */}
-        <div className="space-y-4 lg:col-span-2">
-          {/* Resumo do funil */}
-          <div className="rounded-2xl border border-white/10 bg-[#101010] p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-white/50">
-                  Funil comercial
-                </p>
-                <p className="text-sm text-white/70">
-                  Visão geral dos estágios do pipeline.
-                </p>
-              </div>
-              <Link
-                href="/admin/pipeline"
-                className="text-[11px] text-blue-300 hover:text-blue-200 inline-flex items-center gap-1"
-              >
-                Abrir pipeline
-                <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              {/* Conversão básica */}
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/40 p-3 space-y-2">
-                <p className="text-[11px] text-emerald-200/80 uppercase tracking-wide">
-                  Taxa de fechamento
-                </p>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-2xl font-semibold text-emerald-200">
-                    {isNaN(taxaFechamento) ? 0 : taxaFechamento}%
-                  </p>
-                </div>
-                <p className="text-[11px] text-emerald-200/70 flex items-center gap-1">
-                  <CheckCircle2 className="h-3 w-3" />
-                  {totalFechados} fechados de {totalLeads} leads.
-                </p>
-              </div>
-
-              {/* Propostas / orçamentos */}
-              <div className="rounded-xl border border-blue-500/30 bg-blue-950/40 p-3 space-y-2">
-                <p className="text-[11px] text-blue-200/80 uppercase tracking-wide">
-                  Propostas criadas
-                </p>
-                <p className="text-2xl font-semibold text-blue-200">
-                  {totalPropostas}
-                </p>
-                <p className="text-[11px] text-blue-200/70 flex items-center gap-1">
-                  <BarChart3 className="h-3 w-3" />
-                  Orçamentos registrados no sistema.
-                </p>
-              </div>
-
-              {/* Leads em negociação */}
-              <div className="rounded-xl border border-amber-500/30 bg-amber-950/40 p-3 space-y-2">
-                <p className="text-[11px] text-amber-200/80 uppercase tracking-wide">
-                  Leads em negociação
-                </p>
-                <p className="text-2xl font-semibold text-amber-200">
-                  {pipelineResumo.em_negociacao +
-                    pipelineResumo.proposta_enviada}
-                </p>
-                <p className="text-[11px] text-amber-200/70 flex items-center gap-1">
-                  <Rocket className="h-3 w-3" />
-                  Oportunidades perto de fechar.
-                </p>
-              </div>
-            </div>
-
-            {/* Barrinhas de estágios */}
-            <div className="mt-2 space-y-2">
-              {(
-                [
-                  "captado",
-                  "contato_enviado",
-                  "respondido",
-                  "em_negociacao",
-                  "proposta_enviada",
-                  "fechado",
-                  "perdido",
-                ] as PipelineStage[]
-              ).map((stage) => {
-                const labelMap: Record<PipelineStage, string> = {
-                  captado: "Captado",
-                  contato_enviado: "Contato enviado",
-                  respondido: "Respondido",
-                  em_negociacao: "Em negociação",
-                  proposta_enviada: "Proposta enviada",
-                  fechado: "Fechado",
-                  perdido: "Perdido",
-                };
-
-                const value = pipelineResumo[stage];
-                const perc = Math.min(
-                  100,
-                  Math.round((value / totalLeads) * 100)
-                );
-
+        <div className="space-y-4">
+          <SectionHeader
+            eyebrow="Funil comercial"
+            title="Movimento da prospeccao ate fechamento"
+            actionHref="/admin/pipeline"
+            actionLabel="Ver pipeline"
+          />
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="space-y-3">
+              {PIPELINE_STAGES.map((stage) => {
+                const value = pipeline[stage];
+                const percent = metrics.totalLeads ? Math.round((value / metrics.totalLeads) * 100) : 0;
                 return (
-                  <div key={stage} className="space-y-1">
-                    <div className="flex items-center justify-between text-[11px] text-white/60">
-                      <span>{labelMap[stage]}</span>
-                      <span>
-                        {value} • {isNaN(perc) ? 0 : perc}%
-                      </span>
+                  <div key={stage} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <span>{STAGE_LABEL[stage]}</span>
+                      <span>{value} / {percent}%</span>
                     </div>
-                    <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-blue-500 via-emerald-400 to-purple-500"
-                        style={{ width: `${perc || 0}%` }}
+                        className="h-full rounded-full bg-gradient-to-r from-blue-500 via-emerald-400 to-purple-400"
+                        style={{ width: `${percent}%` }}
                       />
                     </div>
                   </div>
@@ -662,228 +524,353 @@ export default function DashboardReal() {
               })}
             </div>
           </div>
-
-          {/* Últimos leads */}
-          <div className="rounded-2xl border border-white/10 bg-[#101010] p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] uppercase tracking-wide text-white/50">
-                Últimos leads captados
-              </p>
-              <Link
-                href="/admin/prospeccao"
-                className="text-[11px] text-blue-300 hover:text-blue-200 inline-flex items-center gap-1"
-              >
-                Ver todos
-                <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-
-            {ultimosLeads.length === 0 && (
-              <p className="text-xs text-white/50">
-                Ainda não existem leads cadastrados.  
-                Assim que a máquina de prospecção começar a rodar, tudo aparece
-                aqui.
-              </p>
-            )}
-
-            <div className="grid gap-2 md:grid-cols-2">
-              {ultimosLeads.map((lead) => (
-                <div
-                  key={lead.id}
-                  className="rounded-xl border border-white/10 bg-black/40 p-3 flex flex-col justify-between hover:border-blue-500/40 transition"
-                >
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">
-                      {lead.nome || "Lead sem nome"}
-                    </p>
-                    <p className="text-[11px] text-white/50 flex items-center gap-1">
-                      <Target className="h-3 w-3" />
-                      {lead.origem || "Origem não informada"}
-                    </p>
-                  </div>
-
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-white/45">
-                    <span className="flex items-center gap-1">
-                      <CircleDot className="h-3 w-3" />
-                      {lead.pipelineStage || "captado"}
-                    </span>
-
-                    {leadCreatedDate(lead.createdAt) && (
-                      <span>{leadCreatedDate(lead.createdAt)?.toLocaleDateString("pt-BR")}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* COLUNA DIREITA: AGENDA + ATALHOS */}
-        <div className="space-y-4">
-          {/* Próximas atividades */}
-          <div className="rounded-2xl border border-white/10 bg-[#101010] p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] uppercase tracking-wide text-white/50">
-                Próximas atividades
-              </p>
-              <Link
-                href="/admin/atividades"
-                className="text-[11px] text-blue-300 hover:text-blue-200 inline-flex items-center gap-1"
-              >
-                Agenda completa
-                <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-
-            {proximasAtividades.length === 0 && (
-              <p className="text-xs text-white/50">
-                Nenhuma atividade registrada ainda.  
-                Use o módulo de atividades para organizar follow-ups e tarefas.
-              </p>
-            )}
-
-            <div className="space-y-2">
-              {proximasAtividades.slice(0, 5).map((a) => (
-                <div
-                  key={a.id}
-                  className="rounded-xl border border-white/10 bg-black/40 p-3 flex items-center justify-between"
-                >
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium">{a.descricao}</p>
-                    {a.data && (
-                      <p className="text-[11px] text-white/50 flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(a.data).toLocaleString("pt-BR")}
-                      </p>
-                    )}
-                  </div>
-                  <span
-                    className={`text-[10px] px-2 py-1 rounded-lg border ${
-                      a.status === "concluida"
-                        ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
-                        : "border-white/10 text-white/60 bg-white/5"
-                    }`}
-                  >
-                    {a.status === "concluida" ? "Concluída" : "Pendente"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Ações rápidas */}
-          <div className="rounded-2xl border border-white/10 bg-[#101010] p-4 space-y-3">
-            <p className="text-[11px] uppercase tracking-wide text-white/50">
-              Ações rápidas
-            </p>
-
-            <div className="space-y-2 text-xs">
-              <Link
-                href="/admin/prospeccao"
-                className="flex items-center justify-between rounded-xl border border-blue-500/40 bg-blue-600/10 px-3 py-2 hover:bg-blue-600/20 transition"
-              >
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-blue-300" />
-                  <div className="flex flex-col">
-                    <span className="font-medium text-blue-100">
-                      Ver leads da prospecção
-                    </span>
-                    <span className="text-[11px] text-blue-100/70">
-                      Acompanhar oportunidades captadas.
-                    </span>
-                  </div>
-                </div>
-                <ArrowRight className="h-3 w-3 text-blue-200" />
-              </Link>
-
-              <Link
-                href="/admin/clientes"
-                className="flex items-center justify-between rounded-xl border border-white/15 bg-white/5 px-3 py-2 hover:bg-white/10 transition"
-              >
-                <div className="flex items-center gap-2">
-                  <UserPlus className="h-4 w-4 text-white/70" />
-                  <div className="flex flex-col">
-                    <span className="font-medium">Ver clientes</span>
-                    <span className="text-[11px] text-white/60">
-                      Base de clientes ativa da agência.
-                    </span>
-                  </div>
-                </div>
-                <ArrowRight className="h-3 w-3 text-white/60" />
-              </Link>
-
-              <Link
-                href="/admin/campanhas"
-                className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-600/10 px-3 py-2 hover:bg-emerald-600/20 transition"
-              >
-                <div className="flex items-center gap-2">
-                  <LineChart className="h-4 w-4 text-emerald-200" />
-                  <div className="flex flex-col">
-                    <span className="font-medium text-emerald-100">
-                      Campanhas em tempo real
-                    </span>
-                    <span className="text-[11px] text-emerald-100/80">
-                      Integrar contas Meta/Google e analisar performance com IA.
-                    </span>
-                  </div>
-                </div>
-                <ArrowRight className="h-3 w-3 text-emerald-100" />
-              </Link>
-
-              <Link
-                href="/admin/projetos"
-                className="flex items-center justify-between rounded-xl border border-purple-500/30 bg-purple-600/10 px-3 py-2 hover:bg-purple-600/20 transition"
-              >
-                <div className="flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-purple-200" />
-                  <div className="flex flex-col">
-                    <span className="font-medium text-purple-100">
-                      Projetos & entregas
-                    </span>
-                    <span className="text-[11px] text-purple-100/80">
-                      Acompanhar sites, LPS e campanhas em produção.
-                    </span>
-                  </div>
-                </div>
-                <ArrowRight className="h-3 w-3 text-purple-100" />
-              </Link>
-            </div>
-          </div>
         </div>
       </section>
 
-      {loading && (
-        <p className="text-xs text-white/40">
-          Carregando dados em tempo real…
-        </p>
-      )}
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-4">
+          <SectionHeader
+            eyebrow="Ultimos leads"
+            title="Entradas recentes da maquina comercial"
+            actionHref="/admin/prospeccao"
+            actionLabel="Ver todos"
+          />
+          {recentLeads.length === 0 ? (
+            <EmptyState text="Ainda nao existem leads cadastrados." />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {recentLeads.map((lead) => (
+                <LeadCard key={lead.id} lead={lead} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <SectionHeader
+            eyebrow="Agenda interna"
+            title="Proximas acoes da operacao"
+            actionHref="/admin/atividades"
+            actionLabel="Agenda completa"
+          />
+          {nextActivities.length === 0 ? (
+            <EmptyState text="Nenhuma atividade registrada." />
+          ) : (
+            <div className="grid gap-3">
+              {nextActivities.map((activity) => (
+                <ActivityRow key={activity.id} activity={activity} />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {loading && <p className="text-xs text-slate-500">Carregando dados em tempo real...</p>}
     </div>
   );
 }
 
-function MiniMetric({
+function ActionButton({
+  href,
+  icon: Icon,
+  label,
+  tone,
+}: {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  tone: "primary" | "soft";
+}) {
+  return (
+    <Link
+      href={href}
+      className={cx(
+        "inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition",
+        tone === "primary"
+          ? "border-blue-600 bg-blue-600 text-white shadow-sm hover:bg-blue-500"
+          : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+      <ArrowRight className="h-3.5 w-3.5" />
+    </Link>
+  );
+}
+
+function OperatingLine({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex gap-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50">
+        <Icon className="h-4 w-4 text-blue-600" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-slate-900">{label}</p>
+        <p className="mt-0.5 text-xs leading-5 text-slate-500">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  actionHref,
+  actionLabel,
+}: {
+  eyebrow: string;
+  title: string;
+  actionHref?: string;
+  actionLabel?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{eyebrow}</p>
+        <h2 className="mt-1 text-lg font-semibold text-slate-950">{title}</h2>
+      </div>
+      {actionHref && actionLabel ? (
+        <Link
+          href={actionHref}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700"
+        >
+          {actionLabel}
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+function MetricCard({
+  icon: Icon,
   label,
   value,
   hint,
-  icon: Icon,
+  tone,
+  compact,
 }: {
+  icon: LucideIcon;
   label: string;
   value: string;
   hint: string;
-  icon: typeof Bot;
+  tone: "blue" | "emerald" | "purple" | "amber" | "slate";
+  compact?: boolean;
 }) {
+  const toneClass = {
+    blue: "border-blue-100 bg-blue-50 text-blue-600",
+    emerald: "border-emerald-100 bg-emerald-50 text-emerald-600",
+    purple: "border-purple-100 bg-purple-50 text-purple-600",
+    amber: "border-amber-100 bg-amber-50 text-amber-600",
+    slate: "border-slate-200 bg-slate-50 text-slate-500",
+  }[tone];
+
   return (
-    <div className="rounded-xl border border-white/10 bg-black/40 p-3">
-      <div className="flex items-start justify-between gap-3">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] uppercase tracking-wide text-white/45">{label}</p>
-          <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-          <p className="mt-1 text-[11px] text-white/45">{hint}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+          <p className={cx("font-semibold text-slate-950", compact ? "mt-2 text-2xl" : "mt-3 text-3xl")}>{value}</p>
+          <p className="mt-1 text-xs text-slate-500">{hint}</p>
         </div>
-        <div className="rounded-lg border border-white/10 bg-white/5 p-2">
-          <Icon className="h-4 w-4 text-white/70" />
+        <div className={cx("rounded-lg border p-2", toneClass)}>
+          <Icon className="h-4 w-4" />
         </div>
       </div>
+    </div>
+  );
+}
+
+function PriorityCard({
+  label,
+  detail,
+  href,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  detail: string;
+  href: string;
+  icon: LucideIcon;
+  tone: "blue" | "emerald" | "amber" | "slate";
+}) {
+  const iconTone = {
+    blue: "border-blue-100 bg-blue-50 text-blue-600",
+    emerald: "border-emerald-100 bg-emerald-50 text-emerald-600",
+    amber: "border-amber-100 bg-amber-50 text-amber-600",
+    slate: "border-slate-200 bg-slate-50 text-slate-500",
+  }[tone];
+
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+    >
+      <span className={cx("flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border", iconTone)}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-slate-950">{label}</span>
+        <span className="mt-1 block text-xs leading-5 text-slate-500">{detail}</span>
+      </span>
+      <ArrowRight className="h-4 w-4 shrink-0 text-slate-300" />
+    </Link>
+  );
+}
+
+function ArsenalCard({
+  status,
+  icon: Icon,
+  title,
+  text,
+  tone,
+}: {
+  status: string;
+  icon: LucideIcon;
+  title: string;
+  text: string;
+  tone: "blue" | "emerald" | "purple" | "amber";
+}) {
+  const toneClass = {
+    blue: "border-blue-100 bg-blue-50 text-blue-600",
+    emerald: "border-emerald-100 bg-emerald-50 text-emerald-600",
+    purple: "border-purple-100 bg-purple-50 text-purple-600",
+    amber: "border-amber-100 bg-amber-50 text-amber-600",
+  }[tone];
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className={cx("inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium", toneClass)}>
+          <Icon className="h-3.5 w-3.5" />
+          {status}
+        </span>
+      </div>
+      <h3 className="mt-4 text-sm font-semibold text-slate-950">{title}</h3>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{text}</p>
+    </div>
+  );
+}
+
+function WorkflowStep({
+  number,
+  icon: Icon,
+  title,
+  text,
+}: {
+  number: string;
+  icon: LucideIcon;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-black tracking-[0.18em] text-slate-300">{number}</span>
+        <Icon className="h-4 w-4 text-blue-600" />
+      </div>
+      <h3 className="mt-5 text-sm font-semibold text-slate-950">{title}</h3>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{text}</p>
+    </div>
+  );
+}
+
+function TenantSignalCard({
+  tenant,
+}: {
+  tenant: NonNullable<AdminAiSignalsResponse["tenants"]>[number];
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-slate-950">{tenant.tenantName}</p>
+          <p className="mt-1 truncate text-xs text-slate-400">Tenant {tenant.tenantId}</p>
+        </div>
+        <span className="shrink-0 text-xs text-slate-400">{formatShortDate(tenant.lastSignalAt)}</span>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-2 text-xs text-slate-500">
+        <span>{tenant.handoffs} handoff</span>
+        <span>{tenant.proposalSignals} proposta</span>
+        <span>{tenant.scheduleSignals} agenda</span>
+      </div>
+      {tenant.legacyClientId ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href={`/admin/clientes/${tenant.legacyClientId}`}
+            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+          >
+            Cliente
+          </Link>
+          <Link
+            href={`/admin/clientes/${tenant.legacyClientId}/portal`}
+            className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+          >
+            Portal
+          </Link>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LeadCard({ lead }: { lead: DashboardLead }) {
+  return (
+    <Link
+      href={`/admin/prospeccao/${lead.id}`}
+      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+    >
+      <p className="truncate text-sm font-semibold text-slate-950">{lead.nome || "Lead sem nome"}</p>
+      <p className="mt-1 truncate text-xs text-slate-500">{lead.origem || lead.sourceType || "Origem nao informada"}</p>
+      <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
+        <span className="inline-flex items-center gap-1.5">
+          <CircleDot className="h-3.5 w-3.5" />
+          {STAGE_LABEL[stageOf(lead)]}
+        </span>
+        <span>{formatShortDate(lead.createdAt)}</span>
+      </div>
+    </Link>
+  );
+}
+
+function ActivityRow({ activity }: { activity: DashboardActivity }) {
+  const done = activity.status === "concluida";
+
+  return (
+    <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <span
+        className={cx(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border",
+          done
+            ? "border-emerald-100 bg-emerald-50 text-emerald-600"
+            : "border-amber-100 bg-amber-50 text-amber-600"
+        )}
+      >
+        {done ? <CheckCircle2 className="h-5 w-5" /> : <Timer className="h-5 w-5" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-slate-950">{activity.descricao}</p>
+        <p className="mt-1 text-xs text-slate-500">{formatShortDate(activity.data)}</p>
+      </div>
+      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-500">
+        {done ? "Concluida" : "Pendente"}
+      </span>
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-5 text-sm text-slate-500">
+      {text}
     </div>
   );
 }

@@ -144,7 +144,7 @@ const CONNECTORS: ConnectorDefinition[] = [
   {
     type: "whatsapp",
     label: "WhatsApp",
-    description: "Multiplos numeros oficiais ou flexiveis para inbox, IA e roteamento por tenant.",
+    description: "Numeros conectados para Conversas, IA, templates e atendimento humano.",
     provider: "meta_whatsapp",
     icon: MessageSquare,
     primaryLabel: "phoneNumberId",
@@ -154,7 +154,7 @@ const CONNECTORS: ConnectorDefinition[] = [
   {
     type: "instagram",
     label: "Instagram DM",
-    description: "Preparado para atendimento omnichannel e roteamento por tenant.",
+    description: "DMs e interacoes sociais entrando no atendimento com contexto comercial.",
     provider: "meta_instagram",
     icon: Instagram,
     primaryLabel: "Instagram business ID",
@@ -164,7 +164,7 @@ const CONNECTORS: ConnectorDefinition[] = [
   {
     type: "messenger",
     label: "Facebook Messenger",
-    description: "Conector para mensagens da pagina e centralizacao do inbox.",
+    description: "Mensagens da pagina conectadas ao mesmo fluxo de atendimento.",
     provider: "facebook_messenger",
     icon: Facebook,
     primaryLabel: "Facebook page ID",
@@ -174,7 +174,7 @@ const CONNECTORS: ConnectorDefinition[] = [
   {
     type: "meta_ads",
     label: "Meta Ads",
-    description: "Origem de leads e atribuicao de campanhas no dashboard comercial.",
+    description: "Campanhas, formularios, origem dos leads e retorno de conversoes.",
     provider: "meta_ads",
     icon: Megaphone,
     primaryLabel: "Ad account ID",
@@ -186,7 +186,7 @@ const CONNECTORS: ConnectorDefinition[] = [
   {
     type: "google_ads",
     label: "Google Ads",
-    description: "Conector com OAuth server-side para custo, CPL e atribuicao comercial por tenant.",
+    description: "Busca paga, custo, CPL e conversoes conectados aos relatorios.",
     provider: "google_ads",
     icon: Search,
     primaryLabel: "Customer ID",
@@ -222,7 +222,7 @@ function toneForConnectionStatus(status?: string) {
 function connectionStatusLabel(status?: string) {
   if (status === "auth_pending") return "Autenticacao pendente";
   if (status === "connected") return "Conectado";
-  if (status === "webhook_pending") return "Webhook pendente";
+  if (status === "webhook_pending") return "Aguardando eventos";
   if (status === "syncing") return "Sincronizando";
   if (status === "ready") return "Pronto";
   if (status === "degraded") return "Degradado";
@@ -233,9 +233,9 @@ function connectionStatusLabel(status?: string) {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return "Sem sync";
+  if (!value) return "Sem leitura";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "Sem sync" : parsed.toLocaleString("pt-BR", {
+  return Number.isNaN(parsed.getTime()) ? "Sem leitura" : parsed.toLocaleString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -287,7 +287,7 @@ function buildConnectorOperationalRows(input: {
 
   if (channel?.requiresWebhook || definition.type === "whatsapp") {
     rows.push({
-      label: "Webhook inbound",
+      label: "Entrada de mensagens",
       value: readinessLabel(channel?.inboundReady, "Pronto", "Pendente"),
       tone: readinessTone(channel?.inboundReady),
     });
@@ -295,21 +295,21 @@ function buildConnectorOperationalRows(input: {
 
   if (!isAdsConnector || definition.type === "meta_ads") {
     rows.push({
-      label: definition.type === "meta_ads" ? "Captura inbound" : "Envio manual",
+      label: definition.type === "meta_ads" ? "Entrada de leads" : "Envio manual",
       value: readinessLabel(channel?.outboundReady ?? channel?.inboundReady, "Pronto", "Pendente"),
       tone: readinessTone(channel?.outboundReady ?? channel?.inboundReady),
     });
   }
 
   rows.push({
-    label: isAdsConnector ? "Sync server-side" : "Roteamento operacional",
+    label: isAdsConnector ? "Campanhas atualizadas" : "Distribuicao no atendimento",
     value: readinessLabel(isAdsConnector ? channel?.syncReady : channel?.routingReady, "Pronto", "Pendente"),
     tone: readinessTone(isAdsConnector ? channel?.syncReady : channel?.routingReady),
   });
 
   if (definition.type === "google_ads") {
     rows.push({
-      label: "Servidor OAuth",
+      label: "Conexao segura",
       value: readinessLabel(channel?.serverReady !== false, "Pronto", "Pendente"),
       tone: channel?.serverReady === false ? "warning" : "success",
     });
@@ -324,12 +324,12 @@ function buildConnectorOperationalRows(input: {
   if (isAdsConnector) {
     rows.push(
       {
-        label: "Ultimo sync",
+        label: "Ultima leitura",
         value: channel?.lastCampaignDateRef || formatDateTime(channel?.lastSyncAt),
         tone: channel?.lastCampaignDateRef || channel?.lastSyncAt ? "info" : "neutral",
       },
       {
-        label: "Snapshots",
+        label: "Campanhas lidas",
         value: String(channel?.campaignSnapshotCount || 0),
         tone: Number(channel?.campaignSnapshotCount || 0) > 0 ? "success" : "neutral",
       }
@@ -361,17 +361,17 @@ const WHATSAPP_PROVIDER_OPTIONS = [
   {
     value: "meta_whatsapp",
     label: "Oficial Meta",
-    description: "Cloud API/BSP com templates, webhooks oficiais e melhor estabilidade.",
+    description: "Conexao oficial para mensagens, templates e melhor estabilidade.",
   },
   {
     value: "whatsapp_qr",
     label: "Flexivel por QR",
-    description: "Numero comum ou Business App via gateway de sessao conectado por QR.",
+    description: "Numero conectado por QR quando a operacao ainda nao usa a conexao oficial.",
   },
   {
     value: "whatsapp_gateway",
-    label: "Gateway externo",
-    description: "Adaptador HTTP para provedores como Evolution, Z-API ou infra propria.",
+    label: "Conexao externa",
+    description: "Usar um provedor externo de WhatsApp ja existente na operacao.",
   },
 ] as const;
 
@@ -387,11 +387,11 @@ function buildConnectorPlaybook(definition: ConnectorDefinition, channel: Channe
   if (definition.type === "instagram" || definition.type === "messenger") {
     return {
       summary: channel?.routingReady
-        ? "Conector pronto para receber mensagens e permitir envio manual pelo inbox do tenant."
-        : "Complete token, webhook e mapeamento da conta para liberar atendimento inbound e outbound no inbox.",
+        ? "Canal pronto para receber mensagens e permitir atendimento manual em Conversas."
+        : "Complete a conexao e o mapeamento da conta para liberar atendimento em Conversas.",
       links: [
-        { href: inboxHref, label: "Abrir conversa no inbox" },
-        { href: "/cliente/painel/logs", label: "Ver logs operacionais" },
+        { href: inboxHref, label: "Abrir conversas" },
+        { href: "/cliente/painel/handoffs", label: "Ver atendimento humano" },
       ],
     };
   }
@@ -399,7 +399,7 @@ function buildConnectorPlaybook(definition: ConnectorDefinition, channel: Channe
   if (definition.type === "meta_ads" || definition.type === "google_ads") {
     return {
       summary: channel?.syncReady
-        ? "Campanhas prontas para alimentar origem, CPL e atribuicao comercial do tenant."
+        ? "Campanhas prontas para alimentar origem, CPL e atribuicao comercial."
         : "Complete credenciais e mapeamento da conta para sincronizar campanhas e atribuir leads com seguranca.",
       links: [
         { href: crmHref, label: "Abrir leads no CRM" },
@@ -410,11 +410,11 @@ function buildConnectorPlaybook(definition: ConnectorDefinition, channel: Channe
 
   return {
     summary: channel?.routingReady
-      ? "Canal pronto para webhook, envio manual, IA e takeover dentro do inbox unificado."
-      : "Finalize credenciais e webhook para colocar o canal em operacao completa no tenant.",
+      ? "Canal pronto para mensagens, IA e atendimento humano dentro de Conversas."
+      : "Finalize a conexao para colocar o canal em operacao completa.",
     links: [
-      { href: inboxHref, label: "Abrir no inbox" },
-      { href: "/cliente/painel/handoffs", label: "Ver handoffs" },
+      { href: inboxHref, label: "Abrir conversas" },
+      { href: "/cliente/painel/handoffs", label: "Ver escaladas" },
     ],
   };
 }
@@ -550,7 +550,7 @@ export default function ClienteCanaisPage() {
         }
       } catch {
         if (!mounted) return;
-        setError("Falha ao carregar conectores do tenant.");
+        setError("Falha ao carregar canais da conta.");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -729,7 +729,7 @@ export default function ClienteCanaisPage() {
         setError(data.error || "Falha ao sincronizar campanhas.");
         return;
       }
-      setNotice(`Sync concluido: ${data.synced || 0} snapshot(s) atualizados e ${data.failed || 0} falha(s).`);
+      setNotice(`Atualizacao concluida: ${data.synced || 0} campanha(s) revisadas e ${data.failed || 0} falha(s).`);
       await refreshChannels();
     } catch {
       setError("Falha ao sincronizar campanhas.");
@@ -954,11 +954,11 @@ export default function ClienteCanaisPage() {
       const hasVerifyToken = Boolean(whatsAppForm.verifyToken.trim() || selectedChannel?.hasVerifyToken);
       const hasAppSecret = Boolean(whatsAppForm.appSecret.trim() || selectedChannel?.hasAppSecret);
       if (isOfficial && (!whatsAppForm.phoneNumberId.trim() || !hasAccessToken || !hasVerifyToken || !hasAppSecret)) {
-        setError("No modo oficial, informe phoneNumberId, Access Token, Verify Token e App Secret.");
+        setError("No modo oficial, informe o ID do numero, a credencial de acesso, o token de verificacao e o segredo do app.");
         return;
       }
       if (!isOfficial && (!whatsAppForm.gatewayEndpoint.trim() || !hasAccessToken)) {
-        setError("No modo flexivel, informe o endpoint do gateway e o token de acesso.");
+        setError("No modo flexivel, informe a URL do provedor e a credencial de acesso.");
         return;
       }
 
@@ -1075,8 +1075,8 @@ export default function ClienteCanaisPage() {
   return (
     <div className="settings-channels-refined client-daily-page space-y-4">
       <SectionHeader
-        title="Canais conectados"
-        subtitle="Hub de conectores do tenant para atendimento, captacao e atribuicao comercial."
+        title="Canais, pixels e conversoes"
+        subtitle="WhatsApp, Instagram, Meta, Google e origem dos leads conectados ao atendimento, campanhas e relatorios."
         action={
           <Link
             href="/cliente/painel/configuracoes"
@@ -1090,15 +1090,15 @@ export default function ClienteCanaisPage() {
 
       {!canManage ? (
         <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-          Seu acesso e somente leitura para conectores. A configuracao e o sync exigem capacidade de gestao de canais.
+          Seu acesso e somente leitura para canais. Alteracoes exigem permissao de gestao.
         </div>
       ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <PanelCard className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <CardTitle title="Arquitetura omnichannel" subtitle="Cada conector fica isolado por tenant e pronto para o inbox unificado." />
-            <StateBadge label={`${configuredCount} conectores ativos`} tone="info" />
+            <CardTitle title="Canais da operacao" subtitle="O que entra no atendimento, alimenta campanhas e devolve conversoes para os anuncios." />
+            <StateBadge label={`${configuredCount} ativos`} tone="info" />
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1156,26 +1156,26 @@ export default function ClienteCanaisPage() {
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <MiniPanel title="Atendimento" value="WhatsApp, Instagram e Messenger preparados para o inbox do tenant." />
+            <MiniPanel title="Atendimento" value="WhatsApp, Instagram e Messenger alimentam Conversas." />
             <MiniPanel title="Captacao" value="Meta Ads e Google Ads conectam origem, CPL e atribuicao." />
-            <MiniPanel title="Seguranca" value="Tokens ficam server-side e isolados por empresa cliente." />
+            <MiniPanel title="Conversoes" value="Leads, reunioes e vendas voltam para os anuncios quando configurados." />
           </div>
 
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle title="Prontidao atual" subtitle="Leitura rapida dos conectores que ja podem operar no tenant" />
+              <CardTitle title="Prontidao atual" subtitle="Leitura rapida dos canais que ja podem operar" />
               <StateBadge label={`${activeConnectors.length} ativos`} tone="success" />
             </div>
             <div className="mt-4 space-y-2">
               {activeConnectors.length === 0 ? (
-                <p className="text-sm text-white/52">Nenhum conector ativo ainda. Comece pelo WhatsApp e pelos canais de origem do lead.</p>
+                <p className="text-sm text-white/52">Nenhum canal ativo ainda. Comece pelo WhatsApp e pelos canais de origem do lead.</p>
               ) : (
                 activeConnectors.map((channel) => (
                   <div key={channel.id || channel.type} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/25 px-3 py-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{CONNECTORS.find((item) => item.type === channel.type)?.label || channel.displayName || channel.type}</p>
                       <p className="mt-1 text-xs text-white/48">
-                        atualizado {formatDateTime(channel.updatedAt)}{channel.lastSyncAt ? ` • sync ${formatDateTime(channel.lastSyncAt)}` : ""}
+                        atualizado {formatDateTime(channel.updatedAt)}{channel.lastSyncAt ? ` | campanhas ${formatDateTime(channel.lastSyncAt)}` : ""}
                       </p>
                       <p className="mt-1 text-xs text-white/40">
                         {formatOperationalCount(channel.chatCount)} • {formatOperationalCount(channel.openChatCount, "abertas")} • ultima atividade {formatDateTime(channel.lastActivityAt)}
@@ -1186,10 +1186,10 @@ export default function ClienteCanaisPage() {
                         label={connectionStatusLabel(channel.connectionStatus || channel.status)}
                         tone={toneForConnectionStatus(channel.connectionStatus || channel.status)}
                       />
-                      {channel.hasAccessToken ? <StateBadge label="token OK" tone="info" /> : null}
+                      {channel.hasAccessToken ? <StateBadge label="credencial OK" tone="info" /> : null}
                       {channel.outboundReady ? <StateBadge label="envio pronto" tone="success" /> : null}
                       {channel.inboundReady ? <StateBadge label="entrada pronta" tone="success" /> : null}
-                      {channel.syncReady ? <StateBadge label="sync pronto" tone="success" /> : null}
+                      {channel.syncReady ? <StateBadge label="campanhas OK" tone="success" /> : null}
                     </div>
                   </div>
                 ))
@@ -1269,28 +1269,28 @@ export default function ClienteCanaisPage() {
               <Field label="Nome do canal" value={whatsAppForm.displayName} onChange={(value) => setWhatsAppForm((current) => ({ ...current, displayName: value }))} placeholder="WhatsApp Comercial" disabled={!canManage} />
               <Field label="Numero" value={whatsAppForm.phoneNumber} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumber: value }))} placeholder="+55 11 99999-9999" disabled={!canManage} />
               {whatsAppForm.provider === "meta_whatsapp" ? (
-                <Field label="phoneNumberId" value={whatsAppForm.phoneNumberId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumberId: value }))} placeholder="123456789012345" required disabled={!canManage} />
+                <Field label="ID do numero na Meta" value={whatsAppForm.phoneNumberId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumberId: value }))} placeholder="123456789012345" required disabled={!canManage} />
               ) : (
-                <Field label="Endpoint do gateway" value={whatsAppForm.gatewayEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, gatewayEndpoint: value }))} placeholder="https://seu-gateway.com/messages/send" required disabled={!canManage} />
+                <Field label="URL de envio do provedor" value={whatsAppForm.gatewayEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, gatewayEndpoint: value }))} placeholder="https://seu-provedor.com/messages/send" required disabled={!canManage} />
               )}
               {whatsAppForm.provider !== "meta_whatsapp" ? (
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Field label="Endpoint de status" value={whatsAppForm.sessionStatusEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, sessionStatusEndpoint: value }))} placeholder="https://seu-gateway.com/session/status" disabled={!canManage} />
-                  <Field label="Endpoint de QR" value={whatsAppForm.qrCodeEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, qrCodeEndpoint: value }))} placeholder="https://seu-gateway.com/session/qr" disabled={!canManage} />
-                  <Field label="Endpoint de ligacao" value={whatsAppForm.callEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, callEndpoint: value }))} placeholder="https://seu-gateway.com/calls/start" disabled={!canManage} />
+                  <Field label="URL de status" value={whatsAppForm.sessionStatusEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, sessionStatusEndpoint: value }))} placeholder="https://seu-provedor.com/session/status" disabled={!canManage} />
+                  <Field label="URL do QR" value={whatsAppForm.qrCodeEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, qrCodeEndpoint: value }))} placeholder="https://seu-provedor.com/session/qr" disabled={!canManage} />
+                  <Field label="URL de ligacao" value={whatsAppForm.callEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, callEndpoint: value }))} placeholder="https://seu-provedor.com/calls/start" disabled={!canManage} />
                   <Field label="ID da sessao" value={whatsAppForm.sessionId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, sessionId: value }))} placeholder="comercial-01" disabled={!canManage} />
                 </div>
               ) : null}
               <SelectField label="Status" value={whatsAppForm.status} onChange={(value) => setWhatsAppForm((current) => ({ ...current, status: value }))} disabled={!canManage} />
-              <SecretField label={whatsAppForm.provider === "meta_whatsapp" ? "Access Token" : "Token do gateway"} value={whatsAppForm.accessToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, accessToken: value }))} placeholder={whatsAppMasked.access || "token"} required={!selectedChannel?.hasAccessToken} disabled={!canManage} />
+              <SecretField label={whatsAppForm.provider === "meta_whatsapp" ? "Credencial de acesso" : "Credencial do provedor"} value={whatsAppForm.accessToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, accessToken: value }))} placeholder={whatsAppMasked.access || "credencial"} required={!selectedChannel?.hasAccessToken} disabled={!canManage} />
               {whatsAppForm.provider === "meta_whatsapp" ? (
                 <>
-                  <SecretField label="Verify Token" value={whatsAppForm.verifyToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, verifyToken: value }))} placeholder={whatsAppMasked.verify || "verify-token"} required={!selectedChannel?.hasVerifyToken} disabled={!canManage} />
-                  <SecretField label="App Secret" value={whatsAppForm.appSecret} onChange={(value) => setWhatsAppForm((current) => ({ ...current, appSecret: value }))} placeholder={whatsAppMasked.secret || "app-secret"} required={!selectedChannel?.hasAppSecret} disabled={!canManage} />
+                  <SecretField label="Token de verificacao" value={whatsAppForm.verifyToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, verifyToken: value }))} placeholder={whatsAppMasked.verify || "token de verificacao"} required={!selectedChannel?.hasVerifyToken} disabled={!canManage} />
+                  <SecretField label="Segredo do app Meta" value={whatsAppForm.appSecret} onChange={(value) => setWhatsAppForm((current) => ({ ...current, appSecret: value }))} placeholder={whatsAppMasked.secret || "segredo do app"} required={!selectedChannel?.hasAppSecret} disabled={!canManage} />
                 </>
               ) : (
                 <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-3 text-xs leading-5 text-emerald-50/80">
-                  O gateway deve receber POST JSON com tenantId, channelId, provider, to, type e text/template. Assim o inbox e a IA continuam usando a mesma operacao.
+                  A conexao externa precisa aceitar envio de mensagens pela Altum para manter Conversas e Assistente no mesmo fluxo.
                 </div>
               )}
 
@@ -1399,7 +1399,7 @@ export default function ClienteCanaisPage() {
                 <div className="rounded-2xl border border-emerald-300/25 bg-emerald-500/10 p-3">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-emerald-100/80">Selecione o ativo</p>
                   <p className="mt-2 text-xs text-emerald-100/85">
-                    Encontramos mais de uma conta elegivel. Escolha qual ativo deve ser vinculado a este tenant.
+                    Encontramos mais de uma conta elegivel. Escolha qual ativo deve ser vinculado a esta conta.
                   </p>
                   <div className="mt-3 space-y-2">
                     {pendingSelection.options.map((option) => {
@@ -1440,7 +1440,7 @@ export default function ClienteCanaisPage() {
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Conexao gerenciada</p>
                 <p className="mt-2 text-xs text-white/62">
-                  A Altum gerencia OAuth, webhook e segredos de plataforma no backend. Nao e necessario informar App Secret, Verify Token, Client ID ou Client Secret aqui.
+                  A Altum cuida da conexao segura da plataforma. Quando conectar, campanhas, leads e conversoes passam a alimentar a operacao.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {selectedDefinition.type === "google_ads" ? (
@@ -1551,21 +1551,18 @@ export default function ClienteCanaisPage() {
 
               {supportsMetaWebhook(selectedDefinition.type) ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/58">
-                  Webhook unico Meta: <span className="font-medium text-white/82">/api/webhooks/meta</span> (verify token e assinatura globais da plataforma)
+                  Eventos da Meta serao recebidos pela Altum automaticamente quando a conexao estiver pronta.
                 </div>
               ) : null}
               {selectedDefinition.type === "google_ads" ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/58">
-                  O sync do Google Ads usa OAuth offline no backend. O servidor da Altum precisa de
-                  <span className="font-medium text-white/82"> GOOGLE_ADS_CLIENT_ID</span>,
-                  <span className="font-medium text-white/82"> GOOGLE_ADS_CLIENT_SECRET</span> e
-                  <span className="font-medium text-white/82"> GOOGLE_ADS_DEVELOPER_TOKEN</span>.
+                  A leitura de campanhas do Google Ads depende da conexao gerenciada da Altum estar ativa.
                 </div>
               ) : null}
 
               {selectedChannel?.lastError ? (
                 <div className="rounded-2xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs text-rose-100">
-                  Ultimo erro do conector: {selectedChannel.lastError}
+                  Ultimo alerta da conexao: {selectedChannel.lastError}
                 </div>
               ) : null}
 
@@ -1579,7 +1576,7 @@ export default function ClienteCanaisPage() {
                     className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/72 transition hover:bg-white/[0.08] disabled:opacity-60"
                   >
                     {syncingCampaigns ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                    Sync campanhas
+                    Atualizar campanhas
                   </button>
                 ) : null}
                 <Link
@@ -1634,7 +1631,7 @@ function ConversionHealthPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <CardTitle
           title="Pixels e conversoes"
-          subtitle="Diagnostico do envio server-side para Meta e Google Ads"
+          subtitle="Valide se leads, reunioes e vendas estao voltando para Meta e Google Ads."
         />
         <div className="flex items-center gap-2">
           <StateBadge
@@ -1654,7 +1651,7 @@ function ConversionHealthPanel({
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-3">
-        <MiniPanel title="Conectores prontos" value={`${summary?.ready || 0}/${summary?.total || 0}`} />
+        <MiniPanel title="Contas prontas" value={`${summary?.ready || 0}/${summary?.total || 0}`} />
         <MiniPanel title="Eventos enviados" value={String(summary?.processedRecent || 0)} />
         <MiniPanel title="Falhas recentes" value={String(summary?.failedRecent || 0)} />
       </div>
@@ -1680,7 +1677,7 @@ function ConversionHealthPanel({
                 </p>
               )}
               {item.recent.lastError ? (
-                <p className="mt-2 text-xs text-rose-100/80">Ultimo erro: {item.recent.lastError}</p>
+                <p className="mt-2 text-xs text-rose-100/80">Ultimo alerta: {item.recent.lastError}</p>
               ) : null}
             </div>
           ))}

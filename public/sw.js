@@ -1,4 +1,4 @@
-const SW_VERSION = "altum-client-v3";
+const SW_VERSION = "altum-client-v4";
 const STATIC_CACHE = `static-${SW_VERSION}`;
 const OFFLINE_URL = "/offline.html";
 
@@ -33,10 +33,7 @@ self.addEventListener("activate", (event) => {
 
 function isStaticAsset(url) {
   if (url.origin !== self.location.origin) return false;
-  if (url.pathname.startsWith("/_next/static/")) return true;
   if (url.pathname.startsWith("/pwa/")) return true;
-  if (url.pathname.endsWith(".css")) return true;
-  if (url.pathname.endsWith(".js")) return true;
   if (url.pathname.endsWith(".woff2")) return true;
   return false;
 }
@@ -48,6 +45,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname.startsWith("/_next/")) return;
 
   if (request.mode === "navigate" && url.pathname.startsWith("/cliente")) {
     event.respondWith(

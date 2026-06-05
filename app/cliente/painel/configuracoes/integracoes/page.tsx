@@ -240,7 +240,7 @@ export default function ClienteIntegracoesPage() {
       const data = (await res.json()) as { error?: string; webhookSecret?: string };
       if (!res.ok) throw new Error(data.error || "Falha ao atualizar conexao.");
       if (data.webhookSecret) setFreshSecrets((current) => ({ ...current, [connectionId]: data.webhookSecret as string }));
-      setNotice(patch.rotateWebhookSecret ? "Novo segredo gerado. Use o valor exibido antes de sair da tela." : "Conexao atualizada.");
+      setNotice(patch.rotateWebhookSecret ? "Nova chave gerada. Use o valor exibido antes de sair da tela." : "Conexao atualizada.");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao atualizar conexao.");
@@ -352,15 +352,15 @@ export default function ClienteIntegracoesPage() {
   return (
     <div className="client-daily-page space-y-5">
       <SectionHeader
-        title="Integracoes"
-        subtitle="Conecte fontes que alimentam atendimento, vendas, campanhas, produtos e inteligencia da Altum."
+        title="Integracoes nativas"
+        subtitle="Conecte lojas, canais e anuncios para alimentar atendimento, vendas, campanhas, relatorios e IA."
         action={
           <Link
             href="/cliente/painel/configuracoes"
             className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-hover)]"
           >
             <ArrowLeft className="h-4 w-4" />
-            Configuracoes
+            Configurar
           </Link>
         }
       />
@@ -371,9 +371,9 @@ export default function ClienteIntegracoesPage() {
       <PanelCard tone="brand" className="overflow-hidden p-5 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Ecossistema conectado</p>
+            <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Motor conectado da operacao</p>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)]">
-              Canais, anuncios e lojas deixam de ser configuracoes soltas e viram uma operacao unica de conversa, venda e acompanhamento.
+              Canais, anuncios e lojas deixam de ser pecas soltas e passam a alimentar conversa, venda, acompanhamento e decisao.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -381,6 +381,42 @@ export default function ClienteIntegracoesPage() {
               <BrandIcon key={brand} id={brand} size="md" />
             ))}
           </div>
+        </div>
+      </PanelCard>
+
+      <PanelCard className="p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <CardTitle
+            title="Como os dados voltam para a venda"
+            subtitle="O caminho ideal e simples: campanha traz o lead, conversa registra contexto, venda fecha e a Altum prepara o retorno para relatorios e campanhas."
+          />
+          <StateBadge label="trafego -> venda" tone="info" />
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <DataLoopCard
+            step="1"
+            title="Campanha e origem"
+            detail="Meta, Google, UTM e formularios ajudam a identificar de onde o lead veio."
+            brand="meta"
+          />
+          <DataLoopCard
+            step="2"
+            title="Conversa com contexto"
+            detail="Conversas e IA leem campanha, canal e oferta para responder com mais precisao."
+            brand="whatsapp"
+          />
+          <DataLoopCard
+            step="3"
+            title="Venda registrada"
+            detail="Proposta paga, financeiro e ecommerce alimentam o historico comercial."
+            brand="altum"
+          />
+          <DataLoopCard
+            step="4"
+            title="Retorno para campanha"
+            detail="Eventos de conversao ficam prontos para envio quando o conector esta ativo."
+            brand="google"
+          />
         </div>
       </PanelCard>
 
@@ -394,8 +430,8 @@ export default function ClienteIntegracoesPage() {
       <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PanelCard className="p-5 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <CardTitle title="Nova loja" subtitle="Crie a conexao e configure o webhook na plataforma de ecommerce." />
-            <StateBadge label="ecommerce" tone="info" />
+            <CardTitle title="Conectar loja" subtitle="Traga produtos, pedidos, carrinhos e rastreio para dentro da operacao Altum." />
+            <StateBadge label="loja" tone="info" />
           </div>
 
           <div className="mt-5 grid gap-3">
@@ -447,7 +483,7 @@ export default function ClienteIntegracoesPage() {
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium text-[var(--cliente-card-text)]">
-              ID da loja
+              Identificador da loja
               <input
                 value={form.storeId}
                 onChange={(event) => setForm((current) => ({ ...current, storeId: event.target.value }))}
@@ -460,7 +496,7 @@ export default function ClienteIntegracoesPage() {
 
           <ClientActionButton onClick={createConnection} disabled={!canManage || saving} tone="primary" className="mt-5 w-full">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
-            Criar conexao ecommerce
+            Conectar loja
           </ClientActionButton>
         </PanelCard>
 
@@ -504,13 +540,13 @@ export default function ClienteIntegracoesPage() {
 
       <PanelCard className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <CardTitle title="WhatsApp do ecommerce" subtitle="Templates aprovados para compra, rastreio, carrinho e pos-venda. O envio automatico so roda quando estiver ativado." />
+          <CardTitle title="Mensagens automaticas da loja" subtitle="Compra, rastreio, carrinho e pos-venda podem virar conversas comerciais no WhatsApp." />
           <div className="flex flex-wrap gap-2">
             <ClientActionButton onClick={() => void processAutomation(true)} disabled={!canManage || saving} tone="secondary">
-              Testar fila
+              Simular pendentes
             </ClientActionButton>
             <ClientActionButton onClick={() => void processAutomation(false)} disabled={!canManage || saving || !automation.autoSendEnabled} tone="ai">
-              Processar envios
+              Enviar pendentes
             </ClientActionButton>
             <ClientActionButton onClick={() => void saveAutomation()} disabled={!canManage || saving} tone="primary">
               Salvar
@@ -573,9 +609,9 @@ export default function ClienteIntegracoesPage() {
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <CapabilityCard icon={CheckCircle2} title="Compra realizada" detail="pedido recebido vira contexto para confirmar compra e orientar o cliente." />
-            <CapabilityCard icon={Truck} title="Rastreio" detail="quando o codigo chega por webhook, a conversa passa a ter o dado pronto." />
+            <CapabilityCard icon={Truck} title="Rastreio" detail="quando a loja envia o codigo, a conversa passa a ter o dado pronto." />
             <CapabilityCard icon={ShoppingCart} title="Carrinho abandonado" detail="evento vira oportunidade para retomada por campanha ou WhatsApp." />
-            <CapabilityCard icon={Workflow} title="Upsell e recompra" detail="histórico de compra ajuda a sugerir proximas ofertas." />
+            <CapabilityCard icon={Workflow} title="Upsell e recompra" detail="historico de compra ajuda a sugerir proximas ofertas." />
           </div>
         </PanelCard>
       </section>
@@ -650,7 +686,7 @@ function ConnectionCard({
             className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)] disabled:opacity-60"
           >
             <RotateCw className="h-3.5 w-3.5" />
-            Novo segredo
+            Nova chave
           </button>
         </div>
       </div>
@@ -661,14 +697,44 @@ function ConnectionCard({
         <MiniStat label="Carrinhos" value={String(connection.cartCount || 0)} />
       </div>
 
-      <div className="mt-4 grid gap-2">
-        <CopyLine label="URL do webhook" value={webhookUrl} onCopy={onCopy} />
-        <CopyLine label="Segredo" value={freshSecret || connection.webhookSecretMasked || "gerado na criacao"} onCopy={onCopy} muted={!freshSecret} />
-      </div>
+      <details className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+        <summary className="cursor-pointer list-none text-xs font-black uppercase text-[var(--cliente-card-text-soft)]">
+          Configuracao tecnica da loja
+        </summary>
+        <div className="mt-3 grid gap-2">
+          <CopyLine label="URL de eventos" value={webhookUrl} onCopy={onCopy} />
+          <CopyLine label="Chave de seguranca" value={freshSecret || connection.webhookSecretMasked || "gerada na criacao"} onCopy={onCopy} muted={!freshSecret} />
+        </div>
 
-      <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
-        Configure a plataforma para enviar eventos de produto, pedido, rastreio e carrinho para esta URL. O segredo deve ser enviado em <span className="font-semibold">x-altum-webhook-token</span>.
-      </p>
+        <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+          Use estes dados apenas na configuracao tecnica da plataforma da loja para enviar produtos, pedidos, rastreio e carrinhos para a Altum.
+        </p>
+      </details>
+    </div>
+  );
+}
+
+function DataLoopCard({
+  step,
+  title,
+  detail,
+  brand,
+}: {
+  step: string;
+  title: string;
+  detail: string;
+  brand: BrandIconId;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <BrandIcon id={brand} size="sm" />
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-xs font-semibold text-[var(--cliente-card-text-muted)]">
+          {step}
+        </span>
+      </div>
+      <p className="mt-4 text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
+      <p className="mt-2 text-sm leading-5 text-[var(--cliente-card-text-muted)]">{detail}</p>
     </div>
   );
 }
@@ -728,7 +794,7 @@ function CopyLine({ label, value, muted, onCopy }: { label: string; value: strin
   return (
     <div className="flex min-w-0 items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">{label}</p>
+        <p className="text-[10px] font-bold uppercase tracking-normal text-[var(--cliente-card-text-soft)]">{label}</p>
         <p className={`mt-1 truncate text-xs ${muted ? "text-[var(--cliente-card-text-soft)]" : "text-[var(--cliente-card-text)]"}`}>{value}</p>
       </div>
       <button type="button" onClick={() => onCopy(value)} className="rounded-lg p-2 text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
@@ -741,7 +807,7 @@ function CopyLine({ label, value, muted, onCopy }: { label: string; value: strin
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-normal text-[var(--cliente-card-text-soft)]">{label}</p>
       <p className="mt-1 text-sm font-semibold text-[var(--cliente-card-text)]">{value}</p>
     </div>
   );

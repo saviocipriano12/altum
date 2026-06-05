@@ -44,6 +44,22 @@ export type WhatsAppTemplateSeed = {
   body: string;
 };
 
+export type WhatsAppTemplateHeaderMedia = {
+  type: "image" | "video" | "document";
+  link?: string;
+  id?: string;
+  filename?: string;
+};
+
+export type WhatsAppMessageTemplate = {
+  id?: string | null;
+  name: string;
+  language: string;
+  status: string;
+  category: string;
+  components: Array<Record<string, unknown>>;
+};
+
 const DEFAULT_WHATSAPP_FOLLOW_UP_TEMPLATES: WhatsAppTemplateSeed[] = [
   {
     name: "follow_up_geral",
@@ -416,6 +432,7 @@ export async function sendMetaTemplateMessage(input: {
   templateName: string;
   languageCode?: string;
   bodyParams?: string[];
+  headerMedia?: WhatsAppTemplateHeaderMedia | null;
 }) {
   if (!isOfficialWhatsAppProvider(input.channel.provider)) {
     return sendExternalWhatsAppMessage({
@@ -426,6 +443,7 @@ export async function sendMetaTemplateMessage(input: {
         templateName: input.templateName,
         languageCode: input.languageCode || "pt_BR",
         bodyParams: input.bodyParams || [],
+        headerMedia: input.headerMedia || null,
       },
     });
   }
@@ -434,6 +452,37 @@ export async function sendMetaTemplateMessage(input: {
     .map((item) => String(item || "").trim())
     .filter(Boolean)
     .slice(0, 20);
+  const headerMedia = input.headerMedia;
+  const components: Array<Record<string, unknown>> = [];
+
+  if (headerMedia?.type && (headerMedia.link || headerMedia.id)) {
+    const mediaPayload =
+      headerMedia.type === "document"
+        ? {
+            ...(headerMedia.id ? { id: headerMedia.id } : { link: headerMedia.link }),
+            ...(headerMedia.filename ? { filename: headerMedia.filename } : {}),
+          }
+        : headerMedia.id
+          ? { id: headerMedia.id }
+          : { link: headerMedia.link };
+
+    components.push({
+      type: "header",
+      parameters: [
+        {
+          type: headerMedia.type,
+          [headerMedia.type]: mediaPayload,
+        },
+      ],
+    });
+  }
+
+  if (bodyParams.length) {
+    components.push({
+      type: "body",
+      parameters: bodyParams.map((text) => ({ type: "text", text })),
+    });
+  }
 
   const response = await fetch(
     `https://graph.facebook.com/${VERSION}/${input.channel.phoneNumberId}/messages`,
@@ -451,16 +500,7 @@ export async function sendMetaTemplateMessage(input: {
         template: {
           name: input.templateName,
           language: { code: input.languageCode || "pt_BR" },
-          ...(bodyParams.length
-            ? {
-                components: [
-                  {
-                    type: "body",
-                    parameters: bodyParams.map((text) => ({ type: "text", text })),
-                  },
-                ],
-              }
-            : {}),
+          ...(components.length ? { components } : {}),
         },
       }),
     }
@@ -524,7 +564,7 @@ async function resolveWhatsAppBusinessAccountId(channel: WhatsAppChannelConfig) 
 
 async function listMetaMessageTemplates(channel: WhatsAppChannelConfig, wabaId: string) {
   const response = await fetch(
-    `https://graph.facebook.com/${VERSION}/${wabaId}/message_templates?fields=name,status,language,category&limit=200`,
+    `https://graph.facebook.com/${VERSION}/${wabaId}/message_templates?fields=id,name,status,language,category,components&limit=200`,
     {
       method: "GET",
       headers: {
@@ -535,10 +575,12 @@ async function listMetaMessageTemplates(channel: WhatsAppChannelConfig, wabaId: 
 
   const payload = (await response.json().catch(() => ({}))) as {
     data?: Array<{
+      id?: string;
       name?: string;
       status?: string;
       language?: string;
       category?: string;
+      components?: Array<Record<string, unknown>>;
     }>;
     error?: { message?: string };
   };
@@ -548,11 +590,19 @@ async function listMetaMessageTemplates(channel: WhatsAppChannelConfig, wabaId: 
   }
 
   return (payload.data || []).map((item) => ({
+    id: String(item.id || "").trim() || null,
     name: String(item.name || "").trim().toLowerCase(),
     language: String(item.language || "").trim(),
     status: String(item.status || "").trim().toLowerCase(),
     category: String(item.category || "").trim().toUpperCase(),
-  }));
+    components: Array.isArray(item.components) ? item.components : [],
+  })) satisfies WhatsAppMessageTemplate[];
+}
+
+export async function listWhatsAppMessageTemplates(channel: WhatsAppChannelConfig) {
+  const wabaId = await resolveWhatsAppBusinessAccountId(channel);
+  const templates = await listMetaMessageTemplates(channel, wabaId);
+  return { wabaId, templates };
 }
 
 async function createMetaMessageTemplate(
@@ -690,6 +740,55 @@ export async function sendMetaAudioMessage(input: {
   if (!response.ok) {
     const errMessage =
       (payload as { error?: { message?: string } })?.error?.message || "Erro na API da Meta ao enviar audio.";
+    throw new Error(errMessage);
+  }
+
+  return payload;
+}
+
+export async function sendMetaMediaIdMessage(input: {
+  channel: WhatsAppChannelConfig;
+  to: string;
+  mediaId: string;
+  mediaType: "image" | "video" | "document";
+  caption?: string;
+  filename?: string;
+}) {
+  const payloadKey = input.mediaType;
+  const mediaPayload =
+    input.mediaType === "document"
+      ? {
+          id: input.mediaId,
+          ...(input.caption ? { caption: input.caption } : {}),
+          ...(input.filename ? { filename: input.filename } : {}),
+        }
+      : {
+          id: input.mediaId,
+          ...(input.caption ? { caption: input.caption } : {}),
+        };
+
+  const response = await fetch(
+    `https://graph.facebook.com/${VERSION}/${input.channel.phoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.channel.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: input.to,
+        type: input.mediaType,
+        [payloadKey]: mediaPayload,
+      }),
+    }
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errMessage =
+      (payload as { error?: { message?: string } })?.error?.message || "Erro na API da Meta ao enviar midia.";
     throw new Error(errMessage);
   }
 

@@ -1,7 +1,9 @@
+const projectRoot = process.cwd().replaceAll("\\", "/");
+
 const nextConfig = {
   poweredByHeader: false,
   turbopack: {
-    root: process.cwd(),
+    root: projectRoot,
   },
   async headers() {
     const isDev = process.env.NODE_ENV !== "production";
@@ -27,7 +29,7 @@ const nextConfig = {
               "default-src 'self'; " +
               `script-src ${scriptSrc}; ` +
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-              "img-src 'self' data: blob: https://images.unsplash.com https://www.facebook.com https://www.google.com https://grainy-gradients.vercel.app; " +
+              "img-src 'self' data: blob: https://images.unsplash.com https://www.facebook.com https://*.facebook.com https://*.fbcdn.net https://*.cdninstagram.com https://lookaside.fbsbx.com https://platform-lookaside.fbsbx.com https://www.google.com https://*.googleusercontent.com https://grainy-gradients.vercel.app; " +
               "font-src 'self' https://fonts.gstatic.com data:; " +
               "connect-src 'self' https://graph.facebook.com https://www.google-analytics.com https://region1.google-analytics.com https://www.googleapis.com https://*.googleapis.com https://googleads.googleapis.com https://api.openai.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.firebaseapp.com https://typebot.io https://*.typebot.io; " +
               "frame-src 'self' https://*.firebaseapp.com https://*.google.com https://typebot.io https://*.typebot.io; " +
@@ -44,6 +46,26 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "images.unsplash.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.cdninstagram.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.fbcdn.net",
+      },
+      {
+        protocol: "https",
+        hostname: "lookaside.fbsbx.com",
+      },
+      {
+        protocol: "https",
+        hostname: "platform-lookaside.fbsbx.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.googleusercontent.com",
       },
     ],
   },

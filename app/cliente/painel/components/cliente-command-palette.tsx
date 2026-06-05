@@ -5,11 +5,8 @@ import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
 import {
   BarChart3,
-  BookOpen,
   Bot,
   CalendarDays,
-  FileText,
-  GitBranchPlus,
   LayoutGrid,
   ListTodo,
   LogOut,
@@ -18,12 +15,12 @@ import {
   MoonStar,
   Package,
   Plug,
-  Rocket,
   Search,
   Settings,
   Sparkles,
   SunMedium,
   Target,
+  TrendingUp,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/firebaseConfig";
@@ -42,16 +39,16 @@ const NAV_ITEMS: NavItem[] = [
   { key: "inicio", label: "Inicio", href: "/cliente/painel", icon: <LayoutGrid className="h-4 w-4" /> },
   { key: "conversas", label: "Conversas", href: "/cliente/painel/inbox", icon: <MessageSquare className="h-4 w-4" /> },
   { key: "clientes", label: "Clientes & Oportunidades", href: "/cliente/painel/crm", icon: <Target className="h-4 w-4" /> },
-  { key: "pipeline", label: "Clientes & Oportunidades - Kanban", href: "/cliente/painel/pipeline", icon: <Target className="h-4 w-4" /> },
+  { key: "funil", label: "Clientes & Oportunidades - funil", href: "/cliente/painel/pipeline", icon: <Target className="h-4 w-4" /> },
   {
     key: "comercial",
-    label: "Clientes & Oportunidades - Propostas",
+    label: "Clientes & Oportunidades - propostas",
     href: "/cliente/painel/comercial",
     icon: <ListTodo className="h-4 w-4" />,
     capability: "manage_commercial",
   },
   { key: "agenda", label: "Agenda", href: "/cliente/painel/agenda", icon: <CalendarDays className="h-4 w-4" /> },
-  { key: "tarefas", label: "Agenda - Tarefas", href: "/cliente/painel/follow-ups", icon: <ListTodo className="h-4 w-4" /> },
+  { key: "retornos", label: "Agenda - retornos", href: "/cliente/painel/follow-ups", icon: <CalendarDays className="h-4 w-4" /> },
   {
     key: "produtos_servicos",
     label: "Produtos & Servicos",
@@ -59,8 +56,8 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Package className="h-4 w-4" />,
     capability: "manage_ai",
   },
-  { key: "campanhas", label: "Campanhas", href: "/cliente/painel/campanhas", icon: <Sparkles className="h-4 w-4" /> },
-  { key: "captacao", label: "Campanhas - Captacao", href: "/cliente/painel/captacao", icon: <Megaphone className="h-4 w-4" /> },
+  { key: "campanhas", label: "Campanhas", href: "/cliente/painel/campanhas", icon: <TrendingUp className="h-4 w-4" /> },
+  { key: "captacao", label: "Campanhas - captacao", href: "/cliente/painel/captacao", icon: <Megaphone className="h-4 w-4" /> },
   { key: "relatorios", label: "Relatorios", href: "/cliente/painel/metricas", icon: <BarChart3 className="h-4 w-4" /> },
   {
     key: "perguntar_altum",
@@ -72,16 +69,10 @@ const NAV_ITEMS: NavItem[] = [
   { key: "assistente", label: "Assistente Altum", href: "/cliente/painel/ia", icon: <Bot className="h-4 w-4" />, capability: "manage_ai" },
   {
     key: "conhecimento",
-    label: "Assistente Altum - Base de conhecimento",
+    label: "Assistente Altum - base de conhecimento",
     href: "/cliente/painel/conhecimento",
-    icon: <BookOpen className="h-4 w-4" />,
+    icon: <Bot className="h-4 w-4" />,
     capability: "manage_ai",
-  },
-  {
-    key: "escaladas",
-    label: "Assistente Altum - Escaladas",
-    href: "/cliente/painel/handoffs",
-    icon: <GitBranchPlus className="h-4 w-4" />,
   },
   {
     key: "configuracoes",
@@ -92,13 +83,11 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     key: "integracoes",
-    label: "Configuracoes - Integracoes",
+    label: "Configurar - integracoes",
     href: "/cliente/painel/configuracoes/integracoes",
     icon: <Plug className="h-4 w-4" />,
     capability: "manage_settings",
   },
-  { key: "implantacao", label: "Configuracoes - Implantacao", href: "/cliente/painel/go-live", icon: <Rocket className="h-4 w-4" /> },
-  { key: "avancado", label: "Configuracoes - Avancado", href: "/cliente/painel/logs", icon: <FileText className="h-4 w-4" /> },
 ];
 
 export function ClienteCommandPalette() {

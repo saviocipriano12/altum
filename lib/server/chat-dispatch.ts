@@ -5,8 +5,12 @@ import { buildOutgoingChatOperationalPatch } from "@/lib/server/chat-operations"
 import { getTenantSettings } from "@/lib/server/tenant";
 import {
   getWhatsAppChannelForTenant,
+  sendMetaAudioMessage,
+  sendMetaMediaIdMessage,
   sendMetaTemplateMessage,
   sendMetaTextMessage,
+  type WhatsAppTemplateHeaderMedia,
+  uploadWhatsAppMedia,
 } from "@/app/lib/server/whatsapp-channel";
 import {
   getMetaChannelForTenant,
@@ -19,6 +23,8 @@ export type ChatDispatchActor = {
   id: string;
   name: string;
 };
+
+export type ChatMediaType = "image" | "video" | "document" | "audio";
 
 function toDate(value: unknown) {
   if (!value) return null;
@@ -102,6 +108,21 @@ function buildTemplateMessageText(templateName: string, bodyParams: string[]) {
   const params = bodyParams.filter(Boolean);
   if (!params.length) return `Template enviado: ${templateName}`;
   return `Template enviado: ${templateName}\nVariaveis: ${params.join(" | ")}`;
+}
+
+function normalizeTemplateHeaderMedia(value: WhatsAppTemplateHeaderMedia | null | undefined) {
+  if (!value) return null;
+  const type = String(value.type || "").trim().toLowerCase();
+  if (type !== "image" && type !== "video" && type !== "document") return null;
+  const link = String(value.link || "").trim();
+  const id = String(value.id || "").trim();
+  if (!link && !id) return null;
+  return {
+    type,
+    ...(link ? { link } : {}),
+    ...(id ? { id } : {}),
+    ...(value.filename ? { filename: String(value.filename).trim().slice(0, 180) } : {}),
+  } satisfies WhatsAppTemplateHeaderMedia;
 }
 
 export async function sendTenantChatText(input: {
@@ -290,6 +311,180 @@ export async function sendTenantChatText(input: {
     metaMessageId,
     phoneNumberId,
     metaChannelId,
+    outboundType,
+    templateName,
+    templateLanguage,
+    templateParams,
+    persistedText,
+  };
+}
+
+function previewForMedia(type: ChatMediaType, caption: string, filename: string) {
+  if (caption) return caption;
+  if (type === "image") return "[Imagem enviada]";
+  if (type === "video") return "[Video enviado]";
+  if (type === "audio") return "[Audio enviado]";
+  return filename ? `[Documento enviado: ${filename}]` : "[Documento enviado]";
+}
+
+export async function sendTenantChatMedia(input: {
+  tenantId: string;
+  chatId: string;
+  mediaType: ChatMediaType;
+  buffer: Buffer;
+  filename: string;
+  contentType: string;
+  caption?: string;
+  actor: ChatDispatchActor;
+  pauseAi?: boolean;
+  pauseMinutes?: number;
+}) {
+  const tenantId = String(input.tenantId || "").trim();
+  const chatId = String(input.chatId || "").trim();
+  const mediaType = input.mediaType;
+  const filename = String(input.filename || "arquivo").trim().slice(0, 180) || "arquivo";
+  const contentType = String(input.contentType || "application/octet-stream").trim().slice(0, 180);
+  const caption = String(input.caption || "").trim().slice(0, 1024);
+
+  if (!tenantId || !chatId || !input.buffer?.length) {
+    throw new Error("tenantId, chatId e arquivo sao obrigatorios.");
+  }
+  if (!["image", "video", "document", "audio"].includes(mediaType)) {
+    throw new Error("Tipo de midia invalido.");
+  }
+
+  const chatRef = adminDb.collection("chats").doc(chatId);
+  const chatSnap = await chatRef.get();
+  if (!chatSnap.exists) {
+    throw new Error("Chat nao encontrado.");
+  }
+
+  const chat = chatSnap.data() as {
+    tenantId?: string;
+    contactPhone?: string;
+    channel?: string;
+    channelId?: string;
+    channelPhoneNumberId?: string;
+    assignedTo?: string;
+    ownerId?: string;
+    lastClientMessageAt?: unknown;
+  };
+
+  if ((chat.tenantId || "") !== tenantId) {
+    throw new Error("Chat fora do tenant informado.");
+  }
+
+  const normalizedChannel = String(chat.channel || "whatsapp").trim().toLowerCase() || "whatsapp";
+  if (normalizedChannel !== "whatsapp") {
+    throw new Error("Envio de midia pelo painel esta disponivel para WhatsApp oficial.");
+  }
+  if (isWhatsAppServiceWindowClosed(chat.lastClientMessageAt)) {
+    throw new Error("Janela de 24h encerrada. Use um template aprovado para retomar o contato.");
+  }
+
+  const channel = await getWhatsAppChannelForTenant(tenantId, {
+    allowAgencyFallback: false,
+    channelId: String(chat.channelId || "").trim() || null,
+    phoneNumberId: String(chat.channelPhoneNumberId || "").trim() || null,
+  });
+  if (!channel) {
+    throw new Error("Canal WhatsApp ativo nao configurado para este tenant.");
+  }
+
+  const phone = normalizePhone(chat.contactPhone);
+  if (!phone) {
+    throw new Error("Chat sem telefone valido.");
+  }
+
+  const upload = await uploadWhatsAppMedia({
+    channel,
+    buffer: input.buffer,
+    filename,
+    contentType,
+  });
+
+  const payload =
+    mediaType === "audio"
+      ? await sendMetaAudioMessage({ channel, to: phone, mediaId: upload.mediaId })
+      : await sendMetaMediaIdMessage({
+          channel,
+          to: phone,
+          mediaId: upload.mediaId,
+          mediaType,
+          caption,
+          filename: mediaType === "document" ? filename : undefined,
+        });
+
+  const metaMessageId = payload?.messages?.[0]?.id || null;
+  const persistedText = previewForMedia(mediaType, caption, filename);
+
+  const writes: Promise<unknown>[] = [
+    chatRef.set(
+      {
+        lastMessage: persistedText,
+        lastMessageTime: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        channel: normalizedChannel,
+        channelPhoneNumberId: channel.phoneNumberId,
+        ...buildOutgoingChatOperationalPatch({
+          status: "open",
+          assignedTo: String(chat.assignedTo || chat.ownerId || input.actor.id),
+        }),
+      },
+      { merge: true }
+    ),
+    adminDb.collection("messages").add({
+      chatId,
+      tenantId,
+      text: persistedText,
+      sender: "agent",
+      senderId: input.actor.id,
+      senderName: input.actor.name,
+      type: mediaType,
+      status: "sent",
+      deliveryStatus: "sent",
+      channel: normalizedChannel,
+      ...(metaMessageId ? { metaMessageId } : {}),
+      mediaId: upload.mediaId,
+      mediaName: filename,
+      mediaMimeType: contentType,
+      mediaSize: input.buffer.length,
+      ...(caption ? { caption } : {}),
+      channelPhoneNumberId: channel.phoneNumberId,
+      createdAt: FieldValue.serverTimestamp(),
+    }),
+  ];
+
+  if (input.pauseAi) {
+    const pauseMinutes = Math.max(1, Math.min(12 * 60, Number(input.pauseMinutes || 30)));
+    writes.push(
+      adminDb.collection("chat_state").doc(getChatStateDocId(tenantId, chatId)).set(
+        {
+          tenantId,
+          chatId,
+          aiEnabled: false,
+          pausedUntil: new Date(Date.now() + pauseMinutes * 60 * 1000),
+          humanOwnerUserId: input.actor.id,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: input.actor.id,
+          updatedByName: input.actor.name,
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  await Promise.all(writes);
+
+  return {
+    tenantId,
+    chatId,
+    channel: normalizedChannel,
+    phoneNumberId: channel.phoneNumberId,
+    metaMessageId,
+    mediaId: upload.mediaId,
+    mediaType,
+    persistedText,
   };
 }
 
@@ -299,6 +494,7 @@ export async function sendTenantChatTemplate(input: {
   templateName: string;
   languageCode?: string;
   bodyParams?: string[];
+  headerMedia?: WhatsAppTemplateHeaderMedia | null;
   actor: ChatDispatchActor;
   pauseAi?: boolean;
   pauseMinutes?: number;
@@ -311,6 +507,7 @@ export async function sendTenantChatTemplate(input: {
     .map((item) => String(item || "").trim())
     .filter(Boolean)
     .slice(0, 20);
+  const headerMedia = normalizeTemplateHeaderMedia(input.headerMedia);
 
   if (!tenantId || !chatId || !templateName) {
     throw new Error("tenantId, chatId e templateName sao obrigatorios.");
@@ -361,6 +558,7 @@ export async function sendTenantChatTemplate(input: {
     templateName,
     languageCode,
     bodyParams,
+    headerMedia,
   });
   const metaMessageId = payload?.messages?.[0]?.id || null;
   const text = buildTemplateMessageText(templateName, bodyParams);
@@ -394,6 +592,7 @@ export async function sendTenantChatTemplate(input: {
       templateName,
       templateLanguage: languageCode,
       templateParams: bodyParams,
+      ...(headerMedia ? { templateHeaderMedia: headerMedia } : {}),
       ...(metaMessageId ? { metaMessageId } : {}),
       channelPhoneNumberId: channel.phoneNumberId,
       createdAt: FieldValue.serverTimestamp(),
@@ -429,5 +628,6 @@ export async function sendTenantChatTemplate(input: {
     phoneNumberId: channel.phoneNumberId,
     templateName,
     languageCode,
+    headerMedia,
   };
 }

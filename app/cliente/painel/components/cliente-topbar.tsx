@@ -28,7 +28,7 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
   const pageMeta = getPageMeta(pathname || "/cliente/painel");
   const initials = operatorName.slice(0, 2).toUpperCase();
   const actionButtonClass =
-    "inline-flex h-11 items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3.5 text-sm font-medium text-[var(--cliente-text-muted)] shadow-[0_14px_28px_-24px_rgba(15,23,42,0.2)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-primary)]/20 hover:bg-[var(--cliente-surface-hover)] hover:text-[var(--cliente-text)]";
+    "inline-flex h-10 items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 text-sm font-medium text-[var(--cliente-text-muted)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-primary)]/25 hover:bg-[var(--cliente-surface-hover)] hover:text-[var(--cliente-text)]";
 
   async function handleSignOut() {
     try {
@@ -40,24 +40,24 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
   }
 
   return (
-    <header className="client-glass client-topbar fixed left-0 right-0 top-0 z-30 border-b border-[var(--cliente-border)] bg-[var(--cliente-topbar)]/95 backdrop-blur-xl lg:left-[var(--cliente-sidebar-width)] lg:right-5 lg:top-5 lg:rounded-[24px] lg:border">
-      <div className="flex h-[72px] items-center gap-2 px-3 sm:gap-3 lg:h-[88px] lg:px-5">
+    <header className="client-glass client-topbar fixed left-0 right-0 top-0 z-30 border-b border-[var(--cliente-border)] bg-[var(--cliente-topbar)] lg:left-[var(--cliente-sidebar-width)] lg:right-5 lg:top-5 lg:rounded-[20px] lg:border">
+      <div className="flex h-[64px] items-center gap-2 px-3 sm:gap-3 lg:h-[72px] lg:px-4">
         <button
           type="button"
           onClick={onOpenMenu}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-text-muted)] shadow-[0_14px_28px_-24px_rgba(15,23,42,0.2)] transition hover:border-[var(--cliente-primary)]/20 hover:bg-[var(--cliente-surface-hover)] hover:text-[var(--cliente-text)] lg:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-text-muted)] transition hover:border-[var(--cliente-primary)]/20 hover:bg-[var(--cliente-surface-hover)] hover:text-[var(--cliente-text)] lg:hidden"
           aria-label="Abrir menu"
         >
           <Menu className="h-5 w-5" />
         </button>
 
-        <div className="min-w-0 flex-1 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 shadow-[0_16px_34px_-28px_rgba(15,23,42,0.24)] sm:rounded-[22px] sm:px-4 sm:py-3 lg:flex-none">
+        <div className="min-w-0 flex-1 px-1 lg:flex-none">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <p className="truncate text-[1rem] font-semibold tracking-[-0.025em] text-[var(--cliente-text)]">{pageMeta.title}</p>
+              <p className="truncate text-[1rem] font-semibold tracking-normal text-[var(--cliente-text)]">{pageMeta.title}</p>
               <ClientBadge label={pageMeta.badge} tone={pageMeta.tone} />
             </div>
-            <p className="mt-1 hidden truncate text-[12px] font-medium text-[var(--cliente-text-soft)] sm:block">{pageMeta.description}</p>
+            <p className="mt-0.5 hidden truncate text-[12px] font-medium text-[var(--cliente-text-soft)] xl:block">{pageMeta.description}</p>
           </div>
         </div>
 
@@ -86,8 +86,8 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
             <span className="hidden xl:inline">{theme === "dark" ? "Modo claro" : "Modo escuro"}</span>
           </button>
 
-          <div className="hidden items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-2 text-right shadow-[0_14px_28px_-24px_rgba(15,23,42,0.2)] lg:flex">
-            <div className="inline-flex h-9 w-9 items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,var(--cliente-primary),var(--cliente-primary-hover))] text-[10px] font-black text-white shadow-[0_14px_24px_-14px_var(--cliente-primary-glow)]">
+          <div className="hidden items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-2 py-1.5 text-right lg:flex">
+            <div className="inline-flex h-8 w-8 items-center justify-center rounded-[12px] bg-[linear-gradient(135deg,var(--cliente-primary),var(--cliente-primary-hover))] text-[10px] font-black text-white shadow-[0_14px_24px_-14px_var(--cliente-primary-glow)]">
               {initials}
             </div>
             <p className="max-w-[120px] truncate text-sm font-semibold text-[var(--cliente-text)]">{operatorName}</p>
@@ -120,25 +120,25 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
 
 function getPageMeta(pathname: string) {
   if (pathname === "/cliente/painel") {
-    return { title: "Inicio", description: "Veja prioridades, numeros e o que pede acao agora.", badge: "Prioridades", tone: "info" as const };
+    return { title: "Inicio", description: "Trafego, atendimento, venda e retencao em uma fila clara.", badge: "Operacao", tone: "info" as const };
   }
   if (pathname.includes("/inbox")) {
-    return { title: "Conversas", description: "Atenda clientes e avance a venda no mesmo fluxo.", badge: "Atendimento", tone: "success" as const };
+    return { title: "Conversas", description: "Conversas com IA e humano trabalhando para converter.", badge: "Engajamento", tone: "success" as const };
   }
   if (pathname.includes("/crm") || pathname.includes("/pipeline") || pathname.includes("/comercial")) {
-    return { title: "Clientes & Oportunidades", description: "Lista, kanban e propostas do mesmo relacionamento.", badge: "Vendas", tone: "info" as const };
+    return { title: "Clientes & Oportunidades", description: "Clientes, oportunidades, propostas e proximos passos.", badge: "Conversao", tone: "info" as const };
   }
   if (pathname.includes("/follow-ups") || pathname.includes("/agenda")) {
-    return { title: "Agenda", description: "Compromissos, tarefas e proximos passos com clareza.", badge: "Execucao", tone: "warning" as const };
+    return { title: "Agenda", description: "Retornos, compromissos, recompra e clientes parados.", badge: "Retencao", tone: "warning" as const };
   }
   if (pathname.includes("/produtos-servicos")) {
-    return { title: "Produtos & Servicos", description: "Ensine a Altum o que a empresa vende e como deve recomendar.", badge: "Oferta", tone: "info" as const };
+    return { title: "Produtos & Servicos", description: "O que a empresa vende e como a IA deve recomendar.", badge: "Oferta", tone: "info" as const };
   }
   if (pathname.includes("/campanhas") || pathname.includes("/captacao")) {
-    return { title: "Campanhas", description: "Aquisicao, segmentacao e reativacao sem ruido tecnico.", badge: "Crescimento", tone: "info" as const };
+    return { title: "Campanhas", description: "Campanhas, captacao, UTMs e resultado comercial.", badge: "Trafego", tone: "info" as const };
   }
   if (pathname.includes("/metricas")) {
-    return { title: "Relatorios", description: "KPIs e leitura comercial para decidir com rapidez.", badge: "Performance", tone: "info" as const };
+    return { title: "Relatorios", description: "Leitura simples do que gera dinheiro e do que trava.", badge: "Decisao", tone: "info" as const };
   }
   if (pathname.includes("/perguntar-altum")) {
     return { title: "Perguntar a Altum", description: "Converse com os dados da operacao para achar prioridades e gargalos.", badge: "Insights", tone: "ai" as const };
@@ -149,10 +149,10 @@ function getPageMeta(pathname: string) {
     pathname.includes("/handoffs") ||
     pathname.includes("/automacoes")
   ) {
-    return { title: "Assistente Altum", description: "IA, conhecimento, automacoes e escaladas no mesmo lugar.", badge: "IA", tone: "ai" as const };
+    return { title: "Assistente Altum", description: "Ensinar, simular e controlar a IA da operacao.", badge: "IA", tone: "ai" as const };
   }
   if (pathname.includes("/go-live") || pathname.includes("/logs") || pathname.includes("/configuracoes")) {
-    return { title: "Configuracoes", description: "Empresa, canais, equipe e areas avancadas do workspace.", badge: "Ajustes", tone: "neutral" as const };
+    return { title: "Configuracoes", description: "Empresa, equipe, canais, integracoes e implantacao.", badge: "Conta", tone: "neutral" as const };
   }
-  return { title: "Portal do cliente", description: "Atendimento, CRM, vendas e campanhas em uma experiencia mais simples.", badge: "Altum", tone: "info" as const };
+  return { title: "Altum", description: "Operacao comercial com IA.", badge: "Altum", tone: "info" as const };
 }

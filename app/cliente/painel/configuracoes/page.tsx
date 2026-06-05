@@ -3,18 +3,24 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  ArrowRight,
   Bell,
   BellOff,
-  BookOpenText,
   Bot,
   Building2,
+  CheckCircle2,
+  FileText,
+  Gauge,
   Loader2,
   MessageSquare,
   Package,
   Plug,
   RefreshCw,
+  Rocket,
   Send,
   Shuffle,
+  ShieldCheck,
   Users2,
   UsersRound,
 } from "lucide-react";
@@ -118,6 +124,32 @@ type ReadinessPayload = {
       approvedByName?: string;
     };
   };
+  operationalHealth?: {
+    status?: string;
+    label?: string;
+    reason?: string;
+    queueBacklog?: number;
+    activeBacklog?: number;
+    activeChannels?: number;
+    disconnectedChannels?: number;
+    stuckJobs?: number;
+  };
+  operationalAlerts?: Array<{
+    id: string;
+    severity?: "high" | "warning" | "info";
+    title: string;
+    detail: string;
+    recommendedAction?: string;
+    href: string;
+  }>;
+  onboarding?: {
+    completed?: number;
+    total?: number;
+    progressPct?: number;
+    pendingCritical?: number;
+    manualPending?: number;
+    autoPending?: number;
+  };
   blockers?: ActionItem[];
   modules?: Array<{
     id: string;
@@ -183,6 +215,8 @@ export default function ClienteConfiguracoesPage() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const [pushBusy, setPushBusy] = useState(false);
   const [pushNotice, setPushNotice] = useState<string | null>(null);
+  const [goLiveBusy, setGoLiveBusy] = useState(false);
+  const [goLiveNotice, setGoLiveNotice] = useState<string | null>(null);
 
   const loadPushStatus = useCallback(async () => {
     try {
@@ -319,6 +353,28 @@ export default function ClienteConfiguracoesPage() {
       setPushNotice("Falha ao enviar push de teste.");
     } finally {
       setPushBusy(false);
+    }
+  }
+
+  async function handleValidateGoLive() {
+    if (!tenant?.tenantId) return;
+    setGoLiveBusy(true);
+    setGoLiveNotice(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/readiness`, { method: "POST" });
+      const payload = (await res.json()) as ReadinessPayload & { message?: string; error?: string };
+      setReadiness(payload || null);
+      setGoLiveNotice(
+        payload.message ||
+          payload.error ||
+          (res.ok
+            ? "Conta validada para operacao comercial com IA."
+            : "Ainda existem pendencias criticas antes do go-live.")
+      );
+    } catch {
+      setGoLiveNotice("Nao foi possivel validar o go-live agora.");
+    } finally {
+      setGoLiveBusy(false);
     }
   }
 
@@ -518,6 +574,27 @@ export default function ClienteConfiguracoesPage() {
       : validation?.status === "blocked"
         ? `Ultimo bloqueio em ${validation.checkedAt || "data indisponivel"} por ${validation.checkedByName || "usuario nao identificado"}.`
         : "Ainda sem validacao definitiva registrada.";
+  const activationStatus = readiness?.activation?.status || (effectivePilotReady ? "ready_to_activate" : "blocked");
+  const blockingCount = readiness?.summary?.criticalBlockers ?? criticalChecklist.filter((item) => item.blocking).length;
+  const topBlockers = (readiness?.blockers && readiness.blockers.length > 0 ? readiness.blockers : actionItems).slice(0, 4);
+  const visibleModules = readiness?.modules && readiness.modules.length > 0 ? readiness.modules : [];
+  const visibleAlerts = (readiness?.operationalAlerts || []).slice(0, 3);
+  const goLiveTone: "success" | "warning" | "info" =
+    activationStatus === "approved" ? "success" : effectivePilotReady ? "info" : "warning";
+  const goLiveLabel =
+    activationStatus === "approved"
+      ? "validado"
+      : effectivePilotReady
+        ? "pronto para validar"
+        : `${blockingCount} pendencia(s) critica(s)`;
+  const healthTone: "success" | "warning" | "danger" | "info" =
+    readiness?.operationalHealth?.status === "stable"
+      ? "success"
+      : readiness?.operationalHealth?.status === "degraded"
+        ? "warning"
+        : readiness?.operationalHealth?.status === "critical"
+          ? "danger"
+          : "info";
 
   const links: SettingsLink[] = [
     {
@@ -579,7 +656,7 @@ export default function ClienteConfiguracoesPage() {
       href: "/cliente/painel/conhecimento",
       title: "Base de conhecimento",
       description: "FAQ, politicas e documentos que alimentam as respostas do Assistente Altum.",
-      icon: BookOpenText,
+      icon: FileText,
       badge: "conteudo",
       tone: "info" as const,
     },
@@ -595,8 +672,8 @@ export default function ClienteConfiguracoesPage() {
       href: "/cliente/painel/ia",
       title: "Assistente Altum",
       description: summary.aiEnabled
-        ? `${summary.guardrails} regra(s) ativas e ${summary.hasAiOwner ? "responsavel definido" : "responsavel pendente"}.`
-        : "IA pausada. Revise comportamento e responsavel.",
+        ? `${summary.guardrails} regra(s) de atendimento e ${summary.hasAiOwner ? "responsavel definido" : "responsavel pendente"}.`
+        : "IA pausada. Revise como ela atende e quando chama uma pessoa.",
       icon: Bot,
       badge: summary.aiEnabled ? "IA ativa" : "IA pausada",
       tone: summary.aiEnabled ? ("success" as const) : ("warning" as const),
@@ -604,7 +681,7 @@ export default function ClienteConfiguracoesPage() {
     {
       href: "/cliente/painel/configuracoes/operacao",
       title: "Operacao de atendimento",
-      description: `Modo ${settings?.inboxRules?.mode || "manual"} - meta de resposta ${settings?.inboxRules?.defaultResponseSlaMinutes || 15} min.`,
+      description: `Distribuicao em modo ${settings?.inboxRules?.mode || "manual"} e meta de resposta de ${settings?.inboxRules?.defaultResponseSlaMinutes || 15} min.`,
       icon: Shuffle,
       badge: settings?.inboxRules?.businessHoursOnly ? "horario comercial" : "24/7",
       tone: "info" as const,
@@ -614,9 +691,9 @@ export default function ClienteConfiguracoesPage() {
   return (
     <div className="settings-refined client-daily-page space-y-6">
       <SectionHeader
-        title="Configuracoes"
-        subtitle="Ajuste empresa, equipe, canais e rotina de atendimento sem misturar com suporte tecnico."
-        action={<StateBadge label="Ajustes do negocio" tone="info" />}
+        title="Configurações"
+        subtitle="Deixe a operação comercial com IA pronta para atender, vender, acompanhar campanhas e chamar pessoas quando precisar."
+        action={<StateBadge label={goLiveLabel} tone={goLiveTone} />}
       />
 
       {loading ? (
@@ -633,64 +710,96 @@ export default function ClienteConfiguracoesPage() {
 
       {!loading ? (
         <>
-          <section className="hidden grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+          <section className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
             <PanelCard tone="spotlight" className="p-5 md:p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="max-w-2xl">
-                  <p className="inline-flex rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/84">
-                    Estrutura da operacao
+                  <p className="inline-flex rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-normal text-white/84">
+                    Implantação comercial
                   </p>
-                  <h2 className="mt-4 text-[1.75rem] font-semibold tracking-[-0.045em] text-white md:text-[2.15rem]">
-                    Deixe empresa, equipe, canais e implantacao prontos sem expor complexidade demais para o cliente comum.
+                  <h2 className="mt-4 text-[1.75rem] font-semibold tracking-normal text-white md:text-[2.15rem]">
+                    A conta precisa ficar pronta para receber leads, responder com IA e converter com clareza.
                   </h2>
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72">
-                    Esta tela existe para organizar a base do workspace. O trabalho diario continua em Conversas, Clientes & Oportunidades e Agenda.
+                    Configure o que sustenta a operação: empresa, canais, equipe, IA, conhecimento, ofertas, campanhas e alertas. O trabalho diário continua em Conversas, Clientes & Oportunidades e Agenda.
                   </p>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Link
+                      href="/cliente/painel/go-live"
+                      className="inline-flex items-center gap-2 rounded-xl border border-white/18 bg-white px-4 py-2 text-sm font-semibold text-[var(--cliente-primary)] transition hover:bg-white/92"
+                    >
+                      Abrir go-live
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                    {hasCapability("manage_settings") ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleValidateGoLive()}
+                        disabled={goLiveBusy}
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/18 bg-white/12 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/18 disabled:opacity-60"
+                      >
+                        {goLiveBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                        Validar conta
+                      </button>
+                    ) : null}
+                  </div>
+                  {goLiveNotice ? <p className="mt-3 text-sm text-white/78">{goLiveNotice}</p> : null}
                 </div>
                 <div className="grid min-w-[250px] gap-3 sm:grid-cols-2 xl:w-[320px]">
-                  <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Go-live</p><p className="mt-2 text-base font-semibold text-white">{effectiveReadinessScore}%</p></div>
-                  <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Usuarios ativos</p><p className="mt-2 text-base font-semibold text-white">{summary.activeUsers}</p></div>
-                  <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Canais ativos</p><p className="mt-2 text-base font-semibold text-white">{summary.activeChannels}</p></div>
-                  <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/68">Forms ativos</p><p className="mt-2 text-base font-semibold text-white">{summary.activeForms}</p></div>
+                  <HeroStat icon={Rocket} label="Go-live" value={`${effectiveReadinessScore}%`} />
+                  <HeroStat icon={Users2} label="Equipe" value={`${summary.activeUsers} ativo(s)`} />
+                  <HeroStat icon={MessageSquare} label="Canais" value={`${summary.operationalChannels} pronto(s)`} />
+                  <HeroStat icon={Bot} label="IA" value={summary.aiEnabled ? "ativa" : "pausada"} />
                 </div>
               </div>
             </PanelCard>
 
             <PanelCard tone="brand" className="p-5">
-              <CardTitle title="O que ajustar primeiro" subtitle="Ordem sugerida para nao travar implantacao nem atendimento." />
+              <CardTitle title="Próxima decisão" subtitle="Ajustes em ordem de impacto para colocar a operação de pé." />
               <div className="mt-4 space-y-3">
-                <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">1. Empresa e equipe</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Defina perfil da conta, usuarios e ownership antes de abrir operacao.</p></div>
-                <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">2. Canais e atendimento</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Conecte canais, ajuste tempo de resposta e distribua a fila corretamente.</p></div>
-                <div className="rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">3. Assistente e implantacao</p><p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Revise IA e checklist de prontidao antes de liberar a conta para uso mais intenso.</p></div>
+                {topBlockers.length === 0 ? (
+                  <div className="rounded-[22px] border border-emerald-300/35 bg-emerald-500/8 px-4 py-3">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
+                      <div>
+                        <p className="text-sm font-semibold text-emerald-700">Base pronta para operar</p>
+                        <p className="mt-1 text-sm text-emerald-700/80">Agora acompanhe Conversas, Clientes & Oportunidades, Agenda e Relatórios.</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  topBlockers.map((item, index) => (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      className="block rounded-[22px] border border-[var(--cliente-border)] bg-white/80 px-4 py-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-white"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--cliente-card-text)]">
+                            {index + 1}. {item.title}
+                          </p>
+                          <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.description}</p>
+                        </div>
+                        <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[var(--cliente-card-text-soft)]" />
+                      </div>
+                    </Link>
+                  ))
+                )}
               </div>
             </PanelCard>
           </section>
 
-          <section className="hidden grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
             <PanelCard className="settings-hero-card p-5 md:p-6">
-              <CardTitle title="Liberacao da conta" subtitle="Uma leitura simples do que falta para vender e operar com seguranca." />
+              <CardTitle title="Prontidao para operar" subtitle="Uma leitura simples do que falta para atender, vender e escalar com seguranca." />
               <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Score de go-live</p>
+                    <p className="text-[11px] uppercase tracking-normal text-[var(--cliente-card-text-soft)]">Score de implantacao</p>
                     <p className="mt-2 text-2xl font-semibold text-[var(--cliente-card-text)]">{effectiveReadinessScore}%</p>
                   </div>
-                  <StateBadge
-                    label={
-                      readiness?.activation?.status === "approved"
-                        ? "go-live validado"
-                        : effectivePilotReady
-                          ? "pronto para liberar"
-                          : `${readiness?.summary?.criticalBlockers || criticalChecklist.filter((item) => item.blocking).length} gate(s) bloqueando`
-                    }
-                    tone={
-                      readiness?.activation?.status === "approved"
-                        ? "success"
-                        : effectivePilotReady
-                          ? "info"
-                          : "warning"
-                    }
-                  />
+                  <StateBadge label={goLiveLabel} tone={goLiveTone} />
                 </div>
                 <div className="mt-3 h-2 rounded-full bg-[var(--cliente-border)]">
                   <div
@@ -714,23 +823,57 @@ export default function ClienteConfiguracoesPage() {
                 )}
               </div>
               <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Status de validacao</p>
+                <p className="text-[11px] uppercase tracking-normal text-[var(--cliente-card-text-soft)]">Status da ultima validacao</p>
                 <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">{validationText}</p>
                 <div className="mt-3 flex flex-wrap gap-3 text-xs">
                   <Link href="/cliente/painel/go-live" className="text-[var(--cliente-accent)] transition hover:brightness-95">
-                    Abrir checklist definitivo
+                    Abrir checklist completo
                   </Link>
                   <span className="text-[var(--cliente-card-text-soft)]">
-                    IA no mes: US$ {Number(readiness?.summary?.aiMonthlyCostUsd || 0).toFixed(2)} · {Number(readiness?.summary?.aiMonthlyRuns || 0)} execucoes
+                    IA no mes: {Number(readiness?.summary?.aiMonthlyRuns || 0)} atendimento(s)
                   </span>
                 </div>
               </div>
             </PanelCard>
 
             <PanelCard className="settings-insights-card p-5 md:p-6">
-              <CardTitle title="Leitura operacional" subtitle="O que falta ajustar para a conta rodar com mais autonomia." />
+              <CardTitle title="Saude da operacao" subtitle="Sinais que mostram se a conta consegue operar sem travar no dia a dia." />
+              <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <span className="inline-flex rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-2 text-[var(--cliente-primary)]">
+                      <Gauge className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">
+                        {readiness?.operationalHealth?.label || "Operacao em leitura"}
+                      </p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
+                        {readiness?.operationalHealth?.reason || "A Altum esta reunindo sinais de canais, IA, filas e campanhas."}
+                      </p>
+                    </div>
+                  </div>
+                  <StateBadge label={readiness?.operationalHealth?.status || "monitorando"} tone={healthTone} />
+                </div>
+              </div>
               <div className="mt-4 space-y-3">
-                {(readiness?.insights || []).length > 0 ? (
+                {visibleAlerts.length > 0 ? (
+                  visibleAlerts.map((item) => (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      className="block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                    >
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className={`mt-0.5 h-4 w-4 ${item.severity === "high" ? "text-[var(--cliente-danger)]" : "text-[var(--cliente-warning)]"}`} />
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</p>
+                          <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{item.recommendedAction || item.detail}</p>
+                        </div>
+                      </div>
+                    </Link>
+                  ))
+                ) : (readiness?.insights || []).length > 0 ? (
                   readiness?.insights?.map((item) => (
                     <Insight key={item.id} title={item.title} description={item.description} />
                   ))
@@ -841,10 +984,10 @@ export default function ClienteConfiguracoesPage() {
               </div>
             </PanelCard>
 
-            <PanelCard className="settings-map-card hidden p-5 md:p-6">
-              <CardTitle title="Mapa de prontidao" subtitle="Leitura objetiva dos modulos que sustentam o piloto." />
+            <PanelCard className="settings-map-card p-5 md:p-6">
+              <CardTitle title="Mapa da operacao" subtitle="As partes que precisam estar saudaveis para a Altum vender e atender bem." />
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {(readiness?.modules || []).map((item) => (
+                {visibleModules.map((item) => (
                   <Link
                     key={item.id}
                     href={item.href}
@@ -859,16 +1002,24 @@ export default function ClienteConfiguracoesPage() {
                     </div>
                   </Link>
                 ))}
+                {visibleModules.length === 0 ? (
+                  <>
+                    <ReadinessRow label="Empresa" value={summary.hasCompanyProfile ? "Pronta" : "Pendente"} tone={summary.hasCompanyProfile ? "success" : "warning"} />
+                    <ReadinessRow label="Canais" value={`${summary.operationalChannels} pronto(s)`} tone={summary.operationalChannels > 0 ? "success" : "warning"} />
+                    <ReadinessRow label="Equipe" value={`${summary.activeUsers} ativo(s)`} tone={summary.activeUsers > 0 ? "info" : "warning"} />
+                    <ReadinessRow label="IA" value={summary.aiEnabled ? "Ativa" : "Pausada"} tone={summary.aiEnabled ? "success" : "warning"} />
+                  </>
+                ) : null}
               </div>
             </PanelCard>
 
-            <PanelCard className="settings-checklist-card hidden p-5 md:p-6">
-              <CardTitle title="Checklist acionavel" subtitle="Pendencias mais importantes para fechar a configuracao da conta." />
+            <PanelCard className="settings-checklist-card p-5 md:p-6">
+              <CardTitle title="Checklist acionavel" subtitle="Pendencias que destravam atendimento, conversao e acompanhamento." />
               <div className="mt-4 space-y-3">
                 {(readiness?.blockers || actionItems).length === 0 ? (
                   <Insight
-                    title="Tenant sem pendencias criticas"
-                    description="A base principal de empresa, operacao, IA e conectores ja esta pronta para uso continuo."
+                    title="Conta sem pendencias criticas"
+                    description="Empresa, operacao, IA e canais ja estao prontos para uso continuo."
                   />
                 ) : (
                   (readiness?.blockers || actionItems).map((item) => (
@@ -891,7 +1042,7 @@ export default function ClienteConfiguracoesPage() {
             </PanelCard>
 
             <PanelCard className="settings-roadmap-card hidden p-5 md:p-6">
-              <CardTitle title="Proxima fase do produto" subtitle="Capacidades que ainda nao existem de verdade e entram na proxima construcao." />
+              <CardTitle title="Proxima fase" subtitle="Melhorias futuras que podem destravar mais resultado para a operacao." />
               <div className="mt-4 space-y-3">
                 {(readiness?.nextBuildItems || []).map((item) => (
                   <Link
@@ -912,26 +1063,26 @@ export default function ClienteConfiguracoesPage() {
             </PanelCard>
 
             <PanelCard className="settings-shortcuts-shell hidden p-5 md:p-6">
-              <CardTitle title="Atalhos operacionais" subtitle="Entradas rapidas para revisar configuracao e operacao viva da conta." />
+              <CardTitle title="Atalhos operacionais" subtitle="Entradas rapidas para revisar ajustes e operacao viva da conta." />
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <ShortcutCard
                   href="/cliente/painel/inbox"
-                  title="Revisar inbox"
+                  title="Revisar conversas"
                   detail={`${summary.activeBacklog} conversa(s) abertas nos canais conectados`}
                 />
                 <ShortcutCard
                   href="/cliente/painel/automacoes"
                   title="Revisar automacoes"
-                  detail="ajustar fluxos e filas da conta"
+                  detail="ajustar fluxos de retomada, prioridade e proxima acao"
                 />
                 <ShortcutCard
                   href="/cliente/painel/ia"
-                  title="Governanca da IA"
+                  title="Controle da IA"
                   detail={`${summary.guardrails} regra(s) e ${summary.hasAiOwner ? "responsavel definido" : "responsavel pendente"}`}
                 />
                 <ShortcutCard
                   href="/cliente/painel/metricas"
-                  title="Ver metricas"
+                  title="Ver relatorios"
                   detail="validar fila, resposta e produtividade"
                 />
                 <ShortcutCard
@@ -943,10 +1094,10 @@ export default function ClienteConfiguracoesPage() {
             </PanelCard>
 
             <PanelCard className="settings-notifications-card p-5 md:p-6">
-              <CardTitle title="Notificacoes criticas" subtitle="Alertas importantes para quem opera a conta" />
+              <CardTitle title="Alertas importantes" subtitle="Avisos para quem precisa responder rapido e nao perder oportunidade" />
               <div className="mt-4 space-y-3">
                 <ReadinessRow
-                  label="Push no servidor"
+                  label="Alertas do navegador"
                   value={pushStatus.enabled ? "Configurado" : "Nao configurado"}
                   tone={pushStatus.enabled ? "success" : "warning"}
                 />
@@ -970,7 +1121,7 @@ export default function ClienteConfiguracoesPage() {
                   }
                 />
                 <ReadinessRow
-                  label="Subscription deste usuario"
+                  label="Este navegador"
                   value={pushStatus.hasOwnSubscription ? `${pushStatus.ownSubscriptionCount || 1} ativa(s)` : "Nenhuma"}
                   tone={pushStatus.hasOwnSubscription ? "info" : "warning"}
                 />
@@ -1070,6 +1221,26 @@ function ReadinessRow({
         <p className="text-sm text-[var(--cliente-card-text-muted)]">{label}</p>
         <StateBadge label={value} tone={tone} />
       </div>
+    </div>
+  );
+}
+
+function HeroStat({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Rocket;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-[22px] border border-white/14 bg-white/12 px-4 py-3">
+      <div className="flex items-center gap-2 text-white/74">
+        <Icon className="h-3.5 w-3.5" />
+        <p className="text-[11px] font-semibold uppercase tracking-normal">{label}</p>
+      </div>
+      <p className="mt-2 text-base font-semibold text-white">{value}</p>
     </div>
   );
 }

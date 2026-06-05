@@ -625,7 +625,7 @@ export default function ClienteCaptacaoPage() {
     <div className="captacao-refined client-daily-page space-y-6">
       <SectionHeader
         title="Captacao"
-        subtitle="Formularios publicos para transformar trafego em contatos no CRM da operacao."
+        subtitle="Paginas e formularios para transformar trafego em leads com origem registrada."
         action={<StateBadge label="Captacao ativa" tone="info" />}
       />
 
@@ -740,7 +740,7 @@ export default function ClienteCaptacaoPage() {
 
           <div className="mt-4 space-y-2">
             {forms.length === 0 ? (
-              <EmptyState title="Nenhum formulario criado" description="Crie o primeiro formulario publico para capturar contatos no CRM." />
+              <EmptyState title="Nenhuma captura criada" description="Crie a primeira pagina ou formulario para capturar leads com origem e campanha." />
             ) : (
               forms.map((form) => (
                 <button
@@ -773,7 +773,7 @@ export default function ClienteCaptacaoPage() {
         <div className="space-y-4">
           <PanelCard className="p-5">
             <div className="flex items-start justify-between gap-3">
-              <CardTitle title={formState.id ? "Editor do formulario" : "Novo formulario"} subtitle="Origem, etapa inicial, responsavel e mensagem de sucesso." />
+              <CardTitle title={formState.id ? "Editar captura" : "Nova captura"} subtitle="Origem, etapa inicial, responsavel e mensagem de sucesso." />
               <StateBadge label={canManage ? "editavel" : "somente leitura"} tone={canManage ? "info" : "neutral"} />
             </div>
 
@@ -839,7 +839,7 @@ export default function ClienteCaptacaoPage() {
               </label>
               <Field label="Mensagem de sucesso" value={formState.successMessage} onChange={(value) => setFormState((current) => ({ ...current, successMessage: value }))} placeholder="Recebemos seu contato" disabled={!canManage} />
               <Field label="CTA do formulario" value={formState.submitLabel} onChange={(value) => setFormState((current) => ({ ...current, submitLabel: value }))} placeholder="Enviar" disabled={!canManage} />
-              <Field label="Rotulo do launcher" value={formState.widgetLauncherLabel} onChange={(value) => setFormState((current) => ({ ...current, widgetLauncherLabel: value }))} placeholder="Abrir chat" disabled={!canManage} />
+              <Field label="Texto do botao" value={formState.widgetLauncherLabel} onChange={(value) => setFormState((current) => ({ ...current, widgetLauncherLabel: value }))} placeholder="Abrir chat" disabled={!canManage} />
               <label className="block space-y-1 md:col-span-2">
                 <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">Mensagem inicial do widget</span>
                 <textarea
@@ -890,7 +890,7 @@ export default function ClienteCaptacaoPage() {
                 <div>
                   <p className="text-sm font-semibold text-white">Estrutura avancada do formulario</p>
                   <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
-                    Crie etapas de qualificacao, campos condicionais e perguntas personalizadas para a conta.
+                    Crie etapas de qualificacao, perguntas condicionais e dados que ajudam a vender melhor.
                   </p>
                 </div>
                 {canManage ? (
@@ -916,7 +916,7 @@ export default function ClienteCaptacaoPage() {
                 {(formState.fields || []).length === 0 ? (
                   <EmptyState
                     title="Sem campos customizados"
-                    description="Use o schema para enriquecer a qualificacao com dropdowns, checkboxes, datas, numeros e logica condicional."
+                    description="Use perguntas estruturadas para qualificar melhor o lead antes de cair no atendimento."
                   />
                 ) : (
                   (formState.fields || []).map((field, index) => (
@@ -1166,7 +1166,7 @@ export default function ClienteCaptacaoPage() {
                 {publicUrl || "Salve o formulario para gerar a URL publica de captura."}
               </p>
               <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
-                Use essa URL como pagina direta. O envio publica no endpoint interno e entra no CRM com conta isolada.
+                Use este link em campanhas, site ou bio. Cada envio entra como lead com origem e campanha registradas.
               </p>
               {publicUrl ? (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -1189,7 +1189,7 @@ export default function ClienteCaptacaoPage() {
                   </a>
                 </div>
               ) : null}
-              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Embed iframe</p>
+              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Incorporar no site</p>
               <pre className="mt-2 overflow-x-auto rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-xs text-[var(--cliente-card-text)]/80">
                 {embedCode || "Salve o formulario para gerar o embed."}
               </pre>
@@ -1204,7 +1204,7 @@ export default function ClienteCaptacaoPage() {
                 </button>
               ) : null}
               <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
-                A pagina publica aceita UTMs, campos base e qualquer schema customizado salvo neste formulario.
+                A pagina publica preserva UTMs, origem, campanha e campos personalizados salvos neste formulario.
               </p>
               <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Botao flutuante</p>
               <pre className="mt-2 overflow-x-auto rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-xs text-[var(--cliente-card-text)]/80">
@@ -1220,7 +1220,7 @@ export default function ClienteCaptacaoPage() {
                   {copiedKey === "launcher" ? "Copiado" : "Copiar botao flutuante"}
                 </button>
               ) : null}
-              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Widget iframe</p>
+              <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Widget no site</p>
               <pre className="mt-2 overflow-x-auto rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-xs text-[var(--cliente-card-text)]/80">
                 {widgetCode || "Salve o formulario para gerar o widget."}
               </pre>
@@ -1294,7 +1294,7 @@ export default function ClienteCaptacaoPage() {
 
           <PanelCard className="p-5">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle title="Envios recentes" subtitle="Ultimos contatos que entraram pelos formularios da conta" />
+              <CardTitle title="Leads recentes" subtitle="Ultimos contatos que entraram pelos formularios e paginas de captura" />
               <StateBadge label={`${submissions.length} registros`} tone="info" />
             </div>
 
@@ -1306,7 +1306,7 @@ export default function ClienteCaptacaoPage() {
                   <div key={submission.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-medium text-white">{submission.leadName}</p>
+                        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{submission.leadName}</p>
                         <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{submission.email || submission.phone || "Sem contato"}</p>
                       </div>
                       <StateBadge label={submission.sourceLabel || submission.formName} tone="neutral" />
@@ -1318,7 +1318,7 @@ export default function ClienteCaptacaoPage() {
                         href={`/cliente/painel/crm?leadId=${encodeURIComponent(submission.leadId)}`}
                         className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-hover)]"
                       >
-                        Abrir CRM
+                        Abrir cliente
                       </Link>
                       <Link
                         href={`/cliente/painel/inbox?leadId=${encodeURIComponent(submission.leadId)}`}
@@ -1335,7 +1335,7 @@ export default function ClienteCaptacaoPage() {
 
           <section className="grid gap-4 xl:grid-cols-3">
             <PanelCard className="p-5">
-              <CardTitle title="Top origens" subtitle="UTM source ou origem declarada do formulario" />
+              <CardTitle title="Top origens" subtitle="De onde os leads estao chegando" />
               <div className="mt-4 space-y-2">
                 {topSources.length === 0 ? (
                   <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem atribuicao de origem ainda.</p>
@@ -1355,7 +1355,7 @@ export default function ClienteCaptacaoPage() {
             </PanelCard>
 
             <PanelCard className="p-5">
-              <CardTitle title="Top campanhas" subtitle="UTM campaign mais recorrentes na captura" />
+              <CardTitle title="Top campanhas" subtitle="Campanhas que mais geram entrada comercial" />
               <div className="mt-4 space-y-2">
                 {topCampaigns.length === 0 ? (
                   <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem campanhas identificadas ainda.</p>
@@ -1371,7 +1371,7 @@ export default function ClienteCaptacaoPage() {
             </PanelCard>
 
             <PanelCard className="p-5">
-              <CardTitle title="Performance por formulario" subtitle="Quais formularios estao puxando mais entradas" />
+              <CardTitle title="Performance por captura" subtitle="Quais paginas e formularios estao puxando mais oportunidades" />
               <div className="mt-4 space-y-2">
                 {formPerformance.length === 0 ? (
                   <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem performance registrada ainda.</p>
@@ -1379,7 +1379,7 @@ export default function ClienteCaptacaoPage() {
                   formPerformance.map((item) => (
                     <div key={item.id} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2.5">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-white">{item.name}</p>
+                        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.name}</p>
                         <StateBadge label={`${item.total} envios`} tone="success" />
                       </div>
                       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDate(item.lastSubmissionAt)}</p>
@@ -1467,10 +1467,10 @@ function CaptureFieldCard(props: {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-white">
-            Campo {props.index + 1}: {props.field.label}
+            Pergunta {props.index + 1}: {props.field.label}
           </p>
           <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-            ID: {props.field.id} · etapa {props.field.step || 1}
+            Campo interno: {props.field.id} · etapa {props.field.step || 1}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1503,14 +1503,14 @@ function CaptureFieldCard(props: {
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Field
-          label="Rotulo"
+          label="Pergunta"
           value={props.field.label}
           onChange={(value) => props.onUpdate(props.field.id, { label: value })}
           placeholder="Orcamento estimado"
           disabled={props.disabled}
         />
         <Field
-          label="ID tecnico"
+          label="Nome interno"
           value={props.field.id}
           onChange={(value) =>
             props.onUpdate(props.field.id, {
@@ -1536,7 +1536,7 @@ function CaptureFieldCard(props: {
           </select>
         </label>
         <Field
-          label="Placeholder"
+          label="Exemplo no campo"
           value={props.field.placeholder || ""}
           onChange={(value) => props.onUpdate(props.field.id, { placeholder: value })}
           placeholder="Digite a resposta"
@@ -1550,14 +1550,14 @@ function CaptureFieldCard(props: {
           disabled={props.disabled}
         />
         <Field
-          label="Etapa"
+          label="Etapa da captura"
           value={String(props.field.step || 1)}
           onChange={(value) => props.onUpdate(props.field.id, { step: Math.max(1, Math.min(12, Number(value || 1) || 1)) })}
           placeholder="1"
           disabled={props.disabled}
         />
         <label className="block space-y-1">
-          <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Dependencia</span>
+          <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Aparece depois de</span>
           <select
             value={props.field.showWhenFieldId || ""}
             onChange={(event) =>
@@ -1589,7 +1589,7 @@ function CaptureFieldCard(props: {
       {props.field.type === "select" ? (
         <div className="mt-3">
           <Field
-            label="Opcoes"
+          label="Opcoes de resposta"
             value={(props.field.options || []).join(", ")}
             onChange={(value) =>
               props.onUpdate(props.field.id, {
@@ -1609,7 +1609,7 @@ function CaptureFieldCard(props: {
       <div className="mt-3 flex flex-wrap gap-2">
         <ToggleTile
           label="Obrigatorio"
-          description="Exige preenchimento antes de concluir a etapa."
+          description="Exige resposta antes de concluir esta etapa."
           checked={props.field.required}
           onChange={(checked) => props.onUpdate(props.field.id, { required: checked })}
           disabled={props.disabled}

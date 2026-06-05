@@ -16,6 +16,7 @@ import {
 
 type Body = {
   enabled?: boolean;
+  responsePaused?: boolean;
   agentName?: string;
   toneOfVoice?: string;
   businessSummary?: string;
@@ -157,6 +158,7 @@ function normalizeAiConfig(
 
   return {
     enabled: ai.enabled !== false,
+    responsePaused: ai.responsePaused === true,
     agentName: resolveWithDefaults
       ? storedAgentName || `Agente ${clean(settings?.name, 80) || businessProfile.label}`
       : storedAgentName,
@@ -249,6 +251,8 @@ export async function POST(
 
     const next = pruneUndefinedDeep({
       enabled: typeof body.enabled === "boolean" ? body.enabled : current.enabled,
+      responsePaused:
+        typeof body.responsePaused === "boolean" ? body.responsePaused : current.responsePaused,
       agentName: clean(body.agentName, 80) || current.agentName,
       toneOfVoice: clean(body.toneOfVoice, 120) || current.toneOfVoice,
       businessSummary: clean(body.businessSummary, 320) || current.businessSummary,

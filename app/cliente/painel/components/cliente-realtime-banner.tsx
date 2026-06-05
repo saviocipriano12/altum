@@ -299,7 +299,7 @@ export function ClienteRealtimeBanner() {
             <p className="mt-1 truncate text-xs opacity-95">{state.description}</p>
           </div>
           <div className="text-right text-[11px] uppercase tracking-[0.12em] opacity-90">
-            <p>{snapshot.lastSuccessAt ? `sync ${formatSince(snapshot.lastSuccessAt, nowMs)}` : "sem sync"}</p>
+            <p>{snapshot.lastSuccessAt ? `atualizado ha ${formatSince(snapshot.lastSuccessAt, nowMs)}` : "sem atualizacao"}</p>
             <p className="mt-1 truncate">{sourceLabel}</p>
           </div>
         </div>
@@ -323,7 +323,7 @@ export function ClienteRealtimeBanner() {
             Exibindo dados temporarios
           </p>
           <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
-            Alguns blocos podem refletir o ultimo snapshot. Estamos tentando reconectar automaticamente.
+            Alguns blocos podem refletir o ultimo estado carregado. Estamos tentando reconectar automaticamente.
           </p>
           <div className="mt-3 grid grid-cols-3 gap-2">
             <div className="h-2 animate-pulse rounded-full bg-[var(--cliente-border)]" />

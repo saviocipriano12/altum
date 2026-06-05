@@ -8,10 +8,14 @@ import {
   CalendarCheck,
   CheckCircle2,
   Clock3,
+  Flame,
   Loader2,
   MessageSquareText,
   RefreshCw,
   Search,
+  Target,
+  UsersRound,
+  type LucideIcon,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
@@ -28,6 +32,7 @@ import {
   CrmPanel,
   CrmSectionTitle,
   CrmSelect,
+  type CrmTone,
   CrmWorkspace,
   formatCrmDate,
   toCrmDate,
@@ -105,6 +110,59 @@ function priorityTone(item: FollowUpItem) {
   return "blue" as const;
 }
 
+function actionLabel(item?: FollowUpItem) {
+  if (!item) return "Sem acao urgente agora";
+  if (isProposal(item)) return "Reabrir proposta";
+  if (item.overdue) return "Resolver atraso";
+  if (item.dueToday) return "Fazer contato hoje";
+  if ((item.silenceHours || 0) >= 24) return "Reativar conversa";
+  return "Executar retorno";
+}
+
+function RetentionSignal({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  detail: string;
+  tone: CrmTone;
+  onClick: () => void;
+}) {
+  const toneClass: Record<CrmTone, string> = {
+    neutral: "border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text-soft)]",
+    blue: "border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,transparent)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]",
+    green: "border-[color:color-mix(in_srgb,var(--cliente-success)_20%,transparent)] bg-[var(--cliente-success-soft)] text-[var(--cliente-success)]",
+    purple: "border-[color:color-mix(in_srgb,var(--cliente-ai)_20%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]",
+    orange: "border-[color:color-mix(in_srgb,var(--cliente-warning)_20%,transparent)] bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]",
+    red: "border-[color:color-mix(in_srgb,var(--cliente-danger)_22%,transparent)] bg-[var(--cliente-danger-soft)] text-[var(--cliente-danger)]",
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--cliente-primary)_24%,var(--cliente-border))] hover:shadow-[var(--cliente-shadow-soft)]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase text-[var(--cliente-card-text-soft)]">{label}</p>
+          <p className="mt-2 text-2xl font-black text-[var(--cliente-card-text)]">{value}</p>
+          <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{detail}</p>
+        </div>
+        <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border ${toneClass[tone]}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+    </button>
+  );
+}
+
 export default function ClienteFollowUpsPage() {
   const { tenant, hasCapability } = useClienteTenant();
   const canOperate = hasCapability("edit_leads");
@@ -170,6 +228,23 @@ export default function ClienteFollowUpsPage() {
       });
   }, [items, owner, search, view]);
 
+  const retentionBoard = useMemo(() => {
+    const pending = items.filter((item) => item.status === "pending");
+    const overdue = pending.filter((item) => item.overdue);
+    const today = pending.filter((item) => item.dueToday);
+    const proposals = pending.filter(isProposal);
+    const unassigned = pending.filter((item) => !item.lead?.ownerId);
+    const silent = pending.filter((item) => (item.silenceHours || 0) >= 24);
+    const topAction = [...pending].sort((a, b) => {
+      if (Number(a.overdue) !== Number(b.overdue)) return Number(b.overdue) - Number(a.overdue);
+      if (Number(isProposal(a)) !== Number(isProposal(b))) return Number(isProposal(b)) - Number(isProposal(a));
+      if (Number(a.dueToday) !== Number(b.dueToday)) return Number(b.dueToday) - Number(a.dueToday);
+      return millis(a.dueAt) - millis(b.dueAt);
+    })[0];
+
+    return { pending, overdue, today, proposals, unassigned, silent, topAction };
+  }, [items]);
+
   async function toggleTask(item: FollowUpItem) {
     if (!tenant?.tenantId || !item.leadId || !canOperate) return;
     setBusyTaskId(item.id);
@@ -196,9 +271,9 @@ export default function ClienteFollowUpsPage() {
   return (
     <CrmWorkspace>
       <CrmHero
-        active="Atividades"
-        title="Proximas acoes do CRM, sem perder venda no caminho."
-        description="A mesa de atividades mostra atrasos, retornos de hoje e propostas que precisam de cuidado comercial."
+        active="Retornos"
+        title="Retornos que protegem venda, recompra e relacionamento."
+        description="A mesa de retornos mostra atrasos, tarefas de hoje e propostas que precisam de cuidado comercial."
         assistantTitle="Fila inteligente"
         assistantSubtitle="Retornos em ordem"
         assistantText="A Altum organiza atrasos, retornos de hoje e propostas para o time executar sem procurar tarefa em varias telas."
@@ -226,10 +301,99 @@ export default function ClienteFollowUpsPage() {
       {error ? <CrmNotice tone="red">{error}</CrmNotice> : null}
       {notice ? <CrmNotice tone="green">{notice}</CrmNotice> : null}
 
+      <CrmPanel>
+        <CrmSectionTitle
+          eyebrow="Mesa de retencao"
+          title="Quem precisa de atencao antes da venda esfriar"
+          description="Um resumo pratico para recuperar conversas, propostas e clientes sem abrir relatorio tecnico."
+          action={
+            <CrmLinkButton href="/cliente/painel/campanhas?objective=reativacao" tone="purple">
+              Campanha de reativacao
+              <ArrowRight className="h-4 w-4" />
+            </CrmLinkButton>
+          }
+        />
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <RetentionSignal
+            icon={AlertTriangle}
+            label="Vencidos"
+            value={retentionBoard.overdue.length}
+            detail="risco de perder venda"
+            tone={retentionBoard.overdue.length > 0 ? "red" : "neutral"}
+            onClick={() => setView("now")}
+          />
+          <RetentionSignal
+            icon={CalendarCheck}
+            label="Hoje"
+            value={retentionBoard.today.length}
+            detail="contatos do dia"
+            tone="orange"
+            onClick={() => setView("today")}
+          />
+          <RetentionSignal
+            icon={Target}
+            label="Propostas"
+            value={retentionBoard.proposals.length}
+            detail="chance aberta"
+            tone="purple"
+            onClick={() => setView("proposal")}
+          />
+          <RetentionSignal
+            icon={UsersRound}
+            label="Sem dono"
+            value={retentionBoard.unassigned.length}
+            detail="sem responsavel"
+            tone={retentionBoard.unassigned.length > 0 ? "orange" : "neutral"}
+            onClick={() => setOwner("unassigned")}
+          />
+          <RetentionSignal
+            icon={Flame}
+            label="Silencio"
+            value={retentionBoard.silent.length}
+            detail="24h+ sem avanco"
+            tone={retentionBoard.silent.length > 0 ? "blue" : "neutral"}
+            onClick={() => setView("all")}
+          />
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+            <p className="text-[11px] font-black uppercase text-[var(--cliente-card-text-soft)]">Proxima melhor acao</p>
+            {retentionBoard.topAction ? (
+              <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-black text-[var(--cliente-card-text)]">{actionLabel(retentionBoard.topAction)}</p>
+                  <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
+                    {retentionBoard.topAction.lead?.nome || "Contato"} · {retentionBoard.topAction.title || "Retorno comercial"} · {formatCrmDate(retentionBoard.topAction.dueAt, "sem prazo")}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <CrmLinkButton href={`/cliente/painel/crm?leadId=${encodeURIComponent(retentionBoard.topAction.leadId)}`}>
+                    Ficha
+                  </CrmLinkButton>
+                  <CrmLinkButton href={`/cliente/painel/inbox?leadId=${encodeURIComponent(retentionBoard.topAction.leadId)}`} tone="green">
+                    Conversa
+                  </CrmLinkButton>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm font-bold text-[var(--cliente-card-text-soft)]">Nao ha retorno urgente neste momento.</p>
+            )}
+          </div>
+
+          <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-success)_18%,var(--cliente-border))] bg-[var(--cliente-success-soft)] p-4">
+            <p className="text-[11px] font-black uppercase text-[var(--cliente-success)]">Ritual diario</p>
+            <p className="mt-2 text-sm font-black text-[var(--cliente-card-text)]">Resolver vencidos, falar com quem e de hoje e fechar propostas abertas.</p>
+            <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">Quando isso vira rotina, a operacao para de depender de memoria e passa a proteger receita.</p>
+          </div>
+        </div>
+      </CrmPanel>
+
       <CrmPanel padded={false} className="overflow-hidden">
         <div className="border-b border-[var(--cliente-border)] p-5">
           <CrmSectionTitle
-            eyebrow="Atividades"
+            eyebrow="Retencao"
             title="Fila de trabalho"
             description="Tudo que precisa ser feito para responder, vender e acompanhar clientes."
             action={!canOperate ? <CrmBadge tone="orange">somente leitura</CrmBadge> : null}

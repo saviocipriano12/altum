@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Bot, Database, Loader2, Send, Sparkles } from "lucide-react";
+import { ArrowUpRight, Bot, CalendarCheck, CalendarDays, Database, Loader2, Megaphone, Send, Sparkles, Target } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, ClientActionButton, PanelCard, StateBadge } from "@/app/cliente/painel/components/ui";
@@ -23,16 +23,49 @@ type Message = {
   title?: string;
   sources?: Array<{ collection: string }>;
   metrics?: Record<string, number>;
+  suggestedQuestions?: string[];
 };
 
 const STARTER_QUESTIONS = [
   "O que preciso fazer hoje?",
-  "Quais clientes devo priorizar agora?",
+  "Quais clientes podem virar venda agora?",
   "Onde estou perdendo vendas?",
-  "Quais campanhas trouxeram melhores contatos?",
+  "Quais campanhas trouxeram dinheiro ou bons leads?",
   "Quais conversas precisam de resposta?",
+  "Quem devo reativar esta semana?",
   "O que falta para a IA vender melhor?",
 ];
+
+const EXECUTIVE_COMMANDS = [
+  {
+    title: "Abrir o dia",
+    detail: "Prioridade real para executar agora.",
+    question: "O que preciso fazer hoje para proteger vendas e atendimento?",
+    icon: CalendarCheck,
+    tone: "info",
+  },
+  {
+    title: "Encontrar dinheiro",
+    detail: "Clientes, propostas e oportunidades quentes.",
+    question: "Onde existe dinheiro parado na operacao e qual proxima acao devo tomar?",
+    icon: Target,
+    tone: "success",
+  },
+  {
+    title: "Ler campanhas",
+    detail: "Midia, leads, conversas e venda.",
+    question: "Quais campanhas merecem continuar, pausar ou ajustar com base em leads, conversas e vendas?",
+    icon: Megaphone,
+    tone: "ai",
+  },
+  {
+    title: "Recuperar base",
+    detail: "Retencao, recompra e clientes parados.",
+    question: "Quem devo reativar esta semana e com qual argumento comercial?",
+    icon: CalendarDays,
+    tone: "warning",
+  },
+] as const;
 
 function metricLabel(key: string) {
   const labels: Record<string, string> = {
@@ -83,7 +116,7 @@ export default function PerguntarAltumPage() {
       role: "assistant",
       title: "Perguntar a Altum",
       text:
-        "Pergunte sobre clientes, conversas, campanhas, produtos, agenda, vendas e IA. Eu leio os dados da conta e devolvo uma resposta pratica para decidir o proximo passo.",
+        "Pergunte sobre trafego, conversas, clientes, campanhas, agenda, vendas, retencao e IA. Eu leio os dados da conta e devolvo uma resposta pratica para decidir o proximo passo.",
       sources: [
         { collection: "leads" },
         { collection: "chats" },
@@ -98,7 +131,7 @@ export default function PerguntarAltumPage() {
   const canAsk = hasCapability("manage_ai") || hasCapability("manage_settings") || hasCapability("view_reports");
 
   const lastAssistant = useMemo(() => [...messages].reverse().find((item) => item.role === "assistant"), [messages]);
-  const suggestions = STARTER_QUESTIONS;
+  const suggestions = lastAssistant?.suggestedQuestions?.length ? lastAssistant.suggestedQuestions : STARTER_QUESTIONS;
 
   async function askAltum(nextQuestion?: string) {
     const text = (nextQuestion || question).trim();
@@ -133,6 +166,7 @@ export default function PerguntarAltumPage() {
           text: payload.answer || "Nao encontrei uma resposta clara com os dados atuais.",
           sources: payload.sources || [],
           metrics: payload.metrics || {},
+          suggestedQuestions: payload.suggestedQuestions || [],
         },
       ]);
     } catch (askError) {
@@ -148,18 +182,18 @@ export default function PerguntarAltumPage() {
   }
 
   return (
-    <div className="client-daily-page space-y-6">
-      <section className="overflow-hidden rounded-[30px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,#f5f3ff_82%,var(--cliente-card)),color-mix(in_srgb,#eff6ff_72%,var(--cliente-panel-soft)))] p-5 shadow-[0_24px_70px_-48px_rgba(124,58,237,0.42)] md:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-5">
+    <div className="perguntar-refined client-daily-page space-y-4">
+      <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-ai)_10%,var(--cliente-card)),var(--cliente-card)_58%,color-mix(in_srgb,var(--cliente-primary)_8%,var(--cliente-card)))] p-4 shadow-[var(--cliente-shadow-soft)] md:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
             <div className="flex flex-wrap gap-2">
               <StateBadge label="Perguntar a Altum" tone="ai" />
-              <StateBadge label="decisao com dados" tone="info" />
+              <StateBadge label="trafego, venda e retencao" tone="info" />
             </div>
-            <h1 className="mt-5 text-3xl font-black leading-tight tracking-[-0.03em] text-[var(--cliente-card-text)] md:text-5xl">
-              Pergunte como gestor e receba uma resposta com proximo passo.
+            <h1 className="mt-4 text-2xl font-black leading-tight tracking-normal text-[var(--cliente-card-text)] md:text-3xl">
+              Converse com a operacao e saia com uma acao.
             </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)] md:text-base">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-muted)]">
               Use a Altum para entender prioridades, gargalos, campanhas, clientes parados e oportunidades que merecem atencao agora.
             </p>
           </div>
@@ -173,6 +207,30 @@ export default function PerguntarAltumPage() {
         </div>
       </section>
 
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {EXECUTIVE_COMMANDS.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.title}
+              type="button"
+              onClick={() => void askAltum(item.question)}
+              disabled={!canAsk || loading}
+              className="group rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4 text-left shadow-[var(--cliente-shadow-soft)] transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--cliente-ai)_24%,var(--cliente-border))] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <StateBadge label="executar" tone={item.tone} />
+              </div>
+              <p className="mt-4 text-sm font-black text-[var(--cliente-card-text)]">{item.title}</p>
+              <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{item.detail}</p>
+            </button>
+          );
+        })}
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
         <PanelCard className="flex min-h-[68vh] flex-col overflow-hidden p-0">
           <div className="border-b border-[var(--cliente-border)] p-4 md:p-5">
@@ -183,7 +241,7 @@ export default function PerguntarAltumPage() {
                 </span>
                 <div>
                   <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Altum</p>
-                  <p className="text-sm text-[var(--cliente-card-text-muted)]">Respostas para decidir e agir</p>
+                  <p className="text-sm text-[var(--cliente-card-text-muted)]">Analista comercial da sua operacao</p>
                 </div>
               </div>
               <StateBadge label="dados da conta" tone="ai" />
@@ -234,7 +292,7 @@ export default function PerguntarAltumPage() {
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 disabled={!canAsk || loading}
-                placeholder="Pergunte: quais clientes devo priorizar hoje?"
+                placeholder="Pergunte: onde esta meu maior gargalo hoje?"
                 className="client-input rounded-2xl border px-4 py-3 text-sm outline-none"
               />
               <ClientActionButton type="submit" tone="ai" disabled={!canAsk || loading || !question.trim()}>
@@ -247,7 +305,7 @@ export default function PerguntarAltumPage() {
 
         <div className="space-y-4">
           <PanelCard tone="ai" className="p-5">
-            <CardTitle title="Perguntas prontas" subtitle="Atalhos para decidir mais rapido." />
+            <CardTitle title="Perguntas prontas" subtitle="Atalhos para trafego, atendimento, venda e retencao." />
             <div className="mt-4 space-y-2">
               {suggestions.map((item) => (
                 <button
@@ -264,7 +322,7 @@ export default function PerguntarAltumPage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="Numeros da resposta" subtitle="Indicadores que ajudam a conferir a leitura." />
+            <CardTitle title="Numeros da resposta" subtitle="Indicadores que sustentam a recomendacao." />
             <div className="mt-4 grid gap-2">
               {lastAssistant?.metrics && Object.keys(lastAssistant.metrics).length ? (
                 Object.entries(lastAssistant.metrics)
@@ -283,7 +341,7 @@ export default function PerguntarAltumPage() {
           </PanelCard>
 
           <PanelCard className="p-5">
-            <CardTitle title="De onde veio" subtitle="A resposta mostra quais areas da conta foram consultadas." />
+            <CardTitle title="Dados usados" subtitle="Areas da conta consultadas para responder." />
             <div className="mt-4 flex flex-wrap gap-2">
               {(lastAssistant?.sources || []).map((source) => (
                 <span key={source.collection} className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--cliente-card-text-muted)]">

@@ -339,8 +339,8 @@ export function ClienteCriticalNotifications() {
 
       if (current.slaBreached > previous.slaBreached) {
         notifications.push({
-          title: "SLA em risco no inbox",
-          body: `${current.slaBreached} conversa(s) com SLA estourado. Priorize atendimento agora.`,
+          title: "Atendimento atrasado",
+          body: `${current.slaBreached} conversa(s) passaram do prazo combinado. Priorize atendimento agora.`,
           tag: "sla_breached",
           url: "/cliente/painel/inbox?queue=sla_breached",
         });
@@ -348,8 +348,8 @@ export function ClienteCriticalNotifications() {
 
       if (current.deadLetter > previous.deadLetter) {
         notifications.push({
-          title: "Fila da IA com falhas",
-          body: `${current.deadLetter} job(s) em dead-letter. Revisar automacoes agora.`,
+          title: "Assistente precisa de revisão",
+          body: `${current.deadLetter} conversa(s) precisam de revisão antes de voltar ao fluxo normal.`,
           tag: "ai_dead_letter",
           url: "/cliente/painel/automacoes",
         });
@@ -375,8 +375,8 @@ export function ClienteCriticalNotifications() {
 
       if (current.aiRiskLevel === "high" && previous.aiRiskLevel !== "high") {
         notifications.push({
-          title: "Risco alto no motor de IA",
-          body: "Foram detectados sinais de risco alto na fila da IA.",
+          title: "Assistente em atenção",
+          body: "Foram detectados sinais de risco alto no atendimento automatizado.",
           tag: "ai_risk_high",
           url: "/cliente/painel/ia",
         });
@@ -443,7 +443,7 @@ export function ClienteCriticalNotifications() {
     <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+10.7rem)] z-[65] rounded-2xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-panel-solid)] p-3 shadow-[var(--cliente-shadow-hard)] md:inset-x-auto md:bottom-5 md:right-[410px] md:w-[360px]">
       <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Ative alertas criticos</p>
       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-        Receba avisos quando SLA estourar, follow-ups vencerem ou a fila da IA entrar em risco alto.
+        Receba avisos quando o atendimento atrasar, follow-ups vencerem ou o assistente precisar de revisão.
       </p>
       <div className="mt-3 flex items-center gap-2">
         <button

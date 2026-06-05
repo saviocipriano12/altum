@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ClipboardList,
   DollarSign,
+  Bot,
   Loader2,
   MessageSquareText,
   Plus,
@@ -83,6 +84,21 @@ type LeadItem = {
   empresa?: string;
   origem?: string;
   channel?: string;
+  sourceLabel?: string;
+  sourceType?: string;
+  campaignName?: string;
+  campaignId?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+  gclid?: string;
+  fbclid?: string;
+  first_touch?: Record<string, unknown>;
+  last_touch?: Record<string, unknown>;
+  attribution?: Record<string, unknown>;
+  customFields?: Record<string, string | number | boolean | null>;
   status?: string;
   pipelineStage?: string;
   stage?: string;
@@ -95,12 +111,46 @@ type LeadItem = {
   tags?: string[];
   notes?: string;
   qualification?: LeadQualification;
+  aiFieldEvidence?: Record<
+    string,
+    {
+      value?: string;
+      source?: "agent_extracted" | "conversation_context" | "derived" | string;
+      confidence?: number;
+      intent?: string | null;
+      stateAfter?: string | null;
+      nextAction?: string | null;
+      capturedAt?: unknown;
+    }
+  >;
+  aiCaptureChecklist?: {
+    nome?: boolean;
+    tipoEmpresa?: boolean;
+    objetivo?: boolean;
+    orcamento?: boolean;
+    urgencia?: boolean;
+    decisor?: boolean;
+    canaisAtuais?: boolean;
+    cidade?: boolean;
+    tamanhoTime?: boolean;
+    servicoInteresse?: boolean;
+    updatedAt?: unknown;
+  };
+  aiConversationStage?: string;
+  aiNextAction?: string;
+  aiRecommendedOffer?: string;
+  aiResponseGoal?: string;
+  aiCommercialTemperature?: string;
+  aiLeadSummary?: string;
+  aiPlannerConfidence?: number | null;
   chatSummary?: {
     total?: number;
     open?: number;
     pending?: number;
+    resolved?: number;
     unresolved?: number;
     highPriority?: number;
+    unassigned?: number;
     lastInteractionAt?: unknown;
   };
 };
@@ -110,6 +160,29 @@ type LeadDetailPayload = {
   notes?: LeadNote[];
   tasks?: LeadTask[];
   relatedChats?: RelatedChat[];
+  timeline?: Array<{
+    id: string;
+    title?: string;
+    detail?: string;
+    type?: string;
+    createdAt?: unknown;
+  }>;
+  conversationSummary?: {
+    total?: number;
+    open?: number;
+    pending?: number;
+    resolved?: number;
+    highPriority?: number;
+    unassigned?: number;
+    lastInteractionAt?: unknown;
+  };
+  appointments?: Array<{
+    id: string;
+    title?: string;
+    status?: string;
+    startAt?: unknown;
+    createdAt?: unknown;
+  }>;
   qualification?: LeadQualification;
   stagePolicy?: {
     stageLabel?: string;
@@ -152,6 +225,98 @@ function whatsappUrl(phone?: string) {
   if (!digits) return null;
   const withCountry = digits.startsWith("55") ? digits : `55${digits}`;
   return `https://wa.me/${withCountry}`;
+}
+
+function cleanCrmText(value: unknown, max = 180) {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value).slice(0, max);
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, max);
+}
+
+function readCrmRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function resolveLeadAttribution(lead?: LeadItem | null) {
+  const attribution = readCrmRecord(lead?.attribution);
+  const firstTouch = readCrmRecord(lead?.first_touch || attribution.firstTouch);
+  const lastTouch = readCrmRecord(lead?.last_touch || attribution.lastTouch);
+  const customFields = readCrmRecord(lead?.customFields);
+  const source =
+    cleanCrmText(lead?.sourceLabel) ||
+    cleanCrmText(lead?.origem) ||
+    cleanCrmText(lead?.utmSource || attribution.source || lastTouch.source || firstTouch.source) ||
+    cleanCrmText(lead?.channel);
+  const medium = cleanCrmText(lead?.utmMedium || attribution.medium || lastTouch.medium || firstTouch.medium);
+  const campaign =
+    cleanCrmText(lead?.campaignName) ||
+    cleanCrmText(lead?.utmCampaign || attribution.campaign || lastTouch.campaign || firstTouch.campaign) ||
+    cleanCrmText(customFields.campaign || customFields.utm_campaign);
+  const content = cleanCrmText(lead?.utmContent || attribution.content || lastTouch.content || firstTouch.content);
+  const clickId =
+    cleanCrmText(lead?.gclid || attribution.gclid || lastTouch.gclid || firstTouch.gclid) ||
+    cleanCrmText(lead?.fbclid || attribution.fbclid || lastTouch.fbclid || firstTouch.fbclid);
+
+  return {
+    source: source || "Nao registrado",
+    medium: medium || "Nao registrado",
+    campaign: campaign || "Sem campanha",
+    content: content || "Sem criativo",
+    clickId: clickId ? "Registrado" : "Nao registrado",
+    firstTouchLabel:
+      cleanCrmText(firstTouch.campaign || firstTouch.source || firstTouch.sourceLabel) || "Nao registrado",
+    lastTouchLabel:
+      cleanCrmText(lastTouch.campaign || lastTouch.source || lastTouch.sourceLabel) || "Nao registrado",
+  };
+}
+
+function resolveLeadAiEvidence(lead?: LeadItem | null) {
+  const evidence = lead?.aiFieldEvidence || {};
+  const getValue = (keys: string[]) => {
+    for (const key of keys) {
+      const value = cleanCrmText(evidence[key]?.value, 160);
+      if (value) return value;
+    }
+    return "Nao capturado";
+  };
+
+  return [
+    { label: "Interesse", value: getValue(["serviceInterest", "activeTopic", "primaryGoal", "custom.servico_interesse"]) },
+    { label: "Urgencia", value: getValue(["urgency", "custom.urgencia"]) },
+    { label: "Orcamento", value: getValue(["budgetBand", "custom.orcamento"]) },
+    { label: "Decisor", value: getValue(["decisionMaker", "custom.decisor"]) },
+  ];
+}
+
+function formatAiAction(value?: string | null) {
+  const clean = cleanCrmText(value, 120);
+  if (!clean) return "Definir proxima acao comercial";
+  const labels: Record<string, string> = {
+    assumir_handoff_humano: "Humano deve assumir",
+    qualificar_contexto_minimo: "Qualificar melhor",
+    aprofundar_oportunidade: "Aprofundar oportunidade",
+    tratar_objecao_suave: "Tratar objecao",
+    preparar_proposta_comercial: "Preparar proposta",
+    agendar_proximo_passo: "Agendar proximo passo",
+    conduzir_para_proximo_passo: "Conduzir proximo passo",
+  };
+  return labels[clean] || clean.replaceAll("_", " ");
+}
+
+function getTemperatureTone(value?: string | null) {
+  const normalized = cleanCrmText(value, 40).toLowerCase();
+  if (normalized === "hot") return "red" as const;
+  if (normalized === "warm") return "orange" as const;
+  if (normalized === "cold") return "neutral" as const;
+  return "blue" as const;
+}
+
+function formatTemperature(value?: string | null) {
+  const normalized = cleanCrmText(value, 40).toLowerCase();
+  if (normalized === "hot") return "quente";
+  if (normalized === "warm") return "morno";
+  if (normalized === "cold") return "frio";
+  return "em leitura";
 }
 
 export default function ClienteCrmPage() {
@@ -436,16 +601,29 @@ export default function ClienteCrmPage() {
   }
 
   const selectedWhatsApp = whatsappUrl(selectedLead?.telefone);
+  const selectedNextAction =
+    cleanCrmText(selectedLead?.aiNextAction)
+      ? formatAiAction(selectedLead?.aiNextAction)
+      : detail?.qualification?.nextAction ||
+        selectedLead?.qualification?.nextAction ||
+        (detail?.stagePolicy?.slaBreached ? "Retomar contato agora: este cliente esta sem retorno." : "Definir proxima acao comercial.");
+  const selectedOrigin = [selectedLead?.origem, selectedLead?.channel].filter(Boolean).join(" / ") || "Origem nao registrada";
+  const selectedOpenChats = Number(selectedLead?.chatSummary?.open || detail?.relatedChats?.filter((chat) => chat.status !== "closed").length || 0);
+  const selectedAttribution = useMemo(() => resolveLeadAttribution(selectedLead), [selectedLead]);
+  const selectedAiEvidence = useMemo(() => resolveLeadAiEvidence(selectedLead), [selectedLead]);
+  const selectedConversationSummary = detail?.conversationSummary || selectedLead?.chatSummary || {};
+  const selectedTimeline = detail?.timeline || [];
+  const selectedAppointments = detail?.appointments || [];
 
   return (
     <CrmWorkspace>
       <CrmHero
-        active="Lista"
-        title="Clientes e oportunidades em uma tela de CRM familiar."
-        description="Lista, ficha, funil e proximas acoes no mesmo lugar, com a Altum ajudando sem transformar a operacao em painel tecnico."
+        active="Clientes"
+        title="Vender com contexto, prioridade e proxima acao clara."
+        description="A Altum junta clientes, oportunidades, conversas e propostas para mostrar quem merece atencao agora e o que fazer para converter."
         assistantTitle="Prioridade comercial"
         assistantSubtitle="Quem responder primeiro"
-        assistantText="A Altum ajuda a destacar contatos quentes, clientes sem responsavel e oportunidades que precisam de retorno."
+        assistantText="A Altum destaca contatos quentes, clientes sem responsavel, oportunidades paradas e proximos retornos que podem virar venda."
         action={
           <>
             <CrmButton type="button" onClick={load}>
@@ -477,8 +655,8 @@ export default function ClienteCrmPage() {
           <div className="border-b border-[var(--cliente-border)] p-5">
             <CrmSectionTitle
               eyebrow="Base comercial"
-              title="Leads e clientes"
-              description="Tabela tradicional com filtros simples, ficha lateral e acoes diretas."
+              title="Clientes e oportunidades"
+              description="Base comercial com filtros simples, ficha lateral e acoes diretas."
               action={!canOperate ? <CrmBadge tone="orange">somente leitura</CrmBadge> : null}
             />
             <div className="mt-5 flex flex-col gap-3 xl:flex-row">
@@ -604,6 +782,102 @@ export default function ClienteCrmPage() {
                   {detail?.stagePolicy?.slaBreached ? <CrmBadge tone="orange">sem retorno</CrmBadge> : null}
                 </div>
 
+                <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase text-[var(--cliente-card-text-soft)]">Linha de venda</p>
+                      <p className="mt-2 text-sm font-bold leading-6 text-[var(--cliente-card-text)]">{selectedNextAction}</p>
+                    </div>
+                    <CrmBadge tone={detail?.stagePolicy?.slaBreached ? "orange" : "purple"}>{detail?.stagePolicy?.slaBreached ? "agir hoje" : "proxima acao"}</CrmBadge>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <SalesFact label="Origem" value={selectedOrigin} />
+                    <SalesFact label="Responsavel" value={selectedLead.owner || detail?.stagePolicy?.ownerName || "Sem responsavel"} />
+                    <SalesFact label="Conversas abertas" value={String(selectedOpenChats)} />
+                    <SalesFact label="Etapa atual" value={getPipelineStageLabel(normalizeStage(selectedLead))} />
+                  </div>
+                </div>
+
+                <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,var(--cliente-border))] bg-[var(--cliente-card)] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase text-[var(--cliente-primary)]">Origem da venda</p>
+                      <p className="mt-2 text-sm font-bold leading-6 text-[var(--cliente-card-text)]">
+                        {selectedAttribution.campaign}
+                      </p>
+                    </div>
+                    <CrmBadge tone={selectedAttribution.clickId === "Registrado" ? "green" : "orange"}>
+                      {selectedAttribution.clickId === "Registrado" ? "click rastreado" : "sem click id"}
+                    </CrmBadge>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <SalesFact label="Fonte" value={selectedAttribution.source} />
+                    <SalesFact label="Meio" value={selectedAttribution.medium} />
+                    <SalesFact label="Primeiro toque" value={selectedAttribution.firstTouchLabel} />
+                    <SalesFact label="Ultimo toque" value={selectedAttribution.lastTouchLabel} />
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                    Criativo/conteudo: {selectedAttribution.content}. Essa leitura alimenta campanhas e relatorios quando UTMs, gclid ou fbclid chegam corretamente.
+                  </p>
+                </div>
+
+                <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_20%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 text-xs font-black uppercase text-[var(--cliente-ai)]">
+                        <Bot className="h-3.5 w-3.5" />
+                        Leitura da IA
+                      </p>
+                      <p className="mt-2 text-sm font-bold leading-6 text-[var(--cliente-card-text)]">
+                        {formatAiAction(selectedLead.aiNextAction)}
+                      </p>
+                    </div>
+                    <CrmBadge tone={getTemperatureTone(selectedLead.aiCommercialTemperature)}>
+                      {formatTemperature(selectedLead.aiCommercialTemperature)}
+                    </CrmBadge>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <SalesFact label="Oferta" value={selectedLead.aiRecommendedOffer || "Nao definida"} />
+                    <SalesFact label="Objetivo IA" value={selectedLead.aiResponseGoal || "Nao definido"} />
+                    <SalesFact
+                      label="Confianca"
+                      value={typeof selectedLead.aiPlannerConfidence === "number" ? `${Math.round(selectedLead.aiPlannerConfidence * 100)}%` : "--"}
+                    />
+                    <SalesFact label="Captura" value={selectedLead.aiCaptureChecklist ? "Em andamento" : "Sem checklist"} />
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {selectedAiEvidence.map((item) => (
+                      <SalesFact key={item.label} label={item.label} value={item.value} />
+                    ))}
+                  </div>
+                  {selectedLead.aiLeadSummary ? (
+                    <p className="mt-3 line-clamp-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                      {selectedLead.aiLeadSummary}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-black uppercase text-[var(--cliente-card-text-soft)]">Operacao deste cliente</p>
+                    <CrmBadge tone="blue">{Number(selectedConversationSummary.total || detail?.relatedChats?.length || 0)} conversa(s)</CrmBadge>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <SalesFact label="Pendentes" value={String(selectedConversationSummary.pending || 0)} />
+                    <SalesFact label="Resolvidas" value={String(selectedConversationSummary.resolved || 0)} />
+                    <SalesFact label="Alta prioridade" value={String(selectedConversationSummary.highPriority || 0)} />
+                    <SalesFact label="Ultima interacao" value={formatCrmDate(selectedConversationSummary.lastInteractionAt, "sem data")} />
+                  </div>
+                  {selectedAppointments.length ? (
+                    <div className="mt-3 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+                      <p className="text-[10px] font-black uppercase text-[var(--cliente-card-text-soft)]">Proxima reuniao</p>
+                      <p className="mt-1 text-xs font-bold text-[var(--cliente-card-text)]">
+                        {formatCrmDate(selectedAppointments[0]?.startAt || selectedAppointments[0]?.createdAt, "sem data")}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="grid gap-2">
                   <CrmSelect value={nextStage} onChange={(event) => setNextStage(event.target.value)} disabled={!canOperate}>
                     {stageOptions.map((stage) => <option key={stage} value={stage}>{getPipelineStageLabel(stage)}</option>)}
@@ -666,6 +940,26 @@ export default function ClienteCrmPage() {
                           <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{chat.lastMessage || chat.channel || "Abrir historico"}</p>
                           <p className="mt-1 text-[11px] text-[var(--cliente-card-text-muted)]">{formatCrmDate(chat.lastMessageTime, "sem data")}</p>
                         </Link>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {selectedTimeline.length ? (
+                  <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-black uppercase text-[var(--cliente-card-text-soft)]">Historico comercial</p>
+                      <CrmBadge tone="neutral">{selectedTimeline.length}</CrmBadge>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {selectedTimeline.slice(0, 5).map((event) => (
+                        <div key={event.id} className="rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-xs font-black text-[var(--cliente-card-text)]">{event.title || event.type || "Evento"}</p>
+                            <span className="shrink-0 text-[10px] font-bold text-[var(--cliente-card-text-muted)]">{formatCrmDate(event.createdAt, "--")}</span>
+                          </div>
+                          {event.detail ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{event.detail}</p> : null}
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -749,5 +1043,14 @@ export default function ClienteCrmPage() {
         </form>
       </CustomerProfileDrawer>
     </CrmWorkspace>
+  );
+}
+
+function SalesFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2">
+      <p className="text-[10px] font-black uppercase text-[var(--cliente-card-text-soft)]">{label}</p>
+      <p className="mt-1 truncate text-xs font-bold text-[var(--cliente-card-text)]">{value}</p>
+    </div>
   );
 }

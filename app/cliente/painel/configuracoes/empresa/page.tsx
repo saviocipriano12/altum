@@ -99,7 +99,7 @@ export default function ClienteEmpresaPage() {
     <div className="space-y-4">
       <SectionHeader
         title="Dados da empresa"
-        subtitle="Governanca base do tenant: identidade operacional, horario e responsavel principal."
+        subtitle="Identidade do negocio, horario, responsavel e contexto que a Altum usa para operar melhor."
         action={
           <Link
             href="/cliente/painel/configuracoes"
@@ -114,7 +114,7 @@ export default function ClienteEmpresaPage() {
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <PanelCard className="p-5">
           <form onSubmit={onSubmit} className="space-y-3">
-            <CardTitle title="Identidade do tenant" subtitle="Esses dados organizam a operacao e o contexto do painel cliente." />
+            <CardTitle title="Identidade do negocio" subtitle="Esses dados organizam atendimento, relatorios, IA e rotina comercial." />
 
             {loading ? (
               <div className="py-10 text-center text-white/60">
@@ -142,7 +142,7 @@ export default function ClienteEmpresaPage() {
                   <Field label="Cidade" value={form.city || ""} onChange={(value) => setForm((current) => ({ ...current, city: value }))} />
                   <Field label="Estado" value={form.state || ""} onChange={(value) => setForm((current) => ({ ...current, state: value }))} />
                 </div>
-                <Field label="Timezone" value={form.timezone || "America/Sao_Paulo"} onChange={(value) => setForm((current) => ({ ...current, timezone: value }))} />
+                <Field label="Fuso horario" value={form.timezone || "America/Sao_Paulo"} onChange={(value) => setForm((current) => ({ ...current, timezone: value }))} />
                 <Field label="Horario comercial" value={form.businessHours || "Seg-Sex 09:00-18:00"} onChange={(value) => setForm((current) => ({ ...current, businessHours: value }))} />
 
                 <div className="rounded-2xl border border-white/12 bg-white/[0.03] p-4">
@@ -199,7 +199,7 @@ export default function ClienteEmpresaPage() {
                       }
                     />
                     <Field
-                      label="Template WhatsApp"
+                      label="Modelo de mensagem"
                       value={form.dailyReport?.templateName || "fechamento_dia_altum"}
                       onChange={(value) =>
                         setForm((current) => ({
@@ -210,7 +210,7 @@ export default function ClienteEmpresaPage() {
                     />
                   </div>
                   <p className="mt-3 text-xs leading-5 text-white/45">
-                    O template deve estar aprovado como utilidade no WhatsApp Business e aceitar variaveis de dono, data, resumo, alertas, plano e link.
+                    A mensagem precisa estar aprovada no WhatsApp Business para enviar o fechamento do dia com resumo, alertas, plano e link.
                   </p>
                 </div>
 

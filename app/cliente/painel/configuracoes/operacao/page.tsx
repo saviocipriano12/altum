@@ -137,8 +137,8 @@ export default function ClienteOperacaoPage() {
   return (
     <div className="space-y-4">
       <SectionHeader
-        title="Operacao"
-        subtitle="SLA, distribuicao e padroes do inbox do tenant."
+        title="Operacao de atendimento"
+        subtitle="Tempo de resposta, distribuicao de conversas e regras para a equipe atender sem perder oportunidade."
         action={
           <Link
             href="/cliente/painel/configuracoes"
@@ -153,7 +153,7 @@ export default function ClienteOperacaoPage() {
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <PanelCard className="p-5">
           <form onSubmit={onSubmit} className="space-y-4">
-            <CardTitle title="Regras do inbox" subtitle="Essas regras dirigem SLA e distribuicao no atendimento do cliente." />
+            <CardTitle title="Regras de atendimento" subtitle="Defina como novas conversas entram, quem recebe e qual prazo precisa ser cumprido." />
 
             {loading ? (
               <div className="py-10 text-center text-white/60">
@@ -162,7 +162,7 @@ export default function ClienteOperacaoPage() {
             ) : (
               <>
                 <label className="block space-y-1">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">SLA primeira resposta (min)</span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Prazo da primeira resposta (min)</span>
                   <input
                     type="number"
                     min={5}
@@ -187,15 +187,15 @@ export default function ClienteOperacaoPage() {
                     disabled={!canManage}
                     className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
                   >
-                  <option value="manual">manual</option>
-                  <option value="round_robin">round_robin</option>
-                  <option value="least_loaded">least_loaded</option>
+                  <option value="manual">Manual</option>
+                  <option value="round_robin">Rodizio da equipe</option>
+                  <option value="least_loaded">Quem tem menos conversas</option>
                 </select>
               </label>
 
                 <Toggle
-                  title="Autoatribuir no inbound"
-                  description="Ao entrar nova conversa, o sistema distribui automaticamente conforme a regra atual."
+                  title="Distribuir conversa automaticamente"
+                  description="Quando uma nova conversa chega, a Altum direciona para alguem da equipe conforme a regra atual."
                   checked={form.autoAssignOnInbound}
                   disabled={!canManage}
                   onChange={(checked) => setForm((current) => ({ ...current, autoAssignOnInbound: checked }))}
@@ -203,7 +203,7 @@ export default function ClienteOperacaoPage() {
 
                 <Toggle
                   title="Priorizar leads quentes"
-                  description="Mantem a base pronta para pesos operacionais e regras por prioridade."
+                  description="Coloca oportunidades mais promissoras na frente para reduzir perda de venda."
                   checked={form.prioritizeHighPriority}
                   disabled={!canManage}
                   onChange={(checked) => setForm((current) => ({ ...current, prioritizeHighPriority: checked }))}
@@ -211,23 +211,23 @@ export default function ClienteOperacaoPage() {
 
                 <Toggle
                   title="Priorizar operadores online"
-                  description="Roteia primeiro para quem estiver marcado como online no time do tenant."
+                  description="Direciona primeiro para quem esta disponivel no time."
                   checked={form.preferOnlineAgents}
                   disabled={!canManage}
                   onChange={(checked) => setForm((current) => ({ ...current, preferOnlineAgents: checked }))}
                 />
 
                 <Toggle
-                  title="Roteamento estrito por canal"
-                  description="Respeita os canais permitidos em cada operador antes de distribuir o inbound."
+                  title="Respeitar canais da equipe"
+                  description="Distribui a conversa apenas para pessoas que podem atender aquele canal."
                   checked={form.strictChannelRouting}
                   disabled={!canManage}
                   onChange={(checked) => setForm((current) => ({ ...current, strictChannelRouting: checked }))}
                 />
 
                 <Toggle
-                  title="Fallback para qualquer operador"
-                  description="Se nao houver operador elegivel pelo canal, o sistema usa qualquer operador ativo compativel."
+                  title="Usar outro atendente se precisar"
+                  description="Se nao houver alguem ideal para o canal, a Altum pode escolher outro atendente disponivel."
                   checked={form.fallbackToAnyAgent}
                   disabled={!canManage}
                   onChange={(checked) => setForm((current) => ({ ...current, fallbackToAnyAgent: checked }))}
@@ -235,7 +235,7 @@ export default function ClienteOperacaoPage() {
 
                 <Toggle
                   title="Restringir ao horario comercial"
-                  description="Mantem o tenant preparado para janelas operacionais e handoff fora do expediente."
+                  description="Usa o horario comercial para decidir alertas, escaladas e atendimento fora do expediente."
                   checked={form.businessHoursOnly}
                   disabled={!canManage}
                   onChange={(checked) => setForm((current) => ({ ...current, businessHoursOnly: checked }))}
@@ -278,9 +278,9 @@ export default function ClienteOperacaoPage() {
             <div className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] p-2 text-white/85">
               <Clock3 className="h-4 w-4" />
             </div>
-            <p className="mt-3 text-sm font-semibold text-white/92">SLA aplicado no inbox</p>
+            <p className="mt-3 text-sm font-semibold text-white/92">Prazo aplicado nas conversas</p>
             <p className="mt-1 text-sm text-white/58">
-              Conversas novas passam a carregar vencimento de primeira resposta e alerta visual na fila.
+              Conversas novas passam a carregar vencimento de primeira resposta e alerta visual na lista.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <StateBadge label={`${form.firstResponseSlaMinutes} min`} tone="info" />
@@ -294,7 +294,7 @@ export default function ClienteOperacaoPage() {
             </div>
             <p className="mt-3 text-sm font-semibold text-white/92">Distribuicao operacional</p>
             <p className="mt-1 text-sm text-white/58">
-              O modo round robin alterna por operador. O least_loaded envia para quem tem menos conversas ativas, respeitando online, canais e limite de carga.
+              O rodizio alterna entre atendentes. O modo por carga envia para quem tem menos conversas ativas, respeitando disponibilidade, canais e limite de atendimento.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <StateBadge
@@ -309,12 +309,12 @@ export default function ClienteOperacaoPage() {
             <div className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] p-2 text-white/85">
               <ShieldCheck className="h-4 w-4" />
             </div>
-            <p className="mt-3 text-sm font-semibold text-white/92">Base enterprise</p>
+            <p className="mt-3 text-sm font-semibold text-white/92">Base de escala</p>
             <p className="mt-1 text-sm text-white/58">
-              Esta camada prepara o produto para filas por canal, score, horario e times sem refazer a arquitetura.
+              Esta camada prepara a operacao para filas por canal, prioridade, horario e times sem baguncar a rotina.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <StateBadge label={form.autoAssignOnInbound ? "autoassign ligado" : "fila manual"} tone="neutral" />
+              <StateBadge label={form.autoAssignOnInbound ? "distribuicao ligada" : "fila manual"} tone="neutral" />
               <StateBadge label={form.strictChannelRouting ? "canal estrito" : "canal flexivel"} tone="info" />
             </div>
           </PanelCard>

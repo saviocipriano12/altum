@@ -1,17 +1,9 @@
 import "./globals.css";
-import { Inter } from "next/font/google";
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { AuthProvider } from "@/context/AuthContext"; // 1. Adicione este import
 import { buildOrganizationSchema, getSiteUrl, getSocialLinksFromEnv, toJsonLdScript } from "@/lib/schema";
 import { TrackingScripts } from "@/components/analytics/TrackingScripts";
-/* ---------------- Font ---------------- */
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  weight: ["400", "500", "600", "700", "800"], // Adicionei 800 para os títulos extra-bold
-});
-
 /* ---------------- Metadata (SEO + OpenGraph + Twitter) ---------------- */
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag"),
@@ -73,9 +65,9 @@ export default function RootLayout({
   });
 
   return (
-    <html lang="pt-BR" className="scroll-smooth">
+    <html lang="pt-BR" className="scroll-smooth" data-scroll-behavior="smooth">
       <body
-        className={`${inter.className} bg-[#0B0B0B] text-white antialiased selection:bg-[#F56E0F] selection:text-white`}
+        className="bg-[#0B0B0B] font-sans text-white antialiased selection:bg-[#F56E0F] selection:text-white"
       >
         <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(organizationSchema)} />
         <Suspense fallback={null}>

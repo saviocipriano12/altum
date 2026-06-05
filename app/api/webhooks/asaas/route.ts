@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { reactivateTenantAfterBillingPayment } from "@/lib/server/contract-billing";
+import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
 
 const ASAAS_WEBHOOK_TOKEN = process.env.ASAAS_WEBHOOK_TOKEN;
 
@@ -111,6 +112,7 @@ export async function POST(req: Request) {
       .get();
 
     const automationQueue: Array<{ tenantId: string; leadId: string }> = [];
+    const saleQueue: Array<{ tenantId: string; leadId: string; sourceId: string }> = [];
     const reactivationQueue: Array<{ tenantId: string; financeId: string }> = [];
 
     if (!financeSnap.empty) {
@@ -137,6 +139,7 @@ export async function POST(req: Request) {
 
         if (mapped.isPaid && leadId && tenantId && previousStatus !== "pago") {
           automationQueue.push({ tenantId, leadId });
+          saleQueue.push({ tenantId, leadId, sourceId: doc.id });
         }
 
         if (mapped.isPaid && tenantId) {
@@ -184,7 +187,51 @@ export async function POST(req: Request) {
             asaasChargeId: chargeId,
             createdAt: FieldValue.serverTimestamp(),
           });
+
+          if (mapped.isPaid) {
+            const lead = leadDoc.data() as Record<string, unknown>;
+            const tenantId = clean(lead.tenantId, 140);
+            if (tenantId) {
+              saleQueue.push({ tenantId, leadId: leadDoc.id, sourceId: chargeId });
+            }
+          }
         })
+      );
+    }
+
+    if (saleQueue.length > 0) {
+      const uniqueSaleQueue = Array.from(
+        new Map(saleQueue.map((item) => [`${item.tenantId}:${item.leadId}`, item])).values()
+      );
+
+      await Promise.all(
+        uniqueSaleQueue.map((item) =>
+          setLeadPipelineStageWithEffects({
+            tenantId: item.tenantId,
+            leadId: item.leadId,
+            nextStage: "ganho",
+            actorId: "asaas_webhook",
+            actorName: "Asaas Webhook",
+            source: "asaas_payment_confirmed",
+            metadata: {
+              asaasChargeId: chargeId,
+              sourceId: item.sourceId,
+              asaasEvent: event,
+              paymentValue: Number(payment.value || 0) || null,
+              paymentMethod: clean(payment.billingType, 40) || null,
+            },
+            patch: {
+              paymentStatus: mapped.status,
+              paidAt: FieldValue.serverTimestamp(),
+            },
+          }).catch((conversionError) => {
+            console.error("[Webhook Asaas] Falha ao marcar venda ganha apos pagamento:", {
+              tenantId: item.tenantId,
+              leadId: item.leadId,
+              error: conversionError,
+            });
+          })
+        )
       );
     }
 

@@ -50,6 +50,33 @@ function cleanString(value: unknown, max = 320) {
   return value.trim().slice(0, max);
 }
 
+function normalizeOptOutText(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isWhatsAppOptOutMessage(value: string) {
+  const text = normalizeOptOutText(value);
+  if (!text) return false;
+  if (["parar", "stop", "sair", "cancelar", "remover", "descadastrar"].includes(text)) return true;
+  return [
+    "parar de receber",
+    "pare de mandar",
+    "nao quero receber",
+    "nao mandar mensagem",
+    "remova meu contato",
+    "remover meu contato",
+    "tirar meu contato",
+    "cancelar inscricao",
+  ].some((phrase) => text.includes(phrase));
+}
+
 function cleanNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -225,6 +252,29 @@ async function persistWhatsappStatusEvents(input: {
         { merge: true }
       );
       updatedChats += 1;
+    }
+
+    const deliverySnap = await adminDb
+      .collection("outbound_campaign_deliveries")
+      .where("tenantId", "==", input.tenantId)
+      .where("metaMessageId", "==", statusEvent.messageId)
+      .limit(20)
+      .get();
+
+    for (const deliveryDoc of deliverySnap.docs) {
+      batch.set(
+        deliveryDoc.ref,
+        {
+          status: statusEvent.status,
+          deliveryStatus: statusEvent.status,
+          deliveryUpdatedAt: FieldValue.serverTimestamp(),
+          deliveryAt: deliveryAtDate || FieldValue.serverTimestamp(),
+          deliveryError: statusEvent.errorMessage || "",
+          deliveryErrorCode: statusEvent.errorCode || "",
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
     }
 
     const eventDocId = sanitizeId(
@@ -918,6 +968,73 @@ export async function POST(req: Request) {
         mediaThumbnail: mediaMeta.mediaThumbnail,
         mediaId: mediaMeta.mediaId,
         createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    if (isWhatsAppOptOutMessage(text)) {
+      const optOutPatch = {
+        whatsappOptOut: true,
+        marketingOptOut: true,
+        doNotContact: true,
+        optOutReason: "whatsapp_keyword",
+        optOutKeywordText: text.slice(0, 180),
+        optOutAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      await Promise.all([
+        resolvedLeadId
+          ? adminDb.collection("leads").doc(resolvedLeadId).set(
+              {
+                ...optOutPatch,
+                tags: FieldValue.arrayUnion("whatsapp_opt_out"),
+              },
+              { merge: true }
+            )
+          : Promise.resolve(),
+        adminDb.collection("chats").doc(chatId).set(
+          {
+            ...optOutPatch,
+            aiPaused: true,
+            aiPausedReason: "Contato pediu para parar mensagens no WhatsApp.",
+            status: "open",
+          },
+          { merge: true }
+        ),
+        resolvedLeadId
+          ? adminDb.collection("lead_events").add({
+              tenantId,
+              leadId: resolvedLeadId,
+              chatId,
+              type: "whatsapp_opt_out",
+              title: "Opt-out registrado pelo WhatsApp",
+              detail: "Contato pediu para parar mensagens. IA e campanhas devem respeitar bloqueio.",
+              createdAt: FieldValue.serverTimestamp(),
+              actorId: "whatsapp_webhook",
+              actorName: "WhatsApp Webhook",
+            })
+          : Promise.resolve(),
+      ]);
+
+      if (eventRef) {
+        await eventRef.set(
+          {
+            status: "processed_opt_out",
+            chatId,
+            tenantId,
+            messageDocId: incomingMessageRef.id,
+            processedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      return NextResponse.json({
+        status: "ok_opt_out",
+        chatId,
+        tenantId,
+        phoneNumberId: channel.phoneNumberId,
       });
     }
 

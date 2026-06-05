@@ -16,7 +16,12 @@ import {
 type Body = {
   name?: unknown;
   status?: unknown;
+  deliveryMode?: unknown;
   messageTemplate?: unknown;
+  templateName?: unknown;
+  languageCode?: unknown;
+  bodyParams?: unknown;
+  headerMedia?: unknown;
   maxRecipients?: unknown;
   filters?: unknown;
 };

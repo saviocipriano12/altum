@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { BarChart3, CalendarDays, LayoutGrid, MessageSquare, Target } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { CalendarDays, LayoutGrid, MessageSquare, Target, TrendingUp } from "lucide-react";
 
 type BottomItem = {
   href: string;
@@ -16,7 +16,7 @@ const ITEMS: BottomItem[] = [
   { href: "/cliente/painel/inbox", label: "Conversas", icon: MessageSquare },
   { href: "/cliente/painel/crm", label: "Clientes", icon: Target, matches: ["/cliente/painel/pipeline", "/cliente/painel/comercial"] },
   { href: "/cliente/painel/agenda", label: "Agenda", icon: CalendarDays, matches: ["/cliente/painel/follow-ups"] },
-  { href: "/cliente/painel/metricas", label: "Relatorios", icon: BarChart3 },
+  { href: "/cliente/painel/campanhas", label: "Campanhas", icon: TrendingUp, matches: ["/cliente/painel/captacao", "/cliente/painel/configuracoes/integracoes"] },
 ];
 
 function isActive(pathname: string, href: string, matches: string[] = []) {
@@ -27,6 +27,10 @@ function isActive(pathname: string, href: string, matches: string[] = []) {
 
 export function ClienteBottomNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const chatOpenOnMobile = pathname.startsWith("/cliente/painel/inbox") && Boolean(searchParams.get("chatId"));
+  if (chatOpenOnMobile) return null;
 
   const visibleItems = ITEMS.slice(0, 5);
   if (!visibleItems.length) return null;

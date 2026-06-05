@@ -458,7 +458,7 @@ export default function ClienteHandoffsPage() {
     return [
       {
         id: "unassigned",
-        title: "Transferencias sem responsavel",
+        title: "Escaladas sem responsavel",
         detail: "Escaladas que ainda nao foram assumidas por um humano.",
         badge: String(stats.noOwner),
         tone: stats.noOwner ? "danger" : "success",
@@ -466,15 +466,15 @@ export default function ClienteHandoffsPage() {
       },
       {
         id: "sla",
-        title: "Fila em risco de SLA",
-        detail: "Conversas escaladas que ja ultrapassaram o tempo operacional esperado.",
+        title: "Atendimento fora do prazo",
+        detail: "Conversas escaladas que ja ultrapassaram o tempo esperado.",
         badge: String(stats.slaBreached),
         tone: stats.slaBreached ? "warning" : "success",
         action: () => updateQuery("risk", stats.slaBreached ? "sla" : null),
       },
       {
         id: "confidence",
-        title: "Baixa confianca antes da transferencia",
+        title: "Baixa confianca antes da escalada",
         detail: "Escaladas em que a IA demonstrou mais incerteza antes de chamar humano.",
         badge: String(stats.lowConfidence),
         tone: stats.lowConfidence ? "info" : "success",
@@ -483,7 +483,7 @@ export default function ClienteHandoffsPage() {
       {
         id: "today",
         title: "Volume das ultimas 24h",
-        detail: "Transferencias recentes para acompanhar pico operacional e calibragem da IA.",
+        detail: "Escaladas recentes para acompanhar pico operacional e calibragem da IA.",
         badge: String(stats.last24h),
         tone: stats.last24h > 6 ? "warning" : "neutral",
         action: () => updateQuery("chatId", null),
@@ -491,7 +491,7 @@ export default function ClienteHandoffsPage() {
       {
         id: "paused_ai",
         title: "IA pausada nas escaladas",
-        detail: "Conversas em transferencia onde o piloto automatico segue pausado e exigem revisao do retorno.",
+        detail: "Conversas escaladas onde o assistente segue pausado e exigem revisao do retorno.",
         badge: String(stats.pausedAi),
         tone: stats.pausedAi ? "info" : "success",
         action: () => updateQuery("risk", stats.pausedAi ? "paused_ai" : null),
@@ -520,7 +520,7 @@ export default function ClienteHandoffsPage() {
   if (error) {
     return (
       <EmptyState
-        title="Falha ao carregar central de transferencias"
+        title="Falha ao carregar atendimento humano"
         description={error}
         action={
           <button
@@ -536,12 +536,12 @@ export default function ClienteHandoffsPage() {
   }
 
   return (
-    <div className="handoffs-refined client-daily-page space-y-6">
+    <div className="handoffs-refined client-daily-page space-y-4">
       <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
-            title="Central de transferencias"
-            subtitle="Controle de escaladas da IA, responsaveis humanos e gargalos operacionais nas conversas."
+            title="Atendimento humano"
+            subtitle="Veja quando o assistente chamou uma pessoa, quem assumiu e onde uma venda pode travar."
             action={<StateBadge label={`${stats.total} ativos`} tone={stats.total ? "warning" : "success"} />}
           />
 
@@ -555,7 +555,7 @@ export default function ClienteHandoffsPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-white">{item.title}</p>
+                    <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.title}</p>
                     <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.detail}</p>
                   </div>
                   <StateBadge label={item.badge} tone={item.tone} />
@@ -566,12 +566,12 @@ export default function ClienteHandoffsPage() {
         </PanelCard>
 
         <PanelCard className="p-5 md:p-6">
-          <CardTitle title="Mesa de decisao" subtitle="Leitura rapida para operacao e calibragem do agente." />
+          <CardTitle title="Mesa de decisao" subtitle="Leitura rapida para atendimento, prioridade e ajuste da IA." />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <MetricCard label="Transferencias ativas" value={String(stats.total)} icon={GitBranchPlus} trend="conversas com escalada" />
+            <MetricCard label="Escaladas ativas" value={String(stats.total)} icon={GitBranchPlus} trend="conversas com atendimento humano" />
             <MetricCard label="Sem dono" value={String(stats.noOwner)} icon={UserRound} trend="precisam de atendimento humano" />
-            <MetricCard label="Baixa confianca" value={String(stats.lowConfidence)} icon={Brain} trend="pedem revisao do prompt/KB" />
-            <MetricCard label="SLA estourado" value={String(stats.slaBreached)} icon={ShieldAlert} trend="exigem priorizacao" />
+            <MetricCard label="Baixa confianca" value={String(stats.lowConfidence)} icon={Brain} trend="pedem ajuste no assistente" />
+            <MetricCard label="Fora do prazo" value={String(stats.slaBreached)} icon={ShieldAlert} trend="exigem priorizacao" />
           </div>
         </PanelCard>
       </section>
@@ -579,8 +579,8 @@ export default function ClienteHandoffsPage() {
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
-            title="Modo operacional da transferencia"
-            subtitle="O atendimento humano fica mais consistente quando seguimos o contexto do negocio e do CRM."
+            title="Como assumir a conversa"
+            subtitle="O atendimento humano fica mais consistente quando preserva contexto, etapa e intencao do cliente."
             action={<StateBadge label={businessProfile.label} tone="info" />}
           />
 
@@ -627,7 +627,7 @@ export default function ClienteHandoffsPage() {
             {playbookPreset.scripts.slice(0, 2).map((script) => (
               <div key={`${script.situation}-${script.goal}`} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-white">{script.situation}</p>
+                  <p className="text-sm font-medium text-[var(--cliente-card-text)]">{script.situation}</p>
                   <StateBadge label={script.goal} tone="info" />
                 </div>
                 <p className="mt-2 text-xs leading-6 text-[var(--cliente-card-text-muted)]">{script.script}</p>
@@ -643,7 +643,7 @@ export default function ClienteHandoffsPage() {
               </p>
               {playbookPreset.offers[0] ? (
                 <p className="mt-1 text-xs text-emerald-100/72">
-                  Entrar com essa linha ajuda o humano a retomar a venda sem reiniciar o discovery.
+                  Entrar com essa linha ajuda o humano a retomar a venda sem refazer toda a conversa.
                 </p>
               ) : null}
             </div>
@@ -654,7 +654,7 @@ export default function ClienteHandoffsPage() {
       <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
-            title="Fila de transferencias"
+            title="Conversas para assumir"
             subtitle="Converse no contexto certo e distribua a carga com clareza."
           />
 
@@ -697,7 +697,7 @@ export default function ClienteHandoffsPage() {
           <div className="mt-3 grid gap-3 md:grid-cols-4">
             <FilterPill active={risk === "all"} label="Todos" onClick={() => updateQuery("risk", null)} />
             <FilterPill active={risk === "low_confidence"} label="Baixa confianca" onClick={() => updateQuery("risk", "low_confidence")} />
-            <FilterPill active={risk === "sla"} label="SLA estourado" onClick={() => updateQuery("risk", "sla")} />
+            <FilterPill active={risk === "sla"} label="Fora do prazo" onClick={() => updateQuery("risk", "sla")} />
             <FilterPill active={risk === "paused_ai"} label="IA pausada" onClick={() => updateQuery("risk", "paused_ai")} />
             <FilterPill active={risk === "unread"} label="Com backlog" onClick={() => updateQuery("risk", "unread")} />
             <FilterPill active={!chatId} label="Sem foco" onClick={() => updateQuery("chatId", null)} />
@@ -715,13 +715,13 @@ export default function ClienteHandoffsPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-semibold text-white">{row.contactName}</p>
+                        <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{row.contactName}</p>
                         <StateBadge label={formatChannel(row.channel)} tone="info" />
-                        <StateBadge label={row.queueStatus} tone={row.queueStatus === "sla estourado" ? "danger" : "neutral"} />
+                        <StateBadge label={row.queueStatus === "sla estourado" ? "fora do prazo" : row.queueStatus} tone={row.queueStatus === "sla estourado" ? "danger" : "neutral"} />
                         <StateBadge label={row.priority} tone={row.priority === "alta" ? "warning" : "neutral"} />
                       </div>
                       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
-                        {row.contactPhone || "Sem telefone"} {row.leadId ? `| contato ${row.leadId.slice(0, 8)}` : ""} | ultima transferencia {formatRelative(row.handoffTime)}
+                        {row.contactPhone || "Sem telefone"} {row.leadId ? `| cliente ${row.leadId.slice(0, 8)}` : ""} | ultima escalada {formatRelative(row.handoffTime)}
                       </p>
                     </div>
 
@@ -745,7 +745,7 @@ export default function ClienteHandoffsPage() {
 
                   <div className="mt-3 grid gap-3 lg:grid-cols-[1.4fr_1fr]">
                     <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Motivo da transferencia</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Motivo da escalada</p>
                       <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{row.handoffReason}</p>
                       <p className="mt-2 line-clamp-2 text-xs text-[var(--cliente-card-text-soft)]">{row.preview || "Sem preview recente da conversa."}</p>
                     </div>
@@ -754,12 +754,12 @@ export default function ClienteHandoffsPage() {
                       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cliente-card-text-soft)]">Responsavel humano</p>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <div>
-                          <p className="text-sm font-medium text-white">{row.humanOwnerName}</p>
+                          <p className="text-sm font-medium text-[var(--cliente-card-text)]">{row.humanOwnerName}</p>
                           <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                             {row.humanOwnerTeam
-                              ? `${row.humanOwnerTeam}${row.assignedUserId && row.assignedUserId !== row.humanOwnerUserId ? " • fila atribuida para outro responsavel" : ""}`
+                              ? `${row.humanOwnerTeam}${row.assignedUserId && row.assignedUserId !== row.humanOwnerUserId ? " | conversa atribuida para outro responsavel" : ""}`
                               : row.assignedUserId && row.assignedUserId !== row.humanOwnerUserId
-                                ? "fila atribuida para outro responsavel"
+                                ? "conversa atribuida para outro responsavel"
                                 : "responsavel principal da escalada"}
                           </p>
                         </div>
@@ -798,7 +798,7 @@ export default function ClienteHandoffsPage() {
                           className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-500/16 disabled:opacity-50"
                         >
                           {actingChatId === row.chatId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
-                          Devolver para IA
+                          Voltar para IA
                         </button>
                       ) : null}
                     </div>
@@ -807,7 +807,7 @@ export default function ClienteHandoffsPage() {
               ))
             ) : (
               <EmptyState
-                title="Nenhuma transferencia encontrada"
+                title="Nenhuma escalada encontrada"
                 description="Ajuste os filtros ou espere novas escaladas da IA para acompanhar a operacao humana."
               />
             )}
@@ -816,7 +816,7 @@ export default function ClienteHandoffsPage() {
 
         <div className="space-y-4">
           <PanelCard className="p-5">
-            <SectionHeader title="Motivos recorrentes" subtitle="Onde a IA mais pede ajuda humana." />
+            <SectionHeader title="Motivos recorrentes" subtitle="Onde a IA mais chama uma pessoa." />
             <div className="space-y-3">
               {handoffReasons.length ? (
                 handoffReasons.map((item) => (
@@ -828,7 +828,7 @@ export default function ClienteHandoffsPage() {
                   </div>
                 ))
               ) : (
-                <EmptyState title="Sem historico de transferencias" description="Quando a IA escalar conversas, os motivos aparecem aqui." />
+                <EmptyState title="Sem historico de escaladas" description="Quando a IA chamar alguem, os motivos aparecem aqui." />
               )}
             </div>
           </PanelCard>
@@ -846,7 +846,7 @@ export default function ClienteHandoffsPage() {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-medium text-white">{item.name}</p>
+                        <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.name}</p>
                         <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
                           {item.id === "unassigned" ? "precisa de distribuicao" : `${item.urgent} prioritarios em aberto`}
                         </p>
@@ -868,7 +868,7 @@ export default function ClienteHandoffsPage() {
             <SectionHeader title="Risco operacional" subtitle="O que esta travando o fluxo humano agora." />
             <div className="space-y-3">
               <RiskRow label="Responsaveis offline" value={String(stats.offlineOwners)} tone={stats.offlineOwners ? "warning" : "success"} onClick={() => updateQuery("assignment", stats.offlineOwners ? "offline_owner" : null)} />
-              <RiskRow label="IA pausada" value={String(stats.pausedAi)} tone={stats.pausedAi ? "info" : "success"} onClick={() => updateQuery("risk", stats.pausedAi ? "paused_ai" : null)} />
+              <RiskRow label="Assistente pausado" value={String(stats.pausedAi)} tone={stats.pausedAi ? "info" : "success"} onClick={() => updateQuery("risk", stats.pausedAi ? "paused_ai" : null)} />
               <RiskRow label="Backlog nao lido" value={String(stats.unreadBacklog)} tone={stats.unreadBacklog ? "warning" : "success"} onClick={() => updateQuery("risk", stats.unreadBacklog ? "unread" : null)} />
             </div>
           </PanelCard>
@@ -879,14 +879,14 @@ export default function ClienteHandoffsPage() {
               <QuickLink
                 href="/cliente/painel/inbox?queue=sla_breached"
                 icon={AlertTriangle}
-                title="Priorizar SLA"
+                title="Priorizar atrasos"
                 description="Abrir conversas em risco alto imediatamente."
               />
               <QuickLink
                 href="/cliente/painel/ia?risk=low_confidence"
                 icon={Bot}
                 title="Revisar IA"
-                description="Corrigir guardrails e conhecimento onde a confianca esta baixa."
+                description="Ajustar conhecimento e limites de resposta onde a confianca esta baixa."
               />
               <QuickLink
                 href="/cliente/painel/configuracoes/usuarios"
@@ -897,8 +897,8 @@ export default function ClienteHandoffsPage() {
               <QuickLink
                 href="/cliente/painel/logs?ai=handoff"
                 icon={Brain}
-                title="Auditar transferencias"
-                description="Cruzar cada escalada com os logs da IA e corrigir gargalos de decisao."
+                title="Auditoria avancada"
+                description="Cruzar cada escalada com o historico do assistente e corrigir gargalos de decisao."
               />
             </div>
           </PanelCard>

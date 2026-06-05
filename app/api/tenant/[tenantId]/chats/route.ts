@@ -42,6 +42,17 @@ type ContactProfileItem = {
   photoUrl?: string;
 };
 
+type LeadSignalItem = {
+  id: string;
+  phone?: string;
+  heat?: string;
+  aiCommercialTemperature?: string;
+  aiNextAction?: string;
+  priority?: string;
+  pipelineStage?: string;
+  stage?: string;
+};
+
 function toTime(value: unknown) {
   if (!value) return 0;
   if (typeof value === "number") return value;
@@ -107,6 +118,40 @@ async function listContactProfiles(tenantId: string) {
   }
 
   return { byPhone, byLeadId };
+}
+
+async function listLeadSignals(tenantId: string) {
+  const snap = await adminDb
+    .collection("leads")
+    .where("tenantId", "==", tenantId)
+    .limit(500)
+    .get();
+
+  const byLeadId = new Map<string, LeadSignalItem>();
+  const byPhone = new Map<string, LeadSignalItem>();
+
+  for (const doc of snap.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const item: LeadSignalItem = {
+      id: doc.id,
+      phone: cleanString(data.telefone, 60),
+      heat: cleanString(data.heat, 40),
+      aiCommercialTemperature: cleanString(data.aiCommercialTemperature, 40),
+      aiNextAction: cleanString(data.aiNextAction, 120),
+      priority: cleanString(data.priority, 40),
+      pipelineStage: cleanString(data.pipelineStage, 80),
+      stage: cleanString(data.stage, 80),
+    };
+
+    byLeadId.set(doc.id, item);
+    if (item.phone) {
+      byPhone.set(item.phone, item);
+      const normalizedPhone = phoneKey(item.phone);
+      if (normalizedPhone) byPhone.set(normalizedPhone, item);
+    }
+  }
+
+  return { byLeadId, byPhone };
 }
 
 export async function GET(
@@ -178,7 +223,10 @@ export async function GET(
       })
     );
 
-    const contacts = await listContactProfiles(tenantId);
+    const [contacts, leadSignals] = await Promise.all([
+      listContactProfiles(tenantId),
+      listLeadSignals(tenantId),
+    ]);
 
     const items: ChatListItem[] = snap.docs
       .map((doc) => ({
@@ -188,6 +236,10 @@ export async function GET(
           const contactPhone = cleanString(chat.contactPhone, 60);
           const leadId = cleanString(chat.leadId, 180);
           const profile = contacts.byPhone.get(contactPhone) || contacts.byPhone.get(phoneKey(contactPhone)) || contacts.byLeadId.get(leadId);
+          const leadSignal =
+            leadSignals.byLeadId.get(leadId) ||
+            leadSignals.byPhone.get(contactPhone) ||
+            leadSignals.byPhone.get(phoneKey(contactPhone));
           return {
             ...chat,
             contactName:
@@ -203,6 +255,11 @@ export async function GET(
               cleanString(chat.contactPhotoUrl, 1000) ||
               profile?.photoUrl ||
               "",
+            leadHeat: leadSignal?.heat || "",
+            leadTemperature: leadSignal?.aiCommercialTemperature || "",
+            leadNextAction: leadSignal?.aiNextAction || "",
+            leadPriority: leadSignal?.priority || "",
+            leadStage: leadSignal?.pipelineStage || leadSignal?.stage || "",
           };
         })(),
         aiState: stateMap.get(doc.id) || null,

@@ -44,7 +44,12 @@ type PipelineLead = {
   aiPlannerConfidence: number | null;
   aiLeadSummary: string;
   aiNextAction: string;
+  aiRecommendedOffer: string;
+  aiResponseGoal: string;
+  aiCommercialTemperature: string;
   aiConversationStage: string;
+  campaignName: string;
+  sourceLabel: string;
   qualification: {
     score: number | null;
     band: string;
@@ -179,7 +184,12 @@ function formatLead(docId: string, data: Record<string, unknown>): PipelineLead 
     aiPlannerConfidence: cleanNumber(data.aiPlannerConfidence),
     aiLeadSummary: cleanText(data.aiLeadSummary, 260),
     aiNextAction: cleanText(data.aiNextAction, 120),
+    aiRecommendedOffer: cleanText(data.aiRecommendedOffer, 160),
+    aiResponseGoal: cleanText(data.aiResponseGoal, 80),
+    aiCommercialTemperature: cleanText(data.aiCommercialTemperature, 40),
     aiConversationStage: cleanText(data.aiConversationStage, 80),
+    campaignName: cleanText(data.campaignName || data.utmCampaign, 180),
+    sourceLabel: cleanText(data.sourceLabel || data.origem || data.channel, 140),
     qualification: formatQualification(data.qualification),
     commercialState: formatCommercialState(data.commercialState),
   };

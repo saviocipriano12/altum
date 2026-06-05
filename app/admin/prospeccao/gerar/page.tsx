@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 
 /* ======================================================
-   TIPOS (FUSAO DO ANTIGO + NOVO)
+   TIPOS
 ====================================================== */
 
 type LeadFromAPI = {
@@ -48,7 +48,7 @@ type LeadFromAPI = {
   userRatingsTotal?: number;
   origem?: string;
 
-  // NOVOS DADOS DA API TURBINADA
+  // Dados complementares do Google Places
   lat?: number;
   lng?: number;
   priceLevel?: number; // 0 a 4
@@ -198,7 +198,7 @@ function normalizeCategory(c?: string) {
 }
 
 /**
- * Logica de Pontuacao "CEO Mode" Expandida
+ * Regras de pontuacao comercial
  */
 function computeQualification(
   l: LeadFromAPI,
@@ -439,44 +439,44 @@ function Divider() {
 
 export default function GerarLeadsPremiumPage() {
   const { user, profile } = useAuth();
-  // Core inputs
+  // Campos principais
   const [selectedPresetId, setSelectedPresetId] = useState("custom");
   const [servico, setServico] = useState("restaurante");
   const [nicho, setNicho] = useState("restaurante");
   const [cidade, setCidade] = useState("Belo Horizonte, MG");
   const [searchHintsRaw, setSearchHintsRaw] = useState("");
 
-  // Acquisition controls
+  // Controles da busca
   const [limitValid, setLimitValid] = useState(15);
   const [maxPages, setMaxPages] = useState(2);
   const [excludeExistingInCrm, setExcludeExistingInCrm] = useState(true);
   const [mode, setMode] = useState<"conservador" | "balanceado" | "agressivo">("balanceado");
 
-  // Quality rules
+  // Regras de qualidade
   const [minRating, setMinRating] = useState(4.0);
   const [minRatingsTotal, setMinRatingsTotal] = useState(15);
   const [requireWebsite, setRequireWebsite] = useState<"qualquer" | "sim" | "nao">("qualquer");
   const [scoreMin, setScoreMin] = useState(55);
 
-  // Keyword controls
+  // Palavras de filtro
   const [bannedWords, setBannedWords] = useState("delivery, ifood, atacado, distribuidora");
   const [preferredWords, setPreferredWords] = useState("premium, boutique, clinica, estetica, dermatologia");
 
-  // STATE: Resgate Manual (A chave para o controle)
+  // Aprovacao manual de leads fora do filtro
   const [manualOverrides, setManualOverrides] = useState<Record<string, boolean>>({});
 
-  // Run state
+  // Estado de execucao
   const [loadingBuscar, setLoadingBuscar] = useState(false);
   const [loadingSalvar, setLoadingSalvar] = useState(false);
   const [autoIntelligence, setAutoIntelligence] = useState(true);
 
-  // Results
+  // Resultados
   const [rawLeads, setRawLeads] = useState<LeadFromAPI[]>([]);
   const [qualified, setQualified] = useState<LeadQualified[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [showDiscarded, setShowDiscarded] = useState(false);
 
-  // UI state
+  // Estado da interface
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [toast, setToast] = useState<{ type: "ok" | "warn" | "err"; msg: string } | null>(null);
@@ -541,11 +541,11 @@ export default function GerarLeadsPremiumPage() {
     };
   }, [minRating, minRatingsTotal, requireWebsite, bannedWords, preferredWords, scoreMin]);
 
-  // LOGICA COMPUTADA + RESGATE (FUSAO)
+  // Qualificacao calculada e aprovacao manual
   const computed = useMemo(() => {
     const q = rawLeads.map((l) => {
         const qual = computeQualification(l, rules);
-        // Logica de Resgate: Se estiver na lista manual, limpa bloqueios
+        // Aprovacao manual: remove bloqueios do filtro
         if (manualOverrides[l.placeId]) {
             qual._blockedReasons = [];
             qual._isRescued = true;
@@ -557,10 +557,10 @@ export default function GerarLeadsPremiumPage() {
     // Aprovados = sem bloqueios
     const approved = q.filter((x) => x._blockedReasons.length === 0);
 
-    // Descartados = com bloqueios
+    // Fora do perfil = com bloqueios
     const discarded = q.filter((x) => x._blockedReasons.length > 0);
 
-    // Ordenacao: Resgatados ou Score Alto primeiro
+    // Ordenacao: aprovados manualmente e maior score primeiro
     approved.sort((a, b) => {
         if (a._isRescued && !b._isRescued) return -1;
         if (!a._isRescued && b._isRescued) return 1;
@@ -851,12 +851,12 @@ export default function GerarLeadsPremiumPage() {
               <ArrowLeft size={14} /> Voltar ao CRM
             </Link>
             <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-100">
-              <ShieldCheck className="h-4 w-4" /> Dados Ricos + Resgate
+              <ShieldCheck className="h-4 w-4" /> Google Maps + Qualificacao
             </span>
           </div>
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Gerador de Leads Qualificados</h1>
-            <p className="mt-1 text-sm text-white/55">Controle total da aquisicao: regras de qualidade, score, selecao e envio ao CRM.</p>
+            <h1 className="text-3xl font-semibold tracking-tight">Gerador de leads do Google Maps</h1>
+            <p className="mt-1 text-sm text-white/55">Busque empresas, filtre oportunidades e envie contatos prontos para abordagem no CRM.</p>
           </div>
         </div>
 
@@ -872,36 +872,36 @@ export default function GerarLeadsPremiumPage() {
             )}
           >
             {autoIntelligence ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-            IA automatica
+            Pesquisa automatica
           </button>
           <button onClick={() => { setRawLeads([]); setQualified([]); setSelected({}); setLogs([]); setError(null); showToast("ok", "Limpo."); }} disabled={busy} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 disabled:opacity-50">
             <Trash2 size={16} /> Limpar
           </button>
           <button onClick={buscarLeads} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-            {loadingBuscar ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />} Iniciar prospeccao
+            {loadingBuscar ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />} Buscar leads
           </button>
           <button onClick={salvarNoCRM} disabled={busy || selectedLeadsList.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
-            {loadingSalvar ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Enviar ao CRM ({selectedLeadsList.length})
+            {loadingSalvar ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Salvar no CRM ({selectedLeadsList.length})
           </button>
         </div>
       </div>
 
       {/* STATS */}
       <div className="grid gap-3 lg:grid-cols-4">
-        <StatCard label="Recebidos da API" value={stats.total} hint="Resultado bruto com dados ricos" icon={<RefreshCcw className="h-5 w-5" />} />
-        <StatCard label="Aprovados (geral)" value={stats.approvedAll} hint={`Taxa: ${pct(stats.ratio)}`} icon={<BadgeCheck className="h-5 w-5" />} accent="blue" />
-        <StatCard label="Aprovados (top)" value={stats.approved} hint={`Limitado em ${limitValid}`} icon={<Sparkles className="h-5 w-5" />} accent="green" />
-        <StatCard label="Descartados" value={stats.discarded} hint="Disponiveis para resgate" icon={<AlertTriangle className="h-5 w-5" />} accent="amber" />
+        <StatCard label="Encontrados no Maps" value={stats.total} hint="Empresas retornadas pela busca" icon={<RefreshCcw className="h-5 w-5" />} />
+        <StatCard label="Aprovados" value={stats.approvedAll} hint={`Taxa: ${pct(stats.ratio)}`} icon={<BadgeCheck className="h-5 w-5" />} accent="blue" />
+        <StatCard label="Prontos para salvar" value={stats.approved} hint={`Limitado em ${limitValid}`} icon={<Sparkles className="h-5 w-5" />} accent="green" />
+        <StatCard label="Fora do perfil" value={stats.discarded} hint="Podem ser revisados manualmente" icon={<AlertTriangle className="h-5 w-5" />} accent="amber" />
       </div>
 
       {/* CONFIG */}
       <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-4">
-        <SectionHeader title="Configuracao de aquisicao" subtitle="Defina alvo + regras de qualidade." icon={<Filter className="h-4 w-4" />} right={<button onClick={() => copy(queryPreview)} className="text-[11px] text-white/50 hover:text-white"><Copy className="h-3 w-3 inline mr-1"/> Copiar Query</button>} />
+        <SectionHeader title="Busca e qualificacao" subtitle="Defina o nicho, a cidade e os criterios comerciais." icon={<Filter className="h-4 w-4" />} right={<button onClick={() => copy(queryPreview)} className="text-[11px] text-white/50 hover:text-white"><Copy className="h-3 w-3 inline mr-1"/> Copiar busca</button>} />
         <Divider />
         
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
-            <label className="text-[11px] text-white/55">Preset ICP</label>
+            <label className="text-[11px] text-white/55">Perfil alvo</label>
             <select
               value={selectedPresetId}
               onChange={(e) => setSelectedPresetId(e.target.value)}
@@ -926,7 +926,7 @@ export default function GerarLeadsPremiumPage() {
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
-          <div className="space-y-1"><label className="text-[11px] text-white/55">Servico</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={servico} onChange={(e) => setServico(e.target.value)} placeholder="Ex: clinica estetica" /></div>
+          <div className="space-y-1"><label className="text-[11px] text-white/55">Oferta que vamos vender</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={servico} onChange={(e) => setServico(e.target.value)} placeholder="Ex: clinica estetica" /></div>
           <div className="space-y-1"><label className="text-[11px] text-white/55">Nicho</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={nicho} onChange={(e) => setNicho(e.target.value)} placeholder="Ex: dermatologia" /></div>
           <div className="space-y-1"><label className="text-[11px] text-white/55">Cidade</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Ex: Belo Horizonte, MG" /></div>
         </div>
@@ -942,7 +942,7 @@ export default function GerarLeadsPremiumPage() {
             <input type="number" min={1} max={80} value={limitValid} onChange={(e) => setLimitValid(clamp(Number(e.target.value) || 10, 1, 80))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" />
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-[10px] text-white/45">Paginas Google</label>
+                <label className="text-[10px] text-white/45">Paginas do Maps</label>
                 <input
                   type="number"
                   min={1}
@@ -953,7 +953,7 @@ export default function GerarLeadsPremiumPage() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] text-white/45">Dedupe no CRM</label>
+                <label className="text-[10px] text-white/45">Evitar duplicados</label>
                 <button
                   type="button"
                   onClick={() => setExcludeExistingInCrm((value) => !value)}
@@ -971,9 +971,9 @@ export default function GerarLeadsPremiumPage() {
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
-            <SectionHeader title="Qualidade minima" icon={<ShieldCheck className="h-4 w-4" />} right={<span className="text-[10px] text-white/40">Score min: {scoreMin}</span>} />
+            <SectionHeader title="Criterios minimos" icon={<ShieldCheck className="h-4 w-4" />} right={<span className="text-[10px] text-white/40">Score minimo: {scoreMin}</span>} />
             <div className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-              Telefone obrigatorio (travado para nao desperdicar custo com lead sem contato)
+              Telefone obrigatorio para evitar lead sem canal de abordagem.
             </div>
             <select
               value={requireWebsite}
@@ -991,7 +991,7 @@ export default function GerarLeadsPremiumPage() {
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
-            <SectionHeader title="Palavras & Refinamento" icon={<Sparkles className="h-4 w-4" />} />
+            <SectionHeader title="Palavras de filtro" icon={<Sparkles className="h-4 w-4" />} />
             <input value={bannedWords} onChange={(e) => setBannedWords(e.target.value)} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Proibidas" />
             <input value={preferredWords} onChange={(e) => setPreferredWords(e.target.value)} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Desejadas" />
           </div>
@@ -1008,7 +1008,7 @@ export default function GerarLeadsPremiumPage() {
             <SectionHeader title="Selecao" icon={<BadgeCheck className="h-4 w-4" />} />
             <div className="flex flex-wrap gap-2">
               <button onClick={() => toggleSelectAll(true)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-[11px] text-white hover:bg-white/15 transition disabled:opacity-50"><CheckCircle2 className="h-4 w-4" /> Todos</button>
-              <button onClick={() => toggleSelectAll(false)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition disabled:opacity-50"><X className="h-4 w-4" /> Nada</button>
+              <button onClick={() => toggleSelectAll(false)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition disabled:opacity-50"><X className="h-4 w-4" /> Limpar selecao</button>
             </div>
             <div className="flex flex-wrap gap-2">
               <button onClick={() => selectOnlyHeat("quente")} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] text-white hover:bg-emerald-500 transition disabled:opacity-50"><Flame className="h-4 w-4" /> Quentes</button>
@@ -1029,7 +1029,7 @@ export default function GerarLeadsPremiumPage() {
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
-            <SectionHeader title="Logs" icon={<RefreshCcw className="h-4 w-4" />} right={<button onClick={() => setLogs([])}><Trash2 className="h-4 w-4 text-white/50" /></button>} />
+            <SectionHeader title="Historico da busca" icon={<RefreshCcw className="h-4 w-4" />} right={<button onClick={() => setLogs([])}><Trash2 className="h-4 w-4 text-white/50" /></button>} />
             <div className="space-y-2 max-h-40 overflow-y-auto">{logs.map((l, i) => <div key={i} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">{l}</div>)}</div>
           </div>
         </div>
@@ -1037,13 +1037,13 @@ export default function GerarLeadsPremiumPage() {
         {/* RIGHT: RESULTS */}
         <div className="lg:col-span-3 space-y-4">
           <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
-            <SectionHeader title="Leads aprovados" subtitle="Grid premium pronto para salvar no CRM." icon={<BadgeCheck className="h-4 w-4" />} right={<span className="text-xs text-white/45">Top: <b className="text-white/70">{qualified.length}</b></span>} />
+            <SectionHeader title="Leads prontos para abordagem" subtitle="Revise, selecione e salve no CRM." icon={<BadgeCheck className="h-4 w-4" />} right={<span className="text-xs text-white/45">Top: <b className="text-white/70">{qualified.length}</b></span>} />
             <Divider />
 
             {loadingBuscar ? (
-              <div className="flex items-center gap-2 text-sm text-white/60"><Loader2 className="h-4 w-4 animate-spin" /> Prospeccionando e qualificando...</div>
+              <div className="flex items-center gap-2 text-sm text-white/60"><Loader2 className="h-4 w-4 animate-spin" /> Buscando e qualificando empresas...</div>
             ) : qualified.length === 0 ? (
-              <div className="text-sm text-white/50">Nenhum lead qualificado ainda.</div>
+              <div className="text-sm text-white/50">Nenhum lead pronto ainda. Ajuste a busca ou reduza os criterios.</div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {qualified.map((l) => {
@@ -1079,7 +1079,7 @@ export default function GerarLeadsPremiumPage() {
 
                       {/* Reasons */}
                       <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                        <p className="text-[10px] uppercase tracking-wide text-white/45">Por que foi aprovado</p>
+                        <p className="text-[10px] uppercase tracking-wide text-white/45">Sinais comerciais</p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {l._reasons.slice(0, 4).map((r) => <span key={r} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] text-white/70"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-300/80" /> {r}</span>)}
                         </div>
@@ -1097,10 +1097,10 @@ export default function GerarLeadsPremiumPage() {
             )}
           </div>
 
-          {/* Descartados (Zona de Resgate) */}
+          {/* Fora do perfil (Zona de Resgate) */}
           {showDiscarded && (
             <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
-              <SectionHeader title="Descartados (com motivo)" subtitle="Transparencia total." icon={<AlertTriangle className="h-4 w-4" />} right={<span className="text-xs text-white/45">{computed.discarded.length} itens</span>} />
+              <SectionHeader title="Fora do perfil (com motivo)" subtitle="Revise apenas se fizer sentido comercial." icon={<AlertTriangle className="h-4 w-4" />} right={<span className="text-xs text-white/45">{computed.discarded.length} itens</span>} />
               <Divider />
               {computed.discarded.length === 0 ? <p className="text-sm text-white/50">Nenhum descartado.</p> : (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -1116,8 +1116,8 @@ export default function GerarLeadsPremiumPage() {
                           {l._blockedReasons.slice(0, 5).map((r) => <li key={r} className="flex items-start gap-2"><X className="h-4 w-4 mt-0.5 opacity-90" /><span>{r}</span></li>)}
                         </ul>
                       </div>
-                      <button onClick={() => { setManualOverrides(prev => ({ ...prev, [l.placeId]: !prev[l.placeId] })); showToast("ok", "Lead resgatado!"); }} className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-medium text-white hover:bg-white/10 transition">
-                        <Unlock className="h-3 w-3 text-emerald-400" /> Resgatar Manualmente
+                      <button onClick={() => { setManualOverrides(prev => ({ ...prev, [l.placeId]: !prev[l.placeId] })); showToast("ok", "Lead aprovado."); }} className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-medium text-white hover:bg-white/10 transition">
+                        <Unlock className="h-3 w-3 text-emerald-400" /> Aprovar manualmente
                       </button>
                     </div>
                   ))}

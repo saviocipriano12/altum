@@ -319,7 +319,7 @@ function buildPrompt(input: ConversationAgentInput) {
     multimodalSummary ? `Resumo multimodal: ${multimodalSummary}` : "",
     messageType ? `Tipo de mensagem: ${messageType}` : "",
     input.runtimeStateSummary ? `Contexto vivo da conversa:\n${sanitizeText(input.runtimeStateSummary, 220)}` : "",
-    input.leadMemorySummary ? `Memoria relevante:\n${sanitizeText(input.leadMemorySummary, 220)}` : "",
+    input.leadMemorySummary ? `Memoria relevante:\n${sanitizeText(input.leadMemorySummary, 360)}` : "",
     isShortFollowup ? "A mensagem atual parece uma continuidade curta. Continue do ponto vivo da conversa." : "",
     isDirectQuestion ? "A mensagem atual contem uma pergunta direta. Responda essa pergunta primeiro." : "",
     isGreetingOnly ? "A mensagem atual e apenas uma saudacao. Responda como conversa normal, sem menu." : "",

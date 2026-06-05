@@ -134,7 +134,7 @@ function queueTone(status?: string) {
 }
 
 function decisionLabel(decision?: string) {
-  if (decision === "handoff") return "transferencia";
+  if (decision === "handoff") return "escalada";
   if (decision === "ask_more") return "pedir mais dados";
   if (decision === "skip") return "ignorar";
   return "responder";
@@ -208,13 +208,13 @@ export default function ClienteLogsPage() {
       const logsPayload = (await logsRes.json()) as { items?: AiLog[]; error?: string };
       const summaryPayload = (await summaryRes.json()) as AutomationSummaryResponse;
 
-      if (!logsRes.ok) throw new Error(logsPayload.error || "Falha ao carregar logs da IA.");
-      if (!summaryRes.ok) throw new Error(summaryPayload.error || "Falha ao carregar logs operacionais.");
+      if (!logsRes.ok) throw new Error(logsPayload.error || "Falha ao carregar auditoria do assistente.");
+      if (!summaryRes.ok) throw new Error(summaryPayload.error || "Falha ao carregar auditoria operacional.");
 
       setLogs(logsPayload.items || []);
       setSummary(summaryPayload);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Falha ao carregar central de logs.");
+      setError(loadError instanceof Error ? loadError.message : "Falha ao carregar auditoria avancada.");
     } finally {
       setLoading(false);
     }
@@ -334,8 +334,8 @@ export default function ClienteLogsPage() {
       },
       {
         id: "low_confidence",
-        title: "IA com baixa confianca",
-        detail: "Respostas que indicam necessidade de revisar prompt, KB ou guardrails.",
+        title: "Assistente com baixa confianca",
+        detail: "Respostas que indicam necessidade de revisar conhecimento, tom ou limites.",
         badge: String(metrics.lowConfidence),
         tone: metrics.lowConfidence ? "warning" : "success",
         href: "/cliente/painel/ia?risk=low_confidence",
@@ -350,8 +350,8 @@ export default function ClienteLogsPage() {
       },
       {
         id: "sla",
-        title: "SLA em risco",
-        detail: "Fila com impacto direto na experiencia do contato e do time comercial.",
+        title: "Atendimento em risco",
+        detail: "Conversas com impacto direto na experiencia do contato e do time comercial.",
         badge: String(summary.summary?.slaBreached || 0),
         tone: summary.summary?.slaBreached ? "danger" : "success",
         href: "/cliente/painel/inbox?queue=sla_breached",
@@ -370,7 +370,7 @@ export default function ClienteLogsPage() {
   if (error) {
     return (
       <EmptyState
-        title="Falha ao carregar logs operacionais"
+        title="Falha ao carregar auditoria avancada"
         description={error}
         action={
           <button
@@ -386,12 +386,12 @@ export default function ClienteLogsPage() {
   }
 
   return (
-    <div className="logs-refined client-daily-page space-y-6">
+    <div className="logs-refined client-daily-page space-y-4">
       <section className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
         <PanelCard className="p-5 md:p-6">
           <SectionHeader
-            title="Logs operacionais"
-            subtitle="Auditoria continua da IA, automacoes e fila que sustenta a operacao comercial da conta."
+            title="Auditoria avancada"
+            subtitle="Historico do assistente, fluxos e processamento que sustenta a operacao comercial."
             action={
               <button
                 type="button"
@@ -405,11 +405,11 @@ export default function ClienteLogsPage() {
           />
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <MetricCard label="Logs IA" value={String(metrics.totalAi)} icon={Bot} trend="ultima janela operacional" />
-            <MetricCard label="Transferencias" value={String(metrics.handoffs)} icon={AlertTriangle} trend="escaladas humanas" />
+            <MetricCard label="Decisoes do assistente" value={String(metrics.totalAi)} icon={Bot} trend="ultima janela operacional" />
+            <MetricCard label="Escaladas" value={String(metrics.handoffs)} icon={AlertTriangle} trend="assumidas por humano" />
             <MetricCard label="Baixa confianca" value={String(metrics.lowConfidence)} icon={ShieldAlert} trend="respostas de risco" />
-            <MetricCard label="Erros execucao" value={String(metrics.executionErrors)} icon={Cable} trend="automacoes recentes" />
-            <MetricCard label="Falhas repetidas" value={String(metrics.queueDeadLetters)} icon={FileText} trend="fila precisa revisao" />
+            <MetricCard label="Falhas de fluxo" value={String(metrics.executionErrors)} icon={Cable} trend="fluxos recentes" />
+            <MetricCard label="Falhas repetidas" value={String(metrics.queueDeadLetters)} icon={FileText} trend="processamento precisa revisao" />
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -421,7 +421,7 @@ export default function ClienteLogsPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-white">{item.title}</p>
+                    <p className="text-sm font-medium text-[var(--cliente-card-text)]">{item.title}</p>
                     <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.detail}</p>
                   </div>
                   <StateBadge label={item.badge} tone={item.tone} />
@@ -432,19 +432,19 @@ export default function ClienteLogsPage() {
         </PanelCard>
 
         <PanelCard className="p-5 md:p-6">
-          <SectionHeader title="Pulso da fila" subtitle="Leitura rapida do que esta segurando a operacao agora." />
+          <SectionHeader title="Pulso do processamento" subtitle="Leitura rapida do que esta segurando a operacao agora." />
           <div className="space-y-3">
-            <HealthRow label="Fila pendente" value={String(summary.summary?.queue?.pending || 0)} />
+            <HealthRow label="Pendente" value={String(summary.summary?.queue?.pending || 0)} />
             <HealthRow label="Nova tentativa" value={String(summary.summary?.queue?.retrying || 0)} danger={Boolean(summary.summary?.queue?.retrying)} />
             <HealthRow label="Agendadas falhas" value={String(summary.summary?.scheduled?.deadLetter || 0)} danger={Boolean(summary.summary?.scheduled?.deadLetter)} />
-            <HealthRow label="SLA estourado" value={String(summary.summary?.slaBreached || 0)} danger={Boolean(summary.summary?.slaBreached)} />
+            <HealthRow label="Fora do prazo" value={String(summary.summary?.slaBreached || 0)} danger={Boolean(summary.summary?.slaBreached)} />
             <HealthRow label="Backlog sem resposta" value={String(summary.summary?.waitingReplyBacklog || 0)} danger={Boolean(summary.summary?.waitingReplyBacklog)} />
           </div>
         </PanelCard>
       </section>
 
       <PanelCard className="p-5 md:p-6">
-        <SectionHeader title="Filtro unico" subtitle="Use a mesma busca para cruzar IA, automacoes e fila." />
+        <SectionHeader title="Filtro unico" subtitle="Use a mesma busca para cruzar assistente, fluxos e processamento." />
         <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
           <Search className="h-4 w-4" />
           <input
@@ -458,10 +458,10 @@ export default function ClienteLogsPage() {
 
       <section className="grid gap-4 xl:grid-cols-3">
         <PanelCard className="p-5 md:p-6 xl:col-span-1">
-          <SectionHeader title="IA" subtitle="Decisoes recentes do agente." />
+          <SectionHeader title="Assistente" subtitle="Decisoes recentes do assistente." />
           <div className="mb-4 grid gap-2 md:grid-cols-3 xl:grid-cols-1">
             <FilterButton label="Todos" active={aiFilter === "all"} onClick={() => setAiFilter("all")} />
-            <FilterButton label="Transferencias" active={aiFilter === "handoff"} onClick={() => setAiFilter("handoff")} />
+            <FilterButton label="Escaladas" active={aiFilter === "handoff"} onClick={() => setAiFilter("handoff")} />
             <FilterButton label="Baixa confianca" active={aiFilter === "low_confidence"} onClick={() => setAiFilter("low_confidence")} />
           </div>
           <div className="space-y-3">
@@ -486,13 +486,13 @@ export default function ClienteLogsPage() {
                 </article>
               ))
             ) : (
-              <EmptyState title="Sem logs de IA neste recorte" description="Ajuste os filtros ou aguarde novas decisoes do agente." />
+              <EmptyState title="Sem decisoes neste recorte" description="Ajuste os filtros ou aguarde novas decisoes do assistente." />
             )}
           </div>
         </PanelCard>
 
         <PanelCard className="p-5 md:p-6 xl:col-span-1">
-          <SectionHeader title="Execucoes" subtitle="Automacoes recentes e seus resultados." />
+          <SectionHeader title="Acoes de fluxo" subtitle="Fluxos recentes e seus resultados." />
           <div className="mb-4 grid gap-2 md:grid-cols-4 xl:grid-cols-1">
             <FilterButton label="Todos" active={executionFilter === "all"} onClick={() => setExecutionFilter("all")} />
             <FilterButton label="Concluido" active={executionFilter === "done"} onClick={() => setExecutionFilter("done")} />
@@ -509,13 +509,13 @@ export default function ClienteLogsPage() {
                         <StateBadge label={executionStatusLabel(item.status)} tone={executionTone(item.status)} />
                         <StateBadge label={item.trigger || "gatilho"} tone="neutral" />
                       </div>
-                      <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{item.automationName || "Automacao"}</p>
+                      <p className="mt-2 text-sm text-[var(--cliente-card-text)]">{item.automationName || "Fluxo"}</p>
                       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.detail || item.lastError || "Sem detalhe"}</p>
                       <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDateTime(item.updatedAt)}</p>
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <Link href="/cliente/painel/automacoes" className="text-xs text-[var(--cliente-accent)] hover:brightness-110">
-                        Automacoes
+                        Fluxos
                       </Link>
                       {item.chatId ? (
                         <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.chatId)}`} className="text-xs text-[var(--cliente-accent)] hover:brightness-110">
@@ -527,13 +527,13 @@ export default function ClienteLogsPage() {
                 </article>
               ))
             ) : (
-              <EmptyState title="Sem execucoes neste recorte" description="As proximas automacoes processadas aparecem aqui." />
+              <EmptyState title="Sem acoes neste recorte" description="Os proximos fluxos processados aparecem aqui." />
             )}
           </div>
         </PanelCard>
 
         <PanelCard className="p-5 md:p-6 xl:col-span-1">
-          <SectionHeader title="Fila" subtitle="Itens da operacao conversacional." />
+          <SectionHeader title="Processamento" subtitle="Itens da operacao conversacional." />
           <div className="mb-4 grid gap-2 md:grid-cols-5 xl:grid-cols-1">
             <FilterButton label="Todos" active={queueFilter === "all"} onClick={() => setQueueFilter("all")} />
             <FilterButton label="Pendente" active={queueFilter === "pending"} onClick={() => setQueueFilter("pending")} />
@@ -569,12 +569,12 @@ export default function ClienteLogsPage() {
       </section>
 
       <PanelCard className="p-5 md:p-6">
-        <SectionHeader title="Guia rapido" subtitle="A partir do log, caia no modulo certo e resolva o gargalo." />
+        <SectionHeader title="Guia rapido" subtitle="A partir da auditoria, caia no modulo certo e resolva o gargalo." />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <QuickLink href="/cliente/painel/inbox?queue=awaiting_reply" title="Fila aguardando resposta" description="Checar conversas que podem gerar nova tentativa, atraso ou nova transferencia." />
-          <QuickLink href="/cliente/painel/automacoes" title="Revisar automacoes" description="Atuar em execucoes com erro, regras puladas e cadencias que travaram." />
-          <QuickLink href="/cliente/painel/ia" title="Ajustar IA" description="Reforcar conhecimento e guardrails nos pontos de baixa confianca." />
-          <QuickLink href="/cliente/painel/handoffs" title="Assumir escaladas" description="Distribuir transferencias humanas e aliviar o backlog operacional." />
+          <QuickLink href="/cliente/painel/inbox?queue=awaiting_reply" title="Conversas aguardando resposta" description="Checar conversas que podem gerar nova tentativa, atraso ou nova escalada." />
+          <QuickLink href="/cliente/painel/automacoes" title="Revisar fluxos" description="Atuar em acoes com erro, regras puladas e cadencias que travaram." />
+          <QuickLink href="/cliente/painel/ia" title="Ajustar assistente" description="Reforcar conhecimento e limites nos pontos de baixa confianca." />
+          <QuickLink href="/cliente/painel/handoffs" title="Assumir escaladas" description="Distribuir atendimento humano e aliviar o backlog operacional." />
         </div>
       </PanelCard>
     </div>
@@ -612,7 +612,7 @@ function QuickLink({ href, title, description }: { href: string; title: string; 
       href={href}
       className="logs-quick-link block rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 transition hover:bg-[var(--cliente-panel-soft)]"
     >
-      <p className="text-sm font-medium text-white">{title}</p>
+      <p className="text-sm font-medium text-[var(--cliente-card-text)]">{title}</p>
       <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{description}</p>
     </Link>
   );
