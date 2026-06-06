@@ -887,11 +887,12 @@ export async function enqueueOutboundCampaign(input: {
   };
 }
 
-export async function processOutboundCampaignJobs(input?: { limit?: number }) {
+export async function processOutboundCampaignJobs(input?: { limit?: number; tenantId?: string }) {
   const limit = Math.max(1, Math.min(100, Number(input?.limit || 40)));
   const snap = await adminDb.collection("outbound_campaign_jobs").where("status", "==", "ready").limit(1000).get();
   const now = Date.now();
   const dueJobs = snap.docs
+    .filter((doc) => !input?.tenantId || clean(doc.data().tenantId, 180) === input.tenantId)
     .filter((doc) => {
       const dueAt = toIso(doc.data().dueAt);
       return !dueAt || new Date(dueAt).getTime() <= now;

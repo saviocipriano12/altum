@@ -5,7 +5,10 @@ import {
   assertTenantCapability,
   TenantAccessError,
 } from "@/lib/server/tenant";
-import { enqueueOutboundCampaign } from "@/lib/server/outbound-campaigns";
+import {
+  enqueueOutboundCampaign,
+  processOutboundCampaignJobs,
+} from "@/lib/server/outbound-campaigns";
 
 export async function POST(
   req: Request,
@@ -32,6 +35,9 @@ export async function POST(
       actor: { id: user.uid, name: user.name },
       scheduledAt,
     });
+    if (!scheduledAt || scheduledAt.getTime() <= Date.now()) {
+      await processOutboundCampaignJobs({ tenantId, limit: 1 });
+    }
 
     return NextResponse.json({ ok: true, tenantId, campaignId, ...result });
   } catch (error) {

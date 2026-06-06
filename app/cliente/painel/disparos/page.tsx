@@ -192,9 +192,9 @@ export default function BulkMessagingPage() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!tenant?.tenantId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError("");
     try {
       const [campaignRes, channelRes] = await Promise.all([
@@ -214,7 +214,7 @@ export default function BulkMessagingPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Falha ao carregar a central de disparos.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [tenant?.tenantId]);
 
@@ -254,6 +254,25 @@ export default function BulkMessagingPage() {
     }),
     [campaigns, runs]
   );
+  const hasActiveQueue = campaigns.some((item) =>
+    ["scheduled", "queued", "running"].includes(item.executionStatus)
+  );
+
+  useEffect(() => {
+    if (!tenant?.tenantId || !canManage || !hasActiveQueue) return;
+    let mounted = true;
+    const tick = async () => {
+      await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns/process`, {
+        method: "POST",
+      }).catch(() => null);
+      if (mounted) await load(true);
+    };
+    const timer = window.setInterval(() => void tick(), 45_000);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [canManage, hasActiveQueue, load, tenant?.tenantId]);
 
   useEffect(() => {
     if (!tenant?.tenantId || !editor.channelId || !officialChannel) {
