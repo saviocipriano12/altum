@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  Trash2,
   Upload,
   UsersRound,
 } from "lucide-react";
@@ -341,6 +342,8 @@ export default function ClienteCrmPage() {
   const [savingTask, setSavingTask] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [savingLead, setSavingLead] = useState(false);
+  const [deletingLeads, setDeletingLeads] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -600,6 +603,43 @@ export default function ClienteCrmPage() {
     }
   }
 
+  function toggleLeadSelection(leadId: string) {
+    setSelectedLeadIds((current) =>
+      current.includes(leadId) ? current.filter((id) => id !== leadId) : [...current, leadId]
+    );
+  }
+
+  function toggleAllVisibleLeads() {
+    const visibleIds = filteredLeads.map((lead) => lead.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedLeadIds.includes(id));
+    setSelectedLeadIds(allSelected ? [] : visibleIds);
+  }
+
+  async function deleteSelectedLeads() {
+    if (!tenant?.tenantId || !selectedLeadIds.length || !canOperate) return;
+    if (!window.confirm(`Apagar definitivamente ${selectedLeadIds.length} contato(s), conversas e dados relacionados?`)) return;
+    setDeletingLeads(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/bulk-delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedLeadIds }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { deleted?: number; error?: string };
+      if (!res.ok) throw new Error(payload.error || "Falha ao apagar contatos.");
+      setNotice(`${payload.deleted || 0} contato(s) apagado(s) definitivamente.`);
+      setSelectedLeadIds([]);
+      setSelectedLeadId(null);
+      setDetail(null);
+      await load();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Falha ao apagar contatos.");
+    } finally {
+      setDeletingLeads(false);
+    }
+  }
+
   const selectedWhatsApp = whatsappUrl(selectedLead?.telefone);
   const selectedNextAction =
     cleanCrmText(selectedLead?.aiNextAction)
@@ -684,12 +724,30 @@ export default function ClienteCrmPage() {
                   {item === "list" ? "Lista" : item === "pipeline" ? "Resumo do funil" : "Analise"}
                 </button>
               ))}
+              {canOperate && selectedLeadIds.length ? (
+                <button
+                  type="button"
+                  onClick={() => void deleteSelectedLeads()}
+                  disabled={deletingLeads}
+                  className="ml-auto inline-flex items-center gap-2 rounded-[14px] bg-rose-600 px-3 py-2 text-xs font-black text-white transition hover:bg-rose-700 disabled:opacity-60"
+                >
+                  {deletingLeads ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Apagar {selectedLeadIds.length}
+                </button>
+              ) : null}
             </div>
           </div>
 
           {view === "list" ? (
             <div>
-              <div className="hidden border-b border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-5 py-3 text-[11px] font-black uppercase text-[var(--cliente-card-text-soft)] lg:grid lg:grid-cols-[minmax(0,1fr)_150px_130px_150px_150px]">
+              <div className="hidden border-b border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-5 py-3 text-[11px] font-black uppercase text-[var(--cliente-card-text-soft)] lg:grid lg:grid-cols-[36px_minmax(0,1fr)_150px_130px_150px_150px]">
+                <input
+                  type="checkbox"
+                  aria-label="Selecionar contatos visiveis"
+                  checked={filteredLeads.length > 0 && filteredLeads.every((lead) => selectedLeadIds.includes(lead.id))}
+                  onChange={toggleAllVisibleLeads}
+                  className="h-4 w-4 accent-[var(--cliente-primary)]"
+                />
                 <span>Contato</span>
                 <span>Etapa</span>
                 <span>Temperatura</span>
@@ -702,18 +760,32 @@ export default function ClienteCrmPage() {
               {filteredLeads.map((lead) => {
                 const stage = normalizeStage(lead);
                 return (
-                  <button
+                  <div
                     key={lead.id}
-                    type="button"
                     onClick={() => selectLead(lead.id)}
-                    className={`grid w-full gap-4 px-5 py-4 text-left transition hover:bg-[var(--cliente-surface-muted)] lg:grid-cols-[minmax(0,1fr)_150px_130px_150px_150px] lg:items-center ${selectedLeadId === lead.id ? "bg-[var(--cliente-primary-soft)]" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") selectLead(lead.id);
+                    }}
+                    className={`flex w-full cursor-pointer items-start gap-3 px-5 py-4 text-left transition hover:bg-[var(--cliente-surface-muted)] lg:grid lg:grid-cols-[36px_minmax(0,1fr)_150px_130px_150px_150px] lg:items-center lg:gap-4 ${selectedLeadId === lead.id ? "bg-[var(--cliente-primary-soft)]" : ""}`}
                   >
-                    <CrmAvatar name={lead.nome} subtitle={lead.empresa || lead.telefone || lead.email || "Sem empresa"} />
-                    <CrmBadge tone="blue">{getPipelineStageLabel(stage)}</CrmBadge>
-                    <CrmBadge tone={heatTone(lead.heat)}>{lead.heat || "sem temp."}</CrmBadge>
-                    <p className="text-sm font-black text-[var(--cliente-card-text)]">{formatCrmMoney(lead.potentialValue)}</p>
-                    <p className="truncate text-xs font-bold text-[var(--cliente-card-text-soft)]">{lead.owner || "Sem responsavel"}</p>
-                  </button>
+                    <input
+                      type="checkbox"
+                      aria-label={`Selecionar ${lead.nome || "contato"}`}
+                      checked={selectedLeadIds.includes(lead.id)}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={() => toggleLeadSelection(lead.id)}
+                      className="mt-2 h-4 w-4 shrink-0 accent-[var(--cliente-primary)] lg:mt-0"
+                    />
+                    <div className="min-w-0 flex-1 lg:contents">
+                      <CrmAvatar name={lead.nome} subtitle={lead.empresa || lead.telefone || lead.email || "Sem empresa"} />
+                      <div className="mt-2 lg:mt-0"><CrmBadge tone="blue">{getPipelineStageLabel(stage)}</CrmBadge></div>
+                      <div className="mt-2 lg:mt-0"><CrmBadge tone={heatTone(lead.heat)}>{lead.heat || "sem temp."}</CrmBadge></div>
+                      <p className="mt-2 text-sm font-black text-[var(--cliente-card-text)] lg:mt-0">{formatCrmMoney(lead.potentialValue)}</p>
+                      <p className="mt-1 truncate text-xs font-bold text-[var(--cliente-card-text-soft)] lg:mt-0">{lead.owner || "Sem responsavel"}</p>
+                    </div>
+                  </div>
                 );
               })}
               </div>

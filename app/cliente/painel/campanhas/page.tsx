@@ -882,7 +882,7 @@ export default function ClienteCampanhasPage() {
               <StateBadge label="30 dias" tone="info" />
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-3">
-              <ChannelTile icon={MessageCircle} title="WhatsApp" value={`${summary.sent} envios`} detail={`${runs.length} rodada(s) registradas`} href="#outbound" />
+              <ChannelTile icon={MessageCircle} title="WhatsApp" value={`${summary.sent} envios`} detail={`${runs.length} rodada(s) registradas`} href="/cliente/painel/disparos" />
               <ChannelTile icon={BarChart3} title="Anuncios e UTM" value={money(summary.spend)} detail={`${paidCampaigns.length} campanha(s) com dados`} href="#midia" />
               <ChannelTile icon={Globe2} title="Formularios" value={`${totalFormSubmissions} entradas`} detail={`${activeForms} formulario(s) ativo(s)`} href="/cliente/painel/captacao" />
             </div>
@@ -925,7 +925,17 @@ export default function ClienteCampanhasPage() {
           </PanelCard>
           </div>
 
-          <div id="outbound">
+          <PanelCard tone="success" className="p-5 md:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <CardTitle title="Disparos em Massa" subtitle="Os envios de WhatsApp agora ficam em uma central propria, com numero remetente, publico, upload e historico." />
+              </div>
+              <Link href="/cliente/painel/disparos" className="inline-flex items-center gap-2 rounded-[16px] bg-[var(--cliente-success)] px-4 py-2.5 text-sm font-bold text-white">
+                Abrir central <ArrowUpRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </PanelCard>
+          <div id="outbound" className="hidden" aria-hidden="true">
           <PanelCard className="p-5 md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <CardTitle title="Campanha WhatsApp guiada" subtitle="Objetivo, publico, mensagem e revisao antes de chamar a base." />
@@ -1072,7 +1082,7 @@ export default function ClienteCampanhasPage() {
             <div className="mt-4 space-y-2">
               <GrowthAction href="/cliente/painel/configuracoes/canais" title="Garantir pixel e conversoes" detail="Meta, Google e UTMs precisam voltar para a Altum." tone="info" />
               <GrowthAction href="/cliente/painel/captacao" title="Criar captura para novos leads" detail="Formulario ou pagina simples para cada campanha." tone="success" />
-              <GrowthAction href="#outbound" title="Reativar contatos parados" detail="Chame a base certa pelo WhatsApp com objetivo claro." tone="ai" />
+              <GrowthAction href="/cliente/painel/disparos" title="Reativar contatos parados" detail="Chame a base certa pelo WhatsApp com objetivo claro." tone="ai" />
               <GrowthAction href="/cliente/painel/metricas" title="Ver o que gerou dinheiro" detail="Compare leads, reunioes, vendas e custo por resultado." tone="warning" />
             </div>
           </PanelCard>
@@ -1397,7 +1407,7 @@ function GrowthCommandCenter({
               ? `${activeOutbound.status === "active" ? "Ativa" : "Pausada"} - ${activeOutbound.lastRunSummary?.sent || 0} envios na ultima rodada`
               : "Crie uma campanha de reativacao, proposta ou pos-venda."
           }
-          href="#outbound"
+          href="/cliente/painel/disparos"
           tone={activeOutbound?.status === "active" ? "success" : "ai"}
         />
         <CampaignSignalCard

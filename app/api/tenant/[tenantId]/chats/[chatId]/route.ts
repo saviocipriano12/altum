@@ -12,6 +12,7 @@ import {
 import { getChatState } from "@/lib/server/ai/agent";
 import { buildManualQueuePatch } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
+import { deleteTenantChat, recordDeletionAudit } from "@/lib/server/tenant-data-deletion";
 
 type ChatDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -716,5 +717,32 @@ export async function PATCH(
     }
     console.error("Erro ao atualizar metadata do chat:", error);
     return NextResponse.json({ error: "Falha ao atualizar conversa." }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ tenantId: string; chatId: string }> }
+) {
+  try {
+    const user = await requireRequestUser(req);
+    const { tenantId, chatId } = await context.params;
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantCapability(membership, "respond_inbox");
+    await getChatSnapshot(chatId, tenantId);
+    const result = await deleteTenantChat({ tenantId, chatId });
+    await recordDeletionAudit({
+      tenantId,
+      actorId: user.uid,
+      actorName: user.name,
+      entity: "chat",
+      ids: [chatId],
+    });
+    return NextResponse.json({ ok: true, tenantId, chatId, ...result });
+  } catch (error) {
+    if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    console.error("Erro ao apagar conversa:", error);
+    return NextResponse.json({ error: "Falha ao apagar conversa." }, { status: 500 });
   }
 }

@@ -290,8 +290,8 @@ export default function InstagramAutomationOpsPage() {
   return (
     <div className="space-y-4">
       <SectionHeader
-        title="Instagram"
-        subtitle="Respostas em DM, comentarios e novos seguidores conectadas ao atendimento e ao funil comercial."
+        title="Automacao do Instagram"
+        subtitle="Transforme DMs e comentarios em conversas, oportunidades e proximos passos comerciais."
         action={
           <StateBadge
             label={config.enabled ? "respostas ativas" : "respostas pausadas"}
@@ -299,6 +299,28 @@ export default function InstagramAutomationOpsPage() {
           />
         }
       />
+
+      <section className="overflow-hidden rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)]">
+        <div className="grid gap-0 md:grid-cols-[1.2fr_0.8fr]">
+          <div className="p-5 md:p-7">
+            <div className="flex items-center gap-3">
+              <span className="flex h-12 w-12 items-center justify-center rounded-[16px] bg-[linear-gradient(135deg,#feda75,#d62976_55%,#4f5bd5)] text-lg font-black text-white">IG</span>
+              <div>
+                <p className="text-lg font-extrabold text-[var(--cliente-card-text)]">{instagramChannel?.displayName || "Instagram Business"}</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">{instagramChannel?.status === "active" ? "Canal pronto para operar" : "Conexao pendente"}</p>
+              </div>
+            </div>
+            <p className="mt-5 max-w-xl text-sm leading-6 text-[var(--cliente-card-text-muted)]">
+              A Altum recebe o contato, responde dentro das regras da Meta e leva a conversa para o mesmo atendimento usado pelo time comercial.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 border-t border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] md:border-l md:border-t-0">
+            <HeroStat label="Interacoes" value={stats.total} />
+            <HeroStat label="Enviadas" value={stats.sent} success />
+            <HeroStat label="Falhas" value={stats.failed} />
+          </div>
+        </div>
+      </section>
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <PanelCard className="p-4">
@@ -595,6 +617,15 @@ function PlaybookStep({
         <StateBadge label={done ? "ok" : "pendente"} tone={done ? "success" : "warning"} />
       </div>
       <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{detail}</p>
+    </div>
+  );
+}
+
+function HeroStat({ label, value, success = false }: { label: string; value: number; success?: boolean }) {
+  return (
+    <div className="flex min-h-28 flex-col items-center justify-center border-r border-[var(--cliente-border)] p-3 text-center last:border-r-0">
+      <p className={`text-2xl font-extrabold ${success ? "text-[var(--cliente-success)]" : "text-[var(--cliente-card-text)]"}`}>{value}</p>
+      <p className="mt-1 text-[11px] font-semibold text-[var(--cliente-card-text-soft)]">{label}</p>
     </div>
   );
 }

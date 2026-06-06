@@ -16,6 +16,7 @@ import {
 type Body = {
   name?: unknown;
   status?: unknown;
+  channelId?: unknown;
   deliveryMode?: unknown;
   messageTemplate?: unknown;
   templateName?: unknown;

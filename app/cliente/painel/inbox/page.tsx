@@ -33,6 +33,7 @@ import {
   Send,
   SlidersHorizontal,
   SmilePlus,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -1599,6 +1600,9 @@ export default function ClienteInboxPage() {
   const [distributing, setDistributing] = useState(false);
   const [loadingAiSettings, setLoadingAiSettings] = useState(false);
   const [updatingGlobalAi, setUpdatingGlobalAi] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
+  const [deletingChats, setDeletingChats] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [chats, setChats] = useState<ChatItem[]>([]);
@@ -1670,6 +1674,40 @@ export default function ClienteInboxPage() {
       setShowDetailsDrawer(false);
     }
   }, [selectedChatId]);
+
+  function toggleChatSelection(chatId: string) {
+    setSelectedChatIds((current) =>
+      current.includes(chatId) ? current.filter((id) => id !== chatId) : [...current, chatId]
+    );
+  }
+
+  async function deleteChats(ids: string[]) {
+    if (!tenant?.tenantId || !ids.length || !canOperate) return;
+    if (!window.confirm(`Apagar definitivamente ${ids.length} conversa(s) e todas as mensagens?`)) return;
+    setDeletingChats(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/bulk-delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { deleted?: number; error?: string };
+      if (!res.ok) throw new Error(payload.error || "Falha ao apagar conversas.");
+      setSelectedChatIds([]);
+      setSelectionMode(false);
+      if (selectedChatId && ids.includes(selectedChatId)) {
+        setSelectedChatId(null);
+        setDetail(null);
+        setMessages([]);
+      }
+      await loadChats();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Falha ao apagar conversas.");
+    } finally {
+      setDeletingChats(false);
+    }
+  }
 
   const loadChats = useCallback(async (options?: { silent?: boolean }) => {
     if (!tenant?.tenantId) return [] as ChatItem[];
@@ -3397,6 +3435,30 @@ export default function ClienteInboxPage() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {selectionMode && selectedChatIds.length ? (
+                  <button
+                    type="button"
+                    onClick={() => void deleteChats(selectedChatIds)}
+                    disabled={deletingChats}
+                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-rose-600 px-3 text-xs font-bold text-white disabled:opacity-60"
+                    aria-label="Apagar conversas selecionadas"
+                  >
+                    {deletingChats ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    {selectedChatIds.length}
+                  </button>
+                ) : null}
+                {canOperate ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectionMode((current) => !current);
+                      setSelectedChatIds([]);
+                    }}
+                    className="inline-flex h-10 items-center justify-center rounded-full px-3 text-xs font-bold text-[#54656f] transition hover:bg-[#f0f2f5]"
+                  >
+                    {selectionMode ? "Cancelar" : "Selecionar"}
+                  </button>
+                ) : null}
                 {canManageAi ? (
                   <button
                     type="button"
@@ -3596,12 +3658,24 @@ export default function ClienteInboxPage() {
               </div>
             ) : (
               filteredChats.map((chat) => (
-                <ConversationListItem
-                  key={chat.id}
-                  chat={chat}
-                  active={chat.id === selectedChatId}
-                  onSelect={() => setSelectedChatId(chat.id)}
-                />
+                <div key={chat.id} className="relative">
+                  {selectionMode ? (
+                    <input
+                      type="checkbox"
+                      aria-label={`Selecionar conversa de ${chat.contactName || chat.contactPhone || "contato"}`}
+                      checked={selectedChatIds.includes(chat.id)}
+                      onChange={() => toggleChatSelection(chat.id)}
+                      className="absolute left-3 top-1/2 z-10 h-5 w-5 -translate-y-1/2 accent-[#00a884]"
+                    />
+                  ) : null}
+                  <div className={selectionMode ? "pl-9" : ""}>
+                    <ConversationListItem
+                      chat={chat}
+                      active={chat.id === selectedChatId}
+                      onSelect={() => selectionMode ? toggleChatSelection(chat.id) : setSelectedChatId(chat.id)}
+                    />
+                  </div>
+                </div>
               ))
             )}
           </div>
@@ -3733,6 +3807,18 @@ export default function ClienteInboxPage() {
                   <RefreshCw className="h-3.5 w-3.5" />
                   Atualizar
                 </button>
+                {canOperate && selectedChatId ? (
+                  <button
+                    type="button"
+                    onClick={() => void deleteChats([selectedChatId])}
+                    disabled={deletingChats}
+                    className="hidden h-10 w-10 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:opacity-60 sm:inline-flex"
+                    aria-label="Apagar conversa"
+                    title="Apagar conversa definitivamente"
+                  >
+                    {deletingChats ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </button>
+                ) : null}
               </div>
             </div>
 

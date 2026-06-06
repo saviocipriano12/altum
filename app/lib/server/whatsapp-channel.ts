@@ -125,7 +125,7 @@ function getSessionId(metadata?: Record<string, unknown>) {
   return getMetadataEndpoint(metadata, ["sessionId", "instanceId", "connectionId", "deviceId"]);
 }
 
-function isOfficialWhatsAppProvider(provider: string) {
+export function isOfficialWhatsAppProvider(provider: string) {
   return normalizeProvider(provider) === "meta_whatsapp";
 }
 
@@ -803,6 +803,19 @@ export async function sendMetaMediaLinkMessage(input: {
   caption?: string;
   filename?: string;
 }) {
+  if (!isOfficialWhatsAppProvider(input.channel.provider)) {
+    return sendExternalWhatsAppMessage({
+      channel: input.channel,
+      to: input.to,
+      payload: {
+        type: input.mediaType,
+        mediaUrl: input.mediaUrl,
+        caption: input.caption || "",
+        filename: input.filename || "",
+      },
+    });
+  }
+
   const payloadKey = input.mediaType;
   const mediaPayload =
     input.mediaType === "document"

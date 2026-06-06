@@ -11,6 +11,7 @@ import { buildOutboundCampaignPatch } from "@/lib/server/outbound-campaigns";
 type Body = {
   name?: unknown;
   status?: unknown;
+  channelId?: unknown;
   deliveryMode?: unknown;
   messageTemplate?: unknown;
   templateName?: unknown;

@@ -3,6 +3,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhone } from "@/app/lib/server/phone";
 import {
   sendTenantChatTemplate,
+  sendTenantChatMediaLink,
   sendTenantChatText,
   type ChatDispatchActor,
 } from "@/lib/server/chat-dispatch";
@@ -23,6 +24,7 @@ export type OutboundCampaignRecord = {
   name: string;
   status: "draft" | "active" | "paused";
   channel: "whatsapp";
+  channelId: string;
   deliveryMode: "text" | "template";
   messageTemplate: string;
   templateName: string;
@@ -163,6 +165,7 @@ export function normalizeOutboundCampaign(input: { id: string; data: Record<stri
     name: clean(input.data.name, 160) || "Campanha outbound",
     status: status === "active" || status === "paused" ? status : "draft",
     channel: "whatsapp",
+    channelId: clean(input.data.channelId, 180),
     deliveryMode,
     messageTemplate: clean(input.data.messageTemplate, 4000),
     templateName: normalizeTemplateName(input.data.templateName),
@@ -190,6 +193,7 @@ export function buildOutboundCampaignPatch(input: {
   tenantId: string;
   name?: unknown;
   status?: unknown;
+  channelId?: unknown;
   deliveryMode?: unknown;
   messageTemplate?: unknown;
   templateName?: unknown;
@@ -207,6 +211,7 @@ export function buildOutboundCampaignPatch(input: {
     name: clean(input.name, 160) || "Campanha outbound",
     status: status === "active" || status === "paused" ? status : "draft",
     channel: "whatsapp",
+    channelId: clean(input.channelId, 180),
     deliveryMode,
     messageTemplate: clean(input.messageTemplate, 4000),
     templateName: normalizeTemplateName(input.templateName),
@@ -376,6 +381,7 @@ async function findOrCreateLeadChat(input: {
   leadId: string;
   lead: Record<string, unknown>;
   actor: ChatDispatchActor;
+  channelId?: string;
 }) {
   const phone = normalizePhone(clean(input.lead.telefone, 40));
   if (!phone) return null;
@@ -387,7 +393,20 @@ async function findOrCreateLeadChat(input: {
     .limit(1)
     .get();
 
-  if (!existing.empty) return existing.docs[0].id;
+  if (!existing.empty) {
+    const existingChat = existing.docs[0];
+    if (input.channelId) {
+      await existingChat.ref.set(
+        {
+          channel: "whatsapp",
+          channelId: input.channelId,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+    return existingChat.id;
+  }
 
   const chatRef = await adminDb.collection("chats").add({
     tenantId: input.tenantId,
@@ -399,6 +418,7 @@ async function findOrCreateLeadChat(input: {
     ownerId: clean(input.lead.ownerId, 140) || input.actor.id,
     ownerName: clean(input.lead.ownerName, 160) || input.actor.name,
     channel: "whatsapp",
+    ...(input.channelId ? { channelId: input.channelId } : {}),
     source: "outbound_campaign",
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -489,6 +509,7 @@ export async function dispatchOutboundCampaign(input: {
         leadId: item.id,
         lead: item.data,
         actor: input.actor,
+        channelId: campaign.channelId,
       });
 
       if (!chatId) {
@@ -506,6 +527,17 @@ export async function dispatchOutboundCampaign(input: {
               headerMedia: campaign.headerMedia,
             })
           : interpolateTemplate(campaign.messageTemplate, item.data);
+      if (campaign.deliveryMode === "text" && campaign.headerMedia?.link) {
+        await sendTenantChatMediaLink({
+          tenantId: input.tenantId,
+          chatId,
+          mediaType: campaign.headerMedia.type,
+          mediaUrl: campaign.headerMedia.link,
+          filename: campaign.headerMedia.filename,
+          caption: renderedMessage,
+          actor: input.actor,
+        });
+      }
       const dispatchResult =
         campaign.deliveryMode === "template"
           ? await sendTenantChatTemplate({
@@ -518,13 +550,18 @@ export async function dispatchOutboundCampaign(input: {
               actor: input.actor,
               pauseAi: false,
             })
-          : await sendTenantChatText({
+          : campaign.headerMedia?.link
+            ? {
+                metaMessageId: null,
+                persistedText: renderedMessage,
+              }
+            : await sendTenantChatText({
               tenantId: input.tenantId,
               chatId,
               text: renderedMessage,
               actor: input.actor,
               pauseAi: false,
-            });
+              });
 
       const deliveryRef = adminDb.collection("outbound_campaign_deliveries").doc();
       const campaignContext = {
@@ -533,6 +570,7 @@ export async function dispatchOutboundCampaign(input: {
         runId: runRef.id,
         deliveryId: deliveryRef.id,
         channel: "whatsapp",
+        channelId: campaign.channelId || null,
         leadId: item.id,
         chatId,
         phone,

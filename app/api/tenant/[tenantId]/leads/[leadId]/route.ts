@@ -9,6 +9,7 @@ import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
 import { analyzeLeadCommercialState, syncLeadCommercialState } from "@/lib/server/crm/operations";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { mapPipelineStageToConversionStep, recordLeadConversionStep } from "@/lib/server/conversion-trail";
+import { deleteTenantLead, recordDeletionAudit } from "@/lib/server/tenant-data-deletion";
 
 type LeadDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -551,5 +552,32 @@ export async function PATCH(
     }
     console.error("Erro ao atualizar lead do tenant:", error);
     return NextResponse.json({ error: "Falha ao atualizar lead." }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ tenantId: string; leadId: string }> }
+) {
+  try {
+    const user = await requireRequestUser(req);
+    const { tenantId, leadId } = await context.params;
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantCapability(membership, "edit_leads");
+    await getLeadRef(tenantId, leadId);
+    const result = await deleteTenantLead({ tenantId, leadId });
+    await recordDeletionAudit({
+      tenantId,
+      actorId: user.uid,
+      actorName: user.name,
+      entity: "lead",
+      ids: [leadId],
+    });
+    return NextResponse.json({ ok: true, tenantId, leadId, ...result });
+  } catch (error) {
+    if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    console.error("Erro ao apagar lead:", error);
+    return NextResponse.json({ error: "Falha ao apagar lead." }, { status: 500 });
   }
 }
