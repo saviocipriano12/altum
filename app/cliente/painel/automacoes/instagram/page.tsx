@@ -5,12 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  Clock3,
   Loader2,
   MessageCircleMore,
   RefreshCw,
   Save,
   Settings2,
   ShieldAlert,
+  WandSparkles,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
@@ -388,14 +390,10 @@ export default function InstagramAutomationOpsPage() {
             />
             <QuickToggle
               title="Mensagem para novo seguidor"
-              description="Mensagem de boas-vindas para novos seguidores quando o Instagram permitir."
-              enabled={config.newFollowerMessageEnabled}
-              onToggle={() =>
-                setConfig((current) =>
-                  current ? { ...current, newFollowerMessageEnabled: !current.newFollowerMessageEnabled } : current
-                )
-              }
-              disabled={!canManage}
+              description="A Meta nao disponibiliza um evento publico confiavel para iniciar esta mensagem."
+              enabled={false}
+              onToggle={() => undefined}
+              disabled
             />
           </div>
 
@@ -462,9 +460,9 @@ export default function InstagramAutomationOpsPage() {
             />
             <EventCard
               title="Novo seguidor"
-              description="Suportado com restricoes de politica/permissao da Meta para envio de mensagem."
-              available
-              active={config.enabled && config.newFollowerMessageEnabled}
+              description="Indisponivel pela API publica da Meta. Use comentario com palavra-chave ou uma DM iniciada pela pessoa."
+              available={false}
+              active={false}
             />
             <EventCard
               title="Usuario salvou post/reel"
@@ -472,6 +470,102 @@ export default function InstagramAutomationOpsPage() {
               available={false}
               active={false}
             />
+          </div>
+        </PanelCard>
+      </section>
+
+      <section>
+        <PanelCard className="overflow-hidden p-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--cliente-border)] p-5">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]">
+                <WandSparkles className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-base font-extrabold text-[var(--cliente-card-text)]">Construtor de automacoes</p>
+                <p className="text-sm text-[var(--cliente-card-text-soft)]">Defina o que ativa cada fluxo e como a Altum deve conduzir a conversa.</p>
+              </div>
+            </div>
+            <StateBadge label="3 fluxos comerciais" tone="ai" />
+          </div>
+
+          <div className="grid divide-y divide-[var(--cliente-border)] lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+            <AutomationRule
+              title="Preco e orcamento"
+              description="Identifica pessoas perguntando valor e cria contexto comercial."
+              keywords={config.commentIntentPricingKeywords}
+              onChange={(keywords) => setConfig((current) => current ? { ...current, commentIntentPricingKeywords: keywords } : current)}
+              disabled={!canManage}
+            />
+            <AutomationRule
+              title="Interesse de compra"
+              description="Detecta quem quer contratar, comprar ou receber contato."
+              keywords={config.commentIntentPurchaseKeywords}
+              onChange={(keywords) => setConfig((current) => current ? { ...current, commentIntentPurchaseKeywords: keywords } : current)}
+              disabled={!canManage}
+            />
+            <AutomationRule
+              title="Agendamento"
+              description="Reconhece pedidos de horario, consulta ou reuniao."
+              keywords={config.commentIntentSchedulingKeywords}
+              onChange={(keywords) => setConfig((current) => current ? { ...current, commentIntentSchedulingKeywords: keywords } : current)}
+              disabled={!canManage}
+            />
+          </div>
+
+          <div className="grid gap-5 border-t border-[var(--cliente-border)] p-5 lg:grid-cols-2">
+            <label>
+              <span className="text-sm font-bold text-[var(--cliente-card-text)]">Como responder DMs</span>
+              <textarea
+                value={config.dmPrompt}
+                onChange={(event) => setConfig((current) => current ? { ...current, dmPrompt: event.target.value } : current)}
+                disabled={!canManage}
+                className="client-input mt-2 min-h-28 w-full resize-y"
+              />
+            </label>
+            <label>
+              <span className="text-sm font-bold text-[var(--cliente-card-text)]">Como responder comentarios</span>
+              <textarea
+                value={config.commentPrompt}
+                onChange={(event) => setConfig((current) => current ? { ...current, commentPrompt: event.target.value } : current)}
+                disabled={!canManage}
+                className="client-input mt-2 min-h-28 w-full resize-y"
+              />
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-4 border-t border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
+            <div className="flex items-center gap-2 text-sm font-bold text-[var(--cliente-card-text)]">
+              <Clock3 className="h-4 w-4 text-[var(--cliente-primary)]" /> Horario ativo
+            </div>
+            <label className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">
+              Inicio
+              <input
+                type="time"
+                value={config.activeHours.start}
+                onChange={(event) => setConfig((current) => current ? { ...current, activeHours: { ...current.activeHours, start: event.target.value } } : current)}
+                className="client-input ml-2"
+                disabled={!canManage}
+              />
+            </label>
+            <label className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">
+              Fim
+              <input
+                type="time"
+                value={config.activeHours.end}
+                onChange={(event) => setConfig((current) => current ? { ...current, activeHours: { ...current.activeHours, end: event.target.value } } : current)}
+                className="client-input ml-2"
+                disabled={!canManage}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void saveQuickSettings()}
+              disabled={saving || !canManage}
+              className="ml-auto inline-flex items-center gap-2 rounded-[14px] bg-[var(--cliente-ai)] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvar construtor
+            </button>
           </div>
         </PanelCard>
       </section>
@@ -541,9 +635,9 @@ export default function InstagramAutomationOpsPage() {
               detail="Responder comentario com CTA para DM sem parecer robo."
             />
             <PlaybookStep
-              done={Boolean(config.enabled && config.newFollowerMessageEnabled)}
-              title="4. Ativar mensagem para novo seguidor"
-              detail="Configurar mensagem de boas-vindas e acompanhar entrega no historico."
+              done={Boolean(config.enabled && config.commentAutoReply)}
+              title="4. Levar comentario para a DM"
+              detail="Use palavra-chave no post e continue a conversa quando a pessoa abrir o direct."
             />
             <PlaybookStep
               done={false}
@@ -555,8 +649,8 @@ export default function InstagramAutomationOpsPage() {
             <div className="flex items-start gap-2">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <p>
-                Nem todo evento de engajamento do Instagram fica disponivel para automacao. O fluxo mais robusto hoje e:
-                DM, comentario e novo seguidor, usando palavra-chave quando necessario.
+                Nem todo evento de engajamento do Instagram fica disponivel para automacao. O fluxo robusto e receber
+                DM, responder comentario e usar palavra-chave para a pessoa iniciar a conversa.
               </p>
             </div>
           </div>
@@ -626,6 +720,43 @@ function HeroStat({ label, value, success = false }: { label: string; value: num
     <div className="flex min-h-28 flex-col items-center justify-center border-r border-[var(--cliente-border)] p-3 text-center last:border-r-0">
       <p className={`text-2xl font-extrabold ${success ? "text-[var(--cliente-success)]" : "text-[var(--cliente-card-text)]"}`}>{value}</p>
       <p className="mt-1 text-[11px] font-semibold text-[var(--cliente-card-text-soft)]">{label}</p>
+    </div>
+  );
+}
+
+function AutomationRule({
+  title,
+  description,
+  keywords,
+  onChange,
+  disabled,
+}: {
+  title: string;
+  description: string;
+  keywords: string[];
+  onChange: (keywords: string[]) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-extrabold text-[var(--cliente-card-text)]">{title}</p>
+          <p className="mt-1 text-sm leading-5 text-[var(--cliente-card-text-soft)]">{description}</p>
+        </div>
+        <StateBadge label="ativo" tone="success" />
+      </div>
+      <label className="mt-4 block">
+        <span className="text-xs font-bold text-[var(--cliente-card-text-muted)]">Palavras-chave</span>
+        <textarea
+          value={keywords.join(", ")}
+          onChange={(event) =>
+            onChange(Array.from(new Set(event.target.value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))).slice(0, 30))
+          }
+          disabled={disabled}
+          className="client-input mt-2 min-h-24 w-full resize-y text-sm"
+        />
+      </label>
     </div>
   );
 }

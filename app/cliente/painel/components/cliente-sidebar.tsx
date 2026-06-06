@@ -163,6 +163,10 @@ const PRIMARY_NAV: NavItem[] = [
     icon: Settings,
     description: "Empresa, equipe, canais, integracoes e implantacao.",
     capability: "manage_settings",
+    aliases: [
+      { href: "/cliente/painel/configuracoes", label: "Visao geral" },
+      { href: "/cliente/painel/configuracoes/lixeira", label: "Lixeira", capability: "manage_settings" },
+    ],
     group: "system",
   },
 ];

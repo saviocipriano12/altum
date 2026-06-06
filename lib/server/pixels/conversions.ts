@@ -661,6 +661,30 @@ export async function dispatchLeadConversionEvents(input: DispatchInput) {
     }
   }
 
+  const successfulResult = results.find((item) => item.ok === true);
+  if (successfulResult) {
+    const outboundDeliveries = await adminDb
+      .collection("outbound_campaign_deliveries")
+      .where("leadId", "==", input.leadId)
+      .limit(20)
+      .get();
+    const latestDelivery = outboundDeliveries.docs
+      .filter((doc) => String(doc.data().tenantId || "") === input.tenantId)
+      .sort((a, b) => Number(b.data().sentAt?._seconds || 0) - Number(a.data().sentAt?._seconds || 0))[0];
+    if (latestDelivery) {
+      await latestDelivery.ref.set(
+        {
+          conversionReason: definition.reason,
+          conversionEventId: String(successfulResult.eventId || ""),
+          conversionProvider: String(successfulResult.provider || ""),
+          convertedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  }
+
   return {
     ok: true,
     skipped: false,

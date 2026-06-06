@@ -5,7 +5,7 @@ import {
   assertTenantCapability,
   TenantAccessError,
 } from "@/lib/server/tenant";
-import { dispatchOutboundCampaign } from "@/lib/server/outbound-campaigns";
+import { enqueueOutboundCampaign } from "@/lib/server/outbound-campaigns";
 
 export async function POST(
   req: Request,
@@ -17,10 +17,20 @@ export async function POST(
     const membership = await assertTenantAccess(user.uid, tenantId);
     assertTenantCapability(membership, "manage_automations");
 
-    const result = await dispatchOutboundCampaign({
+    const body = (await req.json().catch(() => ({}))) as { scheduledAt?: unknown };
+    const scheduledAt =
+      typeof body.scheduledAt === "string" && body.scheduledAt.trim()
+        ? new Date(body.scheduledAt)
+        : null;
+    if (scheduledAt && Number.isNaN(scheduledAt.getTime())) {
+      return NextResponse.json({ error: "Data de agendamento invalida." }, { status: 400 });
+    }
+
+    const result = await enqueueOutboundCampaign({
       tenantId,
       campaignId,
       actor: { id: user.uid, name: user.name },
+      scheduledAt,
     });
 
     return NextResponse.json({ ok: true, tenantId, campaignId, ...result });

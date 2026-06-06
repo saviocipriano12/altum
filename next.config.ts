@@ -18,7 +18,7 @@ const nextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=()" },
           {
             key: "Strict-Transport-Security",
             value: "max-age=31536000; includeSubDomains; preload",
@@ -29,7 +29,8 @@ const nextConfig = {
               "default-src 'self'; " +
               `script-src ${scriptSrc}; ` +
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-              "img-src 'self' data: blob: https://images.unsplash.com https://www.facebook.com https://*.facebook.com https://*.fbcdn.net https://*.cdninstagram.com https://lookaside.fbsbx.com https://platform-lookaside.fbsbx.com https://www.google.com https://*.googleusercontent.com https://grainy-gradients.vercel.app; " +
+              "img-src 'self' data: blob: https://images.unsplash.com https://www.facebook.com https://*.facebook.com https://*.fbcdn.net https://*.cdninstagram.com https://lookaside.fbsbx.com https://platform-lookaside.fbsbx.com https://www.google.com https://*.googleusercontent.com https://firebasestorage.googleapis.com https://storage.googleapis.com https://grainy-gradients.vercel.app; " +
+              "media-src 'self' data: blob: https://*.fbcdn.net https://*.cdninstagram.com https://firebasestorage.googleapis.com https://storage.googleapis.com; " +
               "font-src 'self' https://fonts.gstatic.com data:; " +
               "connect-src 'self' https://graph.facebook.com https://www.google-analytics.com https://region1.google-analytics.com https://www.googleapis.com https://*.googleapis.com https://googleads.googleapis.com https://api.openai.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.firebaseapp.com https://typebot.io https://*.typebot.io; " +
               "frame-src 'self' https://*.firebaseapp.com https://*.google.com https://typebot.io https://*.typebot.io; " +
@@ -66,6 +67,14 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "*.googleusercontent.com",
+      },
+      {
+        protocol: "https",
+        hostname: "firebasestorage.googleapis.com",
+      },
+      {
+        protocol: "https",
+        hostname: "storage.googleapis.com",
       },
     ],
   },

@@ -2,11 +2,15 @@
   "crons": [
     {
       "path": "/api/internal/jobs/ai/process?drain=1&limit=40",
-      "schedule": "0 3 * * *"
+      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/internal/jobs/automations/process?limit=60",
-      "schedule": "10 3 * * *"
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/internal/jobs/outbound-campaigns/process?limit=50",
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/internal/jobs/campaigns/sync?days=1&limit=20",
@@ -14,7 +18,11 @@
     },
     {
       "path": "/api/internal/jobs/client-portal/push-critical?maxTenants=80",
-      "schedule": "30 3 * * *"
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/internal/jobs/integrations/health?maxTenants=80",
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/internal/jobs/daily-reports/send?maxTenants=120",

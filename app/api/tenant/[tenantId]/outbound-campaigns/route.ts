@@ -24,6 +24,8 @@ type Body = {
   bodyParams?: unknown;
   headerMedia?: unknown;
   maxRecipients?: unknown;
+  scheduledAt?: unknown;
+  sendRatePerMinute?: unknown;
   filters?: unknown;
 };
 
@@ -56,13 +58,42 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const membership = await assertTenantAccess(user.uid, tenantId);
     assertTenantRole(membership, "client_viewer");
 
-    const [campaignsSnap, runsSnap] = await Promise.all([
+    const [campaignsSnap, runsSnap, deliveriesSnap] = await Promise.all([
       adminDb.collection("outbound_campaigns").where("tenantId", "==", tenantId).limit(120).get(),
       adminDb.collection("outbound_campaign_runs").where("tenantId", "==", tenantId).limit(120).get(),
+      adminDb.collection("outbound_campaign_deliveries").where("tenantId", "==", tenantId).limit(1200).get(),
     ]);
 
+    const deliveryMetrics = deliveriesSnap.docs.reduce<Record<string, {
+      sent: number;
+      delivered: number;
+      read: number;
+      failed: number;
+      responded: number;
+      converted: number;
+    }>>((acc, doc) => {
+      const data = doc.data() as Record<string, unknown>;
+      const campaignId = String(data.campaignId || "").trim();
+      if (!campaignId) return acc;
+      const current = acc[campaignId] || { sent: 0, delivered: 0, read: 0, failed: 0, responded: 0, converted: 0 };
+      const status = String(data.deliveryStatus || data.status || "").toLowerCase();
+      if (status === "failed") current.failed += 1;
+      else {
+        current.sent += 1;
+        if (status === "delivered" || status === "read") current.delivered += 1;
+        if (status === "read") current.read += 1;
+      }
+      if (data.respondedAt) current.responded += 1;
+      if (data.convertedAt || data.conversionEventId) current.converted += 1;
+      acc[campaignId] = current;
+      return acc;
+    }, {});
+
     const items = campaignsSnap.docs
-      .map((doc) => normalizeOutboundCampaign({ id: doc.id, data: doc.data() as Record<string, unknown> }))
+      .map((doc) => ({
+        ...normalizeOutboundCampaign({ id: doc.id, data: doc.data() as Record<string, unknown> }),
+        deliveryMetrics: deliveryMetrics[doc.id] || { sent: 0, delivered: 0, read: 0, failed: 0, responded: 0, converted: 0 },
+      }))
       .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
 
     const runs = runsSnap.docs

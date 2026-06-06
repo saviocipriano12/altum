@@ -9,6 +9,7 @@ import {
 } from "@/lib/server/chat-dispatch";
 import type { WhatsAppTemplateHeaderMedia } from "@/app/lib/server/whatsapp-channel";
 import { hasWhatsAppOptOut } from "@/lib/server/whatsapp-compliance";
+import { buildOutboundJobSchedule } from "@/lib/server/outbound-scheduling";
 
 export type OutboundCampaignFilters = {
   stageIds: string[];
@@ -32,6 +33,10 @@ export type OutboundCampaignRecord = {
   bodyParams: string[];
   headerMedia: WhatsAppTemplateHeaderMedia | null;
   maxRecipients: number;
+  scheduledAt: string | null;
+  sendRatePerMinute: number;
+  executionStatus: "idle" | "scheduled" | "queued" | "running" | "paused" | "completed" | "failed";
+  activeRunId: string | null;
   filters: OutboundCampaignFilters;
   lastRunAt: string | null;
   lastRunSummary: {
@@ -173,6 +178,12 @@ export function normalizeOutboundCampaign(input: { id: string; data: Record<stri
     bodyParams: normalizeBodyParams(input.data.bodyParams),
     headerMedia: normalizeHeaderMedia(input.data.headerMedia),
     maxRecipients: Math.max(1, Math.min(500, Number(input.data.maxRecipients || 50))),
+    scheduledAt: toIso(input.data.scheduledAt),
+    sendRatePerMinute: Math.max(1, Math.min(120, Number(input.data.sendRatePerMinute || 20))),
+    executionStatus: (["scheduled", "queued", "running", "paused", "completed", "failed"].includes(clean(input.data.executionStatus, 20))
+      ? clean(input.data.executionStatus, 20)
+      : "idle") as OutboundCampaignRecord["executionStatus"],
+    activeRunId: clean(input.data.activeRunId, 180) || null,
     filters: normalizeOutboundCampaignFilters(input.data.filters),
     lastRunAt: toIso(input.data.lastRunAt),
     lastRunSummary:
@@ -201,11 +212,21 @@ export function buildOutboundCampaignPatch(input: {
   bodyParams?: unknown;
   headerMedia?: unknown;
   maxRecipients?: unknown;
+  scheduledAt?: unknown;
+  sendRatePerMinute?: unknown;
   filters?: unknown;
   actor: { id: string; name: string };
 }) {
   const status = clean(input.status, 20);
   const deliveryMode = normalizeDeliveryMode(input.deliveryMode);
+  const requestedSchedule =
+    typeof input.scheduledAt === "string" && input.scheduledAt.trim()
+      ? new Date(input.scheduledAt)
+      : null;
+  const scheduledAt =
+    requestedSchedule && !Number.isNaN(requestedSchedule.getTime())
+      ? requestedSchedule
+      : null;
   return {
     tenantId: clean(input.tenantId, 140),
     name: clean(input.name, 160) || "Campanha outbound",
@@ -219,6 +240,8 @@ export function buildOutboundCampaignPatch(input: {
     bodyParams: normalizeBodyParams(input.bodyParams),
     headerMedia: normalizeHeaderMedia(input.headerMedia),
     maxRecipients: Math.max(1, Math.min(500, Number(input.maxRecipients || 50))),
+    scheduledAt,
+    sendRatePerMinute: Math.max(1, Math.min(120, Number(input.sendRatePerMinute || 20))),
     filters: normalizeOutboundCampaignFilters(input.filters),
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: input.actor.id,
@@ -466,6 +489,9 @@ export async function dispatchOutboundCampaign(input: {
   tenantId: string;
   campaignId: string;
   actor: ChatDispatchActor;
+  leadIds?: string[];
+  runId?: string;
+  accumulate?: boolean;
 }) {
   const { campaignRef, campaign } = await loadCampaignContext(input);
   if (campaign.deliveryMode === "template" && !campaign.templateName.trim()) {
@@ -483,8 +509,13 @@ export async function dispatchOutboundCampaign(input: {
     filters: campaign.filters,
     maxRecipients: campaign.maxRecipients,
   });
-  const matchedLeads = audience.selected;
-  const runRef = adminDb.collection("outbound_campaign_runs").doc();
+  const selectedLeadIds = new Set((input.leadIds || []).map((item) => clean(item, 180)).filter(Boolean));
+  const matchedLeads = selectedLeadIds.size
+    ? audience.selected.filter((item) => selectedLeadIds.has(item.id))
+    : audience.selected;
+  const runRef = input.runId
+    ? adminDb.collection("outbound_campaign_runs").doc(input.runId)
+    : adminDb.collection("outbound_campaign_runs").doc();
 
   let sent = 0;
   let skipped = 0;
@@ -663,29 +694,325 @@ export async function dispatchOutboundCampaign(input: {
     selectedByLimit: matchedLeads.length,
   };
 
-  await Promise.all([
-    runRef.set({
-      tenantId: input.tenantId,
-      campaignId: input.campaignId,
-      campaignName: campaign.name,
-      channel: "whatsapp",
-      summary,
-      errors: errors.slice(0, 50),
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: input.actor.id,
-      createdByName: input.actor.name,
-    }),
-    campaignRef.set(
-      {
+  if (input.accumulate) {
+    const runUpdate: Record<string, unknown> = {
+      status: "running",
+      "summary.sent": FieldValue.increment(sent),
+      "summary.skipped": FieldValue.increment(skipped),
+      "summary.failed": FieldValue.increment(failed),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (errors.length) {
+      runUpdate.errors = FieldValue.arrayUnion(...errors.slice(0, 20));
+    }
+    await Promise.all([
+      runRef.update(runUpdate),
+      campaignRef.update({
+        executionStatus: "running",
         lastRunAt: FieldValue.serverTimestamp(),
-        lastRunSummary: summary,
+        "lastRunSummary.sent": FieldValue.increment(sent),
+        "lastRunSummary.skipped": FieldValue.increment(skipped),
+        "lastRunSummary.failed": FieldValue.increment(failed),
         updatedAt: FieldValue.serverTimestamp(),
         updatedBy: input.actor.id,
         updatedByName: input.actor.name,
-      },
-      { merge: true }
-    ),
-  ]);
+      }),
+    ]);
+  } else {
+    await Promise.all([
+      runRef.set({
+        tenantId: input.tenantId,
+        campaignId: input.campaignId,
+        campaignName: campaign.name,
+        channel: "whatsapp",
+        status: "completed",
+        summary,
+        errors: errors.slice(0, 50),
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: input.actor.id,
+        createdByName: input.actor.name,
+      }),
+      campaignRef.set(
+        {
+          executionStatus: failed > 0 && sent === 0 ? "failed" : "completed",
+          lastRunAt: FieldValue.serverTimestamp(),
+          lastRunSummary: summary,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: input.actor.id,
+          updatedByName: input.actor.name,
+        },
+        { merge: true }
+      ),
+    ]);
+  }
 
   return { campaign, summary, runId: runRef.id, errors };
+}
+
+export async function enqueueOutboundCampaign(input: {
+  tenantId: string;
+  campaignId: string;
+  actor: ChatDispatchActor;
+  scheduledAt?: Date | null;
+}) {
+  const { campaignRef, campaign } = await loadCampaignContext(input);
+  if (
+    campaign.activeRunId &&
+    ["scheduled", "queued", "running", "paused"].includes(campaign.executionStatus)
+  ) {
+    throw new Error("Este disparo ja possui uma execucao em andamento.");
+  }
+  if (!campaign.channelId) throw new Error("Escolha o numero remetente antes de agendar.");
+  if (campaign.deliveryMode === "template" && !campaign.templateName.trim()) {
+    throw new Error("Escolha um template Meta aprovado.");
+  }
+  if (campaign.deliveryMode === "text" && !campaign.messageTemplate.trim()) {
+    throw new Error("Escreva a mensagem do disparo.");
+  }
+
+  const leadsSnap = await adminDb.collection("leads").where("tenantId", "==", input.tenantId).limit(600).get();
+  const leads = leadsSnap.docs.map((doc) => ({ id: doc.id, data: doc.data() as Record<string, unknown> }));
+  const audience = buildAudienceSelection({
+    leads,
+    filters: campaign.filters,
+    maxRecipients: campaign.maxRecipients,
+  });
+  const eligible = audience.selected.filter(
+    (item) => !hasWhatsAppOptOut(item.data) && Boolean(normalizePhone(clean(item.data.telefone, 40)))
+  );
+  if (!eligible.length) throw new Error("Nenhum contato apto para receber este disparo.");
+
+  const runRef = adminDb.collection("outbound_campaign_runs").doc();
+  const baseDate =
+    input.scheduledAt ||
+    (campaign.scheduledAt ? new Date(campaign.scheduledAt) : null) ||
+    new Date();
+  const safeBaseDate = Number.isNaN(baseDate.getTime()) ? new Date() : baseDate;
+  const jobs = buildOutboundJobSchedule({
+    leadIds: eligible.map((item) => item.id),
+    sendRatePerMinute: campaign.sendRatePerMinute,
+    startsAt: safeBaseDate,
+  });
+
+  const jobRefs = jobs.map((job) => ({
+    ref: adminDb.collection("outbound_campaign_jobs").doc(),
+    job,
+  }));
+  for (let offset = 0; offset < jobRefs.length; offset += 400) {
+    const preparationBatch = adminDb.batch();
+    jobRefs.slice(offset, offset + 400).forEach(({ ref, job }) => {
+      preparationBatch.set(ref, {
+        tenantId: input.tenantId,
+        campaignId: input.campaignId,
+        campaignName: campaign.name,
+        runId: runRef.id,
+        leadIds: job.leadIds,
+        status: "staging",
+        attempts: 0,
+        dueAt: job.dueAt,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: input.actor.id,
+        createdByName: input.actor.name,
+      });
+    });
+    await preparationBatch.commit();
+  }
+
+  const batch = adminDb.batch();
+  batch.set(runRef, {
+    tenantId: input.tenantId,
+    campaignId: input.campaignId,
+    campaignName: campaign.name,
+    channel: "whatsapp",
+    status: safeBaseDate.getTime() > Date.now() + 15_000 ? "scheduled" : "queued",
+    scheduledAt: safeBaseDate,
+    totalJobs: jobs.length,
+    completedJobs: 0,
+    summary: {
+      sent: 0,
+      skipped: audience.selected.length - eligible.length,
+      failed: 0,
+      totalMatched: audience.filtered.length,
+      selectedByLimit: audience.selected.length,
+    },
+    errors: [],
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    createdBy: input.actor.id,
+    createdByName: input.actor.name,
+  });
+  batch.set(
+    campaignRef,
+    {
+      executionStatus: safeBaseDate.getTime() > Date.now() + 15_000 ? "scheduled" : "queued",
+      status: "active",
+      scheduledAt: safeBaseDate,
+      activeRunId: runRef.id,
+      lastRunSummary: {
+        sent: 0,
+        skipped: audience.selected.length - eligible.length,
+        failed: 0,
+        totalMatched: audience.filtered.length,
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: input.actor.id,
+      updatedByName: input.actor.name,
+    },
+    { merge: true }
+  );
+  await batch.commit();
+
+  const activationWriter = adminDb.bulkWriter();
+  jobRefs.forEach(({ ref }) => {
+    activationWriter.update(ref, {
+      status: "ready",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+  await activationWriter.close();
+
+  return {
+    campaign,
+    runId: runRef.id,
+    queued: eligible.length,
+    jobs: jobs.length,
+    scheduledAt: safeBaseDate.toISOString(),
+    summary: {
+      sent: 0,
+      skipped: audience.selected.length - eligible.length,
+      failed: 0,
+      totalMatched: audience.filtered.length,
+    },
+  };
+}
+
+export async function processOutboundCampaignJobs(input?: { limit?: number }) {
+  const limit = Math.max(1, Math.min(100, Number(input?.limit || 40)));
+  const snap = await adminDb.collection("outbound_campaign_jobs").where("status", "==", "ready").limit(1000).get();
+  const now = Date.now();
+  const dueJobs = snap.docs
+    .filter((doc) => {
+      const dueAt = toIso(doc.data().dueAt);
+      return !dueAt || new Date(dueAt).getTime() <= now;
+    })
+    .slice(0, limit);
+  const results: Array<{ jobId: string; status: string; error?: string }> = [];
+
+  async function finalizeRunIfDone(runId: string, campaignId: string) {
+    const jobs = await adminDb
+      .collection("outbound_campaign_jobs")
+      .where("runId", "==", runId)
+      .limit(1000)
+      .get();
+    const pending = jobs.docs.some((doc) => ["ready", "processing"].includes(clean(doc.data().status, 20)));
+    if (pending) return;
+
+    const runRef = adminDb.collection("outbound_campaign_runs").doc(runId);
+    const runSnap = await runRef.get();
+    const summary = (runSnap.data()?.summary || {}) as Record<string, unknown>;
+    const finalStatus = Number(summary.failed || 0) > 0 && Number(summary.sent || 0) === 0 ? "failed" : "completed";
+    await Promise.all([
+      runRef.set(
+        { status: finalStatus, completedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      ),
+      adminDb.collection("outbound_campaigns").doc(campaignId).set(
+        { executionStatus: finalStatus, lastRunAt: FieldValue.serverTimestamp(), activeRunId: null, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      ),
+    ]);
+  }
+
+  for (const jobDoc of dueJobs) {
+    const claimed = await adminDb.runTransaction(async (transaction) => {
+      const fresh = await transaction.get(jobDoc.ref);
+      if (!fresh.exists || String(fresh.data()?.status || "") !== "ready") return null;
+      transaction.set(
+        jobDoc.ref,
+        {
+          status: "processing",
+          attempts: FieldValue.increment(1),
+          startedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return fresh.data() as Record<string, unknown>;
+    });
+    if (!claimed) continue;
+
+    const tenantId = clean(claimed.tenantId, 180);
+    const campaignId = clean(claimed.campaignId, 180);
+    const runId = clean(claimed.runId, 180);
+    const campaignSnap = await adminDb.collection("outbound_campaigns").doc(campaignId).get();
+    const campaignData = campaignSnap.data() as Record<string, unknown> | undefined;
+    if (!campaignSnap.exists || clean(campaignData?.tenantId, 180) !== tenantId) {
+      await jobDoc.ref.set({ status: "failed", error: "campaign_not_found", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      results.push({ jobId: jobDoc.id, status: "failed", error: "campaign_not_found" });
+      continue;
+    }
+    if (clean(campaignData?.status, 20) === "paused") {
+      await jobDoc.ref.set({ status: "paused", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      results.push({ jobId: jobDoc.id, status: "paused" });
+      continue;
+    }
+
+    try {
+      await dispatchOutboundCampaign({
+        tenantId,
+        campaignId,
+        runId,
+        leadIds: Array.isArray(claimed.leadIds) ? claimed.leadIds.map((item) => clean(item, 180)).filter(Boolean) : [],
+        actor: {
+          id: clean(claimed.createdBy, 180) || "outbound_worker",
+          name: clean(claimed.createdByName, 180) || "Motor de disparos",
+        },
+        accumulate: true,
+      });
+      await jobDoc.ref.set({ status: "completed", completedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await adminDb.collection("outbound_campaign_runs").doc(runId).set(
+        { completedJobs: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+
+      await finalizeRunIfDone(runId, campaignId);
+      results.push({ jobId: jobDoc.id, status: "completed" });
+    } catch (error) {
+      const attempts = Number(claimed.attempts || 0) + 1;
+      const terminal = attempts >= 3;
+      await jobDoc.ref.set(
+        {
+          status: terminal ? "failed" : "ready",
+          error: error instanceof Error ? error.message : "outbound_job_failed",
+          dueAt: terminal ? claimed.dueAt || new Date() : new Date(Date.now() + attempts * 60_000),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      if (terminal) {
+        await adminDb.collection("outbound_campaign_runs").doc(runId).update({
+          completedJobs: FieldValue.increment(1),
+          "summary.failed": FieldValue.increment(
+            Array.isArray(claimed.leadIds) ? claimed.leadIds.length : 1
+          ),
+          errors: FieldValue.arrayUnion({
+            jobId: jobDoc.id,
+            message: error instanceof Error ? error.message : "outbound_job_failed",
+          }),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        await adminDb.collection("outbound_campaigns").doc(campaignId).update({
+          "lastRunSummary.failed": FieldValue.increment(
+            Array.isArray(claimed.leadIds) ? claimed.leadIds.length : 1
+          ),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        await finalizeRunIfDone(runId, campaignId);
+      }
+      results.push({ jobId: jobDoc.id, status: terminal ? "failed" : "retry", error: error instanceof Error ? error.message : "outbound_job_failed" });
+    }
+  }
+
+  return { processed: results.length, results };
 }

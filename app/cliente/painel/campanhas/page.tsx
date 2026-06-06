@@ -2,52 +2,32 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ArrowUpRight,
   BarChart3,
   Bot,
-  CheckCircle2,
-  ClipboardList,
   DollarSign,
-  Filter,
   Globe2,
   Loader2,
   Megaphone,
   MessageCircle,
-  PencilLine,
-  Play,
   Plus,
   RefreshCw,
-  Save,
-  Send,
   ShieldCheck,
-  Sparkles,
   Target,
-  Trash2,
-  Wand2,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import {
   CardTitle,
-  ClientActionButton,
   EmptyState,
   MetricCard,
   PanelCard,
   StateBadge,
 } from "@/app/cliente/painel/components/ui";
-import {
-  getBusinessProfile,
-  getBusinessProfilePipelineStages,
-  getBusinessProfilePlaybookPreset,
-  type BusinessProfileId,
-} from "@/lib/business-profiles";
 
 type CampaignStatus = "draft" | "active" | "paused";
-type CampaignObjective = "reativacao" | "proposta" | "leads_quentes" | "pos_venda" | "oferta";
 
 type Campaign = {
   id: string;
@@ -72,10 +52,6 @@ type Campaign = {
   } | null;
 };
 
-type CampaignEditorState = Omit<Campaign, "channel" | "lastRunAt" | "lastRunSummary"> & {
-  objective: CampaignObjective;
-  offerId: string;
-};
 
 type RunItem = {
   id: string;
@@ -90,32 +66,6 @@ type RunItem = {
   };
 };
 
-type AudiencePreview = {
-  summary: {
-    totalLeads: number;
-    matchedFilters: number;
-    selectedByLimit: number;
-    maxRecipients: number;
-    estimatedSend: number;
-    blockedByConsent: number;
-    missingPhone: number;
-    truncatedByLimit: boolean;
-  };
-  sample: Array<{
-    leadId: string;
-    nome: string;
-    telefone: string;
-    stage: string;
-    origem: string;
-    blockedByConsent: boolean;
-  }>;
-};
-
-type TenantSettingsResponse = {
-  settings?: {
-    businessProfileId?: BusinessProfileId | string;
-  };
-};
 
 type PaidCampaign = {
   key: string;
@@ -274,39 +224,6 @@ type CatalogDoc = {
   priceTo?: number | null;
 };
 
-const OBJECTIVES: Array<{
-  id: CampaignObjective;
-  label: string;
-  detail: string;
-  tone: "info" | "success" | "warning" | "ai";
-}> = [
-  { id: "reativacao", label: "Reativar base", detail: "Contatos parados e leads sem resposta.", tone: "info" },
-  { id: "proposta", label: "Follow-up de proposta", detail: "Retomar oportunidades com proposta aberta.", tone: "warning" },
-  { id: "leads_quentes", label: "Leads quentes", detail: "Chamar quem esta perto da compra.", tone: "success" },
-  { id: "pos_venda", label: "Pos-venda", detail: "Acompanhar, recomprar ou pedir retorno.", tone: "ai" },
-  { id: "oferta", label: "Oferta do catalogo", detail: "Divulgar produto, servico ou pacote.", tone: "info" },
-];
-
-function emptyCampaign(): CampaignEditorState {
-  return {
-    id: "",
-    name: "",
-    status: "draft",
-    objective: "reativacao",
-    offerId: "",
-    messageTemplate:
-      "Oi {nome}, aqui e da ALTUM. Vi que voce demonstrou interesse e queria entender se ainda faz sentido conversar por aqui.",
-    maxRecipients: 50,
-    filters: {
-      stageIds: [],
-      ownerIds: [],
-      sources: [],
-      tags: [],
-      heat: [],
-    },
-  };
-}
-
 function formatDate(value?: string | null) {
   if (!value) return "--";
   return new Date(value).toLocaleString("pt-BR");
@@ -320,83 +237,22 @@ function percent(value?: number | null) {
   return `${Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 }
 
-function listValue(value: string[]) {
-  return value.join(", ");
-}
-
-function parseList(value: string) {
-  return Array.from(new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean)));
-}
-
-function interpolatePreview(template: string) {
-  return template
-    .replaceAll("{nome}", "Marina")
-    .replaceAll("{empresa}", "Loja Aurora")
-    .replaceAll("{telefone}", "+55 11 99999-0000")
-    .replaceAll("{email}", "marina@empresa.com")
-    .replaceAll("{stage}", "proposta")
-    .replaceAll("{origem}", "Meta Ads");
-}
-
-function statusTone(status: CampaignStatus) {
-  if (status === "active") return "success" as const;
-  if (status === "paused") return "warning" as const;
-  return "neutral" as const;
-}
-
-function buildObjectiveMessage(objective: CampaignObjective, offer?: CatalogDoc | null) {
-  const offerName = offer?.productName || "nossa solucao";
-  if (objective === "proposta") {
-    return `Oi {nome}, tudo bem? Passando para saber se voce conseguiu avaliar a proposta. Se fizer sentido, eu posso te ajudar a ajustar o melhor caminho para avancarmos com ${offerName}.`;
-  }
-  if (objective === "leads_quentes") {
-    return `Oi {nome}, vi que voce demonstrou interesse recentemente. Quer que eu te envie os proximos passos para entender se ${offerName} faz sentido para voce agora?`;
-  }
-  if (objective === "pos_venda") {
-    return `Oi {nome}, tudo certo por ai? Estou passando para saber como foi sua experiencia e se existe algo que possamos melhorar ou complementar neste momento.`;
-  }
-  if (objective === "oferta") {
-    return `Oi {nome}, tenho uma recomendacao que pode fazer sentido para voce: ${offerName}. Posso te mandar os detalhes e ver se encaixa no que voce esta buscando?`;
-  }
-  return `Oi {nome}, aqui e da equipe. Vi que nossa conversa ficou parada e queria entender se ainda faz sentido retomar. Posso te ajudar com o proximo passo?`;
-}
-
 export default function ClienteCampanhasPage() {
   const { tenant, hasCapability } = useClienteTenant();
-  const { experienceMode, setExperienceMode } = useClienteShell();
-  const searchParams = useSearchParams();
-  const campaignFromQuery = searchParams.get("campaignId");
   const canManage = hasCapability("manage_automations");
   const canSyncCampaigns = hasCapability("view_metrics") || hasCapability("manage_channels");
-  const allowAdvanced = experienceMode === "completo";
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [dispatching, setDispatching] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [syncingCampaigns, setSyncingCampaigns] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [audiencePreview, setAudiencePreview] = useState<AudiencePreview | null>(null);
   const [items, setItems] = useState<Campaign[]>([]);
   const [runs, setRuns] = useState<RunItem[]>([]);
-  const [users, setUsers] = useState<Array<{ userId?: string; name?: string }>>([]);
   const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
   const [conversionHealth, setConversionHealth] = useState<ConversionHealthResponse | null>(null);
   const [campaignOverview, setCampaignOverview] = useState<CampaignOverviewResponse | null>(null);
   const [formsPayload, setFormsPayload] = useState<CaptureFormsPayload | null>(null);
   const [catalogDocs, setCatalogDocs] = useState<CatalogDoc[]>([]);
-  const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId>("generic");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [state, setState] = useState<CampaignEditorState>(emptyCampaign());
-  const [activeStep, setActiveStep] = useState<"objetivo" | "publico" | "mensagem" | "revisao">("objetivo");
-
-  const businessProfile = useMemo(() => getBusinessProfile(businessProfileId), [businessProfileId]);
-  const playbookPreset = useMemo(() => getBusinessProfilePlaybookPreset(businessProfileId), [businessProfileId]);
-  const pipelineStages = useMemo(() => getBusinessProfilePipelineStages(businessProfileId), [businessProfileId]);
-  const selected = useMemo(() => items.find((item) => item.id === selectedId) || null, [items, selectedId]);
-  const selectedOffer = useMemo(() => catalogDocs.find((item) => item.id === state.offerId) || null, [catalogDocs, state.offerId]);
   const paidCampaigns = useMemo(() => metrics?.commercialAttribution?.byCampaign || [], [metrics?.commercialAttribution?.byCampaign]);
   const activeForms = formsPayload?.forms?.filter((form) => form.status === "active").length || 0;
   const totalFormSubmissions = formsPayload?.forms?.reduce((sum, form) => sum + Number(form.submissionsCount || 0), 0) || 0;
@@ -476,10 +332,8 @@ export default function ClienteCampanhasPage() {
     setError(null);
 
     try {
-      const [campaignsRes, usersRes, settingsRes, metricsRes, formsRes, kbRes, conversionHealthRes, campaignOverviewRes] = await Promise.all([
+      const [campaignsRes, metricsRes, formsRes, kbRes, conversionHealthRes, campaignOverviewRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/users`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
         authedFetch(`/api/tenant/${tenant.tenantId}/metrics-summary?rangeDays=30`),
         authedFetch(`/api/tenant/${tenant.tenantId}/capture/forms`),
         authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
@@ -488,8 +342,6 @@ export default function ClienteCampanhasPage() {
       ]);
 
       const campaignsPayload = (await campaignsRes.json()) as { items?: Campaign[]; runs?: RunItem[]; error?: string };
-      const usersPayload = (await usersRes.json().catch(() => ({}))) as { items?: Array<{ userId?: string; name?: string }> };
-      const settingsPayload = (await settingsRes.json().catch(() => ({}))) as TenantSettingsResponse;
       const metricsPayload = (await metricsRes.json().catch(() => null)) as MetricsSummary | null;
       const formsData = (await formsRes.json().catch(() => null)) as CaptureFormsPayload | null;
       const kbPayload = (await kbRes.json().catch(() => ({}))) as { items?: CatalogDoc[] };
@@ -506,46 +358,21 @@ export default function ClienteCampanhasPage() {
       const nextItems = campaignsPayload.items || [];
       setItems(nextItems);
       setRuns(campaignsPayload.runs || []);
-      setUsers((usersPayload.items || []).filter((item) => item.userId));
       setMetrics(metricsRes.ok ? metricsPayload : null);
       setConversionHealth(conversionHealthRes.ok ? conversionHealthPayload : null);
       setCampaignOverview(campaignOverviewRes.ok ? campaignOverviewPayload : null);
       setFormsPayload(formsRes.ok ? formsData : null);
       setCatalogDocs((kbPayload.items || []).filter((item) => item.type === "catalog"));
-      setBusinessProfileId((settingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
-      setSelectedId((current) => {
-        if (current && nextItems.some((item) => item.id === current)) return current;
-        if (campaignFromQuery && nextItems.some((item) => item.id === campaignFromQuery)) return campaignFromQuery;
-        return nextItems[0]?.id || null;
-      });
     } catch {
       setError("Falha ao carregar central de campanhas.");
     } finally {
       setLoading(false);
     }
-  }, [tenant?.tenantId, campaignFromQuery]);
+  }, [tenant?.tenantId]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
-
-  useEffect(() => {
-    setAudiencePreview(null);
-    if (!selected) {
-      setState(emptyCampaign());
-      return;
-    }
-    setState({
-      id: selected.id,
-      name: selected.name,
-      status: selected.status,
-      objective: "reativacao",
-      offerId: "",
-      messageTemplate: selected.messageTemplate,
-      maxRecipients: selected.maxRecipients,
-      filters: selected.filters,
-    });
-  }, [selected]);
 
   const summary = useMemo(() => {
     const sent = items.reduce((sum, item) => sum + Number(item.lastRunSummary?.sent || 0), 0);
@@ -561,181 +388,6 @@ export default function ClienteCampanhasPage() {
       paidLeads: metrics?.traffic?.leads || 0,
     };
   }, [campaignOverview?.summary?.active, campaignOverview?.summary?.total, items, metrics?.traffic?.leads, metrics?.traffic?.spend, paidCampaigns.length, runs.length]);
-
-  const readiness = useMemo(() => {
-    const checks = [
-      { label: "Objetivo escolhido", done: Boolean(state.objective) },
-      { label: "Nome da campanha", done: Boolean(state.name.trim()) },
-      { label: "Mensagem pronta", done: state.messageTemplate.trim().length > 30 },
-      { label: "Limite definido", done: state.maxRecipients > 0 },
-      { label: "Publico segmentado", done: Boolean(state.filters.stageIds.length || state.filters.tags.length || state.filters.sources.length || state.filters.heat.length) },
-      { label: "Audiencia simulada", done: Boolean(audiencePreview) },
-    ];
-    const score = Math.round((checks.filter((item) => item.done).length / checks.length) * 100);
-    return { checks, score };
-  }, [audiencePreview, state]);
-
-  function handleCreate(objective: CampaignObjective = "reativacao") {
-    if (!canManage) return;
-    const offer = catalogDocs[0] || null;
-    setSelectedId(null);
-    setState({
-      ...emptyCampaign(),
-      objective,
-      offerId: objective === "oferta" ? offer?.id || "" : "",
-      name: objective === "oferta" && offer ? `Oferta ${offer.productName}` : `Campanha ${items.length + 1}`,
-      messageTemplate: buildObjectiveMessage(objective, objective === "oferta" ? offer : null),
-      filters: {
-        stageIds: pipelineStages.slice(0, 2).map((item) => item.id),
-        ownerIds: [],
-        sources: [],
-        tags: objective === "leads_quentes" ? ["quente"] : [],
-        heat: objective === "leads_quentes" ? ["quente"] : [],
-      },
-    });
-    setActiveStep("objetivo");
-    setNotice(null);
-    setError(null);
-  }
-
-  function applyBusinessCampaignPreset() {
-    const conversation = playbookPreset.scripts[0];
-    const offer = playbookPreset.offers[0];
-
-    setState((current) => ({
-      ...current,
-      name: current.name || `Outbound ${businessProfile.label}`,
-      messageTemplate: conversation?.script || current.messageTemplate,
-      filters: {
-        ...current.filters,
-        stageIds: current.filters.stageIds.length > 0 ? current.filters.stageIds : pipelineStages.slice(0, 2).map((item) => item.id),
-        tags: current.filters.tags.length > 0 ? current.filters.tags : businessProfile.crm.suggestedTags.slice(0, 2).map((item) => item.toLowerCase()),
-      },
-    }));
-    setNotice(`Modelo base do modo ${businessProfile.label} aplicado.${offer ? ` Oferta foco: ${offer.title}.` : ""}`);
-    setError(null);
-  }
-
-  function generateMessageVariant() {
-    const next = buildObjectiveMessage(state.objective, selectedOffer);
-    setState((current) => ({ ...current, messageTemplate: next }));
-    setNotice("Variação de mensagem aplicada.");
-  }
-
-  async function handleSave() {
-    if (!tenant?.tenantId || !canManage) return;
-    setSaving(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const body = {
-        name: state.name,
-        status: state.status,
-        messageTemplate: state.messageTemplate,
-        maxRecipients: state.maxRecipients,
-        filters: state.filters,
-      };
-      const isEditing = Boolean(state.id);
-      const path = isEditing
-        ? `/api/tenant/${tenant.tenantId}/outbound-campaigns/${state.id}`
-        : `/api/tenant/${tenant.tenantId}/outbound-campaigns`;
-      const method = isEditing ? "PATCH" : "POST";
-      const res = await authedFetch(path, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const payload = (await res.json()) as { error?: string; campaignId?: string };
-      if (!res.ok) {
-        setError(payload.error || "Falha ao salvar campanha.");
-        return;
-      }
-      await loadData();
-      if (!isEditing && payload.campaignId) setSelectedId(payload.campaignId);
-      setNotice(isEditing ? "Campanha atualizada." : "Campanha criada.");
-    } catch {
-      setError("Falha ao salvar campanha.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handlePreview() {
-    if (!tenant?.tenantId || !state.id || !canManage) return;
-    setPreviewing(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns/${state.id}/preview`, { method: "POST" });
-      const payload = (await res.json()) as { error?: string; summary?: AudiencePreview["summary"]; sample?: AudiencePreview["sample"] };
-      if (!res.ok) {
-        setError(payload.error || "Falha ao simular audiencia.");
-        return;
-      }
-      setAudiencePreview({
-        summary: payload.summary || {
-          totalLeads: 0,
-          matchedFilters: 0,
-          selectedByLimit: 0,
-          maxRecipients: 0,
-          estimatedSend: 0,
-          blockedByConsent: 0,
-          missingPhone: 0,
-          truncatedByLimit: false,
-        },
-        sample: payload.sample || [],
-      });
-      setNotice(`Simulacao pronta: ${payload.summary?.estimatedSend || 0} envios estimados.`);
-    } catch {
-      setError("Falha ao simular audiencia da campanha.");
-    } finally {
-      setPreviewing(false);
-    }
-  }
-
-  async function handleDispatch() {
-    if (!tenant?.tenantId || !state.id || !canManage) return;
-    setDispatching(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns/${state.id}/dispatch`, { method: "POST" });
-      const payload = (await res.json()) as { error?: string; summary?: { sent: number; skipped: number; failed: number; totalMatched: number } };
-      if (!res.ok) {
-        setError(payload.error || "Falha ao disparar campanha.");
-        return;
-      }
-      await loadData();
-      setNotice(`Campanha enviada: ${payload.summary?.sent || 0} disparos, ${payload.summary?.skipped || 0} pulados, ${payload.summary?.failed || 0} falhas.`);
-    } catch {
-      setError("Falha ao disparar campanha.");
-    } finally {
-      setDispatching(false);
-    }
-  }
-
-  async function handleDelete() {
-    if (!tenant?.tenantId || !state.id || !canManage) return;
-    setDeleting(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns/${state.id}`, { method: "DELETE" });
-      const payload = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        setError(payload.error || "Falha ao remover campanha.");
-        return;
-      }
-      await loadData();
-      setSelectedId(null);
-      setState(emptyCampaign());
-      setNotice("Campanha removida.");
-    } catch {
-      setError("Falha ao remover campanha.");
-    } finally {
-      setDeleting(false);
-    }
-  }
 
   async function handleSyncPaidCampaigns() {
     if (!tenant?.tenantId || !canSyncCampaigns) return;
@@ -760,19 +412,6 @@ export default function ClienteCampanhasPage() {
     } finally {
       setSyncingCampaigns(false);
     }
-  }
-
-  function toggleStage(stageId: string) {
-    setState((current) => {
-      const exists = current.filters.stageIds.includes(stageId);
-      return {
-        ...current,
-        filters: {
-          ...current.filters,
-          stageIds: exists ? current.filters.stageIds.filter((item) => item !== stageId) : [...current.filters.stageIds, stageId],
-        },
-      };
-    });
   }
 
   if (loading) {
@@ -800,14 +439,13 @@ export default function ClienteCampanhasPage() {
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {canManage ? (
-                <button
-                  type="button"
-                  onClick={() => handleCreate("reativacao")}
+                <Link
+                  href="/cliente/painel/disparos"
                   className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[var(--cliente-primary-hover)]"
                 >
                   <Plus className="h-4 w-4" />
-                  Nova campanha
-                </button>
+                  Novo disparo
+                </Link>
               ) : null}
               <Link
                 href="/cliente/painel/captacao"
@@ -935,140 +573,6 @@ export default function ClienteCampanhasPage() {
               </Link>
             </div>
           </PanelCard>
-          <div id="outbound" className="hidden" aria-hidden="true">
-          <PanelCard className="p-5 md:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle title="Campanha WhatsApp guiada" subtitle="Objetivo, publico, mensagem e revisao antes de chamar a base." />
-              <StateBadge label={`${readiness.score}% pronto`} tone={readiness.score >= 75 ? "success" : "warning"} />
-            </div>
-
-            <div className="mt-4 grid gap-3 lg:grid-cols-4">
-              {[
-                { id: "objetivo", label: "Objetivo", icon: Target },
-                { id: "publico", label: "Publico", icon: Filter },
-                { id: "mensagem", label: "Mensagem", icon: PencilLine },
-                { id: "revisao", label: "Revisao", icon: ClipboardList },
-              ].map((step) => {
-                const Icon = step.icon;
-                const active = activeStep === step.id;
-                return (
-                  <button
-                    key={step.id}
-                    type="button"
-                    onClick={() => setActiveStep(step.id as typeof activeStep)}
-                    className={`rounded-[18px] border px-4 py-3 text-left transition hover:-translate-y-0.5 ${
-                      active ? "border-[#2563eb] bg-[color:color-mix(in_srgb,#2563eb_10%,var(--cliente-card))]" : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"
-                    }`}
-                  >
-                    <Icon className={active ? "h-4 w-4 text-[#2563eb]" : "h-4 w-4 text-[var(--cliente-card-text-soft)]"} />
-                    <p className="mt-2 text-sm font-black text-[var(--cliente-card-text)]">{step.label}</p>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
-              <div className="space-y-4">
-                {activeStep === "objetivo" ? (
-                  <CampaignObjectiveStep
-                    state={state}
-                    catalogDocs={catalogDocs}
-                    selectedOffer={selectedOffer}
-                    onCreate={handleCreate}
-                    onChange={(patch) => setState((current) => ({ ...current, ...patch }))}
-                  />
-                ) : null}
-
-                {activeStep === "publico" ? (
-                  <CampaignAudienceStep
-                    state={state}
-                    users={users}
-                    pipelineStages={pipelineStages}
-                    allowAdvanced={allowAdvanced}
-                    onToggleStage={toggleStage}
-                    onAdvanced={() => setExperienceMode("completo")}
-                    onChange={(patch) => setState((current) => ({ ...current, ...patch }))}
-                  />
-                ) : null}
-
-                {activeStep === "mensagem" ? (
-                  <CampaignMessageStep
-                    state={state}
-                    selectedOffer={selectedOffer}
-                    canManage={canManage}
-                    onPreset={applyBusinessCampaignPreset}
-                    onGenerate={generateMessageVariant}
-                    onChange={(patch) => setState((current) => ({ ...current, ...patch }))}
-                  />
-                ) : null}
-
-                {activeStep === "revisao" ? (
-                  <CampaignReviewStep readiness={readiness} audiencePreview={audiencePreview} state={state} />
-                ) : null}
-
-                <div className="flex flex-wrap gap-2 border-t border-[var(--cliente-border)] pt-4">
-                  {canManage ? (
-                    <>
-                      <ClientActionButton type="button" tone="primary" onClick={() => void handleSave()} disabled={saving || !state.name.trim() || !state.messageTemplate.trim()} className="bg-[#2563eb] hover:bg-[#1d4ed8]">
-                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        Salvar
-                      </ClientActionButton>
-                      {state.id ? (
-                        <ClientActionButton type="button" tone="secondary" onClick={() => void handlePreview()} disabled={previewing}>
-                          {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                          Simular publico
-                        </ClientActionButton>
-                      ) : null}
-                      {state.id ? (
-                        <ClientActionButton type="button" tone="success" onClick={() => void handleDispatch()} disabled={dispatching || state.status === "paused"}>
-                          {dispatching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                          Disparar
-                        </ClientActionButton>
-                      ) : null}
-                      {state.id ? (
-                        <ClientActionButton type="button" tone="danger" onClick={() => void handleDelete()} disabled={deleting}>
-                          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                          Remover
-                        </ClientActionButton>
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
-              </div>
-
-              <aside className="space-y-3">
-                <WhatsAppPreview message={state.messageTemplate} selectedOffer={selectedOffer} />
-                <PanelCard className="p-4">
-                  <CardTitle title="Campanhas salvas" subtitle={`${items.length} modelos WhatsApp`} />
-                  <div className="mt-3 space-y-2">
-                    {items.length ? (
-                      items.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => setSelectedId(item.id)}
-                          className={`w-full rounded-[18px] border p-3 text-left transition hover:bg-[var(--cliente-surface-hover)] ${
-                            selectedId === item.id ? "border-[#2563eb] bg-[color:color-mix(in_srgb,#2563eb_9%,var(--cliente-card))]" : "border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="line-clamp-2 text-sm font-bold text-[var(--cliente-card-text)]">{item.name}</p>
-                            <StateBadge label={item.status} tone={statusTone(item.status)} />
-                          </div>
-                          <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{formatDate(item.lastRunAt)}</p>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 text-sm text-[var(--cliente-card-text-muted)]">
-                        Nenhuma campanha WhatsApp criada.
-                      </p>
-                    )}
-                  </div>
-                </PanelCard>
-              </aside>
-            </div>
-          </PanelCard>
-          </div>
         </div>
 
         <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
@@ -1553,6 +1057,7 @@ function PaidCampaignRow({ campaign }: { campaign: PaidCampaign }) {
   );
 }
 
+/*
 function CampaignObjectiveStep({
   state,
   catalogDocs,
@@ -1800,6 +1305,7 @@ function WhatsAppPreview({ message, selectedOffer }: { message: string; selected
   );
 }
 
+*/
 function IntegrationRow({ label, value, ready }: { label: string; value: string; ready: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
@@ -1809,48 +1315,5 @@ function IntegrationRow({ label, value, ready }: { label: string; value: string;
       </div>
       <StateBadge label={ready ? "ok" : "pendente"} tone={ready ? "success" : "warning"} />
     </div>
-  );
-}
-
-function Field(props: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="block space-y-1">
-      <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">{props.label}</span>
-      <input
-        value={props.value}
-        onChange={(event) => props.onChange(event.target.value)}
-        placeholder={props.placeholder}
-        className="client-input w-full rounded-xl border px-3 py-2.5 text-sm"
-      />
-    </label>
-  );
-}
-
-function SelectField(props: {
-  label: string;
-  value: string;
-  options: Array<{ value: string; label: string }>;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block space-y-1">
-      <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-muted)]">{props.label}</span>
-      <select
-        value={props.value}
-        onChange={(event) => props.onChange(event.target.value)}
-        className="client-input w-full rounded-xl border px-3 py-2.5 text-sm"
-      >
-        {props.options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }

@@ -256,12 +256,13 @@ async function persistWhatsappStatusEvents(input: {
 
     const deliverySnap = await adminDb
       .collection("outbound_campaign_deliveries")
-      .where("tenantId", "==", input.tenantId)
       .where("metaMessageId", "==", statusEvent.messageId)
       .limit(20)
       .get();
 
-    for (const deliveryDoc of deliverySnap.docs) {
+    for (const deliveryDoc of deliverySnap.docs.filter(
+      (doc) => cleanString(doc.data().tenantId, 180) === input.tenantId
+    )) {
       batch.set(
         deliveryDoc.ref,
         {
@@ -969,6 +970,31 @@ export async function POST(req: Request) {
         mediaId: mediaMeta.mediaId,
         createdAt: FieldValue.serverTimestamp(),
       });
+    }
+
+    const recentOutboundDeliveries = await adminDb
+      .collection("outbound_campaign_deliveries")
+      .where("chatId", "==", chatId)
+      .limit(20)
+      .get();
+    const unansweredDeliveries = recentOutboundDeliveries.docs
+      .filter((doc) => cleanString(doc.data().tenantId, 180) === tenantId)
+      .filter((doc) => !doc.data().respondedAt)
+      .sort((a, b) => {
+        const aSeconds = Number(a.data().sentAt?._seconds || a.data().createdAt?._seconds || 0);
+        const bSeconds = Number(b.data().sentAt?._seconds || b.data().createdAt?._seconds || 0);
+        return bSeconds - aSeconds;
+      });
+    if (unansweredDeliveries[0]) {
+      await unansweredDeliveries[0].ref.set(
+        {
+          respondedAt: FieldValue.serverTimestamp(),
+          responseMessageId: incomingMessageRef.id,
+          responseText: text.slice(0, 500),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
     }
 
     if (isWhatsAppOptOutMessage(text)) {

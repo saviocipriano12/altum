@@ -23,6 +23,7 @@ import {
   SunMedium,
   Target,
   TrendingUp,
+  Trash2,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/firebaseConfig";
@@ -102,6 +103,13 @@ const NAV_ITEMS: NavItem[] = [
     label: "Configurar - integracoes",
     href: "/cliente/painel/configuracoes/integracoes",
     icon: <Plug className="h-4 w-4" />,
+    capability: "manage_settings",
+  },
+  {
+    key: "lixeira",
+    label: "Configuracoes - lixeira",
+    href: "/cliente/painel/configuracoes/lixeira",
+    icon: <Trash2 className="h-4 w-4" />,
     capability: "manage_settings",
   },
 ];

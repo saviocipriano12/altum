@@ -13,6 +13,7 @@ import {
   Loader2,
   MessageCircle,
   MoreHorizontal,
+  Pause,
   Play,
   Plus,
   Save,
@@ -65,6 +66,17 @@ type Campaign = {
     filename?: string;
   };
   maxRecipients: number;
+  scheduledAt: string | null;
+  sendRatePerMinute: number;
+  executionStatus: "idle" | "scheduled" | "queued" | "running" | "paused" | "completed" | "failed";
+  deliveryMetrics?: {
+    sent: number;
+    delivered: number;
+    read: number;
+    failed: number;
+    responded: number;
+    converted: number;
+  };
   filters: {
     stageIds: string[];
     ownerIds: string[];
@@ -103,6 +115,15 @@ type Run = {
   summary: { sent: number; skipped: number; failed: number; totalMatched: number };
 };
 
+type WhatsAppTemplate = {
+  id?: string | null;
+  name: string;
+  language: string;
+  status: string;
+  category: string;
+  components: Array<Record<string, unknown>>;
+};
+
 const STEPS: Array<{ id: Step; label: string; icon: typeof Smartphone }> = [
   { id: "remetente", label: "Remetente", icon: Smartphone },
   { id: "publico", label: "Publico", icon: Users },
@@ -123,6 +144,9 @@ function emptyCampaign(): Campaign {
     bodyParams: ["{nome}"],
     headerMedia: null,
     maxRecipients: 50,
+    scheduledAt: null,
+    sendRatePerMinute: 20,
+    executionStatus: "idle",
     filters: { stageIds: [], ownerIds: [], sources: [], tags: [], heat: [] },
   };
 }
@@ -139,6 +163,14 @@ function formatDate(value?: string | null) {
   return date.toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
+function formatDateTimeLocal(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
 function splitList(value: string) {
   return Array.from(new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))).slice(0, 20);
 }
@@ -149,6 +181,8 @@ export default function BulkMessagingPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [editor, setEditor] = useState<Campaign>(emptyCampaign);
   const [selectedId, setSelectedId] = useState("");
   const [step, setStep] = useState<Step>("remetente");
@@ -220,6 +254,33 @@ export default function BulkMessagingPage() {
     }),
     [campaigns, runs]
   );
+
+  useEffect(() => {
+    if (!tenant?.tenantId || !editor.channelId || !officialChannel) {
+      setTemplates([]);
+      return;
+    }
+    let mounted = true;
+    setLoadingTemplates(true);
+    authedFetch(`/api/tenant/${tenant.tenantId}/whatsapp-templates?channelId=${encodeURIComponent(editor.channelId)}`)
+      .then(async (response) => {
+        const payload = (await response.json()) as { templates?: WhatsAppTemplate[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Falha ao consultar templates.");
+        if (mounted) setTemplates((payload.templates || []).filter((item) => item.status === "approved"));
+      })
+      .catch((templateError) => {
+        if (mounted) {
+          setTemplates([]);
+          setError(templateError instanceof Error ? templateError.message : "Falha ao consultar templates.");
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoadingTemplates(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [editor.channelId, officialChannel, tenant?.tenantId]);
 
   function createNew() {
     const firstChannel = readyChannels[0] || channels[0];
@@ -304,16 +365,42 @@ export default function BulkMessagingPage() {
     try {
       const response = await authedFetch(
         `/api/tenant/${tenant.tenantId}/outbound-campaigns/${editor.id}/dispatch`,
-        { method: "POST" }
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduledAt: editor.scheduledAt || null }),
+        }
       );
-      const payload = (await response.json()) as { summary?: Run["summary"]; error?: string };
+      const payload = (await response.json()) as { queued?: number; jobs?: number; scheduledAt?: string; error?: string };
       if (!response.ok) throw new Error(payload.error || "Falha ao iniciar disparo.");
       await load();
       setNotice(
-        `${payload.summary?.sent || 0} enviados, ${payload.summary?.skipped || 0} ignorados e ${payload.summary?.failed || 0} falhas.`
+        `${payload.queued || 0} contatos colocados na fila em ${payload.jobs || 0} lote(s).`
       );
     } catch (dispatchError) {
       setError(dispatchError instanceof Error ? dispatchError.message : "Falha ao iniciar disparo.");
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function toggleCampaignPause() {
+    if (!tenant?.tenantId || !editor.id || !canManage) return;
+    const pausing = editor.status !== "paused";
+    setWorking("save");
+    setError("");
+    try {
+      const response = await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns/${editor.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...editor, status: pausing ? "paused" : "active" }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Falha ao alterar disparo.");
+      await load();
+      setNotice(pausing ? "Disparo pausado. Nenhum novo lote sera enviado." : "Disparo retomado.");
+    } catch (pauseError) {
+      setError(pauseError instanceof Error ? pauseError.message : "Falha ao alterar disparo.");
     } finally {
       setWorking(null);
     }
@@ -421,7 +508,7 @@ export default function BulkMessagingPage() {
                       tone={campaign.status === "active" ? "success" : campaign.status === "paused" ? "warning" : "neutral"}
                     />
                     <span className="text-xs font-semibold text-[var(--cliente-card-text-muted)]">
-                      {campaign.lastRunSummary?.sent || 0} envios
+                      {campaign.deliveryMetrics?.read || 0} lidos
                     </span>
                   </div>
                 </button>
@@ -484,6 +571,8 @@ export default function BulkMessagingPage() {
                 <ContentStep
                   editor={editor}
                   official={officialChannel}
+                  templates={templates}
+                  loadingTemplates={loadingTemplates}
                   uploading={working === "media"}
                   onUpload={uploadMedia}
                   onChange={(patch) => { setEditor((current) => ({ ...current, ...patch })); setPreview(null); }}
@@ -502,6 +591,12 @@ export default function BulkMessagingPage() {
                     <span className="hidden sm:inline">Apagar</span>
                   </ClientActionButton>
                 ) : null}
+                {editor.id && ["scheduled", "queued", "running", "paused"].includes(editor.executionStatus) ? (
+                  <ClientActionButton tone={editor.status === "paused" ? "success" : "secondary"} onClick={() => void toggleCampaignPause()} disabled={Boolean(working)}>
+                    {editor.status === "paused" ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                    {editor.status === "paused" ? "Retomar" : "Pausar"}
+                  </ClientActionButton>
+                ) : null}
                 <ClientActionButton tone="secondary" onClick={() => void save()} disabled={Boolean(working) || !canManage}>
                   {working === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvar
                 </ClientActionButton>
@@ -511,7 +606,7 @@ export default function BulkMessagingPage() {
                   {working === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Filter className="h-4 w-4" />} Simular
                 </ClientActionButton>
                 <ClientActionButton tone="success" onClick={() => void dispatch()} disabled={Boolean(working) || !preview || !editor.id || !canManage}>
-                  {working === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar agora
+                  {working === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {editor.scheduledAt ? "Agendar" : "Enviar agora"}
                 </ClientActionButton>
               </div>
             </div>
@@ -661,6 +756,26 @@ function AudienceStep({ editor, onChange }: { editor: Campaign; onChange: (patch
           </div>
         </div>
       </div>
+      <div className="mt-4 grid gap-4 rounded-[18px] border border-[var(--cliente-border)] p-4 md:grid-cols-2">
+        <Field label="Velocidade" hint="Contatos por minuto">
+          <input
+            type="number"
+            min={1}
+            max={120}
+            value={editor.sendRatePerMinute}
+            onChange={(event) => onChange({ sendRatePerMinute: Math.max(1, Math.min(120, Number(event.target.value))) })}
+            className="client-input"
+          />
+        </Field>
+        <Field label="Agendamento" hint="Deixe vazio para iniciar agora">
+          <input
+            type="datetime-local"
+            value={formatDateTimeLocal(editor.scheduledAt)}
+            onChange={(event) => onChange({ scheduledAt: event.target.value ? new Date(event.target.value).toISOString() : null })}
+            className="client-input"
+          />
+        </Field>
+      </div>
     </div>
   );
 }
@@ -668,12 +783,16 @@ function AudienceStep({ editor, onChange }: { editor: Campaign; onChange: (patch
 function ContentStep({
   editor,
   official,
+  templates,
+  loadingTemplates,
   uploading,
   onUpload,
   onChange,
 }: {
   editor: Campaign;
   official: boolean;
+  templates: WhatsAppTemplate[];
+  loadingTemplates: boolean;
   uploading: boolean;
   onUpload: (file: File) => void;
   onChange: (patch: Partial<Campaign>) => void;
@@ -691,7 +810,22 @@ function ContentStep({
         {official ? (
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Nome do template" hint="Exatamente como aprovado na Meta">
-              <input value={editor.templateName} onChange={(event) => onChange({ templateName: event.target.value, deliveryMode: "template" })} className="client-input" placeholder="oferta_junho_2026" />
+              <select
+                value={`${editor.templateName}|${editor.languageCode}`}
+                onChange={(event) => {
+                  const [templateName, languageCode] = event.target.value.split("|");
+                  onChange({ templateName, languageCode: languageCode || "pt_BR", deliveryMode: "template" });
+                }}
+                className="client-input"
+                disabled={loadingTemplates}
+              >
+                <option value={`|${editor.languageCode}`}>{loadingTemplates ? "Consultando Meta..." : "Selecione um template aprovado"}</option>
+                {templates.map((template) => (
+                  <option key={`${template.name}_${template.language}`} value={`${template.name}|${template.language}`}>
+                    {template.name} - {template.language} - {template.category}
+                  </option>
+                ))}
+              </select>
             </Field>
             <Field label="Idioma" hint="Codigo aprovado">
               <select value={editor.languageCode} onChange={(event) => onChange({ languageCode: event.target.value })} className="client-input">
@@ -769,10 +903,29 @@ function ReviewStep({ editor, channel, preview, riskLevel }: { editor: Campaign;
           </div>
         ))}
       </div>
+      {editor.deliveryMetrics ? (
+        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <DeliveryStat label="Enviados" value={editor.deliveryMetrics.sent} />
+          <DeliveryStat label="Entregues" value={editor.deliveryMetrics.delivered} />
+          <DeliveryStat label="Lidos" value={editor.deliveryMetrics.read} />
+          <DeliveryStat label="Respostas" value={editor.deliveryMetrics.responded} />
+          <DeliveryStat label="Conversoes" value={editor.deliveryMetrics.converted} />
+          <DeliveryStat label="Falhas" value={editor.deliveryMetrics.failed} danger />
+        </div>
+      ) : null}
       <div className={`mt-4 rounded-[18px] border p-4 ${riskLevel === "alto" ? "border-rose-300/40 bg-rose-500/8" : riskLevel === "medio" ? "border-amber-300/40 bg-amber-500/8" : "border-emerald-300/40 bg-emerald-500/8"}`}>
         <p className="text-sm font-bold text-[var(--cliente-card-text)]">Risco operacional: {riskLevel}</p>
         <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Limite atual de {editor.maxRecipients} contatos. A Altum respeita opt-out, telefones validos e o remetente selecionado.</p>
       </div>
+    </div>
+  );
+}
+
+function DeliveryStat({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) {
+  return (
+    <div className="rounded-[14px] bg-[var(--cliente-surface-muted)] p-3 text-center">
+      <p className={`text-lg font-extrabold ${danger ? "text-rose-600" : "text-[var(--cliente-card-text)]"}`}>{value}</p>
+      <p className="mt-1 text-[10px] font-semibold text-[var(--cliente-card-text-soft)]">{label}</p>
     </div>
   );
 }

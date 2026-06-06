@@ -17,6 +17,7 @@ import {
   FileText,
   FolderKanban,
   Image as ImageIcon,
+  ImagePlus,
   Loader2,
   MessageCircle,
   Mic,
@@ -1592,6 +1593,7 @@ export default function ClienteInboxPage() {
   const [updatingAi, setUpdatingAi] = useState(false);
   const [retryingAi, setRetryingAi] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
+  const [uploadingContactPhoto, setUploadingContactPhoto] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [savingLeadNote, setSavingLeadNote] = useState(false);
   const [savingLeadTask, setSavingLeadTask] = useState(false);
@@ -2391,6 +2393,29 @@ export default function ClienteInboxPage() {
     }
   }
 
+  async function handleContactPhotoUpload(file: File) {
+    if (!tenant?.tenantId || !canOperate) return;
+    setUploadingContactPhoto(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await authedFetch(`/api/tenant/${tenant.tenantId}/contact-photo`, {
+        method: "POST",
+        body: form,
+      });
+      const payload = (await response.json()) as { photoUrl?: string; error?: string };
+      if (!response.ok || !payload.photoUrl) {
+        throw new Error(payload.error || "Falha ao subir foto.");
+      }
+      setMetaForm((current) => ({ ...current, photoUrl: payload.photoUrl || "" }));
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Falha ao subir foto.");
+    } finally {
+      setUploadingContactPhoto(false);
+    }
+  }
+
   async function handleQuickStatus(nextStatus: string) {
     if (!tenant?.tenantId || !selectedChatId || !canOperate) return;
 
@@ -2963,9 +2988,26 @@ export default function ClienteInboxPage() {
                   placeholder="https://..."
                   className="client-input min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]"
                 />
+                <label
+                  title="Enviar foto"
+                  className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-primary)] transition hover:bg-[var(--cliente-surface-hover)]"
+                >
+                  {uploadingContactPhoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="sr-only"
+                    disabled={!canOperate || uploadingContactPhoto}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void handleContactPhotoUpload(file);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
               </div>
               <span className="block text-[11px] normal-case leading-5 tracking-normal text-[var(--cliente-card-text-soft)]">
-                Use uma URL publica de foto real. Quando Instagram, Facebook, Google ou CRM entregarem foto, a Altum tambem usa automaticamente.
+                Envie uma foto ou use uma URL publica. Instagram, Facebook, Google e CRM sao aproveitados quando entregam uma imagem.
               </span>
             </label>
 
