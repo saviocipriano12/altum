@@ -323,6 +323,19 @@ function chooseConversationalReply(input: {
     input.inboundText || ""
   );
   const previousResponse = normalizeComparable(String(input.previousOutboundText || ""));
+  const previousQuestion = previousResponse.includes("?") ? previousResponse : "";
+  const questionLooksRepeated = (value: string) => {
+    const comparable = normalizeComparable(value);
+    if (!previousQuestion || !comparable.includes("?")) return false;
+    const important = previousQuestion
+      .replace(/\b(pra|para|voce|você|me|te|um|uma|com|que|qual|quais|hoje|agora|rapidinho)\b/g, " ")
+      .split(/\s+/)
+      .filter((item) => item.length >= 4)
+      .slice(0, 10);
+    if (important.length < 3) return false;
+    const hits = important.filter((word) => comparable.includes(word)).length;
+    return hits >= Math.min(4, important.length);
+  };
 
   const llmComparable = normalizeComparable(llmResponse);
   const fallbackComparable = normalizeComparable(fallbackResponse);
@@ -334,8 +347,10 @@ function chooseConversationalReply(input: {
     previousResponse.length >= 20 &&
     llmComparable === previousResponse;
 
-  if (llmResponse && !llmLooksRepeated) return llmResponse;
-  if (fallbackResponse && fallbackComparable !== previousResponse) return fallbackResponse;
+  if (llmResponse && !llmLooksRepeated && !questionLooksRepeated(llmResponse)) return llmResponse;
+  if (fallbackResponse && fallbackComparable !== previousResponse && !questionLooksRepeated(fallbackResponse)) {
+    return fallbackResponse;
+  }
   return llmResponse || fallbackResponse;
 }
 
@@ -1323,6 +1338,55 @@ function buildSecondaryCommercialNudge(input: {
   if (!normalizedPrefix || normalizedPrefix === normalizedPrimary) return null;
 
   return sanitizeText(prefixed, 260);
+}
+
+function looksLikeRepeatedQuestion(currentText: string, previousText?: string | null) {
+  const current = normalizeComparable(currentText);
+  const previous = normalizeComparable(String(previousText || ""));
+  if (!current.includes("?") || !previous.includes("?")) return false;
+  const previousWords = previous
+    .replace(/\b(pra|para|voce|você|me|te|um|uma|com|que|qual|quais|hoje|agora|rapidinho|principal)\b/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length >= 4)
+    .slice(0, 12);
+  if (previousWords.length < 3) return false;
+  const hits = previousWords.filter((word) => current.includes(word)).length;
+  return hits >= Math.min(4, previousWords.length);
+}
+
+function buildDirectDiagnosticClose(input: {
+  businessType?: string | null;
+  primaryGoal?: string | null;
+  currentChannels?: string | null;
+  recommendedOffer?: string | null;
+  nextAction?: string | null;
+}) {
+  const businessType = sanitizeText(input.businessType, 120);
+  const primaryGoal = sanitizeText(input.primaryGoal, 160);
+  const currentChannels = sanitizeText(input.currentChannels, 160);
+  const recommendedOffer = sanitizeText(input.recommendedOffer, 160) || "diagnostico comercial rapido";
+  const context = [
+    businessType ? `tipo de negocio: ${businessType}` : "",
+    primaryGoal ? `objetivo: ${primaryGoal}` : "",
+    currentChannels ? `canais atuais: ${currentChannels}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const action = sanitizeText(input.nextAction, 160).toLowerCase();
+  const close =
+    /proposta/.test(action)
+      ? "Posso transformar isso em uma proposta objetiva para voce avaliar?"
+      : "Faz sentido eu encaminhar uma reuniao curta para validar isso no seu caso?";
+
+  return sanitizeText(
+    [
+      context ? `Pelo que voce trouxe (${context}), ja da para fechar uma leitura inicial.` : "Pelo que voce trouxe, ja da para fechar uma leitura inicial.",
+      `Diagnostico rapido: o gargalo parece estar em gerar oportunidade qualificada e conduzir melhor ate a decisao.`,
+      `O caminho mais indicado agora e ${recommendedOffer}, com foco em clareza comercial e conversao.`,
+      close,
+    ].join(" "),
+    900
+  );
 }
 
 function summarizeForResponsible(messages: ConversationMessage[]) {
@@ -3493,9 +3557,22 @@ export function hardenPlannerDecision(input: {
   llmTurnGoal?: string | null;
 }) {
   const extractedFields = input.extractedFields || null;
+  const businessTypeSignal = sanitizeText(extractedFields?.businessType || input.leadMemory?.businessType, 120);
+  const primaryGoalSignal = sanitizeText(extractedFields?.primaryGoal || input.leadMemory?.primaryGoal, 180);
+  const commercialSignals = [
+    businessTypeSignal,
+    primaryGoalSignal,
+    sanitizeText(extractedFields?.serviceInterest || input.leadMemory?.recommendedOffer, 180),
+    sanitizeText(extractedFields?.currentChannels || input.leadMemory?.currentChannels, 180),
+    sanitizeText(extractedFields?.budgetBand || input.leadMemory?.budgetBand, 120),
+    sanitizeText(extractedFields?.urgency || input.leadMemory?.urgency, 120),
+    sanitizeText(extractedFields?.digitalMaturity || input.leadMemory?.digitalMaturity, 120),
+    sanitizeText(input.leadMemory?.activeTopic, 120),
+  ].filter(Boolean);
   const hasCommercialContext = Boolean(
-    sanitizeText(extractedFields?.businessType || input.leadMemory?.businessType, 120) &&
-      sanitizeText(extractedFields?.primaryGoal || input.leadMemory?.primaryGoal, 180)
+    (businessTypeSignal && primaryGoalSignal) ||
+      commercialSignals.length >= 2 ||
+      ["recommendation", "advance"].includes(sanitizeText(input.leadMemory?.conversationMaturity, 80).toLowerCase())
   );
 
   const groundedOffer = groundRecommendedOffer({
@@ -3524,11 +3601,7 @@ export function hardenPlannerDecision(input: {
     "send_document",
   ].includes(String(input.plannerDecision.intent || ""));
 
-  if (
-    !hasCommercialContext &&
-    isClosingPush &&
-    !shouldKeepConversationalFreedom
-  ) {
+  if (!hasCommercialContext && isClosingPush && !shouldKeepConversationalFreedom) {
     return {
       ...input.plannerDecision,
       decision: "ask_more" as const,
@@ -5028,6 +5101,19 @@ export async function handleIncomingMessage(
       : responseFormatPrompt;
   }
   let finalOutboundText = secondaryResponseText ? `${responseText}\n${secondaryResponseText}` : responseText;
+  if (looksLikeRepeatedQuestion(finalOutboundText, runtimeState?.lastOutboundText || null)) {
+    const diagnosticClose = buildDirectDiagnosticClose({
+      businessType: extractedFields?.businessType || extractedFields?.niche || leadMemory?.businessType || null,
+      primaryGoal: extractedFields?.primaryGoal || extractedFields?.goal || leadMemory?.primaryGoal || null,
+      currentChannels: extractedFields?.currentChannels || leadMemory?.currentChannels || null,
+      recommendedOffer: recommendedOfferResolved,
+      nextAction,
+    });
+    if (diagnosticClose) {
+      finalOutboundText = diagnosticClose;
+      secondaryResponseText = "";
+    }
+  }
   if (shouldSendVoiceReply) {
     finalOutboundText = prepareOutboundTextForAudioDelivery(finalOutboundText, inboundText);
     secondaryResponseText = "";
@@ -5035,6 +5121,7 @@ export async function handleIncomingMessage(
     finalOutboundText = prepareOutboundTextForVoiceUnavailable(finalOutboundText, inboundText);
     secondaryResponseText = "";
   }
+  const primaryTextToSend = secondaryResponseText ? responseText : finalOutboundText;
   const openQuestionForMemory = finalOutboundText;
   const conversationSummary = buildPersistentConversationSummary({
     llmMemorySummary: llmResult?.memorySummary || null,
@@ -5172,7 +5259,7 @@ export async function handleIncomingMessage(
         await sendMetaTextMessage({
           channel: whatsappChannel,
           to: leadPhone,
-          text: shouldSendVoiceReply || voiceRequestedThisTurn ? finalOutboundText : responseText,
+          text: shouldSendVoiceReply || voiceRequestedThisTurn ? finalOutboundText : primaryTextToSend,
         });
       }
     }
@@ -5180,7 +5267,7 @@ export async function handleIncomingMessage(
     await sendMetaConversationText({
       channel: metaChannel,
       recipientId: metaRecipientId,
-      text: voiceRequestedThisTurn ? finalOutboundText : responseText,
+      text: voiceRequestedThisTurn ? finalOutboundText : primaryTextToSend,
     });
   }
 
@@ -5188,7 +5275,7 @@ export async function handleIncomingMessage(
     await addMessage({
       chatId,
       tenantId,
-      text: sentAsTemplate ? finalOutboundText : shouldSendVoiceReply || voiceRequestedThisTurn ? finalOutboundText : responseText,
+      text: sentAsTemplate ? finalOutboundText : shouldSendVoiceReply || voiceRequestedThisTurn ? finalOutboundText : primaryTextToSend,
       sender: "agent",
       type: sentAsTemplate ? "template" : "text",
       channel: chatChannel,

@@ -175,7 +175,7 @@ function normalizeAiConfig(
     handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
     handoffNotifyPhones: parseNotifyPhones(ai.handoffNotifyPhones),
     voiceReplyEnabled: ai.voiceReplyEnabled === true,
-    voiceReplyVoice: storedVoiceReplyVoice || "alloy",
+    voiceReplyVoice: storedVoiceReplyVoice || "marin",
     voiceReplyMode: normalizeVoiceReplyMode(ai.voiceReplyMode),
     voiceReplyMaxChars: normalizeVoiceReplyMaxChars(ai.voiceReplyMaxChars),
     guardrails: resolveWithDefaults

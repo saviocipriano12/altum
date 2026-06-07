@@ -23,6 +23,10 @@ function buildTelUrl(phone: string) {
   return phone ? `tel:+${phone}` : "";
 }
 
+function buildWhatsAppUrl(phone: string) {
+  return phone ? `https://wa.me/${phone}` : "";
+}
+
 async function resolveCallContext(tenantId: string, body: Body) {
   const chatId = clean(body.chatId, 180);
   const leadId = clean(body.leadId, 180);
@@ -66,6 +70,7 @@ async function resolveCallContext(tenantId: string, body: Body) {
   return {
     phone,
     telUrl: buildTelUrl(phone),
+    whatsappUrl: buildWhatsAppUrl(phone),
     leadId: resolvedLeadId,
     chatId: resolvedChatId,
     contactName: contactName || phone,
@@ -97,7 +102,7 @@ export async function POST(
 
     let gatewayResult: Record<string, unknown> | null = null;
     let mode: "gateway" | "tel" = "tel";
-    let callUrl = contextData.telUrl;
+    let callUrl = contextData.whatsappUrl || contextData.telUrl;
     let callStatus = "ready_to_call";
 
     if (channel?.callEndpoint) {
@@ -175,6 +180,7 @@ export async function POST(
       phone: contextData.phone,
       callUrl,
       telUrl: contextData.telUrl,
+      whatsappUrl: contextData.whatsappUrl,
       gatewayResult,
     });
   } catch (error) {

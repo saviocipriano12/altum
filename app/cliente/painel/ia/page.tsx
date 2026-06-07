@@ -349,7 +349,7 @@ const EMPTY_SETTINGS: AiSettings = {
   handoffNotifyEnabled: true,
   handoffNotifyPhones: [],
   voiceReplyEnabled: false,
-  voiceReplyVoice: "alloy",
+  voiceReplyVoice: "marin",
   voiceReplyMode: "smart",
   voiceReplyMaxChars: 760,
   guardrails: [],
@@ -1204,7 +1204,7 @@ export default function ClienteIaPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: voicePreviewText,
-          voice: settings.voiceReplyVoice || "alloy",
+          voice: settings.voiceReplyVoice || "marin",
           maxChars: settings.voiceReplyMaxChars || 760,
         }),
       });
@@ -2556,11 +2556,13 @@ export default function ClienteIaPage() {
               <label className="block text-sm font-semibold text-[var(--cliente-card-text)]">
                 Voz da IA
                 <select
-                  value={settings.voiceReplyVoice || "alloy"}
+                  value={settings.voiceReplyVoice || "marin"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, voiceReplyVoice: event.target.value }))}
                   disabled={!canManage || settings.voiceReplyEnabled !== true}
                   className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] outline-none disabled:opacity-60"
                 >
+                  <option value="marin">Marin</option>
+                  <option value="cedar">Cedar</option>
                   <option value="alloy">Alloy</option>
                   <option value="ash">Ash</option>
                   <option value="ballad">Ballad</option>
@@ -2809,7 +2811,7 @@ export default function ClienteIaPage() {
               <IaContext
                 title="Audio"
                 value={settings.voiceReplyEnabled ? voiceModeLabel : "Desligado"}
-                detail={settings.voiceReplyEnabled ? `Voz ${settings.voiceReplyVoice || "alloy"}` : "Respostas apenas em texto."}
+                detail={settings.voiceReplyEnabled ? `Voz ${settings.voiceReplyVoice || "marin"}` : "Respostas apenas em texto."}
               />
               <IaContext
                 title="Humano"

@@ -31,8 +31,8 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
 
     const maxChars = Math.max(260, Math.min(1400, Number(body.maxChars || 760) || 760));
     const transcript = prepareAltumVoiceReplyText(text, maxChars);
-    const buffer = await synthesizeAltumSpeech(transcript, body.voice);
-    const audioBase64 = buffer.toString("base64");
+    const speech = await synthesizeAltumSpeech(transcript, body.voice);
+    const audioBase64 = speech.buffer.toString("base64");
     let audioUrl = "";
     let storagePath: string | null = null;
     let storageWarning: string | null = null;
@@ -41,7 +41,9 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       const stored = await storeAltumSpeech({
         tenantId,
         chatId: "preview",
-        buffer,
+        buffer: speech.buffer,
+        contentType: speech.contentType,
+        extension: speech.extension,
       });
       audioUrl = stored.signedUrl;
       storagePath = stored.path;
@@ -69,11 +71,11 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       tenantId,
       audioUrl,
       audioBase64,
-      audioMimeType: "audio/mpeg",
-      audioByteLength: buffer.length,
+      audioMimeType: speech.contentType,
+      audioByteLength: speech.buffer.length,
       transcript,
-      mediaMimeType: "audio/mpeg",
-      mediaSize: buffer.length,
+      mediaMimeType: speech.contentType,
+      mediaSize: speech.buffer.length,
       mediaStoragePath: storagePath,
       warning: storageWarning,
     });

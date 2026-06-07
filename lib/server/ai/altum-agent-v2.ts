@@ -1257,15 +1257,16 @@ export function writeAltumAgentReply(input: {
   if (input.plan.responseGoal === "recommend" || input.plan.responseGoal === "move_to_next_step") {
     if (input.plan.nextAction === "agendar_proximo_passo") {
       return [
-        `${bridge} o proximo passo mais indicado aqui e uma conversa curta para encaixar isso direito sem perder tempo.`,
+        `Diagnostico rapido: ${bridge} o gargalo principal parece ser transformar interesse em conversa qualificada e decisao comercial.`,
+        "O caminho mais indicado e uma conversa curta para fechar prioridade, canal e proximo passo sem perder tempo.",
         input.plan.nextQuestion ||
           randomPick(
             [
-              "Se fizer sentido, eu ja deixo esse caminho encaminhado com clareza.",
-              "Se fizer sentido, eu organizo esse proximo passo por aqui.",
-              "Se fizer sentido, eu ja deixo isso pronto para voce seguir.",
+              "Posso encaminhar esse diagnostico para a equipe e sugerir uma agenda?",
+              "Faz sentido eu deixar uma reuniao qualificada encaminhada?",
+              "Quer que eu avance para uma conversa rapida com alguem da equipe?",
             ],
-            "Se fizer sentido, eu ja deixo esse caminho encaminhado com clareza."
+            "Faz sentido eu deixar uma reuniao qualificada encaminhada?"
           ),
       ]
         .filter(Boolean)
@@ -1274,32 +1275,34 @@ export function writeAltumAgentReply(input: {
 
     if (input.plan.nextAction === "preparar_proposta_comercial") {
       return [
-        `${bridge} o caminho mais indicado aqui e organizar isso em uma proposta objetiva, sem inflar escopo nem te empurrar algo fora do momento.`,
+        `Diagnostico rapido: ${bridge} ja existe contexto suficiente para sair da conversa solta e organizar uma proposta objetiva.`,
+        "Eu seguiria com um escopo enxuto, focado no que gera venda primeiro, sem inflar coisa desnecessaria.",
         input.plan.nextQuestion ||
           randomPick(
             [
-              "Se fizer sentido, eu sigo nessa linha e estruturo isso de um jeito bem claro.",
-              "Se fizer sentido, eu organizo isso em uma proposta bem objetiva.",
-              "Se fizer sentido, eu monto isso de forma simples e transparente.",
+              "Posso preparar esse caminho em formato de proposta para voce avaliar?",
+              "Quer que eu encaminhe isso como proposta objetiva?",
+              "Faz sentido eu transformar isso em uma proposta simples para voce decidir?",
             ],
-            "Se fizer sentido, eu sigo nessa linha e estruturo isso de um jeito bem claro."
+            "Posso preparar esse caminho em formato de proposta para voce avaliar?"
           ),
       ]
         .filter(Boolean)
         .join(" ");
     }
 
-    const intro = `${bridge} o caminho mais indicado aqui tende a ser ${recommendedOffer || "um diagnostico comercial rapido"}.`;
+    const intro = `Diagnostico rapido: ${bridge} o caminho mais indicado aqui tende a ser ${recommendedOffer || "um diagnostico comercial rapido"}.`;
     return [
       intro,
+      "Isso deve atacar primeiro o ponto que mais pesa no resultado: gerar oportunidade, responder rapido e conduzir para venda.",
       input.plan.nextQuestion ||
         randomPick(
           [
-            "Se fizer sentido, eu te mostro o proximo passo para avancarmos sem complicar.",
-            "Se fizer sentido, eu te explico o proximo passo de forma simples.",
-            "Se fizer sentido, eu te mostro o proximo passo com clareza.",
+            "Faz sentido eu encaminhar uma reuniao curta para validar isso no seu caso?",
+            "Quer que eu avance para um diagnostico mais fechado com a equipe?",
+            "Posso deixar o proximo passo encaminhado para voce decidir com clareza?",
           ],
-          "Se fizer sentido, eu te mostro o proximo passo para avancarmos sem complicar."
+          "Faz sentido eu encaminhar uma reuniao curta para validar isso no seu caso?"
         ),
     ]
       .filter(Boolean)

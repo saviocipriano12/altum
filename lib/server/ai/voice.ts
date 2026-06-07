@@ -10,14 +10,45 @@ function cleanText(value: unknown, max = 1800) {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-const ALLOWED_VOICES = new Set(["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"]);
+const ALLOWED_VOICES = new Set([
+  "alloy",
+  "ash",
+  "ballad",
+  "cedar",
+  "coral",
+  "echo",
+  "fable",
+  "marin",
+  "nova",
+  "onyx",
+  "sage",
+  "shimmer",
+  "verse",
+]);
 const DEFAULT_MAX_VOICE_CHARS = 760;
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
 const MIN_AUDIO_BYTES = 1024;
 
 function normalizeVoice(value: unknown) {
   const normalized = cleanText(value, 40).toLowerCase();
-  return ALLOWED_VOICES.has(normalized) ? normalized : "alloy";
+  return ALLOWED_VOICES.has(normalized) ? normalized : "marin";
+}
+
+function speechModel() {
+  return String(process.env.ALTUM_TTS_MODEL || "gpt-4o-mini-tts").trim() || "gpt-4o-mini-tts";
+}
+
+function speechResponseFormat() {
+  const format = String(process.env.ALTUM_TTS_RESPONSE_FORMAT || "opus").trim().toLowerCase();
+  return ["mp3", "opus"].includes(format) ? format : "opus";
+}
+
+function speechContentType(format: string) {
+  return format === "opus" ? "audio/ogg; codecs=opus" : "audio/mpeg";
+}
+
+function speechExtension(format: string) {
+  return format === "opus" ? "ogg" : "mp3";
 }
 
 function storageBucketName() {
@@ -56,14 +87,20 @@ function isLikelyMp3(buffer: Buffer) {
   return id3Header || frameSync;
 }
 
-function assertValidSpeechBuffer(buffer: Buffer, contentType: string) {
+function isLikelyOggOpus(buffer: Buffer) {
+  if (buffer.length < MIN_AUDIO_BYTES) return false;
+  return buffer.subarray(0, 4).toString("ascii") === "OggS";
+}
+
+function assertValidSpeechBuffer(buffer: Buffer, contentType: string, responseFormat: string) {
   if (buffer.length < MIN_AUDIO_BYTES) {
     throw new Error("voice_synthesis_empty_audio");
   }
   if (buffer.length > MAX_AUDIO_BYTES) {
     throw new Error("voice_audio_too_large");
   }
-  if (!isLikelyMp3(buffer)) {
+  const valid = responseFormat === "opus" ? isLikelyOggOpus(buffer) : isLikelyMp3(buffer);
+  if (!valid) {
     const preview = buffer.subarray(0, 180).toString("utf8").replace(/\s+/g, " ").trim();
     const detail = preview ? `:${preview.slice(0, 120)}` : "";
     throw new Error(`voice_synthesis_invalid_audio${detail}`);
@@ -76,6 +113,7 @@ function assertValidSpeechBuffer(buffer: Buffer, contentType: string) {
 export async function synthesizeAltumSpeech(text: string, voice?: string) {
   const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
   const normalizedText = prepareAltumVoiceReplyText(text, 1400);
+  const responseFormat = speechResponseFormat();
   if (!apiKey || !normalizedText) {
     throw new Error("voice_synthesis_unavailable");
   }
@@ -87,9 +125,11 @@ export async function synthesizeAltumSpeech(text: string, voice?: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "tts-1",
+      model: speechModel(),
       voice: normalizeVoice(voice),
-      response_format: "mp3",
+      response_format: responseFormat,
+      instructions:
+        "Fale em portugues do Brasil de forma natural, consultiva e humana, como um audio curto de WhatsApp. Use ritmo calmo, entonacao variada, pausas leves e energia de vendedor consultivo. Nao soe como leitura robotica.",
       input: normalizedText,
     }),
   });
@@ -101,25 +141,31 @@ export async function synthesizeAltumSpeech(text: string, voice?: string) {
 
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
-  assertValidSpeechBuffer(buffer, response.headers.get("content-type") || "");
-  return buffer;
+  assertValidSpeechBuffer(buffer, response.headers.get("content-type") || "", responseFormat);
+  return {
+    buffer,
+    contentType: speechContentType(responseFormat),
+    extension: speechExtension(responseFormat),
+  };
 }
 
 export async function storeAltumSpeech(input: {
   tenantId: string;
   chatId: string;
   buffer: Buffer;
+  contentType: string;
+  extension: string;
 }) {
   const bucketName = storageBucketName();
   if (!bucketName) {
     throw new Error("storage_bucket_missing");
   }
 
-  const path = `ai-voice/${input.tenantId}/${input.chatId}/reply_${Date.now()}.mp3`;
+  const path = `ai-voice/${input.tenantId}/${input.chatId}/reply_${Date.now()}.${input.extension}`;
   const file = adminStorage.bucket(bucketName).file(path);
   await file.save(input.buffer, {
     metadata: {
-      contentType: "audio/mpeg",
+      contentType: input.contentType,
       cacheControl: "public,max-age=31536000",
     },
     resumable: false,
@@ -133,7 +179,7 @@ export async function storeAltumSpeech(input: {
   return {
     path,
     signedUrl,
-    contentType: "audio/mpeg",
+    contentType: input.contentType,
     size: input.buffer.length,
   };
 }
@@ -148,13 +194,13 @@ export async function sendAltumVoiceReply(input: {
   maxChars?: number;
 }) {
   const voiceText = prepareAltumVoiceReplyText(input.text, input.maxChars);
-  const buffer = await synthesizeAltumSpeech(voiceText, input.voice);
+  const speech = await synthesizeAltumSpeech(voiceText, input.voice);
 
   const upload = await uploadWhatsAppMedia({
     channel: input.channel,
-    buffer,
-    filename: `altum_reply_${Date.now()}.mp3`,
-    contentType: "audio/mpeg",
+    buffer: speech.buffer,
+    filename: `altum_reply_${Date.now()}.${speech.extension}`,
+    contentType: speech.contentType,
   });
   const sent = await sendMetaAudioMessage({
     channel: input.channel,
@@ -167,7 +213,9 @@ export async function sendAltumVoiceReply(input: {
     stored = await storeAltumSpeech({
       tenantId: input.tenantId,
       chatId: input.chatId,
-      buffer,
+      buffer: speech.buffer,
+      contentType: speech.contentType,
+      extension: speech.extension,
     });
   } catch (storageError) {
     console.warn(
@@ -179,8 +227,8 @@ export async function sendAltumVoiceReply(input: {
   return {
     path: stored?.path || null,
     signedUrl: stored?.signedUrl || null,
-    contentType: stored?.contentType || "audio/mpeg",
-    size: stored?.size || buffer.length,
+    contentType: stored?.contentType || speech.contentType,
+    size: stored?.size || speech.buffer.length,
     text: voiceText,
     voice: normalizeVoice(input.voice),
     mediaId: upload.mediaId,

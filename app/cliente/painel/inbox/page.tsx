@@ -716,6 +716,33 @@ function buildTelUrl(phone?: string) {
   return digits ? `tel:+${digits}` : "";
 }
 
+function buildWhatsAppUrl(phone?: string) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return digits ? `https://wa.me/${digits}` : "";
+}
+
+function getSupportedAudioMimeType() {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+    return "";
+  }
+  return (
+    [
+      "audio/ogg;codecs=opus",
+      "audio/ogg; codecs=opus",
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+    ].find((type) => MediaRecorder.isTypeSupported(type)) || ""
+  );
+}
+
+function audioExtensionForMime(type: string) {
+  const clean = String(type || "").toLowerCase();
+  if (clean.includes("ogg")) return "ogg";
+  if (clean.includes("mp4") || clean.includes("m4a")) return "m4a";
+  return "webm";
+}
+
 function isWhatsAppServiceWindowClosed(chat?: ChatItem | null) {
   if (!chat) return false;
   const channel = String(chat.channel || "whatsapp").toLowerCase();
@@ -2111,7 +2138,8 @@ export default function ClienteInboxPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const mimeType = getSupportedAudioMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       audioChunksRef.current = [];
       mediaRecorderRef.current = recorder;
 
@@ -2125,8 +2153,9 @@ export default function ClienteInboxPage() {
         mediaRecorderRef.current = null;
         setRecordingAudio(false);
         if (blob.size <= 0) return;
-        const file = new File([blob], `audio-${Date.now()}.webm`, { type: blob.type || "audio/webm" });
-        handleFileSelected(file);
+        const extension = audioExtensionForMime(blob.type || recorder.mimeType);
+        const file = new File([blob], `audio-${Date.now()}.${extension}`, { type: blob.type || "audio/webm" });
+        void sendMediaFile(file, "");
       };
 
       recorder.start();
@@ -2188,20 +2217,19 @@ export default function ClienteInboxPage() {
     }
   }
 
-  async function handleSendMedia(event: FormEvent) {
-    event.preventDefault();
-    if (!tenant?.tenantId || !selectedChatId || !mediaFile || !canOperate) return;
+  async function sendMediaFile(file: File, caption: string) {
+    if (!tenant?.tenantId || !selectedChatId || !file || !canOperate) return false;
     if (whatsappWindowClosed) {
       setError("A janela de 24h do WhatsApp encerrou. Para retomar, use um template aprovado.");
-      return;
+      return false;
     }
 
     setSendingMedia(true);
     setError(null);
     try {
       const form = new FormData();
-      form.append("file", mediaFile);
-      if (messageText.trim()) form.append("caption", messageText.trim());
+      form.append("file", file);
+      if (caption.trim()) form.append("caption", caption.trim());
 
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-media`, {
         method: "POST",
@@ -2210,18 +2238,26 @@ export default function ClienteInboxPage() {
       const payload = (await res.json()) as { error?: string };
       if (!res.ok) {
         setError(payload.error || "Falha ao enviar midia.");
-        return;
+        return false;
       }
 
       setMessageText("");
       clearMediaSelection();
       await refreshSelected(true);
       scrollMessagesToBottom("smooth");
+      return true;
     } catch {
       setError("Falha ao enviar midia.");
+      return false;
     } finally {
       setSendingMedia(false);
     }
+  }
+
+  async function handleSendMedia(event: FormEvent) {
+    event.preventDefault();
+    if (!mediaFile) return;
+    await sendMediaFile(mediaFile, messageText);
   }
 
   function handleComposerSubmit(event: FormEvent) {
@@ -2574,13 +2610,13 @@ export default function ClienteInboxPage() {
           title: "Ligar para o cliente",
         }),
       });
-      const payload = (await res.json()) as { error?: string; callUrl?: string; telUrl?: string };
+      const payload = (await res.json()) as { error?: string; callUrl?: string; telUrl?: string; whatsappUrl?: string };
       if (!res.ok) {
         setError(payload.error || "Falha ao iniciar ligacao.");
         return;
       }
 
-      const url = payload.callUrl || payload.telUrl;
+      const url = payload.callUrl || payload.whatsappUrl || payload.telUrl;
       if (url && typeof window !== "undefined") {
         window.open(url, "_self");
       }
@@ -2660,7 +2696,9 @@ export default function ClienteInboxPage() {
   const activeAiEvidence = useMemo(() => resolveAiEvidence(activeLead), [activeLead]);
   const activeSla = activeChat ? getSlaState(activeChat) : { breached: false, label: "sem prazo" };
   const activeResponseState = activeChat ? getConversationResponseState(activeChat) : { label: "Nova conversa", tone: "info" as const };
-  const activeCallHref = buildTelUrl(activeLead?.telefone || activeChat?.contactPhone);
+  const activeCallHref =
+    buildWhatsAppUrl(activeLead?.telefone || activeChat?.contactPhone) ||
+    buildTelUrl(activeLead?.telefone || activeChat?.contactPhone);
   const conversationsNeedingReply = chats.filter((chat) => getConversationResponseState(chat).label === "Precisa de resposta").length;
   const breachedConversations = chats.filter((chat) => getSlaState(chat).breached).length;
   const unassignedConversations = chats.filter((chat) => {
