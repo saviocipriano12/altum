@@ -42,11 +42,13 @@ type Channel = {
   id: string;
   type: string;
   provider?: string;
+  source?: string;
   displayName?: string;
   phoneNumber?: string;
   status?: string;
   connectionStatus?: string;
   outboundReady?: boolean;
+  metadata?: Record<string, string>;
 };
 
 type Campaign = {
@@ -124,6 +126,24 @@ type WhatsAppTemplate = {
   components: Array<Record<string, unknown>>;
 };
 
+type TemplateMeta = {
+  channel?: {
+    id: string;
+    source?: string;
+    provider?: string;
+    displayName?: string;
+    phoneNumber?: string;
+    phoneNumberId?: string;
+  };
+  summary?: {
+    total: number;
+    approved: number;
+    pending: number;
+    rejected: number;
+  };
+  wabaId?: string;
+};
+
 const STEPS: Array<{ id: Step; label: string; icon: typeof Smartphone }> = [
   { id: "remetente", label: "Remetente", icon: Smartphone },
   { id: "publico", label: "Publico", icon: Users },
@@ -175,6 +195,35 @@ function splitList(value: string) {
   return Array.from(new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))).slice(0, 20);
 }
 
+function getTemplateBody(template: WhatsAppTemplate | undefined) {
+  const body = template?.components.find((component) => String(component.type || "").toUpperCase() === "BODY");
+  return String(body?.text || "").trim();
+}
+
+function getTemplateVariableCount(template: WhatsAppTemplate | undefined) {
+  const body = getTemplateBody(template);
+  let highest = 0;
+  for (const match of body.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) {
+    highest = Math.max(highest, Number(match[1] || 0));
+  }
+  return highest;
+}
+
+function buildDefaultBodyParams(count: number, current: string[]) {
+  if (count <= 0) return [];
+  const defaults = ["{nome}", "{empresa}", "{origem}", "{telefone}", "{stage}"];
+  return Array.from({ length: count }, (_, index) => current[index] || defaults[index] || "");
+}
+
+function renderTemplateBodyPreview(template: WhatsAppTemplate | undefined, params: string[]) {
+  const body = getTemplateBody(template);
+  if (!body) return "";
+  return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_placeholder, rawIndex: string) => {
+    const index = Number(rawIndex) - 1;
+    return params[index] || `{variavel ${rawIndex}}`;
+  });
+}
+
 export default function BulkMessagingPage() {
   const { tenant, hasCapability } = useClienteTenant();
   const canManage = hasCapability("manage_automations");
@@ -182,6 +231,8 @@ export default function BulkMessagingPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
+  const [templateMeta, setTemplateMeta] = useState<TemplateMeta | null>(null);
+  const [templateError, setTemplateError] = useState("");
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [editor, setEditor] = useState<Campaign>(emptyCampaign);
   const [selectedId, setSelectedId] = useState("");
@@ -277,20 +328,33 @@ export default function BulkMessagingPage() {
   useEffect(() => {
     if (!tenant?.tenantId || !editor.channelId || !officialChannel) {
       setTemplates([]);
+      setTemplateMeta(null);
+      setTemplateError("");
       return;
     }
     let mounted = true;
     setLoadingTemplates(true);
+    setTemplateError("");
     authedFetch(`/api/tenant/${tenant.tenantId}/whatsapp-templates?channelId=${encodeURIComponent(editor.channelId)}`)
       .then(async (response) => {
-        const payload = (await response.json()) as { templates?: WhatsAppTemplate[]; error?: string };
+        const payload = (await response.json()) as {
+          templates?: WhatsAppTemplate[];
+          channel?: TemplateMeta["channel"];
+          summary?: TemplateMeta["summary"];
+          wabaId?: string;
+          error?: string;
+        };
         if (!response.ok) throw new Error(payload.error || "Falha ao consultar templates.");
-        if (mounted) setTemplates((payload.templates || []).filter((item) => item.status === "approved"));
+        if (mounted) {
+          setTemplates((payload.templates || []).filter((item) => item.status === "approved"));
+          setTemplateMeta({ channel: payload.channel, summary: payload.summary, wabaId: payload.wabaId });
+        }
       })
       .catch((templateError) => {
         if (mounted) {
           setTemplates([]);
-          setError(templateError instanceof Error ? templateError.message : "Falha ao consultar templates.");
+          setTemplateMeta(null);
+          setTemplateError(templateError instanceof Error ? templateError.message : "Falha ao consultar templates.");
         }
       })
       .finally(() => {
@@ -591,6 +655,8 @@ export default function BulkMessagingPage() {
                   editor={editor}
                   official={officialChannel}
                   templates={templates}
+                  templateMeta={templateMeta}
+                  templateError={templateError}
                   loadingTemplates={loadingTemplates}
                   uploading={working === "media"}
                   onUpload={uploadMedia}
@@ -710,6 +776,7 @@ function SenderStep({ channels, selectedId, onSelect }: { channels: Channel[]; s
           const selected = channel.id === selectedId;
           const official = isOfficial(channel.provider);
           const ready = channel.outboundReady || channel.status === "active";
+          const agencyManaged = channel.source === "agency_env" || channel.metadata?.source === "agency_env";
           return (
             <button
               key={channel.id}
@@ -729,6 +796,7 @@ function SenderStep({ channels, selectedId, onSelect }: { channels: Channel[]; s
                   <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{channel.phoneNumber || "Numero conectado"}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <StateBadge label={official ? "API oficial" : "Sessao conectada"} tone={official ? "info" : "success"} />
+                    {agencyManaged ? <StateBadge label="Conta Altum" tone="neutral" /> : null}
                     <StateBadge label={ready ? "pronto" : "revisar conexao"} tone={ready ? "success" : "warning"} />
                   </div>
                 </div>
@@ -803,6 +871,8 @@ function ContentStep({
   editor,
   official,
   templates,
+  templateMeta,
+  templateError,
   loadingTemplates,
   uploading,
   onUpload,
@@ -811,11 +881,19 @@ function ContentStep({
   editor: Campaign;
   official: boolean;
   templates: WhatsAppTemplate[];
+  templateMeta: TemplateMeta | null;
+  templateError: string;
   loadingTemplates: boolean;
   uploading: boolean;
   onUpload: (file: File) => void;
   onChange: (patch: Partial<Campaign>) => void;
 }) {
+  const selectedTemplate = templates.find(
+    (template) => template.name === editor.templateName && template.language === editor.languageCode
+  );
+  const selectedVariableCount = getTemplateVariableCount(selectedTemplate);
+  const selectedPreview = renderTemplateBodyPreview(selectedTemplate, editor.bodyParams);
+
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -827,36 +905,89 @@ function ContentStep({
       </div>
       <div className="mt-5">
         {official ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Nome do template" hint="Exatamente como aprovado na Meta">
-              <select
-                value={`${editor.templateName}|${editor.languageCode}`}
-                onChange={(event) => {
-                  const [templateName, languageCode] = event.target.value.split("|");
-                  onChange({ templateName, languageCode: languageCode || "pt_BR", deliveryMode: "template" });
-                }}
-                className="client-input"
-                disabled={loadingTemplates}
-              >
-                <option value={`|${editor.languageCode}`}>{loadingTemplates ? "Consultando Meta..." : "Selecione um template aprovado"}</option>
-                {templates.map((template) => (
-                  <option key={`${template.name}_${template.language}`} value={`${template.name}|${template.language}`}>
-                    {template.name} - {template.language} - {template.category}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Idioma" hint="Codigo aprovado">
-              <select value={editor.languageCode} onChange={(event) => onChange({ languageCode: event.target.value })} className="client-input">
-                <option value="pt_BR">Portugues (Brasil)</option>
-                <option value="en_US">English (US)</option>
-                <option value="es">Espanol</option>
-              </select>
-            </Field>
-            <div className="md:col-span-2">
-              <Field label="Variaveis do template" hint="Uma por linha. Use {nome}, {empresa}, {origem} ou texto fixo.">
-                <textarea value={editor.bodyParams.join("\n")} onChange={(event) => onChange({ bodyParams: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 20) })} className="client-input min-h-28 resize-y" placeholder={"{nome}\nNome da oferta"} />
+          <div className="space-y-4">
+            <div className="rounded-[18px] border border-blue-200 bg-blue-500/8 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-[var(--cliente-card-text)]">
+                    {loadingTemplates ? "Consultando templates na Meta..." : "Templates Meta do remetente"}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                    {templateMeta?.channel?.displayName || "Numero API oficial"}{" "}
+                    {templateMeta?.channel?.phoneNumber ? `- ${templateMeta.channel.phoneNumber}` : ""}
+                  </p>
+                </div>
+                <StateBadge
+                  label={loadingTemplates ? "carregando" : `${templates.length} aprovados`}
+                  tone={templates.length ? "success" : "info"}
+                />
+              </div>
+              {templateError ? (
+                <p className="mt-3 rounded-[14px] border border-rose-300/40 bg-white/70 px-3 py-2 text-xs font-semibold text-rose-700">
+                  {templateError}
+                </p>
+              ) : null}
+              {!loadingTemplates && !templateError && !templates.length ? (
+                <p className="mt-3 rounded-[14px] border border-amber-300/40 bg-white/70 px-3 py-2 text-xs font-semibold text-amber-700">
+                  Nenhum template aprovado apareceu para este numero. O template precisa estar aprovado no mesmo WABA do remetente selecionado.
+                </p>
+              ) : null}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Template aprovado" hint="Vem direto da Meta">
+                <select
+                  value={`${editor.templateName}|${editor.languageCode}`}
+                  onChange={(event) => {
+                    const [templateName, languageCode] = event.target.value.split("|");
+                    const nextTemplate = templates.find(
+                      (template) => template.name === templateName && template.language === (languageCode || "pt_BR")
+                    );
+                    const variableCount = getTemplateVariableCount(nextTemplate);
+                    onChange({
+                      templateName,
+                      languageCode: languageCode || "pt_BR",
+                      deliveryMode: "template",
+                      bodyParams: buildDefaultBodyParams(variableCount, editor.bodyParams),
+                    });
+                  }}
+                  className="client-input"
+                  disabled={loadingTemplates}
+                >
+                  <option value={`|${editor.languageCode}`}>{loadingTemplates ? "Consultando Meta..." : "Selecione um template aprovado"}</option>
+                  {templates.map((template) => (
+                    <option key={`${template.name}_${template.language}`} value={`${template.name}|${template.language}`}>
+                      {template.name} - {template.language} - {template.category}
+                    </option>
+                  ))}
+                </select>
               </Field>
+              <Field label="Idioma" hint="Codigo aprovado">
+                <select value={editor.languageCode} onChange={(event) => onChange({ languageCode: event.target.value })} className="client-input">
+                  <option value="pt_BR">Portugues (Brasil)</option>
+                  <option value="en_US">English (US)</option>
+                  <option value="es">Espanol</option>
+                </select>
+              </Field>
+              <div className="md:col-span-2">
+                <Field
+                  label="Variaveis do template"
+                  hint={selectedVariableCount ? `${selectedVariableCount} variavel(is) esperada(s)` : "Este template nao exige variaveis"}
+                >
+                  <textarea
+                    value={editor.bodyParams.join("\n")}
+                    onChange={(event) => onChange({ bodyParams: event.target.value.split("\n").map((item) => item.trim()).slice(0, 20) })}
+                    className="client-input min-h-28 resize-y"
+                    placeholder={selectedVariableCount ? "{nome}\nNome da oferta" : "Sem variaveis"}
+                  />
+                </Field>
+              </div>
+              {selectedPreview ? (
+                <div className="md:col-span-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--cliente-card-text-soft)]">Previa do template</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--cliente-card-text)]">{selectedPreview}</p>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (

@@ -177,20 +177,20 @@ function scoreToHeat(score: number): Heat {
 function heatBadge(heat: Heat) {
   switch (heat) {
     case "quente":
-      return { label: "QUENTE", cls: "bg-emerald-500/10 text-emerald-200 border-emerald-500/30", icon: <Flame className="h-3.5 w-3.5" /> };
+      return { label: "Quente", cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <Flame className="h-3.5 w-3.5" /> };
     case "morno":
-      return { label: "MORNO", cls: "bg-amber-500/10 text-amber-200 border-amber-500/30", icon: <TrendingUp className="h-3.5 w-3.5" /> };
+      return { label: "Morno", cls: "bg-amber-50 text-amber-700 border-amber-200", icon: <TrendingUp className="h-3.5 w-3.5" /> };
     default:
-      return { label: "FRIO", cls: "bg-white/5 text-white/70 border-white/10", icon: <Zap className="h-3.5 w-3.5 opacity-80" /> };
+      return { label: "Frio", cls: "bg-slate-50 text-slate-600 border-slate-200", icon: <Zap className="h-3.5 w-3.5 opacity-80" /> };
   }
 }
 
 function scoreBadge(score: number) {
-  if (score >= 85) return { label: "A+", cls: "bg-emerald-500/10 text-emerald-200 border-emerald-500/30" };
-  if (score >= 75) return { label: "A", cls: "bg-emerald-500/10 text-emerald-200 border-emerald-500/30" };
-  if (score >= 65) return { label: "B", cls: "bg-amber-500/10 text-amber-200 border-amber-500/30" };
-  if (score >= 55) return { label: "C", cls: "bg-white/5 text-white/70 border-white/10" };
-  return { label: "D", cls: "bg-red-500/10 text-red-200 border-red-500/30" };
+  if (score >= 85) return { label: "A+", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+  if (score >= 75) return { label: "A", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+  if (score >= 65) return { label: "B", cls: "bg-amber-50 text-amber-700 border-amber-200" };
+  if (score >= 55) return { label: "C", cls: "bg-slate-50 text-slate-600 border-slate-200" };
+  return { label: "D", cls: "bg-red-50 text-red-700 border-red-200" };
 }
 
 function normalizeCategory(c?: string) {
@@ -336,10 +336,10 @@ function SectionHeader({
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="flex items-start gap-2">
-        <div className="mt-0.5 text-white/60">{icon}</div>
+        <div className="mt-0.5 text-slate-500">{icon}</div>
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/75">{title}</h2>
-          {subtitle ? <p className="mt-1 text-xs text-white/45">{subtitle}</p> : null}
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">{title}</h2>
+          {subtitle ? <p className="mt-1 text-xs font-medium text-slate-500">{subtitle}</p> : null}
         </div>
       </div>
       {right ? <div className="shrink-0">{right}</div> : null}
@@ -362,24 +362,24 @@ function StatCard({
 }) {
   const accentCls =
     accent === "green"
-      ? "border-emerald-500/20 bg-emerald-500/5"
+      ? "border-emerald-200 bg-emerald-50"
       : accent === "amber"
-      ? "border-amber-500/20 bg-amber-500/5"
+      ? "border-amber-200 bg-amber-50"
       : accent === "blue"
-      ? "border-blue-500/20 bg-blue-500/5"
+      ? "border-blue-200 bg-blue-50"
       : accent === "red"
-      ? "border-red-500/20 bg-red-500/5"
-      : "border-white/10 bg-white/[0.03]";
+      ? "border-red-200 bg-red-50"
+      : "border-slate-200 bg-white";
 
   return (
-    <div className={cx("rounded-2xl border p-4", accentCls)}>
+    <div className={cx("rounded-2xl border p-4 shadow-sm", accentCls)}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-wide text-white/45">{label}</p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight text-white/90">{value}</p>
-          {hint ? <p className="mt-1 text-xs text-white/45">{hint}</p> : null}
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+          <p className="mt-1 text-3xl font-black tracking-tight text-slate-950">{value}</p>
+          {hint ? <p className="mt-1 text-xs font-medium text-slate-500">{hint}</p> : null}
         </div>
-        {icon ? <div className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70">{icon}</div> : null}
+        {icon ? <div className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500">{icon}</div> : null}
       </div>
     </div>
   );
@@ -399,27 +399,27 @@ function Chip({
   icon?: React.ReactNode;
 }) {
   const base =
-    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition select-none";
+    "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold transition select-none";
   const toneCls =
     tone === "green"
       ? active
-        ? "bg-emerald-600 text-white border-emerald-400/60"
-        : "bg-emerald-500/10 text-emerald-200 border-emerald-500/30 hover:bg-emerald-500/15"
+        ? "bg-emerald-600 text-white border-emerald-600"
+        : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
       : tone === "amber"
       ? active
-        ? "bg-amber-600 text-white border-amber-400/60"
-        : "bg-amber-500/10 text-amber-200 border-amber-500/30 hover:bg-amber-500/15"
+        ? "bg-amber-600 text-white border-amber-600"
+        : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
       : tone === "blue"
       ? active
-        ? "bg-blue-600 text-white border-blue-400/60"
-        : "bg-blue-500/10 text-blue-200 border-blue-500/30 hover:bg-blue-500/15"
+        ? "bg-blue-600 text-white border-blue-600"
+        : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
       : tone === "red"
       ? active
-        ? "bg-red-600 text-white border-red-400/60"
-        : "bg-red-500/10 text-red-200 border-red-500/30 hover:bg-red-500/15"
+        ? "bg-red-600 text-white border-red-600"
+        : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
       : active
-      ? "bg-white/15 text-white border-white/20"
-      : "bg-white/5 text-white/75 border-white/10 hover:bg-white/10";
+      ? "bg-slate-900 text-white border-slate-900"
+      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50";
 
   return (
     <button type="button" onClick={onClick} className={cx(base, toneCls)}>
@@ -430,7 +430,7 @@ function Chip({
 }
 
 function Divider() {
-  return <div className="h-px w-full bg-white/10" />;
+  return <div className="h-px w-full bg-slate-200" />;
 }
 
 /* ======================================================
@@ -830,12 +830,19 @@ export default function GerarLeadsPremiumPage() {
   }
 
   const busy = loadingBuscar || loadingSalvar;
+  const panelClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
+  const innerPanelClass = "rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm";
+  const labelClass = "text-[11px] font-bold uppercase tracking-wide text-slate-600";
+  const inputClass =
+    "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400 transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+  const secondaryButtonClass =
+    "inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50";
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1500px] space-y-5 pb-10 text-slate-900">
       {/* TOAST */}
       {toast && (
-        <div className={cx("fixed right-5 top-5 z-50 rounded-2xl border px-4 py-3 text-sm shadow-lg backdrop-blur", toast.type === "ok" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100" : "border-red-500/30 bg-red-500/10 text-red-100")}>
+        <div className={cx("fixed right-5 top-5 z-50 rounded-2xl border bg-white px-4 py-3 text-sm font-semibold shadow-xl", toast.type === "ok" ? "border-emerald-200 text-emerald-700" : "border-red-200 text-red-700")}>
           <div className="flex items-center gap-2">
             {toast.type === "ok" ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
             <span>{toast.msg}</span>
@@ -847,16 +854,16 @@ export default function GerarLeadsPremiumPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Link href="/admin/prospeccao" className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] hover:bg-white/10 transition">
+            <Link href="/admin/prospeccao" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
               <ArrowLeft size={14} /> Voltar ao CRM
             </Link>
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-100">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">
               <ShieldCheck className="h-4 w-4" /> Google Maps + Qualificacao
             </span>
           </div>
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Gerador de leads do Google Maps</h1>
-            <p className="mt-1 text-sm text-white/55">Busque empresas, filtre oportunidades e envie contatos prontos para abordagem no CRM.</p>
+            <h1 className="text-3xl font-black tracking-tight text-slate-950">Gerador de leads do Google Maps</h1>
+            <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600">Busque empresas, filtre oportunidades e envie contatos prontos para abordagem no CRM.</p>
           </div>
         </div>
 
@@ -867,20 +874,20 @@ export default function GerarLeadsPremiumPage() {
             className={cx(
               "inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition disabled:opacity-50",
               autoIntelligence
-                ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/20"
-                : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
+                ? "border-emerald-200 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+                : "border-slate-200 bg-white text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
             )}
           >
             {autoIntelligence ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
             Pesquisa automatica
           </button>
-          <button onClick={() => { setRawLeads([]); setQualified([]); setSelected({}); setLogs([]); setError(null); showToast("ok", "Limpo."); }} disabled={busy} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 disabled:opacity-50">
+          <button onClick={() => { setRawLeads([]); setQualified([]); setSelected({}); setLogs([]); setError(null); showToast("ok", "Limpo."); }} disabled={busy} className={secondaryButtonClass}>
             <Trash2 size={16} /> Limpar
           </button>
-          <button onClick={buscarLeads} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+          <button onClick={buscarLeads} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50">
             {loadingBuscar ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />} Buscar leads
           </button>
-          <button onClick={salvarNoCRM} disabled={busy || selectedLeadsList.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+          <button onClick={salvarNoCRM} disabled={busy || selectedLeadsList.length === 0} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">
             {loadingSalvar ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Salvar no CRM ({selectedLeadsList.length})
           </button>
         </div>
@@ -895,17 +902,17 @@ export default function GerarLeadsPremiumPage() {
       </div>
 
       {/* CONFIG */}
-      <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-4">
-        <SectionHeader title="Busca e qualificacao" subtitle="Defina o nicho, a cidade e os criterios comerciais." icon={<Filter className="h-4 w-4" />} right={<button onClick={() => copy(queryPreview)} className="text-[11px] text-white/50 hover:text-white"><Copy className="h-3 w-3 inline mr-1"/> Copiar busca</button>} />
+      <div className={cx(panelClass, "space-y-4")}>
+        <SectionHeader title="Busca e qualificacao" subtitle="Defina o nicho, a cidade e os criterios comerciais." icon={<Filter className="h-4 w-4" />} right={<button onClick={() => copy(queryPreview)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 transition hover:bg-slate-50"><Copy className="h-3 w-3"/> Copiar busca</button>} />
         <Divider />
         
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
-            <label className="text-[11px] text-white/55">Perfil alvo</label>
+            <label className={labelClass}>Perfil alvo</label>
             <select
               value={selectedPresetId}
               onChange={(e) => setSelectedPresetId(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
+              className={inputClass}
             >
               {SEARCH_PRESETS.map((preset) => (
                 <option key={preset.id} value={preset.id}>
@@ -915,9 +922,9 @@ export default function GerarLeadsPremiumPage() {
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-[11px] text-white/55">Bairros / zonas (opcional)</label>
+            <label className={labelClass}>Bairros / zonas (opcional)</label>
             <input
-              className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
+              className={inputClass}
               value={searchHintsRaw}
               onChange={(e) => setSearchHintsRaw(e.target.value)}
               placeholder="Savassi, Lourdes, Funcionarios"
@@ -926,42 +933,42 @@ export default function GerarLeadsPremiumPage() {
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
-          <div className="space-y-1"><label className="text-[11px] text-white/55">Oferta que vamos vender</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={servico} onChange={(e) => setServico(e.target.value)} placeholder="Ex: clinica estetica" /></div>
-          <div className="space-y-1"><label className="text-[11px] text-white/55">Nicho</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={nicho} onChange={(e) => setNicho(e.target.value)} placeholder="Ex: dermatologia" /></div>
-          <div className="space-y-1"><label className="text-[11px] text-white/55">Cidade</label><input className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Ex: Belo Horizonte, MG" /></div>
+          <div className="space-y-1"><label className={labelClass}>Oferta que vamos vender</label><input className={inputClass} value={servico} onChange={(e) => setServico(e.target.value)} placeholder="Ex: clinica estetica" /></div>
+          <div className="space-y-1"><label className={labelClass}>Nicho</label><input className={inputClass} value={nicho} onChange={(e) => setNicho(e.target.value)} placeholder="Ex: dermatologia" /></div>
+          <div className="space-y-1"><label className={labelClass}>Cidade</label><input className={inputClass} value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Ex: Belo Horizonte, MG" /></div>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
+          <div className={cx(innerPanelClass, "space-y-3")}>
             <SectionHeader title="Estrategia" icon={<Zap className="h-4 w-4" />} />
             <div className="flex flex-wrap gap-2">
               <Chip label="Conservador" active={mode === "conservador"} onClick={() => setMode("conservador")} tone="blue" />
               <Chip label="Balanceado" active={mode === "balanceado"} onClick={() => setMode("balanceado")} tone="neutral" />
               <Chip label="Agressivo" active={mode === "agressivo"} onClick={() => setMode("agressivo")} tone="amber" />
             </div>
-            <input type="number" min={1} max={80} value={limitValid} onChange={(e) => setLimitValid(clamp(Number(e.target.value) || 10, 1, 80))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" />
+            <input type="number" min={1} max={80} value={limitValid} onChange={(e) => setLimitValid(clamp(Number(e.target.value) || 10, 1, 80))} className={inputClass} />
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-[10px] text-white/45">Paginas do Maps</label>
+                <label className={labelClass}>Paginas do Maps</label>
                 <input
                   type="number"
                   min={1}
                   max={3}
                   value={maxPages}
                   onChange={(e) => setMaxPages(clamp(Number(e.target.value) || 2, 1, 3))}
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
+                  className={inputClass}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] text-white/45">Evitar duplicados</label>
+                <label className={labelClass}>Evitar duplicados</label>
                 <button
                   type="button"
                   onClick={() => setExcludeExistingInCrm((value) => !value)}
                   className={cx(
                     "w-full rounded-xl border px-3 py-2 text-sm transition",
                     excludeExistingInCrm
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                      : "border-white/10 bg-white/5 text-white/70"
+                      ? "border-emerald-200 bg-emerald-50 font-bold text-emerald-700"
+                      : "border-slate-200 bg-white font-bold text-slate-600"
                   )}
                 >
                   {excludeExistingInCrm ? "Ativo" : "Inativo"}
@@ -970,80 +977,80 @@ export default function GerarLeadsPremiumPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
-            <SectionHeader title="Criterios minimos" icon={<ShieldCheck className="h-4 w-4" />} right={<span className="text-[10px] text-white/40">Score minimo: {scoreMin}</span>} />
-            <div className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+          <div className={cx(innerPanelClass, "space-y-3")}>
+            <SectionHeader title="Criterios minimos" icon={<ShieldCheck className="h-4 w-4" />} right={<span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">Score minimo: {scoreMin}</span>} />
+            <div className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
               Telefone obrigatorio para evitar lead sem canal de abordagem.
             </div>
             <select
               value={requireWebsite}
               onChange={(e) => setRequireWebsite(e.target.value as "qualquer" | "sim" | "nao")}
-              className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none"
+              className={inputClass}
             >
               <option value="qualquer">Site: indiferente</option>
               <option value="sim">Exigir site</option>
               <option value="nao">Somente sem site</option>
             </select>
             <div className="grid grid-cols-2 gap-2">
-              <input type="number" step="0.1" min={0} max={5} value={minRating} onChange={(e) => setMinRating(clamp(Number(e.target.value), 0, 5))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Rating" />
-              <input type="number" min={0} max={100} value={scoreMin} onChange={(e) => setScoreMin(clamp(Number(e.target.value), 0, 100))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Score" />
+              <input type="number" step="0.1" min={0} max={5} value={minRating} onChange={(e) => setMinRating(clamp(Number(e.target.value), 0, 5))} className={inputClass} placeholder="Rating" />
+              <input type="number" min={0} max={100} value={scoreMin} onChange={(e) => setScoreMin(clamp(Number(e.target.value), 0, 100))} className={inputClass} placeholder="Score" />
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
+          <div className={cx(innerPanelClass, "space-y-3")}>
             <SectionHeader title="Palavras de filtro" icon={<Sparkles className="h-4 w-4" />} />
-            <input value={bannedWords} onChange={(e) => setBannedWords(e.target.value)} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Proibidas" />
-            <input value={preferredWords} onChange={(e) => setPreferredWords(e.target.value)} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none" placeholder="Desejadas" />
+            <input value={bannedWords} onChange={(e) => setBannedWords(e.target.value)} className={inputClass} placeholder="Proibidas" />
+            <input value={preferredWords} onChange={(e) => setPreferredWords(e.target.value)} className={inputClass} placeholder="Desejadas" />
           </div>
         </div>
       </div>
 
-      {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> {error}</div>}
+      {error && <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"><AlertTriangle className="h-4 w-4" /> {error}</div>}
 
       {/* RESULTS + CONTROLS */}
       <div className="grid gap-4 lg:grid-cols-4">
         {/* LEFT: CONTROLS */}
         <div className="lg:col-span-1 space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-[#111111] p-4 space-y-3">
+          <div className={cx(panelClass, "space-y-3")}>
             <SectionHeader title="Selecao" icon={<BadgeCheck className="h-4 w-4" />} />
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => toggleSelectAll(true)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-[11px] text-white hover:bg-white/15 transition disabled:opacity-50"><CheckCircle2 className="h-4 w-4" /> Todos</button>
-              <button onClick={() => toggleSelectAll(false)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition disabled:opacity-50"><X className="h-4 w-4" /> Limpar selecao</button>
+              <button onClick={() => toggleSelectAll(true)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"><CheckCircle2 className="h-4 w-4" /> Todos</button>
+              <button onClick={() => toggleSelectAll(false)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"><X className="h-4 w-4" /> Limpar selecao</button>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => selectOnlyHeat("quente")} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] text-white hover:bg-emerald-500 transition disabled:opacity-50"><Flame className="h-4 w-4" /> Quentes</button>
-              <button onClick={() => selectTop(10)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-100 hover:bg-blue-500/15 transition disabled:opacity-50"><Sparkles className="h-4 w-4" /> Top 10</button>
+              <button onClick={() => selectOnlyHeat("quente")} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"><Flame className="h-4 w-4" /> Quentes</button>
+              <button onClick={() => selectTop(10)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"><Sparkles className="h-4 w-4" /> Top 10</button>
             </div>
             <Divider />
-            <button onClick={() => setShowDiscarded(v => !v)} disabled={computed.all.length===0} className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition disabled:opacity-50">
+            <button onClick={() => setShowDiscarded(v => !v)} disabled={computed.all.length===0} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50">
               {showDiscarded ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />} {showDiscarded ? "Ocultar descartados" : "Mostrar descartados"}
             </button>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#111111] p-4 space-y-3">
+          <div className={cx(panelClass, "space-y-3")}>
             <SectionHeader title="Resumo" icon={<TrendingUp className="h-4 w-4" />} />
             <div className="grid gap-2">
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3"><p className="text-[10px] uppercase text-white/45">Selecionados</p><p className="mt-1 text-xl font-semibold text-white/90">{stats.selectedCount}</p></div>
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3"><p className="text-[10px] uppercase text-emerald-100/80">Quentes</p><p className="mt-1 text-xl font-semibold text-emerald-100">{stats.quentes}</p></div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Selecionados</p><p className="mt-1 text-2xl font-black text-slate-950">{stats.selectedCount}</p></div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Quentes</p><p className="mt-1 text-2xl font-black text-emerald-700">{stats.quentes}</p></div>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
-            <SectionHeader title="Historico da busca" icon={<RefreshCcw className="h-4 w-4" />} right={<button onClick={() => setLogs([])}><Trash2 className="h-4 w-4 text-white/50" /></button>} />
-            <div className="space-y-2 max-h-40 overflow-y-auto">{logs.map((l, i) => <div key={i} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">{l}</div>)}</div>
+          <div className={cx(panelClass, "space-y-3")}>
+            <SectionHeader title="Historico da busca" icon={<RefreshCcw className="h-4 w-4" />} right={<button onClick={() => setLogs([])} className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 transition hover:bg-slate-50"><Trash2 className="h-4 w-4" /></button>} />
+            <div className="max-h-40 space-y-2 overflow-y-auto">{logs.length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs font-medium text-slate-500">Sem historico nesta busca.</div> : logs.map((l, i) => <div key={i} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">{l}</div>)}</div>
           </div>
         </div>
 
         {/* RIGHT: RESULTS */}
         <div className="lg:col-span-3 space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
-            <SectionHeader title="Leads prontos para abordagem" subtitle="Revise, selecione e salve no CRM." icon={<BadgeCheck className="h-4 w-4" />} right={<span className="text-xs text-white/45">Top: <b className="text-white/70">{qualified.length}</b></span>} />
+          <div className={cx(panelClass, "space-y-3")}>
+            <SectionHeader title="Leads prontos para abordagem" subtitle="Revise, selecione e salve no CRM." icon={<BadgeCheck className="h-4 w-4" />} right={<span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-600">Top: <b className="text-slate-950">{qualified.length}</b></span>} />
             <Divider />
 
             {loadingBuscar ? (
-              <div className="flex items-center gap-2 text-sm text-white/60"><Loader2 className="h-4 w-4 animate-spin" /> Buscando e qualificando empresas...</div>
+              <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700"><Loader2 className="h-4 w-4 animate-spin" /> Buscando e qualificando empresas...</div>
             ) : qualified.length === 0 ? (
-              <div className="text-sm text-white/50">Nenhum lead pronto ainda. Ajuste a busca ou reduza os criterios.</div>
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm font-medium text-slate-500">Nenhum lead pronto ainda. Ajuste a busca ou reduza os criterios.</div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {qualified.map((l) => {
@@ -1051,44 +1058,44 @@ export default function GerarLeadsPremiumPage() {
                   const sb = scoreBadge(l._score);
                   const isSelected = !!selected[l.placeId];
                   return (
-                    <div key={l.placeId} className={cx("group rounded-2xl border bg-black/20 p-4 transition", isSelected ? "border-blue-500/30 ring-1 ring-blue-500/20" : "border-white/10 hover:border-white/20")}>
+                    <div key={l.placeId} className={cx("group rounded-2xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md", isSelected ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200")}>
                       {/* Top Row: Name + Badges */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-white/90">{l.nome}</p>
+                          <p className="truncate text-sm font-black text-slate-950">{l.nome}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]", heat.cls)}>{heat.icon} {heat.label}</span>
-                            <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]", sb.cls)}><Sparkles className="h-3.5 w-3.5" /> {sb.label} {l._score}</span>
+                            <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold", heat.cls)}>{heat.icon} {heat.label}</span>
+                            <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold", sb.cls)}><Sparkles className="h-3.5 w-3.5" /> {sb.label} {l._score}</span>
                             {/* Novos Badges Ricos */}
-                            {l.priceLevel && l.priceLevel >= 3 && <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200"><DollarSign className="h-3 w-3" /> $$$</span>}
-                            {l.isOpenNow !== undefined && <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]", l.isOpenNow ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200")}><Clock className="h-3 w-3" /> {l.isOpenNow ? "Aberto" : "Fechado"}</span>}
-                            {l._isRescued && <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-200"><Unlock className="h-3 w-3" /> Resgatado</span>}
+                            {l.priceLevel && l.priceLevel >= 3 && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700"><DollarSign className="h-3 w-3" /> $$$</span>}
+                            {l.isOpenNow !== undefined && <span className={cx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold", l.isOpenNow ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700")}><Clock className="h-3 w-3" /> {l.isOpenNow ? "Aberto" : "Fechado"}</span>}
+                            {l._isRescued && <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700"><Unlock className="h-3 w-3" /> Resgatado</span>}
                           </div>
                         </div>
-                        <button onClick={() => setSelected(prev => ({ ...prev, [l.placeId]: !prev[l.placeId] }))} className={cx("rounded-xl border px-3 py-2 text-[11px] transition", isSelected ? "border-blue-500/30 bg-blue-500/10 text-blue-100 hover:bg-blue-500/15" : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10")}>
+                        <button onClick={() => setSelected(prev => ({ ...prev, [l.placeId]: !prev[l.placeId] }))} className={cx("rounded-xl border px-3 py-2 text-[11px] font-bold transition", isSelected ? "border-blue-200 bg-blue-600 text-white hover:bg-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")}>
                           {isSelected ? "Selecionado" : "Selecionar"}
                         </button>
                       </div>
 
                       {/* Info Row */}
-                      <div className="mt-3 space-y-2 text-xs text-white/70">
-                        {l.endereco && <div className="flex items-start gap-2"><MapPin className="h-4 w-4 text-white/35 mt-0.5" /><p className="line-clamp-2">{l.endereco}</p></div>}
-                        <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-white/35" /><p className="font-medium text-white/80">{formatPhoneBR(l.telefone) || "Sem telefone"}</p></div>
-                        {l.website ? <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-white/35" /><a href={safeUrl(l.website)} target="_blank" className="truncate text-white/75 hover:text-white underline decoration-white/20">{l.website}</a></div> : <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-white/25" /><span className="text-white/45">Sem site</span></div>}
+                      <div className="mt-3 space-y-2 text-xs font-medium text-slate-600">
+                        {l.endereco && <div className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 text-slate-400" /><p className="line-clamp-2">{l.endereco}</p></div>}
+                        <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-slate-400" /><p className="font-bold text-slate-800">{formatPhoneBR(l.telefone) || "Sem telefone"}</p></div>
+                        {l.website ? <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-slate-400" /><a href={safeUrl(l.website)} target="_blank" className="truncate font-bold text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-800">{l.website}</a></div> : <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-slate-300" /><span className="text-slate-500">Sem site</span></div>}
                       </div>
 
                       {/* Reasons */}
-                      <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                        <p className="text-[10px] uppercase tracking-wide text-white/45">Sinais comerciais</p>
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Sinais comerciais</p>
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {l._reasons.slice(0, 4).map((r) => <span key={r} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] text-white/70"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-300/80" /> {r}</span>)}
+                          {l._reasons.slice(0, 4).map((r) => <span key={r} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> {r}</span>)}
                         </div>
                       </div>
 
                       {/* Actions */}
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <button onClick={() => copy(l.telefone || "")} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/75 hover:bg-white/10 transition"><Copy className="h-4 w-4" /> Copiar</button>
-                        <Link href={`/admin/prospeccao/${l.placeId}`} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-[11px] text-white hover:bg-emerald-500 transition">Abrir no CRM <ExternalLink className="h-4 w-4 opacity-90" /></Link>
+                        <button onClick={() => copy(l.telefone || "")} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"><Copy className="h-4 w-4" /> Copiar</button>
+                        <Link href={`/admin/prospeccao/${l.placeId}`} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition hover:bg-emerald-700">Abrir no CRM <ExternalLink className="h-4 w-4 opacity-90" /></Link>
                       </div>
                     </div>
                   );
@@ -1099,25 +1106,25 @@ export default function GerarLeadsPremiumPage() {
 
           {/* Fora do perfil (Zona de Resgate) */}
           {showDiscarded && (
-            <div className="rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-3">
-              <SectionHeader title="Fora do perfil (com motivo)" subtitle="Revise apenas se fizer sentido comercial." icon={<AlertTriangle className="h-4 w-4" />} right={<span className="text-xs text-white/45">{computed.discarded.length} itens</span>} />
+            <div className={cx(panelClass, "space-y-3")}>
+              <SectionHeader title="Fora do perfil (com motivo)" subtitle="Revise apenas se fizer sentido comercial." icon={<AlertTriangle className="h-4 w-4" />} right={<span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-600">{computed.discarded.length} itens</span>} />
               <Divider />
-              {computed.discarded.length === 0 ? <p className="text-sm text-white/50">Nenhum descartado.</p> : (
+              {computed.discarded.length === 0 ? <p className="text-sm font-medium text-slate-500">Nenhum descartado.</p> : (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {computed.discarded.slice(0, 30).map((l) => (
-                    <div key={l.placeId} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-sm font-semibold text-white/85">{l.nome}</p>
-                      <div className="mt-2 space-y-2 text-xs text-white/65">
+                    <div key={l.placeId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <p className="text-sm font-black text-slate-950">{l.nome}</p>
+                      <div className="mt-2 space-y-2 text-xs font-medium text-slate-600">
                         <p>{formatPhoneBR(l.telefone)}</p>
                         <p className="line-clamp-1">{l.endereco}</p>
                       </div>
-                      <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 p-3">
-                        <ul className="space-y-1 text-xs text-red-100/80">
+                      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3">
+                        <ul className="space-y-1 text-xs font-medium text-red-700">
                           {l._blockedReasons.slice(0, 5).map((r) => <li key={r} className="flex items-start gap-2"><X className="h-4 w-4 mt-0.5 opacity-90" /><span>{r}</span></li>)}
                         </ul>
                       </div>
-                      <button onClick={() => { setManualOverrides(prev => ({ ...prev, [l.placeId]: !prev[l.placeId] })); showToast("ok", "Lead aprovado."); }} className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-medium text-white hover:bg-white/10 transition">
-                        <Unlock className="h-3 w-3 text-emerald-400" /> Aprovar manualmente
+                      <button onClick={() => { setManualOverrides(prev => ({ ...prev, [l.placeId]: !prev[l.placeId] })); showToast("ok", "Lead aprovado."); }} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100">
+                        <Unlock className="h-3 w-3" /> Aprovar manualmente
                       </button>
                     </div>
                   ))}

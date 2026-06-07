@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import {
+  AGENCY_WHATSAPP_ENV_CHANNEL_ID,
   getWhatsAppChannelForTenant,
   isOfficialWhatsAppProvider,
   listWhatsAppMessageTemplates,
@@ -19,16 +20,29 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     assertTenantRole(membership, "client_viewer");
     const url = new URL(req.url);
     const channelId = clean(url.searchParams.get("channelId"), 180);
+    const usesAgencyOfficialChannel = channelId === AGENCY_WHATSAPP_ENV_CHANNEL_ID;
     const channel = await getWhatsAppChannelForTenant(tenantId, {
-      allowAgencyFallback: false,
+      allowAgencyFallback: usesAgencyOfficialChannel || !channelId,
       channelId: channelId || null,
     });
     if (!channel) {
-      return NextResponse.json({ error: "Numero oficial nao encontrado ou sem credenciais validas.", templates: [] }, { status: 404 });
+      return NextResponse.json(
+        {
+          error:
+            "Numero oficial nao encontrado ou sem credenciais validas. Escolha um numero API oficial em Configuracoes > Canais.",
+          templates: [],
+        },
+        { status: 404 }
+      );
     }
     if (!isOfficialWhatsAppProvider(channel.provider)) {
       return NextResponse.json(
-        { error: "Templates da Meta estao disponiveis apenas para numeros conectados pela API oficial.", templates: [] },
+        {
+          ok: true,
+          requiresTemplate: false,
+          error: "Templates da Meta estao disponiveis apenas para numeros conectados pela API oficial.",
+          templates: [],
+        },
         { status: 400 }
       );
     }
@@ -39,9 +53,13 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       ok: true,
       channel: {
         id: channel.id,
+        source: channel.source,
+        provider: channel.provider,
         displayName: channel.displayName || "WhatsApp",
         phoneNumber: channel.phoneNumber || "",
+        phoneNumberId: channel.phoneNumberId,
       },
+      wabaId: result.wabaId,
       templates,
       summary: {
         total: templates.length,

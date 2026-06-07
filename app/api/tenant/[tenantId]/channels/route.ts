@@ -6,6 +6,10 @@ import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAcc
 import { isGoogleAdsServerConfigured } from "@/app/lib/server/google-ads";
 import { encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
 import { getMetaEnv, normalizeConnectionStatus } from "@/app/lib/server/integration-oauth";
+import {
+  AGENCY_WHATSAPP_ENV_CHANNEL_ID,
+  getAgencyWhatsAppChannelFromEnv,
+} from "@/app/lib/server/whatsapp-channel";
 
 type ChannelBody = {
   channelId?: string;
@@ -454,7 +458,60 @@ export async function GET(
       })
       .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
 
-    return NextResponse.json({ ok: true, tenantId, items });
+    const hasOutboundWhatsApp = items.some(
+      (item) => item.type === "whatsapp" && item.status === "active" && item.outboundReady
+    );
+    const hasAgencyVirtualChannel = items.some((item) => item.id === AGENCY_WHATSAPP_ENV_CHANNEL_ID);
+    const agencyWhatsApp = getAgencyWhatsAppChannelFromEnv();
+    const agencyVirtualItem = agencyWhatsApp && !hasAgencyVirtualChannel
+      ? {
+          id: AGENCY_WHATSAPP_ENV_CHANNEL_ID,
+          tenantId,
+          type: "whatsapp",
+          provider: "meta_whatsapp",
+          source: "agency_env",
+          displayName: "WhatsApp oficial Altum",
+          status: "active",
+          connectionStatus: "ready",
+          phoneNumber: agencyWhatsApp.phoneNumber || "",
+          phoneNumberId: agencyWhatsApp.phoneNumberId,
+          username: "",
+          pageId: "",
+          externalAccountId: "",
+          hasAccessToken: true,
+          hasRefreshToken: false,
+          hasVerifyToken: Boolean(agencyWhatsApp.verifyToken),
+          hasAppSecret: Boolean(agencyWhatsApp.appSecret),
+          accessTokenMasked: "Configurado",
+          refreshTokenMasked: "",
+          verifyTokenMasked: agencyWhatsApp.verifyToken ? "Configurado" : "",
+          appSecretMasked: agencyWhatsApp.appSecret ? "Configurado" : "",
+          lastSyncAt: null,
+          updatedAt: null,
+          lastError: "",
+          chatCount: 0,
+          openChatCount: 0,
+          lastActivityAt: null,
+          campaignSnapshotCount: 0,
+          lastCampaignDateRef: null,
+          serverReady: true,
+          inboundReady: Boolean(agencyWhatsApp.verifyToken && agencyWhatsApp.appSecret),
+          outboundReady: true,
+          routingReady: Boolean(agencyWhatsApp.verifyToken && agencyWhatsApp.appSecret),
+          syncReady: false,
+          requiresWebhook: true,
+          requiresExternalMapping: false,
+          metadata: { source: "agency_env" },
+        }
+      : null;
+    const visibleItems =
+      agencyVirtualItem && !hasOutboundWhatsApp
+        ? [agencyVirtualItem, ...items]
+        : agencyVirtualItem
+          ? [...items, agencyVirtualItem]
+        : items;
+
+    return NextResponse.json({ ok: true, tenantId, items: visibleItems });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });

@@ -4,6 +4,7 @@ import { normalizePhone } from "@/app/lib/server/phone";
 import { buildOutgoingChatOperationalPatch } from "@/lib/server/chat-operations";
 import { getTenantSettings } from "@/lib/server/tenant";
 import {
+  AGENCY_WHATSAPP_ENV_CHANNEL_ID,
   getWhatsAppChannelForTenant,
   isOfficialWhatsAppProvider,
   sendMetaAudioMessage,
@@ -106,6 +107,10 @@ function isWhatsAppServiceWindowClosed(value: unknown) {
   return Date.now() - lastClientMessageAt.getTime() > 23.5 * 60 * 60 * 1000;
 }
 
+function shouldAllowAgencyWhatsAppFallback(channelId: unknown) {
+  return String(channelId || "").trim() === AGENCY_WHATSAPP_ENV_CHANNEL_ID;
+}
+
 function buildTemplateMessageText(templateName: string, bodyParams: string[]) {
   const params = bodyParams.filter(Boolean);
   if (!params.length) return `Template enviado: ${templateName}`;
@@ -199,9 +204,10 @@ export async function sendTenantChatText(input: {
     metaMessageId = String(payload?.message_id || payload?.messageId || "").trim() || null;
     metaChannelId = channel.id;
   } else if (!isSiteChat) {
+    const chatChannelId = String(chat.channelId || "").trim() || null;
     const channel = await getWhatsAppChannelForTenant(tenantId, {
-      allowAgencyFallback: false,
-      channelId: String(chat.channelId || "").trim() || null,
+      allowAgencyFallback: shouldAllowAgencyWhatsAppFallback(chatChannelId),
+      channelId: chatChannelId,
       phoneNumberId: String(chat.channelPhoneNumberId || "").trim() || null,
     });
     if (!channel) {
@@ -386,9 +392,10 @@ export async function sendTenantChatMedia(input: {
     throw new Error("Janela de 24h encerrada. Use um template aprovado para retomar o contato.");
   }
 
+  const chatChannelId = String(chat.channelId || "").trim() || null;
   const channel = await getWhatsAppChannelForTenant(tenantId, {
-    allowAgencyFallback: false,
-    channelId: String(chat.channelId || "").trim() || null,
+    allowAgencyFallback: shouldAllowAgencyWhatsAppFallback(chatChannelId),
+    channelId: chatChannelId,
     phoneNumberId: String(chat.channelPhoneNumberId || "").trim() || null,
   });
   if (!channel) {
@@ -528,9 +535,10 @@ export async function sendTenantChatMediaLink(input: {
   };
   if ((chat.tenantId || "") !== tenantId) throw new Error("Chat fora do tenant informado.");
 
+  const chatChannelId = String(chat.channelId || "").trim() || null;
   const channel = await getWhatsAppChannelForTenant(tenantId, {
-    allowAgencyFallback: false,
-    channelId: String(chat.channelId || "").trim() || null,
+    allowAgencyFallback: shouldAllowAgencyWhatsAppFallback(chatChannelId),
+    channelId: chatChannelId,
     phoneNumberId: String(chat.channelPhoneNumberId || "").trim() || null,
   });
   if (!channel) throw new Error("Canal WhatsApp ativo nao configurado para este tenant.");
@@ -645,9 +653,10 @@ export async function sendTenantChatTemplate(input: {
     throw new Error("Templates de follow-up estao disponiveis apenas para conversas WhatsApp.");
   }
 
+  const chatChannelId = String(chat.channelId || "").trim() || null;
   const channel = await getWhatsAppChannelForTenant(tenantId, {
-    allowAgencyFallback: false,
-    channelId: String(chat.channelId || "").trim() || null,
+    allowAgencyFallback: shouldAllowAgencyWhatsAppFallback(chatChannelId),
+    channelId: chatChannelId,
     phoneNumberId: String(chat.channelPhoneNumberId || "").trim() || null,
   });
   if (!channel) {

@@ -3,6 +3,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { decryptSecret } from "@/app/lib/server/secret-crypto";
 
 export const AGENCY_TENANT_ID = "ALTUM_AGENCY";
+export const AGENCY_WHATSAPP_ENV_CHANNEL_ID = "agency_env_default";
 const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
 
 type ChannelDoc = {
@@ -184,7 +185,7 @@ function getAgencyChannelFromEnv(): WhatsAppChannelConfig | null {
   if (!phoneNumberId || !accessToken) return null;
 
   return {
-    id: "agency_env_default",
+    id: AGENCY_WHATSAPP_ENV_CHANNEL_ID,
     tenantId: AGENCY_TENANT_ID,
     source: "agency_env",
     provider: "meta_whatsapp",
@@ -194,6 +195,10 @@ function getAgencyChannelFromEnv(): WhatsAppChannelConfig | null {
     verifyToken: String(process.env.META_VERIFY_TOKEN || "").trim() || undefined,
     appSecret: String(process.env.META_APP_SECRET || "").trim() || undefined,
   } satisfies WhatsAppChannelConfig;
+}
+
+export function getAgencyWhatsAppChannelFromEnv() {
+  return getAgencyChannelFromEnv();
 }
 
 export async function getWhatsAppChannelByPhoneNumberId(phoneNumberId: string) {
@@ -242,6 +247,10 @@ export async function getWhatsAppChannelForTenant(
   }
 
   if (normalizedTenantId === AGENCY_TENANT_ID) {
+    return getAgencyChannelFromEnv();
+  }
+
+  if (requestedChannelId === AGENCY_WHATSAPP_ENV_CHANNEL_ID && allowAgencyFallback) {
     return getAgencyChannelFromEnv();
   }
 
