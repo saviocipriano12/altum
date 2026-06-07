@@ -954,7 +954,7 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
     handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
     handoffNotifyPhones: parsePhoneLines(ai.handoffNotifyPhones, 8),
     voiceReplyEnabled: ai.voiceReplyEnabled === true,
-    voiceReplyVoice: sanitizeText(ai.voiceReplyVoice, 40) || "alloy",
+    voiceReplyVoice: sanitizeText(ai.voiceReplyVoice, 40) || "marin",
     voiceReplyMode: ["audio_only", "smart", "always"].includes(sanitizeText(ai.voiceReplyMode, 40))
       ? (sanitizeText(ai.voiceReplyMode, 40) as "audio_only" | "smart" | "always")
       : "smart",

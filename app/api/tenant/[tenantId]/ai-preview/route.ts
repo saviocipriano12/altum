@@ -344,7 +344,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
       handoffNotifyPhones: parseLines(ai.handoffNotifyPhones, 8),
       voiceReplyEnabled: ai.voiceReplyEnabled === true,
-      voiceReplyVoice: clean(ai.voiceReplyVoice, 40) || "alloy",
+      voiceReplyVoice: clean(ai.voiceReplyVoice, 40) || "marin",
       guardrails: parseGuardrails(ai.guardrails),
       mandatoryQuestions: parseLines(ai.mandatoryQuestions, 12),
       escalationTopics: parseLines(ai.escalationTopics, 12),

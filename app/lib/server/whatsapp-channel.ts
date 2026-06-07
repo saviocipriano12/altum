@@ -726,6 +726,7 @@ export async function sendMetaAudioMessage(input: {
   channel: WhatsAppChannelConfig;
   to: string;
   mediaId: string;
+  voice?: boolean;
 }) {
   const response = await fetch(
     `https://graph.facebook.com/${VERSION}/${input.channel.phoneNumberId}/messages`,
@@ -740,7 +741,10 @@ export async function sendMetaAudioMessage(input: {
         recipient_type: "individual",
         to: input.to,
         type: "audio",
-        audio: { id: input.mediaId },
+        audio: {
+          id: input.mediaId,
+          ...(input.voice === true ? { voice: true } : {}),
+        },
       }),
     }
   );

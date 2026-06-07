@@ -206,6 +206,7 @@ export async function sendAltumVoiceReply(input: {
     channel: input.channel,
     to: input.to,
     mediaId: upload.mediaId,
+    voice: true,
   });
 
   let stored: Awaited<ReturnType<typeof storeAltumSpeech>> | null = null;

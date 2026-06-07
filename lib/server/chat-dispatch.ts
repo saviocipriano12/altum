@@ -416,7 +416,7 @@ export async function sendTenantChatMedia(input: {
 
   const payload =
     mediaType === "audio"
-      ? await sendMetaAudioMessage({ channel, to: phone, mediaId: upload.mediaId })
+      ? await sendMetaAudioMessage({ channel, to: phone, mediaId: upload.mediaId, voice: true })
       : await sendMetaMediaIdMessage({
           channel,
           to: phone,

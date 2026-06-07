@@ -52,7 +52,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         tenantId,
         createdBy: user.uid,
         createdByName: user.name,
-        voice: clean(body.voice, 40) || "alloy",
+        voice: clean(body.voice, 40) || "marin",
         maxChars,
         transcript,
         mediaUrl: stored.signedUrl,
