@@ -45,6 +45,7 @@ type Channel = {
   source?: string;
   displayName?: string;
   phoneNumber?: string;
+  phoneNumberId?: string;
   status?: string;
   connectionStatus?: string;
   outboundReady?: boolean;
@@ -192,9 +193,30 @@ function emptyCampaign(): Campaign {
   };
 }
 
-function isOfficial(provider?: string) {
-  const normalized = String(provider || "").toLowerCase();
-  return !normalized || normalized.includes("meta") || normalized.includes("cloud");
+function hasGatewayMetadata(channel?: Channel | null) {
+  if (!channel?.metadata) return false;
+  return Boolean(
+    channel.metadata.gatewayEndpoint ||
+      channel.metadata.endpointUrl ||
+      channel.metadata.apiBaseUrl ||
+      channel.metadata.webhookUrl
+  );
+}
+
+function isOfficialChannel(channel?: Channel | null) {
+  if (!channel) return false;
+  const normalized = String(channel.provider || "").toLowerCase();
+  if (
+    normalized === "whatsapp_qr" ||
+    normalized === "whatsapp_session" ||
+    normalized === "whatsapp_gateway" ||
+    normalized === "external_whatsapp"
+  ) {
+    return false;
+  }
+  if (normalized.includes("meta") || normalized.includes("cloud")) return true;
+  if (hasGatewayMetadata(channel)) return false;
+  return Boolean(channel.phoneNumberId || channel.wabaId);
 }
 
 function formatDate(value?: string | null) {
@@ -326,7 +348,7 @@ export default function BulkMessagingPage() {
   }, [campaigns, selectedId]);
 
   const selectedChannel = channels.find((item) => item.id === editor.channelId) || null;
-  const officialChannel = selectedChannel ? isOfficial(selectedChannel.provider) : false;
+  const officialChannel = isOfficialChannel(selectedChannel);
   const readyChannels = channels.filter((item) => item.outboundReady || item.status === "active");
   const riskLevel = editor.maxRecipients > 250 ? "alto" : editor.maxRecipients > 100 ? "medio" : "baixo";
   const selectedTemplate = templates.find(
@@ -420,7 +442,7 @@ export default function BulkMessagingPage() {
     const next = emptyCampaign();
     if (firstChannel) {
       next.channelId = firstChannel.id;
-      next.deliveryMode = isOfficial(firstChannel.provider) ? "template" : "text";
+      next.deliveryMode = isOfficialChannel(firstChannel) ? "template" : "text";
     }
     setEditor(next);
     setSelectedId("");
@@ -434,7 +456,7 @@ export default function BulkMessagingPage() {
     setEditor((current) => ({
       ...current,
       channelId: channel.id,
-      deliveryMode: isOfficial(channel.provider) ? "template" : "text",
+      deliveryMode: isOfficialChannel(channel) ? "template" : "text",
     }));
     setPreview(null);
   }
@@ -834,7 +856,7 @@ function SenderStep({ channels, selectedId, onSelect }: { channels: Channel[]; s
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         {channels.map((channel) => {
           const selected = channel.id === selectedId;
-          const official = isOfficial(channel.provider);
+          const official = isOfficialChannel(channel);
           const ready = channel.outboundReady || channel.status === "active";
           const agencyManaged = channel.source === "agency_env" || channel.metadata?.source === "agency_env";
           return (
@@ -855,7 +877,7 @@ function SenderStep({ channels, selectedId, onSelect }: { channels: Channel[]; s
                   </div>
                   <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{channel.phoneNumber || "Numero conectado"}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <StateBadge label={official ? "API oficial" : "Sessao conectada"} tone={official ? "info" : "success"} />
+                    <StateBadge label={official ? "API oficial" : "WhatsApp normal"} tone={official ? "info" : "success"} />
                     {agencyManaged ? <StateBadge label="Conta Altum" tone="neutral" /> : null}
                     <StateBadge label={ready ? "pronto" : "revisar conexao"} tone={ready ? "success" : "warning"} />
                   </div>
@@ -960,9 +982,13 @@ function ContentStep({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-bold text-[var(--cliente-card-text)]">O que sera enviado?</h3>
-          <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{official ? "A API oficial exige um template aprovado para iniciar conversas." : "A sessao conectada aceita texto livre dentro de uma cadencia responsavel."}</p>
+          <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
+            {official
+              ? "A API oficial exige um template aprovado pela Meta para iniciar conversas."
+              : "WhatsApp normal permite mensagem livre, personalizada e com midia dentro de uma cadencia responsavel."}
+          </p>
         </div>
-        <StateBadge label={official ? "template obrigatorio" : "mensagem livre"} tone={official ? "info" : "success"} />
+        <StateBadge label={official ? "template Meta" : "texto livre"} tone={official ? "info" : "success"} />
       </div>
       <div className="mt-5">
         {official ? (
@@ -1069,9 +1095,34 @@ function ContentStep({
             </div>
           </div>
         ) : (
-          <Field label="Mensagem" hint="Personalize com {nome}, {empresa}, {telefone}, {stage} e {origem}.">
-            <textarea value={editor.messageTemplate} onChange={(event) => onChange({ messageTemplate: event.target.value, deliveryMode: "text" })} className="client-input min-h-44 resize-y text-[15px] leading-6" />
-          </Field>
+          <div className="space-y-4">
+            <div className="rounded-[18px] border border-emerald-300/40 bg-emerald-500/8 p-4">
+              <p className="text-sm font-bold text-emerald-800">WhatsApp normal conectado</p>
+              <p className="mt-1 text-sm text-emerald-800/80">
+                Este canal envia como uma conversa comum: escreva qualquer mensagem, use variaveis e anexe imagem, video ou documento se quiser.
+              </p>
+            </div>
+            <Field label="Mensagem livre" hint="Use {nome}, {empresa}, {telefone}, {stage} e {origem}.">
+              <textarea
+                value={editor.messageTemplate}
+                onChange={(event) => onChange({ messageTemplate: event.target.value, deliveryMode: "text" })}
+                className="client-input min-h-52 resize-y text-[15px] leading-6"
+                placeholder={"Oi, {nome}! Tudo bem?\n\nVi que seu escritorio pode ganhar mais presenca no Google com uma landing page simples e direta para WhatsApp.\n\nPosso te mostrar um exemplo?"}
+              />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-4">
+              {["{nome}", "{empresa}", "{telefone}", "{origem}"].map((token) => (
+                <button
+                  key={token}
+                  type="button"
+                  onClick={() => onChange({ messageTemplate: `${editor.messageTemplate}${editor.messageTemplate.endsWith(" ") || !editor.messageTemplate ? "" : " "}${token}`, deliveryMode: "text" })}
+                  className="rounded-[14px] border border-[var(--cliente-border)] bg-white px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:border-emerald-300 hover:bg-emerald-50"
+                >
+                  Inserir {token}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
       {editor.headerMedia ? (
