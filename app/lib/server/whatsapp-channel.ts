@@ -287,10 +287,6 @@ export async function getWhatsAppChannelForTenant(
     return getAgencyChannelFromEnv();
   }
 
-  if (requestedChannelId === AGENCY_WHATSAPP_ENV_CHANNEL_ID && allowAgencyFallback) {
-    return getAgencyChannelFromEnv();
-  }
-
   if (requestedChannelId) {
     const channelSnap = await adminDb.collection("tenant_channels").doc(requestedChannelId).get();
     if (channelSnap.exists) {
