@@ -30,6 +30,32 @@ export type OutboundCampaignAiFollowup = {
   notes: string;
 };
 
+export type OutboundCampaignAutomationFlowNode = {
+  id: string;
+  type: "send" | "condition" | "ai" | "media" | "meeting" | "human" | "end";
+  label: string;
+  description: string;
+  x: number;
+  y: number;
+  message?: string;
+  condition?: string;
+  nextAction?: string;
+};
+
+export type OutboundCampaignAutomationFlowEdge = {
+  id: string;
+  from: string;
+  to: string;
+  label?: string;
+};
+
+export type OutboundCampaignAutomationFlow = {
+  enabled: boolean;
+  objective: string;
+  nodes: OutboundCampaignAutomationFlowNode[];
+  edges: OutboundCampaignAutomationFlowEdge[];
+};
+
 export type OutboundCampaignRecord = {
   id: string;
   tenantId: string;
@@ -47,6 +73,7 @@ export type OutboundCampaignRecord = {
   scheduledAt: string | null;
   sendRatePerMinute: number;
   aiFollowup: OutboundCampaignAiFollowup;
+  automationFlow: OutboundCampaignAutomationFlow;
   executionStatus: "idle" | "scheduled" | "queued" | "running" | "paused" | "completed" | "failed";
   activeRunId: string | null;
   filters: OutboundCampaignFilters;
@@ -154,6 +181,87 @@ function normalizeAiFollowup(value: unknown): OutboundCampaignAiFollowup {
   };
 }
 
+function normalizeAutomationFlowNodeType(value: unknown): OutboundCampaignAutomationFlowNode["type"] {
+  const type = clean(value, 40).toLowerCase();
+  if (["send", "condition", "ai", "media", "meeting", "human", "end"].includes(type)) {
+    return type as OutboundCampaignAutomationFlowNode["type"];
+  }
+  return "ai";
+}
+
+function normalizeAutomationFlow(value: unknown): OutboundCampaignAutomationFlow {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const rawNodes = Array.isArray(source.nodes) ? source.nodes : [];
+  const nodes = rawNodes
+    .map((item, index) => {
+      const raw = item && typeof item === "object" && !Array.isArray(item) ? (item as Record<string, unknown>) : {};
+      const id = clean(raw.id, 100) || `node_${index + 1}`;
+      return {
+        id,
+        type: normalizeAutomationFlowNodeType(raw.type),
+        label: clean(raw.label, 120) || "Etapa",
+        description: clean(raw.description, 700),
+        x: Math.max(0, Math.min(1200, Number(raw.x || 0))),
+        y: Math.max(0, Math.min(700, Number(raw.y || 0))),
+        ...(clean(raw.message, 1000) ? { message: clean(raw.message, 1000) } : {}),
+        ...(clean(raw.condition, 700) ? { condition: clean(raw.condition, 700) } : {}),
+        ...(clean(raw.nextAction, 900) ? { nextAction: clean(raw.nextAction, 900) } : {}),
+      };
+    })
+    .slice(0, 30);
+  const validNodeIds = new Set(nodes.map((node) => node.id));
+  const rawEdges = Array.isArray(source.edges) ? source.edges : [];
+  const edges = rawEdges
+    .map((item, index) => {
+      const raw = item && typeof item === "object" && !Array.isArray(item) ? (item as Record<string, unknown>) : {};
+      return {
+        id: clean(raw.id, 120) || `edge_${index + 1}`,
+        from: clean(raw.from, 100),
+        to: clean(raw.to, 100),
+        ...(clean(raw.label, 120) ? { label: clean(raw.label, 120) } : {}),
+      };
+    })
+    .filter((edge) => edge.from && edge.to && validNodeIds.has(edge.from) && validNodeIds.has(edge.to))
+    .slice(0, 60);
+
+  return {
+    enabled: Boolean(source.enabled && nodes.length),
+    objective: clean(source.objective, 700),
+    nodes,
+    edges,
+  };
+}
+
+function summarizeAutomationFlow(flow: OutboundCampaignAutomationFlow) {
+  if (!flow.enabled || !flow.nodes.length) return "";
+  const edgesByFrom = new Map<string, OutboundCampaignAutomationFlowEdge[]>();
+  for (const edge of flow.edges) {
+    edgesByFrom.set(edge.from, [...(edgesByFrom.get(edge.from) || []), edge]);
+  }
+  const nodeById = new Map(flow.nodes.map((node) => [node.id, node]));
+  const nodeLines = flow.nodes.slice(0, 12).map((node) => {
+    const nextLabels = (edgesByFrom.get(node.id) || [])
+      .map((edge) => {
+        const target = nodeById.get(edge.to);
+        return target ? `${edge.label ? `${edge.label}: ` : ""}${target.label}` : "";
+      })
+      .filter(Boolean)
+      .join("; ");
+    const instruction = node.condition || node.nextAction || node.message || node.description;
+    return `${node.label} (${node.type})${instruction ? ` - ${instruction}` : ""}${nextLabels ? ` -> ${nextLabels}` : ""}`;
+  });
+  return [`Objetivo do fluxo: ${flow.objective || "conduzir ate conversao ou reuniao"}`, ...nodeLines].join("\n").slice(0, 2200);
+}
+
+function enrichAiFollowupWithFlow(aiFollowup: OutboundCampaignAiFollowup, flow: OutboundCampaignAutomationFlow) {
+  const flowSummary = summarizeAutomationFlow(flow);
+  if (!flowSummary) return aiFollowup;
+  return {
+    ...aiFollowup,
+    notes: [aiFollowup.notes, `Fluxo visual da campanha:\n${flowSummary}`].filter(Boolean).join("\n\n").slice(0, 3000),
+  };
+}
+
 function toIso(value: unknown) {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString();
@@ -207,6 +315,7 @@ export function normalizeOutboundCampaign(input: { id: string; data: Record<stri
     scheduledAt: toIso(input.data.scheduledAt),
     sendRatePerMinute: Math.max(1, Math.min(120, Number(input.data.sendRatePerMinute || 20))),
     aiFollowup: normalizeAiFollowup(input.data.aiFollowup),
+    automationFlow: normalizeAutomationFlow(input.data.automationFlow),
     executionStatus: (["scheduled", "queued", "running", "paused", "completed", "failed"].includes(clean(input.data.executionStatus, 20))
       ? clean(input.data.executionStatus, 20)
       : "idle") as OutboundCampaignRecord["executionStatus"],
@@ -242,6 +351,7 @@ export function buildOutboundCampaignPatch(input: {
   scheduledAt?: unknown;
   sendRatePerMinute?: unknown;
   aiFollowup?: unknown;
+  automationFlow?: unknown;
   filters?: unknown;
   actor: { id: string; name: string };
 }) {
@@ -271,6 +381,7 @@ export function buildOutboundCampaignPatch(input: {
     scheduledAt,
     sendRatePerMinute: Math.max(1, Math.min(120, Number(input.sendRatePerMinute || 20))),
     aiFollowup: normalizeAiFollowup(input.aiFollowup),
+    automationFlow: normalizeAutomationFlow(input.automationFlow),
     filters: normalizeOutboundCampaignFilters(input.filters),
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: input.actor.id,
@@ -624,6 +735,7 @@ export async function dispatchOutboundCampaign(input: {
               });
 
       const deliveryRef = adminDb.collection("outbound_campaign_deliveries").doc();
+      const aiFollowupContext = enrichAiFollowupWithFlow(campaign.aiFollowup, campaign.automationFlow);
       const campaignContext = {
         campaignId: input.campaignId,
         campaignName: campaign.name,
@@ -654,7 +766,8 @@ export async function dispatchOutboundCampaign(input: {
               ? dispatchResult.templateParams || []
               : [],
         templateHeaderMedia: campaign.deliveryMode === "template" ? campaign.headerMedia : null,
-        aiFollowup: campaign.aiFollowup,
+        aiFollowup: aiFollowupContext,
+        automationFlow: campaign.automationFlow,
         metaMessageId: dispatchResult.metaMessageId || null,
         status: "sent",
         sentAt: FieldValue.serverTimestamp(),

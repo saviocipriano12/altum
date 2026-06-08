@@ -24,6 +24,7 @@ type Body = {
   bodyParams?: unknown;
   headerMedia?: unknown;
   aiFollowup?: unknown;
+  automationFlow?: unknown;
   maxRecipients?: unknown;
   scheduledAt?: unknown;
   sendRatePerMinute?: unknown;

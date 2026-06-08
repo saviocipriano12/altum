@@ -11,6 +11,7 @@ import {
   Filter,
   Image as ImageIcon,
   Loader2,
+  GitBranch,
   MessageCircle,
   MoreHorizontal,
   Pause,
@@ -23,10 +24,11 @@ import {
   Trash2,
   Users,
   Video,
+  Wand2,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { storage } from "@/firebaseConfig";
 import {
   ClientActionButton,
@@ -39,6 +41,35 @@ import {
 type CampaignStatus = "draft" | "active" | "paused";
 type DeliveryMode = "text" | "template";
 type Step = "remetente" | "publico" | "conteudo" | "revisao";
+type BuilderMode = "simple" | "flow";
+
+type AutomationFlowNodeType = "send" | "condition" | "ai" | "media" | "meeting" | "human" | "end";
+
+type AutomationFlowNode = {
+  id: string;
+  type: AutomationFlowNodeType;
+  label: string;
+  description: string;
+  x: number;
+  y: number;
+  message?: string;
+  condition?: string;
+  nextAction?: string;
+};
+
+type AutomationFlowEdge = {
+  id: string;
+  from: string;
+  to: string;
+  label?: string;
+};
+
+type AutomationFlow = {
+  enabled: boolean;
+  objective: string;
+  nodes: AutomationFlowNode[];
+  edges: AutomationFlowEdge[];
+};
 
 type Channel = {
   id: string;
@@ -84,6 +115,7 @@ type Campaign = {
     handoffRule: string;
     notes: string;
   };
+  automationFlow: AutomationFlow;
   maxRecipients: number;
   scheduledAt: string | null;
   sendRatePerMinute: number;
@@ -172,6 +204,66 @@ type AudienceImportSummary = {
   sourceLabel: string;
 };
 
+function createDefaultAutomationFlow(): AutomationFlow {
+  return {
+    enabled: false,
+    objective: "Converter interessados em reuniao qualificada ou venda assistida pela IA.",
+    nodes: [
+      {
+        id: "send_intro",
+        type: "send",
+        label: "Disparo inicial",
+        description: "Mensagem/template enviado para a base escolhida.",
+        x: 24,
+        y: 42,
+        message: "Enviar a mensagem principal e aguardar resposta.",
+      },
+      {
+        id: "reply_interest",
+        type: "condition",
+        label: "Se responder interesse",
+        description: "Ex.: quero ver, manda exemplo, tenho interesse.",
+        x: 310,
+        y: 42,
+        condition: "Lead pediu para ver, entender preco, exemplo ou proximo passo.",
+      },
+      {
+        id: "ai_qualifies",
+        type: "ai",
+        label: "IA qualifica",
+        description: "A IA entende necessidade, envia exemplo e conduz sem repetir perguntas.",
+        x: 596,
+        y: 42,
+        nextAction: "Enviar exemplo, confirmar contexto e oferecer diagnostico ou reuniao.",
+      },
+      {
+        id: "book_meeting",
+        type: "meeting",
+        label: "Agenda ou proposta",
+        description: "Quando estiver pronto, marcar reuniao ou gerar oportunidade.",
+        x: 882,
+        y: 42,
+        nextAction: "Criar reuniao qualificada, brief comercial e aviso para o vendedor.",
+      },
+      {
+        id: "handoff_human",
+        type: "human",
+        label: "Humano assume",
+        description: "Se pedir humano, contrato, objecao forte ou preco fechado.",
+        x: 596,
+        y: 230,
+        condition: "Pedir atendimento humano, contrato, negociacao ou proposta formal.",
+      },
+    ],
+    edges: [
+      { id: "edge_intro_interest", from: "send_intro", to: "reply_interest", label: "respondeu" },
+      { id: "edge_interest_ai", from: "reply_interest", to: "ai_qualifies", label: "interesse" },
+      { id: "edge_ai_meeting", from: "ai_qualifies", to: "book_meeting", label: "qualificado" },
+      { id: "edge_ai_human", from: "ai_qualifies", to: "handoff_human", label: "precisa humano" },
+    ],
+  };
+}
+
 const STEPS: Array<{ id: Step; label: string; icon: typeof Smartphone }> = [
   { id: "remetente", label: "Remetente", icon: Smartphone },
   { id: "publico", label: "Publico", icon: Users },
@@ -201,6 +293,7 @@ function emptyCampaign(): Campaign {
       handoffRule: "Chamar humano quando o lead pedir proposta, preco fechado, contrato ou quiser falar com uma pessoa.",
       notes: "",
     },
+    automationFlow: createDefaultAutomationFlow(),
     maxRecipients: 50,
     scheduledAt: null,
     sendRatePerMinute: 20,
@@ -289,6 +382,43 @@ function safeUploadName(value: string) {
 function buildUploadId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function waitForResumableUpload(
+  task: ReturnType<typeof uploadBytesResumable>,
+  onProgress: (progress: number) => void,
+  timeoutMs = 90000
+) {
+  return new Promise<void>((resolve, reject) => {
+    let done = false;
+    const timeout = window.setTimeout(() => {
+      if (done) return;
+      done = true;
+      task.cancel();
+      reject(new Error("Upload direto demorou demais. Tentando envio seguro pelo servidor."));
+    }, timeoutMs);
+
+    task.on(
+      "state_changed",
+      (snapshot) => {
+        const progress = snapshot.totalBytes ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100) : 0;
+        onProgress(progress);
+      },
+      (uploadError) => {
+        if (done) return;
+        done = true;
+        window.clearTimeout(timeout);
+        reject(uploadError);
+      },
+      () => {
+        if (done) return;
+        done = true;
+        window.clearTimeout(timeout);
+        onProgress(100);
+        resolve();
+      }
+    );
+  });
 }
 
 function csvEscape(value: string) {
@@ -395,9 +525,11 @@ export default function BulkMessagingPage() {
   const [editor, setEditor] = useState<Campaign>(emptyCampaign);
   const [selectedId, setSelectedId] = useState("");
   const [step, setStep] = useState<Step>("remetente");
+  const [builderMode, setBuilderMode] = useState<BuilderMode>("simple");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState<"save" | "preview" | "send" | "delete" | "media" | "audience" | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [audienceImport, setAudienceImport] = useState<AudienceImportSummary | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -733,6 +865,8 @@ export default function BulkMessagingPage() {
     if (!tenant?.tenantId || !canManage) return;
     setWorking("media");
     setError("");
+    setNotice("");
+    setUploadProgress(0);
     try {
       const type = inferUploadType(file);
       if (!type) {
@@ -746,25 +880,68 @@ export default function BulkMessagingPage() {
       const fileName = safeUploadName(file.name);
       const extension = extensionFromFile(file, type);
       const path = `outbound-media/${tenant.tenantId}/${new Date().toISOString().slice(0, 10)}/${buildUploadId()}.${extension}`;
-      const ref = storageRef(storage, path);
-      await uploadBytes(ref, file, {
-        contentType: file.type || "application/octet-stream",
-        customMetadata: {
-          tenantId: tenant.tenantId,
-          purpose: "outbound_campaign",
-          originalName: fileName,
-        },
-      });
-      const link = await getDownloadURL(ref);
-      setEditor((current) => ({
-        ...current,
-        headerMedia: {
+      let media:
+        | {
+            type: "image" | "video" | "document";
+            link?: string;
+            filename?: string;
+            contentType?: string;
+            size?: number;
+            storagePath?: string;
+          }
+        | null = null;
+
+      try {
+        const ref = storageRef(storage, path);
+        const task = uploadBytesResumable(ref, file, {
+          contentType: file.type || "application/octet-stream",
+          customMetadata: {
+            tenantId: tenant.tenantId,
+            purpose: "outbound_campaign",
+            originalName: fileName,
+          },
+        });
+        await waitForResumableUpload(task, setUploadProgress);
+        const link = await getDownloadURL(ref);
+        media = {
           type,
           link,
           filename: fileName,
           contentType: file.type || "application/octet-stream",
           size: file.size,
           storagePath: path,
+        };
+      } catch (directUploadError) {
+        console.warn("Upload direto falhou, tentando fallback pelo servidor:", directUploadError);
+        setUploadProgress(5);
+        const form = new FormData();
+        form.append("file", file);
+        const response = await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns/media`, {
+          method: "POST",
+          body: form,
+        });
+        let payload: { media?: typeof media; error?: string } = {};
+        try {
+          payload = (await response.json()) as typeof payload;
+        } catch {
+          payload = {};
+        }
+        if (!response.ok || !payload.media?.link) {
+          throw new Error(payload.error || "Falha ao subir arquivo pelo servidor.");
+        }
+        media = payload.media;
+        setUploadProgress(100);
+      }
+
+      setEditor((current) => ({
+        ...current,
+        headerMedia: {
+          type: media?.type || type,
+          link: media?.link,
+          filename: media?.filename || fileName,
+          contentType: media?.contentType || file.type || "application/octet-stream",
+          size: media?.size || file.size,
+          storagePath: media?.storagePath || path,
         },
       }));
       setPreview(null);
@@ -773,6 +950,7 @@ export default function BulkMessagingPage() {
       setError(uploadError instanceof Error ? uploadError.message : "Falha ao subir arquivo no Storage.");
     } finally {
       setWorking(null);
+      window.setTimeout(() => setUploadProgress(null), 450);
     }
   }
 
@@ -858,37 +1036,75 @@ export default function BulkMessagingPage() {
                 />
                 <StateBadge label={`${readiness}% pronto`} tone={readiness >= 80 ? "success" : "warning"} />
               </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
+                {[
+                  { id: "simple" as BuilderMode, label: "Disparo simples", icon: MessageCircle },
+                  { id: "flow" as BuilderMode, label: "Fluxo visual", icon: GitBranch },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  const active = builderMode === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setBuilderMode(item.id);
+                        if (item.id === "flow") {
+                          setEditor((current) => ({
+                            ...current,
+                            automationFlow: { ...(current.automationFlow || createDefaultAutomationFlow()), enabled: true },
+                          }));
+                        }
+                      }}
+                      className={`inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] px-3 py-2 text-sm font-black transition sm:flex-none ${
+                        active ? "bg-white text-[var(--cliente-primary)] shadow-sm" : "text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="flex overflow-x-auto border-b border-[var(--cliente-border)] px-2 md:px-4">
-              {STEPS.map((item, index) => {
-                const Icon = item.icon;
-                const active = step === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setStep(item.id)}
-                    className={`flex min-w-max items-center gap-2 border-b-2 px-3 py-4 text-sm font-semibold transition md:px-4 ${
-                      active
-                        ? "border-[var(--cliente-primary)] text-[var(--cliente-primary)]"
-                        : "border-transparent text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
-                    }`}
-                  >
-                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] ${active ? "bg-[var(--cliente-primary)] text-white" : "bg-[var(--cliente-surface-muted)]"}`}>
-                      {active ? <Icon className="h-3.5 w-3.5" /> : index + 1}
-                    </span>
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
+            {builderMode === "simple" ? (
+              <div className="flex overflow-x-auto border-b border-[var(--cliente-border)] px-2 md:px-4">
+                {STEPS.map((item, index) => {
+                  const Icon = item.icon;
+                  const active = step === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setStep(item.id)}
+                      className={`flex min-w-max items-center gap-2 border-b-2 px-3 py-4 text-sm font-semibold transition md:px-4 ${
+                        active
+                          ? "border-[var(--cliente-primary)] text-[var(--cliente-primary)]"
+                          : "border-transparent text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"
+                      }`}
+                    >
+                      <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] ${active ? "bg-[var(--cliente-primary)] text-white" : "bg-[var(--cliente-surface-muted)]"}`}>
+                        {active ? <Icon className="h-3.5 w-3.5" /> : index + 1}
+                      </span>
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
 
             <div className="p-4 md:p-6">
-              {step === "remetente" ? (
+              {builderMode === "flow" ? (
+                <FlowBuilder
+                  flow={editor.automationFlow || createDefaultAutomationFlow()}
+                  onChange={(automationFlow) => { setEditor((current) => ({ ...current, automationFlow })); setPreview(null); }}
+                />
+              ) : null}
+              {builderMode === "simple" && step === "remetente" ? (
                 <SenderStep channels={channels} selectedId={editor.channelId} onSelect={chooseChannel} />
               ) : null}
-              {step === "publico" ? (
+              {builderMode === "simple" && step === "publico" ? (
                 <AudienceStep
                   editor={editor}
                   importing={working === "audience"}
@@ -897,7 +1113,7 @@ export default function BulkMessagingPage() {
                   onChange={(patch) => { setEditor((current) => ({ ...current, ...patch })); setPreview(null); }}
                 />
               ) : null}
-              {step === "conteudo" ? (
+              {builderMode === "simple" && step === "conteudo" ? (
                 <ContentStep
                   editor={editor}
                   official={officialChannel}
@@ -906,11 +1122,12 @@ export default function BulkMessagingPage() {
                   templateError={templateError}
                   loadingTemplates={loadingTemplates}
                   uploading={working === "media"}
+                  uploadProgress={uploadProgress}
                   onUpload={uploadMedia}
                   onChange={(patch) => { setEditor((current) => ({ ...current, ...patch })); setPreview(null); }}
                 />
               ) : null}
-              {step === "revisao" ? (
+              {builderMode === "simple" && step === "revisao" ? (
                 <ReviewStep editor={editor} channel={selectedChannel} preview={preview} riskLevel={riskLevel} />
               ) : null}
             </div>
@@ -1175,6 +1392,232 @@ function AudienceStep({
   );
 }
 
+function flowNodeTone(type: AutomationFlowNodeType) {
+  if (type === "send") return "border-emerald-300 bg-emerald-50 text-emerald-900";
+  if (type === "condition") return "border-amber-300 bg-amber-50 text-amber-900";
+  if (type === "ai") return "border-violet-300 bg-violet-50 text-violet-900";
+  if (type === "media") return "border-sky-300 bg-sky-50 text-sky-900";
+  if (type === "meeting") return "border-blue-300 bg-blue-50 text-blue-900";
+  if (type === "human") return "border-rose-300 bg-rose-50 text-rose-900";
+  return "border-slate-300 bg-slate-50 text-slate-900";
+}
+
+function flowNodeIcon(type: AutomationFlowNodeType) {
+  if (type === "send") return Send;
+  if (type === "condition") return GitBranch;
+  if (type === "ai") return Wand2;
+  if (type === "media") return ImageIcon;
+  if (type === "meeting") return Clock3;
+  if (type === "human") return Users;
+  return CheckCircle2;
+}
+
+function flowNodeLabel(type: AutomationFlowNodeType) {
+  if (type === "send") return "Mensagem";
+  if (type === "condition") return "Condicao";
+  if (type === "ai") return "IA";
+  if (type === "media") return "Arquivo";
+  if (type === "meeting") return "Reuniao";
+  if (type === "human") return "Humano";
+  return "Fim";
+}
+
+function FlowBuilder({ flow, onChange }: { flow: AutomationFlow; onChange: (flow: AutomationFlow) => void }) {
+  const updateFlow = (patch: Partial<AutomationFlow>) => onChange({ ...flow, ...patch, enabled: true });
+  const updateNode = (nodeId: string, patch: Partial<AutomationFlowNode>) =>
+    updateFlow({
+      nodes: flow.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)),
+    });
+  const addNode = (type: AutomationFlowNodeType) => {
+    let suffix = flow.nodes.length + 1;
+    while (flow.nodes.some((node) => node.id === `${type}_${suffix}`)) suffix += 1;
+    const id = `${type}_${suffix}`;
+    const last = flow.nodes[flow.nodes.length - 1];
+    const nextNode: AutomationFlowNode = {
+      id,
+      type,
+      label: flowNodeLabel(type),
+      description:
+        type === "condition"
+          ? "Defina o que o lead precisa responder para seguir por este caminho."
+          : type === "media"
+            ? "Arquivo, exemplo, video ou documento que a IA pode usar na conversa."
+            : type === "human"
+              ? "Ponto em que a IA para de responder e avisa o time."
+              : "Proximo passo do fluxo.",
+      x: Math.min(930, (last?.x || 24) + 210),
+      y: last?.y || 42,
+    };
+    updateFlow({
+      nodes: [...flow.nodes, nextNode],
+      edges: last ? [...flow.edges, { id: `edge_${last.id}_${id}`, from: last.id, to: id, label: "proximo" }] : flow.edges,
+    });
+  };
+  const removeNode = (nodeId: string) => {
+    if (flow.nodes.length <= 1) return;
+    updateFlow({
+      nodes: flow.nodes.filter((node) => node.id !== nodeId),
+      edges: flow.edges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId),
+    });
+  };
+  const addEdgeFrom = (from: string, to: string) => {
+    if (!from || !to || from === to || flow.edges.some((edge) => edge.from === from && edge.to === to)) return;
+    let suffix = flow.edges.length + 1;
+    while (flow.edges.some((edge) => edge.id === `edge_${from}_${to}_${suffix}`)) suffix += 1;
+    updateFlow({ edges: [...flow.edges, { id: `edge_${from}_${to}_${suffix}`, from, to, label: "regra" }] });
+  };
+  const nodeById = new Map(flow.nodes.map((node) => [node.id, node]));
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="text-lg font-bold text-[var(--cliente-card-text)]">Fluxo visual do disparo</h3>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+            Desenhe o caminho que a IA deve seguir depois do envio: resposta do lead, material enviado, qualificacao, reuniao e handoff.
+          </p>
+        </div>
+        <StateBadge label="arraste os blocos" tone="info" />
+      </div>
+
+      <Field label="Objetivo do fluxo" hint="A IA usa isso como norte quando o lead responder.">
+        <textarea
+          value={flow.objective}
+          onChange={(event) => updateFlow({ objective: event.target.value })}
+          className="client-input min-h-20 resize-y"
+          placeholder="Levar o lead ate uma reuniao qualificada ou venda assistida."
+        />
+      </Field>
+
+      <div className="flex flex-wrap gap-2">
+        {(["condition", "ai", "media", "meeting", "human", "end"] as AutomationFlowNodeType[]).map((type) => {
+          const Icon = flowNodeIcon(type);
+          return (
+            <button
+              key={type}
+              type="button"
+              onClick={() => addNode(type)}
+              className="inline-flex items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-white px-3 py-2 text-xs font-black text-[var(--cliente-card-text)] shadow-sm transition hover:-translate-y-0.5"
+            >
+              <Icon className="h-3.5 w-3.5" />
+              Adicionar {flowNodeLabel(type)}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="relative h-[520px] overflow-auto rounded-[24px] border border-[var(--cliente-border)] bg-[linear-gradient(#e8eef7_1px,transparent_1px),linear-gradient(90deg,#e8eef7_1px,transparent_1px)] bg-[size:28px_28px] p-4">
+        <div className="relative h-[470px] min-w-[1120px]">
+          <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
+            <defs>
+              <marker id="flow-arrow" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
+                <path d="M0,0 L8,4 L0,8 z" fill="#2563eb" />
+              </marker>
+            </defs>
+            {flow.edges.map((edge) => {
+              const from = nodeById.get(edge.from);
+              const to = nodeById.get(edge.to);
+              if (!from || !to) return null;
+              const x1 = from.x + 210;
+              const y1 = from.y + 58;
+              const x2 = to.x;
+              const y2 = to.y + 58;
+              const mid = Math.max(x1 + 30, (x1 + x2) / 2);
+              return (
+                <g key={edge.id}>
+                  <path
+                    d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`}
+                    fill="none"
+                    markerEnd="url(#flow-arrow)"
+                    stroke="#2563eb"
+                    strokeWidth="2.5"
+                  />
+                  {edge.label ? (
+                    <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} fill="#1d4ed8" fontSize="11" fontWeight="800">
+                      {edge.label}
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })}
+          </svg>
+
+          {flow.nodes.map((node) => {
+            const Icon = flowNodeIcon(node.type);
+            return (
+              <div
+                key={node.id}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData("text/plain", node.id);
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  const from = event.dataTransfer.getData("text/plain");
+                  addEdgeFrom(from, node.id);
+                }}
+                onDragEnd={(event) => {
+                  const board = event.currentTarget.parentElement?.getBoundingClientRect();
+                  if (!board) return;
+                  const x = Math.max(8, Math.min(980, event.clientX - board.left - 105));
+                  const y = Math.max(8, Math.min(360, event.clientY - board.top - 34));
+                  updateNode(node.id, { x, y });
+                }}
+                style={{ left: node.x, top: node.y }}
+                className={`absolute w-[230px] rounded-[20px] border p-3 shadow-sm ${flowNodeTone(node.type)}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/75">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <input
+                      value={node.label}
+                      onChange={(event) => updateNode(node.id, { label: event.target.value })}
+                      className="min-w-0 flex-1 border-0 bg-transparent text-sm font-black outline-none"
+                    />
+                  </div>
+                  <button type="button" onClick={() => removeNode(node.id)} className="rounded-full bg-white/70 p-1 text-rose-600">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <textarea
+                  value={node.description}
+                  onChange={(event) => updateNode(node.id, { description: event.target.value })}
+                  className="mt-2 h-16 w-full resize-none rounded-[14px] border border-white/80 bg-white/70 p-2 text-xs leading-5 outline-none"
+                />
+                <textarea
+                  value={node.condition || node.message || node.nextAction || ""}
+                  onChange={(event) =>
+                    updateNode(
+                      node.id,
+                      node.type === "condition" || node.type === "human"
+                        ? { condition: event.target.value }
+                        : node.type === "send" || node.type === "media"
+                          ? { message: event.target.value }
+                          : { nextAction: event.target.value }
+                    )
+                  }
+                  className="mt-2 h-16 w-full resize-none rounded-[14px] border border-white/80 bg-white/80 p-2 text-xs leading-5 outline-none"
+                  placeholder="Regra, mensagem ou acao..."
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-[18px] border border-violet-200 bg-violet-500/8 p-4">
+        <p className="text-sm font-black text-[var(--cliente-card-text)]">Como a IA vai usar isso</p>
+        <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+          Quando o lead responder, a Altum le este fluxo junto com a campanha. Os blocos viram orientacao pratica para decidir resposta, material,
+          proximo passo, reuniao ou handoff humano.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ContentStep({
   editor,
   official,
@@ -1183,6 +1626,7 @@ function ContentStep({
   templateError,
   loadingTemplates,
   uploading,
+  uploadProgress,
   onUpload,
   onChange,
 }: {
@@ -1193,6 +1637,7 @@ function ContentStep({
   templateError: string;
   loadingTemplates: boolean;
   uploading: boolean;
+  uploadProgress: number | null;
   onUpload: (file: File) => void;
   onChange: (patch: Partial<Campaign>) => void;
 }) {
@@ -1367,7 +1812,11 @@ function ContentStep({
           {uploading ? <Loader2 className="h-5 w-5 animate-spin text-[var(--cliente-primary)]" /> : <ImageIcon className="h-5 w-5 text-[var(--cliente-primary)]" />}
           <span>
             <span className="block text-sm font-semibold text-[var(--cliente-card-text)]">{uploading ? "Enviando arquivo..." : "Adicionar imagem, video ou documento"}</span>
-            <span className="mt-1 block text-xs text-[var(--cliente-card-text-soft)]">Upload direto. Imagens ate 12 MB, videos ate 64 MB e documentos ate 24 MB.</span>
+            <span className="mt-1 block text-xs text-[var(--cliente-card-text-soft)]">
+              {uploading && uploadProgress !== null
+                ? `${uploadProgress}% enviado. Se o navegador travar, a Altum tenta pelo servidor.`
+                : "Upload direto. Imagens ate 12 MB, videos ate 64 MB e documentos ate 24 MB."}
+            </span>
           </span>
           <input
             type="file"
