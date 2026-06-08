@@ -48,6 +48,7 @@ import {
 import { db } from "@/firebaseConfig";
 import { useAuth } from "@/context/AuthContext";
 import { authedFetch } from "@/app/lib/authed-fetch";
+import { canReceiveDistributedLeads } from "@/lib/agency-roles";
 
 import {
   ChatDoc, ChatStatus, ChatPriority, MessageDoc, MessageType,
@@ -1308,7 +1309,12 @@ export default function ChatPage() {
     if (!isAdmin) return;
     return onSnapshot(
       query(collection(db, "users"), where("status", "==", "active")),
-      (snap) => setTeamUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TeamUser)))
+      (snap) =>
+        setTeamUsers(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() } as TeamUser))
+            .filter((user) => canReceiveDistributedLeads(user.role))
+        )
     );
   }, [isAdmin]);
 
