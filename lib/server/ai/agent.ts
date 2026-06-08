@@ -20,6 +20,7 @@ import {
   trackLeadStageOutcome,
   trackProposalOutcome,
 } from "@/lib/server/ai/learning-outcomes";
+import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 import { enrichInboundMessageForAgent } from "@/lib/server/ai/multimodal";
 import { scoreAltumConversationQuality } from "@/lib/server/ai/quality-score";
 import { sendAltumVoiceReply } from "@/lib/server/ai/voice";
@@ -1623,6 +1624,7 @@ async function executeAltumAgentActions(input: {
   runtimeState: AltumConversationRuntimeState | null;
   extractedFields?: Record<string, string> | null;
   inboundText: string;
+  conversation?: ConversationMessage[] | null;
   businessProfileId: BusinessProfileId;
   leadName?: string | null;
   leadOwnerId?: string | null;
@@ -2189,6 +2191,19 @@ async function executeAltumAgentActions(input: {
       recommendedOffer: input.plan.recommendedOffer || aiMemory.serviceInterest,
       summary: leadPatch.aiLeadSummary as string,
     });
+    await upsertLeadCommercialDossier({
+      tenantId: input.tenantId,
+      leadId,
+      trigger: "proposal_draft",
+      sourceId: proposalId,
+      chatId: input.chatId,
+      plan: input.plan,
+      lead: { ...leadData, ...leadPatch },
+      leadMemory: aiMemory,
+      conversation: input.conversation || null,
+      actorId: "ai_sales_agent",
+      actorName: "AI Sales Agent",
+    });
 
     await Promise.all([
       leadRef.collection("events").add({
@@ -2220,6 +2235,26 @@ async function executeAltumAgentActions(input: {
       leadName: input.leadName || sanitizeText(leadData.nome, 180) || null,
       leadCompany: sanitizeText(leadData.empresa, 180) || null,
       summary: leadPatch.aiLeadSummary as string,
+    });
+    await upsertLeadCommercialDossier({
+      tenantId: input.tenantId,
+      leadId,
+      trigger: "appointment_scheduled",
+      sourceId: appointmentId,
+      appointmentId,
+      chatId: input.chatId,
+      plan: input.plan,
+      lead: { ...leadData, ...leadPatch },
+      leadMemory: aiMemory,
+      conversation: input.conversation || null,
+      appointment: {
+        id: appointmentId,
+        title: `Diagnostico comercial com ${sanitizeText(input.leadName, 120) || "lead"}`,
+        startAt: addHours(new Date(), 24).toISOString(),
+        notes: leadPatch.aiLeadSummary,
+      },
+      actorId: "ai_sales_agent",
+      actorName: "AI Sales Agent",
     });
 
     await Promise.all([
@@ -2328,6 +2363,20 @@ async function executeAltumAgentActions(input: {
     });
 
     if (handoffTaskId) {
+      await upsertLeadCommercialDossier({
+        tenantId: input.tenantId,
+        leadId,
+        trigger: "handoff",
+        sourceId: handoffTaskId,
+        chatId: input.chatId,
+        plan: input.plan,
+        lead: { ...leadData, ...leadPatch },
+        leadMemory: aiMemory,
+        conversation: input.conversation || null,
+        actorId: "ai_sales_agent",
+        actorName: "AI Sales Agent",
+      });
+
       await Promise.all([
         leadRef.collection("events").add({
           type: "ai_handoff_requested",
@@ -4007,6 +4056,7 @@ export async function handleIncomingMessage(
     runtimeState,
     extractedFields,
     inboundText,
+    conversation,
     businessProfileId: aiConfig.businessProfileId,
     leadName: sanitizeText(chatData.contactName, 120) || null,
     leadOwnerId: sanitizeText(chatData.ownerId || chatData.assignedUserId, 160) || null,

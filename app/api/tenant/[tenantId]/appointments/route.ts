@@ -9,6 +9,7 @@ import {
   TenantAccessError,
 } from "@/lib/server/tenant";
 import { trackAppointmentOutcome } from "@/lib/server/ai/learning-outcomes";
+import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 
 type Body = {
@@ -155,6 +156,26 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         reason: "meeting_scheduled",
       }).catch((error) => {
         console.error("Falha ao disparar conversao de reuniao agendada:", error);
+      });
+
+      await upsertLeadCommercialDossier({
+        tenantId,
+        leadId,
+        trigger: "appointment_scheduled",
+        sourceId: ref.id,
+        appointmentId: ref.id,
+        lead,
+        appointment: {
+          id: ref.id,
+          title,
+          startAt,
+          endAt: parseIso(body.endAt),
+          location: clean(body.location, 180) || null,
+          meetingUrl: clean(body.meetingUrl, 500) || null,
+          notes: clean(body.notes, 4000) || null,
+        },
+        actorId: user.uid,
+        actorName: user.name,
       });
     }
 

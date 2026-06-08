@@ -8,6 +8,7 @@ import {
   TenantAccessError,
 } from "@/lib/server/tenant";
 import { trackAppointmentOutcome } from "@/lib/server/ai/learning-outcomes";
+import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 
 type Body = {
@@ -173,6 +174,23 @@ export async function PATCH(
           reason: "meeting_completed",
         }).catch((error) => {
           console.error("Falha ao disparar conversao de reuniao concluida:", error);
+        });
+
+        const leadSnap = await adminDb.collection("leads").doc(leadId).get();
+        await upsertLeadCommercialDossier({
+          tenantId,
+          leadId,
+          trigger: "appointment_completed",
+          sourceId: appointmentId,
+          appointmentId,
+          lead: leadSnap.exists ? (leadSnap.data() as Record<string, unknown>) : null,
+          appointment: {
+            ...current,
+            ...patch,
+            id: appointmentId,
+          },
+          actorId: user.uid,
+          actorName: user.name,
         });
       }
     }

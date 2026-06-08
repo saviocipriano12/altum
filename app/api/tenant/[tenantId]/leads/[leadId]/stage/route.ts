@@ -6,6 +6,7 @@ import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/li
 import { runLeadAutomations } from "@/lib/server/automations";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
+import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { syncLeadCommercialState } from "@/lib/server/crm/operations";
 
@@ -118,6 +119,16 @@ export async function POST(
         reason: "sale_won",
       }).catch((error) => {
         console.error("Falha ao disparar conversao de venda:", error);
+      });
+
+      await upsertLeadCommercialDossier({
+        tenantId,
+        leadId,
+        trigger: "sale_won",
+        sourceId: "pipeline_stage_ganho",
+        lead: { ...leadData, ...patch },
+        actorId: user.uid,
+        actorName: user.name,
       });
     }
 

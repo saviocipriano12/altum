@@ -7,6 +7,7 @@ import {
   ArrowRight,
   CheckCircle2,
   ClipboardList,
+  FileText,
   Flame,
   Loader2,
   MessageSquareText,
@@ -114,6 +115,34 @@ type LeadSchedulingAdapter = {
   };
 };
 
+type LeadCommercialDossier = {
+  id?: string;
+  title?: string;
+  status?: string;
+  trigger?: string;
+  triggerLabel?: string;
+  leadName?: string | null;
+  company?: string | null;
+  source?: string | null;
+  score?: number | null;
+  temperature?: string | null;
+  objective?: string | null;
+  recommendedOffer?: string | null;
+  nextAction?: string | null;
+  summary?: string;
+  sellerBrief?: string;
+  painPoints?: string[];
+  objections?: string[];
+  talkingPoints?: string[];
+  questionsToAsk?: string[];
+  recentConversation?: string[];
+  markdown?: string;
+  sourceChatId?: string | null;
+  appointmentId?: string | null;
+  updatedByName?: string | null;
+  updatedAt?: unknown;
+};
+
 type LeadItem = {
   id: string;
   nome?: string;
@@ -161,6 +190,8 @@ type LeadItem = {
   notes?: string;
   qualification?: LeadQualification;
   handoff?: LeadHandoff;
+  commercialDossier?: LeadCommercialDossier;
+  commercialDossierUpdatedAt?: unknown;
   chatSummary?: {
     total?: number;
     open?: number;
@@ -774,6 +805,7 @@ export default function ClienteCrmPage() {
   const leadQualification = detail?.qualification || detail?.lead?.qualification || selectedLead?.qualification || null;
   const leadStagePolicy = detail?.stagePolicy || null;
   const leadHandoff = detail?.handoff || detail?.lead?.handoff || selectedLead?.handoff || null;
+  const commercialDossier = detail?.lead?.commercialDossier || selectedLead?.commercialDossier || null;
   const schedulingAdapter = detail?.schedulingAdapter || null;
   const nextAppointment = useMemo(
     () =>
@@ -1238,6 +1270,112 @@ export default function ClienteCrmPage() {
                     <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatDateTime(selectedConversationSummary.lastInteractionAt)}</p>
                   </div>
                 </div>
+
+                {commercialDossier ? (
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--cliente-border-strong)] bg-[var(--cliente-panel-soft)]">
+                    <div className="border-b border-[var(--cliente-border)] bg-[var(--cliente-accent-soft)] px-4 py-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-accent)]">
+                            <FileText className="h-4 w-4" />
+                            Brief comercial do lead
+                          </div>
+                          <h3 className="mt-2 text-lg font-semibold text-white">
+                            {commercialDossier.title || "Dossie comercial pronto"}
+                          </h3>
+                          <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                            {commercialDossier.sellerBrief || commercialDossier.summary || "A IA ainda esta consolidando o contexto comercial deste lead."}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <StateBadge label={commercialDossier.triggerLabel || "atualizado"} tone="success" />
+                          {commercialDossier.temperature ? <StateBadge label={commercialDossier.temperature} tone="info" /> : null}
+                          {typeof commercialDossier.score === "number" ? (
+                            <StateBadge label={`score ${commercialDossier.score}`} tone={commercialDossier.score >= 75 ? "success" : "warning"} />
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 p-4 xl:grid-cols-[1.2fr_0.8fr]">
+                      <div className="space-y-3">
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <QuickContext
+                            title="Objetivo"
+                            value={commercialDossier.objective || "Confirmar"}
+                            detail={commercialDossier.source ? `Origem: ${commercialDossier.source}` : "Objetivo comercial do lead"}
+                          />
+                          <QuickContext
+                            title="Oferta sugerida"
+                            value={commercialDossier.recommendedOffer || "Validar oferta"}
+                            detail={commercialDossier.nextAction ? humanizeAiNextAction(commercialDossier.nextAction) : "Proximo passo pendente"}
+                          />
+                          <QuickContext
+                            title="Atualizado"
+                            value={formatRelative(commercialDossier.updatedAt)}
+                            detail={commercialDossier.updatedByName || "AI Sales Agent"}
+                          />
+                        </div>
+
+                        <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                            Roteiro recomendado para o vendedor
+                          </p>
+                          <div className="mt-3 grid gap-2 md:grid-cols-2">
+                            {(commercialDossier.talkingPoints || []).slice(0, 6).map((item) => (
+                              <div key={item} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2">
+                                <p className="text-sm leading-5 text-[var(--cliente-card-text)]">{item}</p>
+                              </div>
+                            ))}
+                            {!(commercialDossier.talkingPoints || []).length ? (
+                              <p className="text-sm text-[var(--cliente-card-text-soft)]">Sem roteiro consolidado ainda.</p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Dores e sinais</p>
+                          <div className="mt-3 space-y-2">
+                            {(commercialDossier.painPoints || []).slice(0, 6).map((item) => (
+                              <p key={item} className="rounded-xl bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text)]">
+                                {item}
+                              </p>
+                            ))}
+                            {!(commercialDossier.painPoints || []).length ? (
+                              <p className="text-sm text-[var(--cliente-card-text-soft)]">Aguardando mais contexto.</p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Perguntas pendentes</p>
+                          <div className="mt-3 space-y-2">
+                            {(commercialDossier.questionsToAsk || []).slice(0, 5).map((item) => (
+                              <p key={item} className="rounded-xl bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text)]">
+                                {item}
+                              </p>
+                            ))}
+                            {!(commercialDossier.questionsToAsk || []).length ? (
+                              <p className="text-sm text-[var(--cliente-card-text-soft)]">Nenhuma pergunta critica pendente.</p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {commercialDossier.sourceChatId ? (
+                          <Link
+                            href={`/cliente/painel/inbox?chatId=${encodeURIComponent(commercialDossier.sourceChatId)}&leadId=${encodeURIComponent(selectedLead.id)}`}
+                            className="inline-flex w-full items-center justify-between rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3 text-sm font-medium text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
+                          >
+                            Abrir conversa de origem
+                            <ArrowRight className="h-4 w-4" />
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 {leadQualification || leadStagePolicy || leadHandoff ? (
                   <div className="mt-4 grid gap-3 xl:grid-cols-3">
