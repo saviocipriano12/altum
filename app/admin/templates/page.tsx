@@ -70,6 +70,8 @@ type TemplateSyncResponse = {
 };
 
 const AGENCY_TENANT_ID = "ALTUM_AGENCY";
+const inputClass =
+  "rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400 transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -86,10 +88,10 @@ function statusLabel(status: string) {
 
 function statusClass(status: string) {
   const normalized = status.toLowerCase();
-  if (normalized === "approved") return "border-emerald-400/25 bg-emerald-500/10 text-emerald-100";
-  if (normalized === "pending") return "border-amber-400/25 bg-amber-500/10 text-amber-100";
-  if (normalized === "rejected") return "border-red-400/25 bg-red-500/10 text-red-100";
-  return "border-white/10 bg-white/6 text-white/65";
+  if (normalized === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (normalized === "pending") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (normalized === "rejected") return "border-red-200 bg-red-50 text-red-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
 }
 
 function categoryLabel(category: string) {
@@ -130,10 +132,10 @@ function buildCampaignSnippet(template: WhatsAppTemplate) {
 
 function renderHeaderIcon(format?: string) {
   const normalized = String(format || "").toUpperCase();
-  if (normalized === "IMAGE") return <ImageIcon className="h-5 w-5 text-blue-200" />;
-  if (normalized === "VIDEO") return <Video className="h-5 w-5 text-blue-200" />;
-  if (normalized === "DOCUMENT") return <FileText className="h-5 w-5 text-blue-200" />;
-  return <MessageSquareText className="h-5 w-5 text-blue-200" />;
+  if (normalized === "IMAGE") return <ImageIcon className="h-5 w-5 text-blue-600" />;
+  if (normalized === "VIDEO") return <Video className="h-5 w-5 text-blue-600" />;
+  if (normalized === "DOCUMENT") return <FileText className="h-5 w-5 text-blue-600" />;
+  return <MessageSquareText className="h-5 w-5 text-blue-600" />;
 }
 
 export default function AdminTemplatesPage() {
@@ -188,6 +190,15 @@ export default function AdminTemplatesPage() {
     });
   }, [category, data?.templates, query, status]);
 
+  const summary = data?.summary || {
+    total: 0,
+    approved: 0,
+    pending: 0,
+    rejected: 0,
+    marketing: 0,
+    utility: 0,
+  };
+
   async function copy(value: string, label: string) {
     try {
       await navigator.clipboard.writeText(value);
@@ -220,37 +231,28 @@ export default function AdminTemplatesPage() {
     }
   }
 
-  const summary = data?.summary || {
-    total: 0,
-    approved: 0,
-    pending: 0,
-    rejected: 0,
-    marketing: 0,
-    utility: 0,
-  };
-
   return (
-    <div className="space-y-7">
-      <section className="rounded-xl border border-white/10 bg-[#07111f] p-6">
+    <div className="mx-auto max-w-[1480px] space-y-5 pb-10 text-slate-900">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/25 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-100">
+            <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
               <ShieldCheck className="h-3.5 w-3.5" />
               Biblioteca Meta
             </span>
-            <h1 className="mt-5 text-3xl font-semibold tracking-tight text-white">
-              Templates oficiais para campanhas WhatsApp.
+            <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950">
+              Templates oficiais para campanhas WhatsApp
             </h1>
-            <p className="mt-3 text-sm leading-6 text-white/58">
-              Consulte os modelos aprovados no WABA antes de disparar campanhas. A prospeccao usa esses nomes,
-              idiomas, variaveis e headers de midia para enviar com mais seguranca.
+            <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-600">
+              Consulte modelos aprovados no WABA antes de disparar campanhas. A prospeccao usa nomes, idiomas,
+              variaveis e headers de midia para enviar com mais seguranca.
             </p>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
             <Link
               href="/admin/prospeccao"
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/15"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700"
             >
               <Send className="h-4 w-4" />
               Usar na prospeccao
@@ -259,7 +261,7 @@ export default function AdminTemplatesPage() {
             <button
               type="button"
               onClick={() => void loadTemplates()}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/7 px-4 py-2.5 text-sm font-semibold text-white/78 transition hover:bg-white/12 hover:text-white"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               <RefreshCw className="h-4 w-4" />
               Atualizar
@@ -268,7 +270,7 @@ export default function AdminTemplatesPage() {
               type="button"
               onClick={() => void syncDefaultTemplates()}
               disabled={syncing}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-400/25 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-100 transition hover:bg-blue-500/15 disabled:opacity-55"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-55"
             >
               {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               Sincronizar padroes
@@ -277,7 +279,7 @@ export default function AdminTemplatesPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <Metric label="Total" value={summary.total} />
         <Metric label="Aprovados" value={summary.approved} tone="emerald" />
         <Metric label="Pendentes" value={summary.pending} tone="amber" />
@@ -286,80 +288,52 @@ export default function AdminTemplatesPage() {
         <Metric label="Utilitarios" value={summary.utility} tone="purple" />
       </section>
 
-      <section className="rounded-xl border border-white/10 bg-[#0b101a] p-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-3 xl:grid-cols-[220px_1fr_170px_170px_auto]">
-          <input
-            value={tenantId}
-            onChange={(event) => setTenantId(event.target.value)}
-            className="rounded-lg border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-blue-300/40"
-            placeholder="Tenant. Ex: ALTUM_AGENCY"
-          />
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2.5">
-            <Search className="h-4 w-4 text-white/35" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
-              placeholder="Buscar por nome, corpo, idioma ou categoria"
-            />
+          <input value={tenantId} onChange={(event) => setTenantId(event.target.value)} className={inputClass} placeholder="Tenant. Ex: ALTUM_AGENCY" />
+          <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5">
+            <Search className="h-4 w-4 text-slate-400" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} className="w-full bg-transparent text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400" placeholder="Buscar por nome, corpo, idioma ou categoria" />
           </div>
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as typeof status)}
-            className="rounded-lg border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none"
-          >
+          <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className={inputClass}>
             <option value="all">Todos status</option>
             <option value="approved">Aprovados</option>
             <option value="pending">Pendentes</option>
             <option value="rejected">Rejeitados</option>
           </select>
-          <select
-            value={category}
-            onChange={(event) => setCategory(event.target.value as typeof category)}
-            className="rounded-lg border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none"
-          >
+          <select value={category} onChange={(event) => setCategory(event.target.value as typeof category)} className={inputClass}>
             <option value="all">Categorias</option>
             <option value="MARKETING">Marketing</option>
             <option value="UTILITY">Utilitario</option>
             <option value="AUTHENTICATION">Autenticacao</option>
           </select>
-          <button
-            type="button"
-            onClick={() => void loadTemplates()}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500"
-          >
+          <button type="button" onClick={() => void loadTemplates()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700">
             <Filter className="h-4 w-4" />
             Carregar
           </button>
         </div>
 
         {data?.channel ? (
-          <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/50">
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-              Canal: {data.channel.displayName}
-            </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-              Phone ID: {data.channel.phoneNumberId}
-            </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-              WABA: {data.wabaId || "nao informado"}
-            </span>
+          <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Canal: {data.channel.displayName}</span>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Phone ID: {data.channel.phoneNumberId}</span>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">WABA: {data.wabaId || "nao informado"}</span>
           </div>
         ) : null}
       </section>
 
       {copied ? (
-        <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
           Copiado: {copied}
         </div>
       ) : null}
 
       {syncResult ? (
-        <section className="rounded-xl border border-blue-400/20 bg-blue-500/10 p-4 text-sm text-blue-50">
+        <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="font-semibold">Templates operacionais sincronizados</p>
-              <p className="mt-1 text-blue-50/70">
+              <p className="font-bold">Templates operacionais sincronizados</p>
+              <p className="mt-1 font-medium text-blue-700">
                 Criados: {syncResult.created?.length || 0} | Ja existiam: {syncResult.alreadyPresent?.length || 0} |
                 Falhas: {syncResult.failed?.length || 0}
               </p>
@@ -367,47 +341,36 @@ export default function AdminTemplatesPage() {
             {(syncResult.created?.length || syncResult.alreadyPresent?.length) ? (
               <div className="flex flex-wrap gap-2">
                 {[...(syncResult.created || []), ...(syncResult.alreadyPresent || [])].slice(0, 4).map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => void copy(name, name)}
-                    className="rounded-full border border-blue-200/20 bg-black/20 px-3 py-1 text-xs text-blue-50"
-                  >
+                  <button key={name} type="button" onClick={() => void copy(name, name)} className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-bold text-blue-700">
                     {name}
                   </button>
                 ))}
               </div>
             ) : null}
           </div>
-          {syncResult.failed?.length ? (
-            <div className="mt-3 space-y-1 text-xs text-blue-50/70">
-              {syncResult.failed.slice(0, 3).map((item) => (
-                <p key={item.name}>
-                  {item.name}: {item.error}
-                </p>
-              ))}
-            </div>
-          ) : null}
         </section>
       ) : null}
 
       {error ? (
-        <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-5">
-          <div className="flex items-start gap-3 text-amber-100">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <div className="flex items-start gap-3 text-amber-800">
             <AlertTriangle className="mt-0.5 h-5 w-5" />
             <div>
-              <p className="font-semibold">Nao foi possivel carregar os templates</p>
-              <p className="mt-1 text-sm text-amber-100/72">{error}</p>
+              <p className="font-bold">Nao foi possivel carregar os templates</p>
+              <p className="mt-1 text-sm font-medium text-amber-700">{error}</p>
+              <p className="mt-2 text-xs font-semibold text-amber-700">
+                Se a mensagem falar que o token expirou, renove o token Meta do canal antes de disparar campanhas.
+              </p>
             </div>
           </div>
         </div>
       ) : loading ? (
-        <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#0b101a] p-5 text-white/60">
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-600 shadow-sm">
           <Loader2 className="h-5 w-5 animate-spin" />
           Carregando templates Meta...
         </div>
       ) : filteredTemplates.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/12 bg-white/[0.03] p-6 text-sm text-white/48">
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-sm font-medium text-slate-500">
           Nenhum template encontrado para os filtros atuais.
         </div>
       ) : (
@@ -431,18 +394,18 @@ function Metric({
   tone?: "slate" | "emerald" | "amber" | "red" | "blue" | "purple";
 }) {
   const toneClass = {
-    slate: "text-white",
-    emerald: "text-emerald-100",
-    amber: "text-amber-100",
-    red: "text-red-100",
-    blue: "text-blue-100",
-    purple: "text-purple-100",
+    slate: "text-slate-950",
+    emerald: "text-emerald-700",
+    amber: "text-amber-700",
+    red: "text-red-700",
+    blue: "text-blue-700",
+    purple: "text-purple-700",
   }[tone];
 
   return (
-    <div className="rounded-xl border border-white/10 bg-[#0b101a] p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/35">{label}</p>
-      <p className={cx("mt-2 text-3xl font-semibold", toneClass)}>{value}</p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className={cx("mt-2 text-3xl font-black", toneClass)}>{value}</p>
     </div>
   );
 }
@@ -460,51 +423,45 @@ function TemplateCard({
   const buttons = getButtons(template.components);
 
   return (
-    <article className="rounded-xl border border-white/10 bg-[#0b101a] p-5">
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={cx("rounded-full border px-2.5 py-1 text-xs font-medium", statusClass(template.status))}>
+            <span className={cx("rounded-full border px-2.5 py-1 text-xs font-bold", statusClass(template.status))}>
               {statusLabel(template.status)}
             </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/58">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
               {categoryLabel(template.category)}
             </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/58">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
               {template.language || "idioma"}
             </span>
           </div>
-          <h2 className="mt-4 truncate text-lg font-semibold text-white">{template.name}</h2>
-          <p className="mt-1 text-xs text-white/40">ID Meta: {template.id || "nao informado"}</p>
+          <h2 className="mt-4 truncate text-lg font-black text-slate-950">{template.name}</h2>
+          <p className="mt-1 text-xs font-medium text-slate-500">ID Meta: {template.id || "nao informado"}</p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onCopy(template.name, template.name)}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/7 px-3 py-2 text-xs font-semibold text-white/70 transition hover:bg-white/12 hover:text-white"
-        >
-          <Copy className="h-3.5 w-3.5" />
-          Copiar nome
-        </button>
-        <button
-          type="button"
-          onClick={() => onCopy(buildCampaignSnippet(template), `${template.name} + parametros`)}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/15"
-        >
-          <Clipboard className="h-3.5 w-3.5" />
-          Copiar pacote
-        </button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button type="button" onClick={() => onCopy(template.name, template.name)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50">
+            <Copy className="h-3.5 w-3.5" />
+            Nome
+          </button>
+          <button type="button" onClick={() => onCopy(buildCampaignSnippet(template), `${template.name} + parametros`)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700">
+            <Clipboard className="h-3.5 w-3.5" />
+            Pacote
+          </button>
+        </div>
       </div>
 
       <div className="mt-5 grid gap-3 md:grid-cols-[120px_1fr]">
-        <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
           {renderHeaderIcon(header?.format)}
-          <p className="mt-2 text-xs font-semibold text-white">Header</p>
-          <p className="mt-1 text-xs text-white/45">{header?.format || "Texto/sem midia"}</p>
+          <p className="mt-2 text-xs font-bold text-slate-800">Header</p>
+          <p className="mt-1 text-xs font-medium text-slate-500">{header?.format || "Texto/sem midia"}</p>
         </div>
-        <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/35">Corpo</p>
-          <p className="mt-2 line-clamp-5 whitespace-pre-wrap text-sm leading-6 text-white/72">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Corpo</p>
+          <p className="mt-2 line-clamp-5 whitespace-pre-wrap text-sm font-medium leading-6 text-slate-700">
             {body || "Template sem corpo retornado pela Meta."}
           </p>
         </div>
@@ -513,29 +470,24 @@ function TemplateCard({
       <div className="mt-4 flex flex-wrap gap-2">
         {variables.length ? (
           variables.map((variable) => (
-            <button
-              type="button"
-              key={variable}
-              onClick={() => onCopy(variable, variable)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-blue-400/20 bg-blue-500/10 px-2.5 py-1 text-xs text-blue-100"
-            >
+            <button type="button" key={variable} onClick={() => onCopy(variable, variable)} className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
               <Clipboard className="h-3 w-3" />
               {variable}
             </button>
           ))
         ) : (
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/45">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500">
             Sem variaveis
           </span>
         )}
         {buttons.length ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/20 bg-purple-500/10 px-2.5 py-1 text-xs text-purple-100">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-bold text-purple-700">
             <MessageSquareText className="h-3 w-3" />
             {buttons.length} botao(s)
           </span>
         ) : null}
         {template.status === "approved" ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
             <CheckCircle2 className="h-3 w-3" />
             pronto para disparo
           </span>

@@ -20,6 +20,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
+import { canReceiveDistributedLeads } from "@/lib/agency-roles";
 import {
   Search,
   Loader2,
@@ -47,7 +48,8 @@ import {
   Send,
   CheckSquare,
   Square,
-  ClipboardList
+  ClipboardList,
+  FileDown
 } from "lucide-react";
 
 /* ======================================================
@@ -175,6 +177,30 @@ function formatDateOnly(ts: TimestampLike | number | null | undefined) {
   const d = safeToDate(ts);
   if (!d) return "—";
   return d.toLocaleDateString("pt-BR");
+}
+
+function formatDateTimeForExport(ts: TimestampLike | number | null | undefined) {
+  const d = safeToDate(ts);
+  if (!d) return "";
+  return d.toLocaleString("pt-BR");
+}
+
+function csvCell(value: unknown) {
+  const text = String(value ?? "").replace(/\r?\n/g, " ").trim();
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const content = rows.map((row) => row.map(csvCell).join(";")).join("\r\n");
+  const blob = new Blob([`\uFEFF${content}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 function moneyBR(v?: number) {
@@ -452,7 +478,7 @@ export default function ProspeccaoCRMPage() {
             const userData = d.data() as TeamMemberDoc;
             return { id: d.id, name: userData.name || "Sem nome", role: userData.role };
           })
-          .filter((u) => u.role !== "admin")
+          .filter((u) => canReceiveDistributedLeads(u.role))
           .map(({ id, name }) => ({ id, name })); // Tira o admin da roleta
         setSellers(s);
       });
@@ -765,6 +791,55 @@ export default function ProspeccaoCRMPage() {
   const selectedWithPhone = useMemo(() => {
     return selectedLeads.filter((lead) => !!onlyDigits(lead.telefone || ""));
   }, [selectedLeads]);
+
+  function exportLeadsCsv(scope: "selection" | "filtered") {
+    const source = scope === "selection" && selectedLeads.length > 0 ? selectedLeads : filtered;
+    if (source.length === 0) {
+      alert("Nao ha leads para exportar.");
+      return;
+    }
+
+    const rows = [
+      [
+        "Nome",
+        "Telefone",
+        "Email",
+        "Origem",
+        "Categoria",
+        "Status",
+        "Etapa",
+        "Prioridade",
+        "Temperatura",
+        "Score",
+        "Responsavel",
+        "Site",
+        "Endereco",
+        "Criado em",
+        "Atualizado em",
+      ],
+      ...source.map((lead) => [
+        lead.nome || "",
+        lead.telefone || "",
+        lead.email || "",
+        lead.origem || lead.sourceType || "",
+        lead.categoria || "",
+        STATUS_LABEL[(lead.status || "novo") as LeadStatus] || lead.status || "Novo",
+        stageLabel(lead.stage) || "",
+        PRIORITY_LABEL[(lead.priority || "medium") as Priority] || lead.priority || "",
+        heatLabel(lead.heat),
+        String(lead.score ?? ""),
+        lead.owner || "",
+        lead.website || "",
+        lead.endereco || "",
+        formatDateTimeForExport(lead.createdAt),
+        formatDateTimeForExport(lead.updatedAt),
+      ]),
+    ];
+
+    const exportedSelection = scope === "selection" && selectedLeads.length > 0;
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`altum-leads-${exportedSelection ? "selecionados" : "filtrados"}-${stamp}.csv`, rows);
+  }
 
   const bulkAudienceSummary = useMemo(() => {
     const hot = selectedWithPhone.filter((lead) => (lead.heat || "").toLowerCase() === "quente").length;
@@ -1225,6 +1300,16 @@ export default function ProspeccaoCRMPage() {
               <Phone className="h-4 w-4" />
               Nunca contatado
             </Pill>
+
+            <button
+              onClick={() => exportLeadsCsv(selectedLeadIds.length > 0 ? "selection" : "filtered")}
+              disabled={filtered.length === 0 && selectedLeadIds.length === 0}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950 disabled:opacity-50"
+              title="Baixar leads em CSV para Excel ou Google Sheets"
+            >
+              <FileDown className="h-4 w-4" />
+              Exportar {selectedLeadIds.length > 0 ? `(${selectedLeadIds.length})` : `(${filtered.length})`}
+            </button>
 
             <button
               onClick={clearFilters}
