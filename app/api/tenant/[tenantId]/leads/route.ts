@@ -29,6 +29,8 @@ type LeadItem = {
   qualification?: Record<string, unknown>;
   handoff?: Record<string, unknown>;
   commercialState?: Record<string, unknown>;
+  commercialDossier?: Record<string, unknown> | null;
+  commercialDossierUpdatedAt?: unknown;
   createdAt?: unknown;
   updatedAt?: unknown;
   chatSummary?: {
@@ -147,6 +149,11 @@ export async function GET(
             data.commercialState && typeof data.commercialState === "object"
               ? (data.commercialState as Record<string, unknown>)
               : undefined,
+          commercialDossier:
+            data.commercialDossier && typeof data.commercialDossier === "object"
+              ? (data.commercialDossier as Record<string, unknown>)
+              : null,
+          commercialDossierUpdatedAt: data.commercialDossierUpdatedAt || null,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
           chatSummary: {

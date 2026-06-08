@@ -10,6 +10,7 @@ import {
 } from "@/lib/server/tenant";
 import { trackAppointmentOutcome } from "@/lib/server/ai/learning-outcomes";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
+import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 
 type Body = {
   leadId?: string | null;
@@ -218,6 +219,26 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         reason: "meeting_scheduled",
       }).catch((error) => {
         console.error("Falha ao disparar conversao de reuniao agendada:", error);
+      });
+
+      await upsertLeadCommercialDossier({
+        tenantId,
+        leadId,
+        trigger: "appointment_scheduled",
+        appointmentId: ref.id,
+        sourceId: ref.id,
+        lead,
+        appointment: {
+          title,
+          startAt,
+          endAt,
+          location: clean(body.location, 180) || null,
+          meetingUrl: clean(body.meetingUrl, 500) || null,
+          notes: clean(body.notes, 4000) || null,
+          ownerName,
+        },
+        actorId: user.uid,
+        actorName: user.name,
       });
     }
 

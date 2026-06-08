@@ -9,6 +9,7 @@ import {
 } from "@/lib/server/tenant";
 import { trackAppointmentOutcome } from "@/lib/server/ai/learning-outcomes";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
+import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 
 type Body = {
   title?: string;
@@ -246,6 +247,26 @@ export async function PATCH(
         }).catch((error) => {
           console.error("Falha ao disparar conversao de reuniao concluida:", error);
         });
+
+        const leadSnap = await adminDb.collection("leads").doc(leadId).get();
+        if (leadSnap.exists) {
+          await upsertLeadCommercialDossier({
+            tenantId,
+            leadId,
+            trigger: "appointment_completed",
+            appointmentId,
+            sourceId: appointmentId,
+            lead: leadSnap.data() as Record<string, unknown>,
+            appointment: {
+              ...current,
+              ...patch,
+              id: appointmentId,
+              status: nextStatus,
+            },
+            actorId: user.uid,
+            actorName: user.name,
+          });
+        }
       }
     }
 

@@ -10,6 +10,7 @@ import { analyzeLeadCommercialState, syncLeadCommercialState } from "@/lib/serve
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { mapPipelineStageToConversionStep, recordLeadConversionStep } from "@/lib/server/conversion-trail";
 import { deleteTenantLead, recordDeletionAudit } from "@/lib/server/tenant-data-deletion";
+import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 
 type LeadDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -501,6 +502,16 @@ export async function PATCH(
           reason: "sale_won",
         }).catch((error) => {
           console.error("Falha ao disparar conversao de venda:", error);
+        });
+
+        await upsertLeadCommercialDossier({
+          tenantId,
+          leadId,
+          trigger: "sale_won",
+          sourceId: "lead_patch_ganho",
+          lead: { ...lead, ...patch },
+          actorId: user.uid,
+          actorName: user.name,
         });
       }
 

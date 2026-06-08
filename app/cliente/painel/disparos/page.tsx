@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "@/firebaseConfig";
 import {
   ClientActionButton,
   EmptyState,
@@ -68,6 +70,9 @@ type Campaign = {
     link?: string;
     id?: string;
     filename?: string;
+    contentType?: string;
+    size?: number;
+    storagePath?: string;
   };
   aiFollowup: {
     offerName: string;
@@ -247,6 +252,43 @@ function formatDateTimeLocal(value?: string | null) {
 
 function splitList(value: string) {
   return Array.from(new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))).slice(0, 20);
+}
+
+function inferUploadType(file: File): "image" | "video" | "document" | null {
+  const mime = file.type.toLowerCase();
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime === "application/pdf" || mime.startsWith("text/") || mime.includes("document")) return "document";
+  return null;
+}
+
+function uploadLimitFor(type: "image" | "video" | "document") {
+  if (type === "image") return 12 * 1024 * 1024;
+  if (type === "video") return 64 * 1024 * 1024;
+  return 24 * 1024 * 1024;
+}
+
+function extensionFromFile(file: File, type: "image" | "video" | "document") {
+  const fromName = file.name.toLowerCase().match(/\.([a-z0-9]{2,8})$/)?.[1];
+  if (fromName) return fromName;
+  const mime = file.type.toLowerCase();
+  if (mime.includes("jpeg")) return "jpg";
+  if (mime.includes("png")) return "png";
+  if (mime.includes("webp")) return "webp";
+  if (mime.includes("gif")) return "gif";
+  if (mime.includes("quicktime")) return "mov";
+  if (mime.includes("webm")) return "webm";
+  if (mime.includes("mp4")) return "mp4";
+  return type === "document" ? "pdf" : type === "video" ? "mp4" : "jpg";
+}
+
+function safeUploadName(value: string) {
+  return value.trim().replace(/[^\w.\- ]+/g, "_").slice(0, 180) || `arquivo-${Date.now()}`;
+}
+
+function buildUploadId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function csvEscape(value: string) {
@@ -692,19 +734,43 @@ export default function BulkMessagingPage() {
     setWorking("media");
     setError("");
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const response = await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns/media`, {
-        method: "POST",
-        body: form,
+      const type = inferUploadType(file);
+      if (!type) {
+        throw new Error("Envie uma imagem, video, PDF ou documento compativel.");
+      }
+      const maxBytes = uploadLimitFor(type);
+      if (!file.size || file.size > maxBytes) {
+        throw new Error(`Arquivo acima do limite de ${Math.round(maxBytes / 1024 / 1024)} MB.`);
+      }
+
+      const fileName = safeUploadName(file.name);
+      const extension = extensionFromFile(file, type);
+      const path = `outbound-media/${tenant.tenantId}/${new Date().toISOString().slice(0, 10)}/${buildUploadId()}.${extension}`;
+      const ref = storageRef(storage, path);
+      await uploadBytes(ref, file, {
+        contentType: file.type || "application/octet-stream",
+        customMetadata: {
+          tenantId: tenant.tenantId,
+          purpose: "outbound_campaign",
+          originalName: fileName,
+        },
       });
-      const payload = (await response.json()) as { media?: Campaign["headerMedia"]; error?: string };
-      if (!response.ok || !payload.media) throw new Error(payload.error || "Falha ao subir arquivo.");
-      setEditor((current) => ({ ...current, headerMedia: payload.media || null }));
+      const link = await getDownloadURL(ref);
+      setEditor((current) => ({
+        ...current,
+        headerMedia: {
+          type,
+          link,
+          filename: fileName,
+          contentType: file.type || "application/octet-stream",
+          size: file.size,
+          storagePath: path,
+        },
+      }));
       setPreview(null);
       setNotice(`${file.name} anexado ao disparo.`);
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Falha ao subir arquivo.");
+      setError(uploadError instanceof Error ? uploadError.message : "Falha ao subir arquivo no Storage.");
     } finally {
       setWorking(null);
     }

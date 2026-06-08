@@ -6,6 +6,8 @@ import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/li
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { syncLeadCommercialState } from "@/lib/server/crm/operations";
 import { runPipelineStageSideEffects } from "@/lib/server/crm/stage-effects";
+import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
+import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 
 type Body = {
   stage?: string;
@@ -178,6 +180,36 @@ export async function POST(
       actorName: user.name,
       allowStageAdvance: false,
     });
+
+    if (stage === "qualificacao") {
+      await dispatchLeadConversionEvents({
+        tenantId,
+        leadId,
+        reason: "lead_qualified",
+      }).catch((error) => {
+        console.error("Falha ao disparar conversao de lead qualificado:", error);
+      });
+    }
+
+    if (stage === "ganho") {
+      await dispatchLeadConversionEvents({
+        tenantId,
+        leadId,
+        reason: "sale_won",
+      }).catch((error) => {
+        console.error("Falha ao disparar conversao de venda:", error);
+      });
+
+      await upsertLeadCommercialDossier({
+        tenantId,
+        leadId,
+        trigger: "sale_won",
+        sourceId: "pipeline_stage_ganho",
+        lead: { ...leadData, ...patch },
+        actorId: user.uid,
+        actorName: user.name,
+      });
+    }
 
     return NextResponse.json({ ok: true, tenantId, leadId, previousStage, stage });
   } catch (error) {

@@ -8,6 +8,7 @@ import {
   ClipboardList,
   DollarSign,
   Bot,
+  FileText,
   Loader2,
   MessageSquareText,
   Plus,
@@ -77,6 +78,34 @@ type LeadQualification = {
   nextAction?: string;
 };
 
+type LeadCommercialDossier = {
+  id?: string;
+  title?: string;
+  status?: string;
+  trigger?: string;
+  triggerLabel?: string;
+  leadName?: string | null;
+  company?: string | null;
+  source?: string | null;
+  score?: number | null;
+  temperature?: string | null;
+  objective?: string | null;
+  recommendedOffer?: string | null;
+  nextAction?: string | null;
+  summary?: string;
+  sellerBrief?: string;
+  painPoints?: string[];
+  objections?: string[];
+  talkingPoints?: string[];
+  questionsToAsk?: string[];
+  recentConversation?: string[];
+  markdown?: string;
+  sourceChatId?: string | null;
+  appointmentId?: string | null;
+  updatedByName?: string | null;
+  updatedAt?: unknown;
+};
+
 type LeadItem = {
   id: string;
   nome?: string;
@@ -144,6 +173,8 @@ type LeadItem = {
   aiCommercialTemperature?: string;
   aiLeadSummary?: string;
   aiPlannerConfidence?: number | null;
+  commercialDossier?: LeadCommercialDossier | null;
+  commercialDossierUpdatedAt?: unknown;
   chatSummary?: {
     total?: number;
     open?: number;
@@ -651,6 +682,7 @@ export default function ClienteCrmPage() {
   const selectedOpenChats = Number(selectedLead?.chatSummary?.open || detail?.relatedChats?.filter((chat) => chat.status !== "closed").length || 0);
   const selectedAttribution = useMemo(() => resolveLeadAttribution(selectedLead), [selectedLead]);
   const selectedAiEvidence = useMemo(() => resolveLeadAiEvidence(selectedLead), [selectedLead]);
+  const selectedCommercialDossier = detail?.lead?.commercialDossier || selectedLead?.commercialDossier || null;
   const selectedConversationSummary = detail?.conversationSummary || selectedLead?.chatSummary || {};
   const selectedTimeline = detail?.timeline || [];
   const selectedAppointments = detail?.appointments || [];
@@ -928,6 +960,67 @@ export default function ClienteCrmPage() {
                     </p>
                   ) : null}
                 </div>
+
+                {selectedCommercialDossier ? (
+                  <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_22%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_10%,var(--cliente-card)),var(--cliente-card))] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 text-xs font-black uppercase text-[var(--cliente-primary)]">
+                          <FileText className="h-3.5 w-3.5" />
+                          Brief comercial
+                        </p>
+                        <p className="mt-2 text-sm font-bold leading-6 text-[var(--cliente-card-text)]">
+                          {selectedCommercialDossier.title || "Dossie pronto para venda"}
+                        </p>
+                        <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                          {selectedCommercialDossier.sellerBrief || selectedCommercialDossier.summary || "Resumo comercial consolidado pela IA."}
+                        </p>
+                      </div>
+                      <CrmBadge tone="green">{selectedCommercialDossier.triggerLabel || "atualizado"}</CrmBadge>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <SalesFact label="Objetivo" value={selectedCommercialDossier.objective || "Confirmar"} />
+                      <SalesFact label="Oferta" value={selectedCommercialDossier.recommendedOffer || selectedLead.aiRecommendedOffer || "Validar"} />
+                      <SalesFact label="Proximo passo" value={formatAiAction(selectedCommercialDossier.nextAction || selectedLead.aiNextAction)} />
+                      <SalesFact label="Atualizado" value={formatCrmDate(selectedCommercialDossier.updatedAt, "agora")} />
+                    </div>
+
+                    {(selectedCommercialDossier.talkingPoints || []).length ? (
+                      <div className="mt-4 space-y-2">
+                        <p className="text-[10px] font-black uppercase text-[var(--cliente-card-text-soft)]">Roteiro recomendado</p>
+                        {(selectedCommercialDossier.talkingPoints || []).slice(0, 4).map((item) => (
+                          <p key={item} className="rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs leading-5 text-[var(--cliente-card-text)]">
+                            {item}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-[var(--cliente-card-text-soft)]">Dores</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(selectedCommercialDossier.painPoints || []).slice(0, 4).map((item) => (
+                            <CrmBadge key={item} tone="orange">{item}</CrmBadge>
+                          ))}
+                          {!(selectedCommercialDossier.painPoints || []).length ? <CrmBadge>sem dores</CrmBadge> : null}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-[var(--cliente-card-text-soft)]">Perguntas pendentes</p>
+                        <div className="mt-2 space-y-1">
+                          {(selectedCommercialDossier.questionsToAsk || []).slice(0, 3).map((item) => (
+                            <p key={item} className="text-xs leading-5 text-[var(--cliente-card-text-soft)]">- {item}</p>
+                          ))}
+                          {!(selectedCommercialDossier.questionsToAsk || []).length ? (
+                            <p className="text-xs text-[var(--cliente-card-text-soft)]">Nenhuma pergunta critica pendente.</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                   <div className="flex items-center justify-between gap-3">

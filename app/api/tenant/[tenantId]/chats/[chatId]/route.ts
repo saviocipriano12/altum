@@ -239,6 +239,11 @@ async function resolveLead(chat: ChatDoc, tenantId: string) {
     score: typeof leadData.score === "number" ? leadData.score : null,
     priority: typeof leadData.priority === "string" ? leadData.priority : "",
     heat: typeof leadData.heat === "string" ? leadData.heat : "",
+    commercialDossier:
+      leadData.commercialDossier && typeof leadData.commercialDossier === "object"
+        ? (leadData.commercialDossier as Record<string, unknown>)
+        : null,
+    commercialDossierUpdatedAt: leadData.commercialDossierUpdatedAt || null,
     potentialValue:
       typeof leadData.potentialValue === "number"
         ? leadData.potentialValue

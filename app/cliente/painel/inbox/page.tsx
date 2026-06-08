@@ -205,6 +205,34 @@ type TeamMember = {
   isDefault?: boolean;
 };
 
+type LeadCommercialDossier = {
+  id?: string;
+  title?: string;
+  status?: string;
+  trigger?: string;
+  triggerLabel?: string;
+  leadName?: string | null;
+  company?: string | null;
+  source?: string | null;
+  score?: number | null;
+  temperature?: string | null;
+  objective?: string | null;
+  recommendedOffer?: string | null;
+  nextAction?: string | null;
+  summary?: string;
+  sellerBrief?: string;
+  painPoints?: string[];
+  objections?: string[];
+  talkingPoints?: string[];
+  questionsToAsk?: string[];
+  recentConversation?: string[];
+  markdown?: string;
+  sourceChatId?: string | null;
+  appointmentId?: string | null;
+  updatedByName?: string | null;
+  updatedAt?: unknown;
+};
+
 type LeadSummary = {
   id: string;
   nome?: string;
@@ -267,6 +295,8 @@ type LeadSummary = {
   aiCommercialTemperature?: string;
   aiLeadSummary?: string;
   aiPlannerConfidence?: number | null;
+  commercialDossier?: LeadCommercialDossier | null;
+  commercialDossierUpdatedAt?: unknown;
   timeline?: TimelineEvent[];
 };
 
@@ -2862,6 +2892,7 @@ export default function ClienteInboxPage() {
   const chatNotes = detail?.notes || [];
   const teamMembers = detail?.teamMembers || [];
   const timeline = activeLead?.timeline || [];
+  const commercialDossier = activeLead?.commercialDossier || null;
   const activeAttribution = useMemo(() => resolveInboxAttribution(activeLead), [activeLead]);
   const activeAiEvidence = useMemo(() => resolveAiEvidence(activeLead), [activeLead]);
   const activeSla = activeChat ? getSlaState(activeChat) : { breached: false, label: "sem prazo" };
@@ -2997,6 +3028,82 @@ export default function ClienteInboxPage() {
                   ))}
                 </div>
               </div>
+
+              {commercialDossier ? (
+                <div className="mt-4 rounded-[20px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_10%,var(--cliente-card)),var(--cliente-card))] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--cliente-primary)]">
+                        <FileText className="h-3.5 w-3.5" />
+                        Brief comercial
+                      </div>
+                      <p className="mt-2 text-sm font-black text-[var(--cliente-card-text)]">
+                        {commercialDossier.title || "Dossie pronto para o vendedor"}
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                        {commercialDossier.sellerBrief || commercialDossier.summary || "A IA vai consolidar o roteiro quando houver handoff, reuniao, proposta ou venda."}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <StateBadge label={commercialDossier.triggerLabel || "atualizado"} tone="success" />
+                      <span className="text-[10px] font-semibold text-[var(--cliente-card-text-soft)]">
+                        {formatRelative(commercialDossier.updatedAt)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Oferta sugerida</p>
+                      <p className="mt-1 text-xs font-bold text-[var(--cliente-card-text)]">
+                        {commercialDossier.recommendedOffer || activeLead.aiRecommendedOffer || "Validar oferta na conversa"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Proximo passo</p>
+                      <p className="mt-1 text-xs font-bold text-[var(--cliente-card-text)]">
+                        {formatAiAction(commercialDossier.nextAction || activeLead.aiNextAction)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(commercialDossier.talkingPoints || []).length ? (
+                    <div className="mt-4">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Roteiro recomendado</p>
+                      <div className="mt-2 space-y-2">
+                        {(commercialDossier.talkingPoints || []).slice(0, 3).map((item) => (
+                          <p key={item} className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs leading-5 text-[var(--cliente-card-text)]">
+                            {item}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Dores</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(commercialDossier.painPoints || []).slice(0, 4).map((item) => (
+                          <StateBadge key={item} label={item} tone="warning" />
+                        ))}
+                        {!(commercialDossier.painPoints || []).length ? <StateBadge label="sem dores mapeadas" tone="neutral" /> : null}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Perguntas pendentes</p>
+                      <div className="mt-2 space-y-1">
+                        {(commercialDossier.questionsToAsk || []).slice(0, 3).map((item) => (
+                          <p key={item} className="text-xs leading-5 text-[var(--cliente-card-text-soft)]">- {item}</p>
+                        ))}
+                        {!(commercialDossier.questionsToAsk || []).length ? (
+                          <p className="text-xs text-[var(--cliente-card-text-soft)]">Nenhuma pergunta critica pendente.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
