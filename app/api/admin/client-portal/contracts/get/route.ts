@@ -7,6 +7,14 @@ function clean(value: unknown, max = 140) {
   return value.trim().slice(0, max);
 }
 
+function isResourceExhausted(error: unknown) {
+  if (typeof error !== "object" || !error) return false;
+  const code = "code" in error ? String((error as { code?: unknown }).code || "") : "";
+  const details = "details" in error ? String((error as { details?: unknown }).details || "") : "";
+  const message = "message" in error ? String((error as { message?: unknown }).message || "") : "";
+  return code === "8" || details.includes("Quota exceeded") || message.includes("RESOURCE_EXHAUSTED");
+}
+
 export async function GET(req: Request) {
   try {
     await requireRequestUser(req, { roles: ["admin"] });
@@ -16,7 +24,16 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Parametro obrigatorio: clientId." }, { status: 400 });
     }
 
-    const contractSnap = await adminDb.collection("client_contracts").doc(clientId).get();
+    const contractSnap = await adminDb.collection("client_contracts").doc(clientId).get().catch((error) => {
+      if (isResourceExhausted(error)) {
+        throw new RouteAuthError(
+          429,
+          "firebase_quota_exceeded",
+          "A cota do Firebase/Firestore foi excedida. Aguarde a liberacao da cota ou ative billing no Firebase."
+        );
+      }
+      throw error;
+    });
     if (!contractSnap.exists) {
       return NextResponse.json({ ok: true, contract: null });
     }

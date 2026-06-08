@@ -72,6 +72,22 @@ function normalizeStatus(value: unknown): PortalUserStatus {
   return value === "blocked" ? "blocked" : "active";
 }
 
+function isResourceExhausted(error: unknown) {
+  if (typeof error !== "object" || !error) return false;
+  const code = "code" in error ? String((error as { code?: unknown }).code || "") : "";
+  const details = "details" in error ? String((error as { details?: unknown }).details || "") : "";
+  const message = "message" in error ? String((error as { message?: unknown }).message || "") : "";
+  return code === "8" || details.includes("Quota exceeded") || message.includes("RESOURCE_EXHAUSTED");
+}
+
+function quotaExceededError() {
+  return new PortalAuthError(
+    429,
+    "firebase_quota_exceeded",
+    "A cota do Firebase/Firestore foi excedida. Aguarde a liberacao da cota ou ative billing no Firebase."
+  );
+}
+
 function normalizePortalRole(value: unknown): PortalTenantRole {
   if (
     value === "agency_owner" ||
@@ -114,7 +130,10 @@ async function buildPortalUserFromMembership(
     throw new PortalAuthError(403, "forbidden_portal_role", "Perfil sem acesso ao painel do cliente.");
   }
 
-  const tenantSnap = await adminDb.collection("tenants").doc(membership.tenantId).get();
+  const tenantSnap = await adminDb.collection("tenants").doc(membership.tenantId).get().catch((error) => {
+    if (isResourceExhausted(error)) throw quotaExceededError();
+    throw error;
+  });
   const tenantData = tenantSnap.exists ? (tenantSnap.data() as Record<string, unknown>) : {};
   if (tenantData.status === "blocked" || tenantData.billingStatus === "blocked") {
     throw new PortalAuthError(403, "tenant_billing_blocked", "Acesso ao portal pausado por pendencia financeira.");
@@ -192,19 +211,26 @@ export async function requirePortalRequestUser(
       if (requestedPortalUser) {
         return requestedPortalUser;
       }
-    } catch {
+    } catch (error) {
+      if (isResourceExhausted(error)) throw quotaExceededError();
       // Falls back to default membership or legacy portal below.
     }
   }
 
-  const membership = await getDefaultTenantMembershipForUser(decoded.uid);
+  const membership = await getDefaultTenantMembershipForUser(decoded.uid).catch((error) => {
+    if (isResourceExhausted(error)) throw quotaExceededError();
+    throw error;
+  });
   if (membership) {
     const portalUser = await buildPortalUserFromMembership(decoded, membership);
     if (portalUser) return portalUser;
   }
 
   const portalRef = adminDb.collection("client_portal_users").doc(decoded.uid);
-  const portalSnap = await portalRef.get();
+  const portalSnap = await portalRef.get().catch((error) => {
+    if (isResourceExhausted(error)) throw quotaExceededError();
+    throw error;
+  });
   if (!portalSnap.exists) {
     throw new PortalAuthError(403, "portal_user_not_found", "Acesso ao portal nao encontrado.");
   }
@@ -220,7 +246,11 @@ export async function requirePortalRequestUser(
     throw new PortalAuthError(403, "portal_tenant_missing", "Tenant do portal nao configurado.");
   }
 
-  if (await isTenantBillingBlocked(tenantId)) {
+  const billingBlocked = await isTenantBillingBlocked(tenantId).catch((error) => {
+    if (isResourceExhausted(error)) throw quotaExceededError();
+    throw error;
+  });
+  if (billingBlocked) {
     throw new PortalAuthError(403, "tenant_billing_blocked", "Acesso ao portal pausado por pendencia financeira.");
   }
 

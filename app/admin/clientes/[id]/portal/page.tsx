@@ -224,10 +224,18 @@ export default function ClientePortalAdminPage() {
 
       const usersData = (await usersRes.json()) as { items?: PortalUserDoc[]; error?: string };
       const contractData = (await contractRes.json()) as { contract?: ContractDoc | null; error?: string };
-      if (!usersRes.ok) throw new Error(usersData.error || "Falha ao carregar acessos.");
-      if (!contractRes.ok) throw new Error(contractData.error || "Falha ao carregar contrato.");
+      const loadWarnings: string[] = [];
+      if (!usersRes.ok) {
+        loadWarnings.push(usersData.error || "Falha ao carregar acessos.");
+        setPortalUsers([]);
+      } else {
+        setPortalUsers(usersData.items || []);
+      }
 
-      setPortalUsers(usersData.items || []);
+      if (!contractRes.ok) {
+        loadWarnings.push(contractData.error || "Falha ao carregar contrato.");
+      }
+
       if (!tenantSnap.empty) {
         const tenantDoc = tenantSnap.docs[0];
         const tenantData = tenantDoc.data() as { status?: string; niche?: string; businessProfileId?: string };
@@ -249,8 +257,12 @@ export default function ClientePortalAdminPage() {
 
         const readinessRes = await authedFetch(`/api/admin/tenants/${tenantDoc.id}/readiness`);
         const readinessData = (await readinessRes.json()) as TenantReadinessPayload & { error?: string };
-        if (!readinessRes.ok) throw new Error(readinessData.error || "Falha ao carregar onboarding do tenant.");
-        setReadiness(readinessData);
+        if (!readinessRes.ok) {
+          loadWarnings.push(readinessData.error || "Falha ao carregar onboarding do tenant.");
+          setReadiness(null);
+        } else {
+          setReadiness(readinessData);
+        }
       } else {
         setTenantSummary(null);
         setSelectedProfileId("generic");
@@ -258,7 +270,11 @@ export default function ClientePortalAdminPage() {
         setReadiness(null);
       }
 
-      if (contractData.contract) {
+      if (loadWarnings.length > 0) {
+        setError(loadWarnings.join(" "));
+      }
+
+      if (contractRes.ok && contractData.contract) {
         setContract({
           title: contractData.contract.title || "Contrato de Prestacao de Servicos",
           status: contractData.contract.status || "ativo",

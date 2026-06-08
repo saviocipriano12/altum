@@ -89,6 +89,14 @@ function normalizeStatus(value: unknown): UserStatus {
   return value === "blocked" ? "blocked" : "active";
 }
 
+function isResourceExhausted(error: unknown) {
+  if (typeof error !== "object" || !error) return false;
+  const code = "code" in error ? String((error as { code?: unknown }).code || "") : "";
+  const details = "details" in error ? String((error as { details?: unknown }).details || "") : "";
+  const message = "message" in error ? String((error as { message?: unknown }).message || "") : "";
+  return code === "8" || details.includes("Quota exceeded") || message.includes("RESOURCE_EXHAUSTED");
+}
+
 type CanonicalRole =
   | "agency_owner"
   | "agency_admin"
@@ -169,7 +177,16 @@ export async function requireRequestUser(
   }
 
   const userRef = adminDb.collection("users").doc(decoded.uid);
-  const userSnap = await userRef.get();
+  const userSnap = await userRef.get().catch((error) => {
+    if (isResourceExhausted(error)) {
+      throw new RouteAuthError(
+        429,
+        "firebase_quota_exceeded",
+        "A cota do Firebase/Firestore foi excedida. Aguarde a liberacao da cota ou ative billing no Firebase."
+      );
+    }
+    throw error;
+  });
   if (!userSnap.exists) {
     throw new RouteAuthError(403, "profile_not_found", "Perfil de usuario nao encontrado.");
   }
