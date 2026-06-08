@@ -68,6 +68,16 @@ type Campaign = {
     id?: string;
     filename?: string;
   };
+  aiFollowup: {
+    offerName: string;
+    offerSummary: string;
+    exampleUrl: string;
+    exampleLabel: string;
+    responseTriggers: string[];
+    nextStep: string;
+    handoffRule: string;
+    notes: string;
+  };
   maxRecipients: number;
   scheduledAt: string | null;
   sendRatePerMinute: number;
@@ -164,6 +174,16 @@ function emptyCampaign(): Campaign {
     languageCode: "pt_BR",
     bodyParams: ["{nome}"],
     headerMedia: null,
+    aiFollowup: {
+      offerName: "Landing page comercial",
+      offerSummary: "Estrutura para captar pelo Google ou Meta e levar o lead para uma conversa qualificada no WhatsApp.",
+      exampleUrl: "",
+      exampleLabel: "Exemplo de landing page",
+      responseTriggers: ["quero ver", "manda exemplo", "como fica", "tenho interesse", "pode mostrar"],
+      nextStep: "Enviar o exemplo, explicar o valor em uma frase e oferecer diagnostico ou reuniao qualificada.",
+      handoffRule: "Chamar humano quando o lead pedir proposta, preco fechado, contrato ou quiser falar com uma pessoa.",
+      notes: "",
+    },
     maxRecipients: 50,
     scheduledAt: null,
     sendRatePerMinute: 20,
@@ -208,6 +228,15 @@ function getTemplateVariableCount(template: WhatsAppTemplate | undefined) {
     highest = Math.max(highest, Number(match[1] || 0));
   }
   return highest;
+}
+
+function getTemplateHeaderMediaType(template: WhatsAppTemplate | undefined): "image" | "video" | "document" | null {
+  const header = template?.components.find((component) => String(component.type || "").toUpperCase() === "HEADER");
+  const format = String(header?.format || "").toUpperCase();
+  if (format === "IMAGE") return "image";
+  if (format === "VIDEO") return "video";
+  if (format === "DOCUMENT") return "document";
+  return null;
 }
 
 function buildDefaultBodyParams(count: number, current: string[]) {
@@ -300,17 +329,23 @@ export default function BulkMessagingPage() {
   const officialChannel = selectedChannel ? isOfficial(selectedChannel.provider) : false;
   const readyChannels = channels.filter((item) => item.outboundReady || item.status === "active");
   const riskLevel = editor.maxRecipients > 250 ? "alto" : editor.maxRecipients > 100 ? "medio" : "baixo";
+  const selectedTemplate = templates.find(
+    (template) => template.name === editor.templateName && template.language === editor.languageCode
+  );
+  const requiredHeaderMedia = getTemplateHeaderMediaType(selectedTemplate);
 
   const readiness = useMemo(() => {
     const checks = [
       Boolean(editor.name.trim()),
       Boolean(editor.channelId),
       editor.deliveryMode === "template" ? Boolean(editor.templateName.trim()) : editor.messageTemplate.trim().length >= 10,
+      editor.deliveryMode !== "template" || !requiredHeaderMedia || editor.headerMedia?.type === requiredHeaderMedia,
+      Boolean(editor.aiFollowup.offerName.trim() || editor.aiFollowup.exampleUrl.trim() || editor.aiFollowup.nextStep.trim()),
       editor.maxRecipients > 0,
       Boolean(preview),
     ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
-  }, [editor, preview]);
+  }, [editor, preview, requiredHeaderMedia]);
 
   const totals = useMemo(
     () => ({
@@ -457,6 +492,11 @@ export default function BulkMessagingPage() {
 
   async function dispatch() {
     if (!tenant?.tenantId || !editor.id || !preview || !canManage) return;
+    if (editor.deliveryMode === "template" && requiredHeaderMedia && editor.headerMedia?.type !== requiredHeaderMedia) {
+      setError(`Este template tem cabecalho de ${requiredHeaderMedia}. Anexe a midia antes de enviar.`);
+      setStep("conteudo");
+      return;
+    }
     if (!window.confirm(`Confirmar o envio para ate ${preview.summary.estimatedSend} contatos?`)) return;
     setWorking("send");
     setError("");
@@ -714,7 +754,12 @@ export default function BulkMessagingPage() {
         </main>
 
         <aside className="order-3">
-          <PhonePreview editor={editor} official={officialChannel} />
+          <PhonePreview
+            editor={editor}
+            official={officialChannel}
+            templatePreview={renderTemplateBodyPreview(selectedTemplate, editor.bodyParams)}
+            requiredHeaderMedia={requiredHeaderMedia}
+          />
           <div className="mt-4">
             <PanelCard className="p-4">
               <div className="flex items-center gap-3">
@@ -908,6 +953,7 @@ function ContentStep({
   );
   const selectedVariableCount = getTemplateVariableCount(selectedTemplate);
   const selectedPreview = renderTemplateBodyPreview(selectedTemplate, editor.bodyParams);
+  const requiredHeaderMedia = getTemplateHeaderMediaType(selectedTemplate);
 
   return (
     <div>
@@ -967,6 +1013,10 @@ function ContentStep({
                       languageCode: languageCode || "pt_BR",
                       deliveryMode: "template",
                       bodyParams: buildDefaultBodyParams(variableCount, editor.bodyParams),
+                      headerMedia:
+                        editor.headerMedia && getTemplateHeaderMediaType(nextTemplate) && editor.headerMedia.type !== getTemplateHeaderMediaType(nextTemplate)
+                          ? null
+                          : editor.headerMedia,
                     });
                   }}
                   className="client-input"
@@ -1004,6 +1054,16 @@ function ContentStep({
                 <div className="md:col-span-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                   <p className="text-xs font-bold uppercase tracking-wide text-[var(--cliente-card-text-soft)]">Previa do template</p>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--cliente-card-text)]">{selectedPreview}</p>
+                </div>
+              ) : null}
+              {requiredHeaderMedia ? (
+                <div className="md:col-span-2 rounded-[18px] border border-amber-300/50 bg-amber-500/10 p-4">
+                  <p className="text-sm font-bold text-amber-800">
+                    Este template exige {requiredHeaderMedia === "image" ? "imagem" : requiredHeaderMedia === "video" ? "video" : "documento"} no cabecalho.
+                  </p>
+                  <p className="mt-1 text-sm text-amber-800/80">
+                    A midia usada para aprovar o modelo na Meta nao e enviada automaticamente. Anexe aqui a midia real deste disparo.
+                  </p>
                 </div>
               ) : null}
             </div>
@@ -1045,6 +1105,97 @@ function ContentStep({
           />
         </label>
       )}
+      <AiFollowupEditor editor={editor} onChange={onChange} />
+    </div>
+  );
+}
+
+function AiFollowupEditor({ editor, onChange }: { editor: Campaign; onChange: (patch: Partial<Campaign>) => void }) {
+  const update = (patch: Partial<Campaign["aiFollowup"]>) =>
+    onChange({ aiFollowup: { ...editor.aiFollowup, ...patch } });
+
+  return (
+    <div className="mt-5 rounded-[22px] border border-violet-200 bg-violet-500/8 p-4 md:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-base font-extrabold text-[var(--cliente-card-text)]">IA depois da resposta</p>
+          <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
+            O que a Altum deve saber para continuar a venda quando alguem responder este disparo.
+          </p>
+        </div>
+        <StateBadge label="contexto comercial" tone="info" />
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <Field label="Oferta principal" hint="Ex.: Landing page para advogados">
+          <input
+            value={editor.aiFollowup.offerName}
+            onChange={(event) => update({ offerName: event.target.value })}
+            className="client-input"
+            placeholder="Landing page para advogados"
+          />
+        </Field>
+        <Field label="Link que a IA pode enviar" hint="Exemplo, portfolio, proposta ou material">
+          <input
+            value={editor.aiFollowup.exampleUrl}
+            onChange={(event) => update({ exampleUrl: event.target.value })}
+            className="client-input"
+            placeholder="https://altumia.com.br/portfolio/advogado3"
+          />
+        </Field>
+        <Field label="Nome do material" hint="Como a IA deve chamar o link">
+          <input
+            value={editor.aiFollowup.exampleLabel}
+            onChange={(event) => update({ exampleLabel: event.target.value })}
+            className="client-input"
+            placeholder="Exemplo de landing page"
+          />
+        </Field>
+        <Field label="Gatilhos de resposta" hint="Separe por virgula">
+          <input
+            value={editor.aiFollowup.responseTriggers.join(", ")}
+            onChange={(event) => update({ responseTriggers: splitList(event.target.value) })}
+            className="client-input"
+            placeholder="quero ver, manda exemplo, como fica"
+          />
+        </Field>
+        <div className="md:col-span-2">
+          <Field label="Promessa da oferta" hint="A leitura que a IA deve usar em uma frase">
+            <textarea
+              value={editor.aiFollowup.offerSummary}
+              onChange={(event) => update({ offerSummary: event.target.value })}
+              className="client-input min-h-24 resize-y"
+              placeholder="Criar uma LP objetiva para captar interessados no Google e levar direto para WhatsApp."
+            />
+          </Field>
+        </div>
+        <div className="md:col-span-2">
+          <Field label="Proximo passo da IA" hint="O que fazer depois que o lead demonstrar interesse">
+            <textarea
+              value={editor.aiFollowup.nextStep}
+              onChange={(event) => update({ nextStep: event.target.value })}
+              className="client-input min-h-24 resize-y"
+              placeholder="Enviar o exemplo, explicar o valor e oferecer diagnostico ou reuniao qualificada."
+            />
+          </Field>
+        </div>
+        <Field label="Quando chamar humano" hint="Regra simples de handoff">
+          <textarea
+            value={editor.aiFollowup.handoffRule}
+            onChange={(event) => update({ handoffRule: event.target.value })}
+            className="client-input min-h-24 resize-y"
+            placeholder="Quando pedir proposta, preco fechado, contrato ou atendimento humano."
+          />
+        </Field>
+        <Field label="Observacoes para a IA" hint="Objecoes, tom e detalhes importantes">
+          <textarea
+            value={editor.aiFollowup.notes}
+            onChange={(event) => update({ notes: event.target.value })}
+            className="client-input min-h-24 resize-y"
+            placeholder="Ser direto, nao prometer resultado garantido e focar em captacao pelo Google."
+          />
+        </Field>
+      </div>
     </div>
   );
 }
@@ -1055,6 +1206,7 @@ function ReviewStep({ editor, channel, preview, riskLevel }: { editor: Campaign;
     { label: "Publico apto", value: preview ? `${preview.summary.estimatedSend} contatos` : "Simulacao pendente", done: Boolean(preview) },
     { label: "Consentimento", value: preview ? `${preview.summary.blockedByConsent} removidos` : "Verificado ao simular", done: Boolean(preview) },
     { label: "Conteudo", value: editor.deliveryMode === "template" ? editor.templateName || "Template pendente" : `${editor.messageTemplate.length} caracteres`, done: editor.deliveryMode === "template" ? Boolean(editor.templateName) : editor.messageTemplate.length > 9 },
+    { label: "IA no retorno", value: editor.aiFollowup.offerName || editor.aiFollowup.exampleUrl || "Contexto nao definido", done: Boolean(editor.aiFollowup.offerName || editor.aiFollowup.exampleUrl || editor.aiFollowup.nextStep) },
   ];
   return (
     <div>
@@ -1098,12 +1250,31 @@ function DeliveryStat({ label, value, danger = false }: { label: string; value: 
   );
 }
 
-function PhonePreview({ editor, official }: { editor: Campaign; official: boolean }) {
+function PhonePreview({
+  editor,
+  official,
+  templatePreview,
+  requiredHeaderMedia,
+}: {
+  editor: Campaign;
+  official: boolean;
+  templatePreview?: string;
+  requiredHeaderMedia: "image" | "video" | "document" | null;
+}) {
   const text = official
     ? editor.templateName
-      ? `Template ${editor.templateName}\n${editor.bodyParams.join(" | ")}`
+      ? templatePreview || `Template ${editor.templateName}\n${editor.bodyParams.join(" | ")}`
       : "Escolha um template aprovado para visualizar."
     : editor.messageTemplate || "Sua mensagem aparece aqui.";
+  const mediaLabel = editor.headerMedia
+    ? editor.headerMedia.type === "image"
+      ? "Imagem anexada"
+      : editor.headerMedia.type === "video"
+        ? "Video anexado"
+        : "Documento anexado"
+    : requiredHeaderMedia
+      ? `${requiredHeaderMedia === "image" ? "Imagem" : requiredHeaderMedia === "video" ? "Video" : "Documento"} pendente`
+      : "";
   return (
     <div className="mx-auto max-w-[310px] overflow-hidden rounded-[28px] border-[6px] border-slate-900 bg-[#efeae2] shadow-xl">
       <div className="flex items-center gap-3 bg-[#075e54] px-4 py-3 text-white">
@@ -1115,8 +1286,15 @@ function PhonePreview({ editor, official }: { editor: Campaign; official: boolea
       </div>
       <div className="min-h-[330px] bg-[radial-gradient(circle_at_25%_25%,rgba(255,255,255,.36)_1px,transparent_1px)] bg-[length:18px_18px] p-4 pt-20">
         <div className="ml-auto max-w-[88%] rounded-lg rounded-tr-none bg-[#d9fdd3] p-3 shadow-sm">
+          {mediaLabel ? (
+            <div className={`mb-2 rounded-md border px-2 py-2 text-[11px] font-semibold ${
+              editor.headerMedia ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}>
+              {mediaLabel}
+            </div>
+          ) : null}
           <p className="whitespace-pre-wrap break-words text-[13px] leading-5 text-slate-800">{text}</p>
-          <p className="mt-1 text-right text-[10px] text-slate-500">agora ✓✓</p>
+          <p className="mt-1 text-right text-[10px] text-slate-500">agora ok</p>
         </div>
       </div>
     </div>

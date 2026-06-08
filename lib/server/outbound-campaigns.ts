@@ -19,6 +19,17 @@ export type OutboundCampaignFilters = {
   heat: string[];
 };
 
+export type OutboundCampaignAiFollowup = {
+  offerName: string;
+  offerSummary: string;
+  exampleUrl: string;
+  exampleLabel: string;
+  responseTriggers: string[];
+  nextStep: string;
+  handoffRule: string;
+  notes: string;
+};
+
 export type OutboundCampaignRecord = {
   id: string;
   tenantId: string;
@@ -35,6 +46,7 @@ export type OutboundCampaignRecord = {
   maxRecipients: number;
   scheduledAt: string | null;
   sendRatePerMinute: number;
+  aiFollowup: OutboundCampaignAiFollowup;
   executionStatus: "idle" | "scheduled" | "queued" | "running" | "paused" | "completed" | "failed";
   activeRunId: string | null;
   filters: OutboundCampaignFilters;
@@ -128,6 +140,20 @@ function normalizeHeaderMedia(value: unknown): WhatsAppTemplateHeaderMedia | nul
   };
 }
 
+function normalizeAiFollowup(value: unknown): OutboundCampaignAiFollowup {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return {
+    offerName: clean(source.offerName, 160),
+    offerSummary: clean(source.offerSummary, 700),
+    exampleUrl: clean(source.exampleUrl, 1000),
+    exampleLabel: clean(source.exampleLabel, 120),
+    responseTriggers: cleanList(source.responseTriggers, 80, 20),
+    nextStep: clean(source.nextStep, 260),
+    handoffRule: clean(source.handoffRule, 360),
+    notes: clean(source.notes, 900),
+  };
+}
+
 function toIso(value: unknown) {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString();
@@ -180,6 +206,7 @@ export function normalizeOutboundCampaign(input: { id: string; data: Record<stri
     maxRecipients: Math.max(1, Math.min(500, Number(input.data.maxRecipients || 50))),
     scheduledAt: toIso(input.data.scheduledAt),
     sendRatePerMinute: Math.max(1, Math.min(120, Number(input.data.sendRatePerMinute || 20))),
+    aiFollowup: normalizeAiFollowup(input.data.aiFollowup),
     executionStatus: (["scheduled", "queued", "running", "paused", "completed", "failed"].includes(clean(input.data.executionStatus, 20))
       ? clean(input.data.executionStatus, 20)
       : "idle") as OutboundCampaignRecord["executionStatus"],
@@ -214,6 +241,7 @@ export function buildOutboundCampaignPatch(input: {
   maxRecipients?: unknown;
   scheduledAt?: unknown;
   sendRatePerMinute?: unknown;
+  aiFollowup?: unknown;
   filters?: unknown;
   actor: { id: string; name: string };
 }) {
@@ -242,6 +270,7 @@ export function buildOutboundCampaignPatch(input: {
     maxRecipients: Math.max(1, Math.min(500, Number(input.maxRecipients || 50))),
     scheduledAt,
     sendRatePerMinute: Math.max(1, Math.min(120, Number(input.sendRatePerMinute || 20))),
+    aiFollowup: normalizeAiFollowup(input.aiFollowup),
     filters: normalizeOutboundCampaignFilters(input.filters),
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: input.actor.id,
@@ -625,6 +654,7 @@ export async function dispatchOutboundCampaign(input: {
               ? dispatchResult.templateParams || []
               : [],
         templateHeaderMedia: campaign.deliveryMode === "template" ? campaign.headerMedia : null,
+        aiFollowup: campaign.aiFollowup,
         metaMessageId: dispatchResult.metaMessageId || null,
         status: "sent",
         sentAt: FieldValue.serverTimestamp(),

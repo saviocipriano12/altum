@@ -23,6 +23,7 @@ type Body = {
   languageCode?: unknown;
   bodyParams?: unknown;
   headerMedia?: unknown;
+  aiFollowup?: unknown;
   maxRecipients?: unknown;
   scheduledAt?: unknown;
   sendRatePerMinute?: unknown;

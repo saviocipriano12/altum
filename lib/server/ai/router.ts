@@ -294,6 +294,9 @@ function buildPrompt(input: ConversationAgentInput) {
     "Se o lead fizer uma pergunta direta, responda com clareza antes de conduzir qualquer outra coisa.",
     "Nao use menus de opcoes; faca pergunta precisa e contextual.",
     "Se o lead responder curto, trate como continuidade do assunto vivo. Nao reinicie nem repita bloco.",
+    "Se a memoria mencionar 'playbook do disparo', use esse playbook como contexto principal da resposta atual.",
+    "Quando o lead pedir exemplo, modelo, demonstracao, print, LP, como fica ou responder afirmativamente a uma oferta do disparo, envie o link/material do playbook se existir e explique em uma frase por que ele ajuda.",
+    "Depois de enviar exemplo ou material do disparo, conduza para o proximo passo indicado no playbook, sem abrir nova rodada longa de perguntas.",
     "Quando faltar contexto, faca no maximo uma pergunta curta e realmente util.",
     "Nao faca mais de duas perguntas de qualificacao seguidas sem devolver uma leitura ou recomendacao.",
     input.plannedResponseFormat === "audio"
@@ -323,7 +326,7 @@ function buildPrompt(input: ConversationAgentInput) {
     multimodalSummary ? `Resumo multimodal: ${multimodalSummary}` : "",
     messageType ? `Tipo de mensagem: ${messageType}` : "",
     input.runtimeStateSummary ? `Contexto vivo da conversa:\n${sanitizeText(input.runtimeStateSummary, 220)}` : "",
-    input.leadMemorySummary ? `Memoria relevante:\n${sanitizeText(input.leadMemorySummary, 360)}` : "",
+    input.leadMemorySummary ? `Memoria relevante:\n${sanitizeText(input.leadMemorySummary, 1000)}` : "",
     isShortFollowup ? "A mensagem atual parece uma continuidade curta. Continue do ponto vivo da conversa." : "",
     isDirectQuestion ? "A mensagem atual contem uma pergunta direta. Responda essa pergunta primeiro." : "",
     isGreetingOnly ? "A mensagem atual e apenas uma saudacao. Responda como conversa normal, sem menu." : "",

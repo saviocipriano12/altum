@@ -390,6 +390,19 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
         }${leadMemory.lastOutboundChannel ? ` / canal ${leadMemory.lastOutboundChannel}` : ""}`
       : "",
     leadMemory.lastOutboundMessage ? `mensagem do ultimo disparo: ${leadMemory.lastOutboundMessage}` : "",
+    leadMemory.campaignOfferName ? `playbook do disparo - oferta: ${leadMemory.campaignOfferName}` : "",
+    leadMemory.campaignOfferSummary ? `playbook do disparo - promessa: ${leadMemory.campaignOfferSummary}` : "",
+    leadMemory.campaignExampleUrl
+      ? `playbook do disparo - exemplo para enviar quando fizer sentido: ${
+          leadMemory.campaignExampleLabel ? `${leadMemory.campaignExampleLabel} - ` : ""
+        }${leadMemory.campaignExampleUrl}`
+      : "",
+    leadMemory.campaignResponseTriggers?.length
+      ? `playbook do disparo - gatilhos de resposta: ${leadMemory.campaignResponseTriggers.join(", ")}`
+      : "",
+    leadMemory.campaignNextStep ? `playbook do disparo - proximo passo: ${leadMemory.campaignNextStep}` : "",
+    leadMemory.campaignHandoffRule ? `playbook do disparo - quando chamar humano: ${leadMemory.campaignHandoffRule}` : "",
+    leadMemory.campaignFollowupNotes ? `playbook do disparo - orientacao: ${leadMemory.campaignFollowupNotes}` : "",
     leadMemory.preferredName ? `nome preferido: ${leadMemory.preferredName}` : "",
     leadMemory.leadTone ? `tom mais recorrente: ${leadMemory.leadTone}` : "",
     leadMemory.activeTopic ? `assunto principal recente: ${leadMemory.activeTopic}` : "",
@@ -403,7 +416,7 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
     leadMemory.summary ? `resumo: ${leadMemory.summary}` : "",
   ]
     .filter(Boolean)
-    .slice(0, 8)
+    .slice(0, 12)
     .join(" | ");
 }
 

@@ -53,6 +53,14 @@ export type AltumLeadMemory = {
   lastOutboundTemplateName?: string | null;
   lastOutboundMessage?: string | null;
   lastOutboundChannel?: string | null;
+  campaignOfferName?: string | null;
+  campaignOfferSummary?: string | null;
+  campaignExampleUrl?: string | null;
+  campaignExampleLabel?: string | null;
+  campaignResponseTriggers?: string[] | null;
+  campaignNextStep?: string | null;
+  campaignHandoffRule?: string | null;
+  campaignFollowupNotes?: string | null;
   businessType?: string | null;
   primaryGoal?: string | null;
   budgetBand?: string | null;
@@ -451,6 +459,16 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     !Array.isArray(leadData.lastOutboundCampaignContext)
       ? (leadData.lastOutboundCampaignContext as Record<string, unknown>)
       : {};
+  const followupContext =
+    outboundContext.aiFollowup && typeof outboundContext.aiFollowup === "object" && !Array.isArray(outboundContext.aiFollowup)
+      ? (outboundContext.aiFollowup as Record<string, unknown>)
+      : {};
+  const responseTriggers = Array.isArray(followupContext.responseTriggers)
+    ? followupContext.responseTriggers
+        .map((item) => cleanText(item, 80))
+        .filter(Boolean)
+        .slice(0, 12)
+    : [];
   const fields =
     data.fields && typeof data.fields === "object" && !Array.isArray(data.fields)
       ? Object.fromEntries(
@@ -477,6 +495,14 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     lastOutboundMessage:
       cleanText(outboundContext.persistedText, 360) || cleanText(outboundContext.intendedText, 360) || null,
     lastOutboundChannel: cleanText(outboundContext.channel, 80) || null,
+    campaignOfferName: cleanText(followupContext.offerName, 160) || null,
+    campaignOfferSummary: cleanText(followupContext.offerSummary, 500) || null,
+    campaignExampleUrl: cleanText(followupContext.exampleUrl, 1000) || null,
+    campaignExampleLabel: cleanText(followupContext.exampleLabel, 120) || null,
+    campaignResponseTriggers: responseTriggers.length ? responseTriggers : null,
+    campaignNextStep: cleanText(followupContext.nextStep, 260) || null,
+    campaignHandoffRule: cleanText(followupContext.handoffRule, 360) || null,
+    campaignFollowupNotes: cleanText(followupContext.notes, 700) || null,
     businessType: cleanText(data.businessType, 120) || null,
     primaryGoal: cleanText(data.primaryGoal, 180) || null,
     budgetBand: cleanText(data.budgetBand, 120) || null,
@@ -488,7 +514,7 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     city: cleanText(data.city, 120) || null,
     currentChannels: cleanText(data.currentChannels, 220) || null,
     teamSize: cleanText(data.teamSize, 80) || null,
-    recommendedOffer: cleanText(data.recommendedOffer, 180) || null,
+    recommendedOffer: cleanText(data.recommendedOffer, 180) || cleanText(followupContext.offerName, 180) || null,
     nextBestAction: cleanText(data.nextBestAction, 180) || null,
     memorySummary: cleanText(data.memorySummary, 260) || null,
     summary: cleanText(data.summary, 260) || null,
