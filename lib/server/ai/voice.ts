@@ -14,7 +14,13 @@ function storageBucketName() {
   return String(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "").trim();
 }
 
-export async function synthesizeAltumSpeech(text: string) {
+function normalizeVoice(value: unknown) {
+  const voice = cleanText(value, 40).toLowerCase();
+  const allowed = new Set(["alloy", "echo", "fable", "nova", "onyx", "shimmer"]);
+  return allowed.has(voice) ? voice : "alloy";
+}
+
+export async function synthesizeAltumSpeech(text: string, voice?: string) {
   const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
   const normalizedText = cleanText(text, 2400);
   if (!apiKey || !normalizedText) {
@@ -29,7 +35,7 @@ export async function synthesizeAltumSpeech(text: string) {
     },
     body: JSON.stringify({
       model: "tts-1",
-      voice: "alloy",
+      voice: normalizeVoice(voice),
       format: "mp3",
       input: normalizedText,
     }),
@@ -81,8 +87,9 @@ export async function sendAltumVoiceReply(input: {
   text: string;
   tenantId: string;
   chatId: string;
+  voice?: string;
 }) {
-  const buffer = await synthesizeAltumSpeech(input.text);
+  const buffer = await synthesizeAltumSpeech(input.text, input.voice);
   const stored = await storeAltumSpeech({
     tenantId: input.tenantId,
     chatId: input.chatId,

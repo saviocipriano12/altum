@@ -121,6 +121,8 @@ type TenantAiConfig = {
   responsiblePhone: string;
   handoffNotifyEnabled: boolean;
   handoffNotifyPhones: string[];
+  voiceReplyEnabled: boolean;
+  voiceReplyVoice: string;
   guardrails: string[];
   mandatoryQuestions: string[];
   escalationTopics: string[];
@@ -655,6 +657,8 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
     ),
     handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
     handoffNotifyPhones: parsePhoneLines(ai.handoffNotifyPhones, 8),
+    voiceReplyEnabled: ai.voiceReplyEnabled === true,
+    voiceReplyVoice: sanitizeText(ai.voiceReplyVoice, 40) || "alloy",
     guardrails: Array.from(new Set([...DEFAULT_GUARDRAILS, ...businessProfile.ai.guardrails, ...parseGuardrails(ai.guardrails)])).slice(0, 24),
     mandatoryQuestions: Array.from(new Set([...businessProfile.ai.mandatoryQuestions, ...parseLines(ai.mandatoryQuestions, 12)])).slice(0, 12),
     escalationTopics: Array.from(new Set([...businessProfile.ai.escalationTopics, ...parseLines(ai.escalationTopics, 12)])).slice(0, 12),
@@ -699,6 +703,80 @@ function shouldAskMore(text: string) {
   }
 
   return false;
+}
+
+function normalizeFreeText(value: unknown, max = 700) {
+  return sanitizeText(value, max)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function leadExplicitlyAskedForVoice(text: string) {
+  const normalized = normalizeFreeText(text);
+  return (
+    /\b(audio|voz|gravado|gravar)\b/.test(normalized) &&
+    /\b(prefiro|prefere|pode|manda|mande|mandar|responde|responder|envia|enviar|me mande|me manda)\b/.test(normalized)
+  );
+}
+
+function leadExplicitlyPrefersText(text: string) {
+  const normalized = normalizeFreeText(text);
+  return (
+    /\b(sem audio|nao manda audio|nao mande audio|nao quero audio|prefiro texto|por texto|responde em texto|responder em texto)\b/.test(
+      normalized
+    ) || /\b(nao posso ouvir|nao consigo ouvir|estou em reuniao)\b/.test(normalized)
+  );
+}
+
+function decideVoiceReply(input: {
+  aiConfig: TenantAiConfig;
+  shouldUseWhatsApp: boolean;
+  hasWhatsAppChannel: boolean;
+  hasLeadPhone: boolean;
+  incomingType: string;
+  inboundText: string;
+  responseText: string;
+  conversation: ConversationMessage[];
+}) {
+  if (!input.aiConfig.voiceReplyEnabled) return { shouldSend: false, reason: "voice_disabled" };
+  if (!input.shouldUseWhatsApp || !input.hasWhatsAppChannel || !input.hasLeadPhone) {
+    return { shouldSend: false, reason: "voice_channel_unavailable" };
+  }
+
+  if (leadExplicitlyPrefersText(input.inboundText)) {
+    return { shouldSend: false, reason: "lead_prefers_text" };
+  }
+
+  const incomingIsAudio = input.incomingType === "audio";
+  const explicitVoiceRequest = leadExplicitlyAskedForVoice(input.inboundText);
+  if (!incomingIsAudio && !explicitVoiceRequest) {
+    return { shouldSend: false, reason: "lead_did_not_ask_voice" };
+  }
+
+  const turn = classifyLeadTurn(input.inboundText);
+  if (turn.isGreeting && !explicitVoiceRequest) {
+    return { shouldSend: false, reason: "greeting_is_better_as_text" };
+  }
+
+  const cleanResponse = sanitizeText(input.responseText, 2400);
+  if (cleanResponse.length < 90 && !explicitVoiceRequest) {
+    return { shouldSend: false, reason: "reply_too_short_for_voice" };
+  }
+
+  const recentAiVoice = input.conversation.slice(-6).some(
+    (message) =>
+      message.sender === "agent" &&
+      (message.type === "audio" || /\[resposta em audio enviada\]/i.test(message.text || ""))
+  );
+  if (recentAiVoice && !explicitVoiceRequest) {
+    return { shouldSend: false, reason: "recent_ai_voice_cooldown" };
+  }
+
+  return {
+    shouldSend: true,
+    reason: explicitVoiceRequest ? "lead_requested_voice" : "lead_sent_audio",
+  };
 }
 
 function isGreetingLike(text: string) {
@@ -3963,13 +4041,18 @@ export async function handleIncomingMessage(
   });
 
   let voiceReplySent = false;
-  const shouldSendVoiceReply =
-    shouldUseWhatsApp &&
-    Boolean(whatsappChannel) &&
-    Boolean(leadPhone) &&
-    String(incomingMessage.type || "").toLowerCase() === "audio";
+  const voiceReplyDecision = decideVoiceReply({
+    aiConfig,
+    shouldUseWhatsApp,
+    hasWhatsAppChannel: Boolean(whatsappChannel),
+    hasLeadPhone: Boolean(leadPhone),
+    incomingType: normalizeMessageType(incomingMessage.type),
+    inboundText,
+    responseText,
+    conversation,
+  });
 
-  if (shouldSendVoiceReply && whatsappChannel && leadPhone) {
+  if (voiceReplyDecision.shouldSend && whatsappChannel && leadPhone) {
     try {
       const voiceSent = await sendAltumVoiceReply({
         channel: whatsappChannel,
@@ -3977,6 +4060,7 @@ export async function handleIncomingMessage(
         text: responseText,
         tenantId,
         chatId,
+        voice: aiConfig.voiceReplyVoice,
       });
 
       await addMessage({
@@ -4101,6 +4185,7 @@ export async function handleIncomingMessage(
       qualityNotes: quality.notes,
       executedActions,
       voiceReplySent,
+      voiceReplyReason: voiceReplyDecision.reason,
     },
   });
 
