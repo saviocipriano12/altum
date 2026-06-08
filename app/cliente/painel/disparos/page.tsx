@@ -28,8 +28,6 @@ import {
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { storage } from "@/firebaseConfig";
 import {
   ClientActionButton,
   EmptyState,
@@ -69,6 +67,15 @@ type AutomationFlow = {
   objective: string;
   nodes: AutomationFlowNode[];
   edges: AutomationFlowEdge[];
+};
+
+type UploadedCampaignMedia = {
+  type: "image" | "video" | "document";
+  link?: string;
+  filename?: string;
+  contentType?: string;
+  size?: number;
+  storagePath?: string;
 };
 
 type Channel = {
@@ -361,64 +368,8 @@ function uploadLimitFor(type: "image" | "video" | "document") {
   return 24 * 1024 * 1024;
 }
 
-function extensionFromFile(file: File, type: "image" | "video" | "document") {
-  const fromName = file.name.toLowerCase().match(/\.([a-z0-9]{2,8})$/)?.[1];
-  if (fromName) return fromName;
-  const mime = file.type.toLowerCase();
-  if (mime.includes("jpeg")) return "jpg";
-  if (mime.includes("png")) return "png";
-  if (mime.includes("webp")) return "webp";
-  if (mime.includes("gif")) return "gif";
-  if (mime.includes("quicktime")) return "mov";
-  if (mime.includes("webm")) return "webm";
-  if (mime.includes("mp4")) return "mp4";
-  return type === "document" ? "pdf" : type === "video" ? "mp4" : "jpg";
-}
-
 function safeUploadName(value: string) {
   return value.trim().replace(/[^\w.\- ]+/g, "_").slice(0, 180) || `arquivo-${Date.now()}`;
-}
-
-function buildUploadId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function waitForResumableUpload(
-  task: ReturnType<typeof uploadBytesResumable>,
-  onProgress: (progress: number) => void,
-  timeoutMs = 90000
-) {
-  return new Promise<void>((resolve, reject) => {
-    let done = false;
-    const timeout = window.setTimeout(() => {
-      if (done) return;
-      done = true;
-      task.cancel();
-      reject(new Error("Upload direto demorou demais. Tentando envio seguro pelo servidor."));
-    }, timeoutMs);
-
-    task.on(
-      "state_changed",
-      (snapshot) => {
-        const progress = snapshot.totalBytes ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100) : 0;
-        onProgress(progress);
-      },
-      (uploadError) => {
-        if (done) return;
-        done = true;
-        window.clearTimeout(timeout);
-        reject(uploadError);
-      },
-      () => {
-        if (done) return;
-        done = true;
-        window.clearTimeout(timeout);
-        onProgress(100);
-        resolve();
-      }
-    );
-  });
 }
 
 function csvEscape(value: string) {
@@ -877,77 +828,43 @@ export default function BulkMessagingPage() {
         throw new Error(`Arquivo acima do limite de ${Math.round(maxBytes / 1024 / 1024)} MB.`);
       }
 
-      const fileName = safeUploadName(file.name);
-      const extension = extensionFromFile(file, type);
-      const path = `outbound-media/${tenant.tenantId}/${new Date().toISOString().slice(0, 10)}/${buildUploadId()}.${extension}`;
-      let media:
-        | {
-            type: "image" | "video" | "document";
-            link?: string;
-            filename?: string;
-            contentType?: string;
-            size?: number;
-            storagePath?: string;
-          }
-        | null = null;
+      let media: UploadedCampaignMedia | null = null;
 
+      setUploadProgress(15);
+      const form = new FormData();
+      form.append("file", file);
+      const response = await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns/media`, {
+        method: "POST",
+        body: form,
+      });
+      setUploadProgress(80);
+      let payload: { media?: UploadedCampaignMedia; error?: string } = {};
       try {
-        const ref = storageRef(storage, path);
-        const task = uploadBytesResumable(ref, file, {
-          contentType: file.type || "application/octet-stream",
-          customMetadata: {
-            tenantId: tenant.tenantId,
-            purpose: "outbound_campaign",
-            originalName: fileName,
-          },
-        });
-        await waitForResumableUpload(task, setUploadProgress);
-        const link = await getDownloadURL(ref);
-        media = {
-          type,
-          link,
-          filename: fileName,
-          contentType: file.type || "application/octet-stream",
-          size: file.size,
-          storagePath: path,
-        };
-      } catch (directUploadError) {
-        console.warn("Upload direto falhou, tentando fallback pelo servidor:", directUploadError);
-        setUploadProgress(5);
-        const form = new FormData();
-        form.append("file", file);
-        const response = await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns/media`, {
-          method: "POST",
-          body: form,
-        });
-        let payload: { media?: typeof media; error?: string } = {};
-        try {
-          payload = (await response.json()) as typeof payload;
-        } catch {
-          payload = {};
-        }
-        if (!response.ok || !payload.media?.link) {
-          throw new Error(payload.error || "Falha ao subir arquivo pelo servidor.");
-        }
-        media = payload.media;
-        setUploadProgress(100);
+        payload = (await response.json()) as typeof payload;
+      } catch {
+        payload = {};
       }
+      if (!response.ok || !payload.media?.link) {
+        throw new Error(payload.error || "Falha ao subir arquivo pelo servidor.");
+      }
+      media = payload.media;
+      setUploadProgress(100);
 
       setEditor((current) => ({
         ...current,
         headerMedia: {
           type: media?.type || type,
           link: media?.link,
-          filename: media?.filename || fileName,
+          filename: media?.filename || safeUploadName(file.name),
           contentType: media?.contentType || file.type || "application/octet-stream",
           size: media?.size || file.size,
-          storagePath: media?.storagePath || path,
+          storagePath: media?.storagePath,
         },
       }));
       setPreview(null);
       setNotice(`${file.name} anexado ao disparo.`);
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Falha ao subir arquivo no Storage.");
+      setError(uploadError instanceof Error ? uploadError.message : "Falha ao subir arquivo.");
     } finally {
       setWorking(null);
       window.setTimeout(() => setUploadProgress(null), 450);
@@ -1814,8 +1731,8 @@ function ContentStep({
             <span className="block text-sm font-semibold text-[var(--cliente-card-text)]">{uploading ? "Enviando arquivo..." : "Adicionar imagem, video ou documento"}</span>
             <span className="mt-1 block text-xs text-[var(--cliente-card-text-soft)]">
               {uploading && uploadProgress !== null
-                ? `${uploadProgress}% enviado. Se o navegador travar, a Altum tenta pelo servidor.`
-                : "Upload direto. Imagens ate 12 MB, videos ate 64 MB e documentos ate 24 MB."}
+                ? `${uploadProgress}% enviado pelo servidor seguro da Altum.`
+                : "Upload seguro. Imagens ate 12 MB, videos ate 64 MB e documentos ate 24 MB."}
             </span>
           </span>
           <input
