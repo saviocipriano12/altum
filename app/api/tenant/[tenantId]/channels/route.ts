@@ -508,12 +508,7 @@ export async function GET(
           metadata: { source: "agency_env" },
         }
       : null;
-    const visibleItems =
-      agencyVirtualItem && !hasOutboundWhatsApp
-        ? [agencyVirtualItem, ...items]
-        : agencyVirtualItem
-          ? [...items, agencyVirtualItem]
-        : items;
+    const visibleItems = agencyVirtualItem && !hasOutboundWhatsApp ? [agencyVirtualItem, ...items] : items;
 
     return NextResponse.json({ ok: true, tenantId, items: visibleItems });
   } catch (error) {
@@ -666,5 +661,83 @@ export async function POST(
 
     console.error("Erro ao salvar canal do tenant:", error);
     return NextResponse.json({ error: "Falha ao salvar canal." }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ tenantId: string }> }
+) {
+  try {
+    const user = await requireRequestUser(req);
+    const { tenantId } = await context.params;
+    const membership = await assertTenantAccess(user.uid, tenantId);
+    assertTenantCapability(membership, "manage_channels");
+
+    const body = (await req.json().catch(() => ({}))) as { channelId?: unknown };
+    const channelId = clean(body.channelId, 180);
+    if (!channelId) {
+      return NextResponse.json({ error: "Informe o canal que deseja excluir." }, { status: 400 });
+    }
+    if (channelId === AGENCY_WHATSAPP_ENV_CHANNEL_ID) {
+      return NextResponse.json({ error: "Este numero virtual da Altum nao pode ser excluido pelo cliente." }, { status: 400 });
+    }
+
+    const channelRef = adminDb.collection("tenant_channels").doc(channelId);
+    const channelSnap = await channelRef.get();
+    if (!channelSnap.exists) {
+      return NextResponse.json({ error: "Canal nao encontrado." }, { status: 404 });
+    }
+
+    const channelData = channelSnap.data() as Record<string, unknown>;
+    if (String(channelData.tenantId || "").trim() !== tenantId) {
+      return NextResponse.json({ error: "Canal nao pertence a este tenant." }, { status: 403 });
+    }
+
+    const channelType = clean(channelData.type, 80) || "canal";
+    const settingsRef = adminDb.collection("tenant_settings").doc(tenantId);
+    const settingsSnap = await settingsRef.get();
+    const currentDefaultId = settingsSnap.exists
+      ? clean((settingsSnap.data() as { defaultWhatsAppChannelId?: unknown }).defaultWhatsAppChannelId, 180)
+      : "";
+
+    const writes: Promise<unknown>[] = [
+      channelRef.delete(),
+      adminDb.collection("audit_logs").add({
+        type: "tenant_channel_delete",
+        actorId: user.uid,
+        actorName: user.name,
+        tenantId,
+        channelId,
+        channelType,
+        createdAt: FieldValue.serverTimestamp(),
+      }),
+    ];
+
+    if (currentDefaultId === channelId) {
+      writes.push(
+        settingsRef.set(
+          {
+            defaultWhatsAppChannelId: FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        )
+      );
+    }
+
+    await Promise.all(writes);
+
+    return NextResponse.json({ ok: true, tenantId, channelId, deleted: true });
+  } catch (error) {
+    if (error instanceof RouteAuthError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (error instanceof TenantAccessError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    }
+
+    console.error("Erro ao excluir canal do tenant:", error);
+    return NextResponse.json({ error: "Falha ao excluir canal." }, { status: 500 });
   }
 }

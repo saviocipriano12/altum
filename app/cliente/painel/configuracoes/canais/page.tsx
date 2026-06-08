@@ -15,6 +15,7 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
@@ -45,6 +46,7 @@ type ChannelItem = {
   updatedAt?: string | null;
   lastActivityAt?: string | null;
   lastError?: string;
+  source?: string;
   chatCount?: number;
   openChatCount?: number;
   campaignSnapshotCount?: number;
@@ -429,6 +431,7 @@ export default function ClienteCanaisPage() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [checkingConversions, setCheckingConversions] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [deletingChannel, setDeletingChannel] = useState(false);
   const [syncingCampaigns, setSyncingCampaigns] = useState(false);
   const [checkingWhatsAppSession, setCheckingWhatsAppSession] = useState(false);
   const [loadingPending, setLoadingPending] = useState(false);
@@ -844,6 +847,58 @@ export default function ClienteCanaisPage() {
       setError("Falha ao desconectar canal.");
     } finally {
       setDisconnecting(false);
+    }
+  }
+
+  async function deleteSelectedChannel() {
+    if (!tenant?.tenantId || !selectedChannel?.id || !canManage) return;
+    if (selectedChannel.source === "agency_env") {
+      setError("Este numero virtual da Altum nao pode ser excluido por aqui.");
+      return;
+    }
+
+    const label = selectedChannel.displayName || selectedDefinition.label || "canal";
+    const confirmed = window.confirm(`Excluir ${label}? Essa acao remove o canal da Altum e nao pode ser desfeita.`);
+    if (!confirmed) return;
+
+    setDeletingChannel(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId: selectedChannel.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error || "Falha ao excluir canal.");
+        return;
+      }
+
+      if (selectedType === "whatsapp") {
+        setSelectedWhatsAppChannelId("");
+        setWhatsAppMasked({});
+        setWhatsAppForm((current) => ({
+          ...current,
+          channelId: "",
+          displayName: "WhatsApp",
+          phoneNumber: "",
+          phoneNumberId: "",
+          wabaId: "",
+          accessToken: "",
+          verifyToken: "",
+          appSecret: "",
+        }));
+      } else {
+        setGenericForm((current) => ({ ...current, channelId: "" }));
+      }
+      setNotice(`${label} excluido com sucesso.`);
+      await refreshChannels();
+    } catch {
+      setError("Falha ao excluir canal.");
+    } finally {
+      setDeletingChannel(false);
     }
   }
 
@@ -1355,6 +1410,17 @@ export default function ClienteCanaisPage() {
 
               <div className="flex flex-wrap gap-2">
                 <SaveButton saving={saving} label={whatsAppForm.channelId ? "Salvar numero" : "Adicionar WhatsApp"} disabled={!canManage} />
+                {selectedChannel?.id && selectedChannel.source !== "agency_env" ? (
+                  <button
+                    type="button"
+                    onClick={() => void deleteSelectedChannel()}
+                    disabled={deletingChannel || !canManage}
+                    className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/15 disabled:opacity-60"
+                  >
+                    {deletingChannel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Excluir numero
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -1578,7 +1644,20 @@ export default function ClienteCanaisPage() {
                 </div>
               ) : null}
 
-              <SaveButton saving={saving} label={`Salvar ${selectedDefinition.label}`} disabled={!canManage} />
+              <div className="flex flex-wrap gap-2">
+                <SaveButton saving={saving} label={`Salvar ${selectedDefinition.label}`} disabled={!canManage} />
+                {selectedChannel?.id ? (
+                  <button
+                    type="button"
+                    onClick={() => void deleteSelectedChannel()}
+                    disabled={deletingChannel || !canManage}
+                    className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/15 disabled:opacity-60"
+                  >
+                    {deletingChannel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Excluir canal
+                  </button>
+                ) : null}
+              </div>
               <div className="flex flex-wrap gap-2">
                 {isAdsConnector ? (
                   <button
