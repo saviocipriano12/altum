@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { decryptSecret } from "@/app/lib/server/secret-crypto";
 import {
   AGENCY_WHATSAPP_ENV_CHANNEL_ID,
+  type WhatsAppChannelConfig,
   getWhatsAppChannelForTenant,
   isOfficialWhatsAppProvider,
   listWhatsAppMessageTemplates,
@@ -10,6 +13,54 @@ import {
 
 function clean(value: unknown, max = 180) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function metadataString(data: Record<string, unknown>, key: string) {
+  const metadata = data.metadata && typeof data.metadata === "object" ? (data.metadata as Record<string, unknown>) : {};
+  return clean(metadata[key], 500);
+}
+
+function channelWabaId(channel: WhatsAppChannelConfig | null) {
+  return clean(channel?.wabaId, 180);
+}
+
+async function findTenantOfficialChannelWithWaba(tenantId: string, currentChannelId: string) {
+  const snap = await adminDb
+    .collection("tenant_channels")
+    .where("tenantId", "==", tenantId)
+    .where("type", "==", "whatsapp")
+    .limit(20)
+    .get();
+
+  for (const doc of snap.docs) {
+    if (doc.id === currentChannelId) continue;
+    const data = doc.data() as Record<string, unknown>;
+    const status = clean(data.status, 40) || "active";
+    const provider = clean(data.provider, 80) || "meta_whatsapp";
+    const wabaId =
+      clean(data.wabaId, 180) ||
+      metadataString(data, "wabaId") ||
+      metadataString(data, "whatsappBusinessAccountId") ||
+      metadataString(data, "whatsAppBusinessAccountId");
+    const phoneNumberId = clean(data.phoneNumberId, 180);
+    const accessToken = decryptSecret(data.accessToken);
+    if (status !== "active" || provider !== "meta_whatsapp" || !wabaId || !phoneNumberId || !accessToken) continue;
+    return {
+      id: doc.id,
+      tenantId,
+      source: "tenant_channel",
+      provider,
+      displayName: clean(data.displayName, 120) || "WhatsApp",
+      phoneNumber: clean(data.phoneNumber, 80),
+      phoneNumberId,
+      wabaId,
+      accessToken,
+      verifyToken: clean(data.verifyToken, 500) || undefined,
+      appSecret: decryptSecret(data.appSecret) || undefined,
+    } satisfies WhatsAppChannelConfig;
+  }
+
+  return null;
 }
 
 export async function GET(req: Request, context: { params: Promise<{ tenantId: string }> }) {
@@ -21,10 +72,13 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const url = new URL(req.url);
     const channelId = clean(url.searchParams.get("channelId"), 180);
     const usesAgencyOfficialChannel = channelId === AGENCY_WHATSAPP_ENV_CHANNEL_ID;
-    const channel = await getWhatsAppChannelForTenant(tenantId, {
+    let channel = await getWhatsAppChannelForTenant(tenantId, {
       allowAgencyFallback: usesAgencyOfficialChannel || !channelId,
       channelId: channelId || null,
     });
+    if (channel && !channelWabaId(channel)) {
+      channel = await findTenantOfficialChannelWithWaba(tenantId, channel.id) || channel;
+    }
     if (!channel) {
       return NextResponse.json(
         {
