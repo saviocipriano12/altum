@@ -29,6 +29,7 @@ type ChannelItem = {
   connectionStatus?: string;
   phoneNumber?: string;
   phoneNumberId?: string;
+  wabaId?: string;
   username?: string;
   pageId?: string;
   externalAccountId?: string;
@@ -79,6 +80,7 @@ type WhatsAppChannelResponse = {
     displayName?: string;
     phoneNumber?: string;
     phoneNumberId?: string;
+    wabaId?: string;
     status?: string;
     accessTokenMasked?: string;
     verifyTokenMasked?: string;
@@ -453,6 +455,7 @@ export default function ClienteCanaisPage() {
     displayName: "WhatsApp",
     phoneNumber: "",
     phoneNumberId: "",
+    wabaId: "",
     gatewayEndpoint: "",
     sessionStatusEndpoint: "",
     qrCodeEndpoint: "",
@@ -536,6 +539,7 @@ export default function ClienteCanaisPage() {
             displayName: whatsAppData.channel?.displayName || "WhatsApp",
             phoneNumber: whatsAppData.channel?.phoneNumber || "",
             phoneNumberId: whatsAppData.channel?.phoneNumberId || "",
+            wabaId: whatsAppData.channel?.wabaId || "",
             status: whatsAppData.channel?.status || "active",
           }));
           setWhatsAppMasked({
@@ -571,6 +575,7 @@ export default function ClienteCanaisPage() {
       displayName: selectedChannel.displayName || "WhatsApp",
       phoneNumber: selectedChannel.phoneNumber || "",
       phoneNumberId: selectedChannel.phoneNumberId || "",
+      wabaId: selectedChannel.wabaId || selectedChannel.metadata?.wabaId || selectedChannel.metadata?.whatsappBusinessAccountId || "",
       gatewayEndpoint: selectedChannel.metadata?.gatewayEndpoint || "",
       sessionStatusEndpoint: selectedChannel.metadata?.sessionStatusEndpoint || "",
       qrCodeEndpoint: selectedChannel.metadata?.qrCodeEndpoint || "",
@@ -972,10 +977,13 @@ export default function ClienteCanaisPage() {
           displayName: whatsAppForm.displayName,
           phoneNumber: whatsAppForm.phoneNumber,
           phoneNumberId: whatsAppForm.phoneNumberId,
+          wabaId: whatsAppForm.wabaId,
           accessToken: whatsAppForm.accessToken,
           status: whatsAppForm.status,
           metadata: {
             gatewayEndpoint: whatsAppForm.gatewayEndpoint,
+            wabaId: whatsAppForm.wabaId,
+            whatsappBusinessAccountId: whatsAppForm.wabaId,
             sessionStatusEndpoint: whatsAppForm.sessionStatusEndpoint,
             qrCodeEndpoint: whatsAppForm.qrCodeEndpoint,
             callEndpoint: whatsAppForm.callEndpoint,
@@ -1269,7 +1277,10 @@ export default function ClienteCanaisPage() {
               <Field label="Nome do canal" value={whatsAppForm.displayName} onChange={(value) => setWhatsAppForm((current) => ({ ...current, displayName: value }))} placeholder="WhatsApp Comercial" disabled={!canManage} />
               <Field label="Numero" value={whatsAppForm.phoneNumber} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumber: value }))} placeholder="+55 11 99999-9999" disabled={!canManage} />
               {whatsAppForm.provider === "meta_whatsapp" ? (
-                <Field label="ID do numero na Meta" value={whatsAppForm.phoneNumberId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumberId: value }))} placeholder="123456789012345" required disabled={!canManage} />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="ID do numero na Meta" value={whatsAppForm.phoneNumberId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumberId: value }))} placeholder="123456789012345" required disabled={!canManage} />
+                  <Field label="ID da conta WhatsApp (WABA)" value={whatsAppForm.wabaId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, wabaId: value }))} placeholder="1495967261502319" disabled={!canManage} />
+                </div>
               ) : (
                 <Field label="URL de envio do provedor" value={whatsAppForm.gatewayEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, gatewayEndpoint: value }))} placeholder="https://seu-provedor.com/messages/send" required disabled={!canManage} />
               )}
@@ -1355,6 +1366,7 @@ export default function ClienteCanaisPage() {
                       displayName: "WhatsApp",
                       phoneNumber: "",
                       phoneNumberId: "",
+                      wabaId: "",
                       gatewayEndpoint: "",
                       sessionStatusEndpoint: "",
                       qrCodeEndpoint: "",

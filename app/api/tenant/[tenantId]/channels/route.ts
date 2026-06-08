@@ -19,6 +19,7 @@ type ChannelBody = {
   status?: string;
   phoneNumber?: string;
   phoneNumberId?: string;
+  wabaId?: string;
   username?: string;
   pageId?: string;
   externalAccountId?: string;
@@ -374,6 +375,7 @@ export async function GET(
         };
         const status = String(data.status || "draft");
         const phoneNumberId = String(data.phoneNumberId || "");
+        const wabaId = clean(data.wabaId, 180) || clean(metadata.wabaId, 180) || clean(metadata.whatsappBusinessAccountId, 180);
         const pageId = String(data.pageId || "");
         const externalAccountId = String(data.externalAccountId || "");
         const hasAccessToken = hasStoredSecret(data.accessToken);
@@ -427,6 +429,7 @@ export async function GET(
           connectionStatus: effectiveConnectionStatus,
           phoneNumber: String(data.phoneNumber || ""),
           phoneNumberId,
+          wabaId,
           username: String(data.username || ""),
           pageId,
           externalAccountId,
@@ -475,6 +478,7 @@ export async function GET(
           connectionStatus: "ready",
           phoneNumber: agencyWhatsApp.phoneNumber || "",
           phoneNumberId: agencyWhatsApp.phoneNumberId,
+          wabaId: agencyWhatsApp.wabaId || "",
           username: "",
           pageId: "",
           externalAccountId: "",
@@ -590,6 +594,7 @@ export async function POST(
       ? (currentChannelSnap.data() as Record<string, unknown>)
       : {};
     const metadata = cleanMetadata(body.metadata);
+    const wabaId = clean(body.wabaId, 180) || clean(metadata.wabaId, 180) || clean(metadata.whatsappBusinessAccountId, 180);
     const verifyToken =
       clean(metadata.verifyToken, 400) || clean(metadata.webhookVerifyToken, 400);
     const appSecret = clean(metadata.appSecret, 400);
@@ -610,6 +615,7 @@ export async function POST(
         : cleanConnectionStatus(currentChannelData.connectionStatus),
       phoneNumber: cleanOrExisting(body.phoneNumber, currentChannelData.phoneNumber, 80),
       phoneNumberId: cleanOrExisting(body.phoneNumberId, currentChannelData.phoneNumberId, 160),
+      wabaId: cleanOrExisting(wabaId, currentChannelData.wabaId, 180),
       username: cleanOrExisting(body.username, currentChannelData.username, 160),
       pageId: cleanOrExisting(body.pageId, currentChannelData.pageId, 160),
       externalAccountId: cleanOrExisting(body.externalAccountId, currentChannelData.externalAccountId, 200),

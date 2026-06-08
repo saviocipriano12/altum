@@ -11,6 +11,7 @@ type ChannelDoc = {
   type?: string;
   provider?: string;
   phoneNumberId?: string;
+  wabaId?: string;
   accessToken?: string;
   verifyToken?: string;
   appSecret?: string;
@@ -28,6 +29,7 @@ export type WhatsAppChannelConfig = {
   displayName?: string;
   phoneNumber?: string;
   phoneNumberId: string;
+  wabaId?: string;
   accessToken: string;
   verifyToken?: string;
   appSecret?: string;
@@ -126,6 +128,38 @@ function getSessionId(metadata?: Record<string, unknown>) {
   return getMetadataEndpoint(metadata, ["sessionId", "instanceId", "connectionId", "deviceId"]);
 }
 
+function getWabaId(data: ChannelDoc) {
+  return (
+    clean(data.wabaId, 180) ||
+    getMetadataEndpoint(data.metadata, [
+      "wabaId",
+      "whatsappBusinessAccountId",
+      "whatsAppBusinessAccountId",
+      "businessAccountId",
+    ])
+  );
+}
+
+function normalizeMetaErrorMessage(message: unknown, fallback: string) {
+  const raw = clean(message, 800);
+  const normalized = raw.toLowerCase();
+  if (
+    normalized.includes("token has expired") ||
+    normalized.includes("session has expired") ||
+    normalized.includes("access token has expired") ||
+    normalized.includes("expired on")
+  ) {
+    return "Credencial da Meta expirada. Gere uma nova credencial de acesso no Meta Developers/Business Manager, cole em Configuracoes > Canais e salve o numero novamente.";
+  }
+  if (normalized.includes("permission") || normalized.includes("permissions") || normalized.includes("whatsapp_business_management")) {
+    return "Credencial da Meta sem permissao suficiente. Use uma credencial com permissoes whatsapp_business_management e whatsapp_business_messaging para puxar templates e enviar disparos.";
+  }
+  if (normalized.includes("whatsapp_business_account") && normalized.includes("nonexisting field")) {
+    return "Nao consegui descobrir o WABA ID pelo ID do numero. Informe o ID da conta WhatsApp (WABA) em Configuracoes > Canais e salve o numero.";
+  }
+  return raw || fallback;
+}
+
 export function isOfficialWhatsAppProvider(provider: string) {
   return normalizeProvider(provider) === "meta_whatsapp";
 }
@@ -135,6 +169,7 @@ function normalizeChannelDoc(id: string, data: ChannelDoc): WhatsAppChannelConfi
   const type = String(data.type || "").trim().toLowerCase();
   const status = String(data.status || "active").trim().toLowerCase();
   const phoneNumberId = String(data.phoneNumberId || "").trim();
+  const wabaId = getWabaId(data);
   const accessToken = decryptSecret(data.accessToken);
   const provider = normalizeProvider(data.provider);
   const gatewayEndpoint = getGatewayEndpoint(data.metadata);
@@ -167,6 +202,7 @@ function normalizeChannelDoc(id: string, data: ChannelDoc): WhatsAppChannelConfi
     displayName: String(data.displayName || "WhatsApp"),
     phoneNumber: String(data.phoneNumber || ""),
     phoneNumberId: phoneNumberId || id,
+    wabaId: wabaId || undefined,
     accessToken,
     verifyToken: String(data.verifyToken || "") || undefined,
     appSecret: decryptSecret(data.appSecret) || undefined,
@@ -191,6 +227,7 @@ function getAgencyChannelFromEnv(): WhatsAppChannelConfig | null {
     provider: "meta_whatsapp",
     displayName: "ALTUM Agency WhatsApp",
     phoneNumberId,
+    wabaId: String(process.env.META_WABA_ID || process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID || "").trim() || undefined,
     accessToken,
     verifyToken: String(process.env.META_VERIFY_TOKEN || "").trim() || undefined,
     appSecret: String(process.env.META_APP_SECRET || "").trim() || undefined,
@@ -545,6 +582,8 @@ async function sendExternalWhatsAppMessage(input: {
 }
 
 async function resolveWhatsAppBusinessAccountId(channel: WhatsAppChannelConfig) {
+  if (channel.wabaId) return channel.wabaId;
+
   const response = await fetch(
     `https://graph.facebook.com/${VERSION}/${channel.phoneNumberId}?fields=whatsapp_business_account`,
     {
@@ -561,12 +600,12 @@ async function resolveWhatsAppBusinessAccountId(channel: WhatsAppChannelConfig) 
   };
 
   if (!response.ok) {
-    throw new Error(payload.error?.message || "Falha ao obter WABA do numero WhatsApp.");
+    throw new Error(normalizeMetaErrorMessage(payload.error?.message, "Falha ao obter WABA do numero WhatsApp."));
   }
 
   const wabaId = String(payload.whatsapp_business_account?.id || "").trim();
   if (!wabaId) {
-    throw new Error("Nao foi possivel identificar o WhatsApp Business Account do numero.");
+    throw new Error("Nao foi possivel identificar o WhatsApp Business Account do numero. Informe o WABA ID em Configuracoes > Canais.");
   }
   return wabaId;
 }
@@ -595,7 +634,7 @@ async function listMetaMessageTemplates(channel: WhatsAppChannelConfig, wabaId: 
   };
 
   if (!response.ok) {
-    throw new Error(payload.error?.message || "Falha ao listar templates do WABA.");
+    throw new Error(normalizeMetaErrorMessage(payload.error?.message, "Falha ao listar templates do WABA."));
   }
 
   return (payload.data || []).map((item) => ({

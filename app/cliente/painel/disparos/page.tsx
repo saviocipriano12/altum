@@ -49,6 +49,7 @@ type Channel = {
   connectionStatus?: string;
   outboundReady?: boolean;
   metadata?: Record<string, string>;
+  wabaId?: string;
 };
 
 type Campaign = {
@@ -224,6 +225,20 @@ function renderTemplateBodyPreview(template: WhatsAppTemplate | undefined, param
   });
 }
 
+function humanizeTemplateError(message: string) {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("credencial da meta expirada") || normalized.includes("token has expired")) {
+    return "A credencial da Meta desse numero expirou. Atualize a credencial em Configuracoes > Canais, salve o numero e volte para selecionar o template.";
+  }
+  if (normalized.includes("waba id") || normalized.includes("whatsapp business account")) {
+    return "Informe o ID da conta WhatsApp (WABA) em Configuracoes > Canais. Os templates aprovados ficam no WABA, nao apenas no numero.";
+  }
+  if (normalized.includes("permiss")) {
+    return "A credencial da Meta nao tem permissao para ler templates. Use uma credencial com whatsapp_business_management e whatsapp_business_messaging.";
+  }
+  return message;
+}
+
 export default function BulkMessagingPage() {
   const { tenant, hasCapability } = useClienteTenant();
   const canManage = hasCapability("manage_automations");
@@ -354,7 +369,7 @@ export default function BulkMessagingPage() {
         if (mounted) {
           setTemplates([]);
           setTemplateMeta(null);
-          setTemplateError(templateError instanceof Error ? templateError.message : "Falha ao consultar templates.");
+          setTemplateError(humanizeTemplateError(templateError instanceof Error ? templateError.message : "Falha ao consultar templates."));
         }
       })
       .finally(() => {
@@ -923,9 +938,12 @@ function ContentStep({
                 />
               </div>
               {templateError ? (
-                <p className="mt-3 rounded-[14px] border border-rose-300/40 bg-white/70 px-3 py-2 text-xs font-semibold text-rose-700">
-                  {templateError}
-                </p>
+                <div className="mt-3 rounded-[14px] border border-rose-300/40 bg-white/75 px-3 py-2 text-xs font-semibold text-rose-700">
+                  <p>{templateError}</p>
+                  <a href="/cliente/painel/configuracoes/canais" className="mt-2 inline-flex text-blue-700 underline underline-offset-4">
+                    Corrigir canal agora
+                  </a>
+                </div>
               ) : null}
               {!loadingTemplates && !templateError && !templates.length ? (
                 <p className="mt-3 rounded-[14px] border border-amber-300/40 bg-white/70 px-3 py-2 text-xs font-semibold text-amber-700">

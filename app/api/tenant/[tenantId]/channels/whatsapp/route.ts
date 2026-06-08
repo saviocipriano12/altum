@@ -10,6 +10,7 @@ type Body = {
   displayName?: string;
   phoneNumber?: string;
   phoneNumberId?: string;
+  wabaId?: string;
   accessToken?: string;
   verifyToken?: string;
   appSecret?: string;
@@ -67,6 +68,10 @@ export async function GET(
         displayName: String(channelData.displayName || "WhatsApp"),
         phoneNumber: String(channelData.phoneNumber || ""),
         phoneNumberId: String(channelData.phoneNumberId || ""),
+        wabaId:
+          String(channelData.wabaId || "") ||
+          String((channelData.metadata as Record<string, unknown> | undefined)?.wabaId || "") ||
+          String((channelData.metadata as Record<string, unknown> | undefined)?.whatsappBusinessAccountId || ""),
         status: String(channelData.status || "active"),
         hasAccessToken: hasStoredSecret(channelData.accessToken),
         hasVerifyToken: Boolean(String(channelData.verifyToken || "")),
@@ -102,6 +107,7 @@ export async function POST(
     const body = (await req.json()) as Body;
 
     const phoneNumberId = clean(body.phoneNumberId, 120);
+    const wabaId = clean(body.wabaId, 180);
     const accessToken = clean(body.accessToken, 4000);
     const verifyToken = clean(body.verifyToken, 400);
     const appSecret = clean(body.appSecret, 400);
@@ -163,6 +169,7 @@ export async function POST(
           displayName: clean(body.displayName, 120) || "WhatsApp",
           phoneNumber: clean(body.phoneNumber, 60),
           phoneNumberId,
+          ...(wabaId ? { wabaId } : {}),
           accessToken: encryptSecret(accessToken),
           verifyToken,
           appSecret: encryptSecret(appSecret),
@@ -201,6 +208,7 @@ export async function POST(
         displayName: clean(body.displayName, 120) || "WhatsApp",
         phoneNumber: clean(body.phoneNumber, 60),
         phoneNumberId,
+        wabaId: wabaId || undefined,
         accessToken,
         verifyToken: verifyToken || undefined,
         appSecret: appSecret || undefined,
