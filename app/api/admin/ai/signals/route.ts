@@ -86,6 +86,46 @@ function isObjectionSignal(stateAfter: string, goal: string) {
   return stateAfter === "objection_handling" || goal === "handle_objection";
 }
 
+async function loadAiLogs(limit: number) {
+  try {
+    return await adminDb.collection("ai_logs").orderBy("createdAt", "desc").limit(limit).get();
+  } catch (error) {
+    console.warn("Falha ao consultar ai_logs ordenado por createdAt. Tentando leitura simples:", error);
+  }
+
+  try {
+    return await adminDb.collection("ai_logs").limit(limit).get();
+  } catch (error) {
+    console.warn("Falha ao consultar ai_logs:", error);
+    return null;
+  }
+}
+
+async function loadTenantSignalInfo(tenantId: string) {
+  try {
+    const [settingsSnap, tenantSnap] = await Promise.all([
+      adminDb.collection("tenant_settings").doc(tenantId).get(),
+      adminDb.collection("tenants").doc(tenantId).get(),
+    ]);
+    const settingsData = settingsSnap.exists ? (settingsSnap.data() as Record<string, unknown>) : {};
+    const tenantData = tenantSnap.exists ? (tenantSnap.data() as Record<string, unknown>) : {};
+    return {
+      tenantId,
+      tenantName: cleanText(settingsData.name, 140) || cleanText(tenantData.name, 140) || tenantId,
+      legacyClientId: cleanText(tenantData.legacyClientId, 140),
+      businessProfileId: cleanText(settingsData.businessProfileId, 80) || cleanText(tenantData.businessProfileId, 80),
+    };
+  } catch (error) {
+    console.warn("Falha ao enriquecer sinais da IA com tenant:", tenantId, error);
+    return {
+      tenantId,
+      tenantName: tenantId,
+      legacyClientId: "",
+      businessProfileId: "generic",
+    };
+  }
+}
+
 export async function GET(req: Request) {
   try {
     await requireRequestUser(req, {
@@ -97,9 +137,9 @@ export async function GET(req: Request) {
     const limitRaw = Number(searchParams.get("limit") || 300);
     const limit = Number.isFinite(limitRaw) ? Math.min(600, Math.max(40, Math.round(limitRaw))) : 300;
 
-    const snap = await adminDb.collection("ai_logs").orderBy("createdAt", "desc").limit(limit).get();
+    const snap = await loadAiLogs(limit);
 
-    const rawItems = snap.docs.map((doc) => {
+    const rawItems = (snap?.docs || []).map((doc) => {
       const data = doc.data() as Record<string, unknown>;
       return {
         id: doc.id,
@@ -128,20 +168,7 @@ export async function GET(req: Request) {
 
     const tenantIds = Array.from(new Set(items.map((item) => item.tenantId)));
     const tenantSettings = await Promise.all(
-      tenantIds.map(async (tenantId) => {
-        const [settingsSnap, tenantSnap] = await Promise.all([
-          adminDb.collection("tenant_settings").doc(tenantId).get(),
-          adminDb.collection("tenants").doc(tenantId).get(),
-        ]);
-        const settingsData = settingsSnap.exists ? (settingsSnap.data() as Record<string, unknown>) : {};
-        const tenantData = tenantSnap.exists ? (tenantSnap.data() as Record<string, unknown>) : {};
-        return {
-          tenantId,
-          tenantName: cleanText(settingsData.name, 140) || cleanText(tenantData.name, 140) || tenantId,
-          legacyClientId: cleanText(tenantData.legacyClientId, 140),
-          businessProfileId: cleanText(settingsData.businessProfileId, 80) || cleanText(tenantData.businessProfileId, 80),
-        };
-      })
+      tenantIds.map((tenantId) => loadTenantSignalInfo(tenantId))
     );
 
     const tenantInfoMap = new Map(tenantSettings.map((item) => [item.tenantId, item]));

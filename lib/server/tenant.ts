@@ -403,24 +403,33 @@ export async function getTenantSettings(tenantId: string): Promise<TenantSetting
   const normalizedTenantId = tenantId.trim();
   if (!normalizedTenantId) return null;
 
-  const byDocId = await adminDb.collection("tenant_settings").doc(normalizedTenantId).get();
-  if (byDocId.exists) {
-    return {
-      tenantId: normalizedTenantId,
-      ...(byDocId.data() as Record<string, unknown>),
-    };
+  try {
+    const byDocId = await adminDb.collection("tenant_settings").doc(normalizedTenantId).get();
+    if (byDocId.exists) {
+      return {
+        tenantId: normalizedTenantId,
+        ...(byDocId.data() as Record<string, unknown>),
+      };
+    }
+  } catch (error) {
+    console.warn("Falha ao buscar tenant_settings por doc id:", normalizedTenantId, error);
   }
 
-  const byField = await adminDb
-    .collection("tenant_settings")
-    .where("tenantId", "==", normalizedTenantId)
-    .limit(1)
-    .get();
+  try {
+    const byField = await adminDb
+      .collection("tenant_settings")
+      .where("tenantId", "==", normalizedTenantId)
+      .limit(1)
+      .get();
 
-  if (byField.empty) return null;
+    if (byField.empty) return null;
 
-  return {
-    tenantId: normalizedTenantId,
-    ...(byField.docs[0].data() as Record<string, unknown>),
-  };
+    return {
+      tenantId: normalizedTenantId,
+      ...(byField.docs[0].data() as Record<string, unknown>),
+    };
+  } catch (error) {
+    console.warn("Falha ao buscar tenant_settings por tenantId:", normalizedTenantId, error);
+    return null;
+  }
 }

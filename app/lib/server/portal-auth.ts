@@ -119,7 +119,10 @@ async function buildPortalUserFromMembership(
   if (tenantData.status === "blocked" || tenantData.billingStatus === "blocked") {
     throw new PortalAuthError(403, "tenant_billing_blocked", "Acesso ao portal pausado por pendencia financeira.");
   }
-  const settings = await getTenantSettings(membership.tenantId);
+  const settings = await getTenantSettings(membership.tenantId).catch((error) => {
+    console.warn("Falha ao carregar configuracoes do tenant no portal:", membership.tenantId, error);
+    return null;
+  });
 
   const tenantName =
     (typeof settings?.name === "string" ? settings.name : "") ||
