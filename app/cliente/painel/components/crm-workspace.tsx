@@ -11,6 +11,7 @@ import {
   FileText,
   List,
   Sparkles,
+  Video,
 } from "lucide-react";
 
 export type CrmTone = "neutral" | "blue" | "green" | "purple" | "orange" | "red";
@@ -30,6 +31,7 @@ export const CRM_ROUTES = [
   { label: "Propostas", href: "/cliente/painel/comercial", icon: FileText },
   { label: "Retornos", href: "/cliente/painel/follow-ups", icon: Sparkles },
   { label: "Agenda", href: "/cliente/painel/agenda", icon: CalendarDays },
+  { label: "Reunioes IA", href: "/cliente/painel/reunioes-assistidas", icon: Video },
 ] as const;
 
 export type CrmRouteLabel = (typeof CRM_ROUTES)[number]["label"];
@@ -117,7 +119,7 @@ export function CrmTabs({ active }: { active: CrmRouteLabel }) {
   }, [searchParams]);
 
   return (
-    <nav className="grid grid-cols-2 gap-2 md:grid-cols-5">
+    <nav className="grid grid-cols-2 gap-2 md:grid-cols-6">
       {CRM_ROUTES.map((item) => {
         const href = preservedQuery ? `${item.href}?${preservedQuery}` : item.href;
         const Icon = item.icon;

@@ -82,6 +82,7 @@ const PRIMARY_NAV: NavItem[] = [
     tone: "warning",
     aliases: [
       { href: "/cliente/painel/agenda", label: "Compromissos" },
+      { href: "/cliente/painel/reunioes-assistidas", label: "Reunioes IA" },
       { href: "/cliente/painel/follow-ups", label: "Retornos" },
     ],
     group: "operate",

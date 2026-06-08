@@ -14,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
   Target,
   Video,
   XCircle,
@@ -322,6 +323,11 @@ export default function ClienteAgendaPage() {
                       Ficha
                     </Link>
                   ) : null}
+                  {item.leadId ? (
+                    <Link href={`/cliente/painel/reunioes-assistidas?appointmentId=${encodeURIComponent(item.id)}&leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex items-center justify-center rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
+                      IA da reuniao
+                    </Link>
+                  ) : null}
                   {canOperate && item.status === "scheduled" ? (
                     <CrmButton type="button" disabled={busyId === item.id} onClick={() => updateStatus(item.id, "confirmed")}>Confirmar</CrmButton>
                   ) : null}
@@ -448,6 +454,15 @@ function AgendaCommandCenter({
                 >
                   Abrir reuniao
                   <Video className="h-3.5 w-3.5" />
+                </Link>
+              ) : null}
+              {leadId ? (
+                <Link
+                  href={`/cliente/painel/reunioes-assistidas?appointmentId=${encodeURIComponent(nextAppointment.id)}&leadId=${encodeURIComponent(leadId)}`}
+                  className="col-span-2 inline-flex items-center justify-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2.5 text-xs font-black text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+                >
+                  Preparar com IA
+                  <Sparkles className="h-3.5 w-3.5" />
                 </Link>
               ) : null}
             </div>

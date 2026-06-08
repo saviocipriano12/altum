@@ -15,7 +15,7 @@ const ITEMS: BottomItem[] = [
   { href: "/cliente/painel", label: "Inicio", icon: LayoutGrid },
   { href: "/cliente/painel/inbox", label: "Conversas", icon: MessageSquare },
   { href: "/cliente/painel/crm", label: "Clientes", icon: Target, matches: ["/cliente/painel/pipeline", "/cliente/painel/comercial"] },
-  { href: "/cliente/painel/agenda", label: "Agenda", icon: CalendarDays, matches: ["/cliente/painel/follow-ups"] },
+  { href: "/cliente/painel/agenda", label: "Agenda", icon: CalendarDays, matches: ["/cliente/painel/follow-ups", "/cliente/painel/reunioes-assistidas"] },
   {
     href: "/cliente/painel/campanhas",
     label: "Crescer",
