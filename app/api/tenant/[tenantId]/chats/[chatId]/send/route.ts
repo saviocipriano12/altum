@@ -5,6 +5,7 @@ import { sendTenantChatText } from "@/lib/server/chat-dispatch";
 
 type Body = {
   text?: string;
+  replyToId?: string | null;
 };
 
 export async function POST(
@@ -27,6 +28,7 @@ export async function POST(
       tenantId,
       chatId,
       text,
+      replyToId: body.replyToId || null,
       actor: { id: user.uid, name: user.name },
       pauseAi: true,
       pauseMinutes: 30,

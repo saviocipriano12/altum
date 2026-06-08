@@ -136,6 +136,7 @@ export async function sendTenantChatText(input: {
   tenantId: string;
   chatId: string;
   text: string;
+  replyToId?: string | null;
   actor: ChatDispatchActor;
   pauseAi?: boolean;
   pauseMinutes?: number;
@@ -143,6 +144,7 @@ export async function sendTenantChatText(input: {
   const tenantId = String(input.tenantId || "").trim();
   const chatId = String(input.chatId || "").trim();
   const text = String(input.text || "").trim();
+  const replyToId = String(input.replyToId || "").trim().slice(0, 180);
 
   if (!tenantId || !chatId || !text) {
     throw new Error("tenantId, chatId e text sao obrigatorios.");
@@ -256,6 +258,14 @@ export async function sendTenantChatText(input: {
     phoneNumberId = channel.phoneNumberId;
   }
 
+  if (replyToId) {
+    const repliedSnap = await adminDb.collection("messages").doc(replyToId).get();
+    const replied = repliedSnap.data() as { chatId?: string; tenantId?: string } | undefined;
+    if (!repliedSnap.exists || replied?.chatId !== chatId || replied?.tenantId !== tenantId) {
+      throw new Error("Mensagem respondida nao pertence a esta conversa.");
+    }
+  }
+
   const writes: Promise<unknown>[] = [
     chatRef.set(
       {
@@ -283,6 +293,7 @@ export async function sendTenantChatText(input: {
       status: "sent",
       ...(outboundType === "template" ? { deliveryStatus: "sent" } : {}),
       channel: normalizedChannel,
+      ...(replyToId ? { replyToId } : {}),
       ...(metaChannelId ? { channelId: metaChannelId } : {}),
       ...(metaMessageId ? { metaMessageId } : {}),
       ...(templateName ? { templateName } : {}),
@@ -345,6 +356,7 @@ export async function sendTenantChatMedia(input: {
   filename: string;
   contentType: string;
   caption?: string;
+  replyToId?: string | null;
   actor: ChatDispatchActor;
   pauseAi?: boolean;
   pauseMinutes?: number;
@@ -355,6 +367,7 @@ export async function sendTenantChatMedia(input: {
   const filename = String(input.filename || "arquivo").trim().slice(0, 180) || "arquivo";
   const contentType = String(input.contentType || "application/octet-stream").trim().slice(0, 180);
   const caption = String(input.caption || "").trim().slice(0, 1024);
+  const replyToId = String(input.replyToId || "").trim().slice(0, 180);
 
   if (!tenantId || !chatId || !input.buffer?.length) {
     throw new Error("tenantId, chatId e arquivo sao obrigatorios.");
@@ -405,6 +418,14 @@ export async function sendTenantChatMedia(input: {
   const phone = normalizePhone(chat.contactPhone);
   if (!phone) {
     throw new Error("Chat sem telefone valido.");
+  }
+
+  if (replyToId) {
+    const repliedSnap = await adminDb.collection("messages").doc(replyToId).get();
+    const replied = repliedSnap.data() as { chatId?: string; tenantId?: string } | undefined;
+    if (!repliedSnap.exists || replied?.chatId !== chatId || replied?.tenantId !== tenantId) {
+      throw new Error("Mensagem respondida nao pertence a esta conversa.");
+    }
   }
 
   const upload = await uploadWhatsAppMedia({
@@ -461,6 +482,7 @@ export async function sendTenantChatMedia(input: {
       mediaMimeType: contentType,
       mediaSize: input.buffer.length,
       ...(caption ? { caption } : {}),
+      ...(replyToId ? { replyToId } : {}),
       channelPhoneNumberId: channel.phoneNumberId,
       createdAt: FieldValue.serverTimestamp(),
     }),

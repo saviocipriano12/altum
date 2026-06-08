@@ -65,6 +65,7 @@ export async function POST(
       filename: clean(uploaded.name, 180) || `arquivo-${Date.now()}`,
       contentType: clean(uploaded.type, 180) || "application/octet-stream",
       caption: clean(form.get("caption"), 1024),
+      replyToId: clean(form.get("replyToId"), 180) || null,
       actor: { id: user.uid, name: user.name },
       pauseAi: true,
       pauseMinutes: 30,

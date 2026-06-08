@@ -156,6 +156,17 @@ type TemplateMeta = {
   wabaId?: string;
 };
 
+type AudienceImportSummary = {
+  totalRows: number;
+  processed: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: number;
+  importBatchTag: string;
+  sourceLabel: string;
+};
+
 const STEPS: Array<{ id: Step; label: string; icon: typeof Smartphone }> = [
   { id: "remetente", label: "Remetente", icon: Smartphone },
   { id: "publico", label: "Publico", icon: Users },
@@ -238,6 +249,45 @@ function splitList(value: string) {
   return Array.from(new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))).slice(0, 20);
 }
 
+function csvEscape(value: string) {
+  const text = String(value || "").trim();
+  return /[",\n\r;]/.test(text) ? `"${text.replace(/"/g, "\"\"")}"` : text;
+}
+
+function hasAudienceHeader(line: string) {
+  const normalized = line
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_");
+  return ["telefone", "phone", "whatsapp", "celular", "numero", "nome", "name", "email", "empresa"].some((token) =>
+    normalized.includes(token)
+  );
+}
+
+function normalizeAudienceFileContent(fileName: string, content: string) {
+  const extension = fileName.split(".").pop()?.toLowerCase() || "";
+  if (extension === "xls" || extension === "xlsx") {
+    throw new Error("Por enquanto envie em CSV ou TXT. No Excel, use Salvar como > CSV e suba o arquivo gerado.");
+  }
+
+  const trimmed = content.trim();
+  if (!trimmed) throw new Error("Arquivo vazio.");
+
+  const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const firstLine = lines[0] || "";
+  if (hasAudienceHeader(firstLine)) return trimmed;
+
+  const rows = lines.map((line) => {
+    const phoneMatch = line.match(/\+?\d[\d\s().-]{7,}\d/);
+    const phone = phoneMatch?.[0] || line;
+    const name = phoneMatch ? line.replace(phoneMatch[0], "").replace(/[;,|-]+/g, " ").trim() : "";
+    return `${csvEscape(phone)},${csvEscape(name)}`;
+  });
+
+  return ["telefone,nome", ...rows].join("\n");
+}
+
 function getTemplateBody(template: WhatsAppTemplate | undefined) {
   const body = template?.components.find((component) => String(component.type || "").toUpperCase() === "BODY");
   return String(body?.text || "").trim();
@@ -305,7 +355,8 @@ export default function BulkMessagingPage() {
   const [step, setStep] = useState<Step>("remetente");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState<"save" | "preview" | "send" | "delete" | "media" | null>(null);
+  const [working, setWorking] = useState<"save" | "preview" | "send" | "delete" | "media" | "audience" | null>(null);
+  const [audienceImport, setAudienceImport] = useState<AudienceImportSummary | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -345,6 +396,7 @@ export default function BulkMessagingPage() {
     if (!selected) return;
     setEditor({ ...emptyCampaign(), ...selected });
     setPreview(null);
+    setAudienceImport(null);
   }, [campaigns, selectedId]);
 
   const selectedChannel = channels.find((item) => item.id === editor.channelId) || null;
@@ -447,6 +499,7 @@ export default function BulkMessagingPage() {
     setEditor(next);
     setSelectedId("");
     setPreview(null);
+    setAudienceImport(null);
     setStep("remetente");
     setNotice("");
     setError("");
@@ -459,6 +512,50 @@ export default function BulkMessagingPage() {
       deliveryMode: isOfficialChannel(channel) ? "template" : "text",
     }));
     setPreview(null);
+  }
+
+  async function importAudienceFile(file: File) {
+    if (!tenant?.tenantId || !canManage) return;
+    setWorking("audience");
+    setError("");
+    setNotice("");
+    try {
+      const content = normalizeAudienceFileContent(file.name, await file.text());
+      const response = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          csvContent: content,
+          defaultChannel: "whatsapp",
+          defaultSourceLabel: `Disparo em massa - ${file.name}`.slice(0, 120),
+          defaultPipelineStage: "captado",
+          defaultConsentWhatsApp: true,
+        }),
+      });
+      const payload = (await response.json()) as { summary?: AudienceImportSummary; error?: string };
+      if (!response.ok || !payload.summary) throw new Error(payload.error || "Falha ao importar contatos.");
+
+      const summary = payload.summary;
+      const tag = summary.importBatchTag;
+      setAudienceImport(summary);
+      setEditor((current) => ({
+        ...current,
+        filters: {
+          stageIds: [],
+          ownerIds: [],
+          sources: [],
+          heat: [],
+          tags: tag ? [tag] : [],
+        },
+        maxRecipients: Math.max(1, Math.min(500, Math.max(current.maxRecipients, summary.processed))),
+      }));
+      setPreview(null);
+      setNotice(`${summary.processed} contatos importados para este disparo.`);
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "Falha ao importar contatos.");
+    } finally {
+      setWorking(null);
+    }
   }
 
   async function save() {
@@ -501,10 +598,11 @@ export default function BulkMessagingPage() {
         { method: "POST" }
       );
       const payload = (await response.json()) as Preview & { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Falha ao simular publico.");
-      setPreview({ summary: payload.summary, sample: payload.sample || [] });
+      if (!response.ok || !payload.summary) throw new Error(payload.error || "Falha ao simular publico.");
+      const summary = payload.summary;
+      setPreview({ summary, sample: payload.sample || [] });
       setStep("revisao");
-      setNotice(`${payload.summary.estimatedSend} contatos aptos para receber.`);
+      setNotice(`${summary.estimatedSend} contatos aptos para receber.`);
     } catch (previewError) {
       setError(previewError instanceof Error ? previewError.message : "Falha ao simular publico.");
     } finally {
@@ -725,7 +823,13 @@ export default function BulkMessagingPage() {
                 <SenderStep channels={channels} selectedId={editor.channelId} onSelect={chooseChannel} />
               ) : null}
               {step === "publico" ? (
-                <AudienceStep editor={editor} onChange={(patch) => { setEditor((current) => ({ ...current, ...patch })); setPreview(null); }} />
+                <AudienceStep
+                  editor={editor}
+                  importing={working === "audience"}
+                  importSummary={audienceImport}
+                  onImportFile={(file) => void importAudienceFile(file)}
+                  onChange={(patch) => { setEditor((current) => ({ ...current, ...patch })); setPreview(null); }}
+                />
               ) : null}
               {step === "conteudo" ? (
                 <ContentStep
@@ -839,6 +943,15 @@ function SummaryMetric({ label, value, icon: Icon, tone }: { label: string; valu
   );
 }
 
+function ImportStat({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) {
+  return (
+    <div className={`rounded-[16px] border bg-white px-3 py-2 ${danger ? "border-rose-200 text-rose-700" : "border-emerald-200 text-emerald-800"}`}>
+      <p className="text-[11px] font-bold uppercase tracking-wide opacity-70">{label}</p>
+      <p className="mt-1 text-lg font-black">{value}</p>
+    </div>
+  );
+}
+
 function Feedback({ tone, text }: { tone: "error" | "success"; text: string }) {
   const Icon = tone === "error" ? AlertTriangle : CheckCircle2;
   return (
@@ -892,13 +1005,60 @@ function SenderStep({ channels, selectedId, onSelect }: { channels: Channel[]; s
   );
 }
 
-function AudienceStep({ editor, onChange }: { editor: Campaign; onChange: (patch: Partial<Campaign>) => void }) {
+function AudienceStep({
+  editor,
+  importing,
+  importSummary,
+  onImportFile,
+  onChange,
+}: {
+  editor: Campaign;
+  importing: boolean;
+  importSummary: AudienceImportSummary | null;
+  onImportFile: (file: File) => void;
+  onChange: (patch: Partial<Campaign>) => void;
+}) {
   const changeFilter = (key: keyof Campaign["filters"], value: string) =>
     onChange({ filters: { ...editor.filters, [key]: splitList(value) } });
   return (
     <div>
       <h3 className="text-lg font-bold text-[var(--cliente-card-text)]">Quem deve receber?</h3>
-      <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Combine filtros. Quem pediu para nao receber sera removido automaticamente.</p>
+      <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Suba uma lista propria ou use filtros da base. Quem pediu para nao receber sera removido automaticamente.</p>
+
+      <div className="mt-5 rounded-[22px] border border-dashed border-emerald-300 bg-emerald-500/8 p-4 md:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-black text-[var(--cliente-card-text)]">Importar contatos por arquivo</p>
+            <p className="mt-1 text-sm leading-5 text-[var(--cliente-card-text-soft)]">
+              Aceita CSV/TXT com colunas como telefone, nome, empresa e origem. Se for uma lista simples, coloque um telefone por linha.
+            </p>
+          </div>
+          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[16px] bg-emerald-500 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-emerald-600">
+            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+            {importing ? "Importando" : "Subir lista"}
+            <input
+              type="file"
+              accept=".csv,.txt,text/csv,text/plain"
+              className="sr-only"
+              disabled={importing}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onImportFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+        </div>
+        {importSummary ? (
+          <div className="mt-4 grid gap-2 sm:grid-cols-4">
+            <ImportStat label="Importados" value={importSummary.processed} />
+            <ImportStat label="Novos" value={importSummary.created} />
+            <ImportStat label="Atualizados" value={importSummary.updated} />
+            <ImportStat label="Ignorados" value={importSummary.skipped + importSummary.errors} danger={importSummary.errors > 0} />
+          </div>
+        ) : null}
+      </div>
+
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         <Field label="Temperatura" hint="Ex.: quente, morno">
           <input value={editor.filters.heat.join(", ")} onChange={(event) => changeFilter("heat", event.target.value)} className="client-input" placeholder="quente, morno" />

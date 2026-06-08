@@ -9,10 +9,13 @@ import {
   ArrowRight,
   BadgeDollarSign,
   Bot,
+  Check,
+  CheckCheck,
   Download,
   ExternalLink,
   CheckCircle2,
   Clock3,
+  Copy,
   CircleDashed,
   FileText,
   FolderKanban,
@@ -30,6 +33,7 @@ import {
   PlayCircle,
   RefreshCw,
   Receipt,
+  Reply,
   Search,
   Send,
   SlidersHorizontal,
@@ -116,6 +120,7 @@ type MessageItem = {
   id: string;
   text?: string;
   sender?: "agent" | "client" | "system" | "bot";
+  senderName?: string | null;
   status?: string | null;
   deliveryStatus?: string | null;
   deliveryError?: string | null;
@@ -123,6 +128,8 @@ type MessageItem = {
   deliveryUpdatedAt?: unknown;
   createdAt?: unknown;
   type?: string;
+  replyToId?: string | null;
+  reactions?: Record<string, string[]>;
   mediaUrl?: string | null;
   mediaDownloadUrl?: string | null;
   mediaName?: string | null;
@@ -314,6 +321,7 @@ type MessageListPayload = {
 
 const INBOX_CHANNEL_ORDER = ["whatsapp", "instagram", "messenger", "site_chat", "site_form"] as const;
 const QUICK_EMOJIS = ["👍", "🙏", "😊", "🔥", "✅", "🤝", "💚", "👏", "🚀", "😉", "📌", "💬"];
+const QUICK_REACTION_EMOJIS = ["\u{1F44D}", "\u2764\uFE0F", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
 const INBOX_CHANNEL_SET = new Set<string>(INBOX_CHANNEL_ORDER);
 const STATUS_FILTERS = ["all", "open", "pending", "resolved", "archived"] as const;
 const STATUS_OPTIONS = ["open", "pending", "resolved", "archived"] as const;
@@ -778,6 +786,36 @@ function getMessagePreview(message: MessageItem | ChatItem) {
   if (type === "document") return text || "Arquivo recebido";
   if (type === "system") return text || "Atualizacao do sistema";
   return text || "Sem mensagem registrada.";
+}
+
+function normalizeReactionMap(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([emoji, users]) => [
+        emoji,
+        Array.isArray(users)
+          ? users.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 100)
+          : [],
+      ])
+      .filter(([emoji, users]) => String(emoji).trim() && (users as string[]).length > 0)
+  );
+}
+
+function getMessageActorLabel(message: MessageItem) {
+  if (message.sender === "agent") return message.senderName || "Time";
+  if (message.sender === "system") return "Sistema";
+  return "Contato";
+}
+
+function getReplyPreviewLabel(message: MessageItem) {
+  const type = String(message.type || "text").toLowerCase();
+  if (type === "image") return "Imagem";
+  if (type === "audio") return "Audio";
+  if (type === "video") return "Video";
+  if (type === "document") return message.mediaName || "Documento";
+  if (type === "template") return "Template";
+  return getMessagePreview(message);
 }
 
 function getTaskTone(task: LeadTask) {
@@ -1438,27 +1476,28 @@ function DocumentAttachment({ message }: { message: MessageItem }) {
 
 function MessageBubble({
   message,
+  replied,
+  onReply,
+  onCopy,
+  onReact,
+  canOperate,
 }: {
   message: MessageItem;
+  replied?: MessageItem | null;
+  onReply?: () => void;
+  onCopy?: () => void;
+  onReact?: (emoji: string) => void;
+  canOperate?: boolean;
 }) {
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
   const isAgent = message.sender === "agent";
   const isSystem = message.sender === "system";
   const type = String(message.type || "text").toLowerCase();
   const outboundStatus = String(message.deliveryStatus || message.status || "").toLowerCase();
-  const outboundStatusLabel =
-    !isAgent
-      ? ""
-      : outboundStatus === "read"
-        ? "Lida"
-        : outboundStatus === "delivered"
-          ? "Entregue"
-          : outboundStatus === "sent"
-            ? "Enviada"
-            : outboundStatus === "failed"
-              ? "Falhou"
-              : "";
   const preview = getMessagePreview(message);
   const shouldRenderText = !["image", "audio", "document", "video"].includes(type) || !isGeneratedMediaPlaceholder(type, preview);
+  const reactions = normalizeReactionMap(message.reactions);
+  const reactionEntries = Object.entries(reactions).filter(([, users]) => users.length > 0);
 
   const mediaLabel =
     type === "audio"
@@ -1482,55 +1521,149 @@ function MessageBubble({
         : type === "document"
           ? FileText
           : type === "template"
-            ? Receipt
-            : null;
+          ? Receipt
+          : null;
+
+  if (isSystem) {
+    return (
+      <div className="flex justify-center px-3 py-1">
+        <div className="max-w-[88%] rounded-full bg-white/80 px-3 py-1 text-center text-[11px] font-semibold text-[#667781] shadow-[0_1px_0.5px_rgba(11,20,26,0.08)]">
+          {preview}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={cn("flex", isAgent ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "max-w-[92%] min-w-0 border px-3.5 py-3 text-sm shadow-[0_8px_20px_rgba(17,27,33,0.12)] sm:max-w-[84%] xl:max-w-[74%] 2xl:max-w-[70%]",
-          isAgent
-            ? "inbox-message-out rounded-[28px] rounded-br-[10px]"
-            : isSystem
-              ? "inbox-message-system mx-auto rounded-[22px] text-center"
-              : "inbox-message-in rounded-[28px] rounded-bl-[10px]"
-        )}
-      >
-        <div className="inbox-message-meta flex items-center gap-2 text-[11px] text-current opacity-60">
-          <span className="font-semibold uppercase tracking-[0.14em]">
-            {isAgent ? "Time" : isSystem ? "Sistema" : "Contato"}
-          </span>
-          {outboundStatusLabel ? (
-            <span className="rounded-full border border-current/15 bg-white/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]">
-              {outboundStatusLabel}
-            </span>
+    <div className={cn("group flex items-end gap-2", isAgent ? "justify-end" : "justify-start")}>
+      <div className={cn("relative flex max-w-[92%] flex-col sm:max-w-[84%] xl:max-w-[74%] 2xl:max-w-[70%]", isAgent ? "items-end" : "items-start")}>
+        {canOperate ? (
+          <div
+            className={cn(
+              "absolute top-0 z-20 flex items-center gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100",
+              isAgent ? "right-full mr-1.5" : "left-full ml-1.5"
+            )}
+          >
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setReactionPickerOpen((current) => !current)}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-white text-[#667781] shadow-sm transition hover:bg-[#f0f2f5]"
+                aria-label="Reagir a mensagem"
+              >
+                <SmilePlus className="h-4 w-4" />
+              </button>
+              {reactionPickerOpen ? (
+                <div
+                  className={cn(
+                    "absolute top-9 z-30 flex gap-1 rounded-2xl border border-[var(--cliente-border)] bg-white p-1.5 shadow-[0_16px_34px_-20px_rgba(15,23,42,0.6)]",
+                    isAgent ? "right-0" : "left-0"
+                  )}
+                >
+                  {QUICK_REACTION_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => {
+                        onReact?.(emoji);
+                        setReactionPickerOpen(false);
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-xl text-lg transition hover:bg-[#f0f2f5]"
+                      aria-label={`Reagir com ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={onReply}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-white text-[#667781] shadow-sm transition hover:bg-[#f0f2f5]"
+              aria-label="Responder mensagem"
+            >
+              <Reply className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onCopy}
+              className="hidden h-8 w-8 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-white text-[#667781] shadow-sm transition hover:bg-[#f0f2f5] sm:flex"
+              aria-label="Copiar mensagem"
+            >
+              <Copy className="h-4 w-4" />
+            </button>
+          </div>
+        ) : null}
+
+        <div
+          className={cn(
+            "min-w-0 border px-3.5 py-2.5 text-sm shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
+            isAgent
+              ? "inbox-message-out rounded-[18px] rounded-br-[5px]"
+              : "inbox-message-in rounded-[18px] rounded-bl-[5px]"
+          )}
+        >
+          {(mediaLabel && MediaIcon) || replied ? (
+            <div className="mb-2 space-y-2">
+              {replied ? (
+                <div className="rounded-xl border-l-4 border-[#25D366] bg-black/5 px-3 py-2">
+                  <p className="text-[11px] font-bold text-[#128C7E]">{getMessageActorLabel(replied)}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs leading-4 text-current opacity-65">{getReplyPreviewLabel(replied)}</p>
+                </div>
+              ) : null}
+              {mediaLabel && MediaIcon ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-black/5 px-2 py-1 text-[11px] font-semibold text-current opacity-65">
+                  <MediaIcon className="h-3.5 w-3.5" />
+                  {mediaLabel}
+                </span>
+              ) : null}
+            </div>
           ) : null}
-          {mediaLabel && MediaIcon ? (
-            <>
-              <span>|</span>
-              <span className="inline-flex items-center gap-1">
-                <MediaIcon className="h-3.5 w-3.5" />
-                {mediaLabel}
+          {type === "image" ? <ImageAttachment message={message} /> : null}
+          {type === "video" ? <VideoAttachment message={message} /> : null}
+          {type === "audio" ? <AudioAttachment message={message} /> : null}
+          {type === "document" ? <DocumentAttachment message={message} /> : null}
+          {shouldRenderText ? (
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-current">
+              {preview}
+            </p>
+          ) : null}
+          {isAgent && outboundStatus === "failed" && message.deliveryError ? (
+            <p className="mt-2 text-xs text-[var(--cliente-danger)]">Falha de entrega: {humanizeDeliveryError(message.deliveryError)}</p>
+          ) : null}
+          <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] text-current opacity-55">
+            <span>{formatTime(message.createdAt)}</span>
+            {isAgent ? (
+              outboundStatus === "failed" ? (
+                <AlertCircle className="h-3.5 w-3.5 text-[var(--cliente-danger)]" />
+              ) : outboundStatus === "read" ? (
+                <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
+              ) : outboundStatus === "delivered" ? (
+                <CheckCheck className="h-3.5 w-3.5" />
+              ) : outboundStatus === "sent" ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <Clock3 className="h-3.5 w-3.5" />
+              )
+            ) : null}
+          </div>
+        </div>
+        {reactionEntries.length ? (
+          <div
+            className={cn(
+              "-mt-1 flex flex-wrap gap-1 rounded-full border border-[var(--cliente-border)] bg-white px-1.5 py-0.5 text-xs shadow-sm",
+              isAgent ? "mr-2" : "ml-2"
+            )}
+          >
+            {reactionEntries.map(([emoji, users]) => (
+              <span key={emoji} className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5">
+                <span>{emoji}</span>
+                {users.length > 1 ? <span className="text-[10px] font-semibold text-[#667781]">{users.length}</span> : null}
               </span>
-            </>
-          ) : null}
-        </div>
-        {type === "image" ? <ImageAttachment message={message} /> : null}
-        {type === "video" ? <VideoAttachment message={message} /> : null}
-        {type === "audio" ? <AudioAttachment message={message} /> : null}
-        {type === "document" ? <DocumentAttachment message={message} /> : null}
-        {shouldRenderText ? (
-          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-current">
-            {preview}
-          </p>
+            ))}
+          </div>
         ) : null}
-        {isAgent && outboundStatus === "failed" && message.deliveryError ? (
-          <p className="mt-2 text-xs text-[var(--cliente-danger)]">Falha de entrega: {humanizeDeliveryError(message.deliveryError)}</p>
-        ) : null}
-        <div className="mt-2 flex items-center justify-end gap-2 text-[11px] text-current opacity-55">
-          <span>{formatDateTime(message.createdAt)}</span>
-        </div>
       </div>
     </div>
   );
@@ -1640,6 +1773,7 @@ export default function ClienteInboxPage() {
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [detail, setDetail] = useState<ChatDetailPayload | null>(null);
   const [messageText, setMessageText] = useState("");
+  const [replyTo, setReplyTo] = useState<MessageItem | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreviewUrl, setMediaPreviewUrl] = useState("");
@@ -1702,6 +1836,7 @@ export default function ClienteInboxPage() {
     if (!selectedChatId) {
       setShowDetailsDrawer(false);
     }
+    setReplyTo(null);
   }, [selectedChatId]);
 
   function toggleChatSelection(chatId: string) {
@@ -2185,6 +2320,38 @@ export default function ClienteInboxPage() {
     setRecordingAudio(false);
   }
 
+  async function handleCopyMessage(message: MessageItem) {
+    const text = getMessagePreview(message);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      setError("Nao foi possivel copiar a mensagem.");
+    }
+  }
+
+  async function handleReactToMessage(messageId: string, emoji: string) {
+    if (!tenant?.tenantId || !selectedChatId || !canOperate) return;
+    setError(null);
+    try {
+      const res = await authedFetch(
+        `/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/messages/${messageId}/reaction`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emoji }),
+        }
+      );
+      const payload = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(payload.error || "Falha ao reagir a mensagem.");
+        return;
+      }
+      await refreshSelected(true);
+    } catch {
+      setError("Falha ao reagir a mensagem.");
+    }
+  }
+
   async function handleSend(event: FormEvent) {
     event.preventDefault();
     if (!tenant?.tenantId || !selectedChatId || !messageText.trim() || !canOperate) return;
@@ -2199,7 +2366,7 @@ export default function ClienteInboxPage() {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: messageText.trim() }),
+        body: JSON.stringify({ text: messageText.trim(), replyToId: replyTo?.id || null }),
       });
       const payload = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -2208,6 +2375,7 @@ export default function ClienteInboxPage() {
       }
 
       setMessageText("");
+      setReplyTo(null);
       await refreshSelected(true);
       scrollMessagesToBottom("smooth");
     } catch {
@@ -2230,6 +2398,7 @@ export default function ClienteInboxPage() {
       const form = new FormData();
       form.append("file", file);
       if (caption.trim()) form.append("caption", caption.trim());
+      if (replyTo?.id) form.append("replyToId", replyTo.id);
 
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-media`, {
         method: "POST",
@@ -2242,6 +2411,7 @@ export default function ClienteInboxPage() {
       }
 
       setMessageText("");
+      setReplyTo(null);
       clearMediaSelection();
       await refreshSelected(true);
       scrollMessagesToBottom("smooth");
@@ -3947,9 +4117,20 @@ export default function ClienteInboxPage() {
                 <p className="mt-1 text-xs leading-5 text-[#667781]">O historico desta conversa ainda nao apareceu aqui.</p>
               </div>
             ) : (
-              messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
-              ))
+              messages.map((message) => {
+                const replied = message.replyToId ? messages.find((item) => item.id === message.replyToId) || null : null;
+                return (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    replied={replied}
+                    canOperate={canOperate}
+                    onReply={() => setReplyTo(message)}
+                    onCopy={() => void handleCopyMessage(message)}
+                    onReact={(emoji) => void handleReactToMessage(message.id, emoji)}
+                  />
+                );
+              })
             )}
             <div ref={messagesEndRef} className="h-1" />
           </div>
@@ -4054,6 +4235,23 @@ export default function ClienteInboxPage() {
                         {emoji}
                       </button>
                     ))}
+                  </div>
+                ) : null}
+
+                {replyTo ? (
+                  <div className="mb-2 flex items-start gap-3 rounded-3xl border border-[#b7e4d4] bg-[#e7fce3] px-3 py-2 text-[#111b21] shadow-[0_12px_30px_-24px_rgba(15,23,42,0.5)]">
+                    <div className="min-w-0 flex-1 border-l-4 border-[#25D366] pl-3">
+                      <p className="text-xs font-black text-[#128C7E]">Respondendo {getMessageActorLabel(replyTo)}</p>
+                      <p className="mt-0.5 line-clamp-2 text-xs leading-4 text-[#54656f]">{getReplyPreviewLabel(replyTo)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplyTo(null)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-white/60"
+                      aria-label="Cancelar resposta"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
                 ) : null}
 

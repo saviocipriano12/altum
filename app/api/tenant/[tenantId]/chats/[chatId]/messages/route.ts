@@ -41,6 +41,21 @@ function numericValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function normalizeReactionUsers(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => cleanText(item, 180)).filter(Boolean).slice(0, 100);
+}
+
+function normalizeReactionMap(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([emoji, users]) => [cleanText(emoji, 40), normalizeReactionUsers(users)])
+      .filter(([emoji, users]) => emoji && (users as string[]).length > 0)
+      .slice(0, 20)
+  );
+}
+
 function normalizeSender(value: unknown) {
   const sender = cleanText(value, 40).toLowerCase();
   if (sender === "client") return "client";
@@ -123,6 +138,7 @@ export async function GET(
           id: doc.id,
           text: cleanMessageText(data.text, 4000),
           sender: normalizeSender(data.sender),
+          senderName: cleanText(data.senderName, 180) || cleanText(data.agentName, 180) || null,
           status: cleanText(data.status, 40) || null,
           deliveryStatus: cleanText(data.deliveryStatus, 40) || null,
           deliveryError: cleanText(data.deliveryError, 260) || null,
@@ -130,6 +146,8 @@ export async function GET(
           deliveryAt: data.deliveryAt || null,
           deliveryUpdatedAt: data.deliveryUpdatedAt || null,
           type,
+          replyToId: cleanText(data.replyToId, 180) || null,
+          reactions: normalizeReactionMap(data.reactions),
           mediaUrl: canRenderMedia ? buildProtectedMediaUrl(tenantId, chatId, doc.id) : null,
           mediaDownloadUrl: canRenderMedia ? buildProtectedMediaUrl(tenantId, chatId, doc.id, true) : null,
           mediaName: cleanText(data.mediaName, 240) || null,
