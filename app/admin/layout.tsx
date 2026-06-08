@@ -14,6 +14,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/pipeline",
   "/admin/prospeccao/gerar",
   "/admin/campanhas",
+  "/admin/templates",
 ];
 
 function isClientPanelRole(role: unknown) {
@@ -68,7 +69,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (loading) {
     return (
-      <div className="h-screen w-screen bg-[#0B0B0B] flex items-center justify-center">
+      <div className="h-screen w-screen bg-slate-100 flex items-center justify-center">
         <Loader2 className="animate-spin text-blue-500" size={40} />
       </div>
     );
@@ -79,7 +80,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (needsAdmin && !isAdmin) return null;
 
   return (
-    <div className="flex h-screen w-screen bg-[#0B0B0B] text-white overflow-hidden">
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-100 text-slate-900">
       <AdminSidebar
         collapsed={collapsed}
         setCollapsed={setCollapsed}
@@ -95,7 +96,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           setCollapsed={setCollapsed}
         />
 
-        <main className="flex-1 overflow-y-auto px-6 md:px-8 py-6 bg-gradient-to-br from-[#0B0B0B] via-[#0E0E0E] to-black">
+        <main
+          data-altum-admin-main="true"
+          className="flex-1 overflow-y-auto bg-slate-100 px-5 py-5 md:px-7 md:py-6"
+        >
           {children}
         </main>
       </div>
