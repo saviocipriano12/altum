@@ -24,6 +24,7 @@ import {
   Target,
   TrendingUp,
   Trash2,
+  Video,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/firebaseConfig";
@@ -51,6 +52,7 @@ const NAV_ITEMS: NavItem[] = [
     capability: "manage_commercial",
   },
   { key: "agenda", label: "Agenda", href: "/cliente/painel/agenda", icon: <CalendarDays className="h-4 w-4" /> },
+  { key: "reunioes_ia", label: "Reunioes IA", href: "/cliente/painel/reunioes-assistidas", icon: <Video className="h-4 w-4" /> },
   { key: "retornos", label: "Agenda - retornos", href: "/cliente/painel/follow-ups", icon: <CalendarDays className="h-4 w-4" /> },
   {
     key: "produtos_servicos",

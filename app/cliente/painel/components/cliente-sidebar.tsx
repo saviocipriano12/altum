@@ -18,6 +18,7 @@ import {
   Sparkles,
   TrendingUp,
   Users,
+  Video,
   X,
 } from "lucide-react";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
@@ -85,6 +86,14 @@ const PRIMARY_NAV: NavItem[] = [
       { href: "/cliente/painel/reunioes-assistidas", label: "Reunioes IA" },
       { href: "/cliente/painel/follow-ups", label: "Retornos" },
     ],
+    group: "operate",
+  },
+  {
+    href: "/cliente/painel/reunioes-assistidas",
+    label: "Reunioes IA",
+    icon: Video,
+    description: "Chamada, escuta ao vivo, orientacao e documento da reuniao.",
+    tone: "ai",
     group: "operate",
   },
   {

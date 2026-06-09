@@ -128,6 +128,9 @@ function getPageMeta(pathname: string) {
   if (pathname.includes("/crm") || pathname.includes("/pipeline") || pathname.includes("/comercial")) {
     return { title: "Clientes & Oportunidades", description: "Clientes, oportunidades, propostas e proximos passos.", badge: "Conversao", tone: "info" as const };
   }
+  if (pathname.includes("/reunioes-assistidas")) {
+    return { title: "Reunioes IA", description: "Chamada assistida, traducao, orientacao ao vivo e resumo para o vendedor.", badge: "IA ao vivo", tone: "ai" as const };
+  }
   if (pathname.includes("/follow-ups") || pathname.includes("/agenda")) {
     return { title: "Agenda", description: "Retornos, compromissos, recompra e clientes parados.", badge: "Retencao", tone: "warning" as const };
   }
