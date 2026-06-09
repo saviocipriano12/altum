@@ -449,6 +449,27 @@ function readLeadSource(lead: Record<string, unknown>) {
     .trim();
 }
 
+function readObject(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function leadTagTokens(lead: Record<string, unknown>) {
+  const customFields = readObject(lead.customFields);
+  return Array.from(
+    new Set(
+      [
+        ...cleanList(lead.tags, 40, 50),
+        clean(customFields.import_batch_tag, 80),
+        clean(customFields.import_batch_id, 80),
+      ]
+        .map((tag) => normalizeComparableToken(tag))
+        .filter(Boolean)
+    )
+  );
+}
+
 function matchLeadFilters(lead: Record<string, unknown>, filters: OutboundCampaignFilters) {
   const stage = normalizeComparableToken(clean(lead.pipelineStage, 80) || clean(lead.stage, 80));
   const ownerId = normalizeComparableToken(clean(lead.ownerId, 140));
@@ -458,7 +479,7 @@ function matchLeadFilters(lead: Record<string, unknown>, filters: OutboundCampai
   const filterOwnerIds = filters.ownerIds.map((item) => normalizeComparableToken(item)).filter(Boolean);
   const filterSources = filters.sources.map((item) => normalizeComparableToken(item)).filter(Boolean);
   const filterHeats = filters.heat.map((item) => normalizeComparableToken(normalizeHeatToken(item))).filter(Boolean);
-  const tags = cleanList(lead.tags, 40, 50).map((tag) => normalizeComparableToken(tag));
+  const tags = leadTagTokens(lead);
   const filterTags = filters.tags.map((item) => normalizeComparableToken(item)).filter(Boolean);
 
   if (filterStages.length > 0 && !filterStages.includes(stage)) return false;

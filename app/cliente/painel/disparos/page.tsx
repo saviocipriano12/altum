@@ -1846,8 +1846,9 @@ function AiFollowupEditor({ editor, onChange }: { editor: Campaign; onChange: (p
 function ReviewStep({ editor, channel, preview, riskLevel }: { editor: Campaign; channel: Channel | null; preview: Preview | null; riskLevel: string }) {
   const checks = [
     { label: "Numero remetente", value: channel?.displayName || "Nao escolhido", done: Boolean(channel) },
+    { label: "Publico encontrado", value: preview ? `${preview.summary.matchedFilters} contatos na selecao` : "Simulacao pendente", done: Boolean(preview) },
     { label: "Publico apto", value: preview ? `${preview.summary.estimatedSend} contatos` : "Simulacao pendente", done: Boolean(preview) },
-    { label: "Consentimento", value: preview ? `${preview.summary.blockedByConsent} removidos` : "Verificado ao simular", done: Boolean(preview) },
+    { label: "Bloqueios", value: preview ? `${preview.summary.blockedByConsent} opt-out | ${preview.summary.missingPhone} sem telefone` : "Verificado ao simular", done: Boolean(preview) },
     { label: "Conteudo", value: editor.deliveryMode === "template" ? editor.templateName || "Template pendente" : `${editor.messageTemplate.length} caracteres`, done: editor.deliveryMode === "template" ? Boolean(editor.templateName) : editor.messageTemplate.length > 9 },
     { label: "IA no retorno", value: editor.aiFollowup.offerName || editor.aiFollowup.exampleUrl || "Contexto nao definido", done: Boolean(editor.aiFollowup.offerName || editor.aiFollowup.exampleUrl || editor.aiFollowup.nextStep) },
   ];
