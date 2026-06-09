@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   ArrowUpRight,
@@ -8,12 +8,18 @@ import {
   CheckCircle2,
   ClipboardList,
   FileText,
+  Languages,
   Loader2,
   MessageSquareText,
+  Mic,
+  MicOff,
+  Radio,
   RefreshCw,
   Sparkles,
   Video,
+  Wand2,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import {
@@ -82,6 +88,42 @@ type AssistedMeeting = {
   createdAt?: string | null;
 };
 
+type LiveMeetingCoach = {
+  nextBestAction: string;
+  sellerPrompts: string[];
+  questionsToAvoid: string[];
+  risks: string[];
+  translation: string;
+  followUpDraft: string;
+  qualificationHint: {
+    temperature: "frio" | "morno" | "quente";
+    confidence: number;
+  };
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: ((event: {
+    resultIndex: number;
+    results: ArrayLike<{
+      isFinal: boolean;
+      0: { transcript: string };
+    }>;
+  }) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+};
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: new () => SpeechRecognitionLike;
+  webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+};
+
 function clean(value?: string | null) {
   return (value || "").trim();
 }
@@ -112,6 +154,14 @@ export default function AssistedMeetingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<AssistedMeeting | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [listening, setListening] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [liveNotes, setLiveNotes] = useState("");
+  const [coaching, setCoaching] = useState(false);
+  const [coach, setCoach] = useState<LiveMeetingCoach | null>(null);
+  const [speechSupported, setSpeechSupported] = useState(true);
   const [form, setForm] = useState({
     appointmentId: searchParams.get("appointmentId") || "",
     leadId: searchParams.get("leadId") || "",
@@ -121,6 +171,7 @@ export default function AssistedMeetingsPage() {
     meetingUrl: "",
     notes: "",
     transcript: "",
+    translateTo: "",
   });
 
   const loadData = useCallback(async () => {
@@ -153,6 +204,13 @@ export default function AssistedMeetingsPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+    };
+  }, []);
 
   const selectedAppointment = useMemo(
     () => appointments.find((item) => item.id === form.appointmentId) || null,
@@ -195,20 +253,101 @@ export default function AssistedMeetingsPage() {
           objective: form.objective,
           language: form.language,
           meetingUrl: form.meetingUrl || selectedAppointment?.meetingUrl || null,
-          transcript: form.transcript,
-          notes: form.notes,
+          transcript: [form.transcript, liveTranscript].filter(Boolean).join("\n\n"),
+          notes: [form.notes, liveNotes].filter(Boolean).join("\n\n"),
         }),
       });
       const payload = (await res.json().catch(() => ({}))) as { item?: AssistedMeeting; error?: string };
       if (!res.ok || payload.error || !payload.item) throw new Error(payload.error || "Falha ao gerar resumo da reuniao.");
       setActiveSession(payload.item);
       setForm((current) => ({ ...current, transcript: "", notes: "" }));
+      setLiveTranscript("");
+      setLiveNotes("");
+      setInterimTranscript("");
       setNotice("Reuniao analisada, lead atualizado e brief salvo no CRM.");
       await loadData();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Falha ao gerar resumo da reuniao.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function startListening() {
+    const speechWindow = window as SpeechWindow;
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setSpeechSupported(false);
+      setError("Este navegador nao liberou transcricao por voz. Cole a transcricao ou use as notas da reuniao.");
+      return;
+    }
+    recognitionRef.current?.abort();
+    const recognition = new Recognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = form.language === "en_US" ? "en-US" : form.language === "es" ? "es-ES" : "pt-BR";
+    recognition.onresult = (event) => {
+      let finalText = "";
+      let interimText = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const transcript = event.results[index]?.[0]?.transcript || "";
+        if (event.results[index]?.isFinal) finalText += `${transcript} `;
+        else interimText += `${transcript} `;
+      }
+      if (finalText.trim()) {
+        setLiveTranscript((current) => `${current}${current ? "\n" : ""}${finalText.trim()}`);
+      }
+      setInterimTranscript(interimText.trim());
+    };
+    recognition.onerror = (event) => {
+      setListening(false);
+      setError(event.error ? `Falha na captura de audio: ${event.error}` : "Falha na captura de audio.");
+    };
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition;
+    setError(null);
+    setSpeechSupported(true);
+    setListening(true);
+    recognition.start();
+  }
+
+  function stopListening() {
+    recognitionRef.current?.stop();
+    setListening(false);
+    setInterimTranscript("");
+  }
+
+  async function requestLiveCoach() {
+    if (!tenant?.tenantId || coaching) return;
+    const transcript = [form.transcript, liveTranscript, interimTranscript].filter(Boolean).join("\n\n");
+    const notes = [form.notes, liveNotes].filter(Boolean).join("\n\n");
+    if (!transcript.trim() && !notes.trim()) {
+      setError("Fale, cole a transcricao ou escreva notas antes de pedir orientacao da IA.");
+      return;
+    }
+    setCoaching(true);
+    setError(null);
+    try {
+      const response = await authedFetch(`/api/tenant/${tenant.tenantId}/assisted-meetings/live-coach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: form.leadId || selectedAppointment?.leadId || null,
+          transcript,
+          notes,
+          objective: form.objective,
+          language: form.language,
+          translateTo: form.translateTo,
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { coach?: LiveMeetingCoach; error?: string };
+      if (!response.ok || !payload.coach) throw new Error(payload.error || "Falha ao orientar reuniao.");
+      setCoach(payload.coach);
+      setNotice("IA atualizou a orientacao da reuniao.");
+    } catch (coachError) {
+      setError(coachError instanceof Error ? coachError.message : "Falha ao orientar reuniao.");
+    } finally {
+      setCoaching(false);
     }
   }
 
@@ -239,6 +378,25 @@ export default function AssistedMeetingsPage() {
 
       {error ? <CrmNotice tone="red">{error}</CrmNotice> : null}
       {notice ? <CrmNotice tone="green">{notice}</CrmNotice> : null}
+
+      <LiveMeetingRoom
+        listening={listening}
+        speechSupported={speechSupported}
+        interimTranscript={interimTranscript}
+        liveTranscript={liveTranscript}
+        liveNotes={liveNotes}
+        coach={coach}
+        coaching={coaching}
+        language={form.language}
+        translateTo={form.translateTo}
+        meetingUrl={form.meetingUrl || selectedAppointment?.meetingUrl || ""}
+        onStart={startListening}
+        onStop={stopListening}
+        onCoach={() => void requestLiveCoach()}
+        onChangeNotes={setLiveNotes}
+        onChangeLanguage={(language) => setForm((current) => ({ ...current, language }))}
+        onChangeTranslateTo={(translateTo) => setForm((current) => ({ ...current, translateTo }))}
+      />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
         <CrmPanel>
@@ -336,7 +494,7 @@ export default function AssistedMeetingsPage() {
                     Abrir chamada
                   </a>
                 ) : null}
-                <CrmButton type="submit" tone="purple" disabled={!canOperate || saving || !(form.transcript.trim() || form.notes.trim())}>
+                <CrmButton type="submit" tone="purple" disabled={!canOperate || saving || !([form.transcript, form.notes, liveTranscript, liveNotes].some((value) => value.trim()))}>
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
                   Gerar analise
                 </CrmButton>
@@ -403,7 +561,164 @@ export default function AssistedMeetingsPage() {
   );
 }
 
-function ResultBlock({ icon: Icon, title, text }: { icon: typeof FileText; title: string; text?: string }) {
+function LiveMeetingRoom({
+  listening,
+  speechSupported,
+  interimTranscript,
+  liveTranscript,
+  liveNotes,
+  coach,
+  coaching,
+  language,
+  translateTo,
+  meetingUrl,
+  onStart,
+  onStop,
+  onCoach,
+  onChangeNotes,
+  onChangeLanguage,
+  onChangeTranslateTo,
+}: {
+  listening: boolean;
+  speechSupported: boolean;
+  interimTranscript: string;
+  liveTranscript: string;
+  liveNotes: string;
+  coach: LiveMeetingCoach | null;
+  coaching: boolean;
+  language: string;
+  translateTo: string;
+  meetingUrl: string;
+  onStart: () => void;
+  onStop: () => void;
+  onCoach: () => void;
+  onChangeNotes: (value: string) => void;
+  onChangeLanguage: (value: string) => void;
+  onChangeTranslateTo: (value: string) => void;
+}) {
+  const liveText = [liveTranscript, interimTranscript].filter(Boolean).join("\n");
+
+  return (
+    <CrmPanel className="overflow-hidden p-0">
+      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="p-4 lg:p-5">
+          <CrmSectionTitle
+            eyebrow="Sala assistida"
+            title="Apoio ao vivo para vender melhor na reuniao"
+            description="Use o microfone para capturar a conversa, peça direcionamento para a IA e gere o resumo final no lead ao terminar."
+            action={
+              <div className="flex flex-wrap gap-2">
+                {meetingUrl ? (
+                  <a
+                    href={meetingUrl}
+                    target="_blank"
+                    className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+                  >
+                    <ArrowUpRight className="h-4 w-4" />
+                    Abrir chamada
+                  </a>
+                ) : null}
+                <CrmButton type="button" tone={listening ? "danger" : "green"} onClick={listening ? onStop : onStart}>
+                  {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  {listening ? "Parar escuta" : "Ouvir reuniao"}
+                </CrmButton>
+                <CrmButton type="button" tone="purple" onClick={onCoach} disabled={coaching}>
+                  {coaching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  Orientar agora
+                </CrmButton>
+              </div>
+            }
+          />
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <label className="space-y-1.5">
+              <span className="text-xs font-bold text-[var(--cliente-card-text-soft)]">Idioma falado</span>
+              <CrmSelect value={language} onChange={(event) => onChangeLanguage(event.target.value)}>
+                <option value="pt_BR">Portugues Brasil</option>
+                <option value="en_US">Ingles</option>
+                <option value="es">Espanhol</option>
+              </CrmSelect>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-bold text-[var(--cliente-card-text-soft)]">Traduzir apoio para</span>
+              <CrmSelect value={translateTo} onChange={(event) => onChangeTranslateTo(event.target.value)}>
+                <option value="">Sem traducao</option>
+                <option value="pt_BR">Portugues Brasil</option>
+                <option value="en_US">Ingles</option>
+                <option value="es">Espanhol</option>
+              </CrmSelect>
+            </label>
+            <div className="rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+              <div className="flex items-center gap-2">
+                <Radio className={`h-4 w-4 ${listening ? "text-emerald-500" : "text-[var(--cliente-card-text-soft)]"}`} />
+                <p className="text-sm font-black text-[var(--cliente-card-text)]">{listening ? "Escutando agora" : "Escuta parada"}</p>
+              </div>
+              <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                {speechSupported ? "A transcricao entra no documento final." : "Use notas ou cole a transcricao manualmente."}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-black text-[var(--cliente-card-text)]">Transcricao ao vivo</p>
+                <CrmBadge tone={listening ? "green" : "neutral"}>{listening ? "capturando" : "aguardando"}</CrmBadge>
+              </div>
+              <div className="mt-3 min-h-56 whitespace-pre-wrap rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3 text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                {liveText || "Quando iniciar a escuta, a fala reconhecida aparece aqui."}
+              </div>
+            </div>
+
+            <label className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+              <span className="text-sm font-black text-[var(--cliente-card-text)]">Notas rapidas do vendedor</span>
+              <CrmTextarea
+                value={liveNotes}
+                onChange={(event) => onChangeNotes(event.target.value)}
+                className="mt-3 min-h-56"
+                placeholder="Anote decisor, dor, verba, prazo, objeccao, combinado e qualquer ponto que a IA precisa considerar."
+              />
+            </label>
+          </div>
+        </div>
+
+        <aside className="border-t border-[var(--cliente-border)] bg-[linear-gradient(180deg,var(--cliente-ai-soft),var(--cliente-card))] p-4 lg:border-l lg:border-t-0 lg:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-[16px] bg-[var(--cliente-ai)] text-white">
+                <Languages className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-black text-[var(--cliente-card-text)]">Copiloto da chamada</p>
+                <p className="text-xs text-[var(--cliente-card-text-soft)]">Direcionamento em tempo real</p>
+              </div>
+            </div>
+            {coach ? <CrmBadge tone={temperatureTone(coach.qualificationHint.temperature)}>{coach.qualificationHint.temperature}</CrmBadge> : null}
+          </div>
+
+          {coach ? (
+            <div className="mt-4 space-y-3">
+              <ResultBlock icon={Sparkles} title="Proxima melhor acao" text={coach.nextBestAction} />
+              <ResultList icon={MessageSquareText} title="Fale assim" items={coach.sellerPrompts} />
+              <ResultList icon={ClipboardList} title="Evite agora" items={coach.questionsToAvoid} />
+              <ResultList icon={FileText} title="Riscos percebidos" items={coach.risks} />
+              {coach.translation ? <ResultBlock icon={Languages} title="Traducao / entendimento" text={coach.translation} /> : null}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4">
+              <p className="text-sm font-bold text-[var(--cliente-card-text)]">Sem orientacao ainda</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                Capture alguns minutos da conversa ou escreva notas e clique em Orientar agora.
+              </p>
+            </div>
+          )}
+        </aside>
+      </div>
+    </CrmPanel>
+  );
+}
+
+function ResultBlock({ icon: Icon, title, text }: { icon: LucideIcon; title: string; text?: string }) {
   return (
     <div className="rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
       <div className="flex items-center gap-2">
@@ -415,7 +730,7 @@ function ResultBlock({ icon: Icon, title, text }: { icon: typeof FileText; title
   );
 }
 
-function ResultList({ icon: Icon, title, items }: { icon: typeof FileText; title: string; items?: string[] }) {
+function ResultList({ icon: Icon, title, items }: { icon: LucideIcon; title: string; items?: string[] }) {
   return (
     <div className="rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
       <div className="flex items-center gap-2">

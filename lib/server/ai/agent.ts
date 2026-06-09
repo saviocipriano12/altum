@@ -705,20 +705,7 @@ function shouldProactivelySendVoiceReply(input: {
   if (input.voiceReplyMode === "audio_only") return { shouldSend: false, reason: "voice_audio_only_mode" };
   if (input.voiceReplyMode === "always") return { shouldSend: true, reason: "voice_always_mode" };
 
-  const intent = sanitizeText(input.plannerIntent, 80).toLowerCase();
-  const responseGoal = sanitizeText(input.responseGoal, 80).toLowerCase();
-  const temperature = sanitizeText(input.commercialTemperature, 40).toLowerCase();
-  const hasOffer = Boolean(sanitizeText(input.recommendedOffer, 120));
-
-  const commerciallyGoodMoments =
-    ["objection", "recommend", "next_step", "closing", "proposal"].some((term) => intent.includes(term)) ||
-    ["recommend", "move_to_next_step", "handle_objection"].includes(responseGoal) ||
-    temperature === "hot" ||
-    hasOffer;
-
-  return commerciallyGoodMoments
-    ? { shouldSend: true, reason: "commercial_moment_voice" }
-    : { shouldSend: false, reason: "prefer_text_default" };
+  return { shouldSend: false, reason: "smart_requires_audio_signal" };
 }
 
 function shouldPlanAudioResponse(input: {

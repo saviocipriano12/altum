@@ -33,6 +33,19 @@ export type AssistedMeetingSummary = {
   };
 };
 
+export type LiveMeetingCoach = {
+  nextBestAction: string;
+  sellerPrompts: string[];
+  questionsToAvoid: string[];
+  risks: string[];
+  translation: string;
+  followUpDraft: string;
+  qualificationHint: {
+    temperature: "frio" | "morno" | "quente";
+    confidence: number;
+  };
+};
+
 function clean(value: unknown, max = 600) {
   if (typeof value !== "string") return "";
   return value.replace(/\s+/g, " ").trim().slice(0, max);
@@ -70,6 +83,58 @@ function normalizeSummary(value: unknown): AssistedMeetingSummary | null {
       temperature: normalizeTemperature(qualification.temperature),
       confidence: Math.max(0, Math.min(100, Number(qualification.confidence || 60))),
       recommendedStage: clean(qualification.recommendedStage, 120) || "follow_up",
+    },
+  };
+}
+
+function normalizeLiveCoach(value: unknown): LiveMeetingCoach | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const qualification = raw.qualificationHint && typeof raw.qualificationHint === "object"
+    ? raw.qualificationHint as Record<string, unknown>
+    : {};
+  return {
+    nextBestAction: clean(raw.nextBestAction, 700),
+    sellerPrompts: cleanList(raw.sellerPrompts, 6),
+    questionsToAvoid: cleanList(raw.questionsToAvoid, 5),
+    risks: cleanList(raw.risks, 5),
+    translation: clean(raw.translation, 1800),
+    followUpDraft: clean(raw.followUpDraft, 1600),
+    qualificationHint: {
+      temperature: normalizeTemperature(qualification.temperature),
+      confidence: Math.max(0, Math.min(100, Number(qualification.confidence || 55))),
+    },
+  };
+}
+
+function fallbackLiveCoach(input: {
+  transcript: string;
+  objective: string;
+  translateTo: string;
+}): LiveMeetingCoach {
+  const lowered = input.transcript.toLowerCase();
+  const hot = /(proposta|contrato|fechar|comprar|pagar|valor|preco|orçamento|orcamento|quero|manda)/.test(lowered);
+  const price = /(caro|preco|preço|valor|investimento)/.test(lowered);
+  const action = hot
+    ? "Confirme o que o lead quer ver, conecte com a oferta e proponha um próximo passo claro agora."
+    : "Faça uma pergunta curta sobre prioridade, prazo ou impacto antes de apresentar proposta.";
+  return {
+    nextBestAction: action,
+    sellerPrompts: [
+      "Confirma se entendi: o ponto principal hoje é resolver isso sem complicar sua operação, certo?",
+      hot ? "Posso te mostrar o caminho mais direto e já deixar o próximo passo alinhado?" : "Hoje isso é uma prioridade real ou ainda está em fase de avaliação?",
+      "Quem além de você precisa participar dessa decisão?",
+    ],
+    questionsToAvoid: [
+      "Evite repetir perguntas que o lead já respondeu.",
+      "Evite abrir muitas opções antes de recomendar um caminho.",
+    ],
+    risks: price ? ["Existe objeção de investimento. Conecte preço com impacto e próximo passo."] : ["Ainda não há objeção crítica isolada."],
+    translation: input.translateTo ? "Tradução automática exige IA ativa. Use este painel como apoio e gere o resumo final ao encerrar." : "",
+    followUpDraft: "Obrigado pela conversa. Pelo que entendi, o próximo passo mais útil é organizar uma recomendação objetiva e seguir com uma proposta/reunião de fechamento.",
+    qualificationHint: {
+      temperature: hot ? "quente" : "morno",
+      confidence: hot ? 76 : 58,
     },
   };
 }
@@ -216,4 +281,67 @@ export async function generateAssistedMeetingSummary(input: {
   }
 
   return fallbackSummary({ transcript, notes, objective: clean(input.objective, 500), lead: input.lead });
+}
+
+export async function generateLiveMeetingCoach(input: {
+  transcript: string;
+  notes: string;
+  objective: string;
+  language: string;
+  translateTo: string;
+  lead: MeetingAssistantLead | null;
+}) {
+  const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
+  const transcript = clean(input.transcript, 10000);
+  const notes = clean(input.notes, 2500);
+  const objective = clean(input.objective, 500) || "conduzir a reunião para venda, proposta ou próximo passo claro";
+  const translateTo = clean(input.translateTo, 80);
+
+  if (!apiKey) {
+    return fallbackLiveCoach({ transcript, objective, translateTo });
+  }
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MEETING_COACH_MODEL || process.env.OPENAI_MEETING_SUMMARY_MODEL || "gpt-4.1-mini",
+        temperature: 0.25,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "Voce e um copiloto comercial ao vivo. Seja curto, direto e ajude o vendedor a conduzir a conversa sem repetir perguntas. Responda apenas JSON valido.",
+          },
+          {
+            role: "user",
+            content: [
+              "Analise a reuniao em andamento e gere orientacao ao vendedor.",
+              "Campos obrigatorios: nextBestAction, sellerPrompts[], questionsToAvoid[], risks[], translation, followUpDraft, qualificationHint{temperature,confidence}.",
+              `Idioma principal: ${clean(input.language, 80) || "pt_BR"}.`,
+              `Traduzir resumo do que o cliente disse para: ${translateTo || "nao traduzir"}.`,
+              `Objetivo comercial: ${objective}.`,
+              `Lead: ${JSON.stringify(input.lead || {})}`,
+              `Notas do vendedor: ${notes || "sem notas"}`,
+              `Transcricao parcial: ${transcript || "sem transcricao"}`,
+            ].join("\n\n"),
+          },
+        ],
+      }),
+    });
+    if (!response.ok) throw new Error(`openai_${response.status}`);
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const content = data.choices?.[0]?.message?.content || "";
+    const parsed = normalizeLiveCoach(JSON.parse(content));
+    if (parsed?.nextBestAction) return parsed;
+  } catch (error) {
+    console.error("Falha ao gerar coaching ao vivo:", error);
+  }
+
+  return fallbackLiveCoach({ transcript, objective, translateTo });
 }

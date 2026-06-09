@@ -1063,7 +1063,7 @@ export default function ClienteIaPage() {
       ? "Sempre que possivel"
       : settings.voiceReplyMode === "audio_only"
         ? "Quando o cliente usa audio"
-        : "Momentos importantes";
+        : "Audio sob demanda";
 
   function applyBusinessProfileDefaults() {
     if (!canManage) return;
@@ -2583,7 +2583,7 @@ export default function ClienteIaPage() {
                 <div className="mt-3 grid gap-2">
                   {[
                     { value: "audio_only", label: "Responder audio com audio", detail: "Melhor para nao invadir conversas em texto." },
-                    { value: "smart", label: "Momentos importantes", detail: "Usa audio em venda, objecao e retomada." },
+                    { value: "smart", label: "Audio sob demanda", detail: "Usa audio quando o cliente manda audio ou pede audio." },
                     { value: "always", label: "Sempre que possivel", detail: "Mais forte para operacoes que vendem por voz." },
                   ].map((option) => {
                     const active = (settings.voiceReplyMode || "smart") === option.value;

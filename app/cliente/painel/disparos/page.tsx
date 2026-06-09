@@ -271,6 +271,126 @@ function createDefaultAutomationFlow(): AutomationFlow {
   };
 }
 
+function createDiagnosticAutomationFlow(): AutomationFlow {
+  return {
+    enabled: true,
+    objective: "Transformar uma resposta fria em diagnostico rapido e reuniao qualificada.",
+    nodes: [
+      {
+        id: "initial_reply",
+        type: "send",
+        label: "Lead respondeu",
+        description: "Entrada depois do disparo inicial.",
+        x: 24,
+        y: 70,
+        message: "Reconhecer a resposta e conectar com a oferta em uma frase.",
+      },
+      {
+        id: "diagnose",
+        type: "ai",
+        label: "Diagnostico curto",
+        description: "A IA faz no maximo duas perguntas novas e evita repetir o que ja sabe.",
+        x: 300,
+        y: 70,
+        nextAction: "Entender objetivo, urgencia e canal de captacao antes de sugerir caminho.",
+      },
+      {
+        id: "send_example",
+        type: "media",
+        label: "Enviar exemplo",
+        description: "Quando o lead pedir para ver, a IA envia o material configurado na campanha.",
+        x: 576,
+        y: 70,
+        message: "Enviar link/exemplo e explicar por que aquilo resolve o problema do lead.",
+      },
+      {
+        id: "book_or_handoff",
+        type: "meeting",
+        label: "Agendar ou proposta",
+        description: "Se houver fit, converter para reuniao, proposta ou venda assistida.",
+        x: 852,
+        y: 70,
+        nextAction: "Oferecer dois horarios ou solicitar confirmacao para proposta.",
+      },
+      {
+        id: "human_needed",
+        type: "human",
+        label: "Humano assume",
+        description: "Se pedir preco fechado, contrato, desconto ou falar com pessoa.",
+        x: 576,
+        y: 260,
+        condition: "Pedir humano, preco especifico, contrato, objecao forte ou negociacao.",
+      },
+    ],
+    edges: [
+      { id: "edge_initial_diagnose", from: "initial_reply", to: "diagnose", label: "resposta" },
+      { id: "edge_diagnose_example", from: "diagnose", to: "send_example", label: "quer ver" },
+      { id: "edge_example_book", from: "send_example", to: "book_or_handoff", label: "fit" },
+      { id: "edge_diagnose_human", from: "diagnose", to: "human_needed", label: "humano" },
+    ],
+  };
+}
+
+function createDirectSalesAutomationFlow(): AutomationFlow {
+  return {
+    enabled: true,
+    objective: "Levar o lead que respondeu com interesse direto ate fechamento, pagamento ou handoff comercial.",
+    nodes: [
+      {
+        id: "interest",
+        type: "condition",
+        label: "Interesse claro",
+        description: "O lead pediu preco, exemplo, proposta ou quer entender como contratar.",
+        x: 24,
+        y: 80,
+        condition: "Quero, preco, proposta, contratar, como funciona, me chama.",
+      },
+      {
+        id: "recommend",
+        type: "ai",
+        label: "Recomendacao",
+        description: "A IA recomenda um caminho simples e nao abre muitas alternativas.",
+        x: 300,
+        y: 80,
+        nextAction: "Explicar pacote ideal, beneficio direto e pedir confirmacao do proximo passo.",
+      },
+      {
+        id: "close",
+        type: "meeting",
+        label: "Fechar passo",
+        description: "Converter para venda, proposta, checkout ou reuniao de fechamento.",
+        x: 576,
+        y: 80,
+        nextAction: "Enviar link de pagamento/proposta ou marcar reuniao qualificada.",
+      },
+      {
+        id: "objection",
+        type: "human",
+        label: "Objecao forte",
+        description: "Quando houver negociacao sensivel, humano entra com contexto completo.",
+        x: 300,
+        y: 260,
+        condition: "Desconto, inseguranca, prazo apertado, comparacao com concorrente ou contrato.",
+      },
+      {
+        id: "done",
+        type: "end",
+        label: "Objetivo registrado",
+        description: "CRM, historico e proximo passo ficam atualizados.",
+        x: 852,
+        y: 80,
+        nextAction: "Registrar conversao, reuniao ou tarefa no CRM.",
+      },
+    ],
+    edges: [
+      { id: "edge_interest_recommend", from: "interest", to: "recommend", label: "interesse" },
+      { id: "edge_recommend_close", from: "recommend", to: "close", label: "aceitou" },
+      { id: "edge_recommend_objection", from: "recommend", to: "objection", label: "objecao" },
+      { id: "edge_close_done", from: "close", to: "done", label: "registrar" },
+    ],
+  };
+}
+
 const STEPS: Array<{ id: Step; label: string; icon: typeof Smartphone }> = [
   { id: "remetente", label: "Remetente", icon: Smartphone },
   { id: "publico", label: "Publico", icon: Users },
@@ -1406,6 +1526,25 @@ function FlowBuilder({ flow, onChange }: { flow: AutomationFlow; onChange: (flow
         />
       </Field>
 
+      <div className="grid gap-3 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 md:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => onChange(createDiagnosticAutomationFlow())}
+          className="rounded-[16px] border border-emerald-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300"
+        >
+          <p className="text-sm font-black text-[var(--cliente-card-text)]">Modelo: diagnostico e reuniao</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">Bom para prospeccao, exemplo de LP, consultoria e qualificacao antes da proposta.</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(createDirectSalesAutomationFlow())}
+          className="rounded-[16px] border border-blue-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300"
+        >
+          <p className="text-sm font-black text-[var(--cliente-card-text)]">Modelo: venda direta</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">Bom quando a resposta ja indica interesse, preco, proposta ou contratacao.</p>
+        </button>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {(["condition", "ai", "media", "meeting", "human", "end"] as AutomationFlowNodeType[]).map((type) => {
           const Icon = flowNodeIcon(type);
@@ -1851,6 +1990,13 @@ function ReviewStep({ editor, channel, preview, riskLevel }: { editor: Campaign;
     { label: "Bloqueios", value: preview ? `${preview.summary.blockedByConsent} opt-out | ${preview.summary.missingPhone} sem telefone` : "Verificado ao simular", done: Boolean(preview) },
     { label: "Conteudo", value: editor.deliveryMode === "template" ? editor.templateName || "Template pendente" : `${editor.messageTemplate.length} caracteres`, done: editor.deliveryMode === "template" ? Boolean(editor.templateName) : editor.messageTemplate.length > 9 },
     { label: "IA no retorno", value: editor.aiFollowup.offerName || editor.aiFollowup.exampleUrl || "Contexto nao definido", done: Boolean(editor.aiFollowup.offerName || editor.aiFollowup.exampleUrl || editor.aiFollowup.nextStep) },
+    {
+      label: "Fluxo visual",
+      value: editor.automationFlow?.enabled
+        ? `${editor.automationFlow.nodes.length} etapas guiando a IA`
+        : "Opcional, mas recomendado para respostas e handoff",
+      done: Boolean(editor.automationFlow?.enabled && editor.automationFlow.nodes.length),
+    },
   ];
   return (
     <div>
