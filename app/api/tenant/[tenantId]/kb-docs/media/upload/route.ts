@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { adminStorage } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { firebaseStorageBucketCandidates, saveFirebaseStorageFileWithFallback } from "@/lib/server/firebase-storage";
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 64 * 1024 * 1024;
@@ -24,10 +24,6 @@ const DOCUMENT_TYPES = new Set([
 function clean(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
-}
-
-function storageBucketName() {
-  return String(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "").trim();
 }
 
 function mediaTypeFromMime(mimeType: string) {
@@ -80,8 +76,7 @@ export async function POST(
     const membership = await assertTenantAccess(user.uid, tenantId);
     assertTenantCapability(membership, "manage_ai");
 
-    const bucketName = storageBucketName();
-    if (!bucketName) {
+    if (firebaseStorageBucketCandidates().length === 0) {
       return NextResponse.json({ error: "Storage nao configurado no servidor." }, { status: 503 });
     }
 
@@ -111,20 +106,23 @@ export async function POST(
     const token = randomUUID();
     const path = `kb-media/${tenantId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${extension}`;
     const buffer = Buffer.from(await uploaded.arrayBuffer());
-    const file = adminStorage.bucket(bucketName).file(path);
 
-    await file.save(buffer, {
-      resumable: false,
-      metadata: {
-        contentType: mimeType,
-        cacheControl: "public,max-age=31536000",
-        contentDisposition: `inline; filename="${originalName.replace(/"/g, "")}"`,
+    const { bucketName } = await saveFirebaseStorageFileWithFallback({
+      path,
+      data: buffer,
+      options: {
+        resumable: false,
         metadata: {
-          firebaseStorageDownloadTokens: token,
-          tenantId,
-          uploadedBy: user.uid,
-          originalName,
-          purpose: "kb_media",
+          contentType: mimeType,
+          cacheControl: "public,max-age=31536000",
+          contentDisposition: `inline; filename="${originalName.replace(/"/g, "")}"`,
+          metadata: {
+            firebaseStorageDownloadTokens: token,
+            tenantId,
+            uploadedBy: user.uid,
+            originalName,
+            purpose: "kb_media",
+          },
         },
       },
     });

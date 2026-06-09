@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { adminStorage } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { firebaseStorageBucketCandidates, saveFirebaseStorageFileWithFallback } from "@/lib/server/firebase-storage";
 
 const LIMITS = {
   image: 12 * 1024 * 1024,
@@ -32,8 +32,9 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const membership = await assertTenantAccess(user.uid, tenantId);
     assertTenantCapability(membership, "manage_automations");
 
-    const bucketName = clean(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET, 300);
-    if (!bucketName) return NextResponse.json({ error: "Storage nao configurado." }, { status: 503 });
+    if (firebaseStorageBucketCandidates().length === 0) {
+      return NextResponse.json({ error: "Storage nao configurado." }, { status: 503 });
+    }
 
     const form = await req.formData();
     const uploaded = form.get("file");
@@ -50,18 +51,21 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const extension = safeName.match(/\.([a-z0-9]{2,8})$/i)?.[1] || (type === "image" ? "jpg" : type === "video" ? "mp4" : "pdf");
     const token = randomUUID();
     const path = `outbound-media/${tenantId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${extension}`;
-    const file = adminStorage.bucket(bucketName).file(path);
-    await file.save(Buffer.from(await uploaded.arrayBuffer()), {
-      resumable: false,
-      metadata: {
-        contentType: mime || "application/octet-stream",
-        cacheControl: "public,max-age=31536000",
+    const { bucketName } = await saveFirebaseStorageFileWithFallback({
+      path,
+      data: Buffer.from(await uploaded.arrayBuffer()),
+      options: {
+        resumable: false,
         metadata: {
-          firebaseStorageDownloadTokens: token,
-          tenantId,
-          uploadedBy: user.uid,
-          purpose: "outbound_campaign",
-          originalName: safeName,
+          contentType: mime || "application/octet-stream",
+          cacheControl: "public,max-age=31536000",
+          metadata: {
+            firebaseStorageDownloadTokens: token,
+            tenantId,
+            uploadedBy: user.uid,
+            purpose: "outbound_campaign",
+            originalName: safeName,
+          },
         },
       },
     });
