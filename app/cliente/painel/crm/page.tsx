@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   CheckCircle2,
   ClipboardList,
+  Copy,
   DollarSign,
   Bot,
   FileText,
@@ -106,6 +107,21 @@ type LeadCommercialDossier = {
   updatedAt?: unknown;
 };
 
+type LeadDocument = {
+  id: string;
+  type?: string;
+  title?: string;
+  status?: string;
+  triggerLabel?: string;
+  appointmentId?: string | null;
+  sourceChatId?: string | null;
+  summary?: string | Record<string, unknown>;
+  sellerBrief?: string;
+  markdown?: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
+
 type LeadItem = {
   id: string;
   nome?: string;
@@ -191,6 +207,7 @@ type LeadDetailPayload = {
   lead: LeadItem;
   notes?: LeadNote[];
   tasks?: LeadTask[];
+  documents?: LeadDocument[];
   relatedChats?: RelatedChat[];
   timeline?: Array<{
     id: string;
@@ -349,6 +366,48 @@ function formatTemperature(value?: string | null) {
   if (normalized === "warm") return "morno";
   if (normalized === "cold") return "frio";
   return "em leitura";
+}
+
+function formatLeadDocumentType(value?: string) {
+  const normalized = cleanCrmText(value, 80).toLowerCase();
+  const labels: Record<string, string> = {
+    commercial_dossier: "Dossie comercial",
+    assisted_meeting: "Reuniao assistida",
+    meeting_summary: "Resumo de reuniao",
+    lead_summary: "Resumo do lead",
+  };
+  return labels[normalized] || cleanCrmText(value, 80) || "Documento IA";
+}
+
+function getLeadDocumentTitle(document: LeadDocument) {
+  return (
+    cleanCrmText(document.title, 120) ||
+    formatLeadDocumentType(document.type || document.id) ||
+    "Documento gerado pela IA"
+  );
+}
+
+function getLeadDocumentSummary(document: LeadDocument) {
+  if (typeof document.summary === "string") return cleanCrmText(document.summary, 260);
+  if (document.summary && typeof document.summary === "object") {
+    const summary = document.summary as Record<string, unknown>;
+    return (
+      cleanCrmText(summary.executiveSummary, 260) ||
+      cleanCrmText(summary.summary, 260) ||
+      cleanCrmText(summary.nextStep, 260) ||
+      cleanCrmText(summary.recommendedStage, 260)
+    );
+  }
+  return (
+    cleanCrmText(document.sellerBrief, 260) ||
+    cleanCrmText(String(document.markdown || "").replace(/[#*_`>|-]/g, " "), 260) ||
+    "Documento salvo pela IA para orientar o atendimento comercial."
+  );
+}
+
+function getLeadDocumentBody(document: LeadDocument) {
+  const summary = getLeadDocumentSummary(document);
+  return cleanCrmText(document.markdown, 5000) || summary;
 }
 
 export default function ClienteCrmPage() {
@@ -686,6 +745,16 @@ export default function ClienteCrmPage() {
   const selectedConversationSummary = detail?.conversationSummary || selectedLead?.chatSummary || {};
   const selectedTimeline = detail?.timeline || [];
   const selectedAppointments = detail?.appointments || [];
+  const selectedDocuments = detail?.documents || [];
+
+  async function copyLeadDocument(document: LeadDocument) {
+    try {
+      await navigator.clipboard.writeText(getLeadDocumentBody(document));
+      setNotice("Documento da IA copiado.");
+    } catch {
+      setError("Nao foi possivel copiar o documento.");
+    }
+  }
 
   return (
     <CrmWorkspace>
@@ -1018,6 +1087,49 @@ export default function ClienteCrmPage() {
                           ) : null}
                         </div>
                       </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {selectedDocuments.length ? (
+                  <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="flex items-center gap-2 text-xs font-black uppercase text-[var(--cliente-ai)]">
+                          <FileText className="h-3.5 w-3.5" />
+                          Documentos da IA
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                          Resumos, dossies e reunioes salvos para preparar o atendimento.
+                        </p>
+                      </div>
+                      <CrmBadge tone="purple">{selectedDocuments.length}</CrmBadge>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {selectedDocuments.slice(0, 4).map((document) => (
+                        <div key={document.id} className="rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-black text-[var(--cliente-card-text)]">{getLeadDocumentTitle(document)}</p>
+                              <p className="mt-1 text-[11px] font-bold text-[var(--cliente-card-text-muted)]">
+                                {formatLeadDocumentType(document.type)} | {formatCrmDate(document.updatedAt || document.createdAt, "sem data")}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => copyLeadDocument(document)}
+                              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-[var(--cliente-border)] text-[var(--cliente-card-text-soft)] transition hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-card-text)]"
+                              aria-label="Copiar documento da IA"
+                              title="Copiar documento"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <p className="mt-2 line-clamp-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                            {getLeadDocumentSummary(document)}
+                          </p>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ) : null}

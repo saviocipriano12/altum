@@ -233,6 +233,21 @@ type LeadCommercialDossier = {
   updatedAt?: unknown;
 };
 
+type LeadDocument = {
+  id: string;
+  type?: string;
+  title?: string;
+  status?: string;
+  triggerLabel?: string;
+  appointmentId?: string | null;
+  sourceChatId?: string | null;
+  summary?: string | Record<string, unknown>;
+  sellerBrief?: string;
+  markdown?: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
+
 type LeadSummary = {
   id: string;
   nome?: string;
@@ -297,6 +312,7 @@ type LeadSummary = {
   aiPlannerConfidence?: number | null;
   commercialDossier?: LeadCommercialDossier | null;
   commercialDossierUpdatedAt?: unknown;
+  documents?: LeadDocument[];
   timeline?: TimelineEvent[];
 };
 
@@ -517,6 +533,43 @@ function cleanInboxText(value: unknown, max = 180) {
   if (typeof value === "number" && Number.isFinite(value)) return String(value).slice(0, max);
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+function formatLeadDocumentType(value?: string) {
+  const normalized = cleanInboxText(value, 80).toLowerCase();
+  const labels: Record<string, string> = {
+    commercial_dossier: "Dossie comercial",
+    assisted_meeting: "Reuniao assistida",
+    meeting_summary: "Resumo de reuniao",
+    lead_summary: "Resumo do lead",
+  };
+  return labels[normalized] || cleanInboxText(value, 80) || "Documento IA";
+}
+
+function getLeadDocumentTitle(document: LeadDocument) {
+  return cleanInboxText(document.title, 120) || formatLeadDocumentType(document.type || document.id);
+}
+
+function getLeadDocumentSummary(document: LeadDocument) {
+  if (typeof document.summary === "string") return cleanInboxText(document.summary, 240);
+  if (document.summary && typeof document.summary === "object") {
+    const summary = document.summary as Record<string, unknown>;
+    return (
+      cleanInboxText(summary.executiveSummary, 240) ||
+      cleanInboxText(summary.summary, 240) ||
+      cleanInboxText(summary.nextStep, 240) ||
+      cleanInboxText(summary.recommendedStage, 240)
+    );
+  }
+  return (
+    cleanInboxText(document.sellerBrief, 240) ||
+    cleanInboxText(String(document.markdown || "").replace(/[#*_`>|-]/g, " "), 240) ||
+    "Documento salvo pela IA para orientar o atendimento."
+  );
+}
+
+function getLeadDocumentBody(document: LeadDocument) {
+  return cleanInboxText(document.markdown, 5000) || getLeadDocumentSummary(document);
 }
 
 function readInboxRecord(value: unknown) {
@@ -2359,6 +2412,14 @@ export default function ClienteInboxPage() {
     }
   }
 
+  async function handleCopyLeadDocument(document: LeadDocument) {
+    try {
+      await navigator.clipboard.writeText(getLeadDocumentBody(document));
+    } catch {
+      setError("Nao foi possivel copiar o documento.");
+    }
+  }
+
   async function handleReactToMessage(messageId: string, emoji: string) {
     if (!tenant?.tenantId || !selectedChatId || !canOperate) return;
     setError(null);
@@ -2893,6 +2954,7 @@ export default function ClienteInboxPage() {
   const teamMembers = detail?.teamMembers || [];
   const timeline = activeLead?.timeline || [];
   const commercialDossier = activeLead?.commercialDossier || null;
+  const leadDocuments = activeLead?.documents || [];
   const activeAttribution = useMemo(() => resolveInboxAttribution(activeLead), [activeLead]);
   const activeAiEvidence = useMemo(() => resolveAiEvidence(activeLead), [activeLead]);
   const activeSla = activeChat ? getSlaState(activeChat) : { breached: false, label: "sem prazo" };
@@ -3101,6 +3163,49 @@ export default function ClienteInboxPage() {
                         ) : null}
                       </div>
                     </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {leadDocuments.length ? (
+                <div className="mt-4 rounded-[20px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--cliente-ai)]">
+                        <FileText className="h-3.5 w-3.5" />
+                        Documentos da IA
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                        Use resumos e reunioes salvas para responder com contexto.
+                      </p>
+                    </div>
+                    <StateBadge label={String(leadDocuments.length)} tone="ai" />
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {leadDocuments.slice(0, 3).map((document) => (
+                      <div key={document.id} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-black text-[var(--cliente-card-text)]">{getLeadDocumentTitle(document)}</p>
+                            <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--cliente-card-text-muted)]">
+                              {formatLeadDocumentType(document.type)} | {formatRelative(document.updatedAt || document.createdAt)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyLeadDocument(document)}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[var(--cliente-border)] text-[var(--cliente-card-text-soft)] transition hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-card-text)]"
+                            aria-label="Copiar documento da IA"
+                            title="Copiar documento"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                          {getLeadDocumentSummary(document)}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : null}

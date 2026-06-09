@@ -209,6 +209,13 @@ async function resolveLead(chat: ChatDoc, tenantId: string) {
     .orderBy("createdAt", "desc")
     .limit(8)
     .get();
+  const documentsSnap = await leadSnap.ref.collection("documents").limit(20).get();
+  const documents = documentsSnap.docs
+    .map((doc): Record<string, unknown> & { id: string; updatedAt?: unknown; createdAt?: unknown } => ({
+      id: doc.id,
+      ...(doc.data() as Record<string, unknown>),
+    }))
+    .sort((a, b) => toSeconds(b.updatedAt || b.createdAt) - toSeconds(a.updatedAt || a.createdAt));
 
   return {
     id: leadSnap.id,
@@ -266,6 +273,7 @@ async function resolveLead(chat: ChatDoc, tenantId: string) {
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     })),
+    documents,
   };
 }
 

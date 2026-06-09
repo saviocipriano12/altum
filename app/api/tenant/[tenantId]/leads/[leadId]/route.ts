@@ -189,6 +189,22 @@ async function listTimeline(leadId: string) {
   }));
 }
 
+async function listLeadDocuments(leadId: string) {
+  const snap = await adminDb
+    .collection("leads")
+    .doc(leadId)
+    .collection("documents")
+    .limit(30)
+    .get();
+
+  return snap.docs
+    .map((doc): Record<string, unknown> & { id: string; updatedAt?: unknown; createdAt?: unknown } => ({
+      id: doc.id,
+      ...(doc.data() as Record<string, unknown>),
+    }))
+    .sort((a, b) => toSeconds(b.updatedAt || b.createdAt) - toSeconds(a.updatedAt || a.createdAt));
+}
+
 async function listRelatedChats(tenantId: string, leadId: string, phone: string) {
   const normalizedPhone = normalizePhone(phone);
 
@@ -285,10 +301,11 @@ export async function GET(
     assertTenantRole(membership, "client_viewer");
 
     const { lead } = await getLeadRef(tenantId, leadId);
-    const [notes, tasks, timeline, relatedChats, appointments, commercial] = await Promise.all([
+    const [notes, tasks, timeline, documents, relatedChats, appointments, commercial] = await Promise.all([
       listNotes(tenantId, leadId),
       listTasks(tenantId, leadId),
       listTimeline(leadId),
+      listLeadDocuments(leadId),
       listRelatedChats(tenantId, leadId, lead.telefone || ""),
       listAppointments(tenantId, leadId),
       analyzeLeadCommercialState({
@@ -320,6 +337,7 @@ export async function GET(
       tasks,
       appointments,
       timeline,
+      documents,
       relatedChats,
       conversationSummary: buildConversationSummary(relatedChats),
       qualification: commercial.qualification,
