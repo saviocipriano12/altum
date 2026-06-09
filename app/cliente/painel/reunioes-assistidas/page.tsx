@@ -7,6 +7,7 @@ import {
   Bot,
   CheckCircle2,
   ClipboardList,
+  Copy,
   FileText,
   Languages,
   Loader2,
@@ -142,6 +143,27 @@ function temperatureTone(value?: string) {
   return "orange" as const;
 }
 
+function buildMeetingDocumentText(session: AssistedMeeting) {
+  if (session.markdown?.trim()) return session.markdown.trim();
+  const summary = session.summary;
+  if (!summary) return session.title || "Reuniao assistida";
+  return [
+    `# ${session.title || "Reuniao assistida"}`,
+    "",
+    `Resumo: ${summary.executiveSummary}`,
+    `Necessidade: ${summary.leadNeed}`,
+    "",
+    "Proximos passos:",
+    ...summary.nextSteps.map((item) => `- ${item}`),
+    "",
+    "Coaching do vendedor:",
+    ...summary.sellerCoaching.map((item) => `- ${item}`),
+    "",
+    `Follow-up sugerido: ${summary.followUpMessage}`,
+    `CRM: ${summary.crmUpdate}`,
+  ].join("\n");
+}
+
 export default function AssistedMeetingsPage() {
   const searchParams = useSearchParams();
   const { tenant, hasCapability } = useClienteTenant();
@@ -270,6 +292,16 @@ export default function AssistedMeetingsPage() {
       setError(submitError instanceof Error ? submitError.message : "Falha ao gerar resumo da reuniao.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function copyActiveSession() {
+    if (!activeSession) return;
+    try {
+      await navigator.clipboard.writeText(buildMeetingDocumentText(activeSession));
+      setNotice("Documento da reuniao copiado.");
+    } catch {
+      setError("Nao foi possivel copiar o documento da reuniao.");
     }
   }
 
@@ -505,7 +537,19 @@ export default function AssistedMeetingsPage() {
 
         <div className="space-y-4">
           <CrmPanel>
-            <CrmSectionTitle eyebrow="Resultado" title="Resumo gerado" description="O documento fica salvo no lead e aparece no historico comercial." />
+            <CrmSectionTitle
+              eyebrow="Resultado"
+              title="Resumo gerado"
+              description="O documento fica salvo no lead e aparece no historico comercial."
+              action={
+                activeSession?.summary ? (
+                  <CrmButton type="button" onClick={copyActiveSession}>
+                    <Copy className="h-4 w-4" />
+                    Copiar documento
+                  </CrmButton>
+                ) : null
+              }
+            />
             {activeSession?.summary ? (
               <div className="mt-4 space-y-4">
                 <div className="flex flex-wrap gap-2">
