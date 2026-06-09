@@ -687,6 +687,7 @@ export default function BulkMessagingPage() {
       }).catch(() => null);
       if (mounted) await load(true);
     };
+    void tick();
     const timer = window.setInterval(() => void tick(), 45_000);
     return () => {
       mounted = false;

@@ -10,6 +10,7 @@ import {
   Copy,
   FileText,
   Languages,
+  Link as LinkIcon,
   Loader2,
   MessageSquareText,
   Mic,
@@ -428,6 +429,7 @@ export default function AssistedMeetingsPage() {
         onChangeNotes={setLiveNotes}
         onChangeLanguage={(language) => setForm((current) => ({ ...current, language }))}
         onChangeTranslateTo={(translateTo) => setForm((current) => ({ ...current, translateTo }))}
+        onChangeMeetingUrl={(meetingUrl) => setForm((current) => ({ ...current, meetingUrl }))}
       />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
@@ -622,6 +624,7 @@ function LiveMeetingRoom({
   onChangeNotes,
   onChangeLanguage,
   onChangeTranslateTo,
+  onChangeMeetingUrl,
 }: {
   listening: boolean;
   speechSupported: boolean;
@@ -639,8 +642,27 @@ function LiveMeetingRoom({
   onChangeNotes: (value: string) => void;
   onChangeLanguage: (value: string) => void;
   onChangeTranslateTo: (value: string) => void;
+  onChangeMeetingUrl: (value: string) => void;
 }) {
   const liveText = [liveTranscript, interimTranscript].filter(Boolean).join("\n");
+  const [activeRoomUrl, setActiveRoomUrl] = useState(meetingUrl);
+  const canEmbedRoom = /^https:\/\/meet\.jit\.si\/[A-Za-z0-9_-]+/i.test(activeRoomUrl);
+
+  useEffect(() => {
+    if (meetingUrl && meetingUrl !== activeRoomUrl) setActiveRoomUrl(meetingUrl);
+  }, [activeRoomUrl, meetingUrl]);
+
+  function createMeetingRoom() {
+    const slug = `altum-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const url = `https://meet.jit.si/${slug}`;
+    setActiveRoomUrl(url);
+    onChangeMeetingUrl(url);
+  }
+
+  async function copyMeetingLink() {
+    if (!activeRoomUrl) return;
+    await navigator.clipboard.writeText(activeRoomUrl);
+  }
 
   return (
     <CrmPanel className="overflow-hidden p-0">
@@ -652,15 +674,25 @@ function LiveMeetingRoom({
             description="Use o microfone para capturar a conversa, peça direcionamento para a IA e gere o resumo final no lead ao terminar."
             action={
               <div className="flex flex-wrap gap-2">
-                {meetingUrl ? (
+                <CrmButton type="button" tone="primary" onClick={createMeetingRoom}>
+                  <Video className="h-4 w-4" />
+                  {activeRoomUrl ? "Nova sala" : "Criar sala"}
+                </CrmButton>
+                {activeRoomUrl ? (
                   <a
-                    href={meetingUrl}
+                    href={activeRoomUrl}
                     target="_blank"
                     className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
                   >
                     <ArrowUpRight className="h-4 w-4" />
-                    Abrir chamada
+                    Entrar
                   </a>
+                ) : null}
+                {activeRoomUrl ? (
+                  <CrmButton type="button" onClick={() => void copyMeetingLink()}>
+                    <LinkIcon className="h-4 w-4" />
+                    Copiar link
+                  </CrmButton>
                 ) : null}
                 <CrmButton type="button" tone={listening ? "danger" : "green"} onClick={listening ? onStop : onStart}>
                   {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
@@ -673,6 +705,47 @@ function LiveMeetingRoom({
               </div>
             }
           />
+
+          <div className="mt-4 overflow-hidden rounded-[22px] border border-[var(--cliente-border)] bg-slate-950 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-[14px] bg-blue-600 text-white">
+                  <Video className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-white">Sala de video da reuniao</p>
+                  <p className="truncate text-xs text-white/60">
+                    {activeRoomUrl ? "Compartilhe o link com o lead e entre pela Altum." : "Crie uma sala para iniciar a chamada dentro da plataforma."}
+                  </p>
+                </div>
+              </div>
+              {activeRoomUrl ? <CrmBadge tone="green">sala pronta</CrmBadge> : <CrmBadge tone="orange">aguardando</CrmBadge>}
+            </div>
+            {canEmbedRoom ? (
+              <iframe
+                title="Sala de video Altum"
+                src={`${activeRoomUrl}#config.prejoinPageEnabled=true&config.disableDeepLinking=true`}
+                allow="camera; microphone; fullscreen; display-capture; clipboard-write"
+                className="h-[420px] w-full bg-slate-950"
+              />
+            ) : (
+              <div className="flex min-h-[340px] flex-col items-center justify-center gap-4 px-6 py-10 text-center">
+                <span className="inline-flex h-16 w-16 items-center justify-center rounded-[22px] bg-blue-600 text-white">
+                  <Video className="h-7 w-7" />
+                </span>
+                <div>
+                  <p className="text-lg font-black text-white">Comece uma chamada</p>
+                  <p className="mt-2 max-w-md text-sm leading-6 text-white/60">
+                    Crie uma sala da Altum ou cole um link de Meet/Zoom no formulario abaixo. A escuta da IA funciona junto com a chamada.
+                  </p>
+                </div>
+                <CrmButton type="button" tone="primary" onClick={createMeetingRoom}>
+                  <Video className="h-4 w-4" />
+                  Criar sala agora
+                </CrmButton>
+              </div>
+            )}
+          </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             <label className="space-y-1.5">

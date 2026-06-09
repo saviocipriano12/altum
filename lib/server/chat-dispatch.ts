@@ -111,7 +111,9 @@ function shouldAllowAgencyWhatsAppFallback(channelId: unknown) {
   return String(channelId || "").trim() === AGENCY_WHATSAPP_ENV_CHANNEL_ID;
 }
 
-function buildTemplateMessageText(templateName: string, bodyParams: string[]) {
+function buildTemplateMessageText(templateName: string, bodyParams: string[], displayText?: string | null) {
+  const explicit = String(displayText || "").trim();
+  if (explicit) return explicit.slice(0, 4000);
   const params = bodyParams.filter(Boolean);
   if (!params.length) return `Template enviado: ${templateName}`;
   return `Template enviado: ${templateName}\nVariaveis: ${params.join(" | ")}`;
@@ -632,6 +634,7 @@ export async function sendTenantChatTemplate(input: {
   languageCode?: string;
   bodyParams?: string[];
   headerMedia?: WhatsAppTemplateHeaderMedia | null;
+  displayText?: string | null;
   actor: ChatDispatchActor;
   pauseAi?: boolean;
   pauseMinutes?: number;
@@ -699,7 +702,7 @@ export async function sendTenantChatTemplate(input: {
     headerMedia,
   });
   const metaMessageId = payload?.messages?.[0]?.id || null;
-  const text = buildTemplateMessageText(templateName, bodyParams);
+  const text = buildTemplateMessageText(templateName, bodyParams, input.displayText);
 
   const writes: Promise<unknown>[] = [
     chatRef.set(
@@ -767,5 +770,6 @@ export async function sendTenantChatTemplate(input: {
     templateName,
     languageCode,
     headerMedia,
+    persistedText: text,
   };
 }

@@ -410,14 +410,26 @@ function interpolateTemplate(template: string, lead: Record<string, unknown>) {
 }
 
 function buildTemplateDisplayText(input: {
+  campaignName?: string;
   templateName: string;
   languageCode: string;
   bodyParams: string[];
   headerMedia: WhatsAppTemplateHeaderMedia | null;
+  aiFollowup?: OutboundCampaignAiFollowup;
 }) {
+  const offerName = clean(input.aiFollowup?.offerName, 180);
+  const offerSummary = clean(input.aiFollowup?.offerSummary, 900);
+  const nextStep = clean(input.aiFollowup?.nextStep, 260);
+  const exampleUrl = clean(input.aiFollowup?.exampleUrl, 500);
+  const exampleLabel = clean(input.aiFollowup?.exampleLabel, 120);
+
   return [
-    `Template Meta: ${input.templateName}`,
-    `Idioma: ${input.languageCode}`,
+    `Template enviado: ${input.templateName}`,
+    input.campaignName ? `Campanha: ${input.campaignName}` : "",
+    offerName ? `Oferta: ${offerName}` : "",
+    offerSummary ? `Mensagem: ${offerSummary}` : "",
+    nextStep ? `Proximo passo: ${nextStep}` : "",
+    exampleUrl ? `Exemplo: ${exampleLabel ? `${exampleLabel} - ` : ""}${exampleUrl}` : "",
     input.bodyParams.length ? `Variaveis: ${input.bodyParams.join(" | ")}` : "",
     input.headerMedia ? `Midia: ${input.headerMedia.type}` : "",
   ]
@@ -713,10 +725,12 @@ export async function dispatchOutboundCampaign(input: {
       const renderedMessage =
         campaign.deliveryMode === "template"
           ? buildTemplateDisplayText({
+              campaignName: campaign.name,
               templateName: campaign.templateName,
               languageCode: campaign.languageCode,
               bodyParams: renderedBodyParams,
               headerMedia: campaign.headerMedia,
+              aiFollowup: campaign.aiFollowup,
             })
           : interpolateTemplate(campaign.messageTemplate, item.data);
       if (campaign.deliveryMode === "text" && campaign.headerMedia?.link) {
@@ -739,6 +753,7 @@ export async function dispatchOutboundCampaign(input: {
               languageCode: campaign.languageCode,
               bodyParams: renderedBodyParams,
               headerMedia: campaign.headerMedia,
+              displayText: renderedMessage,
               actor: input.actor,
               pauseAi: false,
             })
@@ -768,10 +783,7 @@ export async function dispatchOutboundCampaign(input: {
         chatId,
         phone,
         intendedText: renderedMessage,
-        persistedText:
-          "persistedText" in dispatchResult && dispatchResult.persistedText
-            ? dispatchResult.persistedText
-            : renderedMessage,
+        persistedText: renderedMessage,
         outboundType: campaign.deliveryMode,
         templateName: campaign.deliveryMode === "template" ? campaign.templateName : ("templateName" in dispatchResult ? dispatchResult.templateName || null : null),
         templateLanguage:

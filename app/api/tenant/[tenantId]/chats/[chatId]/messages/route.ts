@@ -100,6 +100,22 @@ function inferMediaAvailability(type: string, data: Record<string, unknown>) {
   return { mediaStatus: "missing" as const, mediaUnavailableReason: "Midia indisponivel para esta mensagem." };
 }
 
+function normalizeTemplateHeaderMedia(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  const type = cleanText(data.type, 40).toLowerCase();
+  if (type !== "image" && type !== "video" && type !== "document") return null;
+  const link = cleanText(data.link, 1800);
+  const id = cleanText(data.id, 240);
+  if (!link && !id) return null;
+  return {
+    type,
+    link: link || null,
+    id: id || null,
+    filename: cleanText(data.filename, 240) || null,
+  };
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string; chatId: string }> }
@@ -163,6 +179,9 @@ export async function GET(
               : null,
           mediaStatus: media.mediaStatus,
           mediaUnavailableReason: media.mediaUnavailableReason,
+          templateName: cleanText(data.templateName, 240) || null,
+          templateLanguage: cleanText(data.templateLanguage, 80) || null,
+          templateHeaderMedia: normalizeTemplateHeaderMedia(data.templateHeaderMedia),
         };
       })
       .sort((a, b) => toTime(a.createdAt) - toTime(b.createdAt));

@@ -177,6 +177,9 @@ function chooseRecommendedOffer(input: {
   tenantAi: TenantAiOperationalContext;
   kbDocs: KbDoc[];
 }) {
+  const campaignOffer = sanitizeText(input.leadMemory?.campaignOfferName, 160);
+  if (campaignOffer) return campaignOffer;
+
   const rawOffer =
     sanitizeText(input.extractedFields?.serviceInterest, 160) ||
     sanitizeText(input.extractedFields?.offer, 160) ||

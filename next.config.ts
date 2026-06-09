@@ -18,7 +18,11 @@ const nextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=()" },
+          {
+            key: "Permissions-Policy",
+            value:
+              'camera=(self "https://meet.jit.si"), microphone=(self "https://meet.jit.si"), display-capture=(self "https://meet.jit.si"), geolocation=()',
+          },
           {
             key: "Strict-Transport-Security",
             value: "max-age=31536000; includeSubDomains; preload",
@@ -33,7 +37,7 @@ const nextConfig = {
               "media-src 'self' data: blob: https://*.fbcdn.net https://*.cdninstagram.com https://firebasestorage.googleapis.com https://storage.googleapis.com; " +
               "font-src 'self' https://fonts.gstatic.com data:; " +
               "connect-src 'self' https://graph.facebook.com https://www.google-analytics.com https://region1.google-analytics.com https://www.googleapis.com https://*.googleapis.com https://googleads.googleapis.com https://api.openai.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.firebaseapp.com https://typebot.io https://*.typebot.io; " +
-              "frame-src 'self' https://*.firebaseapp.com https://*.google.com https://typebot.io https://*.typebot.io; " +
+              "frame-src 'self' https://meet.jit.si https://*.firebaseapp.com https://*.google.com https://typebot.io https://*.typebot.io; " +
               "frame-ancestors 'none'; " +
               "base-uri 'self'; " +
               "form-action 'self'",

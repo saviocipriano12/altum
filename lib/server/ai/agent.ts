@@ -1341,6 +1341,65 @@ function buildSecondaryCommercialNudge(input: {
   return sanitizeText(prefixed, 260);
 }
 
+function buildOutboundCampaignContinuation(input: {
+  inboundText: string;
+  responseText: string;
+  leadMemory: AltumLeadMemory | null;
+}) {
+  const offerName = sanitizeText(input.leadMemory?.campaignOfferName, 180);
+  if (!offerName) return null;
+
+  const offerSummary = sanitizeText(input.leadMemory?.campaignOfferSummary, 700);
+  const exampleUrl = sanitizeText(input.leadMemory?.campaignExampleUrl, 700);
+  const exampleLabel = sanitizeText(input.leadMemory?.campaignExampleLabel, 120) || "exemplo";
+  const nextStep = sanitizeText(input.leadMemory?.campaignNextStep, 260);
+  const responseText = sanitizeText(input.responseText, 900);
+  const normalizedResponse = normalizeComparable(responseText);
+  const normalizedOffer = normalizeComparable([offerName, offerSummary, exampleLabel].join(" "));
+  const mentionsCampaign =
+    normalizedOffer
+      .split(" ")
+      .filter((word) => word.length >= 5)
+      .slice(0, 8)
+      .some((word) => normalizedResponse.includes(word));
+  if (mentionsCampaign) return null;
+
+  const normalizedInbound = normalizeComparable(input.inboundText);
+  const turn = classifyLeadTurn(input.inboundText);
+  const asksForExample = /\b(exemplo|modelo|demonstracao|demonstração|mostra|manda|envia|ver|como fica|lp|landing)\b/.test(
+    normalizedInbound
+  );
+  const isAffirmative = /\b(sim|quero|pode|pode sim|claro|manda|envia|vamos|bora|tenho interesse)\b/.test(
+    normalizedInbound
+  );
+  const isGenericLeadTurn =
+    turn.isGreeting ||
+    turn.isPureRelational ||
+    normalizedInbound.length <= 80 ||
+    isAffirmative ||
+    asksForExample;
+  const genericAiResponse =
+    /\b(principal desafio comercial|dar andamento|informe seu nome|setor responsavel|atendimento|demanda)\b/.test(
+      normalizedResponse
+    );
+
+  if (!isGenericLeadTurn && !genericAiResponse) return null;
+
+  const intro = `Oi! Tudo bem. Vi que voce respondeu ao nosso contato sobre ${offerName}.`;
+  const promise = offerSummary ? `A ideia e ${offerSummary}` : `A ideia e te mostrar como isso pode ajudar na captacao e conversao.`;
+  if (exampleUrl && (asksForExample || isAffirmative)) {
+    const close = nextStep
+      ? `Depois disso, ${nextStep}`
+      : "Depois me fala se faz sentido para eu te direcionar no proximo passo.";
+    return [intro, promise, `Aqui esta o ${exampleLabel}: ${exampleUrl}`, close].join("\n\n");
+  }
+
+  const close = nextStep
+    ? `${nextStep} Posso seguir por esse caminho?`
+    : `Posso te mostrar um exemplo rapido de como ficaria?`;
+  return [intro, promise, close].join("\n\n");
+}
+
 function looksLikeRepeatedQuestion(currentText: string, previousText?: string | null) {
   const current = normalizeComparable(currentText);
   const previous = normalizeComparable(String(previousText || ""));
@@ -3444,6 +3503,17 @@ function recommendCommercialOffers(input: {
   commercialTemperature?: string | null;
   stageAfter?: string | null;
 }) {
+  const campaignOffer = sanitizeText(input.leadMemory?.campaignOfferName, 180);
+  if (campaignOffer) {
+    return {
+      primaryOffer: campaignOffer,
+      upsellOffer: null,
+      crossSellOffer: null,
+      primaryDocId: null,
+      rationale: ["outbound_campaign_offer_locked"],
+    } satisfies CommercialOfferBundle;
+  }
+
   const catalogDocs = input.kbDocs.filter((doc) => doc.type === "catalog" && doc.availability !== "paused");
   if (!catalogDocs.length) {
     return {
@@ -3456,7 +3526,8 @@ function recommendCommercialOffers(input: {
   }
 
   const preferenceSignal = sanitizeText(
-    input.plannerRecommendedOffer ||
+    input.leadMemory?.campaignOfferName ||
+      input.plannerRecommendedOffer ||
       input.extractedFields?.serviceInterest ||
       input.extractedFields?.offer ||
       input.leadMemory?.recommendedOffer,
@@ -5076,7 +5147,7 @@ export async function handleIncomingMessage(
     return { decision: "handoff", reason: decisionReasonForQueue };
   }
 
-  const responseText =
+  let responseText =
     chooseConversationalReply({
       llmResponseText: llmResult?.responseText || choice.responseText || "",
       previousOutboundText: runtimeState?.lastOutboundText || null,
@@ -5091,6 +5162,14 @@ export async function handleIncomingMessage(
         contactName: preferredContactName || null,
       }),
     }) || "Perfeito. Me conta so mais um ponto rapido para eu te orientar melhor.";
+  const outboundCampaignContinuation = buildOutboundCampaignContinuation({
+    inboundText,
+    responseText,
+    leadMemory,
+  });
+  if (outboundCampaignContinuation) {
+    responseText = outboundCampaignContinuation;
+  }
   let secondaryResponseText = buildSecondaryCommercialNudge({
     inboundText,
     responseText,
@@ -5099,6 +5178,9 @@ export async function handleIncomingMessage(
     conversation,
     mandatoryQuestions: aiConfig.mandatoryQuestions,
   });
+  if (outboundCampaignContinuation) {
+    secondaryResponseText = null;
+  }
   const whatsappServiceWindowClosed = shouldUseWhatsApp
     ? isWhatsAppServiceWindowClosed(chatData.lastClientMessageAt)
     : false;

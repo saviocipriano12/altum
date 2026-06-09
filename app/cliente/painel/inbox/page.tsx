@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import NextImage from "next/image";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -141,6 +142,14 @@ type MessageItem = {
   mediaSize?: number | null;
   mediaStatus?: "ready" | "missing" | "not_applicable";
   mediaUnavailableReason?: string | null;
+  templateName?: string | null;
+  templateLanguage?: string | null;
+  templateHeaderMedia?: {
+    type?: "image" | "video" | "document" | string | null;
+    link?: string | null;
+    id?: string | null;
+    filename?: string | null;
+  } | null;
 };
 
 type TimelineEvent = {
@@ -1557,6 +1566,45 @@ function DocumentAttachment({ message }: { message: MessageItem }) {
   );
 }
 
+function TemplateHeaderPreview({ message }: { message: MessageItem }) {
+  const media = message.templateHeaderMedia;
+  const link = String(media?.link || "").trim();
+  const type = String(media?.type || "").toLowerCase();
+  if (!media || !link) return null;
+
+  if (type === "image") {
+    return (
+      <a href={link} target="_blank" rel="noreferrer" className="mb-2 block overflow-hidden rounded-xl border border-black/10 bg-black/5">
+        <span className="relative block h-56 w-full">
+          <NextImage src={link} alt="" fill unoptimized className="object-cover" sizes="(max-width: 768px) 80vw, 360px" />
+        </span>
+      </a>
+    );
+  }
+
+  if (type === "video") {
+    return (
+      <video controls src={link} className="mb-2 max-h-64 w-full rounded-xl border border-black/10 bg-black" preload="metadata" />
+    );
+  }
+
+  if (type === "document") {
+    return (
+      <a
+        href={link}
+        target="_blank"
+        rel="noreferrer"
+        className="mb-2 flex items-center gap-3 rounded-xl border border-black/10 bg-black/5 px-3 py-2 text-sm font-bold"
+      >
+        <FileText className="h-4 w-4" />
+        {media.filename || "Documento do template"}
+      </a>
+    );
+  }
+
+  return null;
+}
+
 function MessageBubble({
   message,
   replied,
@@ -1707,6 +1755,7 @@ function MessageBubble({
           {type === "video" ? <VideoAttachment message={message} /> : null}
           {type === "audio" ? <AudioAttachment message={message} /> : null}
           {type === "document" ? <DocumentAttachment message={message} /> : null}
+          {type === "template" ? <TemplateHeaderPreview message={message} /> : null}
           {shouldRenderText ? (
             <p className="whitespace-pre-wrap break-words text-sm leading-6 text-current">
               {preview}
