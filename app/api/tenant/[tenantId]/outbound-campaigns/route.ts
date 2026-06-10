@@ -11,6 +11,7 @@ import {
 import {
   buildOutboundCampaignPatch,
   normalizeOutboundCampaign,
+  processOutboundCampaignJobs,
 } from "@/lib/server/outbound-campaigns";
 
 type Body = {
@@ -59,6 +60,10 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
     assertTenantRole(membership, "client_viewer");
+
+    await processOutboundCampaignJobs({ tenantId, limit: 20 }).catch((error) => {
+      console.warn("Falha ao processar fila outbound durante listagem:", error);
+    });
 
     const [campaignsSnap, runsSnap, deliveriesSnap] = await Promise.all([
       adminDb.collection("outbound_campaigns").where("tenantId", "==", tenantId).limit(120).get(),
