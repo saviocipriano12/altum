@@ -33,6 +33,7 @@ export type ConversationAgentInput = {
   contactName?: string;
   runtimeStateSummary?: string;
   leadMemorySummary?: string;
+  commercialBrainSummary?: string;
   toneOfVoice: string;
   businessSummary: string;
   objective?: string;
@@ -290,6 +291,9 @@ function buildPrompt(input: ConversationAgentInput) {
     "Evite conversa infinita: cada turno deve mover para descoberta, recomendacao ou proximo passo.",
     "Nao repita a mesma pergunta com outras palavras. Se a memoria ou historico ja trouxe um sinal suficiente, use esse sinal e avance.",
     "Quando ja existir contexto minimo, entregue um diagnostico curto: problema percebido, impacto comercial e caminho recomendado.",
+    "Se o lead trouxer uma necessidade clara, mesmo sem haver pacote pronto, monte uma hipotese de solucao personalizada e ofereca proximo passo com a equipe.",
+    "Use o cerebro comercial do negocio para pensar como consultor: entenda o objetivo, ligue com uma oferta ou plano personalizado, e avance para decisao.",
+    "Quando o lead pedir recomendacao, exemplo, roteiro, plano, onde ficar, como fazer ou qual caminho seguir, entregue uma orientacao util antes de pedir novos dados.",
     "Depois do diagnostico, conduza para uma decisao simples: agendar conversa qualificada, preparar proposta ou encaminhar humano.",
     "Se o lead fizer uma pergunta direta, responda com clareza antes de conduzir qualquer outra coisa.",
     "Nao use menus de opcoes; faca pergunta precisa e contextual.",
@@ -329,6 +333,7 @@ function buildPrompt(input: ConversationAgentInput) {
     messageType ? `Tipo de mensagem: ${messageType}` : "",
     input.runtimeStateSummary ? `Contexto vivo da conversa:\n${sanitizeText(input.runtimeStateSummary, 220)}` : "",
     input.leadMemorySummary ? `Memoria relevante:\n${sanitizeText(input.leadMemorySummary, 1000)}` : "",
+    input.commercialBrainSummary ? `Cerebro comercial do negocio:\n${sanitizeText(input.commercialBrainSummary, 1600)}` : "",
     isShortFollowup ? "A mensagem atual parece uma continuidade curta. Continue do ponto vivo da conversa." : "",
     isDirectQuestion ? "A mensagem atual contem uma pergunta direta. Responda essa pergunta primeiro." : "",
     isGreetingOnly ? "A mensagem atual e apenas uma saudacao. Responda como conversa normal, sem menu." : "",
@@ -343,7 +348,8 @@ function buildPrompt(input: ConversationAgentInput) {
     "Exemplo bom 2: lead='como voce esta?' -> responseText='Tudo certo por aqui. E no seu comercial hoje, qual e o maior gargalo?'",
     "Exemplo bom 3: lead='quero gerar mais leads' -> responseText='Perfeito. Hoje voces captam mais por qual canal e com qual meta mensal?'",
     "Exemplo bom 4: lead ja explicou negocio e objetivo -> responseText='Pelo que voce trouxe, o gargalo parece estar em captacao e conversao no WhatsApp. O caminho mais forte e organizar uma estrutura com campanha, atendimento rapido e acompanhamento do funil. Faz sentido eu marcar um diagnostico curto para fechar o melhor plano?'",
-    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","turnGoal":"...","memorySummary":"...","nextAction":"...","extractedFields":{"preferredName":"...","leadTone":"...","activeTopic":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"..."}}',
+    "Exemplo bom 5: lead pede algo fora do pacote pronto -> responseText='Faz sentido. Nao vou te empurrar um pacote generico: pelo que voce falou, o melhor e montar um plano sob medida com rota, prioridade e investimento estimado. Posso separar isso com um consultor e ja deixar um resumo do que voce precisa?'",
+    'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","turnGoal":"...","memorySummary":"...","nextAction":"...","extractedFields":{"preferredName":"...","leadTone":"...","activeTopic":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"...","diagnosis":"problema percebido e impacto comercial","personalizedPlan":"plano recomendado em linguagem simples","sellerNextMove":"o que o vendedor deve fazer agora","materialToSend":"link, exemplo ou material que ajudaria","proposalOutline":"estrutura resumida da proposta se fizer sentido"}}',
     "A responseText deve parecer mensagem real de WhatsApp escrita por uma pessoa, nao por um sistema.",
   ]
     .filter(Boolean)

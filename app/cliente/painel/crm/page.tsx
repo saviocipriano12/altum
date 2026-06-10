@@ -93,6 +93,11 @@ type LeadCommercialDossier = {
   objective?: string | null;
   recommendedOffer?: string | null;
   nextAction?: string | null;
+  diagnosis?: string | null;
+  personalizedPlan?: string | null;
+  sellerNextMove?: string | null;
+  materialToSend?: string | null;
+  proposalOutline?: string | null;
   summary?: string;
   sellerBrief?: string;
   painPoints?: string[];
@@ -1054,6 +1059,27 @@ export default function ClienteCrmPage() {
                       <SalesFact label="Proximo passo" value={formatAiAction(selectedCommercialDossier.nextAction || selectedLead.aiNextAction)} />
                       <SalesFact label="Atualizado" value={formatCrmDate(selectedCommercialDossier.updatedAt, "agora")} />
                     </div>
+
+                    {(selectedCommercialDossier.diagnosis || selectedCommercialDossier.personalizedPlan || selectedCommercialDossier.sellerNextMove) ? (
+                      <div className="mt-4 rounded-[16px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_20%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-3">
+                        <p className="text-[10px] font-black uppercase text-[var(--cliente-ai)]">Plano da IA</p>
+                        {selectedCommercialDossier.diagnosis ? (
+                          <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text)]">
+                            <span className="font-black">Diagnostico:</span> {selectedCommercialDossier.diagnosis}
+                          </p>
+                        ) : null}
+                        {selectedCommercialDossier.personalizedPlan ? (
+                          <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text)]">
+                            <span className="font-black">Plano:</span> {selectedCommercialDossier.personalizedPlan}
+                          </p>
+                        ) : null}
+                        {selectedCommercialDossier.sellerNextMove ? (
+                          <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text)]">
+                            <span className="font-black">Vendedor:</span> {selectedCommercialDossier.sellerNextMove}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     {(selectedCommercialDossier.talkingPoints || []).length ? (
                       <div className="mt-4 space-y-2">

@@ -21,6 +21,7 @@ type Body = {
   toneOfVoice?: string;
   businessSummary?: string;
   objective?: string;
+  commercialBrain?: CommercialBrainInput;
   responsiblePhone?: string;
   handoffNotifyEnabled?: boolean;
   handoffNotifyPhones?: string[] | string;
@@ -45,6 +46,18 @@ type Body = {
   extractionModelOverride?: string;
   monthlyBudgetUsd?: number;
   monthlyUsageCap?: number;
+};
+
+type CommercialBrainInput = {
+  businessModel?: string;
+  idealCustomer?: string;
+  revenuePriorities?: string;
+  diagnosisStyle?: string;
+  customSolutionPolicy?: string;
+  handoffCriteria?: string;
+  proposalStyle?: string;
+  followUpStrategy?: string;
+  forbiddenSalesMoves?: string;
 };
 
 function providerStatus() {
@@ -104,6 +117,21 @@ function parseNotifyPhones(value: unknown) {
   return Array.from(new Set(parseLines(value, 8).map((item) => clean(item, 40)).filter(Boolean))).slice(0, 8);
 }
 
+function normalizeCommercialBrain(value: unknown, fallback?: CommercialBrainInput) {
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    businessModel: clean(source.businessModel, 420) || clean(fallback?.businessModel, 420),
+    idealCustomer: clean(source.idealCustomer, 420) || clean(fallback?.idealCustomer, 420),
+    revenuePriorities: clean(source.revenuePriorities, 420) || clean(fallback?.revenuePriorities, 420),
+    diagnosisStyle: clean(source.diagnosisStyle, 420) || clean(fallback?.diagnosisStyle, 420),
+    customSolutionPolicy: clean(source.customSolutionPolicy, 420) || clean(fallback?.customSolutionPolicy, 420),
+    handoffCriteria: clean(source.handoffCriteria, 420) || clean(fallback?.handoffCriteria, 420),
+    proposalStyle: clean(source.proposalStyle, 420) || clean(fallback?.proposalStyle, 420),
+    followUpStrategy: clean(source.followUpStrategy, 420) || clean(fallback?.followUpStrategy, 420),
+    forbiddenSalesMoves: clean(source.forbiddenSalesMoves, 420) || clean(fallback?.forbiddenSalesMoves, 420),
+  };
+}
+
 function normalizeVoiceReplyMode(value: unknown) {
   const normalized = clean(value, 40).toLowerCase();
   if (normalized === "audio_only" || normalized === "smart" || normalized === "always") return normalized;
@@ -150,6 +178,7 @@ function normalizeAiConfig(
   const storedToneOfVoice = clean(ai.toneOfVoice, 120);
   const storedBusinessSummary = clean(ai.businessSummary, 320);
   const storedObjective = clean(ai.objective, 200);
+  const storedCommercialBrain = normalizeCommercialBrain(ai.commercialBrain);
   const storedVoiceReplyVoice = clean(ai.voiceReplyVoice, 40);
   const storedGuardrails = parseGuardrails(ai.guardrails);
   const storedMandatoryQuestions = parseLines(ai.mandatoryQuestions, 12);
@@ -171,6 +200,7 @@ function normalizeAiConfig(
     objective: resolveWithDefaults
       ? storedObjective || businessProfile.ai.objective
       : storedObjective,
+    commercialBrain: storedCommercialBrain,
     responsiblePhone: clean(ai.responsiblePhone, 40),
     handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
     handoffNotifyPhones: parseNotifyPhones(ai.handoffNotifyPhones),
@@ -257,6 +287,10 @@ export async function POST(
       toneOfVoice: clean(body.toneOfVoice, 120) || current.toneOfVoice,
       businessSummary: clean(body.businessSummary, 320) || current.businessSummary,
       objective: clean(body.objective, 200) || current.objective,
+      commercialBrain:
+        body.commercialBrain === undefined
+          ? normalizeCommercialBrain(current.commercialBrain)
+          : normalizeCommercialBrain(body.commercialBrain, current.commercialBrain),
       responsiblePhone: clean(body.responsiblePhone, 40) || current.responsiblePhone,
       handoffNotifyEnabled:
         typeof body.handoffNotifyEnabled === "boolean"

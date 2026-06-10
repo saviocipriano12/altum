@@ -10,6 +10,7 @@ type ConversationMessageLike = {
 };
 
 type DossierTrigger =
+  | "qualification_ready"
   | "handoff"
   | "appointment_scheduled"
   | "appointment_completed"
@@ -59,6 +60,7 @@ function uniqueList(values: Array<string | null | undefined>, max = 8) {
 }
 
 function triggerLabel(trigger: DossierTrigger) {
+  if (trigger === "qualification_ready") return "Plano comercial pronto";
   if (trigger === "handoff") return "Handoff para humano";
   if (trigger === "appointment_scheduled") return "Reuniao marcada";
   if (trigger === "appointment_completed") return "Reuniao concluida";
@@ -69,6 +71,7 @@ function triggerLabel(trigger: DossierTrigger) {
 
 function triggerStatus(trigger: DossierTrigger) {
   if (trigger === "sale_won") return "won";
+  if (trigger === "qualification_ready") return "diagnosis_ready";
   if (trigger === "appointment_completed") return "post_meeting";
   if (trigger === "appointment_scheduled") return "meeting_ready";
   if (trigger === "proposal_draft") return "proposal_ready";
@@ -99,6 +102,11 @@ function buildMarkdown(input: {
   recommendedOffer: string;
   nextAction: string;
   objections: string[];
+  diagnosis: string;
+  personalizedPlan: string;
+  sellerNextMove: string;
+  materialToSend: string;
+  proposalOutline: string;
   talkingPoints: string[];
   questionsToAsk: string[];
   recentConversation: string[];
@@ -121,6 +129,17 @@ function buildMarkdown(input: {
     "",
     "## Oferta recomendada",
     input.recommendedOffer || "Validar melhor oferta antes de apresentar proposta.",
+    "",
+    "## Diagnostico da IA",
+    input.diagnosis || "Consolidar diagnostico com base na proxima resposta do lead.",
+    "",
+    "## Plano sugerido",
+    input.personalizedPlan || "Definir plano com base no objetivo, urgencia e oferta indicada.",
+    "",
+    "## O que preparar",
+    ...(uniqueList([input.sellerNextMove, input.materialToSend, input.proposalOutline], 6).length
+      ? uniqueList([input.sellerNextMove, input.materialToSend, input.proposalOutline], 6).map((item) => `- ${item}`)
+      : ["- Preparar abordagem consultiva e confirmar contexto do lead."]),
     "",
     "## Proxima acao",
     input.nextAction || "Definir proximo passo com o lead.",
@@ -172,6 +191,11 @@ export async function upsertLeadCommercialDossier(input: UpsertLeadCommercialDos
   const dominantObjection = firstValue(aiMemory.dominantObjection, customFields.objecao_principal, lead.aiDominantObjection);
   const recommendedOffer = firstValue(plan?.recommendedOffer, aiMemory.serviceInterest, lead.aiRecommendedOffer);
   const nextAction = firstValue(plan?.nextAction, lead.aiNextAction);
+  const diagnosis = firstValue(aiMemory.diagnosis, lead.aiDiagnosis, customFields.diagnostico_ia);
+  const personalizedPlan = firstValue(aiMemory.personalizedPlan, lead.aiPersonalizedPlan, customFields.plano_personalizado_ia);
+  const sellerNextMove = firstValue(aiMemory.sellerNextMove, lead.aiSellerNextMove, customFields.proximo_passo_vendedor_ia);
+  const materialToSend = firstValue(aiMemory.materialToSend, lead.aiMaterialToSend, customFields.material_recomendado_ia);
+  const proposalOutline = firstValue(aiMemory.proposalOutline, lead.aiProposalOutline);
   const summary = firstValue(
     lead.aiLeadSummary,
     lead.notes,
@@ -202,6 +226,10 @@ export async function upsertLeadCommercialDossier(input: UpsertLeadCommercialDos
     budget ? `Validar se a faixa de investimento ${budget} ainda faz sentido.` : "Validar faixa de investimento sem pressionar cedo demais.",
     urgency ? `Explorar urgencia: ${urgency}.` : "Perguntar prazo ideal para resolver o problema.",
     dominantObjection ? `Tratar objecao com calma: ${dominantObjection}.` : null,
+    diagnosis ? `Use o diagnostico da IA: ${diagnosis}.` : null,
+    personalizedPlan ? `Apresente o plano sugerido sem soar como pacote generico: ${personalizedPlan}.` : null,
+    sellerNextMove ? `Proximo movimento recomendado: ${sellerNextMove}.` : null,
+    materialToSend ? `Se fizer sentido, envie ou cite o material: ${materialToSend}.` : null,
   ]);
   const questionsToAsk = uniqueList([
     !businessType ? "Qual e exatamente o tipo de negocio/segmento?" : null,
@@ -215,6 +243,9 @@ export async function upsertLeadCommercialDossier(input: UpsertLeadCommercialDos
   const sellerBrief = [
     summary,
     recommendedOffer ? `Oferta sugerida: ${recommendedOffer}.` : "",
+    diagnosis ? `Diagnostico: ${diagnosis}.` : "",
+    personalizedPlan ? `Plano sugerido: ${personalizedPlan}.` : "",
+    sellerNextMove ? `Movimento do vendedor: ${sellerNextMove}.` : "",
     nextAction ? `Proximo passo: ${nextAction}.` : "",
     appointmentStart ? `Reuniao/agenda: ${appointmentStart}.` : "",
   ]
@@ -231,6 +262,11 @@ export async function upsertLeadCommercialDossier(input: UpsertLeadCommercialDos
     recommendedOffer,
     nextAction,
     objections,
+    diagnosis,
+    personalizedPlan,
+    sellerNextMove,
+    materialToSend,
+    proposalOutline,
     talkingPoints,
     questionsToAsk,
     recentConversation,
@@ -250,6 +286,11 @@ export async function upsertLeadCommercialDossier(input: UpsertLeadCommercialDos
     objective: objective || null,
     recommendedOffer: recommendedOffer || null,
     nextAction: nextAction || null,
+    diagnosis: diagnosis || null,
+    personalizedPlan: personalizedPlan || null,
+    sellerNextMove: sellerNextMove || null,
+    materialToSend: materialToSend || null,
+    proposalOutline: proposalOutline || null,
     summary,
     sellerBrief,
     painPoints,

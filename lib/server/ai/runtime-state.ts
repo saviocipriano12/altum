@@ -74,6 +74,11 @@ export type AltumLeadMemory = {
   teamSize?: string | null;
   recommendedOffer?: string | null;
   nextBestAction?: string | null;
+  diagnosis?: string | null;
+  personalizedPlan?: string | null;
+  sellerNextMove?: string | null;
+  materialToSend?: string | null;
+  proposalOutline?: string | null;
   memorySummary?: string | null;
   summary?: string | null;
   preferredName?: string | null;
@@ -357,6 +362,11 @@ export async function upsertLeadMemory(input: {
   const city = cleanText(safeFields.city || safeFields.region, 120);
   const currentChannels = cleanText(safeFields.currentChannels || safeFields.channels, 220);
   const teamSize = cleanText(safeFields.teamSize || safeFields.team || safeFields.staffSize, 80);
+  const diagnosis = cleanText(safeFields.diagnosis || safeFields.diagnostico, 360);
+  const personalizedPlan = cleanText(safeFields.personalizedPlan || safeFields.planoPersonalizado, 520);
+  const sellerNextMove = cleanText(safeFields.sellerNextMove || safeFields.vendedorProximoPasso, 260);
+  const materialToSend = cleanText(safeFields.materialToSend || safeFields.material || safeFields.exampleUrl, 260);
+  const proposalOutline = cleanText(safeFields.proposalOutline || safeFields.propostaResumo, 520);
   const summary = cleanText(input.summary, 260);
   const preferredNameRaw = cleanText(input.preferredName, 80) || extractPreferredName("", fields);
   const preferredName = looksLikeHumanName(preferredNameRaw) ? preferredNameRaw : "";
@@ -396,6 +406,11 @@ export async function upsertLeadMemory(input: {
   if (currentChannels) payload.currentChannels = currentChannels;
   if (teamSize) payload.teamSize = teamSize;
   if (recommendedOffer) payload.recommendedOffer = recommendedOffer;
+  if (diagnosis) payload.diagnosis = diagnosis;
+  if (personalizedPlan) payload.personalizedPlan = personalizedPlan;
+  if (sellerNextMove) payload.sellerNextMove = sellerNextMove;
+  if (materialToSend) payload.materialToSend = materialToSend;
+  if (proposalOutline) payload.proposalOutline = proposalOutline;
   if (summary) payload.summary = summary;
   if (preferredName) payload.preferredName = preferredName;
   if (leadTone) payload.leadTone = leadTone;
@@ -516,6 +531,11 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     teamSize: cleanText(data.teamSize, 80) || null,
     recommendedOffer: cleanText(data.recommendedOffer, 180) || cleanText(followupContext.offerName, 180) || null,
     nextBestAction: cleanText(data.nextBestAction, 180) || null,
+    diagnosis: cleanText(data.diagnosis, 360) || cleanText(leadData.aiDiagnosis, 360) || null,
+    personalizedPlan: cleanText(data.personalizedPlan, 520) || cleanText(leadData.aiPersonalizedPlan, 520) || null,
+    sellerNextMove: cleanText(data.sellerNextMove, 260) || cleanText(leadData.aiSellerNextMove, 260) || null,
+    materialToSend: cleanText(data.materialToSend, 260) || cleanText(leadData.aiMaterialToSend, 260) || null,
+    proposalOutline: cleanText(data.proposalOutline, 520) || cleanText(leadData.aiProposalOutline, 520) || null,
     memorySummary: cleanText(data.memorySummary, 260) || null,
     summary: cleanText(data.summary, 260) || null,
     preferredName: cleanText(data.preferredName, 80) || null,

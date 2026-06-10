@@ -37,6 +37,17 @@ type AiSettings = {
   toneOfVoice: string;
   businessSummary: string;
   objective?: string;
+  commercialBrain?: {
+    businessModel?: string;
+    idealCustomer?: string;
+    revenuePriorities?: string;
+    diagnosisStyle?: string;
+    customSolutionPolicy?: string;
+    handoffCriteria?: string;
+    proposalStyle?: string;
+    followUpStrategy?: string;
+    forbiddenSalesMoves?: string;
+  };
   responsiblePhone: string;
   handoffNotifyEnabled?: boolean;
   handoffNotifyPhones?: string[];
@@ -206,6 +217,8 @@ type PreviewResult = {
   matchedKbDocs?: Array<{ id: string; type: string; score: number; preview: string }>;
 };
 
+type CommercialBrainSettings = NonNullable<AiSettings["commercialBrain"]>;
+
 type PreviewBatchRun = {
   scenarioId: string;
   label: string;
@@ -345,6 +358,17 @@ const EMPTY_SETTINGS: AiSettings = {
   toneOfVoice: "consultivo e objetivo",
   businessSummary: "",
   objective: "",
+  commercialBrain: {
+    businessModel: "",
+    idealCustomer: "",
+    revenuePriorities: "",
+    diagnosisStyle: "",
+    customSolutionPolicy: "",
+    handoffCriteria: "",
+    proposalStyle: "",
+    followUpStrategy: "",
+    forbiddenSalesMoves: "",
+  },
   responsiblePhone: "",
   handoffNotifyEnabled: true,
   handoffNotifyPhones: [],
@@ -1301,6 +1325,16 @@ export default function ClienteIaPage() {
     } finally {
       setSavingSettings(false);
     }
+  }
+
+  function updateCommercialBrain(key: keyof CommercialBrainSettings, value: string) {
+    setSettings((prev) => ({
+      ...prev,
+      commercialBrain: {
+        ...(prev.commercialBrain || {}),
+        [key]: value,
+      },
+    }));
   }
 
   function parseOptionalNumber(value: string) {
@@ -2538,6 +2572,84 @@ export default function ClienteIaPage() {
             <Field label="Resumo do negocio" value={settings.businessSummary} onChange={(value) => setSettings((prev) => ({ ...prev, businessSummary: value }))} placeholder="o que a empresa vende, para quem e com qual foco" disabled={!canManage} />
             <Field label="Objetivo principal da IA" value={settings.objective || ""} onChange={(value) => setSettings((prev) => ({ ...prev, objective: value }))} placeholder="qualificar, orientar, vender e encaminhar" disabled={!canManage} />
 
+            <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,var(--cliente-border))] bg-[linear-gradient(135deg,var(--cliente-ai-soft),var(--cliente-card))] p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <CardTitle
+                  title="Cerebro comercial"
+                  subtitle="Ensine como a IA deve diagnosticar, vender e chamar sua equipe sem perder contexto."
+                />
+                <StateBadge label="inteligencia do negocio" tone="ai" />
+              </div>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <TextAreaField
+                  label="Como o negocio ganha dinheiro"
+                  value={settings.commercialBrain?.businessModel || ""}
+                  onChange={(value) => updateCommercialBrain("businessModel", value)}
+                  placeholder="Ex: vendemos landing pages, sites e atendimento com IA para empresas que precisam captar e converter melhor."
+                  disabled={!canManage}
+                />
+                <TextAreaField
+                  label="Cliente ideal"
+                  value={settings.commercialBrain?.idealCustomer || ""}
+                  onChange={(value) => updateCommercialBrain("idealCustomer", value)}
+                  placeholder="Ex: empresas locais, profissionais liberais e times comerciais que ja recebem leads pelo WhatsApp."
+                  disabled={!canManage}
+                />
+                <TextAreaField
+                  label="Prioridades de receita"
+                  value={settings.commercialBrain?.revenuePriorities || ""}
+                  onChange={(value) => updateCommercialBrain("revenuePriorities", value)}
+                  placeholder="Ex: primeiro vender diagnostico, depois pacote de landing page, trafego e automacao."
+                  disabled={!canManage}
+                />
+                <TextAreaField
+                  label="Como diagnosticar"
+                  value={settings.commercialBrain?.diagnosisStyle || ""}
+                  onChange={(value) => updateCommercialBrain("diagnosisStyle", value)}
+                  placeholder="Ex: identificar gargalo, impacto no dinheiro, canal atual, urgencia e melhor caminho em ate duas perguntas."
+                  disabled={!canManage}
+                />
+                <TextAreaField
+                  label="Quando montar solucao personalizada"
+                  value={settings.commercialBrain?.customSolutionPolicy || ""}
+                  onChange={(value) => updateCommercialBrain("customSolutionPolicy", value)}
+                  placeholder="Ex: se nao existir oferta pronta, propor montar um plano especifico com vendedor e IA."
+                  disabled={!canManage}
+                />
+                <TextAreaField
+                  label="Quando chamar humano"
+                  value={settings.commercialBrain?.handoffCriteria || ""}
+                  onChange={(value) => updateCommercialBrain("handoffCriteria", value)}
+                  placeholder="Ex: lead pediu proposta, demonstrou urgencia, quer customizacao, tem budget ou precisa de decisao humana."
+                  disabled={!canManage}
+                />
+                <TextAreaField
+                  label="Como preparar proposta"
+                  value={settings.commercialBrain?.proposalStyle || ""}
+                  onChange={(value) => updateCommercialBrain("proposalStyle", value)}
+                  placeholder="Ex: resumo do problema, plano em etapas, investimento, prazo e proximo passo simples."
+                  disabled={!canManage}
+                />
+                <TextAreaField
+                  label="Follow-up comercial"
+                  value={settings.commercialBrain?.followUpStrategy || ""}
+                  onChange={(value) => updateCommercialBrain("followUpStrategy", value)}
+                  placeholder="Ex: retomar com contexto, mostrar exemplo, reduzir duvida e conduzir para agenda/proposta."
+                  disabled={!canManage}
+                />
+              </div>
+              <div className="mt-4">
+                <TextAreaField
+                  label="O que a IA nunca deve fazer"
+                  value={settings.commercialBrain?.forbiddenSalesMoves || ""}
+                  onChange={(value) => updateCommercialBrain("forbiddenSalesMoves", value)}
+                  placeholder="Ex: prometer resultado garantido, inventar preco, repetir pergunta ja respondida ou falar de outro servico que nao foi oferecido."
+                  disabled={!canManage}
+                  rows={2}
+                />
+              </div>
+            </div>
+
             <div id="ia-audio" className="pt-2">
               <p className="text-base font-semibold text-[var(--cliente-card-text)]">Humano e audio</p>
               <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">Configure voz, responsavel humano e quando a IA deve sair do texto.</p>
@@ -3461,6 +3573,36 @@ function Field({
         placeholder={placeholder}
         disabled={disabled}
         className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
+      />
+    </label>
+  );
+}
+
+function TextAreaField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  disabled = false,
+  rows = 3,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  rows?: number;
+}) {
+  return (
+    <label className="block text-sm font-semibold text-[var(--cliente-card-text)]">
+      {label}
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        rows={rows}
+        className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] leading-7 outline-none ring-[var(--cliente-accent-soft)] focus:ring disabled:opacity-60"
       />
     </label>
   );

@@ -135,7 +135,7 @@ function mapTurnGoalToResponseGoal(
   if (/(acolher|boas vindas|welcome)/i.test(turnGoal)) return "welcome";
   if (/(aprofundar|investigar|entender|qualify|discovery)/i.test(turnGoal)) return "qualify";
   if (/(objecao|objection)/i.test(turnGoal)) return "handle_objection";
-  if (/(proposta|agendar|fechar|avancar|proximo passo|next step)/i.test(turnGoal)) {
+  if (/(proposta|agendar|fechar|avancar|proximo passo|next step|diagnostico|recomendacao|recomendar|solucao|plano)/i.test(turnGoal)) {
     return "move_to_next_step";
   }
   if (/(responder|esclarecer|clarify|orientar|explicar|resumir|conversar)/i.test(turnGoal)) return "clarify";

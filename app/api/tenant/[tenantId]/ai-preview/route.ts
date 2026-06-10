@@ -65,6 +65,9 @@ function summarizeLeadMemoryForPreview(leadMemory: Partial<AltumLeadMemory> | nu
     clean(leadMemory.currentChannels, 180) ? `canais atuais: ${clean(leadMemory.currentChannels, 180)}` : "",
     clean(leadMemory.urgency, 120) ? `urgencia: ${clean(leadMemory.urgency, 120)}` : "",
     clean(leadMemory.dominantObjection, 120) ? `objecao: ${clean(leadMemory.dominantObjection, 120)}` : "",
+    clean(leadMemory.diagnosis, 240) ? `diagnostico: ${clean(leadMemory.diagnosis, 240)}` : "",
+    clean(leadMemory.personalizedPlan, 260) ? `plano sugerido: ${clean(leadMemory.personalizedPlan, 260)}` : "",
+    clean(leadMemory.sellerNextMove, 180) ? `proximo passo do vendedor: ${clean(leadMemory.sellerNextMove, 180)}` : "",
     clean(leadMemory.memorySummary, 220) ? `memoria viva: ${clean(leadMemory.memorySummary, 220)}` : "",
     clean(leadMemory.summary, 220) ? `resumo: ${clean(leadMemory.summary, 220)}` : "",
   ]
@@ -102,6 +105,38 @@ function parseLines(value: unknown, maxItems = 12) {
       .slice(0, maxItems);
   }
   return [];
+}
+
+function normalizeCommercialBrain(value: unknown) {
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    businessModel: clean(source.businessModel, 420),
+    idealCustomer: clean(source.idealCustomer, 420),
+    revenuePriorities: clean(source.revenuePriorities, 420),
+    diagnosisStyle: clean(source.diagnosisStyle, 420),
+    customSolutionPolicy: clean(source.customSolutionPolicy, 420),
+    handoffCriteria: clean(source.handoffCriteria, 420),
+    proposalStyle: clean(source.proposalStyle, 420),
+    followUpStrategy: clean(source.followUpStrategy, 420),
+    forbiddenSalesMoves: clean(source.forbiddenSalesMoves, 420),
+  };
+}
+
+function summarizeCommercialBrain(brain: ReturnType<typeof normalizeCommercialBrain>) {
+  return [
+    brain.businessModel ? `Modelo de negocio: ${brain.businessModel}` : "",
+    brain.idealCustomer ? `Cliente ideal: ${brain.idealCustomer}` : "",
+    brain.revenuePriorities ? `Prioridades de receita: ${brain.revenuePriorities}` : "",
+    brain.diagnosisStyle ? `Como diagnosticar: ${brain.diagnosisStyle}` : "",
+    brain.customSolutionPolicy ? `Solucao personalizada: ${brain.customSolutionPolicy}` : "",
+    brain.handoffCriteria ? `Quando chamar humano: ${brain.handoffCriteria}` : "",
+    brain.proposalStyle ? `Como preparar proposta: ${brain.proposalStyle}` : "",
+    brain.followUpStrategy ? `Follow-up: ${brain.followUpStrategy}` : "",
+    brain.forbiddenSalesMoves ? `Nao fazer: ${brain.forbiddenSalesMoves}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 1800);
 }
 
 function normalizeWords(value: string) {
@@ -235,6 +270,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const playbookPreset = getBusinessProfilePlaybookPreset(businessProfileId);
     const operatingProfile = normalizeTenantAiOperatingProfile(ai.operatingProfile);
     const runtimePolicy = buildAiRuntimePolicy(operatingProfile);
+    const commercialBrain = normalizeCommercialBrain(ai.commercialBrain);
     const learningHints = await getTenantLearningHints(tenantId);
 
     const kbSnap = await (await import("@/app/lib/server/firebase-admin")).adminDb
@@ -295,6 +331,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
               contactName: typeof body.contactName === "string" ? body.contactName : undefined,
               runtimeStateSummary: clean(body.runtimeStateSummary, 320) || undefined,
               leadMemorySummary: summarizeLeadMemoryForPreview(body.leadMemory || null) || undefined,
+              commercialBrainSummary: summarizeCommercialBrain(commercialBrain) || undefined,
               toneOfVoice: clean(ai.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
               businessSummary: clean(ai.businessSummary, 360) || clean(settings?.name, 120) || businessProfile.description,
               objective: clean(ai.objective, 200) || businessProfile.ai.objective,
@@ -339,6 +376,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       agentName: clean(ai.agentName, 80) || `Agente ${clean(settings?.name, 80) || businessProfile.label}`,
       businessSummary: clean(ai.businessSummary, 360) || clean(settings?.name, 120) || businessProfile.description,
       objective: clean(ai.objective, 200) || businessProfile.ai.objective,
+      commercialBrain,
       toneOfVoice: clean(ai.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
       responsiblePhone: clean(ai.responsiblePhone, 40),
       handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,

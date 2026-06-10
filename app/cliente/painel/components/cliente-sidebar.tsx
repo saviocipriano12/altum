@@ -9,7 +9,9 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Headphones,
   LayoutGrid,
+  MessageCircle,
   MessageSquare,
   Instagram,
   Send,
@@ -182,6 +184,8 @@ const PRIMARY_NAV: NavItem[] = [
 ];
 
 const ADVANCED_LINKS: NavAlias[] = [];
+const ALTUM_SUPPORT_WHATSAPP_URL =
+  "https://wa.me/5531972545430?text=Oi%2C%20preciso%20de%20ajuda%20com%20a%20plataforma%20Altum.";
 const NAV_GROUPS: Array<{ id: NavItem["group"]; label: string }> = [
   { id: "operate", label: "Operacao diaria" },
   { id: "grow", label: "Crescimento" },
@@ -376,6 +380,51 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
             ))}
           </div>
         </nav>
+
+        <div className="border-t border-[var(--cliente-border)] px-4 py-4">
+          {compactMode ? (
+            <a
+              href={ALTUM_SUPPORT_WHATSAPP_URL}
+              target="_blank"
+              rel="noreferrer"
+              onClick={onClose}
+              title="Entrar em contato com a Altum"
+              aria-label="Entrar em contato com a Altum pelo WhatsApp"
+              className="group relative flex h-12 w-full items-center justify-center rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-success)_28%,var(--cliente-border))] bg-[linear-gradient(135deg,var(--cliente-success),color-mix(in_srgb,var(--cliente-primary)_34%,var(--cliente-success)))] text-white shadow-[0_18px_36px_-26px_rgba(34,197,94,0.72)] transition hover:-translate-y-0.5 hover:brightness-105"
+            >
+              <MessageCircle className="h-5 w-5" />
+              <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs text-[var(--cliente-text)] shadow-[var(--cliente-shadow-soft)] group-hover:block">
+                Suporte Altum
+              </span>
+            </a>
+          ) : (
+            <a
+              href={ALTUM_SUPPORT_WHATSAPP_URL}
+              target="_blank"
+              rel="noreferrer"
+              onClick={onClose}
+              className="group block overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--cliente-success)_22%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-success)_14%,var(--cliente-card)),var(--cliente-card))] p-3 shadow-[0_18px_42px_-32px_rgba(34,197,94,0.6)] transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--cliente-success)_38%,var(--cliente-border))] hover:shadow-[0_22px_52px_-34px_rgba(34,197,94,0.78)]"
+            >
+              <div className="flex items-start gap-3">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,var(--cliente-success),color-mix(in_srgb,var(--cliente-primary)_28%,var(--cliente-success)))] text-white shadow-[0_16px_34px_-22px_rgba(34,197,94,0.85)]">
+                  <Headphones className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black tracking-normal text-[var(--cliente-text)]">
+                    Entrar em contato com a Altum
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--cliente-text-soft)]">
+                    Suporte direto pelo WhatsApp para duvidas, ajustes e ajuda na operacao.
+                  </p>
+                  <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-[var(--cliente-success)] px-3 py-1.5 text-[11px] font-bold text-white transition group-hover:brightness-105">
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    Falar no WhatsApp
+                  </span>
+                </div>
+              </div>
+            </a>
+          )}
+        </div>
 
         {advancedLinks.length ? (
         <div className="border-t border-[var(--cliente-border)] px-4 py-4">

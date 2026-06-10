@@ -228,6 +228,11 @@ type LeadCommercialDossier = {
   objective?: string | null;
   recommendedOffer?: string | null;
   nextAction?: string | null;
+  diagnosis?: string | null;
+  personalizedPlan?: string | null;
+  sellerNextMove?: string | null;
+  materialToSend?: string | null;
+  proposalOutline?: string | null;
   summary?: string;
   sellerBrief?: string;
   painPoints?: string[];
@@ -3177,6 +3182,32 @@ export default function ClienteInboxPage() {
                       </p>
                     </div>
                   </div>
+
+                  {(commercialDossier.diagnosis || commercialDossier.personalizedPlan || commercialDossier.sellerNextMove) ? (
+                    <div className="mt-4 rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-ai)]">Plano da IA para este lead</p>
+                      {commercialDossier.diagnosis ? (
+                        <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text)]">
+                          <span className="font-bold">Diagnostico:</span> {commercialDossier.diagnosis}
+                        </p>
+                      ) : null}
+                      {commercialDossier.personalizedPlan ? (
+                        <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text)]">
+                          <span className="font-bold">Plano:</span> {commercialDossier.personalizedPlan}
+                        </p>
+                      ) : null}
+                      {commercialDossier.sellerNextMove ? (
+                        <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text)]">
+                          <span className="font-bold">Vendedor:</span> {commercialDossier.sellerNextMove}
+                        </p>
+                      ) : null}
+                      {commercialDossier.materialToSend ? (
+                        <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                          Material: {commercialDossier.materialToSend}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   {(commercialDossier.talkingPoints || []).length ? (
                     <div className="mt-4">

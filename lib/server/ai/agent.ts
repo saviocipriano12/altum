@@ -147,6 +147,17 @@ type TenantAiConfig = {
   toneOfVoice: string;
   businessSummary: string;
   objective: string;
+  commercialBrain: {
+    businessModel?: string;
+    idealCustomer?: string;
+    revenuePriorities?: string;
+    diagnosisStyle?: string;
+    customSolutionPolicy?: string;
+    handoffCriteria?: string;
+    proposalStyle?: string;
+    followUpStrategy?: string;
+    forbiddenSalesMoves?: string;
+  };
   responsiblePhone: string;
   handoffNotifyEnabled: boolean;
   handoffNotifyPhones: string[];
@@ -413,6 +424,10 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
     leadMemory.primaryGoal ? `objetivo: ${leadMemory.primaryGoal}` : "",
     leadMemory.currentChannels ? `canais atuais: ${leadMemory.currentChannels}` : "",
     leadMemory.dominantObjection ? `objecao dominante: ${leadMemory.dominantObjection}` : "",
+    leadMemory.diagnosis ? `diagnostico da IA: ${leadMemory.diagnosis}` : "",
+    leadMemory.personalizedPlan ? `plano sugerido: ${leadMemory.personalizedPlan}` : "",
+    leadMemory.sellerNextMove ? `proximo passo do vendedor: ${leadMemory.sellerNextMove}` : "",
+    leadMemory.materialToSend ? `material recomendado: ${leadMemory.materialToSend}` : "",
     leadMemory.memorySummary ? `memoria viva: ${leadMemory.memorySummary}` : "",
     leadMemory.summary ? `resumo: ${leadMemory.summary}` : "",
   ]
@@ -925,6 +940,37 @@ function resolveFollowUpTemplateParams(
     .slice(0, 20);
 }
 
+function normalizeCommercialBrain(value: unknown) {
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    businessModel: sanitizeText(source.businessModel, 420),
+    idealCustomer: sanitizeText(source.idealCustomer, 420),
+    revenuePriorities: sanitizeText(source.revenuePriorities, 420),
+    diagnosisStyle: sanitizeText(source.diagnosisStyle, 420),
+    customSolutionPolicy: sanitizeText(source.customSolutionPolicy, 420),
+    handoffCriteria: sanitizeText(source.handoffCriteria, 420),
+    proposalStyle: sanitizeText(source.proposalStyle, 420),
+    followUpStrategy: sanitizeText(source.followUpStrategy, 420),
+    forbiddenSalesMoves: sanitizeText(source.forbiddenSalesMoves, 420),
+  };
+}
+
+function summarizeCommercialBrainForAgent(brain: TenantAiConfig["commercialBrain"]) {
+  const lines = [
+    brain.businessModel ? `Modelo de negocio: ${brain.businessModel}` : "",
+    brain.idealCustomer ? `Cliente ideal: ${brain.idealCustomer}` : "",
+    brain.revenuePriorities ? `Prioridades de receita: ${brain.revenuePriorities}` : "",
+    brain.diagnosisStyle ? `Como diagnosticar: ${brain.diagnosisStyle}` : "",
+    brain.customSolutionPolicy ? `Solucao personalizada: ${brain.customSolutionPolicy}` : "",
+    brain.handoffCriteria ? `Quando chamar humano: ${brain.handoffCriteria}` : "",
+    brain.proposalStyle ? `Como preparar proposta: ${brain.proposalStyle}` : "",
+    brain.followUpStrategy ? `Follow-up: ${brain.followUpStrategy}` : "",
+    brain.forbiddenSalesMoves ? `Nao fazer: ${brain.forbiddenSalesMoves}` : "",
+  ].filter(Boolean);
+
+  return lines.join("\n").slice(0, 1800);
+}
+
 function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>): TenantAiConfig {
   const ai =
     settings && typeof settings.ai === "object" && settings.ai
@@ -934,6 +980,7 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
   const businessProfile = getBusinessProfile(businessProfileId);
   const playbookPreset = getBusinessProfilePlaybookPreset(businessProfileId);
   const operatingProfile = normalizeTenantAiOperatingProfile(ai.operatingProfile);
+  const commercialBrain = normalizeCommercialBrain(ai.commercialBrain);
 
   return {
     enabled: ai.enabled !== false,
@@ -949,6 +996,7 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
       sanitizeText(settings?.name, 120) ||
       businessProfile.description,
     objective: sanitizeText(ai.objective, 200) || businessProfile.ai.objective,
+    commercialBrain,
     responsiblePhone: normalizePhone(
       String(ai.responsiblePhone || settings?.contactPhone || settings?.ownerPhone || settings?.phone || "")
     ),
@@ -2332,6 +2380,21 @@ async function executeAltumAgentActions(input: {
       sanitizeText(input.extractedFields?.serviceInterest || input.extractedFields?.offer, 160) ||
       input.plan.recommendedOffer ||
       null,
+    diagnosis:
+      sanitizeText(input.extractedFields?.diagnosis || input.extractedFields?.diagnostico, 360) ||
+      null,
+    personalizedPlan:
+      sanitizeText(input.extractedFields?.personalizedPlan || input.extractedFields?.planoPersonalizado, 520) ||
+      null,
+    sellerNextMove:
+      sanitizeText(input.extractedFields?.sellerNextMove || input.extractedFields?.vendedorProximoPasso, 260) ||
+      null,
+    materialToSend:
+      sanitizeText(input.extractedFields?.materialToSend || input.extractedFields?.material || input.extractedFields?.exampleUrl, 260) ||
+      null,
+    proposalOutline:
+      sanitizeText(input.extractedFields?.proposalOutline || input.extractedFields?.propostaResumo, 520) ||
+      null,
   };
   const aiLeadSummary = buildPersistentConversationSummary({
     preferredName: aiMemory.preferredName,
@@ -2432,6 +2495,10 @@ async function executeAltumAgentActions(input: {
   upsertCustomField("tom_lead", aiMemory.leadTone);
   upsertCustomField("topico_ativo", aiMemory.activeTopic);
   upsertCustomField("objecao_principal", aiMemory.dominantObjection);
+  upsertCustomField("diagnostico_ia", aiMemory.diagnosis);
+  upsertCustomField("plano_personalizado_ia", aiMemory.personalizedPlan);
+  upsertCustomField("proximo_passo_vendedor_ia", aiMemory.sellerNextMove);
+  upsertCustomField("material_recomendado_ia", aiMemory.materialToSend);
 
   const heatByTemperature: Record<string, "frio" | "morno" | "quente"> = {
     cold: "frio",
@@ -2485,6 +2552,11 @@ async function executeAltumAgentActions(input: {
     aiPreferredName: aiMemory.preferredName,
     aiLeadTone: aiMemory.leadTone,
     aiActiveTopic: aiMemory.activeTopic,
+    aiDiagnosis: aiMemory.diagnosis,
+    aiPersonalizedPlan: aiMemory.personalizedPlan,
+    aiSellerNextMove: aiMemory.sellerNextMove,
+    aiMaterialToSend: aiMemory.materialToSend,
+    aiProposalOutline: aiMemory.proposalOutline,
     aiLeadSummary,
     aiLastInboundText: sanitizeText(input.inboundText, 500) || null,
     aiPlannerConfidence: plannerConfidence,
@@ -2616,6 +2688,10 @@ async function executeAltumAgentActions(input: {
     setAiFieldEvidence("custom.tom_lead", aiMemory.leadTone, "derived");
     setAiFieldEvidence("custom.topico_ativo", aiMemory.activeTopic, "derived");
     setAiFieldEvidence("custom.objecao_principal", aiMemory.dominantObjection, "derived");
+    setAiFieldEvidence("custom.diagnostico_ia", aiMemory.diagnosis, "derived");
+    setAiFieldEvidence("custom.plano_personalizado_ia", aiMemory.personalizedPlan, "derived");
+    setAiFieldEvidence("custom.proximo_passo_vendedor_ia", aiMemory.sellerNextMove, "derived");
+    setAiFieldEvidence("custom.material_recomendado_ia", aiMemory.materialToSend, "derived");
     actions.push("enrich_custom_fields");
   }
   if (aiFieldEvidenceChanged) {
@@ -2699,10 +2775,26 @@ async function executeAltumAgentActions(input: {
     const note = [
       "IA identificou contexto suficiente para recomendacao comercial.",
       input.plan.recommendedOffer ? `Oferta sugerida: ${input.plan.recommendedOffer}.` : "",
+      aiMemory.diagnosis ? `Diagnostico: ${aiMemory.diagnosis}.` : "",
+      aiMemory.personalizedPlan ? `Plano sugerido: ${aiMemory.personalizedPlan}.` : "",
       input.plan.nextAction ? `Proximo passo sugerido: ${input.plan.nextAction}.` : "",
     ]
       .filter(Boolean)
       .join(" ");
+
+    await upsertLeadCommercialDossier({
+      tenantId: input.tenantId,
+      leadId,
+      trigger: "qualification_ready",
+      sourceId: input.chatId,
+      chatId: input.chatId,
+      plan: input.plan,
+      lead: { ...leadData, ...leadPatch },
+      leadMemory: aiMemory,
+      conversation: input.conversation,
+      actorId: "ai_sales_agent",
+      actorName: "AI Sales Agent",
+    });
 
     await Promise.all([
       adminDb.collection("lead_notes").add({
@@ -3405,11 +3497,31 @@ export function normalizeExtractedFieldsForCrm(extracted?: Record<string, string
     company: "company",
     businessname: "company",
     empresa: "company",
+    diagnosis: "diagnosis",
+    diagnostico: "diagnosis",
+    personalizedplan: "personalizedPlan",
+    personalized_plan: "personalizedPlan",
+    planopersonalizado: "personalizedPlan",
+    plano_personalizado: "personalizedPlan",
+    sellernextmove: "sellerNextMove",
+    seller_next_move: "sellerNextMove",
+    vendedorproximopasso: "sellerNextMove",
+    vendedor_proximo_passo: "sellerNextMove",
+    materialtosend: "materialToSend",
+    material_to_send: "materialToSend",
+    material: "materialToSend",
+    exampleurl: "materialToSend",
+    example_url: "materialToSend",
+    proposaloutline: "proposalOutline",
+    proposal_outline: "proposalOutline",
+    propostaresumo: "proposalOutline",
+    proposta_resumo: "proposalOutline",
   };
 
   const normalized = Object.entries(extracted).reduce<Record<string, string>>((acc, [key, value]) => {
     const normalizedKey = aliasMap[normalizeFieldKey(key)] || normalizeFieldKey(key);
-    const cleanValue = sanitizeText(value, 180);
+    const longField = ["diagnosis", "personalizedPlan", "sellerNextMove", "materialToSend", "proposalOutline"].includes(normalizedKey);
+    const cleanValue = sanitizeText(value, longField ? 520 : 180);
     if (!normalizedKey || !cleanValue) return acc;
     if (!acc[normalizedKey]) acc[normalizedKey] = cleanValue;
     return acc;
@@ -4271,6 +4383,7 @@ export async function handleIncomingMessage(
 
   const runtimeStateSummary = summarizeRuntimeStateForAgent(runtimeState);
   const leadMemorySummary = summarizeLeadMemoryForAgent(leadMemory);
+  const commercialBrainSummary = summarizeCommercialBrainForAgent(aiConfig.commercialBrain);
   const preferredContactName =
     sanitizeText(leadMemory?.preferredName, 80) ||
     sanitizeText(runtimeState?.preferredName, 80) ||
@@ -4304,6 +4417,7 @@ export async function handleIncomingMessage(
           contactName: preferredContactName,
           runtimeStateSummary: runtimeStateSummary || undefined,
           leadMemorySummary: leadMemorySummary || undefined,
+          commercialBrainSummary: commercialBrainSummary || undefined,
           toneOfVoice: aiConfig.toneOfVoice,
           businessSummary: aiConfig.businessSummary,
           objective: aiConfig.objective,
