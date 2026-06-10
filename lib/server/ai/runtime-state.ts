@@ -105,6 +105,50 @@ function extractQuestion(text: string) {
   return cleanText(match?.[1] || clean, 220);
 }
 
+function humanizeOutboundToken(value: unknown) {
+  const raw = cleanText(value, 180);
+  if (!raw) return "";
+  return raw
+    .replace(/\b(v\d+|pt_br|en_us|marketing|utility|utilidade)\b/gi, " ")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractOutboundLine(text: string, label: string, max = 360) {
+  const clean = cleanText(text, 1200);
+  if (!clean) return "";
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = clean.match(new RegExp(`${escaped}:\\s*([^\\n]+)`, "i"));
+  return cleanText(match?.[1] || "", max);
+}
+
+function inferOutboundOfferName(input: {
+  followupContext: Record<string, unknown>;
+  outboundContext: Record<string, unknown>;
+  leadData: Record<string, unknown>;
+  outboundMessage: string;
+}) {
+  const explicit =
+    cleanText(input.followupContext.offerName, 160) ||
+    cleanText(input.outboundContext.offerName, 160) ||
+    extractOutboundLine(input.outboundMessage, "Oferta", 160);
+  if (explicit) return explicit;
+
+  const campaignName =
+    cleanText(input.outboundContext.campaignName, 160) ||
+    cleanText(input.leadData.lastOutboundCampaignName, 160);
+  if (campaignName && !/^campanha\s*\d*$/i.test(campaignName)) return campaignName;
+
+  const templateName = humanizeOutboundToken(input.outboundContext.templateName);
+  if (templateName) return templateName;
+
+  const messageHint = extractOutboundLine(input.outboundMessage, "Mensagem", 160);
+  if (messageHint) return messageHint;
+
+  return "";
+}
+
 function extractPreferredName(inboundText: string, extractedFields?: Record<string, string> | null) {
   const explicit = cleanText(
     extractedFields?.preferredName || extractedFields?.name || extractedFields?.contactName,
@@ -484,6 +528,19 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
         .filter(Boolean)
         .slice(0, 12)
     : [];
+  const outboundMessage =
+    cleanText(outboundContext.persistedText, 900) || cleanText(outboundContext.intendedText, 900);
+  const inferredCampaignOfferName = inferOutboundOfferName({
+    followupContext,
+    outboundContext,
+    leadData,
+    outboundMessage,
+  });
+  const inferredCampaignOfferSummary =
+    cleanText(followupContext.offerSummary, 500) ||
+    extractOutboundLine(outboundMessage, "Mensagem", 500) ||
+    extractOutboundLine(outboundMessage, "Proximo passo", 260) ||
+    outboundMessage;
   const fields =
     data.fields && typeof data.fields === "object" && !Array.isArray(data.fields)
       ? Object.fromEntries(
@@ -507,11 +564,10 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     lastOutboundCampaignName:
       cleanText(outboundContext.campaignName, 180) || cleanText(leadData.lastOutboundCampaignName, 180) || null,
     lastOutboundTemplateName: cleanText(outboundContext.templateName, 160) || null,
-    lastOutboundMessage:
-      cleanText(outboundContext.persistedText, 360) || cleanText(outboundContext.intendedText, 360) || null,
+    lastOutboundMessage: outboundMessage ? cleanText(outboundMessage, 500) : null,
     lastOutboundChannel: cleanText(outboundContext.channel, 80) || null,
-    campaignOfferName: cleanText(followupContext.offerName, 160) || null,
-    campaignOfferSummary: cleanText(followupContext.offerSummary, 500) || null,
+    campaignOfferName: inferredCampaignOfferName || null,
+    campaignOfferSummary: inferredCampaignOfferSummary ? cleanText(inferredCampaignOfferSummary, 500) : null,
     campaignExampleUrl: cleanText(followupContext.exampleUrl, 1000) || null,
     campaignExampleLabel: cleanText(followupContext.exampleLabel, 120) || null,
     campaignResponseTriggers: responseTriggers.length ? responseTriggers : null,

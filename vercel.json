@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/internal/jobs/outbound-campaigns/process?limit=50",
-      "schedule": "10 3 * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/internal/jobs/campaigns/sync?days=1&limit=20",

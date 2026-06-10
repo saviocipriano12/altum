@@ -395,10 +395,19 @@ export default function AssistedMeetingsPage() {
         assistantText="A Altum registra o que foi falado, identifica sinais de compra e deixa o vendedor com um roteiro claro para continuar."
         assistantBadge="novo"
         action={
-          <CrmButton type="button" onClick={() => void loadData()}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Atualizar
-          </CrmButton>
+          <>
+            <a
+              href="#sala-ao-vivo"
+              className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-[0_16px_28px_-24px_var(--cliente-accent-glow)] transition hover:-translate-y-0.5"
+            >
+              <Video className="h-4 w-4" />
+              Comecar chamada
+            </a>
+            <CrmButton type="button" onClick={() => void loadData()}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Atualizar
+            </CrmButton>
+          </>
         }
       >
         <div className="grid gap-3 md:grid-cols-4">
@@ -412,25 +421,27 @@ export default function AssistedMeetingsPage() {
       {error ? <CrmNotice tone="red">{error}</CrmNotice> : null}
       {notice ? <CrmNotice tone="green">{notice}</CrmNotice> : null}
 
-      <LiveMeetingRoom
-        listening={listening}
-        speechSupported={speechSupported}
-        interimTranscript={interimTranscript}
-        liveTranscript={liveTranscript}
-        liveNotes={liveNotes}
-        coach={coach}
-        coaching={coaching}
-        language={form.language}
-        translateTo={form.translateTo}
-        meetingUrl={form.meetingUrl || selectedAppointment?.meetingUrl || ""}
-        onStart={startListening}
-        onStop={stopListening}
-        onCoach={() => void requestLiveCoach()}
-        onChangeNotes={setLiveNotes}
-        onChangeLanguage={(language) => setForm((current) => ({ ...current, language }))}
-        onChangeTranslateTo={(translateTo) => setForm((current) => ({ ...current, translateTo }))}
-        onChangeMeetingUrl={(meetingUrl) => setForm((current) => ({ ...current, meetingUrl }))}
-      />
+      <div id="sala-ao-vivo" className="scroll-mt-24">
+        <LiveMeetingRoom
+          listening={listening}
+          speechSupported={speechSupported}
+          interimTranscript={interimTranscript}
+          liveTranscript={liveTranscript}
+          liveNotes={liveNotes}
+          coach={coach}
+          coaching={coaching}
+          language={form.language}
+          translateTo={form.translateTo}
+          meetingUrl={form.meetingUrl || selectedAppointment?.meetingUrl || ""}
+          onStart={startListening}
+          onStop={stopListening}
+          onCoach={() => void requestLiveCoach()}
+          onChangeNotes={setLiveNotes}
+          onChangeLanguage={(language) => setForm((current) => ({ ...current, language }))}
+          onChangeTranslateTo={(translateTo) => setForm((current) => ({ ...current, translateTo }))}
+          onChangeMeetingUrl={(meetingUrl) => setForm((current) => ({ ...current, meetingUrl }))}
+        />
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
         <CrmPanel>
@@ -670,13 +681,13 @@ function LiveMeetingRoom({
         <div className="p-4 lg:p-5">
           <CrmSectionTitle
             eyebrow="Sala assistida"
-            title="Apoio ao vivo para vender melhor na reuniao"
+            title="Chamada de video dentro da Altum"
             description="Use o microfone para capturar a conversa, peça direcionamento para a IA e gere o resumo final no lead ao terminar."
             action={
               <div className="flex flex-wrap gap-2">
                 <CrmButton type="button" tone="primary" onClick={createMeetingRoom}>
                   <Video className="h-4 w-4" />
-                  {activeRoomUrl ? "Nova sala" : "Criar sala"}
+                  {activeRoomUrl ? "Criar nova sala" : "Criar sala agora"}
                 </CrmButton>
                 {activeRoomUrl ? (
                   <a
@@ -715,7 +726,7 @@ function LiveMeetingRoom({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-black text-white">Sala de video da reuniao</p>
                   <p className="truncate text-xs text-white/60">
-                    {activeRoomUrl ? "Compartilhe o link com o lead e entre pela Altum." : "Crie uma sala para iniciar a chamada dentro da plataforma."}
+                    {activeRoomUrl ? "Entre por aqui e envie o link para o lead." : "Crie uma sala para iniciar a chamada sem sair da Altum."}
                   </p>
                 </div>
               </div>
@@ -736,7 +747,7 @@ function LiveMeetingRoom({
                 <div>
                   <p className="text-lg font-black text-white">Comece uma chamada</p>
                   <p className="mt-2 max-w-md text-sm leading-6 text-white/60">
-                    Crie uma sala da Altum ou cole um link de Meet/Zoom no formulario abaixo. A escuta da IA funciona junto com a chamada.
+                    Crie uma sala de video da Altum, envie o link para o lead e clique em Ouvir reuniao para ativar o copiloto.
                   </p>
                 </div>
                 <CrmButton type="button" tone="primary" onClick={createMeetingRoom}>

@@ -879,7 +879,9 @@ export default function BulkMessagingPage() {
       if (!response.ok) throw new Error(payload.error || "Falha ao iniciar disparo.");
       await load();
       setNotice(
-        `${payload.queued || 0} contatos colocados na fila em ${payload.jobs || 0} lote(s).`
+        editor.scheduledAt
+          ? `${payload.queued || 0} contatos agendados. A Altum processa a fila automaticamente a cada poucos minutos.`
+          : `${payload.queued || 0} contatos colocados na fila em ${payload.jobs || 0} lote(s).`
       );
     } catch (dispatchError) {
       setError(dispatchError instanceof Error ? dispatchError.message : "Falha ao iniciar disparo.");

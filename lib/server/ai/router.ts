@@ -128,7 +128,17 @@ function normalizeExtractedFields(value: unknown) {
   if (!value || typeof value !== "object") return undefined;
   const source = value as Record<string, unknown>;
   const entries = Object.entries(source)
-    .map(([key, item]) => [sanitizeText(key, 40), sanitizeText(item, 180)] as const)
+    .map(([key, item]) => {
+      const cleanKey = sanitizeText(key, 40);
+      const longField = [
+        "diagnosis",
+        "personalizedPlan",
+        "sellerNextMove",
+        "materialToSend",
+        "proposalOutline",
+      ].includes(cleanKey);
+      return [cleanKey, sanitizeText(item, longField ? 700 : 180)] as const;
+    })
     .filter(([key, item]) => key && item);
   if (!entries.length) return undefined;
   return Object.fromEntries(entries);
