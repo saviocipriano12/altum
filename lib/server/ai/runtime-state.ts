@@ -123,6 +123,45 @@ function extractOutboundLine(text: string, label: string, max = 360) {
   return cleanText(match?.[1] || "", max);
 }
 
+function normalizeForInternalLeakCheck(value: string) {
+  return cleanText(value, 1600)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasInternalCampaignText(value: unknown) {
+  const normalized = normalizeForInternalLeakCheck(cleanText(value, 1600));
+  if (!normalized) return false;
+  return [
+    /\bplaybook\b/,
+    /\bguardrail\b/,
+    /\bruntime\b/,
+    /\bhandoff\b/,
+    /\bclarify\b/,
+    /\boferta provavel\b/,
+    /\bproxima acao\b/,
+    /\bvariaveis\b/,
+    /\btemplate enviado\b/,
+    /\bcampanha\s*:/,
+    /\bmidia\s*:/,
+    /\borigem\s*:/,
+    /\blead sem clareza\b/,
+    /\blead chega confuso\b/,
+    /\bia nao deve\b/,
+    /\buse para responder\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function cleanPublicCampaignText(value: unknown, max = 500) {
+  const text = cleanText(value, max);
+  if (!text || hasInternalCampaignText(text)) return "";
+  return text.replace(/^(mensagem|oferta|proximo passo|pr[oó]ximo passo|exemplo)\s*:\s*/i, "").trim().slice(0, max);
+}
+
 function inferOutboundOfferName(input: {
   followupContext: Record<string, unknown>;
   outboundContext: Record<string, unknown>;
@@ -130,9 +169,9 @@ function inferOutboundOfferName(input: {
   outboundMessage: string;
 }) {
   const explicit =
-    cleanText(input.followupContext.offerName, 160) ||
-    cleanText(input.outboundContext.offerName, 160) ||
-    extractOutboundLine(input.outboundMessage, "Oferta", 160);
+    cleanPublicCampaignText(input.followupContext.offerName, 160) ||
+    cleanPublicCampaignText(input.outboundContext.offerName, 160) ||
+    cleanPublicCampaignText(extractOutboundLine(input.outboundMessage, "Oferta", 160), 160);
   if (explicit) return explicit;
 
   const campaignName =
@@ -143,7 +182,7 @@ function inferOutboundOfferName(input: {
   const templateName = humanizeOutboundToken(input.outboundContext.templateName);
   if (templateName) return templateName;
 
-  const messageHint = extractOutboundLine(input.outboundMessage, "Mensagem", 160);
+  const messageHint = cleanPublicCampaignText(extractOutboundLine(input.outboundMessage, "Mensagem", 160), 160);
   if (messageHint) return messageHint;
 
   return "";
@@ -537,10 +576,9 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     outboundMessage,
   });
   const inferredCampaignOfferSummary =
-    cleanText(followupContext.offerSummary, 500) ||
-    extractOutboundLine(outboundMessage, "Mensagem", 500) ||
-    extractOutboundLine(outboundMessage, "Proximo passo", 260) ||
-    outboundMessage;
+    cleanPublicCampaignText(followupContext.offerSummary, 500) ||
+    cleanPublicCampaignText(extractOutboundLine(outboundMessage, "Mensagem", 500), 500) ||
+    cleanPublicCampaignText(outboundContext.offerSummary, 500);
   const fields =
     data.fields && typeof data.fields === "object" && !Array.isArray(data.fields)
       ? Object.fromEntries(
@@ -564,14 +602,14 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     lastOutboundCampaignName:
       cleanText(outboundContext.campaignName, 180) || cleanText(leadData.lastOutboundCampaignName, 180) || null,
     lastOutboundTemplateName: cleanText(outboundContext.templateName, 160) || null,
-    lastOutboundMessage: outboundMessage ? cleanText(outboundMessage, 500) : null,
+    lastOutboundMessage: cleanPublicCampaignText(outboundMessage, 500) || null,
     lastOutboundChannel: cleanText(outboundContext.channel, 80) || null,
     campaignOfferName: inferredCampaignOfferName || null,
-    campaignOfferSummary: inferredCampaignOfferSummary ? cleanText(inferredCampaignOfferSummary, 500) : null,
-    campaignExampleUrl: cleanText(followupContext.exampleUrl, 1000) || null,
-    campaignExampleLabel: cleanText(followupContext.exampleLabel, 120) || null,
+    campaignOfferSummary: inferredCampaignOfferSummary ? cleanPublicCampaignText(inferredCampaignOfferSummary, 500) : null,
+    campaignExampleUrl: cleanPublicCampaignText(followupContext.exampleUrl, 1000) || null,
+    campaignExampleLabel: cleanPublicCampaignText(followupContext.exampleLabel, 120) || null,
     campaignResponseTriggers: responseTriggers.length ? responseTriggers : null,
-    campaignNextStep: cleanText(followupContext.nextStep, 260) || null,
+    campaignNextStep: cleanPublicCampaignText(followupContext.nextStep, 260) || null,
     campaignHandoffRule: cleanText(followupContext.handoffRule, 360) || null,
     campaignFollowupNotes: cleanText(followupContext.notes, 700) || null,
     businessType: cleanText(data.businessType, 120) || null,

@@ -385,6 +385,14 @@ function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeSta
 
 function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
   if (!leadMemory) return "";
+  const campaignOfferName = cleanLeadFacingCampaignText(leadMemory.campaignOfferName, 180);
+  const campaignOfferSummary = cleanLeadFacingCampaignText(leadMemory.campaignOfferSummary, 500);
+  const campaignExampleUrl = cleanLeadFacingCampaignText(leadMemory.campaignExampleUrl, 700);
+  const campaignExampleLabel = cleanLeadFacingCampaignText(leadMemory.campaignExampleLabel, 120);
+  const campaignNextStep = cleanLeadFacingCampaignText(leadMemory.campaignNextStep, 260);
+  const campaignResponseTriggers = (leadMemory.campaignResponseTriggers || [])
+    .map((item) => cleanLeadFacingCampaignText(item, 80))
+    .filter(Boolean);
   return [
     leadMemory.attributionSourceLabel || leadMemory.attributionSource || leadMemory.attributionChannel
       ? `origem do lead: ${[
@@ -401,20 +409,18 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
           leadMemory.lastOutboundTemplateName ? ` / template ${leadMemory.lastOutboundTemplateName}` : ""
         }${leadMemory.lastOutboundChannel ? ` / canal ${leadMemory.lastOutboundChannel}` : ""}`
       : "",
-    leadMemory.lastOutboundMessage ? `mensagem do ultimo disparo: ${leadMemory.lastOutboundMessage}` : "",
-    leadMemory.campaignOfferName ? `playbook do disparo - oferta: ${leadMemory.campaignOfferName}` : "",
-    leadMemory.campaignOfferSummary ? `playbook do disparo - promessa: ${leadMemory.campaignOfferSummary}` : "",
-    leadMemory.campaignExampleUrl
-      ? `playbook do disparo - exemplo para enviar quando fizer sentido: ${
-          leadMemory.campaignExampleLabel ? `${leadMemory.campaignExampleLabel} - ` : ""
-        }${leadMemory.campaignExampleUrl}`
+    cleanLeadFacingCampaignText(leadMemory.lastOutboundMessage, 500)
+      ? `mensagem publica enviada no ultimo disparo: ${cleanLeadFacingCampaignText(leadMemory.lastOutboundMessage, 500)}`
       : "",
-    leadMemory.campaignResponseTriggers?.length
-      ? `playbook do disparo - gatilhos de resposta: ${leadMemory.campaignResponseTriggers.join(", ")}`
+    campaignOfferName ? `contexto do disparo: oferta enviada ao lead foi ${campaignOfferName}` : "",
+    campaignOfferSummary ? `promessa publica da oferta: ${campaignOfferSummary}` : "",
+    campaignExampleUrl
+      ? `material publico para enviar quando o lead pedir exemplo: ${
+          campaignExampleLabel ? `${campaignExampleLabel} - ` : ""
+        }${campaignExampleUrl}`
       : "",
-    leadMemory.campaignNextStep ? `playbook do disparo - proximo passo: ${leadMemory.campaignNextStep}` : "",
-    leadMemory.campaignHandoffRule ? `playbook do disparo - quando chamar humano: ${leadMemory.campaignHandoffRule}` : "",
-    leadMemory.campaignFollowupNotes ? `playbook do disparo - orientacao: ${leadMemory.campaignFollowupNotes}` : "",
+    campaignResponseTriggers.length ? `respostas que costumam indicar interesse: ${campaignResponseTriggers.join(", ")}` : "",
+    campaignNextStep ? `proximo passo comercial publico: ${campaignNextStep}` : "",
     leadMemory.preferredName ? `nome preferido: ${leadMemory.preferredName}` : "",
     leadMemory.leadTone ? `tom mais recorrente: ${leadMemory.leadTone}` : "",
     leadMemory.activeTopic ? `assunto principal recente: ${leadMemory.activeTopic}` : "",
@@ -424,9 +430,9 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
     leadMemory.primaryGoal ? `objetivo: ${leadMemory.primaryGoal}` : "",
     leadMemory.currentChannels ? `canais atuais: ${leadMemory.currentChannels}` : "",
     leadMemory.dominantObjection ? `objecao dominante: ${leadMemory.dominantObjection}` : "",
-    leadMemory.diagnosis ? `diagnostico da IA: ${leadMemory.diagnosis}` : "",
+    leadMemory.diagnosis ? `diagnostico percebido: ${leadMemory.diagnosis}` : "",
     leadMemory.personalizedPlan ? `plano sugerido: ${leadMemory.personalizedPlan}` : "",
-    leadMemory.sellerNextMove ? `proximo passo do vendedor: ${leadMemory.sellerNextMove}` : "",
+    leadMemory.sellerNextMove ? `proximo passo recomendado: ${leadMemory.sellerNextMove}` : "",
     leadMemory.materialToSend ? `material recomendado: ${leadMemory.materialToSend}` : "",
     leadMemory.memorySummary ? `memoria viva: ${leadMemory.memorySummary}` : "",
     leadMemory.summary ? `resumo: ${leadMemory.summary}` : "",
@@ -611,6 +617,110 @@ function sanitizeText(value: unknown, max = 900) {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
+function hasLeadFacingInternalLeak(value: unknown) {
+  const normalized = normalizeResponsePreferenceText(sanitizeText(value, 2200));
+  if (!normalized) return false;
+  return [
+    /\bplaybook\b/,
+    /\bguardrail\b/,
+    /\bruntime\b/,
+    /\bhandoff\b/,
+    /\bclarify\b/,
+    /\bresponsegoal\b/,
+    /\bturngoal\b/,
+    /\bstateafter\b/,
+    /\boferta provavel\b/,
+    /\bproxima acao\b/,
+    /\bcampos capturados?\b/,
+    /\bvariaveis\b/,
+    /\btemplate enviado\b/,
+    /\bcampanha\s*:/,
+    /\bmidia\s*:/,
+    /\borigem\s*:/,
+    /\buse para responder\b/,
+    /\bnao deve despejar\b/,
+    /\blead sem clareza\b/,
+    /\blead chega confuso\b/,
+    /\bia nao deve\b/,
+    /\binstrucao interna\b/,
+    /\bcontrole interno\b/,
+    /\bdiagnostico interno\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function cleanLeadFacingCampaignText(value: unknown, max = 520) {
+  const text = sanitizeText(value, max);
+  if (!text || hasLeadFacingInternalLeak(text)) return "";
+  return text
+    .replace(/^(mensagem|oferta|proximo passo|pr[oó]ximo passo|exemplo)\s*:\s*/i, "")
+    .trim()
+    .slice(0, max);
+}
+
+function inferCampaignPublicPromise(offerName: string, offerSummary?: string | null) {
+  const explicit = cleanLeadFacingCampaignText(offerSummary, 420);
+  if (explicit) return explicit;
+
+  const normalizedOffer = normalizeResponsePreferenceText(offerName);
+  if (/\b(lp|landing|pagina|site)\b/.test(normalizedOffer)) {
+    return "criar uma pagina focada em captar leads e levar a pessoa certa para uma conversa qualificada no WhatsApp";
+  }
+  if (/\b(ads|trafego|campanha|google|meta)\b/.test(normalizedOffer)) {
+    return "organizar uma captacao mais clara, medir as respostas e transformar interesse em conversa comercial";
+  }
+  return "entender o melhor caminho para gerar mais oportunidades e converter com mais clareza";
+}
+
+function buildSafeCampaignLeadReply(input: {
+  inboundText: string;
+  leadMemory: AltumLeadMemory | null;
+  fallbackText?: string | null;
+}) {
+  const offerName =
+    cleanLeadFacingCampaignText(input.leadMemory?.campaignOfferName, 160) ||
+    cleanLeadFacingCampaignText(input.leadMemory?.lastOutboundCampaignName, 160) ||
+    "a solucao que te enviei";
+  const promise = inferCampaignPublicPromise(offerName, input.leadMemory?.campaignOfferSummary);
+  const exampleUrl = cleanLeadFacingCampaignText(input.leadMemory?.campaignExampleUrl, 700);
+  const exampleLabel = cleanLeadFacingCampaignText(input.leadMemory?.campaignExampleLabel, 120) || "exemplo";
+  const normalizedInbound = normalizeResponsePreferenceText(input.inboundText);
+  const asksForExample = /\b(exemplo|modelo|mostra|manda|envia|ver|lp|landing|como fica|pode enviar|quero sim)\b/.test(
+    normalizedInbound
+  );
+
+  if (exampleUrl && asksForExample) {
+    return [
+      `Claro. Voce respondeu sobre ${offerName}.`,
+      `A ideia e ${promise}.`,
+      `Aqui esta o ${exampleLabel}: ${exampleUrl}`,
+      "Depois que olhar, eu posso te ajudar a entender se esse caminho faz sentido para o seu caso.",
+    ].join("\n\n");
+  }
+
+  const fallback = cleanLeadFacingCampaignText(input.fallbackText, 520);
+  if (fallback && !hasLeadFacingInternalLeak(fallback)) return fallback;
+
+  return [
+    `Entendi. Voce respondeu sobre ${offerName}.`,
+    `A ideia e ${promise}.`,
+    "Posso te mostrar um exemplo e te explicar o caminho em texto?",
+  ].join("\n\n");
+}
+
+function sanitizeLeadFacingAiText(input: {
+  text: string;
+  inboundText: string;
+  leadMemory: AltumLeadMemory | null;
+}) {
+  const text = sanitizeText(input.text, 1800);
+  if (!text) return "";
+  if (!hasLeadFacingInternalLeak(text)) return text;
+  return buildSafeCampaignLeadReply({
+    inboundText: input.inboundText,
+    leadMemory: input.leadMemory,
+  });
+}
+
 function normalizeWords(value: string) {
   return value
     .normalize("NFD")
@@ -648,10 +758,13 @@ function inferResponseFormatPreference(input: {
 
   const asksAudio =
     /\b(audio|voz|falado|falar|locucao)\b/.test(text) &&
-    /\b(prefiro|preferi|prefere|quero|manda|mandar|pode|poderia|responde|responder)\b/.test(text);
+    /\b(prefiro|preferi|prefere|quero|manda|mandar|envia|enviar|pode|poderia|responde|responder)\b/.test(text);
   const asksText =
-    /\b(texto|escrito|digitado|mensagem)\b/.test(text) &&
-    /\b(prefiro|preferi|prefere|quero|manda|mandar|pode|poderia|responde|responder)\b/.test(text);
+    (/\b(texto|escrito|digitado|mensagem)\b/.test(text) &&
+      /\b(prefiro|preferi|prefere|quero|manda|mandar|envia|enviar|pode|poderia|responde|responder)\b/.test(text)) ||
+    /\b(nao consigo ouvir|nao posso ouvir|sem audio|sem voz|manda em texto|envia em texto|pode mandar em texto|pode enviar em texto)\b/.test(
+      text
+    );
 
   if (asksAudio) return { preference: "audio" as ResponseFormatPreference, reason: "explicit_audio_preference" };
   if (asksText) return { preference: "text" as ResponseFormatPreference, reason: "explicit_text_preference" };
@@ -718,7 +831,7 @@ function shouldProactivelySendVoiceReply(input: {
   if (input.preference === "text") return { shouldSend: false, reason: "lead_prefers_text" };
   if (input.preference === "audio") return { shouldSend: true, reason: "lead_prefers_audio" };
   if (input.voiceReplyMode === "audio_only") return { shouldSend: false, reason: "voice_audio_only_mode" };
-  if (input.voiceReplyMode === "always") return { shouldSend: true, reason: "voice_always_mode" };
+  if (input.voiceReplyMode === "always") return { shouldSend: false, reason: "voice_always_requires_explicit_signal" };
 
   return { shouldSend: false, reason: "smart_requires_audio_signal" };
 }
@@ -734,7 +847,7 @@ function shouldPlanAudioResponse(input: {
   if (inboundType === "audio") return true;
   if (input.preference === "text") return false;
   if (input.preference === "audio") return true;
-  return input.voiceReplyMode === "always";
+  return false;
 }
 
 function prepareOutboundTextForAudioDelivery(text: string, inboundText: string) {
@@ -1394,13 +1507,13 @@ function buildOutboundCampaignContinuation(input: {
   responseText: string;
   leadMemory: AltumLeadMemory | null;
 }) {
-  const offerName = sanitizeText(input.leadMemory?.campaignOfferName, 180);
+  const offerName = cleanLeadFacingCampaignText(input.leadMemory?.campaignOfferName, 180);
   if (!offerName) return null;
 
-  const offerSummary = sanitizeText(input.leadMemory?.campaignOfferSummary, 700);
-  const exampleUrl = sanitizeText(input.leadMemory?.campaignExampleUrl, 700);
-  const exampleLabel = sanitizeText(input.leadMemory?.campaignExampleLabel, 120) || "exemplo";
-  const nextStep = sanitizeText(input.leadMemory?.campaignNextStep, 260);
+  const offerSummary = inferCampaignPublicPromise(offerName, input.leadMemory?.campaignOfferSummary);
+  const exampleUrl = cleanLeadFacingCampaignText(input.leadMemory?.campaignExampleUrl, 700);
+  const exampleLabel = cleanLeadFacingCampaignText(input.leadMemory?.campaignExampleLabel, 120) || "exemplo";
+  const nextStep = cleanLeadFacingCampaignText(input.leadMemory?.campaignNextStep, 260);
   const responseText = sanitizeText(input.responseText, 900);
   const normalizedResponse = normalizeComparable(responseText);
   const normalizedOffer = normalizeComparable([offerName, offerSummary, exampleLabel].join(" "));
@@ -1434,7 +1547,7 @@ function buildOutboundCampaignContinuation(input: {
   if (!isGenericLeadTurn && !genericAiResponse) return null;
 
   const intro = `Oi! Tudo bem. Vi que voce respondeu ao nosso contato sobre ${offerName}.`;
-  const promise = offerSummary ? `A ideia e ${offerSummary}` : `A ideia e te mostrar como isso pode ajudar na captacao e conversao.`;
+  const promise = `A ideia e ${offerSummary}.`;
   if (exampleUrl && (asksForExample || isAffirmative)) {
     const close = nextStep
       ? `Depois disso, ${nextStep}`
@@ -5284,6 +5397,12 @@ export async function handleIncomingMessage(
   if (outboundCampaignContinuation) {
     responseText = outboundCampaignContinuation;
   }
+  responseText =
+    sanitizeLeadFacingAiText({
+      text: responseText,
+      inboundText,
+      leadMemory,
+    }) || "Entendi. Me conta em uma frase o que voce quer resolver agora que eu te direciono melhor.";
   let secondaryResponseText = buildSecondaryCommercialNudge({
     inboundText,
     responseText,
@@ -5294,6 +5413,13 @@ export async function handleIncomingMessage(
   });
   if (outboundCampaignContinuation) {
     secondaryResponseText = null;
+  }
+  if (secondaryResponseText) {
+    secondaryResponseText = sanitizeLeadFacingAiText({
+      text: secondaryResponseText,
+      inboundText,
+      leadMemory,
+    });
   }
   const whatsappServiceWindowClosed = shouldUseWhatsApp
     ? isWhatsAppServiceWindowClosed(chatData.lastClientMessageAt)
@@ -5357,6 +5483,12 @@ export async function handleIncomingMessage(
       secondaryResponseText = "";
     }
   }
+  finalOutboundText =
+    sanitizeLeadFacingAiText({
+      text: finalOutboundText,
+      inboundText,
+      leadMemory,
+    }) || responseText;
   if (shouldSendVoiceReply) {
     finalOutboundText = prepareOutboundTextForAudioDelivery(finalOutboundText, inboundText);
     secondaryResponseText = "";
