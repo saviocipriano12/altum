@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   leadId?: string;
@@ -23,6 +24,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     if (
       !hasTenantCapability(membership, "manage_channels") &&
       !hasTenantCapability(membership, "view_metrics") &&

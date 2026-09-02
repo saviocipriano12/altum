@@ -19,6 +19,10 @@ type ChannelDoc = {
   displayName?: string;
   phoneNumber?: string;
   metadata?: Record<string, unknown>;
+  channelScope?: string;
+  ownerUserId?: string;
+  ownerUserName?: string;
+  distributionEnabled?: boolean;
 };
 
 export type WhatsAppChannelConfig = {
@@ -38,6 +42,10 @@ export type WhatsAppChannelConfig = {
   qrCodeEndpoint?: string;
   callEndpoint?: string;
   sessionId?: string;
+  channelScope?: "shared" | "personal";
+  ownerUserId?: string;
+  ownerUserName?: string;
+  distributionEnabled?: boolean;
 };
 
 export type WhatsAppTemplateSeed = {
@@ -93,6 +101,12 @@ function normalizeProvider(value: unknown) {
     normalized === "whatsapp_business_cloud_api"
   ) {
     return "meta_whatsapp";
+  }
+  if (
+    normalized === "evolution" ||
+    normalized === "evolution_api"
+  ) {
+    return "evolution";
   }
   if (
     normalized === "whatsapp_qr" ||
@@ -189,6 +203,9 @@ function normalizeChannelDoc(id: string, data: ChannelDoc): WhatsAppChannelConfi
     "clickToCallEndpoint",
   ]);
   const sessionId = getSessionId(data.metadata);
+  const channelScope = clean(data.channelScope, 20).toLowerCase() === "personal" ? "personal" : "shared";
+  const ownerUserId = clean(data.ownerUserId, 140);
+  const ownerUserName = clean(data.ownerUserName, 140);
 
   if (!tenantId || type !== "whatsapp" || status !== "active") return null;
   if (isOfficialWhatsAppProvider(provider) && (!phoneNumberId || !accessToken)) return null;
@@ -211,6 +228,10 @@ function normalizeChannelDoc(id: string, data: ChannelDoc): WhatsAppChannelConfi
     qrCodeEndpoint: qrCodeEndpoint || undefined,
     callEndpoint: callEndpoint || undefined,
     sessionId: sessionId || undefined,
+    channelScope,
+    ownerUserId: ownerUserId || undefined,
+    ownerUserName: ownerUserName || undefined,
+    distributionEnabled: channelScope === "shared" ? data.distributionEnabled !== false : false,
   };
 }
 
@@ -231,6 +252,8 @@ function getAgencyChannelFromEnv(): WhatsAppChannelConfig | null {
     accessToken,
     verifyToken: String(process.env.META_VERIFY_TOKEN || "").trim() || undefined,
     appSecret: String(process.env.META_APP_SECRET || "").trim() || undefined,
+    channelScope: "shared",
+    distributionEnabled: true,
   } satisfies WhatsAppChannelConfig;
 }
 

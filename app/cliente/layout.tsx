@@ -5,6 +5,7 @@ import { ClienteFinanceScreenAlert } from "@/app/cliente/components/cliente-fina
 import { ClienteInstallBanner } from "@/app/cliente/components/cliente-install-banner";
 import { ClienteNetworkBanner } from "@/app/cliente/components/cliente-network-banner";
 import { ClientePwaRegister } from "@/app/cliente/components/cliente-pwa-register";
+import { ClienteTrialBanner } from "@/app/cliente/components/cliente-trial-banner";
 
 export const metadata: Metadata = {
   title: "Portal do Cliente | ALTUM",
@@ -26,6 +27,7 @@ export default function ClienteLayout({
       <ClientePwaRegister />
       <ClienteNetworkBanner />
       <ClienteFinanceScreenAlert />
+      <ClienteTrialBanner />
       <ClienteCriticalNotifications />
       <ClienteInstallBanner />
       {children}

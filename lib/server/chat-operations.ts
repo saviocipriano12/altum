@@ -54,6 +54,7 @@ export function buildIncomingChatOperationalPatch(input: {
 
   return {
     status: status === "resolved" || status === "archived" ? "open" : status,
+    requiresTemplate: false,
     lastClientMessageAt: FieldValue.serverTimestamp(),
     slaDueAt: new Date(Date.now() + slaMinutes * 60 * 1000),
     queueStatus: computeQueueStatus({

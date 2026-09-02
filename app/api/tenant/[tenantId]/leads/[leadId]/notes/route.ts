@@ -3,6 +3,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertLeadCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   text?: string;
@@ -57,7 +59,9 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId, leadId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantRole(membership, "client_viewer");
+    await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId });
     await assertLeadInTenant(tenantId, leadId);
 
     const snap = await adminDb
@@ -97,7 +101,9 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId, leadId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "edit_leads");
+    await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId });
     const leadRef = await assertLeadInTenant(tenantId, leadId);
 
     const body = (await req.json()) as Body;

@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { deleteTenantLead, recordDeletionAudit } from "@/lib/server/tenant-data-deletion";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 export async function POST(req: Request, context: { params: Promise<{ tenantId: string }> }) {
   try {
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "edit_leads");
     const body = (await req.json()) as { ids?: unknown };
     const ids = Array.isArray(body.ids)

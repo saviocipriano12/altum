@@ -10,6 +10,8 @@ import {
 import { trackAppointmentOutcome } from "@/lib/server/ai/learning-outcomes";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertAssignedCommercialRecordAccess, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   title?: string;
@@ -91,6 +93,7 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, appointmentId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "edit_leads");
 
     const ref = adminDb.collection("appointments").doc(appointmentId);
@@ -103,6 +106,7 @@ export async function PATCH(
     if (String(current.tenantId || "") !== tenantId) {
       return NextResponse.json({ error: "Agendamento fora do tenant informado." }, { status: 403 });
     }
+    assertAssignedCommercialRecordAccess(membership, user.uid, current);
 
     const body = (await req.json()) as Body;
     const patch: Record<string, unknown> = {
@@ -162,6 +166,12 @@ export async function PATCH(
 
     const ownerUserId = clean(body.ownerUserId, 140);
     if (body.ownerUserId !== undefined && ownerUserId !== clean(current.ownerUserId, 140)) {
+      if (!hasTeamWideCommercialAccess(membership)) {
+        throw new TenantAccessError(
+          "appointment_transfer_denied",
+          "Somente gestores podem transferir um compromisso para outro vendedor."
+        );
+      }
       patch.ownerUserId = ownerUserId || null;
       if (ownerUserId) {
         const membershipSnap = await adminDb.collection("tenant_users").doc(`${tenantId}_${ownerUserId}`).get();

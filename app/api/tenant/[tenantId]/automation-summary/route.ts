@@ -10,6 +10,7 @@ import {
   toCounter,
 } from "@/lib/server/ai/observability";
 import { assertTenantAccess, TenantAccessError, getTenantSettings } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type JobItem = {
   id: string;
@@ -73,6 +74,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "automation");
 
     const [
       settings,

@@ -11,6 +11,10 @@ import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { mapPipelineStageToConversionStep, recordLeadConversionStep } from "@/lib/server/conversion-trail";
 import { deleteTenantLead, recordDeletionAudit } from "@/lib/server/tenant-data-deletion";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
+import { normalizePhoneBR } from "@/app/lib/server/phone";
+import { upsertContactProfile } from "@/lib/server/contact-profile";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertAssignedCommercialRecordAccess } from "@/lib/server/commercial-access";
 
 type LeadDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -242,6 +246,7 @@ async function listRelatedChats(tenantId: string, leadId: string, phone: string)
       id: item.id,
       contactName: cleanString(item.contactName, 180) || "Contato",
       contactPhone: cleanString(item.contactPhone, 40),
+      contactPhotoUrl: cleanString(item.contactPhotoUrl, 1000),
       channel: cleanString(item.channel, 40) || "whatsapp",
       status: cleanString(item.status, 40) || "open",
       priority: cleanString(item.priority, 20) || "medium",
@@ -257,6 +262,7 @@ async function listAppointments(tenantId: string, leadId: string) {
   const snap = await adminDb
     .collection("appointments")
     .where("tenantId", "==", tenantId)
+    .where("leadId", "==", leadId)
     .limit(60)
     .get();
 
@@ -265,8 +271,29 @@ async function listAppointments(tenantId: string, leadId: string) {
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }))
-    .filter((item) => cleanString(item.leadId, 140) === leadId)
     .sort((a, b) => toSeconds(a.startAt) - toSeconds(b.startAt));
+}
+
+async function listEcommerceOrders(tenantId: string, leadId: string, lead: Record<string, unknown>) {
+  const phone = cleanString(lead.telefone, 60);
+  const email = cleanString(lead.email, 180).toLowerCase();
+  const queries = [
+    adminDb.collection("ecommerce_orders").where("tenantId", "==", tenantId).where("leadId", "==", leadId).limit(20).get(),
+    ...(phone
+      ? [adminDb.collection("ecommerce_orders").where("tenantId", "==", tenantId).where("customerPhone", "==", phone).limit(20).get()]
+      : []),
+    ...(email
+      ? [adminDb.collection("ecommerce_orders").where("tenantId", "==", tenantId).where("customerEmail", "==", email).limit(20).get()]
+      : []),
+  ];
+  const snapshots = await Promise.all(queries);
+  const unique = new Map<string, Record<string, unknown> & { id: string }>();
+  for (const snapshot of snapshots) {
+    for (const doc of snapshot.docs) unique.set(doc.id, { id: doc.id, ...(doc.data() as Record<string, unknown>) });
+  }
+  return Array.from(unique.values())
+    .sort((a, b) => toSeconds(b.orderedAt || b.updatedAt || b.createdAt) - toSeconds(a.orderedAt || a.updatedAt || a.createdAt))
+    .slice(0, 20);
 }
 
 function buildConversationSummary(chats: Array<Record<string, unknown>>) {
@@ -298,16 +325,19 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId, leadId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantRole(membership, "client_viewer");
 
     const { lead } = await getLeadRef(tenantId, leadId);
-    const [notes, tasks, timeline, documents, relatedChats, appointments, commercial] = await Promise.all([
+    assertAssignedCommercialRecordAccess(membership, user.uid, lead);
+    const [notes, tasks, timeline, documents, relatedChats, appointments, orders, commercial] = await Promise.all([
       listNotes(tenantId, leadId),
       listTasks(tenantId, leadId),
       listTimeline(leadId),
       listLeadDocuments(leadId),
       listRelatedChats(tenantId, leadId, lead.telefone || ""),
       listAppointments(tenantId, leadId),
+      listEcommerceOrders(tenantId, leadId, lead),
       analyzeLeadCommercialState({
         tenantId,
         leadId,
@@ -321,6 +351,11 @@ export async function GET(
       lead: {
         id: leadId,
         ...lead,
+        photoUrl: cleanString(lead.photoUrl, 1000),
+        profilePhotoUrl: cleanString(lead.profilePhotoUrl, 1000),
+        contactPhotoUrl:
+          cleanString(lead.contactPhotoUrl, 1000) ||
+          cleanString(relatedChats[0]?.contactPhotoUrl, 1000),
         potentialValue:
           typeof lead.potentialValue === "number"
             ? lead.potentialValue
@@ -336,6 +371,7 @@ export async function GET(
       notes,
       tasks,
       appointments,
+      orders,
       timeline,
       documents,
       relatedChats,
@@ -344,6 +380,7 @@ export async function GET(
       stagePolicy: commercial.stagePolicy,
       handoff: commercial.handoff,
       schedulingAdapter: commercial.schedulingAdapter,
+      salesJourney: commercial.salesJourney,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {
@@ -365,9 +402,11 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, leadId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "edit_leads");
 
     const { leadRef, lead } = await getLeadRef(tenantId, leadId);
+    assertAssignedCommercialRecordAccess(membership, user.uid, lead);
     const body = (await req.json()) as Body;
     const previousStage = normalizePipelineStageId(lead.pipelineStage || lead.stage || "captado");
 
@@ -382,13 +421,13 @@ export async function PATCH(
       changes.push(`nome: ${nome || "sem nome"}`);
     }
 
-    const email = cleanString(body.email, 180);
+    const email = cleanString(body.email, 180).toLowerCase();
     if (body.email !== undefined && email !== cleanString(lead.email, 180)) {
       patch.email = email;
       changes.push(`email atualizado`);
     }
 
-    const telefone = cleanString(body.telefone, 40);
+    const telefone = normalizePhoneBR(cleanString(body.telefone, 40));
     if (body.telefone !== undefined && telefone !== cleanString(lead.telefone, 40)) {
       patch.telefone = telefone;
       changes.push(`telefone atualizado`);
@@ -473,6 +512,24 @@ export async function PATCH(
       return NextResponse.json({ ok: true, tenantId, leadId, unchanged: true });
     }
 
+    if (body.email !== undefined || body.telefone !== undefined) {
+      const tenantLeads = await adminDb.collection("leads").where("tenantId", "==", tenantId).get();
+      const duplicate = tenantLeads.docs.find((doc) => {
+        if (doc.id === leadId) return false;
+        const data = doc.data() as Record<string, unknown>;
+        return Boolean(
+          (email && cleanString(data.email, 180).toLowerCase() === email) ||
+          (telefone && normalizePhoneBR(cleanString(data.telefone, 40)) === telefone)
+        );
+      });
+      if (duplicate) {
+        return NextResponse.json(
+          { error: "Telefone ou e-mail ja pertence a outro cliente.", leadId: duplicate.id },
+          { status: 409 }
+        );
+      }
+    }
+
     await Promise.all([
       leadRef.set(patch, { merge: true }),
       leadRef.collection("events").add({
@@ -482,6 +539,15 @@ export async function PATCH(
         actorId: user.uid,
         actorName: user.name,
         createdAt: FieldValue.serverTimestamp(),
+      }),
+      upsertContactProfile({
+        tenantId,
+        phone: body.telefone !== undefined ? telefone : cleanString(lead.telefone, 40),
+        email: body.email !== undefined ? email : cleanString(lead.email, 180),
+        leadId,
+        channel: body.channel !== undefined ? channel : cleanString(lead.channel, 80),
+        name: body.nome !== undefined ? nome : cleanString(lead.nome, 180),
+        company: body.empresa !== undefined ? empresa : cleanString(lead.empresa, 180),
       }),
     ]);
 
@@ -592,8 +658,10 @@ export async function DELETE(
     const user = await requireRequestUser(req);
     const { tenantId, leadId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "edit_leads");
-    await getLeadRef(tenantId, leadId);
+    const { lead } = await getLeadRef(tenantId, leadId);
+    assertAssignedCommercialRecordAccess(membership, user.uid, lead);
     const result = await deleteTenantLead({ tenantId, leadId });
     await recordDeletionAudit({
       tenantId,

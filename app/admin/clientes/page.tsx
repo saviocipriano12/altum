@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import {
+  AlertTriangle,
   ArrowRight,
   Globe2,
   Loader2,
@@ -13,7 +13,6 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useAuth } from "@/context/AuthContext";
 import type { TimestampLike } from "@/app/types/domain";
@@ -49,7 +48,9 @@ function statusClass(status: string) {
 export default function ClientesPage() {
   const { user, isAdmin } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
+  const [clientsRefreshKey, setClientsRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -73,6 +74,27 @@ export default function ClientesPage() {
       return;
     }
 
+    let active = true;
+    void authedFetch("/api/clientes")
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({}))) as { items?: Client[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Falha ao carregar empresas.");
+        if (active) {
+          setClients(payload.items || []);
+          setLoadError(null);
+        }
+      })
+      .catch((error) => {
+        if (active) setLoadError(error instanceof Error ? error.message : "Falha ao carregar empresas.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+
+    /* Legacy client-side listener kept in source history for migration context.
     const clientsRef = collection(db, "clientes");
     const clientsQuery = isAdmin
       ? query(clientsRef, orderBy("createdAt", "desc"))
@@ -99,16 +121,30 @@ export default function ClientesPage() {
         });
 
         setClients(docs);
+        setLoadError(null);
         setLoading(false);
       },
       (error) => {
         console.error("Erro ao carregar clientes:", error);
+        void authedFetch("/api/clientes")
+          .then(async (response) => {
+            const payload = (await response.json().catch(() => ({}))) as { items?: Client[]; error?: string };
+            if (!response.ok) throw new Error(payload.error || "Falha ao carregar empresas.");
+            setClients(payload.items || []);
+            setLoadError(null);
+          })
+          .catch((fallbackError) => {
+            setLoadError(fallbackError instanceof Error ? fallbackError.message : "Falha ao carregar empresas.");
+          })
+          .finally(() => setLoading(false));
+        setLoadError("Não foi possível carregar as empresas. Atualize a página ou confira suas permissões.");
         setLoading(false);
       }
     );
 
     return () => unsubscribe();
-  }, [user, isAdmin]);
+    */
+  }, [user, isAdmin, clientsRefreshKey]);
 
   const filteredClients = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -170,6 +206,7 @@ export default function ClientesPage() {
         status: "Prospeccao",
         servicesText: "",
       });
+      setClientsRefreshKey((value) => value + 1);
     } catch (error) {
       console.error("Erro ao criar cliente:", error);
       alert(error instanceof Error ? error.message : "Nao foi possivel criar o cliente.");
@@ -193,6 +230,7 @@ export default function ClientesPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao excluir cliente.");
+      setClientsRefreshKey((value) => value + 1);
     } catch (error) {
       console.error("Erro ao excluir cliente:", error);
       alert(error instanceof Error ? error.message : "Nao foi possivel excluir o cliente.");
@@ -205,7 +243,8 @@ export default function ClientesPage() {
     <div className="mx-auto max-w-[1480px] space-y-5 pb-10 text-slate-900">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-950">Clientes</h1>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-700">Operação SaaS</p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Empresas</h1>
           <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600">
             Base de empresas atendidas pela Altum, com acesso rapido a contratos, projetos e operacao.
           </p>
@@ -278,6 +317,11 @@ export default function ClientesPage() {
       </div>
 
       <section className="space-y-3">
+        {loadError ? (
+          <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+            <AlertTriangle className="h-5 w-5 shrink-0" /> {loadError}
+          </div>
+        ) : null}
         {loading ? (
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-sm font-medium text-slate-600 shadow-sm">
             <Loader2 size={16} className="animate-spin" />
@@ -352,6 +396,13 @@ export default function ClientesPage() {
                 ) : null}
 
                 <div className="mt-2 flex flex-wrap justify-end gap-2">
+                  <Link
+                    href={`/admin/clientes/${client.id}/portal`}
+                    className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-[11px] font-bold text-white shadow-sm transition hover:bg-blue-700"
+                  >
+                    Gerenciar SaaS
+                    <ArrowRight size={14} />
+                  </Link>
                   <Link
                     href={`/admin/clientes/${client.id}`}
                     className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"

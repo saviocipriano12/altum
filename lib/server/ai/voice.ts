@@ -1,9 +1,6 @@
 import { adminStorage } from "@/app/lib/server/firebase-admin";
-import {
-  sendMetaAudioMessage,
-  uploadWhatsAppMedia,
-  type WhatsAppChannelConfig,
-} from "@/app/lib/server/whatsapp-channel";
+import type { WhatsAppChannelConfig } from "@/app/lib/server/whatsapp-channel";
+import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 
 function cleanText(value: unknown, max = 1800) {
   if (typeof value !== "string") return "";
@@ -196,16 +193,12 @@ export async function sendAltumVoiceReply(input: {
   const voiceText = prepareAltumVoiceReplyText(input.text, input.maxChars);
   const speech = await synthesizeAltumSpeech(voiceText, input.voice);
 
-  const upload = await uploadWhatsAppMedia({
-    channel: input.channel,
+  const sent = await getWhatsAppMessagingProvider(input.channel).sendMedia({
+    to: input.to,
+    mediaType: "audio",
     buffer: speech.buffer,
     filename: `altum_reply_${Date.now()}.${speech.extension}`,
     contentType: speech.contentType,
-  });
-  const sent = await sendMetaAudioMessage({
-    channel: input.channel,
-    to: input.to,
-    mediaId: upload.mediaId,
     voice: true,
   });
 
@@ -232,7 +225,7 @@ export async function sendAltumVoiceReply(input: {
     size: stored?.size || speech.buffer.length,
     text: voiceText,
     voice: normalizeVoice(input.voice),
-    mediaId: upload.mediaId,
-    metaMessageId: String((sent as { messages?: Array<{ id?: string }> })?.messages?.[0]?.id || "").trim() || null,
+    mediaId: sent.mediaId || null,
+    metaMessageId: sent.externalMessageId,
   };
 }

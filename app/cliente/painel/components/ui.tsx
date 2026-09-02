@@ -43,7 +43,7 @@ const CARD_TONE: Record<CardTone, string> = {
   danger:
     "border-[color:color-mix(in_srgb,var(--cliente-danger)_22%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-danger)_14%,var(--cliente-card)),var(--cliente-card))] text-[var(--cliente-card-text)]",
   spotlight:
-    "border-transparent bg-[linear-gradient(135deg,#0057ff_0%,#00a66a_48%,#8b5cf6_100%)] text-white shadow-[0_28px_54px_-34px_color-mix(in_srgb,var(--cliente-primary)_64%,transparent)]",
+    "border-transparent bg-[linear-gradient(135deg,#16243b_0%,#203b63_62%,#315b8f_100%)] text-white shadow-[0_28px_54px_-34px_rgba(15,23,42,0.56)]",
 };
 
 export function PanelCard({
@@ -77,7 +77,7 @@ export function SectionHeader({
     <header className="client-section-header mb-4 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
         <h2 className="client-section-title text-[1.35rem] font-extrabold text-[var(--cliente-card-text)] md:text-[1.62rem]">{title}</h2>
-        {subtitle ? <p className="mt-1.5 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
+        {subtitle ? <p className="client-context-copy mt-1.5 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}
       </div>
       {action ? <div>{action}</div> : null}
     </header>
@@ -169,7 +169,7 @@ export function CardTitle({ title, subtitle }: { title: string; subtitle?: strin
   return (
     <div className="client-card-title">
       <h3 className="client-card-title-text text-[11px] font-bold text-[var(--cliente-card-text-soft)]">{title}</h3>
-      {subtitle ? <p className="mt-1.5 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-muted)]">{subtitle}</p> : null}
+      {subtitle ? <p className="client-context-copy mt-1.5 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-muted)]">{subtitle}</p> : null}
     </div>
   );
 }
@@ -207,7 +207,7 @@ const BRAND_ICON_META: Record<
     label: string;
     short: string;
     className: string;
-    mark?: "whatsapp" | "instagram" | "meta" | "google" | "shopify" | "commerce";
+    mark?: "whatsapp" | "instagram" | "messenger" | "meta" | "google" | "shopify" | "commerce";
   }
 > = {
   whatsapp: {
@@ -225,6 +225,7 @@ const BRAND_ICON_META: Record<
   messenger: {
     label: "Messenger",
     short: "M",
+    mark: "messenger",
     className: "bg-[linear-gradient(135deg,#00B2FF,#006AFF,#A033FF,#FF5280)] text-white border-white/20",
   },
   meta: {
@@ -308,10 +309,21 @@ export function BrandIcon({
         <svg viewBox="0 0 24 24" className="h-[58%] w-[58%]" aria-hidden="true">
           <path fill="currentColor" d="M8 3.8h8A4.2 4.2 0 0 1 20.2 8v8a4.2 4.2 0 0 1-4.2 4.2H8A4.2 4.2 0 0 1 3.8 16V8A4.2 4.2 0 0 1 8 3.8Zm0 1.8A2.4 2.4 0 0 0 5.6 8v8A2.4 2.4 0 0 0 8 18.4h8a2.4 2.4 0 0 0 2.4-2.4V8A2.4 2.4 0 0 0 16 5.6H8Zm4 3.05A3.35 3.35 0 1 1 12 15.35 3.35 3.35 0 0 1 12 8.65Zm0 1.8A1.55 1.55 0 1 0 12 13.55 1.55 1.55 0 0 0 12 10.45Zm4.05-2.75a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7Z" />
         </svg>
+      ) : brand.mark === "messenger" ? (
+        <svg viewBox="0 0 24 24" className="h-[62%] w-[62%]" aria-hidden="true">
+          <path fill="currentColor" d="M12 3.2c-5.1 0-9 3.72-9 8.65 0 2.58 1.07 4.82 2.82 6.37v3.18l3.1-1.7c.98.27 2.02.42 3.08.42 5.1 0 9-3.72 9-8.66S17.1 3.2 12 3.2Zm.9 11.65-2.3-2.45-4.48 2.45 4.93-5.24 2.36 2.45 4.42-2.45-4.93 5.24Z" />
+        </svg>
       ) : brand.mark === "meta" ? (
-        <span className="text-[1.45em] leading-none">∞</span>
+        <svg viewBox="0 0 28 18" className="h-[58%] w-[70%]" aria-hidden="true">
+          <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.4" d="M2.2 14.8C4.6 7.5 7 3.2 10.1 3.2c4 0 6.7 11.6 10.5 11.6 2.5 0 4.2-2.7 5.2-5.7-1.8-4-3.7-5.9-5.8-5.9-3.8 0-6.2 11.6-10.5 11.6-2.7 0-4.7-3.1-6-6" />
+        </svg>
       ) : brand.mark === "google" ? (
-        <span className="font-black"><span className="text-[#4285F4]">G</span></span>
+        <svg viewBox="0 0 24 24" className="h-[60%] w-[60%]" aria-hidden="true">
+          <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.32 2.98-7.41Z" />
+          <path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.36l-3.24-2.54c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z" />
+          <path fill="#FBBC05" d="M6.39 13.93A6.02 6.02 0 0 1 6.07 12c0-.67.12-1.32.32-1.93V7.45H3.04A10 10 0 0 0 2 12c0 1.61.39 3.14 1.04 4.55l3.35-2.62Z" />
+          <path fill="#EA4335" d="M12 5.94c1.47 0 2.79.5 3.83 1.5l2.87-2.87A9.64 9.64 0 0 0 12 2a10 10 0 0 0-8.96 5.45l3.35 2.62C7.18 7.7 9.39 5.94 12 5.94Z" />
+        </svg>
       ) : brand.mark === "shopify" ? (
         <svg viewBox="0 0 24 24" className="h-[58%] w-[58%]" aria-hidden="true">
           <path fill="currentColor" d="M7.8 7.3c.3-2.2 1.8-4.1 3.7-4.1 1.2 0 2.1.8 2.4 2.2l1.7.5c.1 0 .2.1.2.3l1.5 13.1c0 .3-.2.5-.4.5H6.1c-.3 0-.5-.2-.4-.5L7.2 7.7c0-.2.2-.3.3-.3l.3-.1Zm1.5-.4 3.1-.9c-.2-.8-.6-1.2-1-1.2-.8 0-1.7.9-2.1 2.1Zm4.4-1.2c-.3-1.1-1-1.8-2.1-1.8-1.6 0-2.8 1.5-3.1 3.2l.7-.2c.5-2.1 1.6-2.9 2.5-2.9.8 0 1.4.6 1.7 1.8l.3-.1Zm-1.3 5.1c-.5-.3-.9-.4-1.4-.4-.7 0-1.1.4-1.1.8 0 1.3 3.5 1.1 3.5 3.7 0 1.5-1.2 2.7-3.1 2.7-1 0-1.9-.3-2.5-.8l.5-1.5c.6.4 1.2.6 1.9.6.7 0 1.1-.3 1.1-.8 0-1.4-3.4-1.2-3.4-3.6 0-1.5 1.2-2.8 3.2-2.8.8 0 1.5.2 2.1.5l-.3 1.6Z" />

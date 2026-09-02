@@ -2,13 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-} from "firebase/firestore";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle,
@@ -44,7 +37,6 @@ import type {
   AgencyProject,
   TimestampLike,
 } from "@/app/types/domain";
-import { db } from "@/firebaseConfig";
 import { useAuth } from "@/context/AuthContext";
 
 type PipelineStage =
@@ -191,68 +183,39 @@ export default function AdminAgencyCockpit() {
       return;
     }
 
-    const leadsQuery = isAdmin
-      ? query(collection(db, "leads"), orderBy("createdAt", "desc"))
-      : query(collection(db, "leads"), where("ownerId", "==", user.uid));
-
-    const projectsQuery = isAdmin
-      ? query(collection(db, "projetos"), orderBy("createdAt", "desc"))
-      : query(collection(db, "projetos"), where("ownerId", "==", user.uid));
-
-    const budgetsQuery = isAdmin
-      ? query(collection(db, "orcamentos"), orderBy("createdAt", "desc"))
-      : query(collection(db, "orcamentos"), where("ownerId", "==", user.uid));
-
-    const activitiesQuery = isAdmin
-      ? query(collection(db, "atividades"), orderBy("data", "asc"))
-      : query(collection(db, "atividades"), where("ownerId", "==", user.uid));
-
-    const unsubLeads = onSnapshot(
-      leadsQuery,
-      (snap) => {
-        setLeads(
-          snap.docs.map((doc) => ({
-            id: doc.id,
-            ...(doc.data() as Omit<DashboardLead, "id">),
-          }))
-        );
-        setLoading(false);
-      },
-      () => setLoading(false)
-    );
-
-    const unsubProjects = onSnapshot(projectsQuery, (snap) => {
-      setProjects(
-        snap.docs.map((doc) => ({
-          id: doc.id,
-          ...(doc.data() as Omit<AgencyProject, "id">),
-        }))
-      );
-    });
-
-    const unsubBudgets = onSnapshot(budgetsQuery, (snap) => {
-      setBudgets(
-        snap.docs.map((doc) => ({
-          id: doc.id,
-          ...(doc.data() as Omit<DashboardBudget, "id">),
-        }))
-      );
-    });
-
-    const unsubActivities = onSnapshot(activitiesQuery, (snap) => {
-      setActivities(
-        snap.docs.map((doc) => ({
-          id: doc.id,
-          ...(doc.data() as Omit<DashboardActivity, "id">),
-        }))
-      );
-    });
-
+    let active = true;
+    async function loadDashboard() {
+      try {
+        setLoading(true);
+        const response = await authedFetch("/api/admin/dashboard");
+        const data = (await response.json().catch(() => ({}))) as {
+          leads?: DashboardLead[];
+          projetos?: AgencyProject[];
+          orcamentos?: DashboardBudget[];
+          atividades?: DashboardActivity[];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(data.error || "Falha ao carregar o cockpit.");
+        if (!active) return;
+        setLeads(data.leads || []);
+        setProjects(data.projetos || []);
+        setBudgets(data.orcamentos || []);
+        setActivities(data.atividades || []);
+      } catch (error) {
+        console.error("Erro ao carregar cockpit administrativo:", error);
+        if (active) {
+          setLeads([]);
+          setProjects([]);
+          setBudgets([]);
+          setActivities([]);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void loadDashboard();
     return () => {
-      unsubLeads();
-      unsubProjects();
-      unsubBudgets();
-      unsubActivities();
+      active = false;
     };
   }, [user, isAdmin]);
 

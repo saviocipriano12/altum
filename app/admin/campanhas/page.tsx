@@ -1,8 +1,6 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
-import { db } from "@/firebaseConfig";
 import { useAuth } from "@/context/AuthContext";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import type { AdAccountDoc } from "@/app/types/domain";
@@ -175,7 +173,7 @@ const snapshotInitial: SnapshotForm = {
 };
 
 export default function CampanhasPage() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [accounts, setAccounts] = useState<AdAccountDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -199,31 +197,21 @@ export default function CampanhasPage() {
       return;
     }
 
-    const ref = collection(db, "clientes");
-    const q = isAdmin
-      ? query(ref, orderBy("name", "asc"))
-      : query(ref, where("ownerId", "==", user.uid));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setClients(
-          snap.docs.map((doc) => {
-            const data = doc.data() as { name?: string };
-            return {
-              id: doc.id,
-              name: data.name || "Cliente sem nome",
-            };
-          })
-        );
-      },
-      (err) => {
+    let cancelled = false;
+    void authedFetch("/api/clientes")
+      .then(async (response) => {
+        const payload = (await response.json()) as { clientes?: ClientOption[]; items?: ClientOption[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Falha ao carregar clientes.");
+        if (!cancelled) setClients(payload.clientes || payload.items || []);
+      })
+      .catch((err) => {
         console.error("Erro ao carregar clientes para campanhas:", err);
-      }
-    );
-
-    return () => unsub();
-  }, [user, isAdmin]);
+        if (!cancelled) setClients([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   async function loadAccounts(clientId = accountForm.clientId) {
     setLoading(true);

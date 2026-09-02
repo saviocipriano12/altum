@@ -3,6 +3,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertLeadCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   status?: "pending" | "done";
@@ -31,7 +33,9 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, leadId, taskId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "edit_leads");
+    await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId });
     const leadRef = await assertLeadInTenant(tenantId, leadId);
 
     const taskRef = adminDb.collection("lead_tasks").doc(taskId);

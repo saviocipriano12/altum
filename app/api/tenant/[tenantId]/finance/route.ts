@@ -9,6 +9,7 @@ import {
   TenantAccessError,
   getTenantSettings,
 } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 type FinanceItem = {
   id: string;
   updatedAt?: unknown;
@@ -69,6 +70,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantRole(membership, "client_viewer");
 
     const snap = await adminDb
@@ -105,6 +107,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "manage_commercial");
 
     const body = (await req.json()) as Body;

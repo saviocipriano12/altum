@@ -6,6 +6,8 @@ import { buildLeadStagePolicy, comparePipelineStages, loadTenantPipelineConfig }
 import { evaluateLeadQualification } from "@/lib/server/crm/qualification";
 import { buildLeadSchedulingAdapter } from "@/lib/server/crm/scheduling";
 import { runPipelineStageSideEffects } from "@/lib/server/crm/stage-effects";
+import { getTenantSettings } from "@/lib/server/tenant";
+import { deriveSalesJourney } from "@/lib/sales-journey";
 
 type GenericRow = { id: string } & Record<string, unknown>;
 
@@ -156,10 +158,11 @@ export async function analyzeLeadCommercialState(input: {
   leadId: string;
   lead: Record<string, unknown>;
 }) {
-  const [{ stages }, aiSignals, relatedChats] = await Promise.all([
+  const [{ stages }, aiSignals, relatedChats, settings] = await Promise.all([
     loadTenantPipelineConfig(input.tenantId),
     listRecentAiSignals(input.tenantId, input.leadId),
     listRelatedChats(input.tenantId, input.leadId, cleanText(input.lead.telefone, 40)),
+    getTenantSettings(input.tenantId),
   ]);
 
   const qualification = evaluateLeadQualification({
@@ -184,6 +187,11 @@ export async function analyzeLeadCommercialState(input: {
     recommendedOwnerId: stagePolicy.ownerUserId,
     recommendedOwnerName: stagePolicy.ownerName,
   });
+  const salesJourney = deriveSalesJourney({
+    lead: input.lead,
+    chats: relatedChats,
+    settings: settings as Record<string, unknown>,
+  });
 
   return {
     stages,
@@ -193,6 +201,7 @@ export async function analyzeLeadCommercialState(input: {
     stagePolicy,
     schedulingAdapter,
     handoff,
+    salesJourney,
   };
 }
 
@@ -226,6 +235,7 @@ export async function syncLeadCommercialState(input: {
     qualification: analysis.qualification,
     commercialState: {
       stagePolicy: analysis.stagePolicy,
+      salesJourney: analysis.salesJourney,
       lastAiSignals: analysis.aiSignals.slice(0, 3).map((item) => ({
         id: item.id,
         decision: cleanText(item.decision, 40) || null,
@@ -301,19 +311,27 @@ export async function syncLeadCommercialState(input: {
 
   const policyStageId = shouldAdvanceStage ? analysis.qualification.recommendedStage : analysis.stagePolicy.stageId;
   const policyStage = analysis.stages.find((item) => item.id === policyStageId) || analysis.stages[0];
-  const followUpHours = analysis.stagePolicy.followUpHours;
-  if (policyStage && !policyStage.isTerminal && typeof followUpHours === "number" && followUpHours > 0) {
+  const journey = analysis.salesJourney;
+  const journeyDueAt = journey.dueAt ? new Date(journey.dueAt) : null;
+  if (policyStage && !policyStage.isTerminal && journeyDueAt && journey.action !== "move_to_nurture") {
+    const journeyTaskType = journey.action === "send_proposal"
+      ? "proposta"
+      : journey.action === "offer_time_slots" || journey.action === "schedule_visit"
+        ? "agendamento"
+        : journey.action === "post_sale_checkin" || journey.action === "suggest_next_offer"
+          ? "pos_venda"
+          : "follow_up";
     await ensureLeadTask({
       tenantId: input.tenantId,
       leadId: input.leadId,
-      title: `Follow-up comercial em ${policyStage.label}`,
-      type: "follow_up",
-      priority: analysis.qualification.score >= 70 ? "high" : "medium",
-      dueAt: new Date(Date.now() + followUpHours * 3600_000),
+      title: `${journey.actionLabel}: ${cleanText(lead.nome, 140) || "contato"}`,
+      type: journeyTaskType,
+      priority: journey.urgency === "now" || analysis.qualification.score >= 70 ? "high" : "medium",
+      dueAt: journeyDueAt,
       actorId: input.actorId,
       actorName: input.actorName,
-      reasonCode: "follow_up_due",
-      taskKey: buildTaskKey("follow_up_due", policyStage.id),
+      reasonCode: `sales_journey_${journey.action}`,
+      taskKey: buildTaskKey(`sales_journey_${journey.action}`, policyStage.id),
       existingTasks,
     });
   }
@@ -330,22 +348,6 @@ export async function syncLeadCommercialState(input: {
       actorName: input.actorName,
       reasonCode: analysis.handoff.reasonCode,
       taskKey: buildTaskKey(analysis.handoff.reasonCode, "handoff"),
-      existingTasks,
-    });
-  }
-
-  if (analysis.qualification.recommendedStage === "proposta") {
-    await ensureLeadTask({
-      tenantId: input.tenantId,
-      leadId: input.leadId,
-      title: `Preparar proposta para ${cleanText(lead.nome, 140) || "lead"}`,
-      type: "proposta",
-      priority: "high",
-      dueAt: new Date(Date.now() + 6 * 3600_000),
-      actorId: input.actorId,
-      actorName: input.actorName,
-      reasonCode: "proposal_preparation",
-      taskKey: buildTaskKey("proposal_preparation", normalizePipelineStageId(currentStage)),
       existingTasks,
     });
   }

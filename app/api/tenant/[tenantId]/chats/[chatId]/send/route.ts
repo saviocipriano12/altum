@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { sendTenantChatText } from "@/lib/server/chat-dispatch";
+import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   text?: string;
@@ -16,7 +18,9 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId, chatId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     assertTenantCapability(membership, "respond_inbox");
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
 
     const body = (await req.json()) as Body;
     const text = (body.text || "").trim();

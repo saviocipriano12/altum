@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import {
   buildConnectionPayload,
   buildEcommerceWebhookSecret,
@@ -11,6 +12,16 @@ import {
   publicConnectionFromDoc,
   type EcommerceConnectionInput,
 } from "@/lib/server/ecommerce";
+import {
+  connectionConfigFromDoc,
+  getCommerceProvider,
+  normalizeCommerceCredentials,
+  storeCommerceCredentials,
+  validateCommerceCredentials,
+} from "@/lib/server/commerce/registry";
+import { commerceOAuthAvailability } from "@/lib/server/commerce/oauth";
+import { ensureWooCommerceWebhookSubscriptions } from "@/lib/server/commerce/woocommerce-webhooks";
+import { getAppBaseUrl } from "@/app/lib/server/integration-oauth";
 
 function clean(value: unknown, max = 300) {
   if (typeof value !== "string") return "";
@@ -56,6 +67,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     assertTenantRole(membership, "client_viewer");
 
     const [connectionsSnap, products, orders, carts, events, actions] = await Promise.all([
@@ -77,6 +89,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       ok: true,
       tenantId,
       connections,
+      managedConnection: commerceOAuthAvailability(),
       summary: {
         totalConnections: connections.length,
         activeConnections,
@@ -107,6 +120,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     assertTenantCapability(membership, "manage_channels");
 
     const body = (await req.json()) as EcommerceConnectionInput;
@@ -114,6 +128,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     if (!provider) return NextResponse.json({ error: "Plataforma de ecommerce invalida." }, { status: 400 });
 
     const webhookSecret = buildEcommerceWebhookSecret();
+    const ref = adminDb.collection("ecommerce_connections").doc();
     const payload = {
       ...buildConnectionPayload({
         ...body,
@@ -125,8 +140,25 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       }),
       createdAt: FieldValue.serverTimestamp(),
     };
+    const credentials = normalizeCommerceCredentials(body.credentials);
+    const hasProvidedCredentials = Object.values(credentials).some(Boolean);
+    let connectionTest: { ok: boolean; accountLabel?: string; detail?: string } | null = null;
+    if (hasProvidedCredentials) {
+      const commerceProvider = getCommerceProvider(provider);
+      validateCommerceCredentials(commerceProvider, credentials);
+      connectionTest = await commerceProvider.testConnection({
+        connection: connectionConfigFromDoc(ref.id, { ...payload, provider, tenantId }),
+        credentials,
+      });
+      Object.assign(payload, {
+        apiCredentials: storeCommerceCredentials(credentials),
+        syncMode: "api",
+        connectionStatus: "connected",
+        lastError: "",
+        lastConnectionTestAt: FieldValue.serverTimestamp(),
+      });
+    }
 
-    const ref = adminDb.collection("ecommerce_connections").doc();
     await Promise.all([
       ref.set(payload, { merge: true }),
       adminDb.collection("audit_logs").add({
@@ -140,18 +172,42 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       }),
     ]);
 
+    let webhookProvisioning: Awaited<ReturnType<typeof ensureWooCommerceWebhookSubscriptions>> | null = null;
+    if (provider === "woocommerce" && hasProvidedCredentials) {
+      try {
+        webhookProvisioning = await ensureWooCommerceWebhookSubscriptions({
+          connection: connectionConfigFromDoc(ref.id, { ...payload, provider, tenantId }),
+          credentials,
+          webhookSecret,
+          appBaseUrl: getAppBaseUrl(req),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message.slice(0, 300) : "woocommerce_webhook_provisioning_failed";
+        await ref.set({
+          webhookProvisioning: { requested: 4, active: 0, failed: [{ error: message }] },
+          webhookProvisionedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       tenantId,
       connectionId: ref.id,
       provider,
       webhookSecret,
+      connectionTest,
+      webhookProvisioning,
       message: `Conexao ${providerLabel(provider)} criada.`,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
     console.error("Erro ao criar integracao ecommerce:", error);
+    const detail = error instanceof Error ? error.message : "";
+    if (detail.startsWith("commerce_")) {
+      return NextResponse.json({ error: `Nao foi possivel validar a conexao: ${detail.replace(/^commerce_[^:]*:?/, "").replace(/_/g, " ") || "credenciais invalidas"}.` }, { status: 400 });
+    }
     return NextResponse.json({ error: "Falha ao criar integracao ecommerce." }, { status: 500 });
   }
 }

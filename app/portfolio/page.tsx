@@ -33,8 +33,7 @@ import {
   MoveRight,
 } from "lucide-react";
 
-const whatsappLink =
-  "https://wa.me/5531972545430?text=Ola%20ALTUM,%20quero%20um%20site%20em%20alto%20nivel%20para%20minha%20empresa.";
+const whatsappLink = "/diagnostico?entry=portfolio";
 
 type Metric = {
   value: string;
@@ -311,12 +310,14 @@ function MagneticButton({
     el.style.transform = "translate(0px, 0px)";
   };
 
+  const isExternal = /^https?:\/\//.test(href);
+
   return (
     <a
       ref={ref}
       href={href}
-      target="_blank"
-      rel="noopener noreferrer"
+      target={isExternal ? "_blank" : undefined}
+      rel={isExternal ? "noopener noreferrer" : undefined}
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
       className={cn(
@@ -371,7 +372,7 @@ function TopNav() {
 
         <MagneticButton href={whatsappLink} variant="secondary">
           <MessageCircle className="h-4 w-4" />
-          Falar no WhatsApp
+          Fazer diagnostico
         </MagneticButton>
       </div>
     </header>
@@ -1700,7 +1701,7 @@ function FinalCTA() {
             </MagneticButton>
 
             <MagneticButton href={whatsappLink} variant="secondary">
-              Falar no WhatsApp
+              Fazer diagnostico
             </MagneticButton>
           </div>
         </div>

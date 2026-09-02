@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 function clean(value: unknown, max = 300) {
   if (typeof value !== "string") return "";
@@ -23,6 +24,7 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, actionId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     if (!hasTenantCapability(membership, "edit_leads") && !hasTenantCapability(membership, "manage_channels")) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para esta operacao.");
     }

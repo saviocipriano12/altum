@@ -321,6 +321,9 @@ function buildPrompt(input: ConversationAgentInput) {
     input.plannedResponseFormat === "audio"
       ? "A plataforma vai entregar esta resposta em audio. Nao diga que prefere texto, nao explique limitacao de audio e nao pergunte se o lead quer audio; apenas responda com uma fala curta, natural e pronta para ser ouvida."
       : "",
+    input.plannedResponseFormat === "text"
+      ? "A plataforma vai entregar esta resposta em texto. Se o lead pediu texto ou nao consegue ouvir audio, obedeca isso de forma direta e nao ofereca audio de novo."
+      : "",
     "Nao use bordoes de vendedor nem frases institucionais repetitivas.",
     "Nao invente oferta, preco, prazo, prova social ou promessa.",
     styleDirective(input.responseStyle),

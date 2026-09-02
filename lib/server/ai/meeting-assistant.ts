@@ -48,7 +48,21 @@ export type LiveMeetingCoach = {
 
 function clean(value: unknown, max = 600) {
   if (typeof value !== "string") return "";
-  return value.replace(/\s+/g, " ").trim().slice(0, max);
+  return value
+    .replace(/Ã§/g, "c")
+    .replace(/Ã£/g, "a")
+    .replace(/Ã¡/g, "a")
+    .replace(/Ã¢/g, "a")
+    .replace(/Ã©/g, "e")
+    .replace(/Ãª/g, "e")
+    .replace(/Ã­/g, "i")
+    .replace(/Ã³/g, "o")
+    .replace(/Ãµ/g, "o")
+    .replace(/Ãº/g, "u")
+    .replace(/Ã /g, "a")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
 }
 
 function cleanList(value: unknown, max = 8) {

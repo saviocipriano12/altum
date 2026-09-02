@@ -1,0 +1,11 @@
+[Unit]
+Description=Processa notificacoes criticas da Altum diariamente
+
+[Timer]
+OnCalendar=*-*-* 03:20:00 UTC
+Persistent=true
+Unit=altum-job@push.service
+
+[Install]
+WantedBy=timers.target
+

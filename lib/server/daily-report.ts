@@ -3,10 +3,10 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
 import {
   getWhatsAppChannelForTenant,
-  sendMetaTemplateMessage,
 } from "@/app/lib/server/whatsapp-channel";
 import { getTenantSettings, type TenantSettings } from "@/lib/server/tenant";
 import { normalizePipelineStageId } from "@/lib/pipeline";
+import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 
 export type DailyReportTone = "success" | "warning" | "danger" | "info" | "neutral" | "ai";
 
@@ -550,20 +550,23 @@ export async function sendDailyReportWhatsApp(input: {
       throw new Error("Canal WhatsApp ativo nao configurado para este tenant.");
     }
 
-    const payload = await sendMetaTemplateMessage({
-      channel,
-      to: dailySettings.ownerPhone,
-      templateName: dailySettings.templateName,
-      languageCode: dailySettings.templateLanguage,
-      bodyParams: [
+    const provider = getWhatsAppMessagingProvider(channel);
+    const bodyParams = [
         dailySettings.ownerName,
         formatDatePt(dateKey),
         report.summaryText,
         report.alerts.length ? report.alerts.slice(0, 3).map((item) => item.title).join("; ") : "Sem alerta critico.",
         report.tomorrowPlan.slice(0, 3).map((item) => item.title).join("; "),
         report.reportUrl,
-      ],
-    });
+      ];
+    const payload = provider.supportsTemplates
+      ? await provider.sendTemplate({
+          to: dailySettings.ownerPhone,
+          templateName: dailySettings.templateName,
+          languageCode: dailySettings.templateLanguage,
+          bodyParams,
+        })
+      : await provider.sendText({ to: dailySettings.ownerPhone, text: report.whatsappText });
 
     await adminDb.collection("tenant_daily_reports").doc(report.id).set(
       {

@@ -3,6 +3,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantLimitAvailable, assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { countTenantWhatsAppChannels } from "@/lib/server/tenant-usage";
 import { encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
 import { ensureDefaultWhatsAppFollowUpTemplates } from "@/app/lib/server/whatsapp-channel";
 
@@ -30,6 +32,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "whatsapp");
     assertTenantRole(membership, "client_viewer");
 
     const settingsSnap = await adminDb.collection("tenant_settings").doc(tenantId).get();
@@ -102,6 +105,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "whatsapp");
     assertTenantCapability(membership, "manage_channels");
 
     const body = (await req.json()) as Body;
@@ -126,9 +130,28 @@ export async function POST(
       ? String((settingsSnap.data() as { defaultWhatsAppChannelId?: string }).defaultWhatsAppChannelId || "").trim()
       : "";
 
-    const channelRef = preferredId
+    let channelRef = preferredId
       ? adminDb.collection("tenant_channels").doc(preferredId)
-      : adminDb.collection("tenant_channels").doc();
+      : null;
+    if (!channelRef) {
+      const sameNumberSnap = await adminDb
+        .collection("tenant_channels")
+        .where("tenantId", "==", tenantId)
+        .where("type", "==", "whatsapp")
+        .where("phoneNumberId", "==", phoneNumberId)
+        .limit(1)
+        .get();
+      channelRef = sameNumberSnap.empty ? adminDb.collection("tenant_channels").doc() : sameNumberSnap.docs[0].ref;
+    }
+    const currentChannelSnap = await channelRef.get();
+    if (!currentChannelSnap.exists) {
+      await assertTenantLimitAvailable({
+        tenantId,
+        limitId: "whatsappChannels",
+        currentUsage: await countTenantWhatsAppChannels(tenantId),
+        increment: 1,
+      });
+    }
 
     const channelId = channelRef.id;
     const settingsData = settingsSnap.exists ? (settingsSnap.data() as Record<string, unknown>) : {};
@@ -237,7 +260,10 @@ export async function POST(
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
     if (error instanceof TenantAccessError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.code === "tenant_limit_exceeded" ? 409 : 403 }
+      );
     }
 
     console.error("Erro ao salvar canal WhatsApp do tenant:", error);

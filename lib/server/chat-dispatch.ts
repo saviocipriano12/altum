@@ -7,20 +7,17 @@ import {
   AGENCY_WHATSAPP_ENV_CHANNEL_ID,
   getWhatsAppChannelForTenant,
   isOfficialWhatsAppProvider,
-  sendMetaAudioMessage,
-  sendMetaMediaIdMessage,
-  sendMetaMediaLinkMessage,
-  sendMetaTemplateMessage,
-  sendMetaTextMessage,
   type WhatsAppTemplateHeaderMedia,
-  uploadWhatsAppMedia,
 } from "@/app/lib/server/whatsapp-channel";
+import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 import {
   getMetaChannelForTenant,
   isMetaConversationChannelType,
   sendMetaConversationText,
 } from "@/app/lib/server/meta-channel";
 import { getChatStateDocId } from "@/lib/server/ai/agent";
+import { assertTenantStorageAvailable } from "@/lib/server/tenant-usage";
+import { saveChatMediaBuffer } from "@/lib/server/firebase-storage";
 
 export type ChatDispatchActor = {
   id: string;
@@ -243,19 +240,19 @@ export async function sendTenantChatText(input: {
       templateLanguage = templateConfig.languageCode;
       templateParams = interpolateTemplateParams(templateConfig.params, chat);
 
-      const templatePayload = await sendMetaTemplateMessage({
-        channel,
+      const provider = getWhatsAppMessagingProvider(channel);
+      const templatePayload = await provider.sendTemplate({
         to: phone,
         templateName,
         languageCode: templateLanguage,
         bodyParams: templateParams,
       });
-      metaMessageId = templatePayload?.messages?.[0]?.id || null;
+      metaMessageId = templatePayload.externalMessageId;
       outboundType = "template";
       persistedText = buildTemplateMessageText(templateName, templateParams);
     } else {
-      const payload = await sendMetaTextMessage({ channel, to: phone, text });
-      metaMessageId = payload?.messages?.[0]?.id || null;
+      const payload = await getWhatsAppMessagingProvider(channel).sendText({ to: phone, text });
+      metaMessageId = payload.externalMessageId;
     }
     phoneNumberId = channel.phoneNumberId;
   }
@@ -401,11 +398,9 @@ export async function sendTenantChatMedia(input: {
 
   const normalizedChannel = String(chat.channel || "whatsapp").trim().toLowerCase() || "whatsapp";
   if (normalizedChannel !== "whatsapp") {
-    throw new Error("Envio de midia pelo painel esta disponivel para WhatsApp oficial.");
+    throw new Error("Envio de midia pelo painel esta disponivel para WhatsApp.");
   }
-  if (isWhatsAppServiceWindowClosed(chat.lastClientMessageAt)) {
-    throw new Error("Janela de 24h encerrada. Use um template aprovado para retomar o contato.");
-  }
+  await assertTenantStorageAvailable(tenantId, input.buffer.length);
 
   const chatChannelId = String(chat.channelId || "").trim() || null;
   const channel = await getWhatsAppChannelForTenant(tenantId, {
@@ -415,6 +410,9 @@ export async function sendTenantChatMedia(input: {
   });
   if (!channel) {
     throw new Error("Canal WhatsApp ativo nao configurado para este tenant.");
+  }
+  if (isOfficialWhatsAppProvider(channel.provider) && isWhatsAppServiceWindowClosed(chat.lastClientMessageAt)) {
+    throw new Error("Janela de 24h encerrada. Use um template aprovado para retomar o contato.");
   }
 
   const phone = normalizePhone(chat.contactPhone);
@@ -430,26 +428,27 @@ export async function sendTenantChatMedia(input: {
     }
   }
 
-  const upload = await uploadWhatsAppMedia({
-    channel,
+  const messageRef = adminDb.collection("messages").doc();
+  const storedMediaPath = await saveChatMediaBuffer({
+    tenantId,
+    chatId,
+    messageId: messageRef.id,
+    data: input.buffer,
+    contentType,
+    filename,
+  });
+
+  const payload = await getWhatsAppMessagingProvider(channel).sendMedia({
+    to: phone,
+    mediaType,
     buffer: input.buffer,
     filename,
     contentType,
+    caption,
+    voice: mediaType === "audio",
   });
 
-  const payload =
-    mediaType === "audio"
-      ? await sendMetaAudioMessage({ channel, to: phone, mediaId: upload.mediaId, voice: true })
-      : await sendMetaMediaIdMessage({
-          channel,
-          to: phone,
-          mediaId: upload.mediaId,
-          mediaType,
-          caption,
-          filename: mediaType === "document" ? filename : undefined,
-        });
-
-  const metaMessageId = payload?.messages?.[0]?.id || null;
+  const metaMessageId = payload.externalMessageId;
   const persistedText = previewForMedia(mediaType, caption, filename);
 
   const writes: Promise<unknown>[] = [
@@ -467,7 +466,7 @@ export async function sendTenantChatMedia(input: {
       },
       { merge: true }
     ),
-    adminDb.collection("messages").add({
+    messageRef.set({
       chatId,
       tenantId,
       text: persistedText,
@@ -479,10 +478,11 @@ export async function sendTenantChatMedia(input: {
       deliveryStatus: "sent",
       channel: normalizedChannel,
       ...(metaMessageId ? { metaMessageId } : {}),
-      mediaId: upload.mediaId,
+      ...(payload.mediaId ? { mediaId: payload.mediaId } : {}),
       mediaName: filename,
       mediaMimeType: contentType,
       mediaSize: input.buffer.length,
+      mediaUrl: storedMediaPath,
       ...(caption ? { caption } : {}),
       ...(replyToId ? { replyToId } : {}),
       channelPhoneNumberId: channel.phoneNumberId,
@@ -517,7 +517,7 @@ export async function sendTenantChatMedia(input: {
     channel: normalizedChannel,
     phoneNumberId: channel.phoneNumberId,
     metaMessageId,
-    mediaId: upload.mediaId,
+    mediaId: payload.mediaId || null,
     mediaType,
     persistedText,
   };
@@ -526,19 +526,31 @@ export async function sendTenantChatMedia(input: {
 export async function sendTenantChatMediaLink(input: {
   tenantId: string;
   chatId: string;
-  mediaType: Exclude<ChatMediaType, "audio">;
+  mediaType: ChatMediaType;
   mediaUrl: string;
+  storedMediaPath?: string;
+  mediaSize?: number;
   filename?: string;
   contentType?: string;
+  deliveryContentType?: string;
   caption?: string;
+  replyToId?: string | null;
   actor: ChatDispatchActor;
+  pauseAi?: boolean;
+  pauseMinutes?: number;
+  messageId?: string | null;
 }) {
   const tenantId = String(input.tenantId || "").trim();
   const chatId = String(input.chatId || "").trim();
   const mediaUrl = String(input.mediaUrl || "").trim();
   const filename = String(input.filename || "arquivo").trim().slice(0, 180) || "arquivo";
   const contentType = String(input.contentType || "application/octet-stream").trim().slice(0, 180);
+  const deliveryContentType = String(input.deliveryContentType || contentType).trim().slice(0, 180);
   const caption = String(input.caption || "").trim().slice(0, 1024);
+  const storedMediaPath = String(input.storedMediaPath || "").trim();
+  const replyToId = String(input.replyToId || "").trim().slice(0, 180);
+  const mediaSize = Math.max(0, Number(input.mediaSize || 0));
+  const persistedMessageId = String(input.messageId || "").trim();
 
   if (!tenantId || !chatId || !mediaUrl) {
     throw new Error("tenantId, chatId e mediaUrl sao obrigatorios.");
@@ -573,22 +585,27 @@ export async function sendTenantChatMediaLink(input: {
   const phone = normalizePhone(chat.contactPhone);
   if (!phone) throw new Error("Chat sem telefone valido.");
 
-  const payload = await sendMetaMediaLinkMessage({
-    channel,
+  if (replyToId) {
+    const repliedSnap = await adminDb.collection("messages").doc(replyToId).get();
+    const replied = repliedSnap.data() as { chatId?: string; tenantId?: string } | undefined;
+    if (!repliedSnap.exists || replied?.chatId !== chatId || replied?.tenantId !== tenantId) {
+      throw new Error("Mensagem respondida nao pertence a esta conversa.");
+    }
+  }
+
+  const payload = await getWhatsAppMessagingProvider(channel).sendMedia({
     to: phone,
     mediaUrl,
     mediaType: input.mediaType,
     caption,
     filename: input.mediaType === "document" ? filename : undefined,
+    contentType: deliveryContentType,
+    voice: input.mediaType === "audio",
   });
-  const metaMessageId = String(
-    (payload as { messages?: Array<{ id?: string }>; messageId?: string })?.messages?.[0]?.id ||
-      (payload as { messageId?: string })?.messageId ||
-      ""
-  ).trim() || null;
+  const metaMessageId = payload.externalMessageId;
   const persistedText = previewForMedia(input.mediaType, caption, filename);
 
-  await Promise.all([
+  const writes: Promise<unknown>[] = [
     chatRef.set(
       {
         lastMessage: persistedText,
@@ -603,7 +620,7 @@ export async function sendTenantChatMediaLink(input: {
       },
       { merge: true }
     ),
-    adminDb.collection("messages").add({
+    (persistedMessageId ? adminDb.collection("messages").doc(persistedMessageId) : adminDb.collection("messages").doc()).set({
       chatId,
       tenantId,
       text: persistedText,
@@ -613,18 +630,44 @@ export async function sendTenantChatMediaLink(input: {
       type: input.mediaType,
       status: "sent",
       deliveryStatus: "sent",
+      deliveryError: "",
+      deliveryErrorCode: "",
+      deliveryUpdatedAt: FieldValue.serverTimestamp(),
       channel: "whatsapp",
       ...(metaMessageId ? { metaMessageId } : {}),
-      mediaUrl,
+      mediaUrl: storedMediaPath || mediaUrl,
       mediaName: filename,
       mediaMimeType: contentType,
+      ...(mediaSize ? { mediaSize } : {}),
       ...(caption ? { caption } : {}),
+      ...(replyToId ? { replyToId } : {}),
       channelPhoneNumberId: channel.phoneNumberId,
       createdAt: FieldValue.serverTimestamp(),
-    }),
-  ]);
+    }, { merge: true }),
+  ];
 
-  return { metaMessageId, persistedText, mediaUrl };
+  if (input.pauseAi) {
+    const pauseMinutes = Math.max(1, Math.min(12 * 60, Number(input.pauseMinutes || 30)));
+    writes.push(
+      adminDb.collection("chat_state").doc(getChatStateDocId(tenantId, chatId)).set(
+        {
+          tenantId,
+          chatId,
+          aiEnabled: false,
+          pausedUntil: new Date(Date.now() + pauseMinutes * 60 * 1000),
+          humanOwnerUserId: input.actor.id,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: input.actor.id,
+          updatedByName: input.actor.name,
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  await Promise.all(writes);
+
+  return { metaMessageId, persistedText, mediaUrl: storedMediaPath || mediaUrl, messageId: persistedMessageId || null };
 }
 
 export async function sendTenantChatTemplate(input: {
@@ -693,15 +736,14 @@ export async function sendTenantChatTemplate(input: {
     throw new Error("Chat sem telefone valido.");
   }
 
-  const payload = await sendMetaTemplateMessage({
-    channel,
+  const payload = await getWhatsAppMessagingProvider(channel).sendTemplate({
     to: phone,
     templateName,
     languageCode,
     bodyParams,
     headerMedia,
   });
-  const metaMessageId = payload?.messages?.[0]?.id || null;
+  const metaMessageId = payload.externalMessageId;
   const text = buildTemplateMessageText(templateName, bodyParams, input.displayText);
 
   const writes: Promise<unknown>[] = [

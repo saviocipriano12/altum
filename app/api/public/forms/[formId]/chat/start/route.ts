@@ -15,6 +15,7 @@ import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { recordInboundLead } from "@/lib/server/lead-intake";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
+import { assertPublicRateLimit, PublicRateLimitError } from "@/lib/server/public-abuse";
 
 type Body = {
   nome?: string;
@@ -47,6 +48,7 @@ export async function POST(
 ) {
   try {
     const { formId } = await context.params;
+    await assertPublicRateLimit(req, { scope: "capture_chat_start", subject: formId, limit: 5, windowMs: 10 * 60 * 1000 });
     const body = (await req.json()) as Body;
 
     const formSnap = await adminDb.collection("capture_forms").doc(formId).get();
@@ -277,6 +279,9 @@ export async function POST(
       token: publicAccessToken,
     });
   } catch (error) {
+    if (error instanceof PublicRateLimitError) {
+      return NextResponse.json({ error: error.message }, { status: 429, headers: { "Retry-After": String(error.retryAfterSeconds) } });
+    }
     console.error("Erro ao iniciar chat publico:", error);
     return NextResponse.json({ error: "Falha ao iniciar chat." }, { status: 500 });
   }

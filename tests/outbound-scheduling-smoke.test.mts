@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildOutboundJobSchedule } from "../lib/server/outbound-scheduling.ts";
+import {
+  buildOutboundJobSchedule,
+  resolveImmediateOutboundProcessLimit,
+} from "../lib/server/outbound-scheduling.ts";
 
 test("outbound schedule splits contacts by rate and spaces jobs by one minute", () => {
   const startsAt = new Date("2026-06-06T12:00:00.000Z");
@@ -31,4 +34,11 @@ test("outbound schedule removes duplicate and empty lead ids and clamps rate", (
 
   assert.equal(jobs.length, 1);
   assert.deepEqual(jobs[0]?.leadIds, ["a", "b"]);
+});
+
+test("immediate outbound processing drains all due jobs up to safe cap", () => {
+  assert.equal(resolveImmediateOutboundProcessLimit(0), 1);
+  assert.equal(resolveImmediateOutboundProcessLimit(1), 1);
+  assert.equal(resolveImmediateOutboundProcessLimit(7), 7);
+  assert.equal(resolveImmediateOutboundProcessLimit(150), 100);
 });

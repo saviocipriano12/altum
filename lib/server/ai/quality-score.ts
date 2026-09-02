@@ -13,6 +13,44 @@ function normalizeText(value: string) {
     .toLowerCase();
 }
 
+function significantWords(value: string) {
+  return normalizeText(value)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length >= 4)
+    .filter(
+      (word) =>
+        ![
+          "voce",
+          "para",
+          "como",
+          "essa",
+          "esse",
+          "isso",
+          "aqui",
+          "agora",
+          "posso",
+          "pode",
+          "quero",
+          "sobre",
+          "comercial",
+          "cliente",
+          "lead",
+        ].includes(word)
+    );
+}
+
+function wordOverlapRatio(current: string, previous: string) {
+  const currentWords = new Set(significantWords(current));
+  const previousWords = new Set(significantWords(previous));
+  if (currentWords.size < 5 || previousWords.size < 5) return 0;
+  let hits = 0;
+  for (const word of currentWords) {
+    if (previousWords.has(word)) hits += 1;
+  }
+  return hits / Math.min(currentWords.size, previousWords.size);
+}
+
 type QualityInput = {
   inboundText: string;
   outboundText: string;
@@ -77,7 +115,7 @@ export function scoreAltumConversationQuality(input: QualityInput): AltumQuality
     notes.push("resposta_repetida");
   }
 
-  if (previousOutbound && outboundNormalized.includes(previousOutbound.slice(0, 80))) {
+  if (previousOutbound && (outboundNormalized.includes(previousOutbound.slice(0, 80)) || wordOverlapRatio(outbound, previousOutbound) >= 0.72)) {
     score -= 0.08;
     notes.push("muito_parecida_com_a_anterior");
   }

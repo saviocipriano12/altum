@@ -13,6 +13,9 @@ import { getChatState } from "@/lib/server/ai/agent";
 import { buildManualQueuePatch } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { deleteTenantChat, recordDeletionAudit } from "@/lib/server/tenant-data-deletion";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertAssignedCommercialRecordAccess, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
+import { deriveSalesJourney } from "@/lib/sales-journey";
 
 type ChatDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -490,9 +493,11 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId, chatId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     assertTenantRole(membership, "client_viewer");
 
     const { chat } = await getChatSnapshot(chatId, tenantId);
+    assertAssignedCommercialRecordAccess(membership, user.uid, chat);
     const [lead, aiState, notes, teamMembers, settings, contactProfile] = await Promise.all([
       resolveLead(chat, tenantId),
       getChatState(tenantId, chatId),
@@ -510,6 +515,9 @@ export async function GET(
         ])
       : [[], [], [], []];
     const commercialSummary = buildCommercialSummary(leadBudgets, leadFinance);
+    const salesJourney = lead
+      ? deriveSalesJourney({ lead, chats: [chat], settings: settings as Record<string, unknown> })
+      : null;
 
     return NextResponse.json({
       ok: true,
@@ -538,6 +546,7 @@ export async function GET(
       leadBudgets: leadBudgets.slice(0, 6),
       leadFinance: leadFinance.slice(0, 6),
       commercialSummary,
+      salesJourney,
       aiState: serializeAiState(aiState),
       notes,
       teamMembers,
@@ -567,9 +576,11 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, chatId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     assertTenantCapability(membership, "respond_inbox");
 
     const { chatRef, chat } = await getChatSnapshot(chatId, tenantId);
+    assertAssignedCommercialRecordAccess(membership, user.uid, chat);
     const body = (await req.json()) as Body;
 
     const nextStatus = cleanString(body.status, 40).toLowerCase();
@@ -620,6 +631,12 @@ export async function PATCH(
     let assignedUserName: string | null = null;
     const currentAssignedUserId = cleanString(chat.assignedTo || chat.ownerId, 120);
     if (body.assignedUserId !== undefined && assignedUserId !== currentAssignedUserId) {
+      if (!hasTeamWideCommercialAccess(membership)) {
+        throw new TenantAccessError(
+          "commercial_assignment_denied",
+          "Somente gestores podem transferir conversas entre vendedores."
+        );
+      }
       if (assignedUserId) {
         const membershipSnap = await adminDb.collection("tenant_users").doc(`${tenantId}_${assignedUserId}`).get();
         if (!membershipSnap.exists) {
@@ -741,8 +758,10 @@ export async function DELETE(
     const user = await requireRequestUser(req);
     const { tenantId, chatId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     assertTenantCapability(membership, "respond_inbox");
-    await getChatSnapshot(chatId, tenantId);
+    const { chat } = await getChatSnapshot(chatId, tenantId);
+    assertAssignedCommercialRecordAccess(membership, user.uid, chat);
     const result = await deleteTenantChat({ tenantId, chatId });
     await recordDeletionAudit({
       tenantId,

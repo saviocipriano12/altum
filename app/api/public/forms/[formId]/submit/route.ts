@@ -7,6 +7,7 @@ import {
   normalizeCaptureFieldValue,
 } from "@/lib/capture-form";
 import { recordInboundLead } from "@/lib/server/lead-intake";
+import { assertPublicRateLimit, PublicRateLimitError } from "@/lib/server/public-abuse";
 
 type Body = {
   nome?: string;
@@ -39,6 +40,7 @@ export async function POST(
 ) {
   try {
     const { formId } = await context.params;
+    await assertPublicRateLimit(req, { scope: "capture_form_submit", subject: formId, limit: 8, windowMs: 10 * 60 * 1000 });
     const body = (await req.json()) as Body;
 
     const formSnap = await adminDb.collection("capture_forms").doc(formId).get();
@@ -165,6 +167,9 @@ export async function POST(
       message: clean(form.successMessage, 220) || "Lead recebido com sucesso.",
     });
   } catch (error) {
+    if (error instanceof PublicRateLimitError) {
+      return NextResponse.json({ error: error.message }, { status: 429, headers: { "Retry-After": String(error.retryAfterSeconds) } });
+    }
     console.error("Erro ao processar formulario publico:", error);
     return NextResponse.json({ error: "Falha ao enviar formulario." }, { status: 500 });
   }

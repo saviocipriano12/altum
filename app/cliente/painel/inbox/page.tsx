@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import NextImage from "next/image";
-import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ref as storageRef, uploadBytesResumable } from "firebase/storage";
 import {
   AlertCircle,
   ArrowLeft,
@@ -20,7 +21,6 @@ import {
   CircleDashed,
   FileText,
   FolderKanban,
-  Image as ImageIcon,
   ImagePlus,
   Loader2,
   MessageCircle,
@@ -44,6 +44,7 @@ import {
   X,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
+import { auth, storage } from "@/firebaseConfig";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
@@ -60,6 +61,7 @@ import {
   getPipelineStageLabel,
   normalizePipelineStageId,
 } from "@/lib/pipeline";
+import type { SalesJourneyRecommendation } from "@/lib/sales-journey";
 
 type ChatAiState = {
   aiEnabled?: boolean;
@@ -114,6 +116,7 @@ type ChatItem = {
   leadPriority?: string;
   leadStage?: string;
   unreadCount?: number;
+  requiresTemplate?: boolean;
   aiState?: ChatAiState;
 };
 
@@ -140,6 +143,7 @@ type MessageItem = {
   mediaWidth?: number | null;
   mediaHeight?: number | null;
   mediaSize?: number | null;
+  aiMultimodalSummary?: string | null;
   mediaStatus?: "ready" | "missing" | "not_applicable";
   mediaUnavailableReason?: string | null;
   templateName?: string | null;
@@ -332,6 +336,7 @@ type LeadSummary = {
 
 type ChatDetailPayload = {
   chat: ChatItem;
+  salesJourney?: SalesJourneyRecommendation | null;
   aiState?: ChatAiState;
   lead?: LeadSummary | null;
   leadTasks?: LeadTask[];
@@ -549,6 +554,18 @@ function cleanInboxText(value: unknown, max = 180) {
   return value.trim().slice(0, max);
 }
 
+function messageTimeMs(message: MessageItem) {
+  return toDate(message.createdAt)?.getTime() || 0;
+}
+
+function mergeChatMessages(current: MessageItem[], incoming: MessageItem[]) {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) {
+    byId.set(message.id, { ...byId.get(message.id), ...message });
+  }
+  return Array.from(byId.values()).sort((left, right) => messageTimeMs(left) - messageTimeMs(right));
+}
+
 function formatLeadDocumentType(value?: string) {
   const normalized = cleanInboxText(value, 80).toLowerCase();
   const labels: Record<string, string> = {
@@ -703,10 +720,10 @@ function normalizePlainText(value?: string | null) {
 function isGeneratedMediaPlaceholder(type: string, text?: string | null) {
   const normalized = normalizePlainText(text);
   if (!normalized) return true;
-  if (type === "image") return normalized === "imagem recebida";
-  if (type === "audio") return normalized === "audio recebido";
-  if (type === "document") return normalized === "arquivo recebido";
-  if (type === "video") return normalized === "video recebido";
+  if (type === "image") return normalized === "imagem recebida" || normalized === "imagem enviada";
+  if (type === "audio") return normalized === "audio recebido" || normalized === "audio enviado";
+  if (type === "document") return normalized === "arquivo recebido" || normalized.startsWith("documento enviado");
+  if (type === "video") return normalized === "video recebido" || normalized === "video enviado";
   return false;
 }
 
@@ -852,6 +869,7 @@ function isWhatsAppServiceWindowClosed(chat?: ChatItem | null) {
   if (!chat) return false;
   const channel = String(chat.channel || "whatsapp").toLowerCase();
   if (channel !== "whatsapp") return false;
+  if (chat.requiresTemplate === true) return true;
   const lastClientMessageAt = toDate(chat.lastClientMessageAt);
   if (!lastClientMessageAt) return false;
   return Date.now() - lastClientMessageAt.getTime() > 23.5 * 60 * 60 * 1000;
@@ -1356,8 +1374,99 @@ function buildMessageMediaUrl(message: MessageItem) {
   return String(message.mediaUrl || "").trim();
 }
 
-function buildMessageDownloadUrl(message: MessageItem) {
-  return String(message.mediaDownloadUrl || message.mediaUrl || "").trim();
+function useProtectedMessageMedia(message: MessageItem) {
+  const protectedUrl = buildMessageMediaUrl(message);
+  const [resolvedUrl, setResolvedUrl] = useState("");
+  const [resolvedContentType, setResolvedContentType] = useState("");
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let blobUrl = "";
+    setResolvedUrl("");
+    setResolvedContentType("");
+    setFailed(false);
+    if (!protectedUrl) return;
+
+    const separator = protectedUrl.includes("?") ? "&" : "?";
+    const resolveMedia = async (attempt = 0): Promise<void> => {
+      // A conversa pode renderizar antes da restauracao do Firebase Auth. Sem
+      // espera, o primeiro GET iria sem Bearer token e a midia ficaria marcada
+      // como indisponivel ate a pessoa recarregar a pagina.
+      if (!auth.currentUser) {
+        if (attempt < 8) {
+          retryTimer = setTimeout(() => void resolveMedia(attempt + 1), 350);
+          return;
+        }
+        if (active) setFailed(true);
+        return;
+      }
+
+      try {
+        // Audio nao pode depender de uma URL assinada temporaria. Se ela
+        // expirar ou for negada depois da montagem do player, o navegador
+        // apenas dispara onError e deixa uma bolha impossivel de ouvir. Para
+        // voz, sempre trazemos os bytes pelo endpoint autenticado e mantemos
+        // o Blob valido enquanto esta conversa estiver aberta.
+        if (String(message.type || "").toLowerCase() === "audio") {
+          const audio = await authedFetch(protectedUrl);
+          if (!audio.ok) throw new Error(`audio_stream_http_${audio.status}`);
+          const blob = await audio.blob();
+          if (!blob.size) throw new Error("audio_stream_empty");
+          blobUrl = URL.createObjectURL(blob);
+          if (active) {
+            setResolvedUrl(blobUrl);
+            setResolvedContentType(blob.type || "audio/mpeg");
+          }
+          return;
+        }
+
+        const response = await authedFetch(`${protectedUrl}${separator}resolve=1`);
+        if (!response.ok) throw new Error(`media_resolve_http_${response.status}`);
+        const payload = await response.json() as { url?: unknown; contentType?: unknown };
+        const url = typeof payload.url === "string" ? payload.url.trim() : "";
+        if (!url) throw new Error("media_resolve_empty");
+        if (active) {
+          setResolvedUrl(url);
+          setResolvedContentType(typeof payload.contentType === "string" ? payload.contentType.trim() : "");
+        }
+      } catch {
+        // URL assinada pode falhar por uma permissao momentanea do Storage ou
+        // por midia legada. O endpoint protegido ainda consegue entregar os
+        // bytes com o token Firebase do usuario; tocar o Blob evita marcar um
+        // audio valido como indisponivel apenas por essa etapa auxiliar.
+        try {
+          const fallback = await authedFetch(protectedUrl);
+          if (!fallback.ok) throw new Error(`media_fallback_http_${fallback.status}`);
+          const blob = await fallback.blob();
+          if (!blob.size) throw new Error("media_fallback_empty");
+          blobUrl = URL.createObjectURL(blob);
+          if (active) {
+            setResolvedUrl(blobUrl);
+            setResolvedContentType(blob.type || "");
+          }
+        } catch {
+          if (active) setFailed(true);
+        }
+      }
+    };
+    void resolveMedia();
+
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [protectedUrl, message.type]);
+
+  return {
+    protectedUrl,
+    mediaUrl: resolvedUrl,
+    mediaContentType: resolvedContentType,
+    isLoading: Boolean(protectedUrl) && !resolvedUrl && !failed,
+    failed,
+  };
 }
 
 function getMessageMediaUnavailableReason(message: MessageItem) {
@@ -1406,22 +1515,52 @@ function MessageMediaFallback({
   );
 }
 
+function getClientMediaType(file: File) {
+  const mime = String(file.type || "").toLowerCase();
+  if (mime.startsWith("image/")) return "image" as const;
+  if (mime.startsWith("video/")) return "video" as const;
+  if (mime.startsWith("audio/")) return "audio" as const;
+  return "document" as const;
+}
+
+function safeUploadExtension(filename: string) {
+  return String(filename || "").toLowerCase().match(/\.([a-z0-9]{1,8})$/)?.[1] || "bin";
+}
+
+function getClientMediaLimit(file: File) {
+  const type = getClientMediaType(file);
+  if (type === "image") return 8 * 1024 * 1024;
+  if (type === "video") return 32 * 1024 * 1024;
+  if (type === "audio") return 16 * 1024 * 1024;
+  return 24 * 1024 * 1024;
+}
+
+function getAudioTranscript(message: MessageItem) {
+  const preview = getMessagePreview(message);
+  return isGeneratedMediaPlaceholder("audio", preview) ? "" : preview;
+}
+
 function ImageAttachment({ message }: { message: MessageItem }) {
   const [imageFailed, setImageFailed] = useState(false);
-  const mediaUrl = buildMessageMediaUrl(message);
+  const resolved = useProtectedMessageMedia(message);
+  const mediaUrl = resolved.mediaUrl;
   const unavailableReason = getMessageMediaUnavailableReason(message);
 
   useEffect(() => {
     setImageFailed(false);
   }, [mediaUrl]);
 
-  if (!mediaUrl || message.mediaStatus === "missing" || imageFailed) {
+  if (message.mediaStatus === "missing" || imageFailed || resolved.failed) {
     return (
       <MessageMediaFallback
         type="image"
-        reason={imageFailed ? "Nao foi possivel carregar a imagem protegida." : unavailableReason}
+        reason={imageFailed || resolved.failed ? "Nao foi possivel carregar a imagem protegida." : unavailableReason}
       />
     );
+  }
+
+  if (!mediaUrl) {
+    return <div className="mt-3 flex h-36 items-center justify-center rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-xs text-[var(--cliente-card-text-soft)]"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Carregando imagem segura...</div>;
   }
 
   return (
@@ -1435,11 +1574,6 @@ function ImageAttachment({ message }: { message: MessageItem }) {
         referrerPolicy="no-referrer"
         onError={() => setImageFailed(true)}
       />
-      {message.mediaWidth && message.mediaHeight ? (
-        <div className="border-t border-[var(--cliente-border)] px-3 py-2 text-[11px] text-[var(--cliente-card-text-soft)]">
-          {message.mediaWidth} x {message.mediaHeight} px
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -1447,21 +1581,45 @@ function ImageAttachment({ message }: { message: MessageItem }) {
 function AudioAttachment({ message }: { message: MessageItem }) {
   const [duration, setDuration] = useState<number | null>(message.mediaDuration ?? null);
   const [audioFailed, setAudioFailed] = useState(false);
-  const mediaUrl = buildMessageMediaUrl(message);
+  const resolved = useProtectedMessageMedia(message);
+  const mediaUrl = resolved.mediaUrl;
   const unavailableReason = getMessageMediaUnavailableReason(message);
+  const transcript = getAudioTranscript(message);
 
   useEffect(() => {
     setDuration(message.mediaDuration ?? null);
     setAudioFailed(false);
   }, [message.id, message.mediaDuration, mediaUrl]);
 
-  if (!mediaUrl || message.mediaStatus === "missing" || audioFailed) {
+  if (message.mediaStatus === "missing" || audioFailed || resolved.failed) {
     return (
-      <MessageMediaFallback
-        type="audio"
-        reason={audioFailed ? "Nao foi possivel carregar o audio protegido." : unavailableReason}
-      />
+      <div className="mt-3 rounded-[18px] border border-[#d7e4ef] bg-[#f8fbfd] p-3 text-[#3b4a54]">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e7fce9] text-[#128C7E]">
+            <Mic className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#128C7E]">Audio</p>
+              <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-[#667781]">
+                {audioFailed || resolved.failed ? "falha ao carregar" : "arquivo indisponivel"}
+              </span>
+            </div>
+            {transcript ? (
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-[#111b21]">{transcript}</p>
+            ) : (
+              <p className="mt-1 text-sm leading-6 text-[#667781]">
+                {audioFailed || resolved.failed ? "Nao foi possivel carregar o audio protegido." : unavailableReason}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
     );
+  }
+
+  if (!mediaUrl) {
+    return <div className="mt-3 flex items-center gap-2 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 text-xs text-[var(--cliente-card-text-soft)]"><Loader2 className="h-4 w-4 animate-spin" />Preparando audio seguro...</div>;
   }
 
   return (
@@ -1474,6 +1632,7 @@ function AudioAttachment({ message }: { message: MessageItem }) {
         <span>{formatDuration(duration)}</span>
       </div>
       <audio
+        src={mediaUrl}
         controls
         preload="metadata"
         className="w-full"
@@ -1484,29 +1643,37 @@ function AudioAttachment({ message }: { message: MessageItem }) {
           }
         }}
         onError={() => setAudioFailed(true)}
-      >
-        <source src={mediaUrl} type={message.mediaMimeType || "audio/mpeg"} />
-      </audio>
+      />
+      {transcript ? (
+        <p className="mt-3 whitespace-pre-wrap break-words rounded-2xl bg-white/70 px-3 py-2 text-sm leading-6 text-[#3b4a54]">
+          {transcript}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 function VideoAttachment({ message }: { message: MessageItem }) {
   const [videoFailed, setVideoFailed] = useState(false);
-  const mediaUrl = buildMessageMediaUrl(message);
+  const resolved = useProtectedMessageMedia(message);
+  const mediaUrl = resolved.mediaUrl;
   const unavailableReason = getMessageMediaUnavailableReason(message);
 
   useEffect(() => {
     setVideoFailed(false);
   }, [mediaUrl]);
 
-  if (!mediaUrl || message.mediaStatus === "missing" || videoFailed) {
+  if (message.mediaStatus === "missing" || videoFailed || resolved.failed) {
     return (
       <MessageMediaFallback
         type="video"
-        reason={videoFailed ? "Nao foi possivel carregar o video protegido." : unavailableReason}
+        reason={videoFailed || resolved.failed ? "Nao foi possivel carregar o video protegido." : unavailableReason}
       />
     );
+  }
+
+  if (!mediaUrl) {
+    return <div className="mt-3 flex h-40 items-center justify-center rounded-[22px] border border-[var(--cliente-border)] bg-black/90 text-xs text-white/80"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Preparando video seguro...</div>;
   }
 
   return (
@@ -1518,18 +1685,29 @@ function VideoAttachment({ message }: { message: MessageItem }) {
         className="max-h-[420px] w-full bg-black object-contain"
         onError={() => setVideoFailed(true)}
       />
-      <div className="border-t border-[var(--cliente-border)] px-3 py-2 text-[11px] text-[var(--cliente-card-text-soft)]">
-        {[message.mediaName || "Video", formatFileSize(message.mediaSize)].filter(Boolean).join(" / ")}
-      </div>
     </div>
   );
 }
 
 function DocumentAttachment({ message }: { message: MessageItem }) {
-  const mediaUrl = buildMessageMediaUrl(message);
-  const downloadUrl = buildMessageDownloadUrl(message);
+  const resolved = useProtectedMessageMedia(message);
+  const mediaUrl = resolved.mediaUrl;
 
-  if (!mediaUrl || message.mediaStatus === "missing") {
+  const downloadDocument = async (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    if (!resolved.protectedUrl) return;
+    const separator = resolved.protectedUrl.includes("?") ? "&" : "?";
+    try {
+      const response = await authedFetch(`${resolved.protectedUrl}${separator}resolve=1&download=1`);
+      const payload = await response.json() as { url?: unknown };
+      const downloadUrl = typeof payload.url === "string" ? payload.url.trim() : "";
+      if (response.ok && downloadUrl) window.location.assign(downloadUrl);
+    } catch {
+      // A abertura segura continua disponivel mesmo se o navegador bloquear o download.
+    }
+  };
+
+  if (message.mediaStatus === "missing" || resolved.failed) {
     return <MessageMediaFallback type="document" reason={getMessageMediaUnavailableReason(message)} />;
   }
 
@@ -1550,7 +1728,7 @@ function DocumentAttachment({ message }: { message: MessageItem }) {
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <a
-          href={mediaUrl}
+          href={mediaUrl || undefined}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
@@ -1559,14 +1737,16 @@ function DocumentAttachment({ message }: { message: MessageItem }) {
           Abrir com seguranca
         </a>
         <a
-          href={downloadUrl}
+          href={mediaUrl || undefined}
           className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
           download
+          onClick={downloadDocument}
         >
           <Download className="h-4 w-4" />
           Baixar
         </a>
       </div>
+      {!mediaUrl ? <p className="mt-3 inline-flex items-center gap-2 text-xs text-[var(--cliente-card-text-soft)]"><Loader2 className="h-4 w-4 animate-spin" />Preparando documento seguro...</p> : null}
     </div>
   );
 }
@@ -1631,34 +1811,14 @@ function MessageBubble({
   const type = String(message.type || "text").toLowerCase();
   const outboundStatus = String(message.deliveryStatus || message.status || "").toLowerCase();
   const preview = getMessagePreview(message);
-  const shouldRenderText = !["image", "audio", "document", "video"].includes(type) || !isGeneratedMediaPlaceholder(type, preview);
+  const shouldRenderText =
+    type !== "audio" && (!["image", "document", "video"].includes(type) || !isGeneratedMediaPlaceholder(type, preview));
   const reactions = normalizeReactionMap(message.reactions);
   const reactionEntries = Object.entries(reactions).filter(([, users]) => users.length > 0);
 
-  const mediaLabel =
-    type === "audio"
-      ? "Audio"
-      : type === "image"
-        ? "Imagem"
-        : type === "video"
-          ? "Video"
-        : type === "document"
-          ? "Documento"
-          : type === "template"
-            ? "Template"
-            : null;
+  const mediaLabel = type === "template" ? "Template" : null;
   const MediaIcon =
-    type === "audio"
-      ? Mic
-      : type === "image"
-        ? ImageIcon
-        : type === "video"
-          ? ImageIcon
-        : type === "document"
-          ? FileText
-          : type === "template"
-          ? Receipt
-          : null;
+    type === "template" ? Receipt : null;
 
   if (isSystem) {
     return (
@@ -1761,6 +1921,12 @@ function MessageBubble({
           {type === "audio" ? <AudioAttachment message={message} /> : null}
           {type === "document" ? <DocumentAttachment message={message} /> : null}
           {type === "template" ? <TemplateHeaderPreview message={message} /> : null}
+          {message.aiMultimodalSummary ? (
+            <div className="mt-3 flex gap-2 rounded-2xl border border-violet-100 bg-violet-50/80 px-3 py-2 text-xs leading-5 text-violet-950">
+              <Bot className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
+              <p><span className="font-semibold">Leitura da Altum:</span> {message.aiMultimodalSummary}</p>
+            </div>
+          ) : null}
           {shouldRenderText ? (
             <p className="whitespace-pre-wrap break-words text-sm leading-6 text-current">
               {preview}
@@ -1871,7 +2037,7 @@ function CommercialMetric({
 }
 
 export default function ClienteInboxPage() {
-  const { tenant, hasCapability } = useClienteTenant();
+  const { tenant, hasCapability, hasModule } = useClienteTenant();
   const { experienceMode, setExperienceMode } = useClienteShell();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1880,12 +2046,14 @@ export default function ClienteInboxPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
+  const messagesRef = useRef<MessageItem[]>([]);
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendingTemplate, setSendingTemplate] = useState(false);
   const [sendingMedia, setSendingMedia] = useState(false);
+  const [mediaUploadProgress, setMediaUploadProgress] = useState(0);
   const [recordingAudio, setRecordingAudio] = useState(false);
   const [updatingAi, setUpdatingAi] = useState(false);
   const [retryingAi, setRetryingAi] = useState(false);
@@ -1925,7 +2093,8 @@ export default function ClienteInboxPage() {
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
   const [aiFilter, setAiFilter] = useState<AiFilter>("all");
   const [channelFilter, setChannelFilter] = useState("all");
-  const [assignedUserFilter, setAssignedUserFilter] = useState("all");
+  const [assignedUserFilter, setAssignedUserFilter] = useState(() => searchParams.get("assignee") || "all");
+  const [temperatureFilter, setTemperatureFilter] = useState("all");
   const [metaForm, setMetaForm] = useState({
     status: "open",
     priority: "medium",
@@ -1950,6 +2119,7 @@ export default function ClienteInboxPage() {
   const aiFromQuery = searchParams.get("ai");
   const channelFromQuery = searchParams.get("channel");
   const assignedUserFromQuery = searchParams.get("assignedUser");
+  const temperatureFromQuery = searchParams.get("temperature");
   const canOperate = hasCapability("respond_inbox");
   const canManageAi = hasCapability("manage_ai");
   const canManageQueue = hasCapability("manage_settings") || hasCapability("manage_users");
@@ -2010,7 +2180,11 @@ export default function ClienteInboxPage() {
     }
   }
 
-  const loadChats = useCallback(async (options?: { silent?: boolean }) => {
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const loadChats = useCallback(async (options?: { silent?: boolean; syncExternal?: boolean }) => {
     if (!tenant?.tenantId) return [] as ChatItem[];
     const silent = options?.silent ?? false;
 
@@ -2019,7 +2193,12 @@ export default function ClienteInboxPage() {
       setError(null);
     }
     try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats`);
+      // A lista inicial precisa abrir a operacao, nao montar todos os sinais
+      // de IA e perfis de centenas de contatos antes de mostrar a primeira
+      // conversa. Detalhes completos continuam sendo buscados ao abrir o chat.
+      const params = new URLSearchParams({ limit: "100", view: "compact" });
+      if (options?.syncExternal) params.set("sync", "recent");
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats?${params.toString()}`);
       const payload = (await res.json()) as ChatListPayload;
 
       if (!res.ok) {
@@ -2111,7 +2290,7 @@ export default function ClienteInboxPage() {
   }
 
   const loadSelectedChat = useCallback(
-    async (chatId: string, options?: { withMessages?: boolean; silent?: boolean }) => {
+    async (chatId: string, options?: { withMessages?: boolean; silent?: boolean; incrementalMessages?: boolean }) => {
       if (!tenant?.tenantId) return;
       const withMessages = options?.withMessages ?? true;
       const silent = options?.silent ?? false;
@@ -2124,7 +2303,11 @@ export default function ClienteInboxPage() {
       try {
         const requests: Promise<Response>[] = [authedFetch(`/api/tenant/${tenant.tenantId}/chats/${chatId}`)];
         if (withMessages) {
-          requests.push(authedFetch(`/api/tenant/${tenant.tenantId}/chats/${chatId}/messages`));
+          const latestMessageAt = options?.incrementalMessages
+            ? Math.max(0, ...messagesRef.current.map(messageTimeMs))
+            : 0;
+          const params = latestMessageAt ? `?since=${encodeURIComponent(String(latestMessageAt))}` : "";
+          requests.push(authedFetch(`/api/tenant/${tenant.tenantId}/chats/${chatId}/messages${params}`));
         }
 
         const [detailRes, messagesRes] = await Promise.all(requests);
@@ -2168,7 +2351,8 @@ export default function ClienteInboxPage() {
             }
             return;
           }
-          setMessages(messagesPayload.items || []);
+          const nextMessages = messagesPayload.items || [];
+          setMessages((current) => options?.incrementalMessages ? mergeChatMessages(current, nextMessages) : nextMessages);
         }
       } catch {
         if (!silent) setError("Falha ao carregar detalhe da conversa.");
@@ -2182,8 +2366,10 @@ export default function ClienteInboxPage() {
     [tenant?.tenantId]
   );
   const refreshSelected = useCallback(
-    async (withMessages = false) => {
-      const nextChats = await loadChats();
+    async (withMessages = false, syncExternal = false) => {
+      // Atualizacoes da propria tela nao precisam consultar o provider externo.
+      // Isso deixava o envio de texto/midia e alteracoes simples mais lentos.
+      const nextChats = await loadChats({ silent: true, syncExternal });
       const targetId = selectedChatId || nextChats[0]?.id;
       if (targetId) {
         await loadSelectedChat(targetId, { withMessages });
@@ -2211,7 +2397,10 @@ export default function ClienteInboxPage() {
     if (assignedUserFromQuery) {
       setAssignedUserFilter(assignedUserFromQuery);
     }
-  }, [aiFromQuery, assignedUserFromQuery, channelFromQuery, priorityFromQuery, queueFromQuery, statusFromQuery]);
+    if (["hot", "warm", "cold"].includes(String(temperatureFromQuery || "").toLowerCase())) {
+      setTemperatureFilter(String(temperatureFromQuery).toLowerCase());
+    }
+  }, [aiFromQuery, assignedUserFromQuery, channelFromQuery, priorityFromQuery, queueFromQuery, statusFromQuery, temperatureFromQuery]);
 
   useEffect(() => {
     const next = new URLSearchParams();
@@ -2223,6 +2412,7 @@ export default function ClienteInboxPage() {
     if (aiFilter !== "all") next.set("ai", aiFilter);
     if (channelFilter !== "all") next.set("channel", channelFilter);
     if (assignedUserFilter !== "all") next.set("assignedUser", assignedUserFilter);
+    if (temperatureFilter !== "all") next.set("temperature", temperatureFilter);
     const nextQuery = next.toString();
     const currentQuery = searchParams.toString();
     if (nextQuery === currentQuery) return;
@@ -2238,12 +2428,19 @@ export default function ClienteInboxPage() {
     searchParams,
     selectedChatId,
     statusFilter,
+    temperatureFilter,
   ]);
 
   useEffect(() => {
     void loadChats();
-    void loadTenantChannels();
-    void loadTenantAiSettings();
+    // Canais e controle global de IA alimentam menus secundários. Deixá-los
+    // competir com lista + conversa selecionada atrasava justamente a primeira
+    // tela que o vendedor precisa para começar a atender.
+    const deferredLoad = window.setTimeout(() => {
+      void loadTenantChannels();
+      void loadTenantAiSettings();
+    }, 900);
+    return () => window.clearTimeout(deferredLoad);
   }, [loadChats, loadTenantChannels, loadTenantAiSettings]);
 
   useEffect(() => {
@@ -2262,10 +2459,10 @@ export default function ClienteInboxPage() {
     enabled: Boolean(tenant?.tenantId && selectedChatId),
     onTick: () => {
       if (!selectedChatId) return;
-      return loadSelectedChat(selectedChatId, { withMessages: true, silent: true });
+      return loadSelectedChat(selectedChatId, { withMessages: true, silent: true, incrementalMessages: true });
     },
-    fastIntervalMs: 5000,
-    slowIntervalMs: 30000,
+    fastIntervalMs: 10000,
+    slowIntervalMs: 60000,
     runOnMount: false,
     source: "inbox-chat",
   });
@@ -2291,8 +2488,8 @@ export default function ClienteInboxPage() {
     onTick: async () => {
       await loadChats({ silent: true });
     },
-    fastIntervalMs: 15000,
-    slowIntervalMs: 90000,
+    fastIntervalMs: 30000,
+    slowIntervalMs: 120000,
     runOnMount: false,
     source: "inbox-list",
   });
@@ -2319,6 +2516,15 @@ export default function ClienteInboxPage() {
       if (statusFilter !== "all" && (chat.status || "open") !== statusFilter) return false;
       if (priorityFilter !== "all" && (chat.priority || "low") !== priorityFilter) return false;
       if (channelFilter !== "all" && (chat.channel || "whatsapp").toLowerCase() !== channelFilter.toLowerCase()) return false;
+      const temperature = String(chat.leadTemperature || chat.leadHeat || "").trim().toLowerCase();
+      const normalizedTemperature = ["hot", "quente", "alta", "high"].includes(temperature)
+        ? "hot"
+        : ["warm", "morno", "media", "medium"].includes(temperature)
+          ? "warm"
+          : ["cold", "frio", "baixa", "low"].includes(temperature)
+            ? "cold"
+            : "";
+      if (temperatureFilter !== "all" && normalizedTemperature !== temperatureFilter) return false;
       if (queueFilter === "sla_breached" && !getSlaState(chat).breached) return false;
       if (queueFilter !== "all" && queueFilter !== "sla_breached" && (chat.queueStatus || "open") !== queueFilter) return false;
       if (aiFilter === "ai_active" && isAiPaused(chat)) return false;
@@ -2347,7 +2553,7 @@ export default function ClienteInboxPage() {
 
       return haystack.includes(search.trim().toLowerCase());
     });
-  }, [aiFilter, assignedUserFilter, channelFilter, chats, leadIdFromQuery, priorityFilter, queueFilter, search, statusFilter]);
+  }, [aiFilter, assignedUserFilter, channelFilter, chats, leadIdFromQuery, priorityFilter, queueFilter, search, statusFilter, temperatureFilter]);
 
   const availableChannels = useMemo(() => {
     const configuredChannels = tenantChannels
@@ -2384,12 +2590,23 @@ export default function ClienteInboxPage() {
     if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
     setMediaPreviewUrl("");
     setMediaFile(null);
+    setMediaUploadProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function handleFileSelected(file: File | null) {
     clearMediaSelection();
     if (!file) return;
+    const limit = getClientMediaLimit(file);
+    if (file.size <= 0 || file.size > limit) {
+      setError(
+        file.size <= 0
+          ? "O arquivo selecionado esta vazio."
+          : `Arquivo muito grande. Limite: ${Math.round(limit / 1024 / 1024)}MB.`
+      );
+      return;
+    }
+    setError(null);
     setMediaFile(file);
     if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
       setMediaPreviewUrl(URL.createObjectURL(file));
@@ -2530,6 +2747,37 @@ export default function ClienteInboxPage() {
     }
   }
 
+  async function handleStartLeadConversation(event: FormEvent) {
+    event.preventDefault();
+    if (!tenant?.tenantId || !leadIdFromQuery || !messageText.trim() || !canOperate) return;
+
+    setSending(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/whatsapp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: leadIdFromQuery, text: messageText.trim() }),
+      });
+      const payload = (await res.json()) as { chatId?: string | null; requiresTemplate?: boolean; error?: string };
+      if (!res.ok || !payload.chatId) {
+        setError(payload.error || "Falha ao iniciar a conversa. Confira se o WhatsApp esta conectado.");
+        return;
+      }
+
+      setMessageText("");
+      await loadChats({ silent: true });
+      setSelectedChatId(payload.chatId);
+      if (payload.requiresTemplate) {
+        setError("A API oficial exige um template aprovado para iniciar a conversa. Selecione o template abaixo e envie.");
+      }
+    } catch {
+      setError("Falha ao iniciar a conversa. Confira se o WhatsApp esta conectado.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function sendMediaFile(file: File, caption: string) {
     if (!tenant?.tenantId || !selectedChatId || !file || !canOperate) return false;
     if (whatsappWindowClosed) {
@@ -2538,17 +2786,72 @@ export default function ClienteInboxPage() {
     }
 
     setSendingMedia(true);
+    setMediaUploadProgress(0);
     setError(null);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      if (caption.trim()) form.append("caption", caption.trim());
-      if (replyTo?.id) form.append("replyToId", replyTo.id);
+      const mediaType = getClientMediaType(file);
+      const shouldUploadDirectly = mediaType === "video" || file.size >= 3 * 1024 * 1024;
+      let res: Response;
 
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-media`, {
-        method: "POST",
-        body: form,
-      });
+      const sendThroughPanel = () => {
+        const form = new FormData();
+        form.append("file", file);
+        if (caption.trim()) form.append("caption", caption.trim());
+        if (replyTo?.id) form.append("replyToId", replyTo.id);
+        return authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-media`, {
+          method: "POST",
+          body: form,
+        });
+      };
+
+      if (shouldUploadDirectly) {
+        try {
+          const currentUser = auth.currentUser;
+          if (!currentUser) throw new Error("Sessao expirada. Entre novamente para enviar o arquivo.");
+          const uniqueId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const storagePath = `chat-media/${tenant.tenantId}/${selectedChatId}/${currentUser.uid}/${uniqueId}.${safeUploadExtension(file.name)}`;
+          const uploadTask = uploadBytesResumable(storageRef(storage, storagePath), file, {
+            contentType: file.type || "application/octet-stream",
+            customMetadata: {
+              tenantId: tenant.tenantId,
+              chatId: selectedChatId,
+              uploadedBy: currentUser.uid,
+            },
+          });
+
+          await new Promise<void>((resolve, reject) => {
+            uploadTask.on(
+              "state_changed",
+              (snapshot) => setMediaUploadProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
+              reject,
+              resolve
+            );
+          });
+
+          res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-stored-media`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              storagePath,
+              mediaType,
+              filename: file.name,
+              caption: caption.trim(),
+              replyToId: replyTo?.id || null,
+            }),
+          });
+        } catch (storageError) {
+          // No ambiente local ou durante uma troca de regras do Storage, um
+          // video pequeno ainda pode seguir pelo painel sem desaparecer. Em
+          // producao, o caminho preferido continua sendo o upload resumable.
+          if (mediaType !== "video" || file.size > 32 * 1024 * 1024) throw storageError;
+          console.warn("Upload direto de video bloqueado; usando envio pelo painel.", storageError);
+          setMediaUploadProgress(0);
+          res = await sendThroughPanel();
+        }
+      } else {
+        res = await sendThroughPanel();
+      }
+
       const payload = (await res.json()) as { error?: string };
       if (!res.ok) {
         setError(payload.error || "Falha ao enviar midia.");
@@ -2561,11 +2864,17 @@ export default function ClienteInboxPage() {
       await refreshSelected(true);
       scrollMessagesToBottom("smooth");
       return true;
-    } catch {
-      setError("Falha ao enviar midia.");
+    } catch (uploadError) {
+      const message = uploadError instanceof Error ? uploadError.message : "";
+      setError(
+        /storage\/unauthorized|permission/i.test(message)
+          ? "O armazenamento bloqueou o upload. Um administrador precisa liberar arquivos de conversa."
+          : message || "Falha ao enviar midia. Confira o formato e tente novamente."
+      );
       return false;
     } finally {
       setSendingMedia(false);
+      setMediaUploadProgress(0);
     }
   }
 
@@ -3092,6 +3401,36 @@ export default function ClienteInboxPage() {
                 </div>
               </div>
 
+              {detail?.salesJourney ? (
+                <div className="mt-4 rounded-[20px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StateBadge label={detail.salesJourney.lifecycleLabel} tone="ai" />
+                    <StateBadge label={detail.salesJourney.motionLabel} tone="info" />
+                    <StateBadge
+                      label={detail.salesJourney.urgency === "now" ? "agir agora" : detail.salesJourney.urgency === "today" ? "agir hoje" : detail.salesJourney.urgency === "waiting" ? "aguardando" : "programar"}
+                      tone={detail.salesJourney.urgency === "now" || detail.salesJourney.urgency === "today" ? "warning" : "neutral"}
+                    />
+                  </div>
+                  <p className="mt-3 text-sm font-black text-[var(--cliente-card-text)]">{detail.salesJourney.actionLabel}</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{detail.salesJourney.reason}</p>
+                  <div className="mt-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-ai)]">Mensagem sugerida</p>
+                    <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text)]">{detail.salesJourney.suggestedMessage}</p>
+                    <button
+                      type="button"
+                      className="mt-2 inline-flex items-center gap-2 text-xs font-black text-[var(--cliente-primary)] hover:underline"
+                      onClick={() => navigator.clipboard.writeText(detail.salesJourney?.suggestedMessage || "")}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      Copiar para responder
+                    </button>
+                  </div>
+                  {detail.salesJourney.requiresTemplate ? (
+                    <p className="mt-2 text-xs font-bold text-orange-700">Fora da janela do WhatsApp: envie por template aprovado.</p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="mt-4 rounded-[20px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,var(--cliente-border))] bg-[var(--cliente-card)] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -3324,7 +3663,7 @@ export default function ClienteInboxPage() {
                 <span>Assumir atendimento</span>
                 {updatingAi ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserRound className="h-4 w-4" />}
               </button>
-              {activeCallHref ? (
+              {activeCallHref && hasModule("calls") ? (
                 <button
                   type="button"
                   onClick={() => void handleCreateCallTask()}
@@ -3887,7 +4226,7 @@ export default function ClienteInboxPage() {
               />
               <button
                 type="button"
-                onClick={() => void refreshSelected(true)}
+                onClick={() => void refreshSelected(true, true)}
                 className="inbox-toolbar-button inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
@@ -4102,6 +4441,52 @@ export default function ClienteInboxPage() {
                 </button>
               </div>
 
+              <div className={cn("grid-cols-1 gap-2 sm:grid-cols-3", showAdvancedFilters ? "grid" : "hidden", "sm:grid")}>
+                <label className="min-w-0">
+                  <span className="sr-only">Filtrar por canal</span>
+                  <select
+                    value={channelFilter}
+                    onChange={(event) => setChannelFilter(event.target.value)}
+                    className="client-input w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none"
+                  >
+                    <option value="all">Todos os canais</option>
+                    {availableChannels.map((channel) => (
+                      <option key={channel} value={channel}>
+                        {formatChannelLabel(channel)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="min-w-0">
+                  <span className="sr-only">Filtrar por vendedor</span>
+                  <select
+                    value={assignedUserFilter}
+                    onChange={(event) => setAssignedUserFilter(event.target.value)}
+                    className="client-input w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none"
+                  >
+                    <option value="all">Todos os vendedores</option>
+                    {availableAssignees.map((assignee) => (
+                      <option key={assignee.userId} value={assignee.userId}>
+                        {assignee.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="min-w-0">
+                  <span className="sr-only">Filtrar por temperatura</span>
+                  <select
+                    value={temperatureFilter}
+                    onChange={(event) => setTemperatureFilter(event.target.value)}
+                    className="client-input w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none"
+                  >
+                    <option value="all">Todas temperaturas</option>
+                    <option value="hot">Quentes</option>
+                    <option value="warm">Mornos</option>
+                    <option value="cold">Frios</option>
+                  </select>
+                </label>
+              </div>
+
               {allowAdvanced ? (
                 <button
                   type="button"
@@ -4152,36 +4537,6 @@ export default function ClienteInboxPage() {
                       ))}
                     </select>
                   </div>
-
-                  <div className="grid grid-cols-1 gap-2">
-                    <select
-                      value={channelFilter}
-                      onChange={(event) => setChannelFilter(event.target.value)}
-                      className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
-                    >
-                      <option value="all">Todos os canais</option>
-                      {availableChannels.map((channel) => (
-                        <option key={channel} value={channel}>
-                          {formatChannelLabel(channel)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2">
-                    <select
-                      value={assignedUserFilter}
-                      onChange={(event) => setAssignedUserFilter(event.target.value)}
-                      className="client-input rounded-xl border px-3 py-2 text-sm outline-none"
-                    >
-                      <option value="all">Todos os responsaveis</option>
-                      {availableAssignees.map((assignee) => (
-                        <option key={assignee.userId} value={assignee.userId}>
-                          {assignee.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                 </>
               ) : null}
             </div>
@@ -4194,8 +4549,30 @@ export default function ClienteInboxPage() {
             ) : filteredChats.length === 0 ? (
               <div className="p-2">
                 <EmptyState
-                  title="Nenhuma conversa encontrada"
-                  description="Ajuste os filtros ou aguarde novas entradas nos canais conectados."
+                  title={leadIdFromQuery ? "Este cliente ainda nao tem conversa" : "Nenhuma conversa encontrada"}
+                  description={leadIdFromQuery
+                    ? "Envie a primeira mensagem por um WhatsApp conectado e continue todo o atendimento dentro da Altum."
+                    : "Ajuste os filtros ou aguarde novas entradas nos canais conectados."}
+                  action={leadIdFromQuery && canOperate ? (
+                    <form onSubmit={handleStartLeadConversation} className="mx-auto flex max-w-md flex-col gap-2 sm:flex-row">
+                      <input
+                        value={messageText}
+                        onChange={(event) => setMessageText(event.target.value)}
+                        placeholder="Escreva a primeira mensagem"
+                        className="client-input min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
+                        disabled={sending}
+                        autoFocus
+                      />
+                      <button
+                        type="submit"
+                        disabled={sending || !messageText.trim()}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-bold text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
+                      >
+                        {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        Iniciar conversa
+                      </button>
+                    </form>
+                  ) : undefined}
                 />
               </div>
             ) : (
@@ -4318,7 +4695,7 @@ export default function ClienteInboxPage() {
                     Humano
                   </span>
                 ) : null}
-                {activeCallHref ? (
+                {activeCallHref && hasModule("calls") ? (
                   <button
                     type="button"
                     onClick={() => void handleCreateCallTask()}
@@ -4343,7 +4720,7 @@ export default function ClienteInboxPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void refreshSelected(true)}
+                  onClick={() => void refreshSelected(true, true)}
                   className="hidden items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] sm:inline-flex"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
@@ -4363,6 +4740,19 @@ export default function ClienteInboxPage() {
                 ) : null}
               </div>
             </div>
+
+            {activeLead ? (
+              <div className="mt-3 grid gap-2 sm:hidden">
+                <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_16%,var(--cliente-border))] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-primary)]">Cliente vinculado</p>
+                    <StateBadge label={formatTemperature(activeLead.aiCommercialTemperature)} tone={getTemperatureTone(activeLead.aiCommercialTemperature)} />
+                  </div>
+                  <p className="mt-1 truncate text-sm font-black text-[var(--cliente-card-text)]">{activeLead.nome || activeChat?.contactName || "Contato em conversa"}</p>
+                  <p className="mt-1 line-clamp-2 text-xs text-[var(--cliente-card-text-soft)]">{formatAiAction(activeLead.aiNextAction)}</p>
+                </div>
+              </div>
+            ) : null}
 
             {activeLead ? (
               <div className="mt-4 hidden gap-2 sm:grid lg:grid-cols-3">
@@ -4429,7 +4819,7 @@ export default function ClienteInboxPage() {
 
           <form
             onSubmit={(event) => (whatsappWindowClosed ? void handleSendTemplate(event) : handleComposerSubmit(event))}
-            className="inbox-thread-composer inbox-chat-composer shrink-0 border-t border-[var(--cliente-border)] p-2.5 sm:p-4"
+            className="inbox-thread-composer inbox-chat-composer shrink-0 border-t border-[var(--cliente-border)] p-2.5 pb-[calc(env(safe-area-inset-bottom)+0.85rem)] sm:p-4"
           >
             {whatsappWindowClosed ? (
               <>
@@ -4565,8 +4955,18 @@ export default function ClienteInboxPage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{mediaFile.name}</p>
                         <p className="mt-0.5 text-xs text-[var(--cliente-card-text-soft)]">
-                          {(mediaFile.size / 1024 / 1024).toFixed(1)}MB
+                          {sendingMedia && mediaUploadProgress > 0
+                            ? `Enviando ${mediaUploadProgress}%`
+                            : `${(mediaFile.size / 1024 / 1024).toFixed(1)}MB`}
                         </p>
+                        {sendingMedia && mediaUploadProgress > 0 ? (
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--cliente-surface-muted)]">
+                            <div
+                              className="h-full rounded-full bg-[#25D366] transition-[width] duration-200"
+                              style={{ width: `${mediaUploadProgress}%` }}
+                            />
+                          </div>
+                        ) : null}
                       </div>
                       <button
                         type="button"

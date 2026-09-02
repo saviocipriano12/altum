@@ -6,6 +6,13 @@ import {
   getWhatsAppChannelByPhoneNumberId,
 } from "@/app/lib/server/whatsapp-channel";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
+import { firebaseStorageBucketCandidates, saveChatMediaBuffer } from "@/lib/server/firebase-storage";
+import { createMobileAudioRenditions } from "@/lib/server/audio-transcode";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 function cleanText(value: unknown, max = 1800) {
   if (typeof value !== "string") return "";
@@ -24,6 +31,11 @@ function isHttpUrl(value: string) {
   return /^https?:\/\//i.test(value);
 }
 
+function needsMobileAudioPlayback(contentType: string) {
+  const normalized = contentType.toLowerCase().split(";")[0].trim();
+  return normalized === "audio/webm" || normalized === "audio/ogg";
+}
+
 async function fetchRemoteMedia(url: string) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
@@ -37,23 +49,13 @@ async function fetchRemoteMedia(url: string) {
   };
 }
 
-async function fetchStorageMedia(path: string) {
-  const bucketName = storageBucketName();
-  if (!bucketName) {
-    throw new Error("storage_bucket_missing");
+async function getStoredFile(path: string) {
+  for (const bucketName of firebaseStorageBucketCandidates()) {
+    const file = adminStorage.bucket(bucketName).file(path);
+    const [exists] = await file.exists();
+    if (exists) return file;
   }
-
-  const file = adminStorage.bucket(bucketName).file(path);
-  const [buffer] = await file.download();
-  const [metadata] = await file
-    .getMetadata()
-    .catch(() => [{ contentType: "application/octet-stream", size: "0" }]);
-
-  return {
-    buffer,
-    contentType: String(metadata.contentType || "application/octet-stream"),
-    size: Number(metadata.size || 0) || null,
-  };
+  return null;
 }
 
 function extensionFromMimeType(mimeType: string) {
@@ -115,10 +117,14 @@ export async function GET(
 ) {
   try {
     const user = await requireRequestUser(req);
-    const download = new URL(req.url).searchParams.get("download") === "1";
+    const requestUrl = new URL(req.url);
+    const download = requestUrl.searchParams.get("download") === "1";
+    const resolveUrl = requestUrl.searchParams.get("resolve") === "1";
     const { tenantId, chatId, messageId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     assertTenantRole(membership, "client_viewer");
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
 
     const [chatSnap, messageSnap] = await Promise.all([
       adminDb.collection("chats").doc(chatId).get(),
@@ -147,6 +153,119 @@ export async function GET(
     const contentTypeHint =
       cleanText(messageData.mediaMimeType, 180) || "application/octet-stream";
 
+    if (directMediaUrl && !isHttpUrl(directMediaUrl)) {
+      const file = await getStoredFile(directMediaUrl);
+      if (!file) {
+        return NextResponse.json({ error: "Midia armazenada nao encontrada." }, { status: 404 });
+      }
+      const [metadata] = await file.getMetadata();
+      const storedContentType = String(metadata.contentType || contentTypeHint);
+      const storedSize = Number(metadata.size || 0) || null;
+
+      // A reprodução no chat nunca pode depender de conversão, URL assinada
+      // ou escrita adicional no Storage. O navegador recebe os bytes originais
+      // autenticados, como o WhatsApp Web faz, e pode tocar imediatamente.
+      // A variante MP3 abaixo fica reservada ao resolve=1 (download/compatibilidade).
+      if (!resolveUrl) {
+        const [storedBuffer] = await file.download();
+        return new NextResponse(new Uint8Array(storedBuffer), {
+          status: 200,
+          headers: {
+            "Content-Type": storedContentType,
+            "Cache-Control": "private, max-age=3600",
+            "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${buildDownloadName(messageId, messageData.mediaName, storedContentType)}"`,
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      }
+
+      // Áudios WebM/OGG legados tocam no desktop, mas não de forma confiável
+      // no Safari/iPhone. A primeira reprodução gera e persiste um MP3 para que
+      // as próximas aberturas permaneçam rápidas em todos os dispositivos.
+      if (needsMobileAudioPlayback(storedContentType)) {
+        const [source] = await file.download();
+        const { playback } = await createMobileAudioRenditions({
+          source,
+          extension: extensionFromMimeType(storedContentType),
+        });
+        const playbackPath = await saveChatMediaBuffer({
+          tenantId,
+          chatId,
+          messageId,
+          data: playback,
+          contentType: "audio/mpeg",
+          filename: buildDownloadName(messageId, messageData.mediaName, "audio/mpeg"),
+          variant: "playback",
+        });
+        const playbackFile = await getStoredFile(playbackPath);
+        if (!playbackFile) {
+          throw new Error("Audio convertido nao encontrado no armazenamento.");
+        }
+        const [playbackMetadata] = await playbackFile.getMetadata();
+        const playbackSize = Number(playbackMetadata.size || playback.length) || playback.length;
+        await messageSnap.ref.set(
+          {
+            mediaUrl: playbackPath,
+            mediaMimeType: "audio/mpeg",
+            mediaSize: playbackSize,
+            updatedAt: new Date(),
+          },
+          { merge: true }
+        );
+
+        const fileName = buildDownloadName(messageId, messageData.mediaName, "audio/mpeg");
+        if (!resolveUrl) {
+          const response = new NextResponse(new Uint8Array(playback), {
+            status: 200,
+            headers: {
+              "Content-Type": "audio/mpeg",
+              "Cache-Control": "private, max-age=3600",
+              "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${fileName}"`,
+              "X-Content-Type-Options": "nosniff",
+            },
+          });
+          return response;
+        }
+        const [playbackUrl] = await playbackFile.getSignedUrl({
+          action: "read",
+          expires: Date.now() + 10 * 60 * 1000,
+          responseType: "audio/mpeg",
+          responseDisposition: `${download ? "attachment" : "inline"}; filename="${fileName}"`,
+        });
+        if (resolveUrl) {
+          return NextResponse.json({ ok: true, url: playbackUrl, contentType: "audio/mpeg", expiresInSeconds: 600 });
+        }
+        const response = NextResponse.redirect(playbackUrl, 307);
+        response.headers.set("Cache-Control", "private, no-store");
+        response.headers.set("X-Content-Type-Options", "nosniff");
+        return response;
+      }
+
+      const fileName = buildDownloadName(messageId, messageData.mediaName, storedContentType);
+      const [temporaryUrl] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 10 * 60 * 1000,
+        responseType: storedContentType,
+        responseDisposition: `${download ? "attachment" : "inline"}; filename="${fileName}"`,
+      });
+
+      if (storedSize && !numericValue(messageData.mediaSize)) {
+        await messageSnap.ref.set(
+          { mediaSize: storedSize, mediaMimeType: storedContentType, updatedAt: new Date() },
+          { merge: true }
+        );
+      }
+
+      if (resolveUrl) {
+        return NextResponse.json({ ok: true, url: temporaryUrl, contentType: storedContentType, expiresInSeconds: 600 });
+      }
+
+      const response = NextResponse.redirect(temporaryUrl, 307);
+      response.headers.set("Cache-Control", "private, no-store");
+      response.headers.set("X-Content-Type-Options", "nosniff");
+      return response;
+    }
+
     let media:
       | {
           buffer: Buffer;
@@ -156,9 +275,72 @@ export async function GET(
       | null = null;
 
     if (directMediaUrl) {
-      media = isHttpUrl(directMediaUrl)
-        ? await fetchRemoteMedia(directMediaUrl)
-        : await fetchStorageMedia(directMediaUrl);
+      media = await fetchRemoteMedia(directMediaUrl);
+
+      // Midias remotas recebidas (principalmente OGG/WebM do WhatsApp) nao
+      // passam pelo caminho de armazenamento acima. Sem essa normalizacao o
+      // desktop toca, mas Safari/iPhone pode recusar o codec. Persistimos uma
+      // versao MP3 na primeira abertura para que a conversa continue ouvivel
+      // nos dois lados e em qualquer dispositivo.
+      if (needsMobileAudioPlayback(media.contentType)) {
+        try {
+          const { playback } = await createMobileAudioRenditions({
+            source: media.buffer,
+            extension: extensionFromMimeType(media.contentType),
+          });
+          const playbackPath = await saveChatMediaBuffer({
+            tenantId,
+            chatId,
+            messageId,
+            data: playback,
+            contentType: "audio/mpeg",
+            filename: buildDownloadName(messageId, messageData.mediaName, "audio/mpeg"),
+            variant: "playback",
+          });
+          const playbackFile = await getStoredFile(playbackPath);
+          if (!playbackFile) throw new Error("Audio convertido nao encontrado no armazenamento.");
+          const [playbackMetadata] = await playbackFile.getMetadata();
+          const playbackSize = Number(playbackMetadata.size || playback.length) || playback.length;
+          await messageSnap.ref.set(
+            {
+              mediaUrl: playbackPath,
+              mediaMimeType: "audio/mpeg",
+              mediaSize: playbackSize,
+              updatedAt: new Date(),
+            },
+            { merge: true }
+          );
+          const fileName = buildDownloadName(messageId, messageData.mediaName, "audio/mpeg");
+          if (!resolveUrl) {
+            return new NextResponse(new Uint8Array(playback), {
+              status: 200,
+              headers: {
+                "Content-Type": "audio/mpeg",
+                "Cache-Control": "private, max-age=3600",
+                "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${fileName}"`,
+                "X-Content-Type-Options": "nosniff",
+              },
+            });
+          }
+          const [playbackUrl] = await playbackFile.getSignedUrl({
+            action: "read",
+            expires: Date.now() + 10 * 60 * 1000,
+            responseType: "audio/mpeg",
+            responseDisposition: `${download ? "attachment" : "inline"}; filename="${fileName}"`,
+          });
+          if (resolveUrl) {
+            return NextResponse.json({ ok: true, url: playbackUrl, contentType: "audio/mpeg", expiresInSeconds: 600 });
+          }
+          const response = NextResponse.redirect(playbackUrl, 307);
+          response.headers.set("Cache-Control", "private, no-store");
+          response.headers.set("X-Content-Type-Options", "nosniff");
+          return response;
+        } catch (audioError) {
+          // O arquivo original ainda deve ficar disponivel no desktop se a
+          // conversao ou o armazenamento estiverem temporariamente indisponiveis.
+          console.warn("Falha ao preparar audio remoto para celular:", audioError);
+        }
+      }
     } else {
       const mediaId = cleanText(messageData.mediaId, 240);
       const channelPhoneNumberId = cleanText(messageData.channelPhoneNumberId, 180);

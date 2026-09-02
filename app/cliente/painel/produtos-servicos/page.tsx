@@ -8,6 +8,7 @@ import {
   Boxes,
   CheckCircle2,
   FileText,
+  FileSpreadsheet,
   ImageIcon,
   Layers3,
   Loader2,
@@ -266,13 +267,22 @@ export default function ClienteProdutosServicosPage() {
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {canManage ? (
-                <Link
-                  href="/cliente/painel/produtos-servicos/novo"
-                  className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-[var(--cliente-shadow-soft)] transition hover:-translate-y-0.5 hover:bg-[var(--cliente-primary-hover)]"
-                >
-                  <Plus className="h-4 w-4" />
-                  Cadastrar oferta
-                </Link>
+                <>
+                  <Link
+                    href="/cliente/painel/produtos-servicos/novo"
+                    className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-[var(--cliente-shadow-soft)] transition hover:-translate-y-0.5 hover:bg-[var(--cliente-primary-hover)]"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Cadastrar oferta
+                  </Link>
+                  <Link
+                    href="/cliente/painel/produtos-servicos/importar"
+                    className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_28%,var(--cliente-border))] bg-[var(--cliente-card)] px-4 py-2.5 text-sm font-bold text-[var(--cliente-primary)] transition hover:-translate-y-0.5 hover:bg-[var(--cliente-primary-soft)]"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Importar catálogo
+                  </Link>
+                </>
               ) : null}
               <Link
                 href="/cliente/painel/conhecimento"
@@ -288,7 +298,7 @@ export default function ClienteProdutosServicosPage() {
             <HeroSignal label="Itens ativos" value={String(stats.active)} detail={`${stats.total} no catalogo`} icon={CheckCircle2} tone="success" />
             <HeroSignal label="Com material" value={String(stats.withMedia)} detail="imagem, video ou doc" icon={ImageIcon} tone="info" />
             <HeroSignal label="A melhorar" value={String(stats.thin)} detail="falta contexto comercial" icon={Sparkles} tone={stats.thin ? "warning" : "success"} />
-            <HeroSignal label="Importados" value={String(stats.imported)} detail="vindos de ecommerce" icon={ShoppingBag} tone="neutral" />
+            <HeroSignal label="Importados" value={String(stats.imported)} detail="arquivos e integrações" icon={ShoppingBag} tone="neutral" />
           </div>
         </div>
       </section>

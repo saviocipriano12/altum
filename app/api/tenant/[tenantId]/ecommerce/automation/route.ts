@@ -4,12 +4,14 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { normalizeEcommerceAutomationSettings } from "@/lib/server/ecommerce";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 export async function GET(req: Request, context: { params: Promise<{ tenantId: string }> }) {
   try {
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     assertTenantRole(membership, "client_viewer");
 
     const snap = await adminDb.collection("tenant_settings").doc(tenantId).get();
@@ -32,6 +34,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     assertTenantCapability(membership, "manage_channels");
 
     const body = await req.json();

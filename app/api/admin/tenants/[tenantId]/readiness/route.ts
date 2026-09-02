@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { getTenantReadinessSnapshot } from "@/lib/server/tenant-readiness";
+import { runTenantIntegrationHealthCheck } from "@/lib/server/integrations/health";
 
 type Params = {
   params: Promise<{
@@ -33,7 +34,18 @@ export async function GET(req: Request, context: Params) {
       return NextResponse.json({ error: "Tenant invalido." }, { status: 400 });
     }
 
-    const snapshot = await getTenantReadinessSnapshot(normalizedTenantId).catch((error) => {
+    const [snapshot, integrationHealth] = await Promise.all([
+      getTenantReadinessSnapshot(normalizedTenantId),
+      runTenantIntegrationHealthCheck({ tenantId: normalizedTenantId, attemptRepair: false }).catch((error) => ({
+        tenantId: normalizedTenantId,
+        checkedAt: new Date().toISOString(),
+        items: [],
+        healthy: 0,
+        total: 0,
+        unavailable: true,
+        reason: error instanceof Error ? error.message.slice(0, 240) : "health_check_unavailable",
+      })),
+    ]).catch((error) => {
       if (isResourceExhausted(error)) {
         throw new RouteAuthError(
           429,
@@ -43,7 +55,7 @@ export async function GET(req: Request, context: Params) {
       }
       throw error;
     });
-    return NextResponse.json({ ok: true, ...snapshot });
+    return NextResponse.json({ ok: true, ...snapshot, integrationHealth });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json(

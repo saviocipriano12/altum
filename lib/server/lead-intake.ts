@@ -7,6 +7,7 @@ import { syncLeadCommercialState } from "@/lib/server/crm/operations";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { recordLeadConversionStep } from "@/lib/server/conversion-trail";
 import { normalizePipelineStageId } from "@/lib/pipeline";
+import { upsertContactProfile } from "@/lib/server/contact-profile";
 
 export type LeadAttributionInput = {
   source?: string;
@@ -581,6 +582,16 @@ export async function recordInboundLead(input: RecordInboundLeadInput) {
           createdAt: FieldValue.serverTimestamp(),
         })
       : Promise.resolve(),
+    upsertContactProfile({
+      tenantId,
+      phone: telefone,
+      email,
+      externalProfileId,
+      leadId: leadRef.id,
+      channel: clean(input.channel, 60),
+      name: nome || clean(existingData.nome, 180),
+      company: empresa || clean(existingData.empresa, 180),
+    }),
   ]);
 
   if (!existingLead && !input.skipLeadCreatedWorkflows) {

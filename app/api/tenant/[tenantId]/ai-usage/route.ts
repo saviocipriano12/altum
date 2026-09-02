@@ -3,6 +3,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { getAiMonthlyUsageSnapshot } from "@/lib/server/ai/usage-ledger";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type AiUsageItem = {
   id: string;
@@ -41,6 +42,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "ai");
     assertTenantRole(membership, "client_viewer");
 
     const monthlySnapshot = await getAiMonthlyUsageSnapshot(tenantId);

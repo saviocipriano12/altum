@@ -332,22 +332,8 @@ export default function ClienteCampanhasPage() {
     setError(null);
 
     try {
-      const [campaignsRes, metricsRes, formsRes, kbRes, conversionHealthRes, campaignOverviewRes] = await Promise.all([
-        authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/metrics-summary?rangeDays=30`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/capture/forms`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/conversions/health`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/overview`),
-      ]);
-
+      const campaignsRes = await authedFetch(`/api/tenant/${tenant.tenantId}/outbound-campaigns`);
       const campaignsPayload = (await campaignsRes.json()) as { items?: Campaign[]; runs?: RunItem[]; error?: string };
-      const metricsPayload = (await metricsRes.json().catch(() => null)) as MetricsSummary | null;
-      const formsData = (await formsRes.json().catch(() => null)) as CaptureFormsPayload | null;
-      const kbPayload = (await kbRes.json().catch(() => ({}))) as { items?: CatalogDoc[] };
-      const conversionHealthPayload = (await conversionHealthRes.json().catch(() => null)) as ConversionHealthResponse | null;
-      const campaignOverviewPayload = (await campaignOverviewRes.json().catch(() => null)) as CampaignOverviewResponse | null;
-
       if (!campaignsRes.ok) {
         setError(campaignsPayload.error || "Falha ao carregar campanhas outbound.");
         setItems([]);
@@ -355,14 +341,28 @@ export default function ClienteCampanhasPage() {
         return;
       }
 
-      const nextItems = campaignsPayload.items || [];
-      setItems(nextItems);
+      setItems(campaignsPayload.items || []);
       setRuns(campaignsPayload.runs || []);
-      setMetrics(metricsRes.ok ? metricsPayload : null);
-      setConversionHealth(conversionHealthRes.ok ? conversionHealthPayload : null);
-      setCampaignOverview(campaignOverviewRes.ok ? campaignOverviewPayload : null);
-      setFormsPayload(formsRes.ok ? formsData : null);
-      setCatalogDocs((kbPayload.items || []).filter((item) => item.type === "catalog"));
+      void Promise.all([
+        authedFetch(`/api/tenant/${tenant.tenantId}/metrics-summary?rangeDays=30`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/capture/forms`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/conversions/health`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/overview`),
+      ]).then(async ([metricsRes, formsRes, kbRes, conversionHealthRes, campaignOverviewRes]) => {
+        const [metricsPayload, formsData, kbPayload, conversionHealthPayload, campaignOverviewPayload] = await Promise.all([
+          metricsRes.json().catch(() => null) as Promise<MetricsSummary | null>,
+          formsRes.json().catch(() => null) as Promise<CaptureFormsPayload | null>,
+          kbRes.json().catch(() => ({})) as Promise<{ items?: CatalogDoc[] }>,
+          conversionHealthRes.json().catch(() => null) as Promise<ConversionHealthResponse | null>,
+          campaignOverviewRes.json().catch(() => null) as Promise<CampaignOverviewResponse | null>,
+        ]);
+        setMetrics(metricsRes.ok ? metricsPayload : null);
+        setConversionHealth(conversionHealthRes.ok ? conversionHealthPayload : null);
+        setCampaignOverview(campaignOverviewRes.ok ? campaignOverviewPayload : null);
+        setFormsPayload(formsRes.ok ? formsData : null);
+        setCatalogDocs((kbPayload.items || []).filter((item) => item.type === "catalog"));
+      }).catch(() => undefined);
     } catch {
       setError("Falha ao carregar central de campanhas.");
     } finally {

@@ -1,0 +1,11 @@
+[Unit]
+Description=Envia relatorios diarios da Altum
+
+[Timer]
+OnCalendar=*-*-* 21:30:00 UTC
+Persistent=true
+Unit=altum-job@reports.service
+
+[Install]
+WantedBy=timers.target
+

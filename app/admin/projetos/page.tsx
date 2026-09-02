@@ -2,14 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  onSnapshot,
-  query,
-  orderBy,
-  where,
-} from "firebase/firestore";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -40,7 +32,7 @@ interface Projeto {
   canalPrincipal: string;
   servicos: string[];
   valorMensal?: number;
-  createdAt?: TimestampLike | number | null;
+  createdAt?: TimestampLike | number | string | null;
 }
 
 const STATUS_OPTIONS: ProjetoStatus[] = [
@@ -51,12 +43,13 @@ const STATUS_OPTIONS: ProjetoStatus[] = [
 ];
 
 export default function ProjetosPage() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [clientes, setClientes] = useState<ClienteOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [form, setForm] = useState({
     clientId: "",
@@ -67,66 +60,41 @@ export default function ProjetosPage() {
     status: "Onboarding" as ProjetoStatus,
   });
 
-  // Carrega clientes pra popular o select
+  // Dados administrativos passam pelo servidor para manter as regras do Firestore fechadas.
   useEffect(() => {
     if (!user) {
       setClientes([]);
       return;
     }
 
-    const clientsRef = collection(db, "clientes");
-    const q = isAdmin
-      ? query(clientsRef, orderBy("name", "asc"))
-      : query(clientsRef, where("ownerId", "==", user.uid));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs: ClienteOption[] = snap.docs.map((d) => ({
-          id: d.id,
-          name: ((d.data() as { name?: string }).name) || "Cliente sem nome",
-        }));
-        setClientes(docs);
-      },
-      (err) => {
-        console.error("Erro ao carregar clientes para projetos:", err);
-      }
-    );
-
-    return () => unsub();
-  }, [user, isAdmin]);
-
-  // Carrega projetos em tempo real
-  useEffect(() => {
-    if (!user) {
-      setProjetos([]);
-      setLoading(false);
-      return;
-    }
-
-    const projectsRef = collection(db, "projetos");
-    const q = isAdmin
-      ? query(projectsRef, orderBy("createdAt", "desc"))
-      : query(projectsRef, where("ownerId", "==", user.uid));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs: Projeto[] = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<Projeto, "id">),
-        }));
-        setProjetos(docs);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Erro ao carregar projetos:", err);
-        setLoading(false);
-      }
-    );
-
-    return () => unsub();
-  }, [user, isAdmin]);
+    let cancelled = false;
+    setLoading(true);
+    void Promise.all([
+      authedFetch("/api/clientes"),
+      authedFetch("/api/admin/dashboard?include=projetos"),
+    ])
+      .then(async ([clientsResponse, projectsResponse]) => {
+        const clientsPayload = (await clientsResponse.json()) as { clientes?: ClienteOption[] };
+        const projectsPayload = (await projectsResponse.json()) as { projetos?: Projeto[] };
+        if (!clientsResponse.ok || !projectsResponse.ok) throw new Error("Falha ao carregar projetos.");
+        if (cancelled) return;
+        setClientes(Array.isArray(clientsPayload.clientes) ? clientsPayload.clientes : []);
+        setProjetos(Array.isArray(projectsPayload.projetos) ? projectsPayload.projetos : []);
+      })
+      .catch((error) => {
+        console.error("Erro ao carregar projetos:", error);
+        if (!cancelled) {
+          setClientes([]);
+          setProjetos([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, refreshKey]);
 
   const filteredProjetos = useMemo(() => {
     if (!search.trim()) return projetos;
@@ -178,6 +146,8 @@ export default function ProjetosPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Falha ao criar projeto.");
+
+      setRefreshKey((value) => value + 1);
 
       setForm({
         clientId: "",

@@ -40,6 +40,7 @@ type CampaignStatus = "draft" | "active" | "paused";
 type DeliveryMode = "text" | "template";
 type Step = "remetente" | "publico" | "conteudo" | "revisao";
 type BuilderMode = "simple" | "flow";
+type AudienceBehavior = "all" | "no_response" | "inactive" | "proposal_stalled" | "new_inbound";
 
 type AutomationFlowNodeType = "send" | "condition" | "ai" | "media" | "meeting" | "human" | "end";
 
@@ -141,6 +142,8 @@ type Campaign = {
     sources: string[];
     tags: string[];
     heat: string[];
+    behavior: AudienceBehavior;
+    behaviorWindowDays: number;
   };
   lastRunAt?: string | null;
   lastRunSummary?: {
@@ -159,6 +162,7 @@ type Preview = {
     maxRecipients: number;
     estimatedSend: number;
     blockedByConsent: number;
+    blockedByFrequency: number;
     missingPhone: number;
     truncatedByLimit: boolean;
   };
@@ -425,7 +429,7 @@ function emptyCampaign(): Campaign {
     scheduledAt: null,
     sendRatePerMinute: 20,
     executionStatus: "idle",
-    filters: { stageIds: [], ownerIds: [], sources: [], tags: [], heat: [] },
+    filters: { stageIds: [], ownerIds: [], sources: [], tags: [], heat: [], behavior: "all", behaviorWindowDays: 3 },
   };
 }
 
@@ -472,6 +476,14 @@ function formatDateTimeLocal(value?: string | null) {
 
 function splitList(value: string) {
   return Array.from(new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))).slice(0, 20);
+}
+
+function audienceBehaviorLabel(filters: Campaign["filters"]) {
+  if (filters.behavior === "no_response") return `Sem resposta ha ${filters.behaviorWindowDays} dias`;
+  if (filters.behavior === "proposal_stalled") return `Propostas paradas ha ${filters.behaviorWindowDays} dias`;
+  if (filters.behavior === "inactive") return `Base inativa ha ${filters.behaviorWindowDays} dias`;
+  if (filters.behavior === "new_inbound") return `Entradas dos ultimos ${filters.behaviorWindowDays} dias`;
+  return "Base filtrada";
 }
 
 function inferUploadType(file: File): "image" | "video" | "document" | null {
@@ -792,6 +804,8 @@ export default function BulkMessagingPage() {
           sources: [],
           heat: [],
           tags: tag ? [tag] : [],
+          behavior: "all",
+          behaviorWindowDays: 3,
         },
         maxRecipients: Math.max(1, Math.min(500, Math.max(current.maxRecipients, summary.processed))),
       }));
@@ -880,7 +894,7 @@ export default function BulkMessagingPage() {
       await load();
       setNotice(
         editor.scheduledAt
-          ? `${payload.queued || 0} contatos agendados. A Altum processa a fila automaticamente a cada poucos minutos.`
+          ? `${payload.queued || 0} contatos agendados. A Altum processa a fila automaticamente minuto a minuto.`
           : `${payload.queued || 0} contatos colocados na fila em ${payload.jobs || 0} lote(s).`
       );
     } catch (dispatchError) {
@@ -1341,12 +1355,65 @@ function AudienceStep({
   onImportFile: (file: File) => void;
   onChange: (patch: Partial<Campaign>) => void;
 }) {
-  const changeFilter = (key: keyof Campaign["filters"], value: string) =>
+  const changeFilter = (key: "stageIds" | "ownerIds" | "sources" | "tags" | "heat", value: string) =>
     onChange({ filters: { ...editor.filters, [key]: splitList(value) } });
+  const journeys: Array<{ id: AudienceBehavior; label: string; description: string; days: number }> = [
+    { id: "no_response", label: "Reativar sem resposta", description: "Recebeu contato e nao respondeu", days: 3 },
+    { id: "proposal_stalled", label: "Proposta parada", description: "Negociacao sem atividade recente", days: 3 },
+    { id: "inactive", label: "Base inativa", description: "Sem conversa ou atividade", days: 30 },
+    { id: "new_inbound", label: "Entradas recentes", description: "Chamaram nos ultimos dias", days: 7 },
+    { id: "all", label: "Base filtrada", description: "Usa apenas os filtros abaixo", days: 3 },
+  ];
+  const selectJourney = (journey: (typeof journeys)[number]) =>
+    onChange({
+      filters: {
+        ...editor.filters,
+        behavior: journey.id,
+        behaviorWindowDays: journey.days,
+      },
+    });
   return (
     <div>
       <h3 className="text-lg font-bold text-[var(--cliente-card-text)]">Quem deve receber?</h3>
-      <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Suba uma lista propria ou use filtros da base. Quem pediu para nao receber sera removido automaticamente.</p>
+      <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Comece por uma jornada comercial ou refine a base. Opt-out, telefone invalido e contato recente ficam fora do envio.</p>
+
+      <div className="mt-5">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-black text-[var(--cliente-card-text)]">Jornada de publico</p>
+          <span className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">Aplique antes dos filtros</span>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          {journeys.map((journey) => {
+            const active = editor.filters.behavior === journey.id;
+            return (
+              <button
+                key={journey.id}
+                type="button"
+                onClick={() => selectJourney(journey)}
+                className={`rounded-[16px] border p-3 text-left transition ${active ? "border-[var(--cliente-primary)] bg-blue-500/8 shadow-sm" : "border-[var(--cliente-border)] bg-white hover:border-blue-300"}`}
+              >
+                <p className="text-xs font-black text-[var(--cliente-card-text)]">{journey.label}</p>
+                <p className="mt-1 text-[11px] leading-4 text-[var(--cliente-card-text-soft)]">{journey.description}</p>
+              </button>
+            );
+          })}
+        </div>
+        {editor.filters.behavior !== "all" ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-[16px] border border-blue-200 bg-blue-500/6 p-3">
+            <label className="text-sm font-semibold text-[var(--cliente-card-text)]" htmlFor="audience-window-days">Janela da jornada</label>
+            <input
+              id="audience-window-days"
+              type="number"
+              min={editor.filters.behavior === "no_response" ? 3 : 1}
+              max={365}
+              value={editor.filters.behaviorWindowDays}
+              onChange={(event) => onChange({ filters: { ...editor.filters, behaviorWindowDays: Math.max(editor.filters.behavior === "no_response" ? 3 : 1, Math.min(365, Number(event.target.value) || 1)) } })}
+              className="client-input w-24 text-center"
+            />
+            <span className="text-xs text-[var(--cliente-card-text-soft)]">dias. Reativacao respeita pelo menos 72h entre campanhas para o mesmo contato.</span>
+          </div>
+        ) : null}
+      </div>
 
       <div className="mt-5 rounded-[22px] border border-dashed border-emerald-300 bg-emerald-500/8 p-4 md:p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1400,7 +1467,7 @@ function AudienceStep({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm font-bold text-[var(--cliente-card-text)]">Limite desta execucao</p>
-            <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Comece pequeno e aumente depois de validar resposta e entrega.</p>
+            <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Comece pequeno, acompanhe resposta e entrega. Cada campanha usa somente o remetente selecionado.</p>
           </div>
           <div className="flex items-center gap-3">
             <input type="range" min={1} max={500} step={1} value={editor.maxRecipients} onChange={(event) => onChange({ maxRecipients: Number(event.target.value) })} className="w-36 accent-[var(--cliente-primary)]" />
@@ -1428,6 +1495,7 @@ function AudienceStep({
           />
         </Field>
       </div>
+      <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">A Altum faz cadencia por campanha e pausa contatos inelegiveis. Nao alterna numeros para contornar limites de WhatsApp.</p>
     </div>
   );
 }
@@ -1988,9 +2056,10 @@ function AiFollowupEditor({ editor, onChange }: { editor: Campaign; onChange: (p
 function ReviewStep({ editor, channel, preview, riskLevel }: { editor: Campaign; channel: Channel | null; preview: Preview | null; riskLevel: string }) {
   const checks = [
     { label: "Numero remetente", value: channel?.displayName || "Nao escolhido", done: Boolean(channel) },
+    { label: "Jornada", value: audienceBehaviorLabel(editor.filters), done: true },
     { label: "Publico encontrado", value: preview ? `${preview.summary.matchedFilters} contatos na selecao` : "Simulacao pendente", done: Boolean(preview) },
     { label: "Publico apto", value: preview ? `${preview.summary.estimatedSend} contatos` : "Simulacao pendente", done: Boolean(preview) },
-    { label: "Bloqueios", value: preview ? `${preview.summary.blockedByConsent} opt-out | ${preview.summary.missingPhone} sem telefone` : "Verificado ao simular", done: Boolean(preview) },
+    { label: "Bloqueios", value: preview ? `${preview.summary.blockedByConsent} opt-out | ${preview.summary.blockedByFrequency} contato recente | ${preview.summary.missingPhone} sem telefone` : "Verificado ao simular", done: Boolean(preview) },
     { label: "Conteudo", value: editor.deliveryMode === "template" ? editor.templateName || "Template pendente" : `${editor.messageTemplate.length} caracteres`, done: editor.deliveryMode === "template" ? Boolean(editor.templateName) : editor.messageTemplate.length > 9 },
     { label: "IA no retorno", value: editor.aiFollowup.offerName || editor.aiFollowup.exampleUrl || "Contexto nao definido", done: Boolean(editor.aiFollowup.offerName || editor.aiFollowup.exampleUrl || editor.aiFollowup.nextStep) },
     {
@@ -2028,7 +2097,7 @@ function ReviewStep({ editor, channel, preview, riskLevel }: { editor: Campaign;
       ) : null}
       <div className={`mt-4 rounded-[18px] border p-4 ${riskLevel === "alto" ? "border-rose-300/40 bg-rose-500/8" : riskLevel === "medio" ? "border-amber-300/40 bg-amber-500/8" : "border-emerald-300/40 bg-emerald-500/8"}`}>
         <p className="text-sm font-bold text-[var(--cliente-card-text)]">Risco operacional: {riskLevel}</p>
-        <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Limite atual de {editor.maxRecipients} contatos. A Altum respeita opt-out, telefones validos e o remetente selecionado.</p>
+        <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Limite atual de {editor.maxRecipients} contatos. A Altum respeita opt-out, intervalo de campanha, telefones validos e o remetente selecionado.</p>
       </div>
     </div>
   );

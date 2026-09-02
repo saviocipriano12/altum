@@ -3,6 +3,7 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { processPendingAutomationActions, processWaitingReplyAutomations } from "@/lib/server/automations";
 import { processInboxWatchdog } from "@/lib/server/inbox-watchdog";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 export async function POST(
   req: Request,
@@ -12,6 +13,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "automation");
     assertTenantCapability(membership, "manage_automations");
 
     const [scheduled, waitingReply, inboxWatchdog] = await Promise.all([

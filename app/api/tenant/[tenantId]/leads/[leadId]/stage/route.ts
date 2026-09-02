@@ -8,6 +8,8 @@ import { syncLeadCommercialState } from "@/lib/server/crm/operations";
 import { runPipelineStageSideEffects } from "@/lib/server/crm/stage-effects";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertLeadCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   stage?: string;
@@ -78,6 +80,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId, leadId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     if (!hasTenantCapability(membership, "manage_pipeline") && !hasTenantCapability(membership, "edit_leads")) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para mover o lead no funil.");
     }
@@ -190,6 +193,7 @@ export async function POST(
         console.error("Falha ao disparar conversao de lead qualificado:", error);
       });
     }
+    await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId });
 
     if (stage === "ganho") {
       await dispatchLeadConversionEvents({

@@ -18,6 +18,17 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
@@ -215,6 +226,11 @@ type ReadinessPayload = {
     pilotReady?: boolean;
     readinessScore?: number;
   };
+  onboarding?: {
+    progressPct?: number;
+    completed?: number;
+    total?: number;
+  };
   blockers?: Array<{
     id: string;
     href: string;
@@ -349,6 +365,7 @@ async function readJson<T>(url: string) {
 export default function ClientePainelOverviewPage() {
   const { tenant } = useClienteTenant();
   const tenantId = tenant?.tenantId;
+  const [showDesktopCharts, setShowDesktopCharts] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -426,6 +443,15 @@ export default function ClientePainelOverviewPage() {
     if (!tenantId) return;
     void loadOverview();
   }, [loadOverview, tenantId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(min-width: 640px)");
+    const sync = () => setShowDesktopCharts(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   const metrics = metricsSummary.metrics || {};
   const traffic = metricsSummary.traffic || {};
@@ -523,6 +549,56 @@ export default function ClientePainelOverviewPage() {
   const pilotReady = readiness.summary?.pilotReady === true;
   const effectiveCampaignCount = campaignCount || campaigns.length;
   const lastUpdatedLabel = formatClock(snapshotAt);
+  const chartTextColor = "var(--cliente-card-text-soft)";
+  const chartGridColor = "var(--cliente-border)";
+
+  const campaignChartData = (() => {
+    const fromCampaigns = campaigns
+      .slice(0, 6)
+      .map((campaign) => ({
+        name: (campaign.label || campaign.key || "Campanha").slice(0, 16),
+        leads: num(campaign.lastTouchLeads) || num(campaign.firstTouchLeads),
+        vendas: num(campaign.wonLeads),
+        reunioes: num(campaign.meetings),
+        gasto: num(campaign.spend),
+      }))
+      .filter((item) => item.leads || item.vendas || item.reunioes || item.gasto);
+
+    if (fromCampaigns.length) return fromCampaigns;
+
+    return [
+      { name: "Contatos", leads: totalLeads, vendas: wonLeads, reunioes: meetings, gasto: spend },
+      { name: "Conversas", leads: activeChats, vendas: wonLeads, reunioes: meetings, gasto: 0 },
+      { name: "Qualificados", leads: qualifiedLeads, vendas: wonLeads, reunioes: meetings, gasto: 0 },
+      { name: "Vendas", leads: wonLeads, vendas: wonLeads, reunioes: meetings, gasto: 0 },
+    ];
+  })();
+
+  const stageChartData = (() => {
+    const stageMap = new Map<string, { name: string; oportunidades: number; valor: number }>();
+
+    for (const lead of leads) {
+      const stage = normalizeStage(lead.pipelineStage || lead.stage);
+      const current = stageMap.get(stage) || {
+        name: getPipelineStageLabel(stage),
+        oportunidades: 0,
+        valor: 0,
+      };
+      current.oportunidades += 1;
+      current.valor += num(lead.value);
+      stageMap.set(stage, current);
+    }
+
+    const items = Array.from(stageMap.values());
+    if (items.length) return items.slice(0, 8);
+
+    return [
+      { name: "Captados", oportunidades: totalLeads, valor: 0 },
+      { name: "Qualificados", oportunidades: qualifiedLeads, valor: 0 },
+      { name: "Reunioes", oportunidades: meetings, valor: 0 },
+      { name: "Ganhos", oportunidades: wonLeads, valor: paidRevenue },
+    ];
+  })();
 
   const liveMetrics: LiveMetricItem[] = [
     {
@@ -599,6 +675,33 @@ export default function ClientePainelOverviewPage() {
       href: "/cliente/painel/follow-ups",
       icon: CalendarDays,
       tone: "warning",
+    },
+  ];
+
+  const mobileQuickActions = [
+    {
+      href: "/cliente/painel/inbox?status=pending",
+      label: "Responder agora",
+      detail: pendingChats ? `${pendingChats} aguardando` : "abrir fila",
+      tone: "success" as const,
+    },
+    {
+      href: "/cliente/painel/crm",
+      label: "Mover oportunidades",
+      detail: activeLeads ? `${activeLeads} em aberto` : "abrir carteira",
+      tone: "info" as const,
+    },
+    {
+      href: "/cliente/painel/agenda",
+      label: "Ver agenda",
+      detail: meetings ? `${meetings} compromisso(s)` : "sem reunioes",
+      tone: "warning" as const,
+    },
+    {
+      href: "/cliente/painel/perguntar-altum",
+      label: "Perguntar a Altum",
+      detail: "insights e prioridade",
+      tone: "ai" as const,
     },
   ];
 
@@ -725,8 +828,46 @@ export default function ClientePainelOverviewPage() {
   }
 
   return (
-    <div className="dashboard-refined space-y-4 pb-10">
-      <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
+    <div className="dashboard-refined client-daily-page space-y-4 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:pb-10">
+      <section className="grid gap-3 sm:hidden">
+        <PanelCard tone="spotlight" className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-white/18 bg-white/14 px-3 py-1 text-[11px] font-semibold text-white/88">
+                  Hoje
+                </span>
+                <span className="rounded-full border border-white/18 bg-white/14 px-3 py-1 text-[11px] font-semibold text-white/88">
+                  {lastUpdatedLabel}
+                </span>
+              </div>
+              <h1 className="mt-3 text-xl font-extrabold leading-tight text-white">{workspaceName}</h1>
+              <p className="mt-2 text-sm leading-5 text-white/76">Operacao comercial com foco no que precisa acontecer agora.</p>
+            </div>
+            <ClientBadge label={priorityActions.length ? "agir" : "ok"} tone={priorityActions.length ? priorityActions[0]?.tone || "ai" : "success"} />
+          </div>
+        </PanelCard>
+
+        <PanelCard className="p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold text-[var(--cliente-card-text)]">Proxima acao</p>
+              <p className="mt-1 text-sm leading-5 text-[var(--cliente-card-text-soft)]">{priorityActions[0]?.detail}</p>
+            </div>
+            <ClientBadge label={priorityActions[0]?.badge || "agir"} tone={priorityActions[0]?.tone || "ai"} />
+          </div>
+          <p className="mt-3 text-lg font-extrabold leading-tight text-[var(--cliente-card-text)]">{priorityActions[0]?.title}</p>
+          <Link
+            href={priorityActions[0]?.href || "/cliente/painel/perguntar-altum"}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-4 py-3 text-sm font-bold text-white transition hover:bg-[var(--cliente-primary-hover)]"
+          >
+            Resolver agora
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </PanelCard>
+      </section>
+
+      <section className="hidden gap-4 sm:grid xl:grid-cols-[1fr_360px]">
         <PanelCard tone="spotlight" className="p-4 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4 md:gap-5">
             <div className="min-w-0 max-w-2xl">
@@ -767,7 +908,6 @@ export default function ClientePainelOverviewPage() {
             </div>
             <Link
               href={priorityActions[0]?.href || "/cliente/painel/perguntar-altum"}
-              prefetch={false}
               className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-4 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[var(--cliente-primary-hover)]"
             >
               Resolver agora
@@ -777,13 +917,141 @@ export default function ClientePainelOverviewPage() {
         </PanelCard>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:hidden">
+        <PanelCard className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-black text-[var(--cliente-card-text)]">Trabalho do dia</p>
+              <p className="mt-1 text-sm leading-5 text-[var(--cliente-card-text-soft)]">
+                Atalhos para responder, vender, acompanhar e decidir sem navegar pelo painel inteiro.
+              </p>
+            </div>
+            <ClientBadge label={priorityActions.length ? "agir" : "ok"} tone={priorityActions.length ? priorityActions[0]?.tone || "ai" : "success"} />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {mobileQuickActions.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`rounded-[18px] border p-3 transition ${
+                  item.tone === "success"
+                    ? "border-[color:color-mix(in_srgb,var(--cliente-success)_20%,transparent)] bg-[var(--cliente-success-soft)]"
+                    : item.tone === "warning"
+                      ? "border-[color:color-mix(in_srgb,var(--cliente-warning)_20%,transparent)] bg-[var(--cliente-warning-soft)]"
+                      : item.tone === "ai"
+                        ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_20%,transparent)] bg-[var(--cliente-ai-soft)]"
+                        : "border-[color:color-mix(in_srgb,var(--cliente-primary)_16%,transparent)] bg-[var(--cliente-primary-soft)]"
+                }`}
+              >
+                <p className="text-sm font-black text-[var(--cliente-card-text)]">{item.label}</p>
+                <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{item.detail}</p>
+              </Link>
+            ))}
+          </div>
+        </PanelCard>
+      </section>
+
+      <section className="hidden gap-3 sm:grid md:grid-cols-2 xl:grid-cols-4">
         {liveMetrics.map((item) => (
           <LiveMetricCard key={item.label} item={item} />
         ))}
       </section>
 
-      <PanelCard className="p-4 md:hidden">
+      {showDesktopCharts ? (
+        <section className="client-advanced-layer grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+          <PanelCard className="p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <CardTitle title="Crescimento por origem" subtitle="Leads, reunioes e vendas com leitura visual." />
+              <Link href="/cliente/painel/campanhas" className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
+                Campanhas
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+            <div className="mt-4 h-[260px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={campaignChartData} margin={{ left: -18, right: 8, top: 10, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="leadsGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--cliente-primary)" stopOpacity={0.24} />
+                      <stop offset="95%" stopColor="var(--cliente-primary)" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--cliente-success)" stopOpacity={0.24} />
+                      <stop offset="95%" stopColor="var(--cliente-success)" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={chartGridColor} strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: chartTextColor, fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: chartTextColor, fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ border: "1px solid var(--cliente-border)", borderRadius: 14, background: "var(--cliente-card)", color: "var(--cliente-card-text)" }} />
+                  <Area type="monotone" dataKey="leads" name="Leads" stroke="var(--cliente-primary)" strokeWidth={2.5} fill="url(#leadsGradient)" />
+                  <Area type="monotone" dataKey="vendas" name="Vendas" stroke="var(--cliente-success)" strokeWidth={2.5} fill="url(#salesGradient)" />
+                  <Area type="monotone" dataKey="reunioes" name="Reunioes" stroke="var(--cliente-ai)" strokeWidth={2} fill="transparent" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </PanelCard>
+
+          <PanelCard className="p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <CardTitle title="Funil em movimento" subtitle="Onde estao as oportunidades agora." />
+              <Link href="/cliente/painel/pipeline" className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
+                Funil
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+            <div className="mt-4 h-[260px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stageChartData} margin={{ left: -18, right: 8, top: 10, bottom: 0 }}>
+                  <CartesianGrid stroke={chartGridColor} strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: chartTextColor, fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: chartTextColor, fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ border: "1px solid var(--cliente-border)", borderRadius: 14, background: "var(--cliente-card)", color: "var(--cliente-card-text)" }} />
+                  <Bar dataKey="oportunidades" name="Oportunidades" radius={[8, 8, 0, 0]} fill="var(--cliente-primary)" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </PanelCard>
+        </section>
+      ) : (
+        <section className="client-advanced-layer grid gap-4 sm:hidden">
+          <PanelCard className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <CardTitle title="Campanhas e impacto" subtitle="Leitura rapida para decidir sem abrir relatorio." />
+              <Link href="/cliente/painel/campanhas" className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
+                Ver
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <TinyStat label="Campanhas" value={String(campaignCount || campaigns.length)} />
+              <TinyStat label="CPL" value={cpl ? brl(cpl) : "Sem dado"} />
+              <TinyStat label="Leads" value={String(totalLeads)} />
+              <TinyStat label="Vendas" value={String(wonLeads)} />
+            </div>
+          </PanelCard>
+
+          <PanelCard className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <CardTitle title="Funil agora" subtitle="Oportunidades em andamento no celular." />
+              <Link href="/cliente/painel/pipeline" className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
+                Abrir
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+            <div className="mt-4 space-y-2">
+              {stageChartData.slice(0, 4).map((item) => (
+                <div key={item.name} className="flex items-center justify-between rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
+                  <p className="text-sm font-bold text-[var(--cliente-card-text)]">{item.name}</p>
+                  <ClientBadge label={String(item.oportunidades)} tone="info" />
+                </div>
+              ))}
+            </div>
+          </PanelCard>
+        </section>
+      )}
+
+      <PanelCard className="client-advanced-layer p-4 md:hidden">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-black text-[var(--cliente-card-text)]">Leitura rapida</p>
@@ -795,15 +1063,15 @@ export default function ClientePainelOverviewPage() {
         </div>
       </PanelCard>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="client-advanced-layer grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cycle.map((item) => (
           <CycleCard key={item.id} item={item} />
         ))}
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1.45fr_0.85fr]">
+      <section className="client-overview-workspace grid gap-5 xl:grid-cols-[1.45fr_0.85fr]">
         <div className="space-y-5">
-          <PanelCard className="p-5 md:p-6">
+          <PanelCard className="client-advanced-layer p-5 md:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle title="Fila de dinheiro" subtitle="O que mexe no resultado antes do resto." />
               <ClientActionButton tone="secondary" onClick={() => void loadOverview({ silent: true })} disabled={refreshing}>
@@ -823,7 +1091,6 @@ export default function ClientePainelOverviewPage() {
               <CardTitle title="Campanhas e impacto" subtitle="Leads, reunioes e vendas por origem comercial." />
               <Link
                 href="/cliente/painel/campanhas"
-                prefetch={false}
                 className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]"
               >
                 Ver campanhas
@@ -885,7 +1152,7 @@ export default function ClientePainelOverviewPage() {
           </section>
         </div>
 
-        <aside className="space-y-5 xl:sticky xl:top-24 xl:self-start">
+        <aside className="client-advanced-layer space-y-5 xl:sticky xl:top-24 xl:self-start">
           <PanelCard tone="ai" className="p-5">
             <CardTitle title="IA em operacao" subtitle="Automacao trabalhando no atendimento e no funil." />
             <div className="mt-5 grid gap-3">
@@ -939,6 +1206,7 @@ export default function ClientePainelOverviewPage() {
               </div>
             </div>
             <div className="mt-4 grid gap-2">
+              {!pilotReady ? <MiniLink href="/cliente/painel/onboarding" label={`Continuar implantacao (${num(readiness.onboarding?.progressPct)}%)`} /> : null}
               <MiniLink href="/cliente/painel/configuracoes/canais" label="Canais e pixels" />
               <MiniLink href="/cliente/painel/configuracoes/integracoes" label="Integracoes nativas" />
             </div>
@@ -969,7 +1237,7 @@ function LiveMetricCard({ item }: { item: LiveMetricItem }) {
   }[item.tone];
 
   return (
-    <Link href={item.href} prefetch={false} className="group">
+    <Link href={item.href} className="group">
       <PanelCard className="h-full p-4 transition group-hover:border-[var(--cliente-border-strong)] group-hover:bg-[var(--cliente-surface-hover)]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -996,7 +1264,7 @@ function CycleCard({ item }: { item: CycleItem }) {
   }[item.tone];
 
   return (
-    <Link href={item.href} prefetch={false} className="group">
+    <Link href={item.href} className="group">
       <PanelCard className="h-full p-4 transition group-hover:border-[var(--cliente-border-strong)]">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -1021,7 +1289,6 @@ function PriorityRow({ item }: { item: PriorityItem }) {
   return (
     <Link
       href={item.href}
-      prefetch={false}
       className="group rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3.5 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-hover)]"
     >
       <div className="flex items-start justify-between gap-4">
@@ -1077,7 +1344,7 @@ function WorkPanel({
     <PanelCard className="p-4">
       <div className="flex items-start justify-between gap-3">
         <CardTitle title={title} subtitle={subtitle} />
-        <Link href={href} prefetch={false} className="rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-2 text-[var(--cliente-card-text-soft)] transition hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-primary)]">
+        <Link href={href} className="rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-2 text-[var(--cliente-card-text-soft)] transition hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-primary)]">
           <ArrowRight className="h-4 w-4" />
         </Link>
       </div>
@@ -1090,7 +1357,7 @@ function WorkPanel({
 
 function ChatRow({ item }: { item: ChatItem }) {
   return (
-    <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.id)}`} prefetch={false} className="block rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-hover)]">
+    <Link href={`/cliente/painel/inbox?chatId=${encodeURIComponent(item.id)}`} className="block rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-hover)]">
       <div className="flex items-center justify-between gap-3">
         <p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{chatName(item)}</p>
         <ClientBadge label={item.aiState?.aiEnabled === false ? "humano" : "IA"} tone={item.aiState?.aiEnabled === false ? "info" : "ai"} />
@@ -1103,7 +1370,7 @@ function ChatRow({ item }: { item: ChatItem }) {
 function LeadRow({ item }: { item: LeadItem }) {
   const stage = normalizeStage(item.pipelineStage || item.stage);
   return (
-    <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.id)}`} prefetch={false} className="block rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-hover)]">
+    <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.id)}`} className="block rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-hover)]">
       <div className="flex items-center justify-between gap-3">
         <p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{leadName(item)}</p>
         <ClientBadge label={num(item.score) ? `${num(item.score)} pts` : "lead"} tone="info" />
@@ -1115,7 +1382,7 @@ function LeadRow({ item }: { item: LeadItem }) {
 
 function AppointmentRow({ item }: { item: AppointmentItem }) {
   return (
-    <Link href="/cliente/painel/agenda" prefetch={false} className="block rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-hover)]">
+    <Link href="/cliente/painel/agenda" className="block rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-hover)]">
       <div className="flex items-center justify-between gap-3">
         <p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{item.title || item.leadName || "Compromisso"}</p>
         <ClientBadge label={item.type || "agenda"} tone="info" />
@@ -1127,7 +1394,7 @@ function AppointmentRow({ item }: { item: AppointmentItem }) {
 
 function FollowUpRow({ item }: { item: FollowUpItem }) {
   return (
-    <Link href={item.leadId ? `/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}` : "/cliente/painel/follow-ups"} prefetch={false} className="block rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-hover)]">
+    <Link href={item.leadId ? `/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}` : "/cliente/painel/follow-ups"} className="block rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3 transition hover:bg-[var(--cliente-surface-hover)]">
       <div className="flex items-center justify-between gap-3">
         <p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{item.title || "Retorno"}</p>
         <ClientBadge label={item.overdue ? "atrasado" : item.dueToday ? "hoje" : "pendente"} tone={item.overdue ? "danger" : item.dueToday ? "info" : "warning"} />
@@ -1172,7 +1439,7 @@ function TinyStat({ label, value }: { label: string; value: string }) {
 
 function MiniLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link href={href} prefetch={false} className="flex items-center justify-between rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-hover)]">
+    <Link href={href} className="flex items-center justify-between rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2.5 text-sm font-bold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-surface-hover)]">
       {label}
       <ArrowRight className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
     </Link>

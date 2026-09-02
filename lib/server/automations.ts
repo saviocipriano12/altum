@@ -2,6 +2,7 @@ import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { sendTenantChatText } from "@/lib/server/chat-dispatch";
+import { reserveTenantAutomationExecution } from "@/lib/server/tenant-usage";
 
 export type TenantAutomationTrigger =
   | "lead_created"
@@ -980,6 +981,34 @@ export async function processPendingAutomationActions(input?: { tenantId?: strin
         throw new Error("Job agendado sem contexto valido.");
       }
 
+      const usageReservation = await reserveTenantAutomationExecution(tenantId);
+      if (!usageReservation.allowed) {
+        await Promise.all([
+          claimed.ref.set({
+            status: "done",
+            actionsExecuted: 0,
+            updatedAt: FieldValue.serverTimestamp(),
+            completedAt: FieldValue.serverTimestamp(),
+            lastError: "tenant_automation_limit_exceeded",
+          }, { merge: true }),
+          createExecutionLog({
+            tenantId,
+            automationId,
+            automationName,
+            trigger: jobTrigger,
+            leadId,
+            chatId: jobChatId || null,
+            channel: jobChannel || null,
+            status: "skipped",
+            matched: true,
+            actionsExecuted: 0,
+            detail: `Limite mensal de automacoes atingido (${usageReservation.currentUsage}/${usageReservation.limit}).`,
+          }),
+        ]);
+        completed += 1;
+        continue;
+      }
+
       const leadRef = adminDb.collection("leads").doc(leadId);
       const leadSnap = await leadRef.get();
       if (!leadSnap.exists) {
@@ -1126,6 +1155,24 @@ export async function runLeadAutomations(context: LeadAutomationContext) {
     }
 
     matched += 1;
+
+    const usageReservation = await reserveTenantAutomationExecution(context.tenantId);
+    if (!usageReservation.allowed) {
+      await createExecutionLog({
+        tenantId: context.tenantId,
+        automationId: automation.id,
+        automationName: automation.name,
+        trigger: context.trigger,
+        leadId: context.leadId,
+        chatId: context.chatId || null,
+        channel: cleanText(context.channel, 80).toLowerCase() || null,
+        status: "skipped",
+        matched: true,
+        actionsExecuted: 0,
+        detail: `Limite mensal de automacoes atingido (${usageReservation.currentUsage}/${usageReservation.limit}).`,
+      });
+      continue;
+    }
 
     try {
       const actionsExecuted = await executeActions(automation, leadRef, lead, context);

@@ -3,6 +3,8 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { syncRecentMessengerConversationsForTenant } from "@/lib/server/meta-conversation-sync";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { canAccessAssignedCommercialRecord } from "@/lib/server/commercial-access";
 
 type ChatStateItem = {
   aiEnabled: boolean;
@@ -53,6 +55,24 @@ type LeadSignalItem = {
   stage?: string;
 };
 
+type ChatEnrichment = {
+  contacts: Awaited<ReturnType<typeof listContactProfiles>>;
+  leadSignals: Awaited<ReturnType<typeof listLeadSignals>>;
+};
+
+function emptyChatEnrichment(): ChatEnrichment {
+  return {
+    contacts: { byPhone: new Map(), byLeadId: new Map() },
+    leadSignals: { byLeadId: new Map(), byPhone: new Map() },
+  };
+}
+
+const ENRICHMENT_CACHE_TTL_MS = 30_000;
+const enrichmentCache = new Map<
+  string,
+  { expiresAt: number; value?: ChatEnrichment; inFlight?: Promise<ChatEnrichment> }
+>();
+
 function toTime(value: unknown) {
   if (!value) return 0;
   if (typeof value === "number") return value;
@@ -93,6 +113,7 @@ async function listContactProfiles(tenantId: string) {
   const snap = await adminDb
     .collection("contacts")
     .where("tenantId", "==", tenantId)
+    .select("phone", "leadId", "name", "company", "photoUrl")
     .limit(500)
     .get();
 
@@ -124,6 +145,7 @@ async function listLeadSignals(tenantId: string) {
   const snap = await adminDb
     .collection("leads")
     .where("tenantId", "==", tenantId)
+    .select("telefone", "heat", "aiCommercialTemperature", "aiNextAction", "priority", "pipelineStage", "stage")
     .limit(500)
     .get();
 
@@ -154,6 +176,46 @@ async function listLeadSignals(tenantId: string) {
   return { byLeadId, byPhone };
 }
 
+async function listRecentChats(tenantId: string, pageLimit: number) {
+  try {
+    return await adminDb
+      .collection("chats")
+      .where("tenantId", "==", tenantId)
+      .orderBy("lastMessageTime", "desc")
+      .limit(pageLimit)
+      .get();
+  } catch (error) {
+    // Uma instalacao antiga pode ainda estar sem o indice composto. A inbox
+    // continua funcional durante essa propagacao, sem bloquear a operacao.
+    console.warn("Indice de ordenacao da inbox indisponivel; usando fallback:", error);
+    return adminDb.collection("chats").where("tenantId", "==", tenantId).limit(pageLimit).get();
+  }
+}
+
+async function getChatEnrichment(tenantId: string) {
+  const cached = enrichmentCache.get(tenantId);
+  if (cached?.value && cached.expiresAt > Date.now()) return cached.value;
+  if (cached?.inFlight) return cached.inFlight;
+
+  const inFlight = Promise.all([listContactProfiles(tenantId), listLeadSignals(tenantId)]).then(
+    ([contacts, leadSignals]) => ({ contacts, leadSignals })
+  );
+  enrichmentCache.set(tenantId, { expiresAt: 0, inFlight });
+
+  try {
+    const value = await inFlight;
+    if (enrichmentCache.size >= 100) {
+      const oldestTenantId = enrichmentCache.keys().next().value;
+      if (oldestTenantId && oldestTenantId !== tenantId) enrichmentCache.delete(oldestTenantId);
+    }
+    enrichmentCache.set(tenantId, { value, expiresAt: Date.now() + ENRICHMENT_CACHE_TTL_MS });
+    return value;
+  } catch (error) {
+    enrichmentCache.delete(tenantId);
+    throw error;
+  }
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -162,23 +224,41 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     assertTenantRole(membership, "client_viewer");
 
-    await syncRecentMessengerConversationsForTenant(tenantId).catch((error) => {
-      console.warn("Falha ao sincronizar conversas recentes do Messenger:", error);
-    });
+    const url = new URL(req.url);
+    const compact = url.searchParams.get("view") === "compact";
+    const requestedLimit = Number(url.searchParams.get("limit") || (compact ? 100 : 200));
+    const boundedLimit = Number.isFinite(requestedLimit)
+      ? Math.max(25, Math.min(200, Math.round(requestedLimit)))
+      : 200;
+    const pageLimit = compact ? Math.min(100, boundedLimit) : boundedLimit;
+    const syncExternal = url.searchParams.get("sync") === "recent";
 
-    const snap = await adminDb
-      .collection("chats")
-      .where("tenantId", "==", tenantId)
-      .limit(200)
-      .get();
+    if (syncExternal) {
+      await syncRecentMessengerConversationsForTenant(tenantId).catch((error) => {
+        console.warn("Falha ao sincronizar conversas recentes do Messenger:", error);
+      });
+    }
 
-    const stateSnap = await adminDb
-      .collection("chat_state")
-      .where("tenantId", "==", tenantId)
-      .limit(500)
-      .get();
+    const [snap, stateSnap, enrichment] = await Promise.all([
+      listRecentChats(tenantId, pageLimit),
+      compact
+        ? Promise.resolve({ docs: [] as FirebaseFirestore.QueryDocumentSnapshot[] })
+        : adminDb.collection("chat_state")
+            .where("tenantId", "==", tenantId)
+            .select(
+              "chatId", "aiEnabled", "pausedUntil", "humanOwnerUserId", "updatedByName", "pauseReason", "updatedAt",
+              "lastJobStatus", "lastJobError", "lastJobErrorCode", "lastDecision", "lastDecisionReason", "lastDecisionReasonCode",
+              "lastProcessedAt", "lastJobId", "lastMessageId", "lastHandoffNotifyAt", "lastHandoffNotifyMessageId",
+              "lastHandoffNotifyStatus", "lastHandoffNotifyRecipients", "lastHandoffNotifySuccessCount", "lastHandoffNotifyFailureCount"
+            )
+            .limit(500)
+            .get(),
+      compact ? Promise.resolve(emptyChatEnrichment()) : getChatEnrichment(tenantId),
+    ]);
+    const { contacts, leadSignals } = enrichment;
 
     const stateMap = new Map<string, ChatStateItem>(
       stateSnap.docs.map((doc) => {
@@ -223,11 +303,6 @@ export async function GET(
       })
     );
 
-    const [contacts, leadSignals] = await Promise.all([
-      listContactProfiles(tenantId),
-      listLeadSignals(tenantId),
-    ]);
-
     const items: ChatListItem[] = snap.docs
       .map((doc) => ({
         id: doc.id,
@@ -264,9 +339,11 @@ export async function GET(
         })(),
         aiState: stateMap.get(doc.id) || null,
       }) as ChatListItem)
+      .filter((chat) => !cleanString(chat.mergedIntoChatId, 180))
+      .filter((chat) => canAccessAssignedCommercialRecord(membership, user.uid, chat))
       .sort((a, b) => toTime(b.lastMessageTime) - toTime(a.lastMessageTime));
 
-    return NextResponse.json({ ok: true, tenantId, items });
+    return NextResponse.json({ ok: true, tenantId, items, limit: pageLimit });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });

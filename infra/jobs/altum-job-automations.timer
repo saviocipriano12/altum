@@ -1,0 +1,11 @@
+[Unit]
+Description=Processa automacoes da Altum diariamente
+
+[Timer]
+OnCalendar=*-*-* 03:05:00 UTC
+Persistent=true
+Unit=altum-job@automations.service
+
+[Install]
+WantedBy=timers.target
+

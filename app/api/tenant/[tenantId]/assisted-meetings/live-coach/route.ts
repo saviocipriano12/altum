@@ -3,6 +3,7 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { generateLiveMeetingCoach } from "@/lib/server/ai/meeting-assistant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   leadId?: string | null;
@@ -32,6 +33,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "assisted_meetings");
     assertTenantRole(membership, "client_viewer");
 
     const body = (await req.json().catch(() => ({}))) as Body;

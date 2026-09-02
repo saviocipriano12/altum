@@ -3,14 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-import {
-  collection,
-  onSnapshot,
-  query,
-  orderBy,
-  where,
-} from "firebase/firestore";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -52,7 +44,7 @@ interface Orcamento {
   valorTotal?: number;
   validade?: string;
   resumo?: string;
-  createdAt?: TimestampLike | number | null;
+  createdAt?: TimestampLike | number | string | null;
 }
 
 const STATUS_OPTIONS: OrcamentoStatus[] = [
@@ -65,13 +57,14 @@ const STATUS_OPTIONS: OrcamentoStatus[] = [
 const TIPO_OPTIONS: OrcamentoTipo[] = ["Projeto unico", "Recorrente"];
 
 export default function OrcamentosPage() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [clientes, setClientes] = useState<ClienteOption[]>([]);
   const [projetos, setProjetos] = useState<ProjetoOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [form, setForm] = useState({
     clientId: "",
@@ -84,99 +77,43 @@ export default function OrcamentosPage() {
     resumo: "",
   });
 
-  // Carrega clientes
+  // A listagem usa a camada autenticada do servidor, sem listeners bloqueados no browser.
   useEffect(() => {
     if (!user) {
       setClientes([]);
       return;
     }
 
-    const clientsRef = collection(db, "clientes");
-    const q = isAdmin
-      ? query(clientsRef, orderBy("name", "asc"))
-      : query(clientsRef, where("ownerId", "==", user.uid));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs: ClienteOption[] = snap.docs.map((d) => ({
-          id: d.id,
-          name: ((d.data() as { name?: string }).name) || "Cliente sem nome",
-        }));
-        setClientes(docs);
-      },
-      (err) => {
-        console.error("Erro ao carregar clientes para orcamentos:", err);
-      }
-    );
-
-    return () => unsub();
-  }, [user, isAdmin]);
-
-  // Carrega projetos
-  useEffect(() => {
-    if (!user) {
-      setProjetos([]);
-      return;
-    }
-
-    const projectsRef = collection(db, "projetos");
-    const q = isAdmin
-      ? query(projectsRef, orderBy("createdAt", "desc"))
-      : query(projectsRef, where("ownerId", "==", user.uid));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs: ProjetoOption[] = snap.docs.map((d) => {
-          const data = d.data() as { titulo?: string; clientName?: string };
-          return {
-            id: d.id,
-            titulo: data.titulo || "Projeto",
-            clientName: data.clientName || "Cliente",
-          };
-        });
-        setProjetos(docs);
-      },
-      (err) => {
-        console.error("Erro ao carregar projetos para orcamentos:", err);
-      }
-    );
-
-    return () => unsub();
-  }, [user, isAdmin]);
-
-  // Carrega orcamentos
-  useEffect(() => {
-    if (!user) {
-      setOrcamentos([]);
-      setLoading(false);
-      return;
-    }
-
-    const budgetsRef = collection(db, "orcamentos");
-    const q = isAdmin
-      ? query(budgetsRef, orderBy("createdAt", "desc"))
-      : query(budgetsRef, where("ownerId", "==", user.uid));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs: Orcamento[] = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<Orcamento, "id">),
-        }));
-        setOrcamentos(docs);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Erro ao carregar orcamentos:", err);
-        setLoading(false);
-      }
-    );
-
-    return () => unsub();
-  }, [user, isAdmin]);
+    let cancelled = false;
+    setLoading(true);
+    void Promise.all([
+      authedFetch("/api/clientes"),
+      authedFetch("/api/admin/dashboard?include=projetos,orcamentos"),
+    ])
+      .then(async ([clientsResponse, dashboardResponse]) => {
+        const clientsPayload = (await clientsResponse.json()) as { clientes?: ClienteOption[] };
+        const dashboardPayload = (await dashboardResponse.json()) as { projetos?: ProjetoOption[]; orcamentos?: Orcamento[] };
+        if (!clientsResponse.ok || !dashboardResponse.ok) throw new Error("Falha ao carregar orçamentos.");
+        if (cancelled) return;
+        setClientes(Array.isArray(clientsPayload.clientes) ? clientsPayload.clientes : []);
+        setProjetos(Array.isArray(dashboardPayload.projetos) ? dashboardPayload.projetos : []);
+        setOrcamentos(Array.isArray(dashboardPayload.orcamentos) ? dashboardPayload.orcamentos : []);
+      })
+      .catch((error) => {
+        console.error("Erro ao carregar orçamentos:", error);
+        if (!cancelled) {
+          setClientes([]);
+          setProjetos([]);
+          setOrcamentos([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, refreshKey]);
 
   const filteredOrcamentos = useMemo(() => {
     if (!search.trim()) return orcamentos;
@@ -231,6 +168,8 @@ export default function OrcamentosPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Falha ao criar orcamento.");
+
+      setRefreshKey((value) => value + 1);
 
       setForm({
         clientId: "",

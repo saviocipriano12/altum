@@ -13,7 +13,11 @@ type SearchResponse = {
   chats?: Array<{ id: string; contactName: string; contactPhone?: string; preview?: string }>;
   budgets?: Array<{ id: string; title: string; leadId?: string; leadName?: string; status?: string }>;
   finance?: Array<{ id: string; description: string; leadId?: string; leadName?: string; status?: string; type?: string }>;
+  tasks?: Array<{ id: string; title: string; leadId?: string; leadName?: string; status?: string; dueAt?: string | null }>;
+  orders?: Array<{ id: string; orderNumber: string; customerName: string; leadId?: string; status?: string; totalPrice?: number | null; currency?: string }>;
 };
+
+const EMPTY_RESULTS: SearchResponse = { modules: [], leads: [], chats: [], budgets: [], finance: [], tasks: [], orders: [] };
 
 export function ClienteGlobalSearch() {
   const router = useRouter();
@@ -35,10 +39,10 @@ export function ClienteGlobalSearch() {
         target?.tagName === "SELECT" ||
         Boolean(target?.isContentEditable);
 
-      if (event.key === "/" && !isTypingContext) {
+      if ((event.key === "/" && !isTypingContext) || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k")) {
         event.preventDefault();
         setOpen(true);
-        inputRef.current?.focus();
+        window.requestAnimationFrame(() => inputRef.current?.focus());
         return;
       }
 
@@ -65,10 +69,13 @@ export function ClienteGlobalSearch() {
     if (!tenant?.tenantId) return;
 
     const normalized = query.trim();
+    const controller = new AbortController();
     const timeout = setTimeout(async () => {
       try {
         setLoading(true);
-        const res = await authedFetch(`/api/tenant/${tenant.tenantId}/search?q=${encodeURIComponent(normalized)}`);
+        const res = await authedFetch(`/api/tenant/${tenant.tenantId}/search?q=${encodeURIComponent(normalized)}`, {
+          signal: controller.signal,
+        });
         const payload = (await res.json()) as SearchResponse;
 
         if (res.ok) {
@@ -78,19 +85,24 @@ export function ClienteGlobalSearch() {
             chats: payload.chats || [],
             budgets: payload.budgets || [],
             finance: payload.finance || [],
+            tasks: payload.tasks || [],
+            orders: payload.orders || [],
           });
           return;
         }
 
-        setData({ modules: [], leads: [], chats: [], budgets: [], finance: [] });
+        setData(EMPTY_RESULTS);
       } catch {
-        setData({ modules: [], leads: [], chats: [], budgets: [], finance: [] });
+        if (!controller.signal.aborted) setData(EMPTY_RESULTS);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }, 220);
 
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [query, tenant?.tenantId]);
 
   const hasAnyResult = useMemo(() => {
@@ -99,7 +111,9 @@ export function ClienteGlobalSearch() {
         (data.leads || []).length ||
         (data.chats || []).length ||
         (data.budgets || []).length ||
-        (data.finance || []).length
+        (data.finance || []).length ||
+        (data.tasks || []).length ||
+        (data.orders || []).length
     );
   }, [data]);
 
@@ -154,7 +168,7 @@ export function ClienteGlobalSearch() {
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar cliente, conversa, oportunidade ou proposta"
+          placeholder="Buscar cliente, conversa, pedido, proposta ou tarefa"
           className="w-full bg-transparent text-sm text-[var(--cliente-text)] outline-none placeholder:text-[var(--cliente-text-soft)] xl:w-[320px]"
         />
         <span className="hidden items-center gap-1 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2 py-1 text-[10px] font-semibold text-[var(--cliente-text-soft)] lg:inline-flex">
@@ -247,11 +261,53 @@ export function ClienteGlobalSearch() {
                   ))}
                 </SearchSection>
               ) : null}
+
+              {(data.tasks || []).length ? (
+                <SearchSection title="Tarefas">
+                  {(data.tasks || []).map((item) => (
+                    <SearchButton
+                      key={item.id}
+                      title={item.title}
+                      subtitle={`${item.leadName || "Sem cliente vinculado"} | ${item.status === "done" ? "Concluida" : "Pendente"}`}
+                      onClick={() =>
+                        navigate(
+                          item.leadId
+                            ? `/cliente/painel/follow-ups?leadId=${encodeURIComponent(item.leadId)}&taskId=${encodeURIComponent(item.id)}`
+                            : "/cliente/painel/follow-ups"
+                        )
+                      }
+                    />
+                  ))}
+                </SearchSection>
+              ) : null}
+
+              {(data.orders || []).length ? (
+                <SearchSection title="Pedidos">
+                  {(data.orders || []).map((item) => (
+                    <SearchButton
+                      key={item.id}
+                      title={`Pedido ${item.orderNumber}`}
+                      subtitle={`${item.customerName} | ${item.status || "Recebido"}${
+                        typeof item.totalPrice === "number"
+                          ? ` | ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: item.currency || "BRL" }).format(item.totalPrice)}`
+                          : ""
+                      }`}
+                      onClick={() =>
+                        navigate(
+                          item.leadId
+                            ? `/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`
+                            : "/cliente/painel/produtos-servicos"
+                        )
+                      }
+                    />
+                  ))}
+                </SearchSection>
+              ) : null}
             </div>
           ) : (
             <div className="py-8 text-center">
               <p className="text-sm font-medium text-[var(--cliente-text)]">Nenhum resultado encontrado</p>
-              <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Tente outro termo para buscar modulos, contatos, propostas ou conversas.</p>
+              <p className="mt-1 text-xs text-[var(--cliente-text-soft)]">Tente outro termo para buscar clientes, conversas, pedidos, propostas ou tarefas.</p>
             </div>
           )}
         </div>

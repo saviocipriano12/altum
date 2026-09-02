@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type SnapshotRow = {
   id: string;
@@ -82,6 +83,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     if (!hasTenantCapability(membership, "view_metrics") && !hasTenantCapability(membership, "manage_channels")) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para ver campanhas.");
     }

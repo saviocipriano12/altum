@@ -12,7 +12,7 @@ export default function TypebotBubble() {
     script.type = "module";
     // Usamos a versão "latest" (mais recente) para evitar bugs de versão antiga
     script.innerHTML = `
-      import Typebot from 'https://cdn.jsdelivr.net/npm/@typebot.io/js/dist/web.js';
+      import Typebot from 'https://cdn.jsdelivr.net/npm/@typebot.io/js@0.10.9/dist/web.js';
       
       Typebot.initBubble({
         typebot: "altumia", // SEU ID

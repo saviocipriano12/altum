@@ -3,6 +3,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   text?: string;
@@ -57,7 +59,9 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId, chatId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     assertTenantRole(membership, "client_viewer");
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
     await assertChatInTenant(chatId, tenantId);
 
     const snap = await adminDb
@@ -97,7 +101,9 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId, chatId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     assertTenantCapability(membership, "respond_inbox");
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
 
     const { chat } = await assertChatInTenant(chatId, tenantId);
     const body = (await req.json()) as Body;

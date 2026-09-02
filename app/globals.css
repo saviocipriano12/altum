@@ -533,37 +533,30 @@ body {
 .crm-refined .crm-list-panel,
 .crm-refined .crm-lead-sheet,
 .crm-refined .crm-edit-modal {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 96%, white 4%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent)),
-    radial-gradient(circle at top right, var(--cliente-accent-glow), transparent 34%);
-  box-shadow: 0 28px 56px -40px rgba(15, 23, 42, 0.34);
+  background: var(--cliente-card);
+  box-shadow: 0 18px 36px -30px rgba(15, 23, 42, 0.14);
 }
 
 .crm-refined .crm-list-head,
 .crm-refined .crm-lead-sheet-header {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 92%, white 8%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
+  background: var(--cliente-panel-soft);
 }
 
 .crm-refined .crm-contact-card {
   margin-bottom: 0.8rem;
   border: 1px solid color-mix(in srgb, var(--cliente-border) 84%, transparent);
-  border-radius: 28px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 98%, white 2%), color-mix(in srgb, var(--cliente-surface-muted) 100%, transparent));
-  box-shadow: 0 18px 34px -30px rgba(15, 23, 42, 0.28);
+  border-radius: 18px;
+  background: var(--cliente-card);
+  box-shadow: 0 14px 30px -28px rgba(15, 23, 42, 0.12);
 }
 
 .crm-refined .crm-contact-card:hover {
-  transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--cliente-border-strong) 78%, transparent);
 }
 
 .crm-refined .crm-contact-card-active {
   border-color: color-mix(in srgb, var(--cliente-border-strong) 86%, transparent);
-  box-shadow:
-    0 24px 44px -32px rgba(15, 23, 42, 0.28),
-    0 14px 28px -20px var(--cliente-accent-glow);
+  box-shadow: 0 18px 36px -30px rgba(37, 99, 235, 0.18);
 }
 
 .crm-refined .crm-contact-avatar {
@@ -596,9 +589,9 @@ body {
 .inbox-refined .inbox-thread-shell,
 .pipeline-refined .pipeline-overview-card,
 .pipeline-refined .pipeline-board-shell {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 94%, white 6%), color-mix(in srgb, var(--cliente-card) 100%, transparent)),
-    radial-gradient(circle at top right, var(--cliente-accent-glow), transparent 38%);
+  background: var(--cliente-card);
+  border: 1px solid var(--cliente-border);
+  box-shadow: 0 18px 36px -30px rgba(15, 23, 42, 0.12);
 }
 
 .inbox-refined .inbox-conversation-card {
@@ -669,9 +662,8 @@ body {
 }
 
 .pipeline-refined .pipeline-highlight-card {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 95%, white 5%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
-  box-shadow: 0 20px 42px -32px rgba(15, 23, 42, 0.45);
+  background: var(--cliente-panel-soft);
+  box-shadow: none;
 }
 
 .pipeline-refined .pipeline-board-shell {
@@ -679,34 +671,26 @@ body {
 }
 
 .pipeline-refined .pipeline-board-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background: radial-gradient(circle at top right, var(--cliente-accent-glow), transparent 32%);
-  opacity: 0.9;
+  display: none;
 }
 
 .pipeline-refined .pipeline-column-shell {
   position: relative;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 94%, white 6%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
-  box-shadow: 0 22px 44px -34px rgba(15, 23, 42, 0.44);
+  background: color-mix(in srgb, var(--cliente-panel-soft) 76%, white 24%);
+  box-shadow: none;
 }
 
 .pipeline-refined .pipeline-column-head {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: transparent;
+  box-shadow: none;
 }
 
 .pipeline-refined .pipeline-lead-card {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 94%, white 6%), color-mix(in srgb, var(--cliente-surface-muted) 100%, transparent));
-  box-shadow: 0 18px 34px -28px rgba(15, 23, 42, 0.42);
+  background: var(--cliente-card);
+  box-shadow: 0 12px 24px -22px rgba(15, 23, 42, 0.16);
 }
 
 .pipeline-refined .pipeline-lead-card:hover {
-  transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--cliente-border-strong) 82%, transparent);
 }
 
@@ -2216,32 +2200,27 @@ body {
 
 .pipeline-refined .pipeline-overview-card,
 .pipeline-refined .pipeline-board-shell {
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--cliente-accent) 8%, transparent), transparent 38%),
-    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 98%, white 2%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
-  box-shadow: 0 28px 58px -42px rgba(15, 23, 42, 0.32);
+  background: var(--cliente-card);
+  border: 1px solid var(--cliente-border);
+  box-shadow: 0 18px 36px -30px rgba(15, 23, 42, 0.12);
 }
 
 .pipeline-refined .pipeline-column-shell {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cliente-panel-soft) 94%, white 6%), color-mix(in srgb, var(--cliente-card) 100%, transparent));
-  box-shadow: 0 24px 48px -36px rgba(15, 23, 42, 0.28);
+  background: color-mix(in srgb, var(--cliente-panel-soft) 76%, white 24%);
+  box-shadow: none;
 }
 
 .pipeline-refined .pipeline-column-head {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cliente-card) 97%, white 3%), color-mix(in srgb, var(--cliente-panel-soft) 100%, transparent));
+  background: transparent;
 }
 
 .pipeline-refined .pipeline-lead-card {
-  box-shadow:
-    0 18px 34px -30px rgba(15, 23, 42, 0.24),
-    inset 0 1px 0 rgba(255,255,255,0.05);
+  background: var(--cliente-card);
+  box-shadow: 0 12px 24px -22px rgba(15, 23, 42, 0.16);
 }
 
 .pipeline-refined .pipeline-lead-card:hover {
   border-color: color-mix(in srgb, var(--cliente-border-strong) 82%, transparent);
-  transform: translateY(-2px);
 }
 
 html { scroll-behavior: smooth; }
@@ -2389,28 +2368,28 @@ html { scroll-behavior: smooth; }
 
 .client-portal[data-client-style="v3"] {
   --cliente-font-family: "Inter", Aptos, "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  --cliente-bg: #f4f7fb;
-  --cliente-bg-elevated: #edf4ff;
+  --cliente-bg: #f5f6f8;
+  --cliente-bg-elevated: #eef1f5;
   --cliente-panel: #ffffff;
   --cliente-panel-solid: #ffffff;
-  --cliente-panel-soft: #f7faff;
+  --cliente-panel-soft: #f7f8fa;
   --cliente-surface: #ffffff;
   --cliente-card: #ffffff;
   --cliente-card-text: #0b1220;
   --cliente-card-text-muted: #334155;
   --cliente-card-text-soft: #64748b;
   --cliente-sidebar: #ffffff;
-  --cliente-sidebar-card: #f5f8ff;
+  --cliente-sidebar-card: #f6f7f9;
   --cliente-topbar: #ffffff;
-  --cliente-border: #d8e2ef;
-  --cliente-border-strong: rgba(0, 87, 255, 0.42);
+  --cliente-border: #dde2e8;
+  --cliente-border-strong: rgba(49, 91, 143, 0.38);
   --cliente-text: #0b1220;
   --cliente-text-muted: #334155;
   --cliente-text-soft: #64748b;
-  --cliente-primary: #0057ff;
-  --cliente-primary-hover: #0042c7;
-  --cliente-primary-soft: rgba(0, 87, 255, 0.1);
-  --cliente-primary-glow: rgba(0, 87, 255, 0.22);
+  --cliente-primary: #315b8f;
+  --cliente-primary-hover: #25466f;
+  --cliente-primary-soft: rgba(49, 91, 143, 0.1);
+  --cliente-primary-glow: rgba(49, 91, 143, 0.18);
   --cliente-success: #00a66a;
   --cliente-success-soft: rgba(0, 166, 106, 0.11);
   --cliente-ai: #8b5cf6;
@@ -2437,11 +2416,11 @@ html { scroll-behavior: smooth; }
   --cliente-accent-glow: var(--cliente-primary-glow);
   --cliente-accent-secondary-glow: var(--cliente-ai-glow);
   --cliente-input-bg: #ffffff;
-  --cliente-surface-muted: #eef4fb;
-  --cliente-surface-hover: #e8f0fb;
+  --cliente-surface-muted: #f0f2f5;
+  --cliente-surface-hover: #e9edf2;
   --cliente-stripe: rgba(15, 23, 42, 0.045);
-  --cliente-shadow-soft: 0 14px 32px rgba(15, 23, 42, 0.07);
-  --cliente-shadow-hard: 0 24px 58px rgba(15, 23, 42, 0.14);
+  --cliente-shadow-soft: 0 10px 28px rgba(15, 23, 42, 0.055);
+  --cliente-shadow-hard: 0 22px 52px rgba(15, 23, 42, 0.11);
   color: var(--cliente-text);
   letter-spacing: 0;
 }
@@ -2559,7 +2538,239 @@ html { scroll-behavior: smooth; }
 }
 
 .client-portal[data-client-style="v3"] .client-shell-ambient::before {
-  opacity: 0.12;
+  opacity: 0;
+}
+
+/* Movimento premium da area do cliente: curto, funcional e sem bloquear interacao. */
+@keyframes client-route-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes client-surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes client-popover-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.975);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes client-message-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes client-opening-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes client-opening-mark {
+  0% {
+    opacity: 0;
+    transform: scale(0.88) rotate(-2deg);
+  }
+  72% {
+    opacity: 1;
+    transform: scale(1.035) rotate(0deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.client-portal[data-client-style="v3"] .client-route-stage {
+  animation: client-route-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.client-portal[data-client-style="v3"] .client-route-stage .client-panel-card {
+  animation: client-surface-enter 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.client-portal[data-client-style="v3"] .client-route-stage :is(section, aside, div) > .client-panel-card:nth-child(2) {
+  animation-delay: 35ms;
+}
+
+.client-portal[data-client-style="v3"] .client-route-stage :is(section, aside, div) > .client-panel-card:nth-child(3) {
+  animation-delay: 70ms;
+}
+
+.client-portal[data-client-style="v3"] .client-route-stage :is(section, aside, div) > .client-panel-card:nth-child(n + 4) {
+  animation-delay: 95ms;
+}
+
+.client-portal[data-client-style="v3"] .client-popover {
+  transform-origin: top right;
+  animation: client-popover-enter 210ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.client-portal[data-client-style="v3"] .client-customer-drawer {
+  transition-duration: 360ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.client-portal[data-client-style="v3"] .client-drawer-backdrop {
+  transition-duration: 260ms;
+}
+
+.client-opening-content {
+  animation: client-opening-enter 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.client-opening-mark {
+  animation: client-opening-mark 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.client-portal[data-client-style="v3"] :is(button, a[href], [role="button"]):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--cliente-primary) 24%, transparent);
+  outline-offset: 3px;
+}
+
+.client-portal[data-client-style="v3"] :is(button, a[href], [role="button"]):active:not(:disabled) {
+  transform: scale(0.985);
+  transition-duration: 90ms;
+}
+
+.client-portal[data-client-style="v3"] :is(input, textarea, select):focus {
+  border-color: color-mix(in srgb, var(--cliente-primary) 42%, var(--cliente-border));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cliente-primary) 9%, transparent);
+  outline: none;
+}
+
+.client-portal[data-client-style="v3"] .client-bottom-nav {
+  backdrop-filter: blur(18px) saturate(130%);
+}
+
+.client-portal[data-client-style="v3"] .client-bottom-nav a {
+  position: relative;
+}
+
+.client-portal[data-client-style="v3"] .client-bottom-nav a[aria-current="page"] {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px -20px var(--cliente-primary-glow);
+}
+
+.client-portal[data-client-style="v3"] .client-bottom-nav a[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.5;
+  transform: translateX(-50%);
+}
+
+.client-portal[data-client-style="v3"] .inbox-refined :is(.inbox-message-in, .inbox-message-out, .inbox-message-system) {
+  transform-origin: bottom;
+  animation: client-message-enter 230ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.client-portal[data-client-style="v3"] .inbox-refined .inbox-chat-input:focus-within {
+  border-color: color-mix(in srgb, var(--cliente-success) 38%, var(--cliente-border)) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cliente-success) 8%, transparent), var(--cliente-shadow-soft);
+}
+
+.client-portal[data-client-style="v3"] .crm-refined :is(.crm-contact-card, .pipeline-card) {
+  transform-origin: center;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .client-portal[data-client-style="v3"] .crm-refined :is(.crm-contact-card, .pipeline-card):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 38px -28px rgba(15, 23, 42, 0.24);
+  }
+
+  .client-portal[data-client-style="v3"] .client-panel-card:hover {
+    border-color: color-mix(in srgb, var(--cliente-primary) 18%, var(--cliente-border));
+  }
+}
+
+.client-portal[data-client-style="v3"] .crm-refined .pipeline-card:active {
+  cursor: grabbing;
+  transform: scale(0.992) rotate(0.15deg);
+  box-shadow: 0 22px 46px -28px rgba(15, 23, 42, 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .client-opening-content,
+  .client-opening-mark,
+  .client-portal[data-client-style="v3"] .client-route-stage,
+  .client-portal[data-client-style="v3"] .client-route-stage .client-panel-card,
+  .client-portal[data-client-style="v3"] .client-popover,
+  .client-portal[data-client-style="v3"] .inbox-refined :is(.inbox-message-in, .inbox-message-out, .inbox-message-system) {
+    animation: none !important;
+  }
+
+  .client-portal[data-client-style="v3"] .client-customer-drawer,
+  .client-portal[data-client-style="v3"] .client-drawer-backdrop,
+  .client-portal[data-client-style="v3"] .client-bottom-nav a {
+    transition-duration: 0.01ms !important;
+  }
+
+  .client-portal[data-client-style="v3"] :is(button, a[href], [role="button"]):active:not(:disabled) {
+    transform: none;
+  }
+}
+
+.client-portal[data-client-style="v3"][data-client-experience="essencial"] .client-daily-page .client-context-copy {
+  display: none;
+}
+
+.client-portal[data-client-style="v3"][data-client-experience="essencial"] .client-daily-page .client-advanced-layer {
+  display: none !important;
+}
+
+@media (min-width: 1280px) {
+  .client-portal[data-client-style="v3"][data-client-experience="essencial"] .client-overview-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.client-portal[data-client-style="v3"][data-client-experience="essencial"] .client-daily-page .client-metric-card {
+  min-height: 104px;
+}
+
+@media (max-width: 639px) {
+  .client-portal[data-client-style="v3"] .client-panel-card {
+    border-radius: 18px !important;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.045);
+  }
 }
 
 .client-portal[data-client-style="v3"] .inbox-refined .inbox-rail,
@@ -2823,4 +3034,79 @@ html { scroll-behavior: smooth; }
 .client-portal[data-client-style="v3"] .campanhas-refined :is(input, select, textarea) {
   background: var(--cliente-card) !important;
   border-color: var(--cliente-border) !important;
+}
+
+/* Canais: catalogo de integracoes limpo e focado na tarefa. */
+[data-client-theme] .settings-channels-refined.settings-channels-saas .client-panel-card {
+  background: var(--cliente-card) !important;
+  border-color: var(--cliente-border) !important;
+  box-shadow: 0 18px 45px -34px rgba(15, 23, 42, 0.24) !important;
+}
+
+.settings-channels-saas .settings-channels-summary {
+  border-color: color-mix(in srgb, var(--cliente-success) 22%, var(--cliente-border));
+  background: var(--cliente-success-soft);
+  color: var(--cliente-success);
+}
+
+[data-client-theme] .settings-channels-saas .settings-channel-card,
+[data-client-theme] .settings-channels-saas .settings-whatsapp-provider {
+  background: var(--cliente-card) !important;
+  border-color: var(--cliente-border) !important;
+  color: var(--cliente-card-text) !important;
+  box-shadow: none !important;
+}
+
+.settings-channels-saas .settings-channel-card:hover,
+.settings-channels-saas .settings-whatsapp-provider:hover {
+  border-color: color-mix(in srgb, var(--cliente-primary) 32%, var(--cliente-border)) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 18px 32px -28px rgba(15, 23, 42, 0.35) !important;
+}
+
+[data-client-theme] .settings-channels-saas .settings-channel-card.is-selected,
+[data-client-theme] .settings-channels-saas .settings-whatsapp-provider.is-selected {
+  border-color: color-mix(in srgb, var(--cliente-primary) 52%, var(--cliente-border)) !important;
+  background: color-mix(in srgb, var(--cliente-primary) 7%, var(--cliente-card)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cliente-primary) 12%, transparent) !important;
+}
+
+.settings-channels-saas .settings-channel-card-action {
+  border-color: var(--cliente-border);
+  background: var(--cliente-primary-soft);
+  color: var(--cliente-primary);
+}
+
+[data-client-theme] .settings-channels-saas .settings-channels-overview,
+[data-client-theme] .settings-channels-saas .settings-connector-diagnostics {
+  background: var(--cliente-panel-soft) !important;
+  border-color: var(--cliente-border) !important;
+  color: var(--cliente-card-text) !important;
+  box-shadow: none !important;
+}
+
+.settings-channels-saas :is(.settings-channels-overview, .settings-connector-diagnostics) summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-channels-saas .settings-channels-editor > form {
+  max-width: 1040px;
+}
+
+.settings-channels-saas .settings-channels-editor .settings-channels-readiness,
+.settings-channels-saas .settings-channels-editor .settings-channels-guidance,
+.settings-channels-saas .settings-channels-health-panel,
+.settings-channels-saas .settings-channels-mini-panel {
+  border-radius: 18px;
+  box-shadow: none !important;
+}
+
+@media (max-width: 639px) {
+  .settings-channels-saas .settings-channel-card {
+    min-height: 132px;
+  }
+
+  .settings-channels-saas .settings-channel-card-action {
+    opacity: 1;
+  }
 }

@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { assertTenantLimitAvailable } from "@/lib/server/tenant-entitlements";
+import { getTenantUserUsage } from "@/lib/server/tenant-usage";
+import { TenantAccessError } from "@/lib/server/tenant";
 
 type Body = {
   email?: string;
@@ -56,6 +59,16 @@ export async function POST(
 
     if (!email) {
       return NextResponse.json({ error: "Campo obrigatorio: email." }, { status: 400 });
+    }
+
+    const tenantUserUsage = await getTenantUserUsage(tenantId);
+    if (!tenantUserUsage.hasActiveEmail(email)) {
+      await assertTenantLimitAvailable({
+        tenantId,
+        limitId: "users",
+        currentUsage: tenantUserUsage.activeClientUsers,
+        increment: 1,
+      });
     }
 
     const tenantSnap = await adminDb.collection("tenants").doc(tenantId).get();
@@ -185,6 +198,12 @@ export async function POST(
       return NextResponse.json(
         { error: error.message, code: error.code },
         { status: error.status }
+      );
+    }
+    if (error instanceof TenantAccessError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.code === "tenant_limit_exceeded" ? 409 : 403 }
       );
     }
     console.error("Erro ao convidar usuario do tenant:", error);

@@ -1,0 +1,12 @@
+[Unit]
+Description=Sincroniza ecommerce da Altum a cada hora
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+AccuracySec=1m
+Unit=altum-job@commerce.service
+
+[Install]
+WantedBy=timers.target
+

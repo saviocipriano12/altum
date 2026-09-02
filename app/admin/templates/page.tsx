@@ -159,6 +159,7 @@ export default function AdminTemplatesPage() {
       );
       const payload = (await response.json().catch(() => ({}))) as TemplatesResponse;
       if (!response.ok) throw new Error(payload.error || "Falha ao carregar templates.");
+      if (payload.ok === false) throw new Error(payload.error || "Reconecte o WhatsApp oficial.");
       setData(payload);
     } catch (loadError) {
       setData(null);

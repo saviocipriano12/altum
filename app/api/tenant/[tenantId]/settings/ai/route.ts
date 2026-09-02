@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError, getTenantSettings } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { getBusinessProfile, normalizeBusinessProfileId } from "@/lib/business-profiles";
 import {
   buildAiRuntimePolicy,
@@ -134,7 +135,8 @@ function normalizeCommercialBrain(value: unknown, fallback?: CommercialBrainInpu
 
 function normalizeVoiceReplyMode(value: unknown) {
   const normalized = clean(value, 40).toLowerCase();
-  if (normalized === "audio_only" || normalized === "smart" || normalized === "always") return normalized;
+  if (normalized === "audio_only" || normalized === "smart") return normalized;
+  if (normalized === "always") return "smart";
   return "smart";
 }
 
@@ -245,6 +247,7 @@ export async function GET(
     const { tenantId } = await context.params;
 
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "ai");
     assertTenantRole(membership, "client_viewer");
 
     const settings = await getTenantSettings(tenantId);
@@ -274,6 +277,7 @@ export async function POST(
     const { tenantId } = await context.params;
 
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "ai");
     assertTenantCapability(membership, "manage_ai");
 
     const body = (await req.json()) as Body;

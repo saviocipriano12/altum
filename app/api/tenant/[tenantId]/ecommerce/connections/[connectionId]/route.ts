@@ -3,12 +3,24 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import {
   buildConnectionPayload,
   buildEcommerceWebhookSecret,
   publicConnectionFromDoc,
   type EcommerceConnectionInput,
 } from "@/lib/server/ecommerce";
+import {
+  connectionConfigFromDoc,
+  getCommerceProvider,
+  normalizeCommerceCredentials,
+  readCommerceCredentials,
+  storeCommerceCredentials,
+  validateCommerceCredentials,
+} from "@/lib/server/commerce/registry";
+import { decryptSecret } from "@/app/lib/server/secret-crypto";
+import { getAppBaseUrl } from "@/app/lib/server/integration-oauth";
+import { ensureWooCommerceWebhookSubscriptions } from "@/lib/server/commerce/woocommerce-webhooks";
 
 function clean(value: unknown, max = 300) {
   if (typeof value !== "string") return "";
@@ -32,6 +44,7 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, connectionId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     assertTenantCapability(membership, "manage_channels");
 
     const { ref, snap, data } = await readConnection(tenantId, connectionId);
@@ -48,8 +61,47 @@ export async function PATCH(
       userName: user.name,
       webhookSecret,
     });
+    const credentials = normalizeCommerceCredentials(body.credentials);
+    const hasNewCredentials = Object.values(credentials).some(Boolean);
+    if (hasNewCredentials) {
+      const provider = getCommerceProvider(data.provider);
+      validateCommerceCredentials(provider, credentials);
+      await provider.testConnection({
+        connection: connectionConfigFromDoc(connectionId, { ...data, ...payload }),
+        credentials,
+      });
+      Object.assign(payload, {
+        apiCredentials: storeCommerceCredentials(credentials),
+        syncMode: "api",
+        connectionStatus: "connected",
+        lastError: "",
+        lastConnectionTestAt: FieldValue.serverTimestamp(),
+      });
+    }
 
     await ref.set(payload, { merge: true });
+    if (String(data.provider || "") === "woocommerce" && (hasNewCredentials || body.rotateWebhookSecret)) {
+      const effectiveCredentials = hasNewCredentials ? credentials : readCommerceCredentials(data.apiCredentials);
+      const effectiveWebhookSecret = webhookSecret || decryptSecret(data.webhookSecret);
+      try {
+        await ensureWooCommerceWebhookSubscriptions({
+          connection: connectionConfigFromDoc(connectionId, { ...data, ...payload }),
+          credentials: effectiveCredentials,
+          webhookSecret: effectiveWebhookSecret,
+          appBaseUrl: getAppBaseUrl(req),
+          rotateExistingSecret: body.rotateWebhookSecret === true,
+        });
+      } catch (error) {
+        await ref.set({
+          webhookProvisioning: {
+            requested: 4,
+            active: 0,
+            failed: [{ error: error instanceof Error ? error.message.slice(0, 300) : "woocommerce_webhook_provisioning_failed" }],
+          },
+          webhookProvisionedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+    }
     const nextSnap = await ref.get();
     return NextResponse.json({
       ok: true,
@@ -74,6 +126,7 @@ export async function DELETE(
     const user = await requireRequestUser(req);
     const { tenantId, connectionId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     assertTenantCapability(membership, "manage_channels");
 
     const { ref, data } = await readConnection(tenantId, connectionId);

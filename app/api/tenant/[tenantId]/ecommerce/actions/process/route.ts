@@ -5,6 +5,7 @@ import { normalizePhone } from "@/app/lib/server/phone";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { sendTenantChatTemplate } from "@/lib/server/chat-dispatch";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import {
   automationTemplateForAction,
   interpolateEcommerceTemplateParams,
@@ -69,6 +70,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     if (!hasTenantCapability(membership, "manage_channels") && !hasTenantCapability(membership, "respond_inbox")) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para processar automacoes ecommerce.");
     }

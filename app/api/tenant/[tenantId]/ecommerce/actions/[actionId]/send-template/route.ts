@@ -5,6 +5,7 @@ import { normalizePhone } from "@/app/lib/server/phone";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { sendTenantChatTemplate } from "@/lib/server/chat-dispatch";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import {
   automationTemplateForAction,
   interpolateEcommerceTemplateParams,
@@ -88,6 +89,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId, actionId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     if (!hasTenantCapability(membership, "respond_inbox") && !hasTenantCapability(membership, "manage_channels")) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para enviar WhatsApp.");
     }

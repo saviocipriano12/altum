@@ -1,4 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { inflateSync } from "node:zlib";
 import { adminDb, adminStorage } from "@/app/lib/server/firebase-admin";
 import {
   downloadWhatsAppMedia,
@@ -23,6 +24,22 @@ function numericValue(value: unknown) {
 
 function looksLikeHttpUrl(value: string) {
   return /^https?:\/\//i.test(value);
+}
+
+function cleanMediaSource(value: unknown) {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim();
+  if (normalized.length > 48 * 1024 * 1024) throw new Error("media_source_too_large");
+  return normalized;
+}
+
+function decodeDataUrl(value: string) {
+  const match = value.match(/^data:([^,]*?);base64,([a-z0-9+/=\r\n]+)$/i);
+  if (!match) throw new Error("invalid_media_data_url");
+  return {
+    buffer: Buffer.from(match[2], "base64"),
+    contentType: match[1] || "application/octet-stream",
+  };
 }
 
 function storageBucketName() {
@@ -55,6 +72,47 @@ function looksLikeTextDocument(contentType: string) {
   );
 }
 
+function decodePdfLiteral(value: string) {
+  return value
+    .replace(/\\([\\()])/g, "$1")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\([0-7]{1,3})/g, (_match, octal: string) => String.fromCharCode(Number.parseInt(octal, 8)));
+}
+
+function printablePdfText(value: string) {
+  const fragments: string[] = [];
+  const literal = /\((?:\\.|[^\\)])*\)/g;
+  for (const match of value.matchAll(literal)) {
+    const decoded = decodePdfLiteral(match[0].slice(1, -1));
+    if (/[\p{L}\p{N}]/u.test(decoded)) fragments.push(decoded);
+  }
+  return cleanText(fragments.join(" "), 7000);
+}
+
+function extractPdfText(buffer: Buffer) {
+  // PDFs comuns guardam o texto em streams Flate. Isso cobre orcamentos,
+  // propostas e comprovantes simples sem introduzir um parser pesado no
+  // runtime. PDFs digitalizados continuam sendo tratados como arquivo para
+  // abertura; OCR pode ser ligado posteriormente no provedor de IA.
+  const pdf = buffer.toString("latin1");
+  const pieces: string[] = [printablePdfText(pdf)];
+  const stream = /([\s\S]{0,800})stream\r?\n([\s\S]*?)\r?\nendstream/g;
+
+  for (const match of pdf.matchAll(stream)) {
+    if (!/\/FlateDecode/.test(match[1])) continue;
+    try {
+      const inflated = inflateSync(Buffer.from(match[2], "latin1")).toString("latin1");
+      pieces.push(printablePdfText(inflated));
+    } catch {
+      // Um stream individual corrompido nao impede a leitura dos demais.
+    }
+  }
+
+  return cleanText(pieces.join(" "), 5000);
+}
+
 async function fetchRemoteBuffer(url: string) {
   const response = await fetch(url);
   if (!response.ok) {
@@ -83,6 +141,7 @@ async function fetchStorageBuffer(path: string) {
 }
 
 async function resolveMediaBuffer(mediaUrl: string) {
+  if (mediaUrl.startsWith("data:")) return decodeDataUrl(mediaUrl);
   if (looksLikeHttpUrl(mediaUrl)) {
     return fetchRemoteBuffer(mediaUrl);
   }
@@ -93,7 +152,7 @@ async function resolveInboundMedia(input: {
   tenantId: string;
   message: Record<string, unknown>;
 }) {
-  const mediaUrl = cleanText(input.message.mediaUrl, 1400);
+  const mediaUrl = cleanMediaSource(input.message.mediaUrl);
   if (mediaUrl) {
     return resolveMediaBuffer(mediaUrl);
   }
@@ -113,6 +172,18 @@ async function resolveInboundMedia(input: {
     channel,
     mediaId,
   });
+}
+
+function resolveVideoThumbnail(message: Record<string, unknown>) {
+  const raw = cleanMediaSource(message.mediaThumbnail);
+  if (!raw) throw new Error("video_thumbnail_missing");
+  if (raw.startsWith("data:")) return decodeDataUrl(raw);
+
+  const normalized = raw.replace(/\s+/g, "");
+  if (!/^[a-z0-9+/]+={0,2}$/i.test(normalized)) {
+    throw new Error("video_thumbnail_invalid");
+  }
+  return { buffer: Buffer.from(normalized, "base64"), contentType: "image/jpeg" };
 }
 
 async function persistInboundMediaToStorage(input: {
@@ -152,8 +223,8 @@ export async function cacheInboundMessageMedia(input: {
     return null;
   }
 
-  const existingMediaUrl = cleanText(input.message.mediaUrl, 1400);
-  if (existingMediaUrl && !looksLikeHttpUrl(existingMediaUrl)) {
+  const existingMediaUrl = cleanMediaSource(input.message.mediaUrl);
+  if (existingMediaUrl && !looksLikeHttpUrl(existingMediaUrl) && !existingMediaUrl.startsWith("data:")) {
     return existingMediaUrl;
   }
 
@@ -161,6 +232,17 @@ export async function cacheInboundMessageMedia(input: {
     tenantId: input.tenantId,
     message: input.message,
   });
+
+  const maxBytes = type === "image"
+    ? 8 * 1024 * 1024
+    : type === "video"
+      ? 32 * 1024 * 1024
+      : type === "audio"
+        ? 16 * 1024 * 1024
+        : 24 * 1024 * 1024;
+  if (!media.buffer.length || media.buffer.length > maxBytes) {
+    throw new Error(`media_size_invalid_${type}`);
+  }
 
   const storedPath = await persistInboundMediaToStorage({
     tenantId: input.tenantId,
@@ -174,6 +256,7 @@ export async function cacheInboundMessageMedia(input: {
     {
       mediaUrl: storedPath,
       mediaMimeType: cleanText(input.message.mediaMimeType, 180) || media.contentType || null,
+      mediaSize: media.buffer.length,
       mediaCachedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     },
@@ -315,6 +398,11 @@ async function summarizeDocument(buffer: Buffer, contentType: string, mediaName:
 
   const label = mediaName || "arquivo";
   if (contentType === "application/pdf") {
+    const extracted = extractPdfText(buffer);
+    if (extracted) {
+      const llmSummary = await summarizeTextDocument(extracted, mediaName);
+      return llmSummary || `Trecho do PDF: ${extracted}`;
+    }
     return `[Arquivo PDF recebido: ${label}]`;
   }
 
@@ -350,7 +438,7 @@ export async function enrichInboundMessageForAgent(input: {
   const mediaName = cleanText(input.message.mediaName, 180);
   const mediaDuration = numericValue(input.message.mediaDuration);
 
-  if (!["audio", "image", "document"].includes(type)) {
+  if (!["audio", "image", "video", "document"].includes(type)) {
     return {
       normalizedText: rawText,
       summary: null,
@@ -378,6 +466,19 @@ export async function enrichInboundMessageForAgent(input: {
       const analysis = await analyzeImage(buffer, contentType);
       summary = analysis || "[Imagem recebida]";
       normalizedText = [rawText, analysis].filter(Boolean).join(" ").trim() || "[Imagem recebida]";
+    } else if (type === "video") {
+      // Modelos de visao analisam imagens, nao um arquivo MP4 inteiro. A
+      // Evolution fornece uma miniatura da cena, que preservamos separada do
+      // arquivo original e usamos como leitura visual objetiva do video.
+      try {
+        const { buffer, contentType } = resolveVideoThumbnail(input.message);
+        const analysis = await analyzeImage(buffer, contentType);
+        summary = analysis ? `Video: ${analysis}` : "[Video recebido]";
+        normalizedText = [rawText, analysis].filter(Boolean).join(" ").trim() || "[Video recebido]";
+      } catch {
+        summary = "[Video recebido - arquivo disponivel para reproducao]";
+        normalizedText = rawText || "[Video recebido]";
+      }
     } else if (type === "document") {
       try {
         const { buffer, contentType } = await resolveInboundMedia(input);
@@ -403,7 +504,7 @@ export async function enrichInboundMessageForAgent(input: {
     return {
       normalizedText: normalizedText || rawText,
       summary: summary || null,
-      source: type as "audio" | "image" | "document",
+      source: type as "audio" | "image" | "video" | "document",
     };
   } catch (error) {
     const fallback =
@@ -412,6 +513,8 @@ export async function enrichInboundMessageForAgent(input: {
         ? "[Audio recebido]"
         : type === "image"
           ? "[Imagem recebida]"
+          : type === "video"
+            ? "[Video recebido]"
           : mediaName
             ? `[Arquivo recebido: ${mediaName}]`
             : "[Arquivo recebido]");

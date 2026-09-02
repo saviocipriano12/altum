@@ -7,6 +7,16 @@ export type SocialActiveHours = {
   days: number[];
 };
 
+export type SocialCommentRule = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  mediaIds: string[];
+  keywords: string[];
+  message: string;
+  privateReply: boolean;
+};
+
 export type TenantSocialAutomationConfig = {
   tenantId: string;
   enabled: boolean;
@@ -20,6 +30,7 @@ export type TenantSocialAutomationConfig = {
   commentIntentPricingKeywords: string[];
   commentIntentPurchaseKeywords: string[];
   commentIntentSchedulingKeywords: string[];
+  commentRules: SocialCommentRule[];
   activeHours: SocialActiveHours;
   updatedAt?: unknown;
   updatedBy?: string;
@@ -64,6 +75,30 @@ function cleanTimezone(value: unknown, fallback: string) {
   return candidate || fallback;
 }
 
+function cleanStringList(value: unknown, maxItems: number, maxLength: number) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map((item) => cleanText(item, maxLength)).filter(Boolean))).slice(0, maxItems);
+}
+
+function cleanCommentRules(value: unknown): SocialCommentRule[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 30).flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const source = entry as Record<string, unknown>;
+    const message = cleanText(source.message, 900);
+    if (!message) return [];
+    return [{
+      id: cleanText(source.id, 100) || `comment_rule_${index + 1}`,
+      name: cleanText(source.name, 120) || `Automacao ${index + 1}`,
+      enabled: cleanBoolean(source.enabled, true),
+      mediaIds: cleanStringList(source.mediaIds, 30, 180),
+      keywords: parseKeywordList(source.keywords, []),
+      message,
+      privateReply: cleanBoolean(source.privateReply, true),
+    }];
+  });
+}
+
 export function parseKeywordList(value: unknown, fallback: string[] = ["parar", "stop", "sair"]) {
   const source = Array.isArray(value)
     ? value
@@ -106,7 +141,8 @@ export function normalizeTenantSocialAutomationConfig(
     enabled: cleanBoolean(data?.enabled, true),
     dmAutoReply: cleanBoolean(data?.dmAutoReply, true),
     commentAutoReply: cleanBoolean(data?.commentAutoReply, false),
-    newFollowerMessageEnabled: cleanBoolean(data?.newFollowerMessageEnabled, false),
+    // A API oficial nao oferece um gatilho confiavel para iniciar DM apenas por novo follow.
+    newFollowerMessageEnabled: false,
     newFollowerMessageTemplate:
       cleanText(data?.newFollowerMessageTemplate, 600) ||
       "Oi, {{nome}}! Obrigado por seguir a gente. Se quiser, me conta aqui o que voce esta buscando e eu continuo com voce por mensagem.",
@@ -143,6 +179,7 @@ export function normalizeTenantSocialAutomationConfig(
       "reuniao",
       "marcar",
     ]),
+    commentRules: cleanCommentRules(data?.commentRules),
     activeHours: {
       timezone,
       start: cleanTime(hours.start, "08:00"),

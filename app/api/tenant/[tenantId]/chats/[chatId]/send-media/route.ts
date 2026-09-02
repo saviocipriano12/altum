@@ -1,7 +1,11 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
-import { sendTenantChatMedia, type ChatMediaType } from "@/lib/server/chat-dispatch";
+import { type ChatMediaType } from "@/lib/server/chat-dispatch";
+import { processChatOutboundJobs, queueTenantChatMediaBuffer } from "@/lib/server/chat-outbound";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { TenantUsageLimitError } from "@/lib/server/tenant-usage";
+import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 32 * 1024 * 1024;
@@ -36,7 +40,10 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId, chatId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
+    await assertTenantModule(tenantId, "whatsapp");
     assertTenantCapability(membership, "respond_inbox");
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
 
     const form = await req.formData();
     const uploaded = form.get("file");
@@ -57,7 +64,7 @@ export async function POST(
     }
 
     const buffer = Buffer.from(await uploaded.arrayBuffer());
-    const result = await sendTenantChatMedia({
+    const queued = await queueTenantChatMediaBuffer({
       tenantId,
       chatId,
       mediaType,
@@ -67,19 +74,17 @@ export async function POST(
       caption: clean(form.get("caption"), 1024),
       replyToId: clean(form.get("replyToId"), 180) || null,
       actor: { id: user.uid, name: user.name },
-      pauseAi: true,
-      pauseMinutes: 30,
     });
+    after(() => processChatOutboundJobs({ jobId: queued.jobId, limit: 1 }).catch((error) => {
+      console.error("Falha no envio assincrono de midia:", error);
+    }));
 
     return NextResponse.json({
       ok: true,
       tenantId,
       chatId,
-      channel: result.channel,
-      phoneNumberId: result.phoneNumberId,
-      metaMessageId: result.metaMessageId,
-      mediaId: result.mediaId,
-      mediaType: result.mediaType,
+      mediaType,
+      ...queued,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {
@@ -87,6 +92,9 @@ export async function POST(
     }
     if (error instanceof TenantAccessError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    }
+    if (error instanceof TenantUsageLimitError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
     console.error("Erro ao enviar midia do tenant:", error);
     return NextResponse.json(

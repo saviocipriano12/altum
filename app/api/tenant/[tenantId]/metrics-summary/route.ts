@@ -9,6 +9,8 @@ import {
   isWonLeadStage,
 } from "@/lib/server/attribution";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 
 type GenericRow = { id: string } & Record<string, unknown>;
 
@@ -91,7 +93,7 @@ function filterByWindow(items: GenericRow[], getDate: (item: GenericRow) => Date
   });
 }
 
-function computeAverageFirstResponseMinutes(messages: GenericRow[], start: Date, end: Date) {
+function collectFirstResponseSamples(messages: GenericRow[], start: Date, end: Date, humanOnly = false) {
   const grouped = new Map<string, GenericRow[]>();
 
   for (const message of messages) {
@@ -102,9 +104,9 @@ function computeAverageFirstResponseMinutes(messages: GenericRow[], start: Date,
     grouped.set(chatId, list);
   }
 
-  const samples: number[] = [];
+  const samples: Array<{ chatId: string; minutes: number; responderId: string }> = [];
 
-  for (const chatMessages of grouped.values()) {
+  for (const [chatId, chatMessages] of grouped.entries()) {
     const ordered = [...chatMessages].sort(
       (a, b) => (toDate(a.createdAt)?.getTime() || 0) - (toDate(b.createdAt)?.getTime() || 0)
     );
@@ -122,6 +124,7 @@ function computeAverageFirstResponseMinutes(messages: GenericRow[], start: Date,
 
     const firstAgentReply = ordered.find((item) => {
       if (String(item.sender || "") !== "agent") return false;
+      if (humanOnly && !String(item.senderId || "").trim()) return false;
       const createdAt = toDate(item.createdAt);
       return Boolean(createdAt && createdAt.getTime() >= firstClientAt.getTime());
     });
@@ -131,11 +134,14 @@ function computeAverageFirstResponseMinutes(messages: GenericRow[], start: Date,
     const firstAgentAt = toDate(firstAgentReply.createdAt);
     if (!firstAgentAt) continue;
 
-    samples.push(minutesBetween(firstClientAt, firstAgentAt));
+    samples.push({
+      chatId,
+      minutes: minutesBetween(firstClientAt, firstAgentAt),
+      responderId: String(firstAgentReply.senderId || "").trim(),
+    });
   }
 
-  if (!samples.length) return 0;
-  return samples.reduce((sum, item) => sum + item, 0) / samples.length;
+  return samples;
 }
 
 function stageLabel(stageId: string) {
@@ -453,6 +459,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantRole(membership, "client_viewer");
 
     const { searchParams } = new URL(req.url);
@@ -480,36 +487,54 @@ export async function GET(
         adminDb.collection("ai_logs").where("tenantId", "==", tenantId).limit(400).get(),
       ]);
 
-    const leads: GenericRow[] = leadsSnap.docs.map((doc) => ({
+    const allLeads: GenericRow[] = leadsSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
-    const snapshots: GenericRow[] = snapshotsSnap.docs.map((doc) => ({
+    const allSnapshots: GenericRow[] = snapshotsSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
-    const finance: GenericRow[] = financeSnap.docs.map((doc) => ({
+    const allFinance: GenericRow[] = financeSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
-    const appointments: GenericRow[] = appointmentsSnap.docs.map((doc) => ({
+    const allAppointments: GenericRow[] = appointmentsSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
-    const chats: GenericRow[] = chatsSnap.docs.map((doc) => ({
+    const allChats: GenericRow[] = chatsSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
-    const messages: GenericRow[] = messagesSnap.docs.map((doc) => ({
+    const allMessages: GenericRow[] = messagesSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
-    const aiLogs: GenericRow[] = aiLogsSnap.docs.map((doc) => ({
+    const allAiLogs: GenericRow[] = aiLogsSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Record<string, unknown>),
     }));
+    const teamWideScope = hasTeamWideCommercialAccess(membership);
+    const visible = (record: GenericRow) => canAccessAssignedCommercialRecord(membership, user.uid, record);
+    const leads = teamWideScope ? allLeads : allLeads.filter(visible);
+    const chats = (teamWideScope ? allChats : allChats.filter(visible)).filter((chat) => !String(chat.mergedIntoChatId || "").trim());
+    const visibleChatIds = new Set(chats.map((chat) => chat.id));
+    const messages = allMessages.filter((message) => visibleChatIds.has(String(message.chatId || "")));
+    const appointments = teamWideScope ? allAppointments : allAppointments.filter(visible);
+    const visibleLeadIds = new Set(leads.map((lead) => lead.id));
+    const finance = teamWideScope
+      ? allFinance
+      : allFinance.filter((item) => visibleLeadIds.has(String(item.leadId || "")));
+    const snapshots = teamWideScope ? allSnapshots : [];
+    const aiLogs = allAiLogs.filter((item) => {
+      const chatId = String(item.chatId || "").trim();
+      return !chatId || visibleChatIds.has(chatId);
+    });
     const chatStates = new Map(
-      chatStateSnap.docs.map((doc) => [doc.id, doc.data() as Record<string, unknown>])
+      chatStateSnap.docs
+        .map((doc) => [doc.id, doc.data() as Record<string, unknown>] as const)
+        .filter(([, data]) => visibleChatIds.has(String(data.chatId || "")))
     );
 
     const currentLeads = filterByWindow(leads, (item) => toDate(item.createdAt), currentStart, periodEnd);
@@ -562,7 +587,11 @@ export async function GET(
     const previousMeetings = previousAppointments.filter((item) => isMeetingStatusCountable(item.status)).length;
     const conversionRate = currentLeads.length ? (wonLeads / currentLeads.length) * 100 : 0;
     const previousConversionRate = previousLeads.length ? (previousWonLeads / previousLeads.length) * 100 : 0;
-    const avgFirstResponseMinutes = computeAverageFirstResponseMinutes(messages, currentStart, periodEnd);
+    const firstResponseSamples = collectFirstResponseSamples(messages, currentStart, periodEnd);
+    const humanFirstResponseSamples = collectFirstResponseSamples(messages, currentStart, periodEnd, true);
+    const avgFirstResponseMinutes = firstResponseSamples.length
+      ? firstResponseSamples.reduce((sum, item) => sum + item.minutes, 0) / firstResponseSamples.length
+      : 0;
     const roi = currentTraffic.spend > 0 ? currentPaid / currentTraffic.spend : 0;
     const previousRoi = previousTraffic.spend > 0 ? previousPaid / previousTraffic.spend : 0;
     const cpl = currentLeads.length > 0 ? currentTraffic.spend / currentLeads.length : 0;
@@ -684,8 +713,8 @@ export async function GET(
 
     const ownerIds = Array.from(
       new Set(
-        [...leads, ...chats]
-          .map((item) => String(item.ownerId || item.assignedTo || "").trim())
+        [...leads, ...chats, ...messages]
+          .map((item) => String(item.ownerId || item.assignedTo || item.senderId || "").trim())
           .filter(Boolean)
       )
     ).slice(0, 40);
@@ -701,6 +730,28 @@ export async function GET(
       });
     }
 
+    const chatsById = new Map(chats.map((chat) => [String(chat.id || ""), chat]));
+    const responseSamplesByOwner = new Map<string, number[]>();
+    for (const sample of humanFirstResponseSamples) {
+      const chat = chatsById.get(sample.chatId);
+      const ownerId = sample.responderId || String(chat?.assignedTo || chat?.ownerId || "").trim();
+      if (!ownerId) continue;
+      const values = responseSamplesByOwner.get(ownerId) || [];
+      values.push(sample.minutes);
+      responseSamplesByOwner.set(ownerId, values);
+    }
+
+    const humanMessagesByOwner = new Map<string, GenericRow[]>();
+    for (const message of messages) {
+      if (String(message.sender || "") !== "agent") continue;
+      const senderId = String(message.senderId || "").trim();
+      const createdAt = toDate(message.createdAt);
+      if (!senderId || !createdAt || createdAt < currentStart || createdAt > periodEnd) continue;
+      const current = humanMessagesByOwner.get(senderId) || [];
+      current.push(message);
+      humanMessagesByOwner.set(senderId, current);
+    }
+
     const teamPerformance = ownerIds
       .map((ownerId) => {
         const ownedLeads = currentLeads.filter((item) => String(item.ownerId || "").trim() === ownerId);
@@ -714,6 +765,13 @@ export async function GET(
         const wonOwnedLeads = ownedLeads.filter(
           (item) => normalizePipelineStageId(item.pipelineStage || item.stage) === "ganho"
         ).length;
+        const responseSamples = responseSamplesByOwner.get(ownerId) || [];
+        const humanMessages = humanMessagesByOwner.get(ownerId) || [];
+        const handledChatIds = new Set(humanMessages.map((message) => String(message.chatId || "")).filter(Boolean));
+        const responseCoverageBase = Math.max(ownedChats.length, handledChatIds.size);
+        const avgOwnerResponseMinutes = responseSamples.length
+          ? responseSamples.reduce((sum, value) => sum + value, 0) / responseSamples.length
+          : 0;
 
         return {
           ownerId,
@@ -725,6 +783,16 @@ export async function GET(
           totalLeads: ownedLeads.length,
           wonLeads: wonOwnedLeads,
           winRate: ownedLeads.length ? Number(((wonOwnedLeads / ownedLeads.length) * 100).toFixed(1)) : 0,
+          avgFirstResponseMinutes: Number(avgOwnerResponseMinutes.toFixed(2)),
+          responseSamples: responseSamples.length,
+          humanReplies: humanMessages.length,
+          handledChats: handledChatIds.size,
+          awaitingReplyChats: ownedChats.filter((item) => ["assigned_waiting", "sla_breached"].includes(normalizeQueueStatus(item.queueStatus))).length,
+          responseCoveragePct: responseCoverageBase ? Number(((handledChatIds.size / responseCoverageBase) * 100).toFixed(1)) : 0,
+          lastHumanReplyAt: humanMessages
+            .map((message) => toDate(message.createdAt))
+            .filter((date): date is Date => Boolean(date))
+            .sort((left, right) => right.getTime() - left.getTime())[0] || null,
         };
       })
       .sort((a, b) => {
@@ -764,6 +832,7 @@ export async function GET(
       ok: true,
       tenantId,
       rangeDays,
+      scope: teamWideScope ? "team" : "own",
       metrics: {
         conversionRate: Number(conversionRate.toFixed(2)),
         avgFirstResponseMinutes: Number(avgFirstResponseMinutes.toFixed(2)),
@@ -773,7 +842,7 @@ export async function GET(
         costPerMeeting: Number(costPerMeeting.toFixed(2)),
         costPerSale: Number(costPerSale.toFixed(2)),
         growth: Number(safePct(currentLeads.length, previousLeads.length).toFixed(2)),
-        conversations: chatsSnap.size,
+        conversations: chats.length,
         handoffChats,
         siteChatConversations: conversationChannels.find((item) => item.channel === "site_chat")?.total || 0,
         wonLeads,

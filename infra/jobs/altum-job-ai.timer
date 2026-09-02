@@ -1,0 +1,11 @@
+[Unit]
+Description=Processa fila de IA da Altum diariamente
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 UTC
+Persistent=true
+Unit=altum-job@ai.service
+
+[Install]
+WantedBy=timers.target
+

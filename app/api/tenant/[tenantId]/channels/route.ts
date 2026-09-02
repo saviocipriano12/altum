@@ -10,6 +10,10 @@ import {
   AGENCY_WHATSAPP_ENV_CHANNEL_ID,
   getAgencyWhatsAppChannelFromEnv,
 } from "@/app/lib/server/whatsapp-channel";
+import { assertTenantLimitAvailable, assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { countTenantWhatsAppChannels } from "@/lib/server/tenant-usage";
+import { hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
+import { getManagedEvolutionConfig } from "@/lib/server/messaging/evolution-config";
 
 type ChannelBody = {
   channelId?: string;
@@ -27,6 +31,9 @@ type ChannelBody = {
   refreshToken?: string;
   connectionStatus?: string;
   metadata?: Record<string, unknown>;
+  channelScope?: string;
+  ownerUserId?: string;
+  distributionEnabled?: boolean;
 };
 
 type ChannelReadiness = {
@@ -65,6 +72,10 @@ function cleanStatus(value: unknown) {
   return "draft";
 }
 
+function cleanChannelScope(value: unknown) {
+  return clean(value, 20).toLowerCase() === "personal" ? "personal" : "shared";
+}
+
 function cleanConnectionStatus(value: unknown) {
   return normalizeConnectionStatus(value, "draft");
 }
@@ -86,6 +97,7 @@ function cleanMetadata(input: unknown) {
 
 function normalizeWhatsAppProvider(value: unknown) {
   const normalized = clean(value, 80).toLowerCase();
+  if (normalized === "evolution" || normalized === "evolution_api") return "evolution";
   if (
     normalized === "meta_whatsapp" ||
     normalized === "whatsapp_cloud_api" ||
@@ -313,6 +325,7 @@ export async function GET(
     >((acc, doc) => {
       const data = doc.data() as Record<string, unknown>;
       const type = clean(data.channel, 60).toLowerCase() || "whatsapp";
+      const channelKey = clean(data.channelId, 180) || type;
       const status = clean(data.status, 40).toLowerCase();
       const activityAt =
         toIso(data.lastMessageTime) ||
@@ -320,7 +333,7 @@ export async function GET(
         toIso(data.lastAgentMessageAt) ||
         toIso(data.updatedAt);
 
-      const current = acc[type] || {
+      const current = acc[channelKey] || {
         chatCount: 0,
         openChatCount: 0,
         lastActivityAt: null,
@@ -331,7 +344,7 @@ export async function GET(
           ? activityAt
           : current.lastActivityAt;
 
-      acc[type] = {
+      acc[channelKey] = {
         chatCount: current.chatCount + 1,
         openChatCount:
           current.openChatCount + (status !== "resolved" && status !== "archived" ? 1 : 0),
@@ -364,7 +377,7 @@ export async function GET(
         const data = doc.data() as Record<string, unknown>;
         const type = String(data.type || "");
         const metadata = cleanMetadata(data.metadata);
-        const stats = channelStats[type] || {
+        const stats = channelStats[doc.id] || channelStats[type] || {
           chatCount: 0,
           openChatCount: 0,
           lastActivityAt: null,
@@ -457,6 +470,11 @@ export async function GET(
           requiresWebhook: effectiveReadiness.requiresWebhook,
           requiresExternalMapping: effectiveReadiness.requiresExternalMapping,
           metadata: cleanPublicMetadata(data.metadata),
+          channelScope: cleanChannelScope(data.channelScope),
+          ownerUserId: clean(data.ownerUserId, 140),
+          ownerUserName: clean(data.ownerUserName, 140),
+          distributionEnabled:
+            cleanChannelScope(data.channelScope) === "shared" && data.distributionEnabled !== false,
         };
       })
       .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
@@ -506,11 +524,25 @@ export async function GET(
           requiresWebhook: true,
           requiresExternalMapping: false,
           metadata: { source: "agency_env" },
+          channelScope: "shared",
+          ownerUserId: "",
+          ownerUserName: "",
+          distributionEnabled: true,
         }
       : null;
-    const visibleItems = agencyVirtualItem && !hasOutboundWhatsApp ? [agencyVirtualItem, ...items] : items;
+    const allItems = agencyVirtualItem && !hasOutboundWhatsApp ? [agencyVirtualItem, ...items] : items;
+    const visibleItems = hasTeamWideCommercialAccess(membership)
+      ? allItems
+      : allItems.filter(
+          (item) => item.type !== "whatsapp" || item.channelScope === "shared" || item.ownerUserId === user.uid
+        );
 
-    return NextResponse.json({ ok: true, tenantId, items: visibleItems });
+    return NextResponse.json({
+      ok: true,
+      tenantId,
+      items: visibleItems,
+      managedProviders: { evolution: Boolean(getManagedEvolutionConfig()) },
+    });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
@@ -540,6 +572,8 @@ export async function POST(
     if (!type) {
       return NextResponse.json({ error: "Tipo de canal invalido." }, { status: 400 });
     }
+    if (type === "whatsapp") await assertTenantModule(tenantId, "whatsapp");
+    if (type === "instagram") await assertTenantModule(tenantId, "instagram");
 
     let channelRef = null as FirebaseFirestore.DocumentReference | null;
 
@@ -588,6 +622,14 @@ export async function POST(
     const currentChannelData = currentChannelSnap.exists
       ? (currentChannelSnap.data() as Record<string, unknown>)
       : {};
+    if (type === "whatsapp" && !currentChannelSnap.exists) {
+      await assertTenantLimitAvailable({
+        tenantId,
+        limitId: "whatsappChannels",
+        currentUsage: await countTenantWhatsAppChannels(tenantId),
+        increment: 1,
+      });
+    }
     const metadata = cleanMetadata(body.metadata);
     const wabaId = clean(body.wabaId, 180) || clean(metadata.wabaId, 180) || clean(metadata.whatsappBusinessAccountId, 180);
     const verifyToken =
@@ -595,9 +637,42 @@ export async function POST(
     const appSecret = clean(metadata.appSecret, 400);
 
     const provider = type === "whatsapp" ? normalizeWhatsAppProvider(body.provider) : clean(body.provider, 80) || type;
+    const managedEvolution = provider === "evolution" ? getManagedEvolutionConfig() : null;
+    if (managedEvolution) {
+      metadata.gatewayEndpoint = managedEvolution.baseUrl;
+      metadata.evolutionManaged = "true";
+    }
 
-    const accessToken = clean(body.accessToken, 4000);
+    const channelScope = type === "whatsapp" ? cleanChannelScope(body.channelScope) : "shared";
+    const ownerUserId = channelScope === "personal" ? clean(body.ownerUserId, 140) : "";
+    let ownerUserName = "";
+    if (type === "whatsapp" && channelScope === "personal") {
+      if (!ownerUserId) {
+        return NextResponse.json({ error: "Escolha o vendedor responsavel pelo WhatsApp pessoal." }, { status: 400 });
+      }
+      const membershipSnap = await adminDb.collection("tenant_users").doc(`${tenantId}_${ownerUserId}`).get();
+      if (!membershipSnap.exists || clean(membershipSnap.data()?.status, 20) === "blocked") {
+        return NextResponse.json({ error: "Vendedor invalido ou inativo para este canal." }, { status: 400 });
+      }
+      const ownerData = membershipSnap.data() as Record<string, unknown>;
+      const ownerUserSnap = await adminDb.collection("users").doc(ownerUserId).get();
+      ownerUserName = clean(ownerUserSnap.data()?.name, 140) || clean(ownerData.name, 140) || clean(ownerData.email, 180) || "Vendedor";
+    }
+
+    const accessToken = clean(body.accessToken, 4000) || managedEvolution?.apiKey || "";
     const refreshToken = clean(body.refreshToken, 4000);
+
+    if (type === "whatsapp" && provider === "evolution") {
+      const currentMetadata = cleanMetadata(currentChannelData.metadata);
+      const gatewayEndpoint = clean(metadata.gatewayEndpoint, 500) || clean(currentMetadata.gatewayEndpoint, 500);
+      const hasEffectiveAccessToken = Boolean(accessToken) || hasStoredSecret(currentChannelData.accessToken);
+      if (!gatewayEndpoint || !hasEffectiveAccessToken) {
+        return NextResponse.json(
+          { error: "WhatsApp por QR indisponivel. A configuracao gerenciada da Evolution ainda nao foi concluida." },
+          { status: 503 }
+        );
+      }
+    }
 
     const payload: Record<string, unknown> = {
       tenantId,
@@ -615,6 +690,10 @@ export async function POST(
       pageId: cleanOrExisting(body.pageId, currentChannelData.pageId, 160),
       externalAccountId: cleanOrExisting(body.externalAccountId, currentChannelData.externalAccountId, 200),
       metadata: removeSecretMetadata(metadata),
+      channelScope,
+      ownerUserId: ownerUserId || null,
+      ownerUserName: ownerUserName || null,
+      distributionEnabled: channelScope === "shared" ? body.distributionEnabled !== false : false,
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: user.uid,
       updatedByName: user.name,
@@ -646,6 +725,8 @@ export async function POST(
         tenantId,
         channelId: channelRef.id,
         channelType: type,
+        channelScope,
+        ownerUserId: ownerUserId || null,
         createdAt: FieldValue.serverTimestamp(),
       }),
     ]);
@@ -656,7 +737,10 @@ export async function POST(
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
     if (error instanceof TenantAccessError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.code === "tenant_limit_exceeded" ? 409 : 403 }
+      );
     }
 
     console.error("Erro ao salvar canal do tenant:", error);

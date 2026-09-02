@@ -7,6 +7,7 @@ import {
   TenantAccessError,
 } from "@/lib/server/tenant";
 import { buildOutboundCampaignPatch } from "@/lib/server/outbound-campaigns";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   name?: unknown;
@@ -47,6 +48,7 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, campaignId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantCapability(membership, "manage_automations");
 
     const { ref, data } = await getCampaign(tenantId, campaignId);
@@ -108,6 +110,7 @@ export async function DELETE(
     const user = await requireRequestUser(req);
     const { tenantId, campaignId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantCapability(membership, "manage_automations");
 
     const { ref, data } = await getCampaign(tenantId, campaignId);

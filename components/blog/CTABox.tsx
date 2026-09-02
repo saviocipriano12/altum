@@ -14,25 +14,25 @@ export default function CTABox({ variant = "final" }: CTABoxProps) {
       }`}
     >
       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#F56E0F]">
-        {isInline ? "Diagnostico rapido" : "Proximo passo"}
+        {isInline ? "Da ideia para a operação" : "Próximo passo"}
       </p>
       <h3 className="mb-3 text-2xl font-bold">
-        {isInline ? "Quer aplicar esse modelo na sua operacao?" : "Estruture uma maquina de vendas previsivel com IA"}
+        {isInline ? "Quer aplicar esse modelo na sua operação?" : "Veja a Altum trabalhando no seu cenário comercial"}
       </h3>
       <p className="mb-5 max-w-2xl text-white/80">
         {isInline
-          ? "Podemos mapear gargalos de captacao e qualificacao em poucos passos e priorizar as melhorias de maior impacto."
-          : "Receba um plano com prioridades de captacao, qualificacao e operacao comercial para reduzir ruido e aumentar conversao."}
+          ? "Conecte atendimento, CRM, agenda, campanhas e IA em um fluxo que continua depois da primeira conversa."
+          : "Em uma demonstração, mostramos como a plataforma atende, acompanha oportunidades e transforma dados da operação em próxima ação."}
       </p>
       <div className="flex flex-wrap gap-3">
-        <Link href="/" className="rounded-full bg-[#F56E0F] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#ff8e44]">
-          Solicitar diagnostico
+        <Link href="/contato?interest=demonstracao" className="rounded-full bg-[#F56E0F] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#ff8e44]">
+          Agendar demonstração
         </Link>
         <Link
-          href="/solucoes"
+          href="/plataforma"
           className="rounded-full border border-white/25 px-5 py-2 text-sm font-semibold text-white/90 transition-colors hover:border-white"
         >
-          Ver solucoes por vertical
+          Explorar a plataforma
         </Link>
       </div>
     </section>

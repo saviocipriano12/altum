@@ -5,7 +5,7 @@ import { onAuthStateChanged, User, signOut } from "firebase/auth";
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { auth, db } from "@/firebaseConfig";
 import { getMissingFirebaseClientEnvs } from "@/app/lib/firebase-client-env";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export interface UserProfile {
   id: string;
@@ -73,6 +73,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
+  const isPublicAuthPath =
+    pathname === "/cadastro" ||
+    pathname === "/cliente/login" ||
+    pathname === "/cliente/esqueci-senha" ||
+    pathname === "/cliente/redefinir-senha" ||
+    pathname === "/cliente/acao-email" ||
+    pathname === "/cliente/verificar-email" ||
+    pathname === "/cliente/assinatura";
 
   async function ensureCanonicalProfile(firebaseUser: User) {
     const canonicalRef = doc(db, "users", firebaseUser.uid);
@@ -144,10 +153,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       setUser(firebaseUser);
 
+      // Cadastro e login controlam o proprio fluxo. Consultar/migrar o perfil
+      // aqui cria uma corrida com o bootstrap seguro que roda no servidor.
+      if (isPublicAuthPath) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
       try {
         const profileSnap = await ensureCanonicalProfile(firebaseUser);
 
         if (!profileSnap.exists()) {
+          if (pathname === "/cadastro" || pathname === "/cliente/login") {
+            setProfile(null);
+            setLoading(false);
+            return;
+          }
           console.warn("Usuario autenticado sem documento users/{uid}. Encerrando sessao.");
           await signOut(auth);
           setUser(null);
@@ -195,7 +217,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       window.clearTimeout(watchdog);
       unsubscribe();
     };
-  }, [router]);
+  }, [isPublicAuthPath, pathname, router]);
 
   async function signOutUser() {
     await signOut(auth);

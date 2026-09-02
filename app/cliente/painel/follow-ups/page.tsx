@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
@@ -165,7 +166,10 @@ function RetentionSignal({
 
 export default function ClienteFollowUpsPage() {
   const { tenant, hasCapability } = useClienteTenant();
+  const searchParams = useSearchParams();
   const canOperate = hasCapability("edit_leads");
+  const focusLeadId = searchParams.get("leadId") || "";
+  const focusTaskId = searchParams.get("taskId") || "";
 
   const [items, setItems] = useState<FollowUpItem[]>([]);
   const [summary, setSummary] = useState<FollowUpsResponse["summary"]>({});
@@ -198,6 +202,13 @@ export default function ClienteFollowUpsPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (loading || !focusTaskId) return;
+    window.requestAnimationFrame(() => {
+      document.getElementById(`task-${focusTaskId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [focusTaskId, loading]);
+
   const owners = useMemo(() => {
     const map = new Map<string, string>();
     items.forEach((item) => {
@@ -210,11 +221,12 @@ export default function ClienteFollowUpsPage() {
     const term = search.trim().toLowerCase();
     return items
       .filter((item) => {
-        if (view === "now" && !isUrgent(item)) return false;
-        if (view === "today" && !(item.status === "pending" && item.dueToday)) return false;
-        if (view === "proposal" && !(item.status === "pending" && isProposal(item))) return false;
-        if (view === "all" && item.status !== "pending") return false;
-        if (view === "done" && item.status !== "done") return false;
+        if (focusLeadId && item.leadId !== focusLeadId) return false;
+        if (!focusLeadId && view === "now" && !isUrgent(item)) return false;
+        if (!focusLeadId && view === "today" && !(item.status === "pending" && item.dueToday)) return false;
+        if (!focusLeadId && view === "proposal" && !(item.status === "pending" && isProposal(item))) return false;
+        if (!focusLeadId && view === "all" && item.status !== "pending") return false;
+        if (!focusLeadId && view === "done" && item.status !== "done") return false;
         if (owner === "unassigned" && item.lead?.ownerId) return false;
         if (owner !== "all" && owner !== "unassigned" && item.lead?.ownerId !== owner) return false;
         if (!term) return true;
@@ -226,7 +238,7 @@ export default function ClienteFollowUpsPage() {
         if (Number(a.dueToday) !== Number(b.dueToday)) return Number(b.dueToday) - Number(a.dueToday);
         return millis(a.dueAt) - millis(b.dueAt);
       });
-  }, [items, owner, search, view]);
+  }, [focusLeadId, items, owner, search, view]);
 
   const retentionBoard = useMemo(() => {
     const pending = items.filter((item) => item.status === "pending");
@@ -300,6 +312,12 @@ export default function ClienteFollowUpsPage() {
 
       {error ? <CrmNotice tone="red">{error}</CrmNotice> : null}
       {notice ? <CrmNotice tone="green">{notice}</CrmNotice> : null}
+      {focusLeadId ? (
+        <CrmNotice tone="blue">
+          <span>Mostrando as atividades do cliente selecionado.</span>{" "}
+          <Link href="/cliente/painel/follow-ups" className="font-black underline underline-offset-2">Ver toda a fila</Link>
+        </CrmNotice>
+      ) : null}
 
       <CrmPanel>
         <CrmSectionTitle
@@ -431,7 +449,11 @@ export default function ClienteFollowUpsPage() {
           {loading ? <div className="p-5"><CrmEmpty title="Carregando atividades" /></div> : null}
           {!loading && filteredItems.length === 0 ? <div className="p-5"><CrmEmpty title="Nenhuma atividade neste recorte" description="Altere os filtros ou volte para a visao de prioridade." /></div> : null}
           {filteredItems.map((item) => (
-            <article key={item.id} className="grid gap-4 px-5 py-4 transition hover:bg-[var(--cliente-surface-muted)] lg:grid-cols-[minmax(0,1fr)_180px_170px_140px] lg:items-center">
+            <article
+              id={`task-${item.id}`}
+              key={item.id}
+              className={`grid gap-4 px-5 py-4 transition hover:bg-[var(--cliente-surface-muted)] lg:grid-cols-[minmax(0,1fr)_180px_170px_140px] lg:items-center ${focusTaskId === item.id ? "bg-[var(--cliente-primary-soft)] ring-2 ring-inset ring-[var(--cliente-primary)]" : ""}`}
+            >
               <div className="min-w-0">
                 <CrmAvatar name={item.lead?.nome || "Contato"} subtitle={item.lead?.empresa || item.lead?.telefone || "Sem empresa"} />
                 <p className="mt-3 text-sm font-black text-[var(--cliente-card-text)]">{item.title || "Retorno comercial"}</p>

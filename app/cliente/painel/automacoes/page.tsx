@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  BookOpenCheck,
   Loader2,
   MessageSquareCode,
   MoveDown,
@@ -1028,6 +1029,20 @@ export default function ClienteAutomacoesPage() {
           </div>
         }
       />
+
+      <section className="rounded-[22px] border border-violet-200 bg-[linear-gradient(135deg,rgba(124,58,237,0.10),rgba(255,255,255,0.9))] p-4 shadow-[var(--cliente-shadow-soft)] md:flex md:items-center md:justify-between md:gap-6 md:p-5">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-violet-600 text-white"><BookOpenCheck className="h-5 w-5" /></span>
+          <div>
+            <p className="text-sm font-extrabold text-[var(--cliente-card-text)]">Uma base para todos os canais</p>
+            <p className="mt-1 text-sm leading-5 text-[var(--cliente-card-text-muted)]">WhatsApp, Instagram e a IA comercial usam os mesmos produtos, FAQs, politicas e regras do negocio. Cada fluxo define apenas quando agir e para onde encaminhar.</p>
+          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-2 md:mt-0">
+          <StateBadge label={`${summary.kbDocs || 0} itens na base`} tone={summary.kbDocs ? "ai" : "warning"} />
+          <Link href="/cliente/painel/produtos-servicos" className="rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-50">Abrir base</Link>
+        </div>
+      </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Fluxos ativos" value={String(summary.activeAutomations || 0)} icon={Workflow} trend="regras habilitadas" />

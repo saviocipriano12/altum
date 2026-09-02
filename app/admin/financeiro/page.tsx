@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import type {
   FinanceCategory as Categoria,
@@ -12,14 +11,6 @@ import type {
   PayoutStatus,
   TeamMemberDoc,
 } from "@/app/types/domain";
-import {
-  collection,
-  onSnapshot,
-  query,
-  orderBy,
-  where,
-  getDocs,
-} from "firebase/firestore";
 import {
   TrendingUp, ArrowDownRight, Loader2,
   Zap, Plus, X, Calculator, HandCoins, Search, Trash2,
@@ -39,6 +30,36 @@ interface SellerOption {
   id: string;
   name: string;
   commissionRate?: number;
+}
+
+interface BillingOverviewSummary {
+  totalContracts: number;
+  activeContracts: number;
+  blockedContracts: number;
+  stripeContracts: number;
+  includedContracts: number;
+  manualContracts: number;
+  openFinanceCount: number;
+  overdueFinanceCount: number;
+  monthlyPlatformValue: number;
+  overdueAmount: number;
+  stripeReady: boolean;
+  stripeMissing: string[];
+}
+
+interface BillingActionItem {
+  clientId: string;
+  clientName: string;
+  tenantId?: string | null;
+  platformPlan?: string | null;
+  billingProvider: string;
+  accessMode: string;
+  accessStatus: string;
+  monthlyValue: number;
+  dueDate?: string | null;
+  financeStatus?: string | null;
+  reasons: string[];
+  severity: number;
 }
 
 interface LaunchForm {
@@ -87,8 +108,11 @@ export default function FinanceiroMasterPage() {
   const [sellers, setSellers] = useState<SellerOption[]>([]);
   const [search, setSearch] = useState("");
   const [hideValues, setHideValues] = useState(false);
+  const [billingSummary, setBillingSummary] = useState<BillingOverviewSummary | null>(null);
+  const [billingItems, setBillingItems] = useState<BillingActionItem[]>([]);
 
   const [form, setForm] = useState<LaunchForm>(initialForm);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // 1. CARREGAMENTO COM REGRA DE NEGÓCIO
   useEffect(() => {
@@ -96,6 +120,7 @@ export default function FinanceiroMasterPage() {
       setLoading(false);
       return;
     }
+    /* Legacy client listener retained below for historical context; data now loads through the authenticated API.
     const ref = collection(db, "financeiro");
     
     // Admin vê o macro / Vendedor vê apenas seu micro
@@ -148,6 +173,79 @@ export default function FinanceiroMasterPage() {
       });
     }
     return () => unsub();
+    */
+  }, [user, isAdmin]);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void Promise.all([
+      authedFetch("/api/admin/dashboard?include=financeiro"),
+      isAdmin ? authedFetch("/api/admin/users?detailed=true") : Promise.resolve(null),
+    ])
+      .then(async ([financeResponse, usersResponse]) => {
+        const financePayload = (await financeResponse.json()) as { financeiro?: Transaction[]; error?: string };
+        if (!financeResponse.ok) throw new Error(financePayload.error || "Falha ao carregar financeiro.");
+        const rows = Array.isArray(financePayload.financeiro) ? financePayload.financeiro : [];
+        const timestamp = (value: unknown) => {
+          if (typeof value === "number") return value;
+          if (typeof value === "string") return new Date(value).getTime() || 0;
+          if (value && typeof value === "object" && "toDate" in value && typeof (value as { toDate?: unknown }).toDate === "function") {
+            return (value as { toDate: () => Date }).toDate().getTime();
+          }
+          return 0;
+        };
+        if (cancelled) return;
+        setData([...rows].sort((a, b) => timestamp(b.createdAt) - timestamp(a.createdAt)));
+        if (usersResponse) {
+          const usersPayload = (await usersResponse.json()) as { items?: Array<TeamMemberDoc & { id: string }> };
+          setSellers((usersPayload.items || []).map((item) => ({
+            id: item.id,
+            name: item.name || "Sem Nome",
+            commissionRate: Number(item.commissionRate || 0),
+          })));
+        }
+        setLoadError(null);
+      })
+      .catch((error) => {
+        console.error("Erro ao carregar financeiro:", error);
+        if (!cancelled) {
+          setData([]);
+          setSellers([]);
+          setLoadError("Não foi possível carregar o financeiro agora.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isAdmin, refreshKey]);
+
+  useEffect(() => {
+    if (!user || !isAdmin) return;
+
+    async function loadBillingOverview() {
+      try {
+        const res = await authedFetch("/api/admin/billing/overview");
+        const payload = (await res.json()) as {
+          summary?: BillingOverviewSummary;
+          actionItems?: BillingActionItem[];
+        };
+        if (!res.ok) return;
+        setBillingSummary(payload.summary || null);
+        setBillingItems(Array.isArray(payload.actionItems) ? payload.actionItems : []);
+      } catch (error) {
+        console.error("Erro ao carregar overview de billing:", error);
+      }
+    }
+
+    void loadBillingOverview();
   }, [user, isAdmin]);
 
   // 2. MOTOR DE CÁLCULO SaaS
@@ -216,6 +314,7 @@ export default function FinanceiroMasterPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Falha ao criar lancamento.");
 
+      setRefreshKey((value) => value + 1);
       setIsModalOpen(false);
       setForm((prev) => ({ ...prev, descricao: "", valor: "", referencia: "" }));
     } catch (error) {
@@ -235,6 +334,8 @@ export default function FinanceiroMasterPage() {
     const data = await res.json();
     if (!res.ok) {
       alert(data?.error || "Falha ao atualizar status.");
+    } else {
+      setRefreshKey((value) => value + 1);
     }
   };
 
@@ -250,6 +351,8 @@ export default function FinanceiroMasterPage() {
     const data = await res.json();
     if (!res.ok) {
       alert(data?.error || "Falha ao atualizar payout.");
+    } else {
+      setRefreshKey((value) => value + 1);
     }
   };
 
@@ -263,6 +366,8 @@ export default function FinanceiroMasterPage() {
       const data = await res.json();
       if (!res.ok) {
         alert(data?.error || "Falha ao remover registro.");
+      } else {
+        setRefreshKey((value) => value + 1);
       }
     }
   };
@@ -328,7 +433,14 @@ export default function FinanceiroMasterPage() {
 
         {/* CONTEÚDO DINMICO */}
         <div className="mt-12">
-            {activeTab === "resumo" && <ResumoVisual transactions={data} />}
+            {activeTab === "resumo" && (
+              <div className="space-y-10">
+                {isAdmin && billingSummary ? (
+                  <BillingOpsPanel summary={billingSummary} items={billingItems} esconderValores={hideValues} />
+                ) : null}
+                <ResumoVisual transactions={data} />
+              </div>
+            )}
             
             {(activeTab === "vendas" || activeTab === "contas") && (
                 <div className="space-y-8 animate-in fade-in duration-500">
@@ -614,6 +726,145 @@ function ResumoVisual({ transactions }: { transactions: Transaction[] }) {
             </ResponsiveContainer>
         </div>
     );
+}
+
+function BillingOpsPanel({
+  summary,
+  items,
+  esconderValores,
+}: {
+  summary: BillingOverviewSummary;
+  items: BillingActionItem[];
+  esconderValores: boolean;
+}) {
+  return (
+    <div className="space-y-6 animate-in fade-in duration-700">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+        <div className="rounded-[2rem] border border-white/8 bg-[#0a0a0a] p-6">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Plataforma ativa</p>
+          <h3 className="mt-4 text-3xl font-black tracking-tight">
+            {summary.activeContracts}
+            <span className="ml-2 text-base text-white/20">/ {summary.totalContracts}</span>
+          </h3>
+          <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-white/35">
+            {summary.blockedContracts} bloqueados
+          </p>
+        </div>
+
+        <div className="rounded-[2rem] border border-white/8 bg-[#0a0a0a] p-6">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">MRR da plataforma</p>
+          <h3 className="mt-4 text-3xl font-black tracking-tight">
+            {esconderValores ? "****" : money(summary.monthlyPlatformValue)}
+          </h3>
+          <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-white/35">
+            contratos com acesso ou estrutura ativa
+          </p>
+        </div>
+
+        <div className="rounded-[2rem] border border-white/8 bg-[#0a0a0a] p-6">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Cobrancas abertas</p>
+          <h3 className="mt-4 text-3xl font-black tracking-tight">
+            {summary.openFinanceCount}
+          </h3>
+          <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-white/35">
+            {summary.overdueFinanceCount} em atraso
+          </p>
+        </div>
+
+        <div className="rounded-[2rem] border border-white/8 bg-[#0a0a0a] p-6">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Trilho Stripe</p>
+          <h3 className="mt-4 text-3xl font-black tracking-tight">
+            {summary.stripeContracts}
+          </h3>
+          <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-white/35">
+            {summary.stripeReady ? "ambiente pronto" : `faltando ${summary.stripeMissing.length} chave(s)`}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+        <div className="rounded-[2rem] border border-white/8 bg-[#080808] p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Fila de atencao</p>
+              <h3 className="mt-3 text-2xl font-black tracking-tight">Quem precisa de acao agora</h3>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Em risco</p>
+              <p className="mt-2 text-lg font-black text-white">
+                {esconderValores ? "****" : money(summary.overdueAmount)}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            {items.length === 0 ? (
+              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 text-sm text-white/55">
+                Nenhum cliente com alerta operacional relevante no momento.
+              </div>
+            ) : (
+              items.map((item) => (
+                <div key={`${item.clientId}-${item.accessMode}`} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-sm font-black uppercase tracking-[0.08em] text-white">{item.clientName}</p>
+                      <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-white/35">
+                        {item.platformPlan || "sem plano"} • {item.billingProvider} • {item.accessMode}
+                      </p>
+                    </div>
+                    <div className="text-left md:text-right">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">
+                        {item.accessStatus}
+                      </p>
+                      <p className="mt-1 text-sm font-black text-white">
+                        {esconderValores ? "****" : money(item.monthlyValue)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {item.reasons.map((reason) => (
+                      <span key={reason} className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-100">
+                        {reason}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-[11px] uppercase tracking-[0.16em] text-white/30">
+                    {item.dueDate ? `proximo marco ${item.dueDate}` : "sem vencimento mapeado"}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-[2rem] border border-white/8 bg-[#080808] p-6">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Composicao operacional</p>
+          <div className="mt-6 space-y-4">
+            <MiniMetric label="Stripe" value={summary.stripeContracts} />
+            <MiniMetric label="Incluso na agencia" value={summary.includedContracts} />
+            <MiniMetric label="Manual / Asaas" value={summary.manualContracts} />
+            <MiniMetric label="Atrasos" value={summary.overdueFinanceCount} />
+          </div>
+
+          <div className="mt-8 rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/25">Leitura rapida</p>
+            <p className="mt-3 text-sm text-white/70">
+              O que ainda falta para fechar o trilho completo e automatico e a criacao real do checkout Stripe, o webhook de assinatura e a virada dos CTAs publicos para compra direta.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3">
+      <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white/35">{label}</span>
+      <span className="text-lg font-black text-white">{value}</span>
+    </div>
+  );
 }
 
 

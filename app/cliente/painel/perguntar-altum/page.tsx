@@ -152,7 +152,10 @@ export default function PerguntarAltumPage() {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/business-insights/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: text }),
+        body: JSON.stringify({
+          question: text,
+          history: messages.slice(-8).map((message) => ({ role: message.role, text: message.text })),
+        }),
       });
       const payload = (await res.json()) as InsightResponse;
       if (!res.ok) throw new Error(payload.error || "Falha ao perguntar para a Altum.");

@@ -3,6 +3,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError, TENANT_CAPABILITIES, type TenantCapability } from "@/lib/server/tenant";
+import { assertTenantLimitAvailable } from "@/lib/server/tenant-entitlements";
+import { getTenantUserUsage } from "@/lib/server/tenant-usage";
 
 type Body = {
   email?: string;
@@ -173,7 +175,10 @@ export async function GET(
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
     if (error instanceof TenantAccessError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.code === "tenant_limit_exceeded" ? 409 : 403 }
+      );
     }
     console.error("Erro ao listar usuarios do tenant:", error);
     return NextResponse.json({ error: "Falha ao listar usuarios." }, { status: 500 });
@@ -202,6 +207,16 @@ export async function POST(
 
     if (!email) {
       return NextResponse.json({ error: "Campo obrigatorio: email." }, { status: 400 });
+    }
+
+    const tenantUserUsage = await getTenantUserUsage(tenantId);
+    if (!tenantUserUsage.hasActiveEmail(email)) {
+      await assertTenantLimitAvailable({
+        tenantId,
+        limitId: "users",
+        currentUsage: tenantUserUsage.activeClientUsers,
+        increment: 1,
+      });
     }
 
     const tenantSnap = await adminDb.collection("tenants").doc(tenantId).get();

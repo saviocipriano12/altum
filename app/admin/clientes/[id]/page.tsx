@@ -3,17 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { db } from "@/firebaseConfig";
+import { authedFetch } from "@/app/lib/authed-fetch";
 import { getBusinessProfile, normalizeBusinessProfileId, type BusinessProfileId } from "@/lib/business-profiles";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  query,
-  where,
-} from "firebase/firestore";
 import type {
   AgencyActivity,
   AgencyClient,
@@ -139,6 +130,7 @@ export default function ClienteDetalhePage() {
   const [activities, setActivities] = useState<ClientActivity[]>([]);
   const [tenantSummary, setTenantSummary] = useState<ClientTenantSummary | null>(null);
 
+  /*
   useEffect(() => {
     async function fetchClient() {
       try {
@@ -316,6 +308,71 @@ export default function ClienteDetalhePage() {
 
     void fetchRelatedData();
   }, [client]);
+
+  */
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingClient(true);
+    setLoadingRelated(true);
+    void authedFetch(`/api/admin/clientes/${encodeURIComponent(params.id)}/summary`)
+      .then(async (response) => {
+        const payload = (await response.json()) as {
+          client?: AgencyClient;
+          projects?: AgencyProject[];
+          budgets?: ClientBudget[];
+          finance?: ClientFinance[];
+          activities?: ClientActivity[];
+          tenant?: { id: string; status?: string; niche?: string; businessProfileId?: string; settings?: { niche?: string; businessProfileId?: string } | null } | null;
+          error?: string;
+        };
+        if (!response.ok || !payload.client) throw new Error(payload.error || "Falha ao carregar cliente.");
+        if (cancelled) return;
+        const currentClient = payload.client;
+        setClient({
+          ...currentClient,
+          name: currentClient.name || "Cliente",
+          niche: currentClient.niche || "",
+          city: currentClient.city || "",
+          contactName: currentClient.contactName || "",
+          email: currentClient.email || "",
+          phone: currentClient.phone || "",
+          site: currentClient.site || "",
+          services: Array.isArray(currentClient.services) ? currentClient.services : [],
+        });
+        setProjects(sortByCreatedAtDesc(payload.projects || []));
+        setBudgets(sortByCreatedAtDesc(payload.budgets || []));
+        setTransactions(sortByCreatedAtDesc(payload.finance || []));
+        setActivities(sortByCreatedAtDesc(payload.activities || []));
+        const tenant = payload.tenant;
+        setTenantSummary(tenant ? {
+          tenantId: tenant.id,
+          status: String(tenant.status || "active"),
+          businessProfileId: normalizeBusinessProfileId(tenant.settings?.businessProfileId || tenant.businessProfileId),
+          niche: String(tenant.settings?.niche || tenant.niche || currentClient.niche || ""),
+        } : null);
+      })
+      .catch((error) => {
+        console.error("Erro ao carregar resumo do cliente:", error);
+        if (!cancelled) {
+          setClient(null);
+          setProjects([]);
+          setBudgets([]);
+          setTransactions([]);
+          setActivities([]);
+          setTenantSummary(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingClient(false);
+          setLoadingRelated(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id]);
 
   const clientCreatedAt = formatDateTime(client?.createdAt);
   const businessProfile = tenantSummary ? getBusinessProfile(tenantSummary.businessProfileId) : null;

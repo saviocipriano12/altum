@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import {
   normalizePipelineStageId,
   normalizePipelineStages,
@@ -27,6 +28,9 @@ type PipelineLead = {
   id: string;
   nome: string;
   empresa: string;
+  photoUrl: string;
+  profilePhotoUrl: string;
+  contactPhotoUrl: string;
   owner: string;
   ownerId: string;
   stage: string;
@@ -164,6 +168,9 @@ function formatLead(docId: string, data: Record<string, unknown>): PipelineLead 
     id: docId,
     nome: cleanText(data.nome, 180) || "Lead",
     empresa: cleanText(data.empresa, 180),
+    photoUrl: cleanText(data.photoUrl, 1000),
+    profilePhotoUrl: cleanText(data.profilePhotoUrl, 1000),
+    contactPhotoUrl: cleanText(data.contactPhotoUrl, 1000),
     owner: cleanText(data.owner, 120),
     ownerId: cleanText(data.ownerId, 120),
     stage: normalizePipelineStageId(data.pipelineStage || data.stage),
@@ -207,6 +214,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantRole(membership, "client_viewer");
 
     const [{ stages, owners }, leadsSnap] = await Promise.all([
@@ -309,6 +317,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "manage_pipeline");
 
     const body = (await req.json()) as Body;

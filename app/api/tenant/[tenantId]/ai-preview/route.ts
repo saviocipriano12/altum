@@ -12,6 +12,7 @@ import {
   type AltumAiProvider,
 } from "@/lib/server/ai/operating-layer";
 import { getTenantLearningHints } from "@/lib/server/ai/tenant-learning";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { runConversationAgent } from "@/lib/server/ai/router";
 import { resolveConversationalChoice } from "@/lib/server/ai/conversation-core";
 import { deriveOperationalPlan } from "@/lib/server/ai/operational-plan";
@@ -67,7 +68,7 @@ function summarizeLeadMemoryForPreview(leadMemory: Partial<AltumLeadMemory> | nu
     clean(leadMemory.dominantObjection, 120) ? `objecao: ${clean(leadMemory.dominantObjection, 120)}` : "",
     clean(leadMemory.diagnosis, 240) ? `diagnostico: ${clean(leadMemory.diagnosis, 240)}` : "",
     clean(leadMemory.personalizedPlan, 260) ? `plano sugerido: ${clean(leadMemory.personalizedPlan, 260)}` : "",
-    clean(leadMemory.sellerNextMove, 180) ? `proximo passo do vendedor: ${clean(leadMemory.sellerNextMove, 180)}` : "",
+    clean(leadMemory.sellerNextMove, 180) ? `proximo passo comercial: ${clean(leadMemory.sellerNextMove, 180)}` : "",
     clean(leadMemory.memorySummary, 220) ? `memoria viva: ${clean(leadMemory.memorySummary, 220)}` : "",
     clean(leadMemory.summary, 220) ? `resumo: ${clean(leadMemory.summary, 220)}` : "",
   ]
@@ -157,6 +158,31 @@ function normalizeComparable(value: string) {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function hasPreviewInternalLeak(value: string) {
+  const normalized = normalizeComparable(value);
+  return [
+    /\bplaybook\b/,
+    /\bguardrail\b/,
+    /\bdiagnostico interno\b/,
+    /\binstrucao interna\b/,
+    /\bcontrole interno\b/,
+    /\bia nao deve\b/,
+    /\bnao deve despejar\b/,
+    /\blead sem clareza\b/,
+    /\bproximo passo do vendedor\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function cleanPreviewResponseForLead(value: string, inboundText: string) {
+  const text = clean(value, 1600);
+  if (!text || !hasPreviewInternalLeak(text)) return text;
+  const inbound = normalizeComparable(inboundText);
+  if (/\b(exemplo|modelo|mostra|manda|envia|lp|landing|pagina|site|oferta|campanha)\b/.test(inbound)) {
+    return "Entendi. Voce respondeu sobre a oferta que recebeu. Posso te mostrar um exemplo e explicar em uma frase como isso ajudaria no seu caso?";
+  }
+  return "Entendi. Vou te direcionar de forma simples: me confirma qual resultado voce quer melhorar agora para eu indicar o melhor proximo passo?";
 }
 
 const SEMANTIC_KEYWORD_GROUPS = [
@@ -255,6 +281,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "ai");
     assertTenantCapability(membership, "manage_ai");
 
     const body = (await req.json()) as Body;
@@ -436,7 +463,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       tenantAi: tenantAiConfig,
     });
 
-    const responseText = clean(choice.responseText || fallbackChoice.responseText || "", 1600) || "";
+    const responseText = cleanPreviewResponseForLead(choice.responseText || fallbackChoice.responseText || "", inboundText) || "";
 
     const quality = scoreAltumConversationQuality({
       inboundText,

@@ -1,17 +1,19 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, getDocs, limit, query, where } from "firebase/firestore";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useAuth } from "@/context/AuthContext";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { BUSINESS_PROFILES, getBusinessProfile, normalizeBusinessProfileId, type BusinessProfileId } from "@/lib/business-profiles";
 import { getBusinessProfileStarterKit } from "@/lib/business-profile-starter-kit";
+import { PLATFORM_BILLING_PLANS, type PlatformBillingPlanId } from "@/lib/platform-billing";
+import { TenantEntitlementsCard } from "@/app/admin/clientes/[id]/portal/tenant-entitlements-card";
 import {
   ArrowLeft,
   CheckCircle2,
+  CreditCard,
+  ExternalLink,
   Loader2,
   Rocket,
   Save,
@@ -36,6 +38,68 @@ type ContractDoc = {
   reminderWhatsAppPhones?: string;
   autoSuspendEnabled?: boolean;
   autoSuspendBusinessDays?: number;
+  platformPlan?: string;
+  platformAccessMode?: "stripe_subscription" | "agency_included" | "manual_release" | "disabled";
+  platformAccessStatus?: "active" | "trial" | "blocked" | "pending";
+  billingProvider?: "stripe" | "asaas" | "manual" | "included";
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  stripePriceId?: string;
+  stripeSubscriptionStatus?: string;
+  stripeCurrentPeriodEnd?: string;
+  stripeCheckoutUrl?: string;
+  stripeCustomerPortalUrl?: string;
+  billingNotes?: string;
+  whatsappCostMonthlyBrl?: number;
+  telephonyCostMonthlyBrl?: number;
+  otherVariableCostMonthlyBrl?: number;
+  aiUsdBrlRate?: number;
+};
+
+type BillingOverview = {
+  tenantId?: string | null;
+  accessStatus?: string | null;
+  accessMode?: string | null;
+  billingProvider?: string | null;
+  autoBillingEnabled?: boolean;
+  contractStatus?: string | null;
+  openFinanceCount?: number;
+  overdueFinanceCount?: number;
+  paidFinanceCount?: number;
+  latestOpenAmount?: number;
+  latestOpenDueDate?: string | null;
+  latestOpenStatus?: string | null;
+  lastPaidAmount?: number;
+  lastPaidAt?: number;
+  lastAutoChargeDueDate?: string | null;
+  lastAutoChargeFinanceId?: string | null;
+  stripeSetup?: {
+    enabled: boolean;
+    planId: PlatformBillingPlanId;
+    planLabel: string;
+    planPrice: number | null;
+    stripeEnvKey: string | null;
+    resolvedPriceId: string | null;
+    subscriptionStatus: string | null;
+    currentPeriodEnd: string | null;
+    customerId: string | null;
+    subscriptionId: string | null;
+    checkoutUrl: string | null;
+    customerPortalUrl: string | null;
+    missing: string[];
+    nextStep: string;
+  } | null;
+};
+
+type FinanceBrief = {
+  id: string;
+  descricao?: string;
+  valor?: number;
+  status?: "pendente" | "pago" | "atrasado" | "cancelado";
+  dueDate?: string | null;
+  billingType?: string | null;
+  paymentLink?: string | null;
+  reminderStatus?: string | null;
 };
 
 type PortalUserDoc = {
@@ -54,6 +118,22 @@ type TenantSummary = {
 };
 
 type TenantReadinessPayload = {
+  integrationHealth?: {
+    checkedAt?: string;
+    healthy?: number;
+    total?: number;
+    unavailable?: boolean;
+    items?: Array<{
+      channelId: string;
+      type: string;
+      label?: string;
+      provider?: string;
+      actionHref?: string;
+      ok: boolean;
+      status: string;
+      reason?: string;
+    }>;
+  };
   settings?: {
     businessProfileId?: BusinessProfileId | string;
     inboxRules?: {
@@ -102,6 +182,31 @@ function badgeToneClass(tone: "neutral" | "success" | "warning" | "danger" | "in
   return "border-white/10 bg-white/[0.04] text-white/70";
 }
 
+function money(value?: number) {
+  return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatDateLabel(value?: string | number | null) {
+  if (!value) return "Nao informado";
+  if (typeof value === "number") {
+    return new Date(value).toLocaleDateString("pt-BR");
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("pt-BR");
+}
+
+function financeStatusClass(status?: string | null) {
+  if (status === "active") return badgeToneClass("success");
+  if (status === "trial") return badgeToneClass("info");
+  if (status === "pending") return badgeToneClass("warning");
+  if (status === "blocked") return badgeToneClass("danger");
+  if (status === "pago") return badgeToneClass("success");
+  if (status === "atrasado") return badgeToneClass("danger");
+  if (status === "cancelado") return badgeToneClass("neutral");
+  return badgeToneClass("warning");
+}
+
 export default function ClientePortalAdminPage() {
   const { isAdmin } = useAuth();
   const params = useParams<{ id: string }>();
@@ -118,9 +223,14 @@ export default function ClientePortalAdminPage() {
   const [provisioning, setProvisioning] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [billingNotice, setBillingNotice] = useState<string | null>(null);
   const [portalUsers, setPortalUsers] = useState<PortalUserDoc[]>([]);
   const [applyStarterKit, setApplyStarterKit] = useState(true);
   const [readiness, setReadiness] = useState<TenantReadinessPayload | null>(null);
+  const [billingOverview, setBillingOverview] = useState<BillingOverview | null>(null);
+  const [recentFinance, setRecentFinance] = useState<FinanceBrief[]>([]);
+  const [billingAction, setBillingAction] = useState<"release_access" | "block_access" | "send_reminder" | null>(null);
+  const [stripeAction, setStripeAction] = useState<"create_checkout" | "open_portal" | null>(null);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
@@ -140,6 +250,22 @@ export default function ClientePortalAdminPage() {
     reminderWhatsAppPhones: "",
     autoSuspendEnabled: true,
     autoSuspendBusinessDays: 2,
+    platformPlan: "Operacao",
+    platformAccessMode: "manual_release",
+    platformAccessStatus: "active",
+    billingProvider: "manual",
+    stripeCustomerId: "",
+    stripeSubscriptionId: "",
+    stripePriceId: "",
+    stripeSubscriptionStatus: "",
+    stripeCurrentPeriodEnd: "",
+    stripeCheckoutUrl: "",
+    stripeCustomerPortalUrl: "",
+    billingNotes: "",
+    whatsappCostMonthlyBrl: 0,
+    telephonyCostMonthlyBrl: 0,
+    otherVariableCostMonthlyBrl: 0,
+    aiUsdBrlRate: 5.5,
   });
   const selectedProfile = getBusinessProfile(selectedProfileId);
   const starterKit = useMemo(() => getBusinessProfileStarterKit(selectedProfileId), [selectedProfileId]);
@@ -148,6 +274,8 @@ export default function ClientePortalAdminPage() {
   const blockers = readiness?.blockers || [];
   const modules = readiness?.modules || [];
   const readinessInsights = readiness?.insights || [];
+  const integrationHealth = readiness?.integrationHealth;
+  const integrationHealthItems = integrationHealth?.items || [];
   const onboardingChecklist = useMemo(
     () => [
       {
@@ -202,28 +330,37 @@ export default function ClientePortalAdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const clientSnap = await getDoc(doc(db, "clientes", clientId));
-      if (!clientSnap.exists()) {
-        throw new Error("Cliente nao encontrado.");
+      const [summaryRes, usersRes, contractRes] = await Promise.all([
+        authedFetch(`/api/admin/clientes/${encodeURIComponent(clientId)}/summary`),
+        authedFetch(`/api/admin/client-portal/users/list?clientId=${encodeURIComponent(clientId)}`),
+        authedFetch(`/api/admin/client-portal/contracts/get?clientId=${encodeURIComponent(clientId)}`),
+      ]);
+
+      const summaryData = (await summaryRes.json()) as {
+        client?: { name?: string; niche?: string };
+        tenant?: {
+          id: string;
+          status?: string;
+          niche?: string;
+          businessProfileId?: string;
+          settings?: { niche?: string; businessProfileId?: string } | null;
+        } | null;
+        error?: string;
+      };
+      if (!summaryRes.ok || !summaryData.client) {
+        throw new Error(summaryData.error || "Falha ao carregar cliente.");
       }
-      const clientData = clientSnap.data() as { name?: string; niche?: string };
+      const clientData = summaryData.client;
       setClientName(clientData.name || "Cliente");
       setClientNiche(clientData.niche || "Nao informado");
 
-      const tenantQuery = query(
-        collection(db, "tenants"),
-        where("legacyClientId", "==", clientId),
-        limit(1)
-      );
-
-      const [usersRes, contractRes, tenantSnap] = await Promise.all([
-        authedFetch(`/api/admin/client-portal/users/list?clientId=${encodeURIComponent(clientId)}`),
-        authedFetch(`/api/admin/client-portal/contracts/get?clientId=${encodeURIComponent(clientId)}`),
-        getDocs(tenantQuery),
-      ]);
-
       const usersData = (await usersRes.json()) as { items?: PortalUserDoc[]; error?: string };
-      const contractData = (await contractRes.json()) as { contract?: ContractDoc | null; error?: string };
+      const contractData = (await contractRes.json()) as {
+        contract?: ContractDoc | null;
+        billingOverview?: BillingOverview | null;
+        recentFinance?: FinanceBrief[];
+        error?: string;
+      };
       const loadWarnings: string[] = [];
       if (!usersRes.ok) {
         loadWarnings.push(usersData.error || "Falha ao carregar acessos.");
@@ -234,20 +371,19 @@ export default function ClientePortalAdminPage() {
 
       if (!contractRes.ok) {
         loadWarnings.push(contractData.error || "Falha ao carregar contrato.");
+        setBillingOverview(null);
+        setRecentFinance([]);
+        setBillingNotice(null);
       }
 
-      if (!tenantSnap.empty) {
-        const tenantDoc = tenantSnap.docs[0];
-        const tenantData = tenantDoc.data() as { status?: string; niche?: string; businessProfileId?: string };
-        const tenantSettingsSnap = await getDoc(doc(db, "tenant_settings", tenantDoc.id));
-        const tenantSettings = tenantSettingsSnap.exists()
-          ? (tenantSettingsSnap.data() as { businessProfileId?: string; niche?: string })
-          : null;
+      if (summaryData.tenant) {
+        const tenantData = summaryData.tenant;
+        const tenantSettings = tenantData.settings;
         const nextProfileId = normalizeBusinessProfileId(
           tenantSettings?.businessProfileId || tenantData.businessProfileId
         );
         setTenantSummary({
-          tenantId: tenantDoc.id,
+          tenantId: tenantData.id,
           status: String(tenantData.status || "active"),
           businessProfileId: nextProfileId,
           niche: String(tenantSettings?.niche || tenantData.niche || clientData.niche || "Nao informado"),
@@ -255,7 +391,7 @@ export default function ClientePortalAdminPage() {
         setSelectedProfileId(nextProfileId);
         setApplyStarterKit(false);
 
-        const readinessRes = await authedFetch(`/api/admin/tenants/${tenantDoc.id}/readiness`);
+        const readinessRes = await authedFetch(`/api/admin/tenants/${tenantData.id}/readiness`);
         const readinessData = (await readinessRes.json()) as TenantReadinessPayload & { error?: string };
         if (!readinessRes.ok) {
           loadWarnings.push(readinessData.error || "Falha ao carregar onboarding do tenant.");
@@ -275,6 +411,8 @@ export default function ClientePortalAdminPage() {
       }
 
       if (contractRes.ok && contractData.contract) {
+        setBillingOverview(contractData.billingOverview || null);
+        setRecentFinance(contractData.recentFinance || []);
         setContract({
           title: contractData.contract.title || "Contrato de Prestacao de Servicos",
           status: contractData.contract.status || "ativo",
@@ -296,7 +434,26 @@ export default function ClientePortalAdminPage() {
             : "",
           autoSuspendEnabled: contractData.contract.autoSuspendEnabled !== false,
           autoSuspendBusinessDays: Number(contractData.contract.autoSuspendBusinessDays || 2),
+          platformPlan: contractData.contract.platformPlan || "Operacao",
+          platformAccessMode: contractData.contract.platformAccessMode || "manual_release",
+          platformAccessStatus: contractData.contract.platformAccessStatus || "active",
+          billingProvider: contractData.contract.billingProvider || "manual",
+          stripeCustomerId: contractData.contract.stripeCustomerId || "",
+          stripeSubscriptionId: contractData.contract.stripeSubscriptionId || "",
+          stripePriceId: contractData.contract.stripePriceId || "",
+          stripeSubscriptionStatus: contractData.contract.stripeSubscriptionStatus || "",
+          stripeCurrentPeriodEnd: contractData.contract.stripeCurrentPeriodEnd || "",
+          stripeCheckoutUrl: contractData.contract.stripeCheckoutUrl || "",
+          stripeCustomerPortalUrl: contractData.contract.stripeCustomerPortalUrl || "",
+          billingNotes: contractData.contract.billingNotes || "",
+          whatsappCostMonthlyBrl: Number(contractData.contract.whatsappCostMonthlyBrl || 0),
+          telephonyCostMonthlyBrl: Number(contractData.contract.telephonyCostMonthlyBrl || 0),
+          otherVariableCostMonthlyBrl: Number(contractData.contract.otherVariableCostMonthlyBrl || 0),
+          aiUsdBrlRate: Number(contractData.contract.aiUsdBrlRate || 5.5),
         });
+      } else if (contractRes.ok) {
+        setBillingOverview(contractData.billingOverview || null);
+        setRecentFinance(contractData.recentFinance || []);
       }
     } catch (err) {
       console.error(err);
@@ -366,6 +523,91 @@ export default function ClientePortalAdminPage() {
       setError(err instanceof Error ? err.message : "Falha ao salvar contrato.");
     } finally {
       setSavingContract(false);
+    }
+  }
+
+  async function runBillingAction(action: "release_access" | "block_access" | "send_reminder") {
+    setBillingAction(action);
+    setError(null);
+    setBillingNotice(null);
+    try {
+      const res = await authedFetch("/api/admin/client-portal/contracts/control", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId,
+          tenantId: tenantSummary?.tenantId || billingOverview?.tenantId || "",
+          action,
+          note: contract.billingNotes || contract.notes || "",
+        }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        reminderStatus?: string;
+        reminderSent?: number;
+        reminderFailed?: number;
+      };
+      if (!res.ok) throw new Error(data.error || "Falha ao executar acao de billing.");
+
+      if (action === "send_reminder") {
+        setBillingNotice(
+          `Lembrete executado. Status: ${data.reminderStatus || "processado"}. Enviados: ${Number(
+            data.reminderSent || 0
+          )}. Falhas: ${Number(data.reminderFailed || 0)}.`
+        );
+      } else if (action === "release_access") {
+        setBillingNotice("Acesso do tenant liberado manualmente pelo admin.");
+      } else {
+        setBillingNotice("Acesso do tenant bloqueado manualmente pelo admin.");
+      }
+
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Falha ao executar acao de billing.");
+    } finally {
+      setBillingAction(null);
+    }
+  }
+
+  async function runStripeAction(action: "create_checkout" | "open_portal") {
+    setStripeAction(action);
+    setError(null);
+    setBillingNotice(null);
+    try {
+      const res = await authedFetch("/api/admin/client-portal/contracts/stripe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId,
+          tenantId: tenantSummary?.tenantId || billingOverview?.tenantId || "",
+          action,
+        }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        checkoutUrl?: string;
+        portalUrl?: string;
+      };
+
+      if (!res.ok) throw new Error(data.error || "Falha ao executar acao Stripe.");
+
+      const destinationUrl = data.checkoutUrl || data.portalUrl || "";
+      if (destinationUrl) {
+        window.open(destinationUrl, "_blank", "noopener,noreferrer");
+      }
+
+      setBillingNotice(
+        action === "create_checkout"
+          ? "Checkout Stripe gerado e aberto em nova aba."
+          : "Portal Stripe do cliente aberto em nova aba."
+      );
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Falha ao executar acao Stripe.");
+    } finally {
+      setStripeAction(null);
     }
   }
 
@@ -570,6 +812,18 @@ export default function ClientePortalAdminPage() {
             </div>
           </form>
 
+          {tenantSummary ? (
+            <TenantEntitlementsCard
+              tenantId={tenantSummary.tenantId}
+              tenantName={clientName || "Cliente"}
+              monthlyValue={contract.monthlyValue || 0}
+              whatsappCostMonthlyBrl={contract.whatsappCostMonthlyBrl || 0}
+              telephonyCostMonthlyBrl={contract.telephonyCostMonthlyBrl || 0}
+              otherVariableCostMonthlyBrl={contract.otherVariableCostMonthlyBrl || 0}
+              aiUsdBrlRate={contract.aiUsdBrlRate || 5.5}
+            />
+          ) : null}
+
         {tenantSummary && (
           <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
             <div className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-4">
@@ -690,6 +944,58 @@ export default function ClientePortalAdminPage() {
             </div>
 
             <div className="space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-white/72">
+                      Saude das integracoes
+                    </h2>
+                    <p className="mt-1 text-sm text-white/58">
+                      Validacao real dos canais e lojas usados na operacao deste cliente.
+                    </p>
+                  </div>
+                  <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.14em] ${badgeToneClass(
+                    integrationHealth?.unavailable
+                      ? "warning"
+                      : Number(integrationHealth?.total || 0) > 0 && Number(integrationHealth?.healthy || 0) === Number(integrationHealth?.total || 0)
+                        ? "success"
+                        : "warning"
+                  )}`}>
+                    {integrationHealth?.unavailable
+                      ? "verificacao indisponivel"
+                      : `${Number(integrationHealth?.healthy || 0)}/${Number(integrationHealth?.total || 0)} saudaveis`}
+                  </span>
+                </div>
+
+                {integrationHealthItems.length === 0 ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/55">
+                    Nenhum canal ou ecommerce configurado para validar.
+                  </div>
+                ) : (
+                  integrationHealthItems.slice(0, 8).map((item) => (
+                    <Link
+                      key={`${item.type}:${item.channelId}`}
+                      href={item.actionHref || "/cliente/painel/configuracoes/canais"}
+                      className="block rounded-2xl border border-white/10 bg-black/30 p-4 transition hover:bg-white/[0.04]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{item.label || item.provider || item.type}</p>
+                          <p className="mt-1 text-xs text-white/48">{item.provider || item.type}</p>
+                          <p className="mt-2 text-sm text-white/58">{item.reason || (item.ok ? "Conexao pronta para operar." : "Conexao precisa de atencao.")}</p>
+                        </div>
+                        <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.14em] ${badgeToneClass(item.ok ? "success" : "warning")}`}>
+                          {item.ok ? "operando" : "revisar"}
+                        </span>
+                      </div>
+                    </Link>
+                  ))
+                )}
+                {integrationHealth?.checkedAt ? (
+                  <p className="text-[11px] text-white/38">Ultima verificacao: {formatDateLabel(integrationHealth.checkedAt)}</p>
+                ) : null}
+              </div>
+
               <div className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
                 <div>
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-white/72">
@@ -827,6 +1133,208 @@ export default function ClientePortalAdminPage() {
               Contrato do portal
             </h2>
 
+            <p className="text-sm text-white/55">
+              Aqui o admin define como a plataforma entra na conta do cliente: assinatura propria, acesso incluso pela agencia ou liberacao manual com total governanca da Altum.
+            </p>
+
+            {billingNotice ? (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+                {billingNotice}
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Acesso atual</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${financeStatusClass(billingOverview?.accessStatus || contract.platformAccessStatus || "active")}`}>
+                    {billingOverview?.accessStatus || contract.platformAccessStatus || "active"}
+                  </span>
+                  <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${badgeToneClass("info")}`}>
+                    {contract.platformAccessMode || billingOverview?.accessMode || "manual_release"}
+                  </span>
+                </div>
+                <p className="mt-3 text-xs text-white/55">
+                  Provider: {contract.billingProvider || billingOverview?.billingProvider || "manual"}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Financeiro aberto</p>
+                <p className="mt-2 text-xl font-semibold text-white">
+                  {Number(billingOverview?.openFinanceCount || 0)}
+                </p>
+                <p className="mt-2 text-xs text-white/55">
+                  {Number(billingOverview?.overdueFinanceCount || 0)} em atraso
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Proximo vencimento</p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {formatDateLabel(billingOverview?.latestOpenDueDate || contract.nextDueDate || null)}
+                </p>
+                <p className="mt-2 text-xs text-white/55">
+                  {money(billingOverview?.latestOpenAmount || contract.monthlyValue || 0)}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Ultimo pago</p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {billingOverview?.lastPaidAt ? formatDateLabel(billingOverview.lastPaidAt) : "Sem confirmacao"}
+                </p>
+                <p className="mt-2 text-xs text-white/55">
+                  {money(billingOverview?.lastPaidAmount || 0)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void runBillingAction("send_reminder")}
+                disabled={billingAction !== null}
+                className="inline-flex items-center gap-2 rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-sm font-semibold text-blue-100 hover:bg-blue-500/20 disabled:opacity-60"
+              >
+                {billingAction === "send_reminder" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Enviar lembrete agora
+              </button>
+              <button
+                type="button"
+                onClick={() => void runBillingAction("release_access")}
+                disabled={billingAction !== null || !tenantSummary?.tenantId}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-60"
+              >
+                {billingAction === "release_access" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Liberar acesso
+              </button>
+              <button
+                type="button"
+                onClick={() => void runBillingAction("block_access")}
+                disabled={billingAction !== null || !tenantSummary?.tenantId}
+                className="inline-flex items-center gap-2 rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60"
+              >
+                {billingAction === "block_access" ? <Loader2 className="h-4 w-4 animate-spin" /> : <TriangleAlert className="h-4 w-4" />}
+                Bloquear acesso
+              </button>
+              <button
+                type="button"
+                onClick={() => void runStripeAction("create_checkout")}
+                disabled={stripeAction !== null || !billingOverview?.stripeSetup?.resolvedPriceId}
+                className="inline-flex items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-100 hover:bg-violet-500/20 disabled:opacity-60"
+              >
+                {stripeAction === "create_checkout" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                Gerar checkout Stripe
+              </button>
+              <button
+                type="button"
+                onClick={() => void runStripeAction("open_portal")}
+                disabled={stripeAction !== null || !contract.stripeCustomerId}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.05] px-3 py-2 text-sm font-semibold text-white/90 hover:bg-white/[0.08] disabled:opacity-60"
+              >
+                {stripeAction === "open_portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                Abrir portal Stripe
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-black/25 p-3 space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Ultimos lancamentos</p>
+              {recentFinance.length === 0 ? (
+                <p className="text-sm text-white/55">Sem lancamentos recentes vinculados ao contrato.</p>
+              ) : (
+                recentFinance.slice(0, 4).map((item) => (
+                  <div key={item.id} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-white">{item.descricao || "Lancamento"}</p>
+                        <p className="mt-1 text-xs text-white/55">
+                          {formatDateLabel(item.dueDate || null)} - {money(item.valor || 0)}
+                        </p>
+                      </div>
+                      <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${financeStatusClass(item.status || "pendente")}`}>
+                        {item.status || "pendente"}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-black/25 p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Prontidao Stripe</p>
+                  <p className="mt-1 text-sm text-white/55">
+                    Estrutura preparada para assinatura da plataforma sem ativar cobranca real ainda.
+                  </p>
+                </div>
+                <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${billingOverview?.stripeSetup?.enabled ? financeStatusClass(billingOverview?.stripeSetup?.missing.length ? "pending" : "active") : badgeToneClass("neutral")}`}>
+                  {billingOverview?.stripeSetup?.enabled ? "trilho ativo" : "nao ativo"}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Plano mapeado</p>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {billingOverview?.stripeSetup?.planLabel || "Nao definido"}
+                  </p>
+                  <p className="mt-1 text-xs text-white/55">
+                    {billingOverview?.stripeSetup?.planPrice
+                      ? money(billingOverview.stripeSetup.planPrice)
+                      : "Sob diagnostico"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Price ID do ambiente</p>
+                  <p className="mt-2 text-xs font-mono text-white/82 break-all">
+                    {billingOverview?.stripeSetup?.resolvedPriceId || "Nao encontrado"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-white/45">
+                    {billingOverview?.stripeSetup?.stripeEnvKey || "Sem env padrao"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Proximo passo</p>
+                <p className="mt-2 text-sm text-white/78">
+                  {billingOverview?.stripeSetup?.nextStep || "Defina provider e plano para preparar a assinatura."}
+                </p>
+                {billingOverview?.stripeSetup?.missing?.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {billingOverview.stripeSetup.missing.map((item) => (
+                      <span key={item} className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${badgeToneClass("warning")}`}>
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              {contract.stripeCheckoutUrl || contract.stripeCustomerPortalUrl ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <a
+                    href={contract.stripeCheckoutUrl || "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm text-white/80 hover:bg-white/[0.05]"
+                  >
+                    Ultimo checkout Stripe
+                  </a>
+                  <a
+                    href={contract.stripeCustomerPortalUrl || "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm text-white/80 hover:bg-white/[0.05]"
+                  >
+                    Ultimo portal do cliente
+                  </a>
+                </div>
+              ) : null}
+            </div>
+
             <input
               value={contract.title || ""}
               onChange={(e) => setContract((prev) => ({ ...prev, title: e.target.value }))}
@@ -883,12 +1391,153 @@ export default function ClientePortalAdminPage() {
               />
             </div>
 
+            <div className="rounded-2xl border border-emerald-400/15 bg-emerald-500/[0.06] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-100">Custos mensais conhecidos</p>
+              <p className="mt-1 text-xs leading-5 text-white/55">Registre faturas externas para acompanhar a margem real desta conta. O custo de IA é medido automaticamente em dólar.</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <label className="text-xs text-white/60">
+                  WhatsApp / Meta (R$)
+                  <input type="number" min={0} step="0.01" value={contract.whatsappCostMonthlyBrl || 0} onChange={(e) => setContract((prev) => ({ ...prev, whatsappCostMonthlyBrl: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none" />
+                </label>
+                <label className="text-xs text-white/60">
+                  Telefonia (R$)
+                  <input type="number" min={0} step="0.01" value={contract.telephonyCostMonthlyBrl || 0} onChange={(e) => setContract((prev) => ({ ...prev, telephonyCostMonthlyBrl: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none" />
+                </label>
+                <label className="text-xs text-white/60">
+                  Outros custos (R$)
+                  <input type="number" min={0} step="0.01" value={contract.otherVariableCostMonthlyBrl || 0} onChange={(e) => setContract((prev) => ({ ...prev, otherVariableCostMonthlyBrl: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none" />
+                </label>
+                <label className="text-xs text-white/60">
+                  Cotação USD/BRL
+                  <input type="number" min={0} step="0.0001" value={contract.aiUsdBrlRate || 5.5} onChange={(e) => setContract((prev) => ({ ...prev, aiUsdBrlRate: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none" />
+                </label>
+              </div>
+            </div>
+
             <input
               value={contract.paymentLink || ""}
               onChange={(e) => setContract((prev) => ({ ...prev, paymentLink: e.target.value }))}
               className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
               placeholder="Link de pagamento"
             />
+
+            <div className="grid grid-cols-2 gap-3">
+              <select
+                value={contract.platformPlan || "operacao"}
+                onChange={(e) =>
+                  setContract((prev) => ({
+                    ...prev,
+                    platformPlan: e.target.value,
+                  }))
+                }
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              >
+                {PLATFORM_BILLING_PLANS.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={contract.billingProvider || "manual"}
+                onChange={(e) =>
+                  setContract((prev) => ({
+                    ...prev,
+                    billingProvider: e.target.value as ContractDoc["billingProvider"],
+                  }))
+                }
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              >
+                <option value="manual">Manual</option>
+                <option value="stripe">Stripe</option>
+                <option value="asaas">Asaas</option>
+                <option value="included">Incluso na agencia</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <select
+                value={contract.platformAccessMode || "manual_release"}
+                onChange={(e) =>
+                  setContract((prev) => ({
+                    ...prev,
+                    platformAccessMode: e.target.value as ContractDoc["platformAccessMode"],
+                  }))
+                }
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              >
+                <option value="manual_release">Liberacao manual</option>
+                <option value="stripe_subscription">Assinatura da plataforma</option>
+                <option value="agency_included">Incluso no contrato da agencia</option>
+                <option value="disabled">Sem acesso</option>
+              </select>
+              <select
+                value={contract.platformAccessStatus || "active"}
+                onChange={(e) =>
+                  setContract((prev) => ({
+                    ...prev,
+                    platformAccessStatus: e.target.value as ContractDoc["platformAccessStatus"],
+                  }))
+                }
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              >
+                <option value="active">Acesso ativo</option>
+                <option value="trial">Trial</option>
+                <option value="pending">Pendente</option>
+                <option value="blocked">Bloqueado</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                value={contract.stripeCustomerId || ""}
+                onChange={(e) => setContract((prev) => ({ ...prev, stripeCustomerId: e.target.value }))}
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                placeholder="Stripe customer ID"
+              />
+              <input
+                value={contract.stripeSubscriptionId || ""}
+                onChange={(e) => setContract((prev) => ({ ...prev, stripeSubscriptionId: e.target.value }))}
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                placeholder="Stripe subscription ID"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                value={contract.stripePriceId || ""}
+                onChange={(e) => setContract((prev) => ({ ...prev, stripePriceId: e.target.value }))}
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                placeholder="Stripe price ID"
+              />
+              <input
+                value={contract.stripeSubscriptionStatus || ""}
+                onChange={(e) => setContract((prev) => ({ ...prev, stripeSubscriptionStatus: e.target.value }))}
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                placeholder="Status da subscription"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <input
+                type="date"
+                value={contract.stripeCurrentPeriodEnd || ""}
+                onChange={(e) => setContract((prev) => ({ ...prev, stripeCurrentPeriodEnd: e.target.value }))}
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              />
+              <input
+                value={contract.stripeCheckoutUrl || ""}
+                onChange={(e) => setContract((prev) => ({ ...prev, stripeCheckoutUrl: e.target.value }))}
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                placeholder="URL de checkout Stripe"
+              />
+              <input
+                value={contract.stripeCustomerPortalUrl || ""}
+                onChange={(e) => setContract((prev) => ({ ...prev, stripeCustomerPortalUrl: e.target.value }))}
+                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                placeholder="URL do portal do cliente"
+              />
+            </div>
 
             <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
               <input
@@ -978,6 +1627,13 @@ export default function ClientePortalAdminPage() {
               onChange={(e) => setContract((prev) => ({ ...prev, notes: e.target.value }))}
               className="w-full h-24 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
               placeholder="Observacoes do contrato"
+            />
+
+            <textarea
+              value={contract.billingNotes || ""}
+              onChange={(e) => setContract((prev) => ({ ...prev, billingNotes: e.target.value }))}
+              className="w-full h-24 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              placeholder="Notas internas de billing, liberacao manual, combinados com agencia ou observacoes para a operacao."
             />
 
             <button

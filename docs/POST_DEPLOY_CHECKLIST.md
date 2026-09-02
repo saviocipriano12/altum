@@ -9,7 +9,7 @@ Data: 15/04/2026
   - `ASAAS_WEBHOOK_TOKEN`
   - `META_APP_SECRET`
   - `META_WA_TOKEN` ou `META_ADS_ACCESS_TOKEN`
-  - `AI_JOBS_PROCESS_TOKEN`, `AUTOMATION_JOBS_PROCESS_TOKEN`, `CAMPAIGN_SYNC_TOKEN` (ou `CRON_SECRET`)
+  - `AI_JOBS_PROCESS_TOKEN`, `AUTOMATION_JOBS_PROCESS_TOKEN`, `CAMPAIGN_SYNC_TOKEN`, `CHAT_OUTBOUND_PROCESS_TOKEN` (ou `CRON_SECRET`)
 
 ## 2) Rodar verificacao automatica
 Comando:
@@ -38,6 +38,9 @@ Arquivo do script: `scripts/post-deploy-verify.mjs`
 ## 4) Teste funcional rapido
 - Fluxo lead inbound -> chat -> automacao -> inbox.
 - Fluxo de envio de mensagem WhatsApp pelo tenant.
+- Enviar imagem, video, audio e documento: a mensagem deve aparecer imediatamente como enviando, concluir como enviada e permanecer acessivel apos recarregar a pagina.
+- Simular indisponibilidade do provider: a mensagem deve permanecer no historico com erro; o processador `GET /api/internal/jobs/chat-outbound/process` deve recuperar itens pendentes quando o provider voltar.
+- Confirmar na VPS que `altum-job-chat.timer` esta ativo (`systemctl status altum-job-chat.timer`) e que usa o mesmo `CRON_SECRET` configurado na aplicacao.
 - Fluxo painel cliente e operacoes basicas sem erro.
 
 ## 5) Confirmacoes LGPD

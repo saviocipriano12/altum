@@ -5,14 +5,14 @@ Plataforma operacional da ALTUM com duas superficies principais:
 - `Admin interno ALTUM`: backoffice para clientes, comercial, financeiro, operacao, IA e campanhas.
 - `Portal cliente multi-tenant`: workspace restrito para CRM, inbox, go-live, automacoes, conhecimento, metricas e canais.
 
-Nao e um SaaS aberto. O projeto foi estruturado para onboarding assistido e operacao gerida pela ALTUM.
+O projeto suporta tanto onboarding assistido pela ALTUM quanto cadastro self-service com trial de 7 dias e assinatura recorrente via Asaas.
 
 ## Stack
 
 - Next.js App Router
 - TypeScript
 - Firebase / Firestore
-- Vercel Cron Jobs
+- Jobs agendados em VPS com systemd timers
 - Integracoes Meta, Google Ads, WhatsApp, Asaas e web push
 
 ## Estrutura principal
@@ -42,14 +42,25 @@ O projeto depende de chaves de plataforma e segredos operacionais. Os grupos mai
 
 - Firebase cliente e admin
 - `SECRET_ENCRYPTION_KEY`
+- `SHOPIFY_ADMIN_API_VERSION` (opcional, padrao `2026-07`)
+- `SHOPIFY_CLIENT_ID` e `SHOPIFY_CLIENT_SECRET` (conexao OAuth gerenciada)
+- `SHOPIFY_OAUTH_SCOPES` (opcional)
+- `NUVEMSHOP_USER_AGENT` (opcional, identificacao da integracao Commerce)
+- `NUVEMSHOP_CLIENT_ID` e `NUVEMSHOP_CLIENT_SECRET` (conexao OAuth gerenciada)
+- `NUVEMSHOP_AUTH_BASE_URL` (opcional, padrao `https://www.nuvemshop.com.br`)
+- `COMMERCE_SYNC_TOKEN` (opcional; fallback para `CRON_SECRET`)
+- `ECOMMERCE_WEBHOOK_TOKEN` (fallback global para webhooks de loja)
 - `META_APP_ID`, `META_APP_SECRET`, `META_VERIFY_TOKEN`
 - `META_WA_TOKEN` e/ou `META_ADS_ACCESS_TOKEN`
+- `EVOLUTION_API_URL` e `EVOLUTION_API_KEY` (conexao QR gerenciada pela Altum)
 - `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_DEVELOPER_TOKEN`
 - `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`
-- `AI_JOBS_PROCESS_TOKEN`, `AUTOMATION_JOBS_PROCESS_TOKEN`, `CAMPAIGN_SYNC_TOKEN` ou `CRON_SECRET`
+- `AI_JOBS_PROCESS_TOKEN`, `AUTOMATION_JOBS_PROCESS_TOKEN`, `CAMPAIGN_SYNC_TOKEN`, `CHAT_OUTBOUND_PROCESS_TOKEN` ou `CRON_SECRET`
 - `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY`
 
 Sem esses segredos, parte da plataforma abre, mas canais, jobs e automacoes entram em modo degradado.
+
+Para midias de conversa, a Altum registra a mensagem antes de tentar a entrega e tem uma rota de recuperacao autenticada: `GET /api/internal/jobs/chat-outbound/process`. Em producao, agende-a a cada minuto em um worker ou Vercel Cron com `CRON_SECRET`; a tentativa imediata continua ocorrendo apos cada envio.
 
 ## Comandos de validacao
 
@@ -68,15 +79,30 @@ POST_DEPLOY_BASE_URL=https://SEU_DOMINIO npm run verify:postdeploy
 
 ## Jobs internos
 
-Os cron jobs ficam em `vercel.json` e hoje cobrem:
+As rotas dos jobs continuam na aplicacao, mas os agendamentos de producao sao
+executados pelos timers definidos em `infra/jobs/`. Essa separacao permite
+frequencias menores que um dia mesmo quando o frontend esta no plano Hobby da
+Vercel. Os jobs cobrem:
 
 - processamento da fila de IA
 - processamento de automacoes e watchdog do inbox
 - sincronizacao de campanhas
 - push critico do portal do cliente
 - cobranca recorrente de contratos
+- sincronizacao de commerce, relatorios e processamento de campanhas outbound
 
 Se algum token de job nao estiver configurado, as rotas internas respondem `503` e a operacao fica incompleta.
+
+O indice composto usado pela fila outbound fica versionado em
+`firestore.indexes.json`. Para publicar e validar o indice e consultar somente
+as contagens da fila:
+
+```bash
+npm run firestore:indexes:deploy
+npm run outbound:queue:check
+```
+
+O runbook da VPS esta em `infra/jobs/README.md`.
 
 ## Go-live por tenant
 

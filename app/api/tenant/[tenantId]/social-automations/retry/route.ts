@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { retrySocialAutomationLog } from "@/lib/server/social/service";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 function cleanText(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
@@ -16,6 +17,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "social_automation");
     const canManage =
       hasTenantCapability(membership, "manage_channels") || hasTenantCapability(membership, "manage_automations");
 
@@ -64,4 +66,3 @@ export async function POST(
     return NextResponse.json({ error: "Falha ao reprocessar evento social." }, { status: 500 });
   }
 }
-

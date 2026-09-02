@@ -3,13 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import type { TimestampLike } from "@/app/types/domain";
 
 import { Zap } from "lucide-react";
 
-import { doc, getDoc } from "firebase/firestore";
 import {
   ArrowLeft,
   Loader2,
@@ -74,14 +72,10 @@ export default function OrcamentoDetalhePage() {
   useEffect(() => {
     async function fetchOrcamento() {
       try {
-        const ref = doc(db, "orcamentos", params.id);
-        const snap = await getDoc(ref);
-
-        if (snap.exists()) {
-          const data = {
-            id: snap.id,
-            ...(snap.data() as Omit<Orcamento, "id">),
-          } as Orcamento;
+        const response = await authedFetch(`/api/admin/records/orcamentos/${encodeURIComponent(params.id)}`);
+        const payload = (await response.json()) as { item?: Orcamento; error?: string };
+        if (response.ok && payload.item) {
+          const data = payload.item;
 
           setOrc(data);
           setForm({
@@ -107,11 +101,13 @@ export default function OrcamentoDetalhePage() {
   }, [params.id]);
 
   const createdAtDate =
-    orc?.createdAt &&
-    typeof orc.createdAt === "object" &&
-    typeof orc.createdAt.toDate === "function"
-      ? orc.createdAt.toDate()
-      : null;
+    typeof orc?.createdAt === "number"
+      ? new Date(orc.createdAt)
+      : orc?.createdAt &&
+          typeof orc.createdAt === "object" &&
+          typeof orc.createdAt.toDate === "function"
+        ? orc.createdAt.toDate()
+        : null;
 
   const createdAtFormatted = createdAtDate
     ? createdAtDate.toLocaleString("pt-BR", {

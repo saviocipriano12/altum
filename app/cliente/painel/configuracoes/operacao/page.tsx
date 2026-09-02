@@ -2,10 +2,26 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Clock3, Loader2, Save, Shuffle, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock3,
+  Loader2,
+  MessageSquare,
+  Save,
+  ShieldCheck,
+  Shuffle,
+  UsersRound,
+} from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { CardTitle, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
+import {
+  CardTitle,
+  ClientActionButton,
+  MetricCard,
+  PanelCard,
+  SectionHeader,
+  StateBadge,
+} from "@/app/cliente/painel/components/ui";
 
 type SettingsPayload = {
   settings?: {
@@ -27,25 +43,64 @@ type SettingsPayload = {
   error?: string;
 };
 
+type TenantUser = {
+  id: string;
+  userId?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+  status?: string;
+  availability?: string;
+  allowedChannels?: string[];
+  maxOpenChats?: number | null;
+};
+
+type OperationForm = {
+  firstResponseSlaMinutes: number;
+  assignmentMode: string;
+  autoAssignOnInbound: boolean;
+  prioritizeHighPriority: boolean;
+  preferOnlineAgents: boolean;
+  strictChannelRouting: boolean;
+  fallbackToAnyAgent: boolean;
+  businessHoursOnly: boolean;
+  defaultTeam: string;
+};
+
+const DEFAULT_FORM: OperationForm = {
+  firstResponseSlaMinutes: 15,
+  assignmentMode: "manual",
+  autoAssignOnInbound: false,
+  prioritizeHighPriority: true,
+  preferOnlineAgents: true,
+  strictChannelRouting: false,
+  fallbackToAnyAgent: true,
+  businessHoursOnly: false,
+  defaultTeam: "comercial",
+};
+
+function assignmentModeLabel(value: string) {
+  if (value === "round_robin") return "rodizio";
+  if (value === "least_loaded") return "menor carga";
+  return "manual";
+}
+
+function normalizeAssignmentMode(value?: string) {
+  if (value === "round_robin" || value === "least_loaded") return value;
+  return "manual";
+}
+
 export default function ClienteOperacaoPage() {
   const { tenant, hasCapability } = useClienteTenant();
+  const canManage = hasCapability("manage_settings");
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    firstResponseSlaMinutes: 15,
-    assignmentMode: "manual",
-    autoAssignOnInbound: false,
-    prioritizeHighPriority: true,
-    preferOnlineAgents: true,
-    strictChannelRouting: false,
-    fallbackToAnyAgent: true,
-    businessHoursOnly: false,
-    defaultTeam: "comercial",
-  });
+  const [form, setForm] = useState<OperationForm>(DEFAULT_FORM);
   const [teamOptions, setTeamOptions] = useState<Array<{ id?: string; name?: string }>>([]);
-  const canManage = hasCapability("manage_settings");
+  const [users, setUsers] = useState<TenantUser[]>([]);
 
   useEffect(() => {
     if (!tenant?.tenantId) return;
@@ -54,35 +109,36 @@ export default function ClienteOperacaoPage() {
     (async () => {
       try {
         setLoading(true);
-        const res = await authedFetch(`/api/tenant/${tenant.tenantId}/settings`);
-        const payload = (await res.json()) as SettingsPayload;
+        setError(null);
+        const [settingsRes, usersRes] = await Promise.all([
+          authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
+          authedFetch(`/api/tenant/${tenant.tenantId}/users`),
+        ]);
+        const settingsPayload = (await settingsRes.json().catch(() => ({}))) as SettingsPayload;
+        const usersPayload = (await usersRes.json().catch(() => ({}))) as { items?: TenantUser[] };
         if (!mounted) return;
-        if (!res.ok) {
-          setError(payload.error || "Falha ao carregar operacao.");
+
+        if (!settingsRes.ok) {
+          setError(settingsPayload.error || "Falha ao carregar operacao.");
           return;
         }
-        const inbox = payload.settings?.rules?.inbox;
-        const assignmentMode =
-          inbox?.assignmentMode === "round_robin"
-            ? "round_robin"
-            : inbox?.assignmentMode === "least_loaded"
-              ? "least_loaded"
-              : "manual";
+
+        const inbox = settingsPayload.settings?.rules?.inbox;
         setForm({
-          firstResponseSlaMinutes: Number(inbox?.firstResponseSlaMinutes || 15),
-          assignmentMode,
+          firstResponseSlaMinutes: Number(inbox?.firstResponseSlaMinutes || DEFAULT_FORM.firstResponseSlaMinutes),
+          assignmentMode: normalizeAssignmentMode(inbox?.assignmentMode),
           autoAssignOnInbound: inbox?.autoAssignOnInbound === true,
           prioritizeHighPriority: inbox?.prioritizeHighPriority !== false,
           preferOnlineAgents: inbox?.preferOnlineAgents !== false,
           strictChannelRouting: inbox?.strictChannelRouting === true,
           fallbackToAnyAgent: inbox?.fallbackToAnyAgent !== false,
           businessHoursOnly: inbox?.businessHoursOnly === true,
-          defaultTeam: inbox?.defaultTeam || "comercial",
+          defaultTeam: inbox?.defaultTeam || DEFAULT_FORM.defaultTeam,
         });
         setTeamOptions(inbox?.teams || []);
+        if (usersRes.ok) setUsers(usersPayload.items || []);
       } catch {
-        if (!mounted) return;
-        setError("Falha ao carregar configuracoes operacionais.");
+        if (mounted) setError("Falha ao carregar configuracoes operacionais.");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -92,6 +148,34 @@ export default function ClienteOperacaoPage() {
       mounted = false;
     };
   }, [tenant?.tenantId]);
+
+  const defaultTeamOptions = useMemo(() => {
+    const source = [{ id: "comercial", name: "Comercial" }, ...(teamOptions || [])];
+    const seen = new Set<string>();
+    return source.filter((team) => {
+      const key = String(team.id || team.name || "").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [teamOptions]);
+
+  const teamCapacity = useMemo(() => {
+    const operationalUsers = users.filter((user) => {
+      if (user.status === "blocked") return false;
+      return user.role === "client_owner" || user.role === "client_admin" || user.role === "client_agent";
+    });
+    const online = operationalUsers.filter((user) => String(user.availability || "online") === "online").length;
+    const capacity = operationalUsers.reduce((sum, user) => sum + Number(user.maxOpenChats || 0), 0);
+    const channels = Array.from(new Set(operationalUsers.flatMap((user) => user.allowedChannels || []))).filter(Boolean);
+
+    return {
+      total: operationalUsers.length,
+      online,
+      capacity,
+      channels,
+    };
+  }, [users]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -123,26 +207,15 @@ export default function ClienteOperacaoPage() {
     }
   }
 
-  const defaultTeamOptions = useMemo(() => {
-    const source = [{ id: "comercial", name: "Comercial" }, ...(teamOptions || [])];
-    const seen = new Set<string>();
-    return source.filter((team) => {
-      const key = String(team.id || team.name || "").trim();
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [teamOptions]);
-
   return (
     <div className="space-y-4">
       <SectionHeader
         title="Operacao de atendimento"
-        subtitle="Tempo de resposta, distribuicao de conversas e regras para a equipe atender sem perder oportunidade."
+        subtitle="Tempo de resposta, distribuicao e capacidade do time para nao deixar oportunidade sem dono."
         action={
           <Link
             href="/cliente/painel/configuracoes"
-            className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/72 transition hover:bg-white/[0.08]"
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Voltar
@@ -150,19 +223,26 @@ export default function ClienteOperacaoPage() {
         }
       />
 
+      <section className="grid gap-3 md:grid-cols-4">
+        <MetricCard label="Atendentes ativos" value={String(teamCapacity.total)} icon={UsersRound} trend={`${teamCapacity.online} online`} tone="brand" />
+        <MetricCard label="Capacidade" value={teamCapacity.capacity ? String(teamCapacity.capacity) : "--"} icon={MessageSquare} trend="conversas simultaneas" tone="success" />
+        <MetricCard label="SLA" value={`${form.firstResponseSlaMinutes} min`} icon={Clock3} trend={form.businessHoursOnly ? "horario comercial" : "24/7"} tone="warning" />
+        <MetricCard label="Distribuicao" value={form.autoAssignOnInbound ? "Ligada" : "Manual"} icon={Shuffle} trend={assignmentModeLabel(form.assignmentMode)} tone={form.autoAssignOnInbound ? "success" : "neutral"} />
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <PanelCard className="p-5">
           <form onSubmit={onSubmit} className="space-y-4">
             <CardTitle title="Regras de atendimento" subtitle="Defina como novas conversas entram, quem recebe e qual prazo precisa ser cumprido." />
 
             {loading ? (
-              <div className="py-10 text-center text-white/60">
+              <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
             ) : (
               <>
                 <label className="block space-y-1">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Prazo da primeira resposta (min)</span>
+                  <span className="text-xs font-bold uppercase tracking-normal text-[var(--cliente-card-text-soft)]">Prazo da primeira resposta (min)</span>
                   <input
                     type="number"
                     min={5}
@@ -175,23 +255,23 @@ export default function ClienteOperacaoPage() {
                       }))
                     }
                     disabled={!canManage}
-                    className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                    className="client-input w-full rounded-xl border px-3 py-2.5 text-sm font-semibold outline-none"
                   />
                 </label>
 
                 <label className="block space-y-1">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Modo de distribuicao</span>
+                  <span className="text-xs font-bold uppercase tracking-normal text-[var(--cliente-card-text-soft)]">Modo de distribuicao</span>
                   <select
                     value={form.assignmentMode}
                     onChange={(event) => setForm((current) => ({ ...current, assignmentMode: event.target.value }))}
                     disabled={!canManage}
-                    className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                    className="client-input w-full rounded-xl border px-3 py-2.5 text-sm font-semibold outline-none"
                   >
-                  <option value="manual">Manual</option>
-                  <option value="round_robin">Rodizio da equipe</option>
-                  <option value="least_loaded">Quem tem menos conversas</option>
-                </select>
-              </label>
+                    <option value="manual">Manual</option>
+                    <option value="round_robin">Rodizio da equipe</option>
+                    <option value="least_loaded">Quem tem menos conversas</option>
+                  </select>
+                </label>
 
                 <Toggle
                   title="Distribuir conversa automaticamente"
@@ -242,85 +322,107 @@ export default function ClienteOperacaoPage() {
                 />
 
                 <label className="block space-y-1">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Time padrao de entrada</span>
+                  <span className="text-xs font-bold uppercase tracking-normal text-[var(--cliente-card-text-soft)]">Time padrao de entrada</span>
                   <select
                     value={form.defaultTeam}
                     onChange={(event) => setForm((current) => ({ ...current, defaultTeam: event.target.value }))}
                     disabled={!canManage}
-                    className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                    className="client-input w-full rounded-xl border px-3 py-2.5 text-sm font-semibold outline-none"
                   >
                     {defaultTeamOptions.map((team) => (
-                      <option key={String(team.id || team.name)} value={String(team.id || team.name)} className="bg-[#111111] text-white">
+                      <option key={String(team.id || team.name)} value={String(team.id || team.name)}>
                         {String(team.name || team.id || "Time")}
                       </option>
                     ))}
                   </select>
                 </label>
 
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60"
-                >
+                <ClientActionButton type="submit" tone="primary" disabled={saving}>
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {canManage ? "Salvar operacao" : "Somente leitura"}
-                </button>
+                </ClientActionButton>
               </>
             )}
           </form>
 
-          {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
-          {notice ? <p className="mt-3 text-sm text-emerald-300">{notice}</p> : null}
+          {error ? <p className="mt-3 text-sm font-semibold text-[var(--cliente-danger)]">{error}</p> : null}
+          {notice ? <p className="mt-3 text-sm font-semibold text-[var(--cliente-success)]">{notice}</p> : null}
         </PanelCard>
 
         <div className="space-y-4">
-          <PanelCard className="p-5">
-            <div className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] p-2 text-white/85">
-              <Clock3 className="h-4 w-4" />
-            </div>
-            <p className="mt-3 text-sm font-semibold text-white/92">Prazo aplicado nas conversas</p>
-            <p className="mt-1 text-sm text-white/58">
-              Conversas novas passam a carregar vencimento de primeira resposta e alerta visual na lista.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <StateBadge label={`${form.firstResponseSlaMinutes} min`} tone="info" />
-              <StateBadge label={form.businessHoursOnly ? "janela comercial" : "24/7"} tone={form.businessHoursOnly ? "warning" : "success"} />
-            </div>
-          </PanelCard>
+          <OperationCard
+            icon={Clock3}
+            tone="brand"
+            title="Prazo aplicado nas conversas"
+            description="Conversas novas passam a carregar vencimento de primeira resposta e alerta visual na lista."
+          >
+            <StateBadge label={`${form.firstResponseSlaMinutes} min`} tone="info" />
+            <StateBadge label={form.businessHoursOnly ? "janela comercial" : "24/7"} tone={form.businessHoursOnly ? "warning" : "success"} />
+          </OperationCard>
 
-          <PanelCard className="p-5">
-            <div className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] p-2 text-white/85">
-              <Shuffle className="h-4 w-4" />
-            </div>
-            <p className="mt-3 text-sm font-semibold text-white/92">Distribuicao operacional</p>
-            <p className="mt-1 text-sm text-white/58">
-              O rodizio alterna entre atendentes. O modo por carga envia para quem tem menos conversas ativas, respeitando disponibilidade, canais e limite de atendimento.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <StateBadge
-                label={form.assignmentMode}
-                tone={form.assignmentMode === "round_robin" || form.assignmentMode === "least_loaded" ? "success" : "neutral"}
-              />
-              <StateBadge label={`time ${form.defaultTeam || "comercial"}`} tone="info" />
-            </div>
-          </PanelCard>
+          <OperationCard
+            icon={Shuffle}
+            tone="success"
+            title="Distribuicao operacional"
+            description="O rodizio alterna entre atendentes. O modo por carga envia para quem tem menos conversas ativas, respeitando disponibilidade, canais e limite de atendimento."
+          >
+            <StateBadge label={assignmentModeLabel(form.assignmentMode)} tone={form.assignmentMode === "manual" ? "neutral" : "success"} />
+            <StateBadge label={`time ${form.defaultTeam || "comercial"}`} tone="info" />
+          </OperationCard>
 
-          <PanelCard className="p-5">
-            <div className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] p-2 text-white/85">
-              <ShieldCheck className="h-4 w-4" />
-            </div>
-            <p className="mt-3 text-sm font-semibold text-white/92">Base de escala</p>
-            <p className="mt-1 text-sm text-white/58">
-              Esta camada prepara a operacao para filas por canal, prioridade, horario e times sem baguncar a rotina.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <StateBadge label={form.autoAssignOnInbound ? "distribuicao ligada" : "fila manual"} tone="neutral" />
-              <StateBadge label={form.strictChannelRouting ? "canal estrito" : "canal flexivel"} tone="info" />
-            </div>
-          </PanelCard>
+          <OperationCard
+            icon={ShieldCheck}
+            tone="ai"
+            title="Base de escala"
+            description={
+              teamCapacity.channels.length
+                ? `Canais cobertos pelo time: ${teamCapacity.channels.slice(0, 4).join(", ")}.`
+                : "Defina canais permitidos nos usuarios para distribuir com mais precisao."
+            }
+          >
+            <StateBadge label={form.autoAssignOnInbound ? "distribuicao ligada" : "fila manual"} tone="neutral" />
+            <StateBadge label={form.strictChannelRouting ? "canal estrito" : "canal flexivel"} tone="info" />
+            <Link
+              href="/cliente/painel/configuracoes/usuarios"
+              className="inline-flex items-center rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-1.5 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+            >
+              Ajustar equipe
+            </Link>
+          </OperationCard>
         </div>
       </section>
     </div>
+  );
+}
+
+function OperationCard({
+  icon: Icon,
+  tone,
+  title,
+  description,
+  children,
+}: {
+  icon: typeof Clock3;
+  tone: "brand" | "success" | "ai";
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  const toneClass = {
+    brand: "bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]",
+    success: "bg-[var(--cliente-success-soft)] text-[var(--cliente-success)]",
+    ai: "bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]",
+  }[tone];
+
+  return (
+    <PanelCard className="p-5">
+      <div className={`inline-flex rounded-lg border border-[var(--cliente-border)] p-2 ${toneClass}`}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <p className="mt-3 text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
+      <p className="mt-1 text-sm leading-5 text-[var(--cliente-card-text-soft)]">{description}</p>
+      <div className="mt-4 flex flex-wrap gap-2">{children}</div>
+    </PanelCard>
   );
 }
 
@@ -343,20 +445,19 @@ function Toggle({
       onClick={() => {
         if (!disabled) onChange(!checked);
       }}
-      className={`flex w-full items-start justify-between gap-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-left transition ${disabled ? "opacity-65" : "hover:bg-black/45"}`}
+      className={`flex w-full items-start justify-between gap-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 text-left transition ${disabled ? "opacity-65" : "hover:bg-[var(--cliente-panel-soft)]"}`}
     >
       <div>
-        <p className="text-sm font-semibold text-white">{title}</p>
-        <p className="mt-1 text-sm text-white/56">{description}</p>
+        <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{title}</p>
+        <p className="mt-1 text-sm leading-5 text-[var(--cliente-card-text-soft)]">{description}</p>
       </div>
       <span
-        className={`inline-flex h-6 w-11 rounded-full border p-1 transition ${
-          checked ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)] justify-end" : "border-white/15 bg-white/[0.04] justify-start"
+        className={`inline-flex h-6 w-11 shrink-0 rounded-full border p-1 transition ${
+          checked ? "justify-end border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]" : "justify-start border-[var(--cliente-border)] bg-[var(--cliente-card)]"
         }`}
       >
-        <span className={`h-4 w-4 rounded-full ${checked ? "bg-[var(--cliente-accent)]" : "bg-white/45"}`} />
+        <span className={`h-4 w-4 rounded-full ${checked ? "bg-[var(--cliente-accent)]" : "bg-[var(--cliente-card-text-muted)]"}`} />
       </span>
     </button>
   );
 }
-

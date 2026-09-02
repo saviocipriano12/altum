@@ -3,6 +3,8 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { sendTenantChatTemplate } from "@/lib/server/chat-dispatch";
 import type { WhatsAppTemplateHeaderMedia } from "@/app/lib/server/whatsapp-channel";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   templateName?: string;
@@ -59,7 +61,10 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId, chatId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
+    await assertTenantModule(tenantId, "whatsapp");
     assertTenantCapability(membership, "respond_inbox");
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
 
     const body = (await req.json()) as Body;
     const templateName = normalizeTemplateName(body.templateName);

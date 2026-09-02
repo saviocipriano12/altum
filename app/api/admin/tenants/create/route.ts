@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { getBusinessProfile, normalizeBusinessProfileId, type BusinessProfileId } from "@/lib/business-profiles";
 import { applyBusinessProfileStarterKit } from "@/lib/server/business-profile-provisioning";
+import { allTenantModules, DEFAULT_TENANT_LIMITS } from "@/lib/tenant-entitlements";
 
 type Body = {
   name?: string;
@@ -82,6 +83,26 @@ export async function POST(req: Request) {
         },
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    // Novos tenants nascem com acesso compativel com a plataforma atual.
+    // O admin converte esse conjunto em uma oferta personalizada na ficha comercial.
+    batch.set(
+      adminDb.collection("tenant_entitlements").doc(tenantId),
+      {
+        version: 1,
+        tenantId,
+        mode: "custom",
+        modules: allTenantModules(true),
+        limits: DEFAULT_TENANT_LIMITS,
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: actor.uid,
+        createdByName: actor.name,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actor.uid,
+        updatedByName: actor.name,
       },
       { merge: true }
     );

@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   type?: "faq" | "catalog" | "policy";
@@ -159,6 +160,7 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, docId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "ai");
     assertTenantCapability(membership, "manage_ai");
     const ref = await getDocRef(tenantId, docId);
 
@@ -219,6 +221,7 @@ export async function DELETE(
     const user = await requireRequestUser(req);
     const { tenantId, docId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "ai");
     assertTenantCapability(membership, "manage_ai");
     const ref = await getDocRef(tenantId, docId);
 

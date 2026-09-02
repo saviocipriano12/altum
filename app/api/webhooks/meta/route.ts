@@ -792,7 +792,7 @@ export async function POST(req: Request) {
     }
 
     if (!verifyMetaSignature(rawBody, signature, signatureSecret)) {
-      console.warn("Webhook Meta com assinatura divergente; processando em modo tolerante.", {
+      console.warn("Webhook Meta bloqueado por assinatura divergente.", {
         tenantId: resolved.tenantId,
         channelId: resolved.id,
         channelType: resolved.type,
@@ -804,12 +804,13 @@ export async function POST(req: Request) {
         tenantId: resolved.tenantId,
         type: "meta_webhook_signature_warning",
         scope: `meta_${sanitizeId(resolved.type, 40)}`,
-        severity: "warning",
-        title: "Webhook Meta recebido com assinatura divergente",
-        detail: "A entrega foi aceita em modo tolerante para nao bloquear DMs, mas o App Secret/callback deve ser revisado.",
-        reasonCode: "meta_signature_mismatch_tolerated",
+        severity: "high",
+        title: "Webhook Meta bloqueado por assinatura divergente",
+        detail: "A entrega foi rejeitada antes de processar eventos. Revise o App Secret e o callback configurados na Meta.",
+        reasonCode: "meta_signature_mismatch_blocked",
         source: "meta_webhook",
       });
+      return NextResponse.json({ error: "Assinatura do webhook invalida." }, { status: 401 });
     }
 
     const processed: Array<Record<string, unknown>> = [];

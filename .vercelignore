@@ -1,1 +1,4 @@
 _benchmark
+*.zip
+*.log
+.tmp-*

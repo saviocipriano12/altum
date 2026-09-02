@@ -9,7 +9,7 @@ import {
 type OpportunitiesView = "list" | "kanban" | "agenda" | "proposals";
 
 const viewToRoute: Record<OpportunitiesView, CrmRouteLabel> = {
-  list: "Clientes",
+  list: "Lista",
   kanban: "Funil",
   agenda: "Retornos",
   proposals: "Propostas",

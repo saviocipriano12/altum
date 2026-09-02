@@ -10,6 +10,7 @@ import {
   resolveChargeDueDate,
   resolveChargeMethodForAsaas,
 } from "@/lib/server/commercial-charge";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 const ASAAS_API_URL = process.env.ASAAS_API_URL || "https://api.asaas.com/v3";
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
@@ -74,6 +75,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "manage_commercial");
 
     if (!ASAAS_API_KEY) {

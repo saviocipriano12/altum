@@ -13,6 +13,7 @@ import {
   Sparkles,
   Video,
 } from "lucide-react";
+import { ClientContactAvatar } from "@/app/cliente/painel/components/ui";
 
 export type CrmTone = "neutral" | "blue" | "green" | "purple" | "orange" | "red";
 
@@ -26,19 +27,19 @@ const toneClasses: Record<CrmTone, string> = {
 };
 
 export const CRM_ROUTES = [
-  { label: "Clientes", href: "/cliente/painel/crm", icon: List },
+  { label: "Lista", href: "/cliente/painel/crm", icon: List },
   { label: "Funil", href: "/cliente/painel/pipeline", icon: Columns3 },
   { label: "Propostas", href: "/cliente/painel/comercial", icon: FileText },
-  { label: "Retornos", href: "/cliente/painel/follow-ups", icon: Sparkles },
   { label: "Agenda", href: "/cliente/painel/agenda", icon: CalendarDays },
-  { label: "Reunioes IA", href: "/cliente/painel/reunioes-assistidas", icon: Video },
+  { label: "Reunioes IA", href: "/cliente/painel/reunioes-assistidas", icon: Video, hidden: true },
+  { label: "Retornos", href: "/cliente/painel/follow-ups", icon: Sparkles, hidden: true },
 ] as const;
 
 export type CrmRouteLabel = (typeof CRM_ROUTES)[number]["label"];
 
 export function CrmWorkspace({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`crm-workspace crm-refined space-y-4 pb-10 text-[var(--cliente-card-text)] ${className}`}>
+    <div className={`crm-workspace crm-refined client-daily-page space-y-5 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:pb-10 text-[var(--cliente-card-text)] ${className}`}>
       {children}
     </div>
   );
@@ -66,42 +67,42 @@ export function CrmHero({
   assistantBadge?: string;
 }) {
   return (
-    <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_10%,var(--cliente-card)),var(--cliente-card)_58%,color-mix(in_srgb,var(--cliente-ai)_8%,var(--cliente-card)))] shadow-[var(--cliente-shadow-soft)]">
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:p-5">
-        <div className="min-w-0">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <CrmBadge tone="blue">Conversao</CrmBadge>
-            <CrmBadge tone="purple">IA aplicada</CrmBadge>
+    <section className="overflow-hidden rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)]">
+      <div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <CrmBadge tone="neutral">{active}</CrmBadge>
+            <CrmBadge tone="blue">Operacao comercial</CrmBadge>
           </div>
-          <h1 className="max-w-4xl text-2xl font-extrabold leading-tight tracking-normal text-[var(--cliente-card-text)] md:text-[2rem]">
+          <h1 className="max-w-4xl text-[1.55rem] font-extrabold leading-tight tracking-normal text-[var(--cliente-card-text)] sm:text-[1.85rem]">
             {title}
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">
             {description}
           </p>
-          {action ? <div className="mt-4 flex flex-wrap gap-2">{action}</div> : null}
         </div>
-
-        <aside className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,transparent)] bg-[var(--cliente-ai-soft)] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--cliente-ai)] text-white">
-                <Bot className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-black text-[var(--cliente-card-text)]">{assistantTitle}</p>
-                <p className="text-xs text-[var(--cliente-card-text-soft)]">{assistantSubtitle}</p>
-              </div>
-            </div>
-            <CrmBadge tone="purple">{assistantBadge}</CrmBadge>
-          </div>
-          <p className="mt-3 text-sm leading-5 text-[var(--cliente-card-text)]">
-            {assistantText}
-          </p>
-        </aside>
+        {action ? <div className="-mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0 lg:pb-0">{action}</div> : null}
       </div>
 
-      <div className="border-t border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2.5">
+      <div className="border-t border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-5 py-3.5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]">
+              <Bot className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-bold text-[var(--cliente-card-text)]">{assistantTitle}</p>
+                <span className="text-xs text-[var(--cliente-card-text-soft)]">{assistantSubtitle}</span>
+              </div>
+              <p className="mt-1 hidden text-xs leading-5 text-[var(--cliente-card-text-soft)] sm:block">{assistantText}</p>
+            </div>
+          </div>
+          <CrmBadge tone="purple">{assistantBadge}</CrmBadge>
+        </div>
+      </div>
+
+      <div className="border-t border-[var(--cliente-border)] px-3 py-3">
         <CrmTabs active={active} />
       </div>
       {children ? <div className="border-t border-[var(--cliente-border)] p-3 lg:p-4">{children}</div> : null}
@@ -111,6 +112,7 @@ export function CrmHero({
 
 export function CrmTabs({ active }: { active: CrmRouteLabel }) {
   const searchParams = useSearchParams();
+  const visibleRoutes = useMemo(() => CRM_ROUTES.filter((item) => !("hidden" in item && item.hidden)), []);
   const preservedQuery = useMemo(() => {
     const next = new URLSearchParams();
     const leadId = searchParams.get("leadId");
@@ -119,8 +121,8 @@ export function CrmTabs({ active }: { active: CrmRouteLabel }) {
   }, [searchParams]);
 
   return (
-    <nav className="grid grid-cols-2 gap-2 md:grid-cols-6">
-      {CRM_ROUTES.map((item) => {
+    <nav className="-mx-1 flex gap-2 overflow-x-auto px-1 [scrollbar-width:none]">
+      {visibleRoutes.map((item) => {
         const href = preservedQuery ? `${item.href}?${preservedQuery}` : item.href;
         const Icon = item.icon;
         const isActive = active === item.label;
@@ -129,10 +131,10 @@ export function CrmTabs({ active }: { active: CrmRouteLabel }) {
           <Link
             key={item.href}
             href={href}
-            className={`inline-flex items-center justify-center gap-2 rounded-[14px] px-3 py-2.5 text-sm font-bold transition ${
+            className={`inline-flex min-w-max items-center justify-center gap-2 rounded-[12px] border px-3 py-2.5 text-sm font-bold transition ${
               isActive
-                ? "bg-[var(--cliente-primary)] text-white shadow-[0_16px_28px_-24px_var(--cliente-accent-glow)]"
-                : "text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-card)] hover:text-[var(--cliente-card-text)]"
+                ? "border-[color:color-mix(in_srgb,var(--cliente-primary)_28%,transparent)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"
+                : "border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-card-text)]"
             }`}
           >
             <Icon className="h-4 w-4" />
@@ -154,7 +156,7 @@ export function CrmPanel({
   padded?: boolean;
 }) {
   return (
-    <section className={`rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)] ${padded ? "p-4" : ""} ${className}`}>
+    <section className={`rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)] ${padded ? "p-4" : ""} ${className}`}>
       {children}
     </section>
   );
@@ -176,7 +178,7 @@ export function CrmSectionTitle({
       <div className="min-w-0">
         {eyebrow ? <p className="text-[11px] font-bold text-[var(--cliente-primary)]">{eyebrow}</p> : null}
         <h2 className="mt-1 text-lg font-extrabold tracking-normal text-[var(--cliente-card-text)] md:text-xl">{title}</h2>
-        {description ? <p className="mt-1 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">{description}</p> : null}
+        {description ? <p className="client-context-copy mt-1 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">{description}</p> : null}
       </div>
       {action ? <div className="flex shrink-0 flex-wrap gap-2">{action}</div> : null}
     </div>
@@ -197,10 +199,10 @@ export function CrmMetric({
   tone?: CrmTone;
 }) {
   return (
-    <CrmPanel className="min-h-[104px] p-4">
+    <CrmPanel className="min-h-[96px] p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold text-[var(--cliente-card-text-soft)]">{label}</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.04em] text-[var(--cliente-card-text-soft)]">{label}</p>
           <p className="mt-2 truncate text-xl font-extrabold text-[var(--cliente-card-text)]">{value}</p>
           {detail ? <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{detail}</p> : null}
         </div>
@@ -297,18 +299,20 @@ export function CrmNotice({ children, tone = "blue" }: { children: ReactNode; to
   );
 }
 
-export function CrmAvatar({ name, subtitle, size = "md" }: { name?: string | null; subtitle?: string | null; size?: "sm" | "md" | "lg" }) {
-  const sizes = {
-    sm: "h-9 w-9 text-xs",
-    md: "h-11 w-11 text-sm",
-    lg: "h-14 w-14 text-base",
-  };
-
+export function CrmAvatar({
+  name,
+  subtitle,
+  photoUrl,
+  size = "md",
+}: {
+  name?: string | null;
+  subtitle?: string | null;
+  photoUrl?: string | null;
+  size?: "sm" | "md" | "lg";
+}) {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <span className={`inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--cliente-primary-soft)] font-black text-[var(--cliente-primary)] ${sizes[size]}`}>
-        {initials(name || subtitle || "Altum")}
-      </span>
+      <ClientContactAvatar name={name || undefined} phone={subtitle || undefined} photoUrl={photoUrl} size={size} />
       <div className="min-w-0">
         <p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{name || "Contato sem nome"}</p>
         {subtitle ? <p className="mt-0.5 truncate text-xs text-[var(--cliente-card-text-soft)]">{subtitle}</p> : null}

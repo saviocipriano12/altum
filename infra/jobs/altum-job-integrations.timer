@@ -1,0 +1,11 @@
+[Unit]
+Description=Verifica integracoes da Altum diariamente
+
+[Timer]
+OnCalendar=*-*-* 03:25:00 UTC
+Persistent=true
+Unit=altum-job@integrations.service
+
+[Install]
+WantedBy=timers.target
+

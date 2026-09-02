@@ -19,12 +19,6 @@ import React, {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  collection, doc, getDoc, getDocs, limit, onSnapshot,
-  orderBy, query, where, updateDoc, arrayUnion,
-  arrayRemove, serverTimestamp,
-  writeBatch, increment,
-} from "firebase/firestore";
-import {
   getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL,
 } from "firebase/storage";
 
@@ -45,7 +39,6 @@ import {
   Zap, ZapOff, X, XCircle, Image as ImageIcon, Volume2, VolumeX,
 } from "lucide-react";
 
-import { db } from "@/firebaseConfig";
 import { useAuth } from "@/context/AuthContext";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { canReceiveDistributedLeads } from "@/lib/agency-roles";
@@ -1283,39 +1276,49 @@ export default function ChatPage() {
   // ── Chats subscription ───────────────────────────────────────
   useEffect(() => {
     if (authLoading || !profile) return;
+    let cancelled = false;
+    async function loadChats() {
+      try {
+        const response = await authedFetch("/api/admin/chats");
+        const payload = (await response.json()) as { items?: ChatDoc[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Falha ao carregar conversas.");
+        if (!cancelled) {
+          setAllChats((payload.items || []).map((data) => ({
+            ...data,
+            priority: getSafePriority(data.priority),
+          })));
+        }
+      } catch (error) {
+        console.error("Erro ao carregar conversas administrativas:", error);
+      } finally {
+        if (!cancelled) setLoadingChats(false);
+      }
+    }
     setLoadingChats(true);
-    const ref = collection(db, "chats");
-    const q = isAdmin
-      ? query(ref, orderBy("lastMessageTime", "desc"), limit(300))
-      : query(ref, where("ownerId", "==", profile.uid), orderBy("lastMessageTime", "desc"), limit(200));
-   return onSnapshot(q, (snap) => {
-  setAllChats(
-    snap.docs.map((d) => {
-      const data = d.data() as Omit<ChatDoc, "id"> & { id?: string };
-
-      return {
-        ...data,
-        id: d.id,
-        priority: getSafePriority(data.priority),
-      } as ChatDoc;
-    })
-  );
-  setLoadingChats(false);
-}, () => setLoadingChats(false));
+    void loadChats();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadChats();
+    }, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [authLoading, profile, isAdmin]);
 
   // ── Team users ────────────────────────────────────────────────
   useEffect(() => {
     if (!isAdmin) return;
-    return onSnapshot(
-      query(collection(db, "users"), where("status", "==", "active")),
-      (snap) =>
-        setTeamUsers(
-          snap.docs
-            .map((d) => ({ id: d.id, ...d.data() } as TeamUser))
-            .filter((user) => canReceiveDistributedLeads(user.role))
-        )
-    );
+    let cancelled = false;
+    void authedFetch("/api/admin/users")
+      .then(async (response) => {
+        const payload = (await response.json()) as { items?: TeamUser[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Falha ao carregar equipe.");
+        if (!cancelled) setTeamUsers((payload.items || []).filter((member) => canReceiveDistributedLeads(member.role)));
+      })
+      .catch((error) => console.error("Erro ao carregar equipe administrativa:", error));
+    return () => {
+      cancelled = true;
+    };
   }, [isAdmin]);
 
   // ── Auto-select ───────────────────────────────────────────────
@@ -1354,6 +1357,7 @@ export default function ChatPage() {
   }, [messages.length]);
 
   // ── Lead ─────────────────────────────────────────────────────
+  /*
   useEffect(() => {
     if (!selectedChat?.leadId) { setLeadContext(null); return; }
     setLoadingLead(true);
@@ -1440,6 +1444,58 @@ export default function ChatPage() {
       setAuditLog(sortByCreatedAtDesc(nextItems).slice(0, 30));
     });
   }, [selectedChatId]);
+  */
+
+  useEffect(() => {
+    if (!selectedChatId) {
+      setLeadContext(null);
+      setContactProfile(null);
+      setPresence(null);
+      setAuditLog([]);
+      return;
+    }
+    let cancelled = false;
+    async function loadChatContext() {
+      try {
+        const response = await authedFetch(`/api/admin/chats/${encodeURIComponent(selectedChatId || "")}/context`);
+        const payload = (await response.json()) as {
+          lead?: LeadContext | null;
+          contact?: ContactDoc | null;
+          presence?: { online?: boolean; lastSeen?: unknown; typingInChatId?: string } | null;
+          auditLog?: AuditEvent[];
+        };
+        if (!response.ok) throw new Error("Falha ao carregar contexto da conversa.");
+        if (cancelled) return;
+        setLeadContext(payload.lead || null);
+        setContactProfile(payload.contact || null);
+        setPresence(payload.presence ? {
+          online: payload.presence.online,
+          lastSeen: payload.presence.lastSeen,
+          typing: payload.presence.typingInChatId === selectedChatId,
+        } : null);
+        setAuditLog(sortByCreatedAtDesc(payload.auditLog || []).slice(0, 30));
+      } catch (error) {
+        console.error("Erro ao carregar contexto administrativo do chat:", error);
+        if (!cancelled) {
+          setLeadContext(null);
+          setContactProfile(null);
+          setPresence(null);
+          setAuditLog([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingLead(false);
+      }
+    }
+    setLoadingLead(true);
+    void loadChatContext();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadChatContext();
+    }, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedChatId]);
 
   // ── Call timer ────────────────────────────────────────────────
   useEffect(() => {
@@ -1477,32 +1533,59 @@ export default function ChatPage() {
   }
 
   // ── Actions ───────────────────────────────────────────────────
+  async function runChatAction(payload: {
+    action: "reaction" | "pin" | "star" | "delete_message" | "status" | "priority";
+    messageId?: string;
+    emoji?: string;
+    value?: boolean | string;
+  }) {
+    if (!selectedChatId) throw new Error("Conversa nao selecionada.");
+    const response = await authedFetch(`/api/admin/chats/${encodeURIComponent(selectedChatId)}/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error || "Falha ao atualizar conversa.");
+    }
+  }
+
   async function toggleReaction(msgId: string, emoji: string) {
     if (!profile) return;
     const msg = messages.find((m) => m.id === msgId);
     const currentUsers = normalizeReactionUsers(msg?.reactions?.[emoji]);
     const has = currentUsers.includes(profile.uid);
-    await updateDoc(doc(db, "messages", msgId), {
-      [`reactions.${emoji}`]: has ? arrayRemove(profile.uid) : arrayUnion(profile.uid),
-    });
+    try {
+      await runChatAction({ action: "reaction", messageId: msgId, emoji });
+      setMessages((items) => items.map((item) => item.id === msgId ? {
+        ...item,
+        reactions: { ...item.reactions, [emoji]: has ? currentUsers.filter((id) => id !== profile.uid) : [...currentUsers, profile.uid] },
+      } : item));
+    } catch (error) {
+      showToast("err", error instanceof Error ? error.message : "Erro ao reagir a mensagem.");
+    }
   }
 
   async function pinMessage(id: string) {
     const msg = messages.find((m) => m.id === id);
     const pin = !msg?.pinned;
-    await updateDoc(doc(db, "messages", id), { pinned: pin });
+    await runChatAction({ action: "pin", messageId: id, value: pin });
     showToast("ok", pin ? "Mensagem fixada" : "Desfixada");
+    setMessages((items) => items.map((item) => item.id === id ? { ...item, pinned: pin } : item));
     setPinnedMessages(sortByCreatedAtDesc(messages.filter((message) => (message.id === id ? pin : message.pinned))));
   }
 
   async function starMessage(id: string) {
     const msg = messages.find((m) => m.id === id);
-    await updateDoc(doc(db, "messages", id), { starred: !msg?.starred });
+    await runChatAction({ action: "star", messageId: id, value: !msg?.starred });
+    setMessages((items) => items.map((item) => item.id === id ? { ...item, starred: !msg?.starred } : item));
   }
 
   async function deleteMessage(id: string) {
     try {
-      await updateDoc(doc(db, "messages", id), { deleted: true, deletedAt: serverTimestamp() });
+      await runChatAction({ action: "delete_message", messageId: id });
+      setMessages((items) => items.map((item) => item.id === id ? { ...item, deleted: true } : item));
       showToast("ok", "Mensagem apagada");
     } catch { showToast("err", "Erro ao apagar mensagem"); }
   }
@@ -1510,18 +1593,21 @@ export default function ChatPage() {
   async function handleChangeStatus(status: ChatStatus) {
     if (!selectedChatId) return;
     try {
-      await updateDoc(doc(db, "chats", selectedChatId), {
-        status,
-        ...(status === "resolved" ? { resolvedAt: serverTimestamp() } : {}),
-      });
+      await runChatAction({ action: "status", value: status });
+      setAllChats((items) => items.map((item) => item.id === selectedChatId ? { ...item, status } : item));
       showToast("ok", `Conversa ${getStatusConfigSafe(status).label.toLowerCase()}`);
     } catch { showToast("err", "Erro ao atualizar status"); }
   }
 
   async function handleChangePriority(priority: ChatPriority) {
     if (!selectedChatId) return;
-    await updateDoc(doc(db, "chats", selectedChatId), { priority });
-    showToast("ok", `Prioridade: ${getPriorityConfigSafe(priority).label}`);
+    try {
+      await runChatAction({ action: "priority", value: priority });
+      setAllChats((items) => items.map((item) => item.id === selectedChatId ? { ...item, priority } : item));
+      showToast("ok", `Prioridade: ${getPriorityConfigSafe(priority).label}`);
+    } catch (error) {
+      showToast("err", error instanceof Error ? error.message : "Erro ao atualizar prioridade.");
+    }
   }
 
   async function handleTransfer() {

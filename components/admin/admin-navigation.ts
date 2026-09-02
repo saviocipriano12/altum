@@ -20,6 +20,7 @@ import {
   Target,
   UserCog,
   Users,
+  Boxes,
 } from "lucide-react";
 
 export type AdminNavItem = {
@@ -34,9 +35,18 @@ export type AdminNavItem = {
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   {
-    label: "Cockpit da agencia",
+    label: "Operacao SaaS",
+    shortLabel: "SaaS",
+    description: "Empresas, contratos, receita, acessos e pendencias da plataforma.",
+    href: "/admin/saas",
+    icon: Boxes,
+    adminOnly: true,
+    section: "comando",
+  },
+  {
+    label: "Visao da agencia",
     shortLabel: "Cockpit",
-    description: "Prioridades, riscos e leitura geral da Altum.",
+    description: "Prioridades, riscos e leitura geral da operacao Altum.",
     href: "/admin/dashboard",
     icon: LayoutDashboard,
     section: "comando",
@@ -95,8 +105,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     section: "receita",
   },
   {
-    label: "Clientes",
-    description: "Base de clientes, portais e implantacao.",
+    label: "Empresas",
+    description: "Base de empresas, portais, contratos e implantacao.",
     href: "/admin/clientes",
     icon: Building2,
     section: "gestao",

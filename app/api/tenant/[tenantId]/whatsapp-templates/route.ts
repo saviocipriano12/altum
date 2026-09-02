@@ -3,6 +3,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { decryptSecret } from "@/app/lib/server/secret-crypto";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import {
   AGENCY_WHATSAPP_ENV_CHANNEL_ID,
   type WhatsAppChannelConfig,
@@ -68,6 +69,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "whatsapp");
     assertTenantRole(membership, "client_viewer");
     const url = new URL(req.url);
     const channelId = clean(url.searchParams.get("channelId"), 180);

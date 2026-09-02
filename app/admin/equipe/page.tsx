@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import {
   Loader2,
   Lock,
@@ -17,7 +16,6 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import type { TimestampLike } from "@/app/types/domain";
 import { isClientRole } from "@/lib/agency-roles";
@@ -105,28 +103,28 @@ export default function TeamPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | EditableRole>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | UserStatus>("all");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    const q = query(collection(db, "users"), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const next = snap.docs.map((item) => ({
-          id: item.id,
-          ...(item.data() as Omit<SystemUser, "id">),
-        })) as SystemUser[];
-        setUsers(next.filter((item) => !isClientRole(item.role)));
-        setLoading(false);
-      },
-      (error) => {
+    let cancelled = false;
+    setLoading(true);
+    void authedFetch("/api/admin/users?includeInactive=true&detailed=true")
+      .then(async (response) => {
+        const payload = (await response.json()) as { items?: SystemUser[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Falha ao carregar equipe.");
+        if (!cancelled) setUsers((payload.items || []).filter((item) => !isClientRole(item.role)));
+      })
+      .catch((error) => {
         console.error("Erro ao carregar equipe:", error);
-        setUsers([]);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
+        if (!cancelled) setUsers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   const metrics = useMemo(() => {
     const active = users.filter((user) => user.status === "active").length;
@@ -225,6 +223,7 @@ export default function TeamPage() {
           setNotice({ type: "ok", text: "Colaborador convidado com sucesso." });
         }
       }
+      setRefreshKey((value) => value + 1);
       setModalOpen(false);
     } catch (error) {
       console.error("Erro ao salvar usuario:", error);
@@ -251,6 +250,7 @@ export default function TeamPage() {
         await requestJson<{ ok: boolean }>(endpoint, { uid: user.id });
         setNotice({ type: "ok", text: `Usuario ${user.name} desbloqueado.` });
       }
+      setRefreshKey((value) => value + 1);
     } catch (error) {
       console.error("Erro ao atualizar status:", error);
       setNotice({

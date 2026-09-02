@@ -1,34 +1,32 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
-import { AuthProvider } from "@/context/AuthContext"; // 1. Adicione este import
+import { AuthProvider } from "@/context/AuthContext";
 import { buildOrganizationSchema, getSiteUrl, getSocialLinksFromEnv, toJsonLdScript } from "@/lib/schema";
 import { TrackingScripts } from "@/components/analytics/TrackingScripts";
-/* ---------------- Metadata (SEO + OpenGraph + Twitter) ---------------- */
+
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag"),
-  alternates: {
-    canonical: "/",
-  },
+  applicationName: "ALTUM",
   title: {
-    default: "ALTUM | Engenharia de Vendas High-Ticket",
-    template: "%s • ALTUM",
+    default: "ALTUM | Operacao Comercial com IA",
+    template: "%s | ALTUM",
   },
   description:
-    "Instalamos a máquina que filtra curiosos e agenda reuniões reais. Método ALTUM para escalar vendas de Alto Ticket com IA.",
-  keywords: ["Engenharia de Vendas", "High Ticket", "Trafego Pago", "Inteligencia Artificial", "Vendas B2B"],
+    "Conversas, clientes, oportunidades, agenda e IA em uma plataforma para responder melhor, vender mais e acompanhar tudo em um so lugar.",
+  keywords: ["Operacao comercial com IA", "CRM", "WhatsApp", "Plataforma de vendas", "Atendimento"],
   openGraph: {
-    title: "ALTUM | Engenharia de Vendas High-Ticket",
+    title: "ALTUM | Operacao Comercial com IA",
     description:
-      "Pare de perder tempo com curiosos. Atraia, filtre e agende reuniões apenas com quem tem orçamento.",
+      "Conversas, clientes, oportunidades, agenda e IA em uma plataforma para responder melhor, vender mais e acompanhar tudo em um so lugar.",
     url: "https://altum.ag",
     siteName: "ALTUM",
     images: [
       {
-        url: "/og-altum.jpg", // Certifique-se de que essa imagem existe na pasta public
+        url: "/logo-a.png",
         width: 1200,
         height: 630,
-        alt: "ALTUM - Engenharia de Vendas",
+        alt: "ALTUM",
       },
     ],
     locale: "pt_BR",
@@ -36,21 +34,24 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "ALTUM | Engenharia de Vendas High-Ticket",
-    description: "Instalamos a máquina que filtra curiosos e agenda reuniões reais.",
-    images: ["/og-altum.jpg"],
+    title: "ALTUM | Operacao Comercial com IA",
+    description:
+      "Conversas, clientes, oportunidades, agenda e IA em uma plataforma para responder melhor, vender mais e acompanhar tudo em um so lugar.",
+    images: ["/logo-a.png"],
   },
   icons: {
     icon: "/favicon.ico",
   },
   manifest: "/site.webmanifest",
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || undefined,
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#151419",
+  themeColor: "#04131f",
 };
 
-/* ---------------- Layout ---------------- */
 export default function RootLayout({
   children,
 }: {
@@ -66,17 +67,12 @@ export default function RootLayout({
 
   return (
     <html lang="pt-BR" className="scroll-smooth" data-scroll-behavior="smooth">
-      <body
-        className="bg-[#0B0B0B] font-sans text-white antialiased selection:bg-[#F56E0F] selection:text-white"
-      >
+      <body className="bg-[#04131f] font-sans text-white antialiased selection:bg-[#f97316] selection:text-white">
         <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(organizationSchema)} />
         <Suspense fallback={null}>
           <TrackingScripts />
         </Suspense>
-        {/* 2. Envolva o children com o AuthProvider */}
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

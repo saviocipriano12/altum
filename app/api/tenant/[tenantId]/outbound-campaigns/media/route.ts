@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { firebaseStorageBucketCandidates, saveFirebaseStorageFileWithFallback } from "@/lib/server/firebase-storage";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 const LIMITS = {
   image: 12 * 1024 * 1024,
@@ -30,6 +31,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantCapability(membership, "manage_automations");
 
     if (firebaseStorageBucketCandidates().length === 0) {

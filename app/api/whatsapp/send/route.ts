@@ -4,7 +4,8 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhone } from "@/app/lib/server/phone";
 import { getTenantForCurrentUser } from "@/lib/server/tenant";
-import { AGENCY_TENANT_ID, getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
+import { AGENCY_TENANT_ID, getWhatsAppChannelForTenant } from "@/app/lib/server/whatsapp-channel";
+import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 
 type Body = {
   chatId?: string;
@@ -168,8 +169,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const data = await sendMetaTextMessage({
-      channel,
+    const data = await getWhatsAppMessagingProvider(channel).sendText({
       to: destination.phone,
       text: destination.text,
     });
@@ -193,6 +193,8 @@ export async function POST(req: Request) {
           senderId: user.uid,
           type: "text",
           status: "sent",
+          deliveryStatus: "sent",
+          ...(data.externalMessageId ? { metaMessageId: data.externalMessageId } : {}),
           tenantId: destination.tenantId || channel.tenantId,
           channelPhoneNumberId: channel.phoneNumberId,
           createdAt: FieldValue.serverTimestamp(),

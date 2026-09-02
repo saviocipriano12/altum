@@ -658,6 +658,7 @@ function LiveMeetingRoom({
   const liveText = [liveTranscript, interimTranscript].filter(Boolean).join("\n");
   const [activeRoomUrl, setActiveRoomUrl] = useState(meetingUrl);
   const canEmbedRoom = /^https:\/\/meet\.jit\.si\/[A-Za-z0-9_-]+/i.test(activeRoomUrl);
+  const roomReady = Boolean(activeRoomUrl);
 
   useEffect(() => {
     if (meetingUrl && meetingUrl !== activeRoomUrl) setActiveRoomUrl(meetingUrl);
@@ -679,6 +680,62 @@ function LiveMeetingRoom({
     <CrmPanel className="overflow-hidden p-0">
       <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="p-4 lg:p-5">
+          <div className="mb-4 overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_22%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_12%,var(--cliente-card)),var(--cliente-card)_55%,color-mix(in_srgb,var(--cliente-success)_10%,var(--cliente-card)))] p-4 shadow-[var(--cliente-shadow-soft)]">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.48fr)]">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <CrmBadge tone={roomReady ? "green" : "orange"}>{roomReady ? "sala pronta" : "crie a sala"}</CrmBadge>
+                  <CrmBadge tone={listening ? "green" : "purple"}>{listening ? "IA escutando" : "copiloto disponivel"}</CrmBadge>
+                </div>
+                <h2 className="mt-3 text-2xl font-black tracking-normal text-[var(--cliente-card-text)]">
+                  {roomReady ? "Sua chamada de video esta pronta." : "Comece uma reuniao com IA em um clique."}
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                  {roomReady
+                    ? "Entre na sala, envie o convite para o lead e ative a escuta para a Altum transcrever, orientar e gerar o resumo final."
+                    : "A Altum cria a sala, ajuda o vendedor durante a conversa e salva tudo no lead quando a reuniao terminar."}
+                </p>
+                {roomReady ? (
+                  <div className="mt-4 flex min-w-0 items-center gap-2 rounded-[16px] border border-[var(--cliente-border)] bg-white/70 p-2">
+                    <LinkIcon className="h-4 w-4 shrink-0 text-[var(--cliente-primary)]" />
+                    <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{activeRoomUrl}</p>
+                  </div>
+                ) : null}
+              </div>
+              <div className="grid content-center gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                {roomReady ? (
+                  <a
+                    href={activeRoomUrl}
+                    target="_blank"
+                    className="inline-flex items-center justify-center gap-2 rounded-[16px] bg-[var(--cliente-primary)] px-4 py-3 text-sm font-black text-white shadow-[0_16px_28px_-24px_var(--cliente-accent-glow)] transition hover:-translate-y-0.5"
+                  >
+                    <Video className="h-4 w-4" />
+                    Entrar na chamada
+                  </a>
+                ) : (
+                  <CrmButton type="button" tone="primary" className="w-full justify-center py-3" onClick={createMeetingRoom}>
+                    <Video className="h-4 w-4" />
+                    Criar sala de video
+                  </CrmButton>
+                )}
+                {roomReady ? (
+                  <CrmButton type="button" className="w-full justify-center py-3" onClick={() => void copyMeetingLink()}>
+                    <LinkIcon className="h-4 w-4" />
+                    Copiar convite
+                  </CrmButton>
+                ) : null}
+                <CrmButton type="button" tone={listening ? "danger" : "green"} className="w-full justify-center py-3" onClick={listening ? onStop : onStart}>
+                  {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  {listening ? "Parar escuta da IA" : "Ouvir reuniao"}
+                </CrmButton>
+                <CrmButton type="button" tone="purple" className="w-full justify-center py-3" onClick={onCoach} disabled={coaching}>
+                  {coaching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  Orientar agora
+                </CrmButton>
+              </div>
+            </div>
+          </div>
+
           <CrmSectionTitle
             eyebrow="Sala assistida"
             title="Chamada de video dentro da Altum"
@@ -705,14 +762,6 @@ function LiveMeetingRoom({
                     Copiar link
                   </CrmButton>
                 ) : null}
-                <CrmButton type="button" tone={listening ? "danger" : "green"} onClick={listening ? onStop : onStart}>
-                  {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                  {listening ? "Parar escuta" : "Ouvir reuniao"}
-                </CrmButton>
-                <CrmButton type="button" tone="purple" onClick={onCoach} disabled={coaching}>
-                  {coaching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                  Orientar agora
-                </CrmButton>
               </div>
             }
           />
@@ -737,7 +786,8 @@ function LiveMeetingRoom({
                 title="Sala de video Altum"
                 src={`${activeRoomUrl}#config.prejoinPageEnabled=true&config.disableDeepLinking=true`}
                 allow="camera; microphone; fullscreen; display-capture; clipboard-write"
-                className="h-[420px] w-full bg-slate-950"
+                allowFullScreen
+                className="h-[430px] w-full bg-slate-950 lg:h-[540px]"
               />
             ) : (
               <div className="flex min-h-[340px] flex-col items-center justify-center gap-4 px-6 py-10 text-center">

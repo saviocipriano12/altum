@@ -15,6 +15,18 @@ test("social config normalizes defaults and opt-out keywords", () => {
     commentIntentPricingKeywords: ["Preco", "orcamento"],
     commentIntentPurchaseKeywords: ["Quero", "comprar"],
     commentIntentSchedulingKeywords: ["Agendar", "consulta"],
+    newFollowerMessageEnabled: true,
+    commentRules: [
+      {
+        id: "oferta_reel",
+        name: "Oferta do reel",
+        enabled: true,
+        mediaIds: ["media_123"],
+        keywords: ["QUERO", "catalogo"],
+        message: "Oi, {{nome}}! Aqui esta a oferta.",
+        privateReply: true,
+      },
+    ],
     activeHours: {
       timezone: "America/Sao_Paulo",
       start: "09:00",
@@ -29,6 +41,16 @@ test("social config normalizes defaults and opt-out keywords", () => {
   assert.deepEqual(config.commentIntentPricingKeywords, ["preco", "orcamento"]);
   assert.deepEqual(config.commentIntentPurchaseKeywords, ["quero", "comprar"]);
   assert.deepEqual(config.commentIntentSchedulingKeywords, ["agendar", "consulta"]);
+  assert.equal(config.newFollowerMessageEnabled, false);
+  assert.deepEqual(config.commentRules[0], {
+    id: "oferta_reel",
+    name: "Oferta do reel",
+    enabled: true,
+    mediaIds: ["media_123"],
+    keywords: ["quero", "catalogo"],
+    message: "Oi, {{nome}}! Aqui esta a oferta.",
+    privateReply: true,
+  });
   assert.equal(config.activeHours.end, "18:30");
 });
 

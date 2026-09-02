@@ -18,9 +18,9 @@ export default function AdminHeader({
 
   const roleLabel = useMemo(() => {
     if (!profile) return "Operador";
-    if (profile.role === "admin" || profile.role === "agency_owner") return "Agency Owner";
-    if (profile.role === "agency_admin") return "Agency Admin";
-    if (profile.role === "agency_agent") return "Agency Agent";
+    if (profile.role === "admin" || profile.role === "agency_owner") return "Dono da Altum";
+    if (profile.role === "agency_admin") return "Administrador";
+    if (profile.role === "agency_agent") return "Operador da Altum";
     if (profile.role === "closer") return "Closer";
     if (
       profile.role === "client" ||
@@ -68,8 +68,8 @@ export default function AdminHeader({
         </button>
 
         <div className="hidden md:flex flex-col leading-tight">
-          <span className="text-[12px] font-semibold text-slate-900">ALTUM Agency OS</span>
-          <span className="text-[10px] font-medium text-slate-500">Comando da agencia</span>
+          <span className="text-[12px] font-semibold text-slate-900">ALTUM · Administração</span>
+          <span className="text-[10px] font-medium text-slate-500">Gestão da plataforma</span>
         </div>
       </div>
 

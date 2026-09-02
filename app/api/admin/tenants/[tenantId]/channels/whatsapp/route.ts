@@ -3,6 +3,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { encryptSecret } from "@/app/lib/server/secret-crypto";
+import { assertTenantLimitAvailable } from "@/lib/server/tenant-entitlements";
+import { countTenantWhatsAppChannels } from "@/lib/server/tenant-usage";
+import { TenantAccessError } from "@/lib/server/tenant";
 
 type Body = {
   displayName?: string;
@@ -59,6 +62,13 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    await assertTenantLimitAvailable({
+      tenantId,
+      limitId: "whatsappChannels",
+      currentUsage: await countTenantWhatsAppChannels(tenantId),
+      increment: 1,
+    });
 
     await Promise.all([
       channelRef.set(
@@ -118,6 +128,12 @@ export async function POST(
       return NextResponse.json(
         { error: error.message, code: error.code },
         { status: error.status }
+      );
+    }
+    if (error instanceof TenantAccessError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.code === "tenant_limit_exceeded" ? 409 : 403 }
       );
     }
     console.error("Erro ao cadastrar canal WhatsApp do tenant:", error);

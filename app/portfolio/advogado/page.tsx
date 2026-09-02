@@ -3,9 +3,9 @@ import "./advogado.css";
 const whatsappNumber = "5531998772098";
 
 const whatsappLinks = {
-  main: `https://wa.me/${whatsappNumber}?text=Ol%C3%A1%2C%20gostaria%20de%20falar%20com%20um%20advogado`,
-  consult: `https://wa.me/${whatsappNumber}?text=Ol%C3%A1%2C%20gostaria%20de%20agendar%20uma%20consulta`,
-  legal: `https://wa.me/${whatsappNumber}?text=Ol%C3%A1%2C%20preciso%20de%20orienta%C3%A7%C3%A3o%20jur%C3%ADdica`,
+  main: "/diagnostico?entry=portfolio_advogado_main",
+  consult: "/diagnostico?entry=portfolio_advogado_consult",
+  legal: "/diagnostico?entry=portfolio_advogado_legal",
 };
 
 const stats = [
@@ -188,7 +188,7 @@ export default function AdvogadoPage() {
         </div>
 
         <a className="adv-btn adv-btn-primary" href={whatsappLinks.main} target="_blank">
-          Falar no WhatsApp
+          Fazer diagnostico
         </a>
       </nav>
 

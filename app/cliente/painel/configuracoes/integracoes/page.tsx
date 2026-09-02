@@ -67,8 +67,14 @@ type EcommerceConnection = {
   status: "draft" | "active" | "paused" | "error";
   connectionStatus: string;
   syncMode: string;
+  connectionMode?: "api_and_webhook" | "webhook";
+  hasApiCredentials?: boolean;
+  oauthManaged?: boolean;
+  realtime?: { requested: number; active: number; failed: number; provisionedAt: string | null };
+  capabilities?: string[];
   webhookSecretMasked: string;
   lastEventAt: string | null;
+  lastSyncAt?: string | null;
   lastError: string;
   productCount: number;
   orderCount: number;
@@ -77,6 +83,7 @@ type EcommerceConnection = {
 
 type EcommercePayload = {
   connections?: EcommerceConnection[];
+  managedConnection?: { shopify?: boolean; nuvemshop?: boolean };
   summary?: {
     totalConnections?: number;
     activeConnections?: number;
@@ -113,6 +120,11 @@ type FormState = {
   storeUrl: string;
   storeId: string;
   status: "draft" | "active";
+  credentials: {
+    accessToken: string;
+    consumerKey: string;
+    consumerSecret: string;
+  };
 };
 
 type AutomationTemplate = {
@@ -136,6 +148,7 @@ const EMPTY_FORM: FormState = {
   storeUrl: "",
   storeId: "",
   status: "active",
+  credentials: { accessToken: "", consumerKey: "", consumerSecret: "" },
 };
 
 const DEFAULT_AUTOMATION: EcommerceAutomation = {
@@ -152,7 +165,8 @@ function money(value: number | null | undefined, currency = "BRL") {
 }
 
 function statusTone(status: string): "success" | "warning" | "danger" | "info" | "neutral" {
-  if (status === "active" || status === "receiving_events") return "success";
+  if (status === "active" || status === "receiving_events" || status === "connected") return "success";
+  if (status === "syncing") return "info";
   if (status === "error") return "danger";
   if (status === "paused" || status === "draft") return "warning";
   return "info";
@@ -165,6 +179,7 @@ export default function ClienteIntegracoesPage() {
   const [payload, setPayload] = useState<EcommercePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [connectingProvider, setConnectingProvider] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -199,6 +214,22 @@ export default function ClienteIntegracoesPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("commerceResult");
+    const provider = params.get("commerceProvider");
+    if (!result) return;
+    const label = provider === "nuvemshop" ? "Nuvemshop" : "Shopify";
+    if (result === "connected") setNotice(`${label} conectada e sincronizada com sucesso.`);
+    else if (result === "connected_with_sync_warning") setNotice(`${label} conectada. A sincronizacao inicial sera retomada automaticamente.`);
+    else setError(`Nao foi possivel concluir a conexao com ${label}. Tente novamente.`);
+    params.delete("commerceResult");
+    params.delete("commerceProvider");
+    params.delete("commerceMessage");
+    const query = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+  }, []);
+
   const connections = payload?.connections || [];
   const summary = payload?.summary || {};
 
@@ -226,6 +257,30 @@ export default function ClienteIntegracoesPage() {
     }
   }
 
+  async function connectManaged(provider: "shopify" | "nuvemshop") {
+    if (!tenant?.tenantId || !canManage) return;
+    setConnectingProvider(provider);
+    setError("");
+    setNotice("");
+    try {
+      const res = await authedFetch(`/api/integrations/commerce/${provider}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: tenant.tenantId,
+          shopDomain: provider === "shopify" ? form.storeId || form.storeUrl : undefined,
+          redirectPath: "/cliente/painel/configuracoes/integracoes",
+        }),
+      });
+      const data = (await res.json()) as { authorizationUrl?: string; error?: string };
+      if (!res.ok || !data.authorizationUrl) throw new Error(data.error || "Nao foi possivel abrir a autorizacao da loja.");
+      window.location.assign(data.authorizationUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao iniciar conexao gerenciada.");
+      setConnectingProvider("");
+    }
+  }
+
   async function updateConnection(connectionId: string, patch: Record<string, unknown>) {
     if (!tenant?.tenantId || !canManage) return;
     setSaving(true);
@@ -244,6 +299,28 @@ export default function ClienteIntegracoesPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao atualizar conexao.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function syncConnection(connectionId: string) {
+    if (!tenant?.tenantId || !canManage) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/ecommerce/connections/${connectionId}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 20 }),
+      });
+      const data = (await res.json()) as { error?: string; processed?: number; summary?: { products?: number; orders?: number } };
+      if (!res.ok) throw new Error(data.error || "Falha ao sincronizar a loja.");
+      setNotice(`${data.summary?.products || 0} produto(s) e ${data.summary?.orders || 0} pedido(s) sincronizados.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao sincronizar a loja.");
     } finally {
       setSaving(false);
     }
@@ -445,7 +522,7 @@ export default function ClienteIntegracoesPage() {
                       key={platform.id}
                       type="button"
                       disabled={!canManage || saving}
-                      onClick={() => setForm((current) => ({ ...current, provider: platform.id }))}
+                      onClick={() => setForm((current) => ({ ...current, provider: platform.id, credentials: { accessToken: "", consumerKey: "", consumerSecret: "" } }))}
                       className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:opacity-60 ${
                         active
                           ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-primary-soft)] shadow-[0_14px_30px_-24px_var(--cliente-primary-glow)]"
@@ -488,15 +565,61 @@ export default function ClienteIntegracoesPage() {
                 value={form.storeId}
                 onChange={(event) => setForm((current) => ({ ...current, storeId: event.target.value }))}
                 disabled={!canManage || saving}
-                placeholder="opcional"
+                placeholder={form.provider === "nuvemshop" ? "ID numérico da loja" : form.provider === "shopify" ? "sua-loja.myshopify.com" : "opcional"}
                 className="client-input rounded-2xl border px-3 py-2.5 text-sm outline-none"
               />
             </label>
+            {(form.provider === "shopify" || form.provider === "nuvemshop") && payload?.managedConnection?.[form.provider] ? (
+              <div className="rounded-2xl border border-[var(--cliente-primary)]/20 bg-[var(--cliente-primary-soft)] p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-[var(--cliente-card)] p-2 text-[var(--cliente-primary)] shadow-sm"><CheckCircle2 className="h-4 w-4" /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Conexão automática recomendada</p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-muted)]">Autorize na plataforma. A Altum valida a conta, importa os primeiros dados e mantém a sincronização ativa.</p>
+                  </div>
+                </div>
+                <ClientActionButton
+                  onClick={() => void connectManaged(form.provider as "shopify" | "nuvemshop")}
+                  disabled={!canManage || Boolean(connectingProvider) || (form.provider === "shopify" && !form.storeId && !form.storeUrl)}
+                  tone="primary"
+                  className="mt-4 w-full"
+                >
+                  {connectingProvider === form.provider ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+                  Autorizar com {form.provider === "shopify" ? "Shopify" : "Nuvemshop"}
+                </ClientActionButton>
+                {form.provider === "shopify" && !form.storeId && !form.storeUrl ? <p className="mt-2 text-center text-xs text-[var(--cliente-card-text-soft)]">Informe acima o domínio .myshopify.com da loja.</p> : null}
+              </div>
+            ) : null}
+            {form.provider === "shopify" || form.provider === "nuvemshop" ? (
+              <details className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+                <summary className="cursor-pointer list-none text-xs font-semibold text-[var(--cliente-card-text-muted)]">Conectar manualmente com token</summary>
+                <div className="mt-3">
+                  <SecretField
+                    label={form.provider === "shopify" ? "Token da Admin API" : "Token de acesso OAuth"}
+                    value={form.credentials.accessToken}
+                    onChange={(value) => setForm((current) => ({ ...current, credentials: { ...current.credentials, accessToken: value } }))}
+                    placeholder={form.provider === "shopify" ? "shpat_..." : "Token fornecido pela Nuvemshop"}
+                    disabled={!canManage || saving}
+                  />
+                </div>
+              </details>
+            ) : null}
+            {form.provider === "woocommerce" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <SecretField label="Consumer key" value={form.credentials.consumerKey} onChange={(value) => setForm((current) => ({ ...current, credentials: { ...current.credentials, consumerKey: value } }))} placeholder="ck_..." disabled={!canManage || saving} />
+                <SecretField label="Consumer secret" value={form.credentials.consumerSecret} onChange={(value) => setForm((current) => ({ ...current, credentials: { ...current.credentials, consumerSecret: value } }))} placeholder="cs_..." disabled={!canManage || saving} />
+              </div>
+            ) : null}
+            {!["shopify", "nuvemshop", "woocommerce"].includes(form.provider) ? (
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">Esta plataforma será conectada por webhook. A sincronização direta por API ainda não está disponível para este conector.</p>
+            ) : (
+              <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold leading-5 text-emerald-800">Conexões por API são validadas, criptografadas e sincronizadas automaticamente.</p>
+            )}
           </div>
 
           <ClientActionButton onClick={createConnection} disabled={!canManage || saving} tone="primary" className="mt-5 w-full">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
-            Conectar loja
+            Salvar conexão manual
           </ClientActionButton>
         </PanelCard>
 
@@ -529,6 +652,7 @@ export default function ClienteIntegracoesPage() {
                   saving={saving}
                   onCopy={copyText}
                   onUpdate={updateConnection}
+                  onSync={syncConnection}
                 />
               ))
             ) : (
@@ -637,6 +761,23 @@ export default function ClienteIntegracoesPage() {
   );
 }
 
+function SecretField({ label, value, onChange, placeholder, disabled }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; disabled: boolean }) {
+  return (
+    <label className="grid gap-1.5 text-sm font-medium text-[var(--cliente-card-text)]">
+      {label}
+      <input
+        type="password"
+        autoComplete="new-password"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="client-input rounded-2xl border px-3 py-2.5 text-sm outline-none"
+      />
+    </label>
+  );
+}
+
 function ConnectionCard({
   connection,
   webhookUrl,
@@ -645,6 +786,7 @@ function ConnectionCard({
   saving,
   onCopy,
   onUpdate,
+  onSync,
 }: {
   connection: EcommerceConnection;
   webhookUrl: string;
@@ -653,6 +795,7 @@ function ConnectionCard({
   saving: boolean;
   onCopy: (value: string) => Promise<void>;
   onUpdate: (connectionId: string, patch: Record<string, unknown>) => Promise<void>;
+  onSync: (connectionId: string) => Promise<void>;
 }) {
   const active = connection.status === "active";
   const meta = platformMeta(connection.provider);
@@ -666,11 +809,29 @@ function ConnectionCard({
               <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{connection.displayName || connection.providerLabel}</p>
               <StateBadge label={connection.providerLabel || meta.label} tone="info" />
               <StateBadge label={connection.status} tone={statusTone(connection.status)} />
+              <StateBadge label={connection.oauthManaged ? "Conexão automática" : connection.hasApiCredentials ? "API conectada" : "Webhook"} tone={connection.hasApiCredentials ? "success" : "warning"} />
+              {connection.realtime?.requested ? (
+                <StateBadge
+                  label={connection.realtime.failed ? `${connection.realtime.active}/${connection.realtime.requested} eventos ativos` : "Tempo real ativo"}
+                  tone={connection.realtime.failed ? "warning" : "success"}
+                />
+              ) : null}
             </div>
             <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{connection.storeUrl || "URL da loja nao informada"}</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {connection.hasApiCredentials ? (
+            <button
+              type="button"
+              disabled={!canManage || saving}
+              onClick={() => onSync(connection.id)}
+              className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-primary)] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[var(--cliente-primary-hover)] disabled:opacity-60"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${connection.connectionStatus === "syncing" ? "animate-spin" : ""}`} />
+              Sincronizar agora
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={!canManage || saving}
@@ -696,6 +857,17 @@ function ConnectionCard({
         <MiniStat label="Pedidos" value={String(connection.orderCount || 0)} />
         <MiniStat label="Carrinhos" value={String(connection.cartCount || 0)} />
       </div>
+
+      <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">
+        {connection.hasApiCredentials
+          ? `Sincronização automática ativa${connection.lastSyncAt ? ` · última execução ${new Date(connection.lastSyncAt).toLocaleString("pt-BR")}` : " · primeira carga em preparação"}`
+          : "Aguardando eventos enviados pela plataforma da loja."}
+      </p>
+      {connection.realtime?.failed ? (
+        <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+          A loja está conectada. Alguns eventos em tempo real serão retomados na próxima reconexão; a sincronização automática continua cobrindo os dados.
+        </p>
+      ) : null}
 
       <details className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
         <summary className="cursor-pointer list-none text-xs font-black uppercase text-[var(--cliente-card-text-soft)]">

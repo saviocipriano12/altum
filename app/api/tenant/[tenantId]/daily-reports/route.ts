@@ -7,6 +7,7 @@ import {
   TenantAccessError,
 } from "@/lib/server/tenant";
 import { generateDailyReport, getDailyReport, sendDailyReportWhatsApp } from "@/lib/server/daily-report";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   dateKey?: string;
@@ -33,6 +34,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "reports");
     assertTenantRole(membership, "client_viewer");
 
     const dateKey = readDateKey(req);
@@ -63,6 +65,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "reports");
     assertTenantCapability(membership, "view_metrics");
 
     const body = (await req.json().catch(() => ({}))) as Body;

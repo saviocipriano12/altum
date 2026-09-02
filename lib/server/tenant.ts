@@ -27,6 +27,7 @@ export const TENANT_SCOPED_COLLECTIONS = [
   "ecommerce_commercial_actions",
   "whatsapp_webhook_events",
   "meta_webhook_events",
+  "tenant_notification_state",
 ] as const;
 
 export type TenantUserRole =

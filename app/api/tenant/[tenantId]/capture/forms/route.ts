@@ -6,6 +6,7 @@ import { normalizeCaptureFields } from "@/lib/capture-form";
 import { normalizeCaptureLandingConfig } from "@/lib/capture-landing";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   name?: string;
@@ -90,6 +91,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantRole(membership, "client_viewer");
 
     const [formsSnap, submissionsSnap] = await Promise.all([
@@ -197,6 +199,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantCapability(membership, "manage_settings");
 
     const body = (await req.json()) as Body;

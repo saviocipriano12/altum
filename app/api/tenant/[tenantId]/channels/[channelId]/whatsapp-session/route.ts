@@ -3,42 +3,13 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
-import { callWhatsAppGateway, getWhatsAppChannelById } from "@/app/lib/server/whatsapp-channel";
+import { getWhatsAppChannelById, isOfficialWhatsAppProvider } from "@/app/lib/server/whatsapp-channel";
+import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 function clean(value: unknown, max = 300) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
-}
-
-function normalizeSessionStatus(value: unknown) {
-  const status = clean(value, 80).toLowerCase();
-  if (["connected", "ready", "open", "online"].includes(status)) return "connected";
-  if (["qr", "qr_required", "pairing", "pending_qr"].includes(status)) return "qr_required";
-  if (["connecting", "starting", "syncing"].includes(status)) return "connecting";
-  if (["disconnected", "closed", "offline"].includes(status)) return "disconnected";
-  if (["error", "failed"].includes(status)) return "error";
-  return status || "unknown";
-}
-
-function readPayloadStatus(payload: Record<string, unknown>) {
-  return normalizeSessionStatus(
-    payload.status ||
-      payload.state ||
-      payload.connectionState ||
-      (payload.session && typeof payload.session === "object"
-        ? (payload.session as Record<string, unknown>).status
-        : "")
-  );
-}
-
-function readQrValue(payload: Record<string, unknown>) {
-  return (
-    clean(payload.qr, 4000) ||
-    clean(payload.qrCode, 4000) ||
-    clean(payload.code, 4000) ||
-    clean(payload.base64, 6000) ||
-    clean(payload.qrImageUrl, 1200)
-  );
 }
 
 export async function GET(
@@ -49,6 +20,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId, channelId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "whatsapp");
     assertTenantCapability(membership, "manage_channels");
 
     const channel = await getWhatsAppChannelById(channelId);
@@ -58,7 +30,7 @@ export async function GET(
 
     const { searchParams } = new URL(req.url);
     const action = clean(searchParams.get("action"), 40) || "status";
-    if (channel.provider === "meta_whatsapp") {
+    if (isOfficialWhatsAppProvider(channel.provider)) {
       return NextResponse.json({
         ok: true,
         provider: channel.provider,
@@ -67,22 +39,21 @@ export async function GET(
       });
     }
 
+    const provider = getWhatsAppMessagingProvider(channel);
     if (action === "qr") {
-      if (!channel.qrCodeEndpoint) {
+      if (!provider.supportsQr || !provider.getQrCode) {
         return NextResponse.json({
           ok: true,
           provider: channel.provider,
           status: "not_configured",
-          message: "Configure o endpoint de QR do gateway para parear esta sessao.",
+          message: "Este provedor nao oferece pareamento por QR.",
         });
       }
-      const payload = await callWhatsAppGateway({
-        channel,
-        endpoint: channel.qrCodeEndpoint,
-        payload: { action: "qr" },
-      });
-      const status = readPayloadStatus(payload);
-      const qr = readQrValue(payload);
+      if (provider.provision) {
+        await provider.provision({ webhookUrl: `${new URL(req.url).origin}/api/webhooks/whatsapp` });
+      }
+      const result = await provider.getQrCode();
+      const { status, qr, payload } = result;
       await adminDb.collection("tenant_channels").doc(channel.id).set(
         {
           connectionStatus: status === "connected" ? "ready" : status === "error" ? "error" : "auth_pending",
@@ -95,21 +66,16 @@ export async function GET(
       return NextResponse.json({ ok: true, provider: channel.provider, status, qr, payload });
     }
 
-    if (!channel.sessionStatusEndpoint) {
+    if (!provider.getSession) {
       return NextResponse.json({
         ok: true,
         provider: channel.provider,
         status: "not_configured",
-        message: "Configure o endpoint de status do gateway para monitorar esta sessao.",
+        message: "Este provedor nao oferece consulta de sessao.",
       });
     }
 
-    const payload = await callWhatsAppGateway({
-      channel,
-      endpoint: channel.sessionStatusEndpoint,
-      payload: { action: "status" },
-    });
-    const status = readPayloadStatus(payload);
+    const { status, payload } = await provider.getSession();
     await adminDb.collection("tenant_channels").doc(channel.id).set(
       {
         connectionStatus: status === "connected" ? "ready" : status === "error" ? "error" : "degraded",

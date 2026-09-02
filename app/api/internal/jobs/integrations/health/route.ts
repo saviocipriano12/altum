@@ -21,7 +21,7 @@ function readToken(req: Request) {
 
 function getLimit(req: Request) {
   const { searchParams } = new URL(req.url);
-  const parsed = Number(searchParams.get("limit") || 30);
+  const parsed = Number(searchParams.get("maxTenants") || searchParams.get("limit") || 30);
   if (Number.isNaN(parsed)) return 30;
   return Math.min(120, Math.max(1, Math.round(parsed)));
 }
@@ -32,16 +32,27 @@ function getTenantId(req: Request) {
 }
 
 async function listTenantIds(limit: number) {
-  const snap = await adminDb.collection("tenant_channels").limit(limit * 20).get();
+  const [channelsSnap, commerceSnap] = await Promise.all([
+    adminDb.collection("tenant_channels").limit(limit * 20).get(),
+    adminDb.collection("ecommerce_connections").limit(limit * 10).get(),
+  ]);
   const tenantIds = new Set<string>();
-  for (const doc of snap.docs) {
+  for (const doc of channelsSnap.docs) {
     const data = doc.data() as { tenantId?: unknown; type?: unknown };
     const tenantId = clean(data.tenantId, 120);
     const type = clean(data.type, 40).toLowerCase();
     if (!tenantId) continue;
-    if (!["instagram", "messenger", "meta_ads", "google_ads"].includes(type)) continue;
+    if (!["whatsapp", "instagram", "messenger", "meta_ads", "google_ads"].includes(type)) continue;
     tenantIds.add(tenantId);
     if (tenantIds.size >= limit) break;
+  }
+  if (tenantIds.size < limit) {
+    for (const doc of commerceSnap.docs) {
+      const tenantId = clean((doc.data() as { tenantId?: unknown }).tenantId, 120);
+      if (!tenantId) continue;
+      tenantIds.add(tenantId);
+      if (tenantIds.size >= limit) break;
+    }
   }
   return Array.from(tenantIds);
 }

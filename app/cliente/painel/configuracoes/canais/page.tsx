@@ -5,21 +5,27 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
-  Facebook,
-  Instagram,
+  CheckCircle2,
+  ChevronDown,
   Link2,
   Loader2,
-  Megaphone,
-  MessageSquare,
+  Plus,
   RefreshCw,
   Save,
-  Search,
+  Settings2,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { CardTitle, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
+import {
+  BrandIcon,
+  type BrandIconId,
+  CardTitle,
+  PanelCard,
+  SectionHeader,
+  StateBadge,
+} from "@/app/cliente/painel/components/ui";
 
 type ChannelItem = {
   id?: string;
@@ -59,10 +65,24 @@ type ChannelItem = {
   requiresWebhook?: boolean;
   requiresExternalMapping?: boolean;
   metadata?: Record<string, string>;
+  channelScope?: "shared" | "personal";
+  ownerUserId?: string;
+  ownerUserName?: string;
+  distributionEnabled?: boolean;
+};
+
+type TenantUserOption = {
+  id: string;
+  userId?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+  status?: string;
 };
 
 type ChannelsResponse = {
   items?: ChannelItem[];
+  managedProviders?: { evolution?: boolean };
   error?: string;
 };
 
@@ -132,7 +152,7 @@ type ConnectorDefinition = {
   label: string;
   description: string;
   provider: string;
-  icon: typeof MessageSquare;
+  brand: BrandIconId;
   primaryLabel: string;
   secondaryLabel: string;
   secondaryKey: "username" | "pageId";
@@ -148,19 +168,19 @@ const CONNECTORS: ConnectorDefinition[] = [
   {
     type: "whatsapp",
     label: "WhatsApp",
-    description: "Numeros conectados para Conversas, IA, templates e atendimento humano.",
+    description: "Atendimento, vendas e automacoes.",
     provider: "meta_whatsapp",
-    icon: MessageSquare,
+    brand: "whatsapp",
     primaryLabel: "phoneNumberId",
     secondaryLabel: "Numero",
     secondaryKey: "username",
   },
   {
     type: "instagram",
-    label: "Instagram DM",
-    description: "DMs e interacoes sociais entrando no atendimento com contexto comercial.",
+    label: "Instagram",
+    description: "Mensagens diretas e interacoes.",
     provider: "meta_instagram",
-    icon: Instagram,
+    brand: "instagram",
     primaryLabel: "Instagram business ID",
     secondaryLabel: "Usuario",
     secondaryKey: "username",
@@ -168,9 +188,9 @@ const CONNECTORS: ConnectorDefinition[] = [
   {
     type: "messenger",
     label: "Facebook Messenger",
-    description: "Mensagens da pagina conectadas ao mesmo fluxo de atendimento.",
+    description: "Conversas da sua pagina.",
     provider: "facebook_messenger",
-    icon: Facebook,
+    brand: "messenger",
     primaryLabel: "Facebook page ID",
     secondaryLabel: "Nome da pagina",
     secondaryKey: "pageId",
@@ -178,9 +198,9 @@ const CONNECTORS: ConnectorDefinition[] = [
   {
     type: "meta_ads",
     label: "Meta Ads",
-    description: "Campanhas, formularios, origem dos leads e retorno de conversoes.",
+    description: "Leads e conversoes dos anuncios.",
     provider: "meta_ads",
-    icon: Megaphone,
+    brand: "meta",
     primaryLabel: "Ad account ID",
     secondaryLabel: "Page ID",
     secondaryKey: "pageId",
@@ -190,9 +210,9 @@ const CONNECTORS: ConnectorDefinition[] = [
   {
     type: "google_ads",
     label: "Google Ads",
-    description: "Busca paga, custo, CPL e conversoes conectados aos relatorios.",
+    description: "Campanhas, custos e conversoes.",
     provider: "google_ads",
-    icon: Search,
+    brand: "google",
     primaryLabel: "Customer ID",
     secondaryLabel: "Login customer ID (MCC)",
     secondaryKey: "pageId",
@@ -365,17 +385,20 @@ const WHATSAPP_PROVIDER_OPTIONS = [
   {
     value: "meta_whatsapp",
     label: "Oficial Meta",
-    description: "Conexao oficial para mensagens, templates e melhor estabilidade.",
+    description: "Numero oficial para equipe, campanhas e templates.",
+    brand: "meta" as const,
   },
   {
-    value: "whatsapp_qr",
-    label: "Flexivel por QR",
-    description: "Numero conectado por QR quando a operacao ainda nao usa a conexao oficial.",
+    value: "evolution",
+    label: "WhatsApp por QR",
+    description: "Conecte o WhatsApp que voce ja usa pelo QR Code.",
+    brand: "whatsapp" as const,
   },
   {
     value: "whatsapp_gateway",
     label: "Conexao externa",
     description: "Usar um provedor externo de WhatsApp ja existente na operacao.",
+    brand: "generic" as const,
   },
 ] as const;
 
@@ -442,10 +465,13 @@ export default function ClienteCanaisPage() {
   const canManage = hasCapability("manage_channels");
 
   const [channels, setChannels] = useState<ChannelItem[]>([]);
+  const [managedEvolutionConfigured, setManagedEvolutionConfigured] = useState(false);
+  const [tenantUsers, setTenantUsers] = useState<TenantUserOption[]>([]);
   const [conversionHealth, setConversionHealth] = useState<ConversionHealthResponse | null>(null);
   const [pendingSelection, setPendingSelection] = useState<IntegrationPendingItem | null>(null);
   const [pendingOptionId, setPendingOptionId] = useState("");
   const [whatsAppSession, setWhatsAppSession] = useState<{
+    channelId?: string;
     status?: string;
     qr?: string;
     message?: string;
@@ -468,6 +494,9 @@ export default function ClienteCanaisPage() {
     verifyToken: "",
     appSecret: "",
     status: "active",
+    channelScope: "shared" as "shared" | "personal",
+    ownerUserId: "",
+    distributionEnabled: true,
   });
   const [genericForm, setGenericForm] = useState({
     channelId: "",
@@ -514,15 +543,17 @@ export default function ClienteCanaisPage() {
         setLoading(true);
         setError(null);
 
-        const [channelsRes, whatsAppRes, conversionHealthRes] = await Promise.all([
+        const [channelsRes, whatsAppRes, conversionHealthRes, usersRes] = await Promise.all([
           authedFetch(`/api/tenant/${tenant.tenantId}/channels`),
           authedFetch(`/api/tenant/${tenant.tenantId}/channels/whatsapp`),
           authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/conversions/health`),
+          authedFetch(`/api/tenant/${tenant.tenantId}/users`),
         ]);
 
         const channelsData = (await channelsRes.json()) as ChannelsResponse;
         const whatsAppData = (await whatsAppRes.json()) as WhatsAppChannelResponse;
         const conversionHealthData = (await conversionHealthRes.json().catch(() => ({}))) as ConversionHealthResponse;
+        const usersData = (await usersRes.json().catch(() => ({}))) as { items?: TenantUserOption[] };
 
         if (!mounted) return;
 
@@ -530,8 +561,13 @@ export default function ClienteCanaisPage() {
           setError(channelsData.error || "Falha ao carregar canais.");
         } else {
           setChannels(channelsData.items || []);
+          const hasManagedEvolution = Boolean(channelsData.managedProviders?.evolution);
+          setManagedEvolutionConfigured(hasManagedEvolution);
           const firstWhatsApp = (channelsData.items || []).find((item) => item.type === "whatsapp");
           if (firstWhatsApp?.id) setSelectedWhatsAppChannelId((current) => current || firstWhatsApp.id || "");
+          if (!firstWhatsApp && hasManagedEvolution) {
+            setWhatsAppForm((current) => ({ ...current, provider: "evolution" }));
+          }
         }
 
         if (whatsAppRes.ok && whatsAppData.channel) {
@@ -554,6 +590,9 @@ export default function ClienteCanaisPage() {
 
         if (conversionHealthRes.ok) {
           setConversionHealth(conversionHealthData);
+        }
+        if (usersRes.ok) {
+          setTenantUsers((usersData.items || []).filter((item) => item.status !== "blocked"));
         }
       } catch {
         if (!mounted) return;
@@ -588,13 +627,18 @@ export default function ClienteCanaisPage() {
       accessToken: "",
       verifyToken: "",
       appSecret: "",
+      channelScope: selectedChannel.channelScope || "shared",
+      ownerUserId: selectedChannel.ownerUserId || "",
+      distributionEnabled: selectedChannel.distributionEnabled !== false,
     }));
     setWhatsAppMasked({
       access: selectedChannel.accessTokenMasked || "",
       verify: selectedChannel.verifyTokenMasked || "",
       secret: selectedChannel.appSecretMasked || "",
     });
-    setWhatsAppSession(null);
+    setWhatsAppSession((current) =>
+      current?.channelId === selectedChannel.id ? current : null
+    );
   }, [selectedChannel, selectedType]);
 
   useEffect(() => {
@@ -760,6 +804,7 @@ export default function ClienteCanaisPage() {
     if (res.ok) {
       const items = data.items || [];
       setChannels(items);
+      setManagedEvolutionConfigured(Boolean(data.managedProviders?.evolution));
       setSelectedWhatsAppChannelId((current) => {
         if (current && items.some((item) => item.id === current)) return current;
         return items.find((item) => item.type === "whatsapp")?.id || "";
@@ -954,6 +999,7 @@ export default function ClienteCanaisPage() {
         return;
       }
       setWhatsAppSession({
+        channelId: selectedChannel.id,
         status: data.status,
         qr: data.qr,
         message: data.message,
@@ -1010,15 +1056,22 @@ export default function ClienteCanaisPage() {
 
     try {
       const isOfficial = whatsAppForm.provider === "meta_whatsapp";
-      const hasAccessToken = Boolean(whatsAppForm.accessToken.trim() || selectedChannel?.hasAccessToken);
-      const hasVerifyToken = Boolean(whatsAppForm.verifyToken.trim() || selectedChannel?.hasVerifyToken);
-      const hasAppSecret = Boolean(whatsAppForm.appSecret.trim() || selectedChannel?.hasAppSecret);
+      const sameProvider = selectedChannel?.provider === whatsAppForm.provider;
+      const hasAccessToken = Boolean(whatsAppForm.accessToken.trim() || (sameProvider && selectedChannel?.hasAccessToken));
+      const hasVerifyToken = Boolean(whatsAppForm.verifyToken.trim() || (sameProvider && selectedChannel?.hasVerifyToken));
+      const hasAppSecret = Boolean(whatsAppForm.appSecret.trim() || (sameProvider && selectedChannel?.hasAppSecret));
       if (isOfficial && (!whatsAppForm.phoneNumberId.trim() || !hasAccessToken || !hasVerifyToken || !hasAppSecret)) {
         setError("No modo oficial, informe o ID do numero, a credencial de acesso, o token de verificacao e o segredo do app.");
         return;
       }
-      if (!isOfficial && (!whatsAppForm.gatewayEndpoint.trim() || !hasAccessToken)) {
-        setError("No modo flexivel, informe a URL do provedor e a credencial de acesso.");
+      if (
+        !isOfficial &&
+        !(whatsAppForm.provider === "evolution" && managedEvolutionConfigured) &&
+        (!whatsAppForm.gatewayEndpoint.trim() || !hasAccessToken)
+      ) {
+        setError(whatsAppForm.provider === "evolution"
+          ? "Informe a URL da Evolution API e a API key."
+          : "Informe a URL do provedor e a credencial de acesso.");
         return;
       }
 
@@ -1035,6 +1088,9 @@ export default function ClienteCanaisPage() {
           wabaId: whatsAppForm.wabaId,
           accessToken: whatsAppForm.accessToken,
           status: whatsAppForm.status,
+          channelScope: whatsAppForm.channelScope,
+          ownerUserId: whatsAppForm.channelScope === "personal" ? whatsAppForm.ownerUserId : undefined,
+          distributionEnabled: whatsAppForm.channelScope === "shared" && whatsAppForm.distributionEnabled,
           metadata: {
             gatewayEndpoint: whatsAppForm.gatewayEndpoint,
             wabaId: whatsAppForm.wabaId,
@@ -1136,10 +1192,10 @@ export default function ClienteCanaisPage() {
   }
 
   return (
-    <div className="settings-channels-refined client-daily-page space-y-4">
+    <div className="settings-channels-refined settings-channels-saas client-daily-page space-y-5">
       <SectionHeader
-        title="Canais, pixels e conversoes"
-        subtitle="WhatsApp, Instagram, Meta, Google e origem dos leads conectados ao atendimento, campanhas e relatorios."
+        title="Canais e integracoes"
+        subtitle="Conecte os aplicativos que sua equipe usa para atender, captar leads e acompanhar vendas."
         action={
           <Link
             href="/cliente/painel/configuracoes"
@@ -1157,14 +1213,17 @@ export default function ClienteCanaisPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <PanelCard className="p-5">
+      <section className="space-y-5">
+        <PanelCard className="settings-channels-catalog p-5 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <CardTitle title="Canais da operacao" subtitle="O que entra no atendimento, alimenta campanhas e devolve conversoes para os anuncios." />
-            <StateBadge label={`${configuredCount} ativos`} tone="info" />
+            <CardTitle title="Escolha o que deseja conectar" subtitle="Cada integracao passa a funcionar em toda a operacao da Altum." />
+            <div className="settings-channels-summary inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {configuredCount} {configuredCount === 1 ? "conectado" : "conectados"}
+            </div>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {CONNECTORS.map((connector) => {
               const item = connector.type === "whatsapp"
                 ? {
@@ -1175,7 +1234,6 @@ export default function ClienteCanaisPage() {
                         : "draft",
                   }
                 : channels.find((channel) => channel.type === connector.type);
-              const Icon = connector.icon;
               const isSelected = connector.type === selectedType;
 
               return (
@@ -1183,16 +1241,14 @@ export default function ClienteCanaisPage() {
                   key={connector.type}
                   type="button"
                   onClick={() => setSelectedType(connector.type)}
-                  className={`rounded-2xl border p-4 text-left transition ${
+                  className={`settings-channel-card group relative min-h-44 rounded-2xl border p-4 text-left transition ${
                     isSelected
-                      ? "border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
+                      ? "is-selected border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
                       : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="inline-flex rounded-xl border border-white/12 bg-black/25 p-2 text-[var(--cliente-accent)]">
-                      <Icon className="h-4 w-4" />
-                    </div>
+                    <BrandIcon id={connector.brand} size="md" />
                     <StateBadge
                       label={
                         connector.type === "whatsapp"
@@ -1206,23 +1262,32 @@ export default function ClienteCanaisPage() {
                       }
                     />
                   </div>
-                  <p className="mt-4 text-sm font-semibold text-white">{connector.label}</p>
-                  <p className="mt-1 text-sm leading-6 text-white/56">{connector.description}</p>
+                  <p className="mt-4 text-sm font-bold text-white">{connector.label}</p>
+                  <p className="mt-1 text-xs leading-5 text-white/56">{connector.description}</p>
                   {connector.type === "whatsapp" && whatsAppChannels.length ? (
                     <p className="mt-3 text-xs font-medium text-emerald-100/80">
                       {whatsAppChannels.length} numero(s) configurado(s)
                     </p>
                   ) : null}
+                  <span className="settings-channel-card-action absolute bottom-3.5 right-3.5 inline-flex h-7 w-7 items-center justify-center rounded-full border opacity-0 transition group-hover:opacity-100">
+                    <Plus className="h-3.5 w-3.5" />
+                  </span>
                 </button>
               );
             })}
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <MiniPanel title="Atendimento" value="WhatsApp, Instagram e Messenger alimentam Conversas." />
-            <MiniPanel title="Captacao" value="Meta Ads e Google Ads conectam origem, CPL e atribuicao." />
-            <MiniPanel title="Conversoes" value="Leads, reunioes e vendas voltam para os anuncios quando configurados." />
-          </div>
+          <details className="settings-channels-overview group mt-5 rounded-2xl border border-white/10 bg-white/[0.03]">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-semibold">
+              <span>Ver canais conectados e saude da operacao</span>
+              <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-white/10 p-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                <MiniPanel title="Atendimento" value="WhatsApp, Instagram e Messenger alimentam Conversas." />
+                <MiniPanel title="Captacao" value="Meta Ads e Google Ads conectam origem, CPL e atribuicao." />
+                <MiniPanel title="Conversoes" value="Leads, reunioes e vendas voltam para os anuncios quando configurados." />
+              </div>
 
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <div className="flex items-center justify-between gap-3">
@@ -1265,11 +1330,16 @@ export default function ClienteCanaisPage() {
             loading={checkingConversions}
             onRefresh={() => void checkConversionHealth()}
           />
+            </div>
+          </details>
         </PanelCard>
 
-        <PanelCard className="p-5">
+        <PanelCard className="settings-channels-editor p-5 md:p-6">
           <div className="flex items-start justify-between gap-3">
-            <CardTitle title={selectedDefinition.label} subtitle={selectedDefinition.description} />
+            <div className="flex items-center gap-3">
+              <BrandIcon id={selectedDefinition.brand} size="lg" />
+              <CardTitle title={selectedDefinition.label} subtitle={selectedDefinition.description} />
+            </div>
             <StateBadge
               label={
                 selectedType === "whatsapp"
@@ -1290,8 +1360,12 @@ export default function ClienteCanaisPage() {
             </div>
           ) : selectedType === "whatsapp" ? (
             <form onSubmit={onSubmitWhatsApp} className="mt-4 space-y-3">
-              <ConnectorReadiness title="Readiness do WhatsApp" rows={selectedReadinessRows} />
-              <ConnectorGuidance summary={selectedPlaybook.summary} links={selectedPlaybook.links} />
+              <ConnectorDiagnostics
+                title="Diagnostico do WhatsApp"
+                rows={selectedReadinessRows}
+                summary={selectedPlaybook.summary}
+                links={selectedPlaybook.links}
+              />
               {whatsAppChannels.length ? (
                 <label className="settings-channels-field block space-y-1">
                   <span className="text-xs uppercase tracking-[0.14em] text-white/55">Numero configurado</span>
@@ -1308,7 +1382,9 @@ export default function ClienteCanaisPage() {
                   </select>
                 </label>
               ) : null}
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/55">Como deseja conectar?</p>
+                <div className="grid gap-2 sm:grid-cols-3">
                 {WHATSAPP_PROVIDER_OPTIONS.map((option) => {
                   const active = whatsAppForm.provider === option.value;
                   return (
@@ -1317,29 +1393,101 @@ export default function ClienteCanaisPage() {
                       type="button"
                       onClick={() => setWhatsAppForm((current) => ({ ...current, provider: option.value }))}
                       disabled={!canManage}
-                      className={`rounded-2xl border p-3 text-left transition ${
+                      className={`settings-whatsapp-provider rounded-2xl border p-3 text-left transition ${
                         active
-                          ? "border-emerald-300/35 bg-emerald-500/12 text-emerald-50"
+                          ? "is-selected border-emerald-300/35 bg-emerald-500/12 text-emerald-50"
                           : "border-white/10 bg-white/[0.03] text-white/68 hover:bg-white/[0.06]"
                       } disabled:opacity-60`}
                     >
-                      <p className="text-sm font-semibold">{option.label}</p>
-                      <p className="mt-1 text-xs leading-5 opacity-75">{option.description}</p>
+                      <div className="flex items-center gap-3">
+                        <BrandIcon id={option.brand} size="sm" />
+                        <div>
+                          <p className="text-sm font-semibold">{option.label}</p>
+                          <p className="mt-0.5 text-xs leading-5 opacity-75">{option.description}</p>
+                        </div>
+                      </div>
                     </button>
                   );
                 })}
+                </div>
               </div>
               <Field label="Nome do canal" value={whatsAppForm.displayName} onChange={(value) => setWhatsAppForm((current) => ({ ...current, displayName: value }))} placeholder="WhatsApp Comercial" disabled={!canManage} />
               <Field label="Numero" value={whatsAppForm.phoneNumber} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumber: value }))} placeholder="+55 11 99999-9999" disabled={!canManage} />
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="settings-channels-field block space-y-1">
+                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Uso do numero</span>
+                  <select
+                    value={whatsAppForm.channelScope}
+                    onChange={(event) => setWhatsAppForm((current) => ({
+                      ...current,
+                      channelScope: event.target.value === "personal" ? "personal" : "shared",
+                      distributionEnabled: event.target.value !== "personal" && current.distributionEnabled,
+                    }))}
+                    disabled={!canManage}
+                    className="settings-channels-select w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-[var(--cliente-border-strong)]"
+                  >
+                    <option value="shared">Numero oficial compartilhado</option>
+                    <option value="personal">Numero pessoal de vendedor</option>
+                  </select>
+                </label>
+                {whatsAppForm.channelScope === "personal" ? (
+                  <label className="settings-channels-field block space-y-1">
+                    <span className="text-xs uppercase tracking-[0.14em] text-white/55">Vendedor responsavel</span>
+                    <select
+                      value={whatsAppForm.ownerUserId}
+                      onChange={(event) => setWhatsAppForm((current) => ({ ...current, ownerUserId: event.target.value }))}
+                      required
+                      disabled={!canManage}
+                      className="settings-channels-select w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-[var(--cliente-border-strong)]"
+                    >
+                      <option value="">Selecione o vendedor</option>
+                      {tenantUsers.map((seller) => (
+                        <option key={seller.userId || seller.id} value={seller.userId || ""}>
+                          {seller.name || seller.email || "Vendedor"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white/76">
+                    <input
+                      type="checkbox"
+                      checked={whatsAppForm.distributionEnabled}
+                      onChange={(event) => setWhatsAppForm((current) => ({ ...current, distributionEnabled: event.target.checked }))}
+                      disabled={!canManage}
+                      className="h-4 w-4 rounded border-white/20"
+                    />
+                    Distribuir novas conversas entre vendedores
+                  </label>
+                )}
+              </div>
               {whatsAppForm.provider === "meta_whatsapp" ? (
                 <div className="grid gap-3 md:grid-cols-2">
                   <Field label="ID do numero na Meta" value={whatsAppForm.phoneNumberId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumberId: value }))} placeholder="123456789012345" required disabled={!canManage} />
                   <Field label="ID da conta WhatsApp (WABA)" value={whatsAppForm.wabaId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, wabaId: value }))} placeholder="1495967261502319" disabled={!canManage} />
                 </div>
+              ) : whatsAppForm.provider === "evolution" && managedEvolutionConfigured ? (
+                <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-3 text-sm text-emerald-50/85">
+                  Conexao por QR gerenciada pela Altum. Salve o canal e escaneie o codigo com seu WhatsApp.
+                </div>
               ) : (
-                <Field label="URL de envio do provedor" value={whatsAppForm.gatewayEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, gatewayEndpoint: value }))} placeholder="https://seu-provedor.com/messages/send" required disabled={!canManage} />
+                <Field
+                  label={whatsAppForm.provider === "evolution" ? "URL da Evolution API" : "URL de envio do provedor"}
+                  value={whatsAppForm.gatewayEndpoint}
+                  onChange={(value) => setWhatsAppForm((current) => ({ ...current, gatewayEndpoint: value }))}
+                  placeholder={whatsAppForm.provider === "evolution" ? "https://evolution.suaempresa.com" : "https://seu-provedor.com/messages/send"}
+                  required
+                  disabled={!canManage}
+                />
               )}
-              {whatsAppForm.provider !== "meta_whatsapp" ? (
+              {whatsAppForm.provider === "evolution" ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Identificacao deste numero" value={whatsAppForm.sessionId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, sessionId: value }))} placeholder="whatsapp-savio" disabled={!canManage} />
+                  <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-3 text-xs leading-5 text-emerald-50/80">
+                    Depois de salvar, clique em Gerar QR. A Altum cria a instancia, configura os eventos e acompanha a conexao automaticamente.
+                  </div>
+                </div>
+              ) : whatsAppForm.provider !== "meta_whatsapp" ? (
                 <div className="grid gap-3 md:grid-cols-2">
                   <Field label="URL de status" value={whatsAppForm.sessionStatusEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, sessionStatusEndpoint: value }))} placeholder="https://seu-provedor.com/session/status" disabled={!canManage} />
                   <Field label="URL do QR" value={whatsAppForm.qrCodeEndpoint} onChange={(value) => setWhatsAppForm((current) => ({ ...current, qrCodeEndpoint: value }))} placeholder="https://seu-provedor.com/session/qr" disabled={!canManage} />
@@ -1347,8 +1495,12 @@ export default function ClienteCanaisPage() {
                   <Field label="ID da sessao" value={whatsAppForm.sessionId} onChange={(value) => setWhatsAppForm((current) => ({ ...current, sessionId: value }))} placeholder="comercial-01" disabled={!canManage} />
                 </div>
               ) : null}
-              <SelectField label="Status" value={whatsAppForm.status} onChange={(value) => setWhatsAppForm((current) => ({ ...current, status: value }))} disabled={!canManage} />
-              <SecretField label={whatsAppForm.provider === "meta_whatsapp" ? "Credencial de acesso" : "Credencial do provedor"} value={whatsAppForm.accessToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, accessToken: value }))} placeholder={whatsAppMasked.access || "credencial"} required={!selectedChannel?.hasAccessToken} disabled={!canManage} />
+              {whatsAppForm.provider === "evolution" && managedEvolutionConfigured ? null : (
+                <SelectField label="Status" value={whatsAppForm.status} onChange={(value) => setWhatsAppForm((current) => ({ ...current, status: value }))} disabled={!canManage} />
+              )}
+              {!(whatsAppForm.provider === "evolution" && managedEvolutionConfigured) ? (
+                <SecretField label={whatsAppForm.provider === "meta_whatsapp" ? "Credencial de acesso" : whatsAppForm.provider === "evolution" ? "API key da Evolution" : "Credencial do provedor"} value={whatsAppForm.accessToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, accessToken: value }))} placeholder={whatsAppMasked.access || "credencial"} required={!selectedChannel?.hasAccessToken} disabled={!canManage} />
+              ) : null}
               {whatsAppForm.provider === "meta_whatsapp" ? (
                 <>
                   <SecretField label="Token de verificacao" value={whatsAppForm.verifyToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, verifyToken: value }))} placeholder={whatsAppMasked.verify || "token de verificacao"} required={!selectedChannel?.hasVerifyToken} disabled={!canManage} />
@@ -1356,7 +1508,9 @@ export default function ClienteCanaisPage() {
                 </>
               ) : (
                 <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-3 text-xs leading-5 text-emerald-50/80">
-                  A conexao externa precisa aceitar envio de mensagens pela Altum para manter Conversas e Assistente no mesmo fluxo.
+                  {whatsAppForm.provider === "evolution"
+                    ? "Mensagens, midias, audios, respostas da IA e atendimento humano usarao esta mesma conexao."
+                    : "A conexao externa precisa aceitar envio de mensagens pela Altum para manter Conversas e Assistente no mesmo fluxo."}
                 </div>
               )}
 
@@ -1366,7 +1520,7 @@ export default function ClienteCanaisPage() {
                     <div>
                       <p className="text-sm font-semibold text-white">Sessao do WhatsApp</p>
                       <p className="mt-1 text-xs text-white/52">
-                        Monitore a conexao do numero flexivel e gere QR sem sair da Altum.
+                        Monitore a conexao do numero e gere QR sem sair da Altum.
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1398,7 +1552,14 @@ export default function ClienteCanaisPage() {
                       {whatsAppSession.qr ? (
                         whatsAppSession.qr.startsWith("http") || whatsAppSession.qr.startsWith("data:image") ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={whatsAppSession.qr} alt="QR do WhatsApp" className="mt-3 h-44 w-44 rounded-xl border border-white/10 bg-white p-2" />
+                          <div className="mt-3 inline-flex rounded-2xl border border-[var(--cliente-border)] bg-white p-4 shadow-sm">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={whatsAppSession.qr}
+                              alt="QR do WhatsApp"
+                              className="h-64 w-64 object-contain [image-rendering:pixelated]"
+                            />
+                          </div>
                         ) : (
                           <pre className="mt-3 max-h-40 overflow-auto rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-white/70">{whatsAppSession.qr}</pre>
                         )
@@ -1428,7 +1589,7 @@ export default function ClienteCanaisPage() {
                     setWhatsAppMasked({});
                     setWhatsAppForm({
                       channelId: "",
-                      provider: "meta_whatsapp",
+                      provider: managedEvolutionConfigured ? "evolution" : "meta_whatsapp",
                       displayName: "WhatsApp",
                       phoneNumber: "",
                       phoneNumberId: "",
@@ -1442,6 +1603,9 @@ export default function ClienteCanaisPage() {
                       verifyToken: "",
                       appSecret: "",
                       status: "active",
+                      channelScope: "shared",
+                      ownerUserId: "",
+                      distributionEnabled: true,
                     });
                   }}
                   className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-4 py-2 text-sm font-semibold text-white/72 transition hover:bg-white/[0.08]"
@@ -1466,8 +1630,12 @@ export default function ClienteCanaisPage() {
             </form>
           ) : (
             <form onSubmit={onSubmitGeneric} className="mt-4 space-y-3">
-              <ConnectorReadiness title={`Readiness de ${selectedDefinition.label}`} rows={selectedReadinessRows} />
-              <ConnectorGuidance summary={selectedPlaybook.summary} links={selectedPlaybook.links} />
+              <ConnectorDiagnostics
+                title={`Diagnostico de ${selectedDefinition.label}`}
+                rows={selectedReadinessRows}
+                summary={selectedPlaybook.summary}
+                links={selectedPlaybook.links}
+              />
               {loadingPending ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/65">
                   Carregando ativos disponiveis...
@@ -1789,12 +1957,46 @@ function MiniPanel({ title, value }: { title: string; value: string }) {
   );
 }
 
+type ConnectorReadinessRow = {
+  label: string;
+  value: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "info";
+};
+
+function ConnectorDiagnostics({
+  title,
+  rows,
+  summary,
+  links,
+}: {
+  title: string;
+  rows: ConnectorReadinessRow[];
+  summary: string;
+  links: Array<{ href: string; label: string }>;
+}) {
+  return (
+    <details className="settings-connector-diagnostics group rounded-2xl border border-white/10 bg-white/[0.03]">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold">
+        <span className="inline-flex items-center gap-2">
+          <Settings2 className="h-4 w-4" />
+          Detalhes e diagnostico
+        </span>
+        <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
+      </summary>
+      <div className="grid gap-3 border-t border-white/10 p-3 lg:grid-cols-2">
+        <ConnectorReadiness title={title} rows={rows} />
+        <ConnectorGuidance summary={summary} links={links} />
+      </div>
+    </details>
+  );
+}
+
 function ConnectorReadiness({
   title,
   rows,
 }: {
   title: string;
-  rows: Array<{ label: string; value: string; tone: "neutral" | "success" | "warning" | "danger" | "info" }>;
+  rows: ConnectorReadinessRow[];
 }) {
   return (
     <div className="settings-channels-readiness rounded-2xl border border-white/10 bg-white/[0.03] p-3">

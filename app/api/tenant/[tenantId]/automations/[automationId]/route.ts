@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { normalizeAutomationDoc } from "@/lib/server/automations";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = Record<string, unknown>;
 
@@ -30,6 +31,7 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, automationId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "automation");
     assertTenantCapability(membership, "manage_automations");
 
     const { ref, data } = await getAutomationRef(tenantId, automationId);
@@ -88,6 +90,7 @@ export async function DELETE(
     const user = await requireRequestUser(req);
     const { tenantId, automationId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "automation");
     assertTenantCapability(membership, "manage_automations");
 
     const { ref } = await getAutomationRef(tenantId, automationId);

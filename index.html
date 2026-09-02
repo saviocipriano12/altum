@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Silva & Associados | Advocacia Estratégica</title>
+  <meta name="description" content="Landing page premium demonstrativa para escritório de advocacia com foco em autoridade, Google e WhatsApp." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #060606;
+      --bg-2: #0d0b09;
+      --card: rgba(255, 255, 255, 0.065);
+      --card-2: rgba(255, 255, 255, 0.095);
+      --text: #fbf7ef;
+      --muted: #bdb3a7;
+      --muted-2: #8d8277;
+      --gold: #ffb35b;
+      --orange: #ff6a00;
+      --orange-2: #ff8d2b;
+      --line: rgba(255, 255, 255, 0.12);
+      --shadow: 0 30px 90px rgba(255, 106, 0, .18);
+      --radius: 28px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 12% 10%, rgba(255, 106, 0, .22), transparent 31%),
+        radial-gradient(circle at 88% 12%, rgba(255, 179, 91, .12), transparent 29%),
+        radial-gradient(circle at 50% 100%, rgba(255, 106, 0, .10), transparent 42%),
+        linear-gradient(180deg, #080706 0%, #050505 100%);
+      z-index: -3;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image: linear-gradient(rgba(255,255,255,.026) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.026) 1px, transparent 1px);
+      background-size: 70px 70px;
+      mask-image: radial-gradient(circle at center, black, transparent 78%);
+      pointer-events: none;
+      z-index: -2;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+    .container { width: min(1180px, calc(100% - 38px)); margin: 0 auto; }
+
+    .nav {
+      position: fixed;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(1180px, calc(100% - 28px));
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(8, 7, 6, .62);
+      backdrop-filter: blur(18px);
+      border-radius: 999px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.38);
+    }
+
+    .brand { display: flex; gap: 12px; align-items: center; font-weight: 800; letter-spacing: -.03em; }
+    .brand-mark {
+      width: 40px; height: 40px; border-radius: 14px;
+      background: linear-gradient(135deg, var(--orange), var(--gold));
+      display: grid; place-items: center;
+      color: #15100b; font-weight: 900;
+      box-shadow: 0 12px 35px rgba(255,106,0,.35);
+    }
+    .brand small { display:block; font-weight: 500; color: var(--muted); letter-spacing: 0; margin-top: 1px; }
+    .nav-links { display: flex; gap: 22px; align-items: center; font-size: 14px; color: #d8d1c9; }
+    .nav-links a { opacity: .86; transition: .25s ease; }
+    .nav-links a:hover { opacity: 1; color: var(--gold); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border: 0;
+      cursor: pointer;
+      padding: 15px 22px;
+      border-radius: 999px;
+      font-weight: 800;
+      letter-spacing: -.02em;
+      transition: transform .24s ease, box-shadow .24s ease, background .24s ease;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      color: #140d08;
+      background: linear-gradient(135deg, #ff8b26, #ffd08a);
+      box-shadow: 0 18px 45px rgba(255,106,0,.32);
+    }
+    .btn-primary:hover { transform: translateY(-3px); box-shadow: 0 26px 70px rgba(255,106,0,.42); }
+    .btn-secondary {
+      color: var(--text);
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.14);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,.12); transform: translateY(-3px); }
+
+    .hero {
+      min-height: 100vh;
+      padding: 146px 0 80px;
+      display: flex;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .orb {
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(30px);
+      opacity: .6;
+      animation: float 9s ease-in-out infinite;
+    }
+    .orb.one { width: 260px; height: 260px; background: rgba(255,106,0,.25); top: 120px; right: 6%; }
+    .orb.two { width: 180px; height: 180px; background: rgba(255,179,91,.18); bottom: 110px; left: 7%; animation-delay: -3s; }
+    @keyframes float { 0%,100%{ transform: translateY(0) translateX(0);} 50%{ transform: translateY(-24px) translateX(14px);} }
+
+    .hero-grid { display: grid; grid-template-columns: 1.02fr .98fr; gap: 64px; align-items: center; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 9px 14px;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 999px;
+      color: #e7d8ca;
+      background: rgba(255,255,255,.055);
+      margin-bottom: 24px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .pulse { width: 9px; height: 9px; border-radius: 999px; background: var(--orange); box-shadow: 0 0 0 0 rgba(255,106,0,.8); animation: pulse 2s infinite; }
+    @keyframes pulse { 70% { box-shadow: 0 0 0 12px rgba(255,106,0,0); } 100% { box-shadow: 0 0 0 0 rgba(255,106,0,0); } }
+
+    h1 {
+      font-family: "Playfair Display", serif;
+      font-size: clamp(48px, 7vw, 94px);
+      line-height: .92;
+      letter-spacing: -.065em;
+      max-width: 780px;
+    }
+    .gradient-text {
+      display: inline-block;
+      background: linear-gradient(135deg, #fff4e8 0%, #ffb35b 40%, #ff6a00 85%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero p {
+      color: var(--muted);
+      font-size: clamp(17px, 2vw, 21px);
+      line-height: 1.7;
+      max-width: 590px;
+      margin: 25px 0 34px;
+    }
+    .hero-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+    .trust-row { display: flex; gap: 18px; margin-top: 34px; flex-wrap: wrap; }
+    .mini-stat {
+      padding: 12px 14px;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 18px;
+      background: rgba(255,255,255,.055);
+      color: #fff5e8;
+      min-width: 130px;
+    }
+    .mini-stat strong { display:block; font-size: 21px; letter-spacing: -.04em; }
+    .mini-stat span { color: var(--muted); font-size: 12px; }
+
+    .visual-wrap { position: relative; min-height: 680px; perspective: 1200px; }
+    .search-card, .phone-card, .case-card, .badge-card {
+      position: absolute;
+      border: 1px solid rgba(255,255,255,.13);
+      background: linear-gradient(180deg, rgba(255,255,255,.105), rgba(255,255,255,.045));
+      backdrop-filter: blur(20px);
+      box-shadow: 0 25px 80px rgba(0,0,0,.4);
+    }
+    .lawyer-card {
+      position: absolute;
+      right: 24px;
+      top: 18px;
+      width: 442px;
+      height: 590px;
+      border-radius: 42px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.13);
+      background: linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.03));
+      box-shadow: 0 30px 100px rgba(0,0,0,.45);
+      transform: rotateY(-10deg) rotateX(4deg);
+      animation: visualFloat 7s ease-in-out infinite;
+    }
+    .lawyer-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,.75) 100%);
+      z-index: 1;
+    }
+    .lawyer-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 72% 8%, rgba(255,179,91,.22), transparent 28%);
+      z-index: 1;
+      pointer-events: none;
+    }
+    .lawyer-photo {
+      width: 100%; height: 100%; object-fit: cover; object-position: center top;
+      filter: saturate(1.04) contrast(1.02);
+    }
+    .lawyer-overlay {
+      position: absolute; left: 28px; right: 28px; bottom: 26px; z-index: 2;
+    }
+    .lawyer-chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 9px 13px; border-radius: 999px;
+      background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.16);
+      color: #fff7ef; font-size: 12px; font-weight: 800; margin-bottom: 14px;
+      backdrop-filter: blur(12px);
+    }
+    .lawyer-overlay h3 { font-size: 34px; letter-spacing: -.05em; line-height: .95; }
+    .lawyer-overlay p { margin: 10px 0 0; font-size: 14px; color: #e2d4c6; line-height: 1.55; }
+    @keyframes visualFloat { 0%,100% { transform: rotateY(-10deg) rotateX(4deg) translateY(0); } 50% { transform: rotateY(-6deg) rotateX(2deg) translateY(-16px); } }
+
+    .search-card { left: 0; top: 100px; width: 330px; border-radius: 26px; padding: 18px; animation: floatSmall 6s ease-in-out infinite; z-index: 3; }
+    .google-bar { background: #fff; color: #111; border-radius: 999px; padding: 12px 15px; font-size: 13px; font-weight: 700; display:flex; align-items:center; gap: 8px; }
+    .result { margin-top: 16px; padding: 15px; border-radius: 18px; background: rgba(255,255,255,.075); border:1px solid rgba(255,255,255,.09); }
+    .stars { color: #ffd166; letter-spacing: 1px; font-size: 13px; margin-bottom: 8px; }
+    .result h4 { font-size: 15px; margin-bottom: 5px; color: #fff; }
+    .result p { margin:0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .result-actions { display:flex; gap: 8px; margin-top: 12px; }
+    .pill { font-size: 11px; color: #130d08; background: linear-gradient(135deg, #ffb35b, #fff0cf); padding: 7px 10px; border-radius:999px; font-weight:800; }
+    @keyframes floatSmall { 0%,100%{ transform: translateY(0);} 50%{ transform: translateY(-14px);} }
+
+    .phone-card { right: 0; bottom: 18px; width: 240px; height: 430px; border-radius: 36px; padding: 14px; animation: floatSmall 5.5s ease-in-out infinite -1.6s; z-index: 4; }
+    .phone-screen { height: 100%; border-radius: 26px; background: linear-gradient(180deg, #19120d, #080706); border:1px solid rgba(255,255,255,.09); overflow: hidden; }
+    .phone-hero { height: 154px; background-image: linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.65)), url('assets/portrait-lawyer.png'); background-size: cover; background-position: center top; padding: 18px; display:flex; flex-direction:column; justify-content:flex-end; }
+    .phone-hero h4 { font-size: 22px; line-height:1; letter-spacing:-.04em; }
+    .phone-content { padding: 15px; }
+    .phone-line { height: 9px; border-radius: 999px; background: rgba(255,255,255,.18); margin-bottom: 9px; }
+    .phone-line.short { width: 65%; }
+    .whats { margin-top: 18px; background: #25d366; color:#07120a; border-radius: 999px; padding: 12px; text-align:center; font-size: 13px; font-weight: 900; }
+
+    .case-card { left: 95px; bottom: 36px; width: 270px; border-radius: 26px; padding: 18px; animation: floatSmall 6.4s ease-in-out infinite -2.4s; z-index: 4; }
+    .case-card h4 { font-size: 15px; color: #fff5e8; margin-bottom: 12px; }
+    .progress { height: 9px; border-radius: 999px; background: rgba(255,255,255,.11); overflow:hidden; margin-bottom: 9px; }
+    .progress span { display:block; height:100%; border-radius: inherit; background: linear-gradient(90deg, var(--orange), var(--gold)); width: 82%; }
+    .case-card p { margin: 0; color: var(--muted); font-size: 12px; line-height:1.5; }
+
+    .badge-card {
+      left: 250px; top: 24px; width: 214px; border-radius: 22px; padding: 14px; z-index: 5;
+      animation: floatSmall 5.2s ease-in-out infinite -0.8s;
+    }
+    .badge-card strong { display:block; font-size: 16px; }
+    .badge-card span { display:block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+    section { padding: 95px 0; position: relative; }
+    .section-head { max-width: 780px; margin-bottom: 46px; }
+    .kicker { color: var(--gold); font-weight: 900; letter-spacing: .12em; text-transform: uppercase; font-size: 12px; margin-bottom: 12px; }
+    h2 { font-family: "Playfair Display", serif; font-size: clamp(38px, 5vw, 70px); line-height: .98; letter-spacing: -.055em; }
+    .section-head p { color: var(--muted); font-size: 18px; line-height: 1.7; margin-top: 18px; }
+
+    .stats-band { margin-top: -36px; position: relative; z-index: 5; }
+    .stats-inner {
+      display:grid; grid-template-columns: repeat(4,1fr); gap: 12px;
+      padding: 16px; border-radius: 30px; background: rgba(255,255,255,.07);
+      border:1px solid rgba(255,255,255,.13); backdrop-filter: blur(18px);
+      box-shadow: 0 30px 85px rgba(0,0,0,.35);
+    }
+    .stat-box { padding: 24px; border-radius: 22px; background: rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.07); }
+    .stat-box strong { font-size: 34px; letter-spacing: -.05em; display:block; }
+    .stat-box span { color: var(--muted); font-size: 13px; }
+
+    .about-layout { display:grid; grid-template-columns: .95fr 1.05fr; gap: 32px; align-items: center; }
+    .portrait-card {
+      border: 1px solid rgba(255,255,255,.11); border-radius: 38px; overflow: hidden;
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+      box-shadow: 0 28px 90px rgba(0,0,0,.35);
+      position: relative;
+    }
+    .portrait-card img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+    .portrait-badge {
+      position: absolute; left: 22px; bottom: 22px; right: 22px;
+      padding: 18px 20px; border-radius: 24px;
+      background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.12); backdrop-filter: blur(16px);
+    }
+    .portrait-badge strong { display:block; font-size: 24px; letter-spacing: -.04em; }
+    .portrait-badge span { color: #d4c8bc; font-size: 13px; }
+    .about-copy p { color: var(--muted); font-size: 17px; line-height: 1.8; margin-top: 18px; }
+    .credentials-grid { display:grid; grid-template-columns: repeat(2,1fr); gap: 14px; margin-top: 24px; }
+    .cred-item {
+      padding: 18px; border-radius: 22px; border:1px solid rgba(255,255,255,.1);
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+    }
+    .cred-item strong { display:block; font-size: 18px; letter-spacing: -.03em; }
+    .cred-item span { color: var(--muted); font-size: 13px; display:block; margin-top: 6px; }
+    .signature-box {
+      margin-top: 24px; padding: 20px 22px; border-radius: 24px;
+      border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05);
+    }
+    .signature-box p { margin: 0; }
+    .signature-line { margin-top: 12px; color: var(--gold); font-weight: 800; }
+
+    .pain-grid, .services-grid { display:grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+    .pain-card, .service-card, .testimonial, .faq-item, .feature-card, .story-card {
+      border: 1px solid rgba(255,255,255,.11);
+      background: linear-gradient(180deg, rgba(255,255,255,.082), rgba(255,255,255,.035));
+      border-radius: var(--radius);
+      transition: transform .28s ease, border .28s ease, background .28s ease, box-shadow .28s ease;
+    }
+    .pain-card:hover, .service-card:hover, .feature-card:hover, .story-card:hover { transform: translateY(-10px); border-color: rgba(255,179,91,.35); box-shadow: var(--shadow); }
+    .pain-card { padding: 24px; min-height: 190px; display:flex; flex-direction:column; justify-content:space-between; }
+    .icon { width: 48px; height: 48px; border-radius: 17px; display:grid; place-items:center; background: rgba(255,106,0,.13); border:1px solid rgba(255,179,91,.18); color: var(--gold); font-size: 23px; }
+    .pain-card h3, .service-card h3, .feature-card h3, .story-card h3 { font-size: 20px; letter-spacing:-.035em; margin-top: 18px; }
+    .pain-card p, .service-card p, .feature-card p, .story-card p { color: var(--muted); line-height:1.6; margin-top: 10px; font-size: 14px; }
+
+    .services-grid { grid-template-columns: repeat(2,1fr); }
+    .service-card { padding: 32px; min-height: 270px; position:relative; overflow:hidden; }
+    .service-card::after { content:""; position:absolute; width:180px; height:180px; border-radius:50%; background: rgba(255,106,0,.09); right:-60px; top:-60px; filter: blur(4px); }
+    .service-card h3 { font-size: 30px; margin-top: 24px; }
+    .service-card a { display:inline-flex; margin-top: 22px; color: var(--gold); font-weight: 900; }
+
+    .story-layout { display:grid; grid-template-columns: 1.1fr .9fr; gap: 26px; align-items: stretch; }
+    .story-card { padding: 34px; }
+    .story-card ul { list-style:none; display:grid; gap: 12px; margin-top: 22px; }
+    .story-card li { color: var(--muted); display:flex; gap: 12px; align-items:flex-start; line-height: 1.6; }
+    .story-card li::before { content: "✓"; color: var(--gold); font-weight: 900; }
+    .story-image-card {
+      border-radius: 34px; overflow:hidden; position: relative;
+      border: 1px solid rgba(255,255,255,.11); min-height: 100%;
+      box-shadow: 0 28px 90px rgba(0,0,0,.35);
+    }
+    .story-image-card img { width:100%; height:100%; object-fit: cover; object-position: center top; }
+    .story-image-card::after {
+      content: ""; position:absolute; inset:0;
+      background: linear-gradient(180deg, rgba(0,0,0,.0) 40%, rgba(0,0,0,.7) 100%);
+    }
+    .story-label {
+      position:absolute; left: 24px; bottom: 24px; z-index: 2;
+      padding: 16px 18px; border-radius: 20px; background: rgba(0,0,0,.46);
+      border:1px solid rgba(255,255,255,.12); backdrop-filter: blur(14px);
+    }
+    .story-label strong { display:block; font-size: 22px; letter-spacing: -.03em; }
+    .story-label span { color:#d5c8bc; font-size: 13px; }
+
+    .features-layout { display:grid; grid-template-columns: .88fr 1.12fr; gap: 38px; align-items: stretch; }
+    .big-panel {
+      min-height: 620px; border-radius: 42px; border: 1px solid rgba(255,255,255,.12);
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+      position: sticky; top: 118px; overflow:hidden; padding: 34px;
+    }
+    .big-panel img {
+      width: calc(100% + 68px); margin: 26px -34px 0; height: 350px; object-fit: cover; object-position: center top;
+      border-top: 1px solid rgba(255,255,255,.08); border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .big-panel h3 { font-family: "Playfair Display", serif; font-size: 46px; line-height:1; letter-spacing:-.05em; max-width: 360px; }
+    .big-panel p { color: var(--muted); line-height:1.7; margin-top: 16px; }
+    .dashboard {
+      position:absolute; left: 28px; right: 28px; bottom: 28px;
+      border-radius: 28px; padding: 18px; background: rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.1);
+    }
+    .dash-row { display:flex; justify-content:space-between; align-items:center; padding:14px; border-radius:18px; background: rgba(255,255,255,.055); margin-bottom:10px; }
+    .dash-row:last-child { margin-bottom:0; }
+    .dash-row span { color: var(--muted); font-size: 13px; }
+    .dash-row strong { color:#fff; }
+    .features-list { display:grid; gap: 16px; }
+    .feature-card { padding: 30px; }
+
+    .process { display:grid; grid-template-columns: repeat(4,1fr); gap: 16px; counter-reset: step; }
+    .step { padding: 28px; border-radius: 28px; border:1px solid rgba(255,255,255,.11); background: rgba(255,255,255,.055); position:relative; overflow:hidden; }
+    .step::before { counter-increment: step; content: "0" counter(step); display:block; color: var(--gold); font-weight:900; margin-bottom: 36px; }
+    .step h3 { font-size: 22px; letter-spacing:-.035em; }
+    .step p { color: var(--muted); margin-top:10px; line-height:1.6; font-size:14px; }
+
+    .testimonials-wrap { overflow:hidden; mask-image: linear-gradient(90deg, transparent, black 10%, black 90%, transparent); }
+    .testimonials-track { display:flex; gap:16px; width:max-content; animation: marquee 28s linear infinite; }
+    @keyframes marquee { to { transform: translateX(-50%); } }
+    .testimonial { width: 380px; padding: 26px; }
+    .testimonial .stars { font-size: 15px; }
+    .testimonial p { color:#eee3d9; line-height:1.7; margin: 16px 0; }
+    .person { display:flex; align-items:center; gap:12px; }
+    .avatar { width: 42px; height:42px; border-radius:50%; background: linear-gradient(135deg, var(--orange), var(--gold)); display:grid; place-items:center; color:#160e08; font-weight:900; }
+    .person strong { display:block; font-size:14px; } .person span { color:var(--muted); font-size:12px; }
+
+    .faq { max-width: 900px; margin: 0 auto; display:grid; gap: 12px; }
+    .faq-item { overflow:hidden; }
+    .faq-question { width:100%; display:flex; justify-content:space-between; align-items:center; background:none; color:#fff; border:0; cursor:pointer; padding: 24px; font-size:18px; font-weight:800; text-align:left; }
+    .faq-answer { max-height:0; overflow:hidden; transition: max-height .3s ease; }
+    .faq-answer p { padding: 0 24px 24px; color:var(--muted); line-height:1.7; }
+    .faq-item.active .faq-answer { max-height: 180px; }
+    .faq-item .plus { color:var(--gold); font-size:26px; transition: transform .25s ease; }
+    .faq-item.active .plus { transform: rotate(45deg); }
+
+    .final-cta { padding-bottom: 35px; }
+    .cta-box {
+      border-radius: 44px; padding: clamp(36px, 7vw, 80px);
+      background: radial-gradient(circle at 15% 20%, rgba(255,255,255,.22), transparent 30%), linear-gradient(135deg, #ff6a00, #ffb35b 72%, #fff1ce);
+      color: #160d07; position:relative; overflow:hidden; box-shadow: 0 38px 100px rgba(255,106,0,.28);
+    }
+    .cta-box::after { content:""; position:absolute; inset:auto -90px -180px auto; width:360px; height:360px; border-radius:50%; background: rgba(255,255,255,.23); }
+    .cta-box h2 { color:#160d07; max-width:780px; }
+    .cta-box p { max-width: 650px; color: rgba(22,13,7,.72); font-size:19px; line-height:1.65; margin: 20px 0 30px; font-weight:600; }
+    .cta-box .btn { background:#160d07; color:#fff7ed; box-shadow:none; }
+
+    footer { padding: 34px 0 55px; color:var(--muted); }
+    .footer-inner { border-top: 1px solid rgba(255,255,255,.1); padding-top: 26px; display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+    .altum-tag { color:#fff; font-weight:800; }
+
+    .reveal { opacity: 0; transform: translateY(30px); transition: opacity .7s ease, transform .7s ease; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    .whatsapp-fixed {
+      position: fixed; right: 22px; bottom: 22px; z-index: 60;
+      width: 58px; height: 58px; border-radius: 50%; background: #25d366; color:#041108;
+      display:grid; place-items:center; font-size: 26px; font-weight:900;
+      box-shadow: 0 15px 40px rgba(37,211,102,.35); transition: transform .25s ease;
+    }
+    .whatsapp-fixed:hover { transform: translateY(-4px) scale(1.04); }
+
+    @media (max-width: 980px) {
+      .nav-links { display:none; }
+      .hero { padding-top: 125px; }
+      .hero-grid, .features-layout, .about-layout, .story-layout { grid-template-columns: 1fr; gap: 35px; }
+      .visual-wrap { min-height: 650px; }
+      .lawyer-card { right: 0; width: 84%; }
+      .search-card { width: 300px; }
+      .stats-inner, .pain-grid, .process { grid-template-columns: repeat(2,1fr); }
+      .services-grid { grid-template-columns: 1fr; }
+      .big-panel { position:relative; top:0; min-height: 540px; }
+    }
+    @media (max-width: 640px) {
+      .container { width: min(100% - 26px, 1180px); }
+      .nav { top: 10px; border-radius: 24px; }
+      .brand small { display:none; }
+      .btn { width:100%; }
+      .hero-actions { width:100%; }
+      .hero-actions .btn { flex: 1 1 100%; }
+      .trust-row { gap: 10px; }
+      .mini-stat { flex:1; min-width: 130px; }
+      .visual-wrap { min-height: 560px; }
+      .lawyer-card { width: 94%; height: 430px; top:20px; }
+      .search-card { left:0; top: 80px; width: 280px; }
+      .badge-card { left: auto; right: 0; top: -4px; width: 190px; }
+      .phone-card { width: 190px; height: 340px; }
+      .case-card { display:none; }
+      .stats-inner, .pain-grid, .process, .credentials-grid { grid-template-columns: 1fr; }
+      .stat-box { padding: 20px; }
+      section { padding: 72px 0; }
+      .testimonial { width: 310px; }
+      .footer-inner { flex-direction:column; }
+      .big-panel img { height: 300px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <a href="#top" class="brand" aria-label="Silva & Associados">
+      <span class="brand-mark">S</span>
+      <span>Silva & Associados <small>Advocacia Estratégica</small></span>
+    </a>
+    <div class="nav-links">
+      <a href="#sobre">Sobre</a>
+      <a href="#areas">Áreas</a>
+      <a href="#diferenciais">Diferenciais</a>
+      <a href="#faq">Dúvidas</a>
+    </div>
+    <a class="btn btn-primary" href="https://wa.me/5500000000000?text=Olá,%20gostaria%20de%20falar%20com%20um%20advogado" target="_blank" rel="noreferrer">Falar no WhatsApp</a>
+  </nav>
+
+  <main id="top">
+    <section class="hero">
+      <div class="orb one"></div>
+      <div class="orb two"></div>
+      <div class="container hero-grid">
+        <div class="hero-copy reveal">
+          <div class="eyebrow"><span class="pulse"></span> Atendimento jurídico online e presencial</div>
+          <h1>Soluções jurídicas com estratégia e <span class="gradient-text">autoridade.</span></h1>
+          <p>Atuação especializada para proteger seus direitos, reduzir riscos e conduzir cada etapa do seu caso com clareza, velocidade e segurança.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="https://wa.me/5500000000000?text=Olá,%20gostaria%20de%20agendar%20uma%20consulta" target="_blank" rel="noreferrer">Agendar consulta</a>
+            <a class="btn btn-secondary" href="#sobre">Conhecer o escritório</a>
+          </div>
+          <div class="trust-row">
+            <div class="mini-stat"><strong>4.9★</strong><span>Avaliação média</span></div>
+            <div class="mini-stat"><strong>+300</strong><span>Clientes atendidos</span></div>
+            <div class="mini-stat"><strong>10 anos</strong><span>De experiência</span></div>
+          </div>
+        </div>
+
+        <div class="visual-wrap reveal" id="visualWrap">
+          <div class="badge-card parallax" data-speed="0.018">
+            <strong>Dr. Rafael Silva</strong>
+            <span>Advogado • OAB 000.000 • Atendimento estratégico</span>
+          </div>
+
+          <div class="lawyer-card parallax" data-speed="0.02">
+            <img class="lawyer-photo" src="assets/hero-lawyer.png" alt="Advogado em escritório sofisticado" />
+            <div class="lawyer-overlay">
+              <div class="lawyer-chip">Especialista em direito trabalhista, civil e empresarial</div>
+              <h3>Defesa técnica com visão estratégica.</h3>
+              <p>Uma presença profissional transmite confiança antes mesmo da primeira conversa.</p>
+            </div>
+          </div>
+
+          <div class="search-card parallax" data-speed="0.026">
+            <div class="google-bar">🔎 Advogado trabalhista em Campinas</div>
+            <div class="result">
+              <div class="stars">★★★★★ 4.9</div>
+              <h4>Silva & Associados Advocacia</h4>
+              <p>Atendimento online, consulta rápida e atuação especializada.</p>
+              <div class="result-actions"><span class="pill">Site</span><span class="pill">WhatsApp</span></div>
+            </div>
+          </div>
+
+          <div class="phone-card parallax" data-speed="0.035">
+            <div class="phone-screen">
+              <div class="phone-hero"><h4>Precisa de orientação jurídica?</h4></div>
+              <div class="phone-content">
+                <div class="phone-line"></div><div class="phone-line"></div><div class="phone-line short"></div>
+                <div class="whats">Iniciar atendimento</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="case-card parallax" data-speed="0.02">
+            <h4>Atendimento com clareza</h4>
+            <div class="progress"><span></span></div>
+            <p>Direcionamento jurídico rápido para quem chega pelo Google e pelo WhatsApp.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="stats-band reveal">
+      <div class="container stats-inner">
+        <div class="stat-box"><strong data-count="300">0</strong><span>casos acompanhados</span></div>
+        <div class="stat-box"><strong data-count="98">0</strong><span>% de satisfação</span></div>
+        <div class="stat-box"><strong data-count="24">0</strong><span>h para retorno inicial</span></div>
+        <div class="stat-box"><strong data-count="10">0</strong><span>anos de experiência</span></div>
+      </div>
+    </div>
+
+    <section id="sobre">
+      <div class="container about-layout">
+        <div class="portrait-card reveal">
+          <img src="assets/portrait-lawyer.png" alt="Retrato profissional do advogado" />
+          <div class="portrait-badge">
+            <strong>Dr. Rafael Silva</strong>
+            <span>Advocacia estratégica, atendimento humanizado e atuação técnica em cada etapa do caso.</span>
+          </div>
+        </div>
+        <div class="about-copy reveal">
+          <div class="kicker">Autoridade</div>
+          <h2>Presença que transmite confiança desde o primeiro clique.</h2>
+          <p>Esta landing page foi construída para mostrar como um escritório de advocacia pode se posicionar de forma premium no digital: com uma imagem forte, comunicação clara e uma experiência moderna que conduz o visitante até o atendimento pelo WhatsApp.</p>
+          <p>Ao unir design, autoridade e conversão, o escritório passa a impressão certa para quem pesquisa no Google, visita o site e precisa decidir com quem vai falar.</p>
+          <div class="credentials-grid">
+            <div class="cred-item"><strong>Atendimento consultivo</strong><span>Explicações claras, sem juridiquês desnecessário.</span></div>
+            <div class="cred-item"><strong>Posicionamento premium</strong><span>Imagem de autoridade para aumentar confiança.</span></div>
+            <div class="cred-item"><strong>Foco em conversão</strong><span>Botões e fluxo pensados para gerar contatos.</span></div>
+            <div class="cred-item"><strong>Presença digital moderna</strong><span>Uma vitrine profissional para o Google e o WhatsApp.</span></div>
+          </div>
+          <div class="signature-box">
+            <p>“Seu site não precisa apenas existir. Ele precisa transmitir segurança, credibilidade e conduzir o cliente até a ação.”</p>
+            <div class="signature-line">Dr. Rafael Silva • Advogado Responsável</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">Problemas reais</div>
+          <h2>Questões jurídicas não podem esperar.</h2>
+          <p>Uma orientação correta no momento certo evita prejuízos, reduz riscos e aumenta a previsibilidade do seu caso.</p>
+        </div>
+        <div class="pain-grid">
+          <article class="pain-card reveal"><div><div class="icon">⚖️</div><h3>Demissão indevida</h3><p>Análise de verbas, rescisões, acordos e medidas trabalhistas.</p></div></article>
+          <article class="pain-card reveal"><div><div class="icon">📄</div><h3>Contratos frágeis</h3><p>Elaboração e revisão para evitar conflitos e proteger interesses.</p></div></article>
+          <article class="pain-card reveal"><div><div class="icon">🏛️</div><h3>Benefício negado</h3><p>Suporte em pedidos, revisões e demandas previdenciárias.</p></div></article>
+          <article class="pain-card reveal"><div><div class="icon">💼</div><h3>Risco empresarial</h3><p>Consultoria jurídica para decisões mais seguras no negócio.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="areas">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">Áreas de atuação</div>
+          <h2>Especialização para cada etapa da sua necessidade.</h2>
+        </div>
+        <div class="services-grid">
+          <article class="service-card reveal"><div class="icon">01</div><h3>Direito Trabalhista</h3><p>Atuação para empregados e empregadores em rescisões, verbas trabalhistas, acordos, defesa e prevenção de riscos.</p><a href="#cta">Solicitar análise →</a></article>
+          <article class="service-card reveal"><div class="icon">02</div><h3>Direito Previdenciário</h3><p>Aposentadorias, benefícios, revisões, recursos e planejamento previdenciário com acompanhamento completo.</p><a href="#cta">Falar com especialista →</a></article>
+          <article class="service-card reveal"><div class="icon">03</div><h3>Direito Civil</h3><p>Contratos, indenizações, cobranças, responsabilidade civil e resolução de conflitos com estratégia jurídica.</p><a href="#cta">Agendar consulta →</a></article>
+          <article class="service-card reveal"><div class="icon">04</div><h3>Direito Empresarial</h3><p>Consultoria preventiva, estruturação contratual, proteção patrimonial e suporte jurídico para empresas.</p><a href="#cta">Conhecer soluções →</a></article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="container story-layout">
+        <article class="story-card reveal">
+          <div class="kicker">Atendimento premium</div>
+          <h2>Autoridade visual reforçada com atendimento humano.</h2>
+          <p>Além de uma comunicação elegante, um escritório forte no digital precisa demonstrar presença, proximidade e confiança. Por isso, usamos imagens consistentes do advogado ao longo da experiência para reforçar a identidade e a percepção de autoridade.</p>
+          <ul>
+            <li>Imagem profissional para valor percebido mais alto.</li>
+            <li>Layout desenhado para gerar contato imediato pelo WhatsApp.</li>
+            <li>Seções organizadas para reduzir dúvidas e aumentar confiança.</li>
+            <li>Storytelling visual que aproxima o visitante do advogado responsável.</li>
+          </ul>
+        </article>
+        <div class="story-image-card reveal">
+          <img src="assets/desk-lawyer.png" alt="Advogado atendendo em seu escritório" />
+          <div class="story-label">
+            <strong>Consulta com clareza</strong>
+            <span>Atendimento objetivo, técnico e humanizado desde o primeiro contato.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="diferenciais">
+      <div class="container features-layout">
+        <aside class="big-panel reveal">
+          <div class="kicker">Diferenciais</div>
+          <h3>Clareza, velocidade e estratégia.</h3>
+          <p>O atendimento foi desenhado para transformar dúvidas em direcionamento jurídico claro, sem burocracia desnecessária.</p>
+          <img src="assets/office-lawyer.png" alt="Advogado em escritório moderno" />
+          <div class="dashboard">
+            <div class="dash-row"><span>Tempo médio de resposta</span><strong>12 min</strong></div>
+            <div class="dash-row"><span>Atendimento</span><strong>Online e presencial</strong></div>
+            <div class="dash-row"><span>Acompanhamento</span><strong>Completo</strong></div>
+          </div>
+        </aside>
+        <div class="features-list">
+          <article class="feature-card reveal"><div class="icon">💬</div><h3>Atendimento rápido pelo WhatsApp</h3><p>Contato direto com uma equipe preparada para entender sua situação e encaminhar os próximos passos.</p></article>
+          <article class="feature-card reveal"><div class="icon">🧭</div><h3>Estratégia personalizada</h3><p>Cada caso é analisado com contexto, documentação e objetivos específicos antes de qualquer recomendação.</p></article>
+          <article class="feature-card reveal"><div class="icon">🔎</div><h3>Transparência em cada etapa</h3><p>Você acompanha os caminhos possíveis, riscos, prazos e decisões com linguagem simples e objetiva.</p></article>
+          <article class="feature-card reveal"><div class="icon">🛡️</div><h3>Atuação preventiva</h3><p>Além de resolver conflitos, o escritório ajuda a evitar problemas futuros com contratos e consultoria.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="processo">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">Processo</div>
+          <h2>Uma jornada simples para resolver o que importa.</h2>
+        </div>
+        <div class="process">
+          <div class="step reveal"><h3>Contato inicial</h3><p>Você envia sua dúvida pelo WhatsApp e recebe as primeiras orientações.</p></div>
+          <div class="step reveal"><h3>Análise do caso</h3><p>A equipe avalia documentos, contexto e riscos envolvidos.</p></div>
+          <div class="step reveal"><h3>Estratégia jurídica</h3><p>Definimos o melhor caminho para proteger seus interesses.</p></div>
+          <div class="step reveal"><h3>Acompanhamento</h3><p>Você recebe atualização clara em cada etapa do processo.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">Depoimentos</div>
+          <h2>Confiança construída com atendimento humano.</h2>
+        </div>
+      </div>
+      <div class="testimonials-wrap reveal">
+        <div class="testimonials-track">
+          <article class="testimonial"><div class="stars">★★★★★</div><p>“Fui atendido com muita clareza desde o primeiro contato. Entendi meus direitos e tive segurança para agir.”</p><div class="person"><span class="avatar">C</span><div><strong>Carlos Henrique</strong><span>Cliente trabalhista</span></div></div></article>
+          <article class="testimonial"><div class="stars">★★★★★</div><p>“Atendimento profissional, rápido e muito humano. Me explicaram tudo sem juridiquês.”</p><div class="person"><span class="avatar">M</span><div><strong>Maria Fernanda</strong><span>Cliente civil</span></div></div></article>
+          <article class="testimonial"><div class="stars">★★★★★</div><p>“O escritório me ajudou em um momento difícil e acompanhou cada etapa com transparência.”</p><div class="person"><span class="avatar">R</span><div><strong>Ricardo Almeida</strong><span>Cliente previdenciário</span></div></div></article>
+          <article class="testimonial"><div class="stars">★★★★★</div><p>“Fui atendido com muita clareza desde o primeiro contato. Entendi meus direitos e tive segurança para agir.”</p><div class="person"><span class="avatar">C</span><div><strong>Carlos Henrique</strong><span>Cliente trabalhista</span></div></div></article>
+          <article class="testimonial"><div class="stars">★★★★★</div><p>“Atendimento profissional, rápido e muito humano. Me explicaram tudo sem juridiquês.”</p><div class="person"><span class="avatar">M</span><div><strong>Maria Fernanda</strong><span>Cliente civil</span></div></div></article>
+          <article class="testimonial"><div class="stars">★★★★★</div><p>“O escritório me ajudou em um momento difícil e acompanhou cada etapa com transparência.”</p><div class="person"><span class="avatar">R</span><div><strong>Ricardo Almeida</strong><span>Cliente previdenciário</span></div></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="container">
+        <div class="section-head reveal" style="margin-inline:auto;text-align:center;">
+          <div class="kicker">Dúvidas frequentes</div>
+          <h2>Perguntas antes da consulta.</h2>
+        </div>
+        <div class="faq reveal">
+          <div class="faq-item active"><button class="faq-question">Vocês atendem online?<span class="plus">+</span></button><div class="faq-answer"><p>Sim. O atendimento inicial pode ser feito online pelo WhatsApp, com encaminhamento posterior conforme a necessidade do caso.</p></div></div>
+          <div class="faq-item"><button class="faq-question">Quanto custa uma consulta?<span class="plus">+</span></button><div class="faq-answer"><p>O valor depende da área e complexidade. Após o primeiro contato, a equipe informa o formato mais adequado para sua situação.</p></div></div>
+          <div class="faq-item"><button class="faq-question">Quais documentos preciso enviar?<span class="plus">+</span></button><div class="faq-answer"><p>Depende do tipo de caso. A equipe orienta exatamente quais documentos são necessários para análise inicial.</p></div></div>
+          <div class="faq-item"><button class="faq-question">Em quanto tempo recebo retorno?<span class="plus">+</span></button><div class="faq-answer"><p>Durante o horário comercial, normalmente o retorno inicial é feito em poucos minutos pelo WhatsApp.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta" id="cta">
+      <div class="container">
+        <div class="cta-box reveal">
+          <h2>Precisa de orientação jurídica agora?</h2>
+          <p>Explique seu caso em poucos minutos e receba um direcionamento inicial para saber quais são os próximos passos.</p>
+          <a class="btn" href="https://wa.me/5500000000000?text=Olá,%20preciso%20de%20orientação%20jurídica" target="_blank" rel="noreferrer">Quero falar com especialista</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-inner">
+      <div><strong style="color:#fff">Silva & Associados</strong><br>Advocacia Estratégica • Campinas - SP</div>
+      <div>Landing page demonstrativa criada pela <span class="altum-tag">ALTUM</span><br>Sites • Google • WhatsApp • SEO Local</div>
+    </div>
+  </footer>
+
+  <a class="whatsapp-fixed" href="https://wa.me/5500000000000?text=Olá,%20vim%20pelo%20site" target="_blank" rel="noreferrer" aria-label="WhatsApp">☎</a>
+
+  <script>
+    const reveals = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.13 });
+    reveals.forEach(el => observer.observe(el));
+
+    const counters = document.querySelectorAll('[data-count]');
+    const countObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const el = entry.target;
+        const target = Number(el.dataset.count);
+        const duration = 1400;
+        const start = performance.now();
+        function update(now) {
+          const progress = Math.min((now - start) / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const value = Math.floor(target * eased);
+          el.textContent = target === 98 ? value + '%' : '+' + value;
+          if (target === 24) el.textContent = value + 'h';
+          if (progress < 1) requestAnimationFrame(update);
+        }
+        requestAnimationFrame(update);
+        countObserver.unobserve(el);
+      });
+    }, { threshold: .5 });
+    counters.forEach(c => countObserver.observe(c));
+
+    document.querySelectorAll('.faq-question').forEach(button => {
+      button.addEventListener('click', () => {
+        const item = button.closest('.faq-item');
+        document.querySelectorAll('.faq-item').forEach(i => { if (i !== item) i.classList.remove('active'); });
+        item.classList.toggle('active');
+      });
+    });
+
+    const visual = document.getElementById('visualWrap');
+    if (visual) {
+      visual.addEventListener('mousemove', (e) => {
+        const rect = visual.getBoundingClientRect();
+        const x = e.clientX - rect.left - rect.width / 2;
+        const y = e.clientY - rect.top - rect.height / 2;
+        visual.querySelectorAll('.parallax').forEach(el => {
+          const speed = Number(el.dataset.speed || 0.02);
+          el.style.translate = `${x * speed}px ${y * speed}px`;
+        });
+      });
+      visual.addEventListener('mouseleave', () => {
+        visual.querySelectorAll('.parallax').forEach(el => el.style.translate = '0px 0px');
+      });
+    }
+  </script>
+</body>
+</html>

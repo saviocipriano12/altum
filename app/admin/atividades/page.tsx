@@ -1,14 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-} from "firebase/firestore";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import type { AgencyActivity } from "@/app/types/domain";
 import { useAuth } from "@/context/AuthContext";
@@ -33,6 +25,7 @@ type Atividade = AgencyActivity & {
 export default function AtividadesPage() {
   const { user, isAdmin } = useAuth();
   const [atividades, setAtividades] = useState<Atividade[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -49,37 +42,23 @@ export default function AtividadesPage() {
       return;
     }
 
-    const activitiesRef = collection(db, "atividades");
-    const q = isAdmin
-      ? query(activitiesRef, orderBy("data", "asc"))
-      : query(activitiesRef, where("ownerId", "==", user.uid));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const list: Atividade[] = snap.docs.map((d) => {
-          const data = d.data() as Omit<Atividade, "id">;
-          return {
-            id: d.id,
-            descricao: data.descricao ?? "",
-            data: data.data ?? "",
-            status: data.status === "concluida" ? "concluida" : "pendente",
-            tipo: data.tipo ?? "",
-            leadId: data.leadId ?? "",
-            clienteNome: data.clienteNome ?? "",
-          };
-        });
-        setAtividades(list);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Erro ao carregar atividades:", err);
-        setLoading(false);
-      }
-    );
-
-    return () => unsub();
-  }, [user, isAdmin]);
+    let active = true;
+    void authedFetch("/api/admin/dashboard?include=atividades")
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({}))) as { atividades?: Atividade[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Falha ao carregar atividades.");
+        if (active) {
+          setAtividades((payload.atividades || []).sort((a, b) => String(a.data || "").localeCompare(String(b.data || ""))));
+        }
+      })
+      .catch((error) => console.error("Erro ao carregar atividades:", error))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user, isAdmin, refreshKey]);
 
   async function criarAtividade(e: React.FormEvent) {
     e.preventDefault();
@@ -107,6 +86,7 @@ export default function AtividadesPage() {
       setTipo("followup");
       setLeadId("");
       setClienteNome("");
+      setRefreshKey((value) => value + 1);
     } catch (err) {
       console.error("Erro ao criar atividade:", err);
       alert("Nao foi possivel criar atividade.");
@@ -129,6 +109,7 @@ export default function AtividadesPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Falha ao atualizar atividade.");
+      setRefreshKey((value) => value + 1);
     } catch (err) {
       console.error("Erro ao atualizar atividade:", err);
       alert("Nao foi possivel atualizar atividade.");
@@ -145,6 +126,7 @@ export default function AtividadesPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Falha ao remover atividade.");
+      setRefreshKey((value) => value + 1);
     } catch (err) {
       console.error("Erro ao remover atividade:", err);
       alert("Nao foi possivel remover atividade.");

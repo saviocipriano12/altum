@@ -7,6 +7,7 @@ import CTABox from "@/components/blog/CTABox";
 import PostHero from "@/components/blog/PostHero";
 import RelatedPosts from "@/components/blog/RelatedPosts";
 import TableOfContents from "@/components/blog/TableOfContents";
+import { SiteShell } from "@/components/public/site-shell";
 import Callout from "@/components/mdx/Callout";
 import Checklist from "@/components/mdx/Checklist";
 import FAQAccordion from "@/components/mdx/FAQAccordion";
@@ -165,7 +166,8 @@ export default async function BlogPostPage({ params }: PageProps) {
   });
 
   return (
-    <main className="min-h-screen bg-[#0B0B0B] px-6 py-16 text-white">
+    <SiteShell>
+    <div className="min-h-screen bg-[#0B0B0B] px-6 py-16 text-white">
       <PostHero
         title={post.meta.title}
         description={post.meta.description}
@@ -195,6 +197,7 @@ export default async function BlogPostPage({ params }: PageProps) {
       </section>
 
       <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(articleSchema)} />
-    </main>
+    </div>
+    </SiteShell>
   );
 }

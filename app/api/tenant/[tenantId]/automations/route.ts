@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { listTenantAutomations, normalizeAutomationDoc } from "@/lib/server/automations";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = Record<string, unknown>;
 type AutomationExecutionItem = {
@@ -32,6 +33,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "automation");
     assertTenantRole(membership, "client_viewer");
 
     const [items, jobsSnap] = await Promise.all([
@@ -72,6 +74,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "automation");
     assertTenantCapability(membership, "manage_automations");
 
     const body = (await req.json()) as Body;

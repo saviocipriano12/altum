@@ -5,6 +5,10 @@ import { decryptSecret, encryptSecret, hasStoredSecret, maskStoredSecret } from 
 import { recordInboundLead } from "@/lib/server/lead-intake";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
+import { commerceProviderMeta, connectionConfigFromDoc, hasCommerceCredentials, readCommerceCredentials } from "@/lib/server/commerce/registry";
+import type { CommerceSyncEvent } from "@/lib/server/commerce/types";
+import { verifyNativeCommerceWebhook } from "@/lib/server/commerce/webhook-security";
+import { fetchNuvemshopWebhookResource } from "@/lib/server/commerce/providers/nuvemshop";
 
 export const ECOMMERCE_PROVIDERS = ["shopify", "nuvemshop", "woocommerce", "vtex", "tray", "loja_integrada"] as const;
 
@@ -36,6 +40,7 @@ export type EcommerceConnectionInput = {
   status?: unknown;
   syncMode?: unknown;
   notes?: unknown;
+  credentials?: unknown;
 };
 
 type NormalizedProduct = {
@@ -876,6 +881,8 @@ export function buildEcommerceWebhookSecret() {
 export function publicConnectionFromDoc(doc: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot) {
   const data = doc.data() as Record<string, unknown>;
   const provider = normalizeEcommerceProvider(data.provider);
+  const providerMeta = provider ? commerceProviderMeta(provider) : null;
+  const webhookProvisioning = safeRecord(data.webhookProvisioning);
   return {
     id: doc.id,
     tenantId: clean(data.tenantId, 180),
@@ -887,6 +894,16 @@ export function publicConnectionFromDoc(doc: FirebaseFirestore.QueryDocumentSnap
     status: normalizeStatus(data.status),
     connectionStatus: clean(data.connectionStatus, 80) || "draft",
     syncMode: normalizeSyncMode(data.syncMode),
+    connectionMode: providerMeta?.connectionMode || "webhook",
+    capabilities: providerMeta?.capabilities || [],
+    hasApiCredentials: hasCommerceCredentials(data.apiCredentials),
+    oauthManaged: data.oauthManaged === true,
+    realtime: {
+      requested: Number(webhookProvisioning.requested || 0),
+      active: Number(webhookProvisioning.active || 0),
+      failed: Array.isArray(webhookProvisioning.failed) ? webhookProvisioning.failed.length : 0,
+      provisionedAt: dateIso(data.webhookProvisionedAt),
+    },
     notes: clean(data.notes, 500),
     hasWebhookSecret: hasStoredSecret(data.webhookSecret),
     webhookSecretMasked: maskStoredSecret(data.webhookSecret),
@@ -957,9 +974,29 @@ export function normalizeWebhookEvent(provider: EcommerceProvider, payload: unkn
   };
 }
 
-export async function verifyEcommerceWebhookSecret(connection: Record<string, unknown>, req: Request) {
+export async function verifyEcommerceWebhookSecret(
+  connection: Record<string, unknown>,
+  req: Request,
+  provider?: EcommerceProvider,
+  rawBody?: string
+) {
+  if (provider && typeof rawBody === "string") {
+    const nativeVerification = verifyNativeCommerceWebhook({
+      provider,
+      headers: req.headers,
+      rawBody,
+      shopifyClientSecret: process.env.SHOPIFY_CLIENT_SECRET,
+      nuvemshopClientSecret: process.env.NUVEMSHOP_CLIENT_SECRET,
+      connectionWebhookSecret: readSecret(connection.webhookSecret),
+    });
+    if (nativeVerification !== null) return nativeVerification;
+  }
   const configured = clean(process.env.ECOMMERCE_WEBHOOK_TOKEN, 500) || clean(readSecret(connection.webhookSecret), 500);
-  if (!configured) return true;
+  // A URL do webhook carrega IDs de tenant/conexão e não é uma credencial.
+  // Conexões sem assinatura nativa precisam obrigatoriamente de um token próprio;
+  // aceitar o evento sem ele permitiria que qualquer pessoa criasse pedidos ou
+  // produtos em uma operação que ainda estivesse em modo "manual".
+  if (!configured) return false;
   const headers = req.headers;
   const incoming =
     headerValue(headers, ["x-altum-webhook-token", "x-webhook-token", "x-ecommerce-token"]) ||
@@ -1018,6 +1055,8 @@ export async function processEcommerceWebhook(input: {
   provider: EcommerceProvider;
   payload: unknown;
   req: Request;
+  rawBody?: string;
+  trusted?: boolean;
 }) {
   const connectionRef = adminDb.collection("ecommerce_connections").doc(input.connectionId);
   const connectionSnap = await connectionRef.get();
@@ -1025,10 +1064,21 @@ export async function processEcommerceWebhook(input: {
   const connection = connectionSnap.data() as Record<string, unknown>;
   if (clean(connection.tenantId, 180) !== input.tenantId) throw new Error("ecommerce_connection_tenant_mismatch");
   if (normalizeEcommerceProvider(connection.provider) !== input.provider) throw new Error("ecommerce_connection_provider_mismatch");
-  const allowed = await verifyEcommerceWebhookSecret(connection, input.req);
+  const allowed = input.trusted === true || await verifyEcommerceWebhookSecret(connection, input.req, input.provider, input.rawBody);
   if (!allowed) throw new Error("ecommerce_webhook_unauthorized");
+  if (normalizeStatus(connection.status) === "paused") {
+    return { ok: true, ignored: true, reason: "connection_paused" };
+  }
 
-  const normalized = normalizeWebhookEvent(input.provider, input.payload, input.req.headers);
+  let effectivePayload = input.payload;
+  if (input.provider === "nuvemshop" && hasCommerceCredentials(connection.apiCredentials)) {
+    effectivePayload = await fetchNuvemshopWebhookResource({
+      connection: connectionConfigFromDoc(input.connectionId, connection),
+      credentials: readCommerceCredentials(connection.apiCredentials),
+      payload: input.payload,
+    });
+  }
+  const normalized = normalizeWebhookEvent(input.provider, effectivePayload, input.req.headers);
   const eventRef = adminDb.collection("ecommerce_events").doc(hashId([input.tenantId, input.connectionId, normalized.externalEventId]));
   const eventAlreadyExists = (await eventRef.get()).exists;
   await eventRef.set(
@@ -1038,7 +1088,7 @@ export async function processEcommerceWebhook(input: {
       provider: input.provider,
       topic: normalized.topic,
       externalEventId: normalized.externalEventId,
-      payload: input.payload,
+      payload: effectivePayload,
       normalized: {
         product: normalized.product || null,
         order: normalized.order || null,
@@ -1086,12 +1136,13 @@ export async function processEcommerceWebhook(input: {
       },
       { merge: true }
     );
-    await syncOrderToCommercial({
+    const leadId = await syncOrderToCommercial({
       tenantId: input.tenantId,
       connectionId: input.connectionId,
       provider: input.provider,
       order: normalized.order,
     });
+    await orderRef.set({ leadId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     if (!eventAlreadyExists) connectionUpdates.orderCount = FieldValue.increment(1);
   }
 
@@ -1108,12 +1159,13 @@ export async function processEcommerceWebhook(input: {
       },
       { merge: true }
     );
-    await syncCartToCommercial({
+    const leadId = await syncCartToCommercial({
       tenantId: input.tenantId,
       connectionId: input.connectionId,
       provider: input.provider,
       cart: normalized.cart,
     });
+    if (leadId) await cartRef.set({ leadId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     if (!eventAlreadyExists) connectionUpdates.cartCount = FieldValue.increment(1);
   }
 
@@ -1127,4 +1179,25 @@ export async function processEcommerceWebhook(input: {
     order: Boolean(normalized.order),
     cart: Boolean(normalized.cart),
   };
+}
+
+export async function processEcommerceSyncEvent(input: {
+  tenantId: string;
+  connectionId: string;
+  provider: EcommerceProvider;
+  event: CommerceSyncEvent;
+}) {
+  const headers = new Headers({
+    "x-altum-event": input.event.topic,
+    "x-altum-event-id": input.event.externalEventId,
+  });
+  const req = new Request("https://altum.invalid/internal-commerce-sync", { method: "POST", headers });
+  return processEcommerceWebhook({
+    tenantId: input.tenantId,
+    connectionId: input.connectionId,
+    provider: input.provider,
+    payload: input.event.payload,
+    req,
+    trusted: true,
+  });
 }

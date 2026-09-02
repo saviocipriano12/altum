@@ -3,6 +3,10 @@ export type OutboundScheduledJob = {
   dueAt: Date;
 };
 
+export function resolveImmediateOutboundProcessLimit(jobCount: number) {
+  return Math.max(1, Math.min(100, Math.ceil(Number(jobCount) || 1)));
+}
+
 export function buildOutboundJobSchedule(input: {
   leadIds: string[];
   sendRatePerMinute: number;

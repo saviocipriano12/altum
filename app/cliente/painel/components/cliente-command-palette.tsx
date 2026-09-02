@@ -30,6 +30,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "@/firebaseConfig";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
+import type { TenantModuleId } from "@/lib/tenant-entitlements";
 
 type NavItem = {
   key: string;
@@ -37,6 +38,7 @@ type NavItem = {
   href: string;
   icon: React.ReactNode;
   capability?: string;
+  module?: TenantModuleId;
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -52,8 +54,8 @@ const NAV_ITEMS: NavItem[] = [
     capability: "manage_commercial",
   },
   { key: "agenda", label: "Agenda", href: "/cliente/painel/agenda", icon: <CalendarDays className="h-4 w-4" /> },
-  { key: "reunioes_ia", label: "Reunioes IA", href: "/cliente/painel/reunioes-assistidas", icon: <Video className="h-4 w-4" /> },
   { key: "retornos", label: "Agenda - retornos", href: "/cliente/painel/follow-ups", icon: <CalendarDays className="h-4 w-4" /> },
+  { key: "reunioes_ia", label: "Agenda - reunioes IA", href: "/cliente/painel/reunioes-assistidas", icon: <Video className="h-4 w-4" />, module: "assisted_meetings" },
   {
     key: "produtos_servicos",
     label: "Produtos & Servicos",
@@ -76,6 +78,7 @@ const NAV_ITEMS: NavItem[] = [
     href: "/cliente/painel/automacao-instagram",
     icon: <Instagram className="h-4 w-4" />,
     capability: "manage_automations",
+    module: "social_automation",
   },
   { key: "relatorios", label: "Relatorios", href: "/cliente/painel/metricas", icon: <BarChart3 className="h-4 w-4" /> },
   {
@@ -120,18 +123,18 @@ export function ClienteCommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const router = useRouter();
-  const { hasCapability } = useClienteTenant();
+  const { hasCapability, hasModule } = useClienteTenant();
   const { theme, toggleTheme, density, toggleDensity, experienceMode, toggleExperienceMode } = useClienteShell();
 
-  const items = useMemo(() => NAV_ITEMS.filter((item) => !item.capability || hasCapability(item.capability)), [hasCapability]);
+  const items = useMemo(
+    () => NAV_ITEMS.filter(
+      (item) => (!item.capability || hasCapability(item.capability)) && (!item.module || hasModule(item.module))
+    ),
+    [hasCapability, hasModule]
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setOpen((current) => !current);
-      }
-
       if (event.key === "Escape") setOpen(false);
     };
 

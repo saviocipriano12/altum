@@ -7,6 +7,7 @@ import {
   BarChart3,
   Bot,
   CalendarDays,
+  CreditCard,
   ChevronLeft,
   ChevronRight,
   Headphones,
@@ -26,6 +27,7 @@ import {
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { BrandIcon } from "@/app/cliente/painel/components/ui";
+import type { TenantModuleId } from "@/lib/tenant-entitlements";
 
 type Props = {
   isOpen: boolean;
@@ -36,6 +38,7 @@ type NavAlias = {
   href: string;
   label: string;
   capability?: string;
+  module?: TenantModuleId;
 };
 
 type NavItem = {
@@ -45,8 +48,10 @@ type NavItem = {
   description: string;
   aliases?: NavAlias[];
   capability?: string;
+  module?: TenantModuleId;
   tone?: "default" | "success" | "warning" | "ai" | "brand";
   group: "operate" | "grow" | "intelligence" | "system";
+  advanced?: boolean;
 };
 
 const PRIMARY_NAV: NavItem[] = [
@@ -62,6 +67,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Conversas",
     icon: MessageSquare,
     description: "WhatsApp, Instagram e site com IA e humano no mesmo fluxo.",
+    module: "inbox",
     tone: "success",
     group: "operate",
   },
@@ -70,6 +76,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Clientes & Oportunidades",
     icon: Users,
     description: "Leads, oportunidades, funil, propostas e proximos passos.",
+    module: "crm",
     aliases: [
       { href: "/cliente/painel/crm", label: "Lista" },
       { href: "/cliente/painel/pipeline", label: "Funil", capability: "manage_pipeline" },
@@ -82,11 +89,12 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Agenda",
     icon: CalendarDays,
     description: "Reunioes, retornos, confirmacoes e compromissos comerciais.",
+    module: "crm",
     tone: "warning",
     aliases: [
       { href: "/cliente/painel/agenda", label: "Compromissos" },
-      { href: "/cliente/painel/reunioes-assistidas", label: "Reunioes IA" },
       { href: "/cliente/painel/follow-ups", label: "Retornos" },
+      { href: "/cliente/painel/reunioes-assistidas", label: "Reunioes IA", module: "assisted_meetings" },
     ],
     group: "operate",
   },
@@ -94,15 +102,17 @@ const PRIMARY_NAV: NavItem[] = [
     href: "/cliente/painel/reunioes-assistidas",
     label: "Reunioes IA",
     icon: Video,
-    description: "Chamada, escuta ao vivo, orientacao e documento da reuniao.",
+    description: "Salas, resumos e apoio de IA durante reunioes comerciais.",
+    module: "assisted_meetings",
     tone: "ai",
-    group: "operate",
+    group: "intelligence",
   },
   {
     href: "/cliente/painel/produtos-servicos",
     label: "Produtos & Servicos",
     icon: Package,
     description: "Ofertas, argumentos, materiais e regras para a IA vender melhor.",
+    module: "commerce",
     tone: "success",
     capability: "manage_ai",
     group: "operate",
@@ -112,6 +122,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Campanhas",
     icon: TrendingUp,
     description: "Trafego, captacao, UTMs e resultado comercial.",
+    module: "marketing",
     tone: "brand",
     aliases: [
       { href: "/cliente/painel/campanhas", label: "Campanhas" },
@@ -126,6 +137,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Disparos em Massa",
     icon: Send,
     description: "Envios segmentados por WhatsApp com limites, previa e historico.",
+    module: "marketing",
     tone: "success",
     capability: "manage_automations",
     group: "grow",
@@ -135,6 +147,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Automacao do Instagram",
     icon: Instagram,
     description: "DMs, comentarios e gatilhos de relacionamento do Instagram.",
+    module: "social_automation",
     tone: "ai",
     capability: "manage_automations",
     group: "grow",
@@ -144,6 +157,8 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Relatorios",
     icon: BarChart3,
     description: "O que gerou dinheiro, onde travou e qual decisao tomar.",
+    module: "reports",
+    aliases: [{ href: "/cliente/painel/relatorios", label: "Relatorios detalhados" }],
     group: "grow",
   },
   {
@@ -151,6 +166,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Perguntar a Altum",
     icon: Sparkles,
     description: "Converse com a inteligencia da operacao e encontre proximas acoes.",
+    module: "ai",
     tone: "ai",
     capability: "manage_ai",
     group: "intelligence",
@@ -160,6 +176,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Assistente Altum",
     icon: Bot,
     description: "Ensinar, simular e controlar a IA que opera o negocio.",
+    module: "ai",
     tone: "ai",
     capability: "manage_ai",
     aliases: [
@@ -177,8 +194,16 @@ const PRIMARY_NAV: NavItem[] = [
     capability: "manage_settings",
     aliases: [
       { href: "/cliente/painel/configuracoes", label: "Visao geral" },
+      { href: "/cliente/painel/onboarding", label: "Implantacao guiada", capability: "manage_settings" },
       { href: "/cliente/painel/configuracoes/lixeira", label: "Lixeira", capability: "manage_settings" },
     ],
+    group: "system",
+  },
+  {
+    href: "/cliente/painel/configuracoes/faturamento",
+    label: "Faturamento",
+    icon: CreditCard,
+    description: "Plano, cobrancas, pagamentos, upgrade e cancelamento.",
     group: "system",
   },
 ];
@@ -203,10 +228,26 @@ function itemMatches(pathname: string, item: NavItem) {
   return (item.aliases || []).some((alias) => isActive(pathname, alias.href));
 }
 
+function tourKeyForHref(href: string) {
+  if (href === "/cliente/painel") return "inicio";
+  if (href.includes("/inbox")) return "conversas";
+  if (href.includes("/crm")) return "clientes";
+  if (href.includes("/agenda")) return "agenda";
+  if (href.includes("/produtos-servicos")) return "produtos";
+  if (href.includes("/campanhas")) return "campanhas";
+  if (href.includes("/automacao-instagram")) return "instagram";
+  if (href.includes("/metricas")) return "relatorios";
+  if (href.includes("/perguntar-altum")) return "perguntar";
+  if (href.includes("/ia")) return "assistente";
+  if (href.includes("/faturamento")) return "faturamento";
+  if (href.includes("/configuracoes")) return "configuracoes";
+  return undefined;
+}
+
 export function ClienteSidebar({ isOpen, onClose }: Props) {
   const pathname = usePathname();
-  const { tenant, hasCapability } = useClienteTenant();
-  const { sidebarCollapsed, setSidebarCollapsed } = useClienteShell();
+  const { tenant, hasCapability, hasModule } = useClienteTenant();
+  const { experienceMode, sidebarCollapsed, setSidebarCollapsed } = useClienteShell();
   const [isDesktop, setIsDesktop] = useState(false);
 
   const compactMode = isDesktop && sidebarCollapsed;
@@ -221,11 +262,18 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
   const visibleNav = useMemo(
     () =>
-      PRIMARY_NAV.filter((item) => !item.capability || hasCapability(item.capability)).map((item) => ({
+      PRIMARY_NAV.filter(
+        (item) =>
+          (experienceMode === "completo" || !item.advanced) &&
+          (!item.capability || hasCapability(item.capability)) &&
+          (!item.module || hasModule(item.module))
+      ).map((item) => ({
         ...item,
-        aliases: (item.aliases || []).filter((alias) => !alias.capability || hasCapability(alias.capability)),
+        aliases: (item.aliases || []).filter(
+          (alias) => (!alias.capability || hasCapability(alias.capability)) && (!alias.module || hasModule(alias.module))
+        ),
       })),
-    [hasCapability]
+    [experienceMode, hasCapability, hasModule]
   );
 
   const advancedLinks = useMemo(
@@ -345,7 +393,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                       <Link
                         key={item.href}
                         href={item.href}
-                        prefetch={false}
+                        prefetch
                         onClick={onClose}
                         className={`group relative block rounded-[16px] border px-2.5 py-2.5 transition ${
                           active
@@ -353,6 +401,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                             : "border-transparent text-[var(--cliente-text-muted)] hover:border-[var(--cliente-border)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-text)]"
                         } ${compactMode ? "px-2" : ""}`}
                         title={compactMode ? item.label : undefined}
+                        data-tour-key={tourKeyForHref(item.href)}
                       >
                         <div className={`flex items-center ${compactMode ? "justify-center" : "gap-3"}`}>
                           <span className={`inline-flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-[13px] border transition ${iconClasses}`}>
@@ -362,7 +411,6 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                           {!compactMode ? (
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-bold">{item.label}</p>
-                              {active ? <p className="mt-0.5 truncate text-[11px] font-medium text-white/78">{item.description}</p> : null}
                             </div>
                           ) : null}
                         </div>
@@ -443,7 +491,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
                       <Link
                         key={item.href}
                         href={item.href}
-                        prefetch={false}
+                        prefetch
                         onClick={onClose}
                         className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
                           isActive(pathname, item.href)

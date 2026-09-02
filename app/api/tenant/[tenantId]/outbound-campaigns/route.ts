@@ -8,6 +8,7 @@ import {
   assertTenantRole,
   TenantAccessError,
 } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import {
   buildOutboundCampaignPatch,
   normalizeOutboundCampaign,
@@ -59,9 +60,10 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantRole(membership, "client_viewer");
 
-    await processOutboundCampaignJobs({ tenantId, limit: 20 }).catch((error) => {
+    await processOutboundCampaignJobs({ tenantId, limit: 100 }).catch((error) => {
       console.warn("Falha ao processar fila outbound durante listagem:", error);
     });
 
@@ -142,6 +144,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantCapability(membership, "manage_automations");
 
     const body = (await req.json()) as Body;

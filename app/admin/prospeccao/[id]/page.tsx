@@ -3,17 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import type { TimestampLike } from "@/app/types/domain";
-import {
-  collection,
-  doc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-} from "firebase/firestore";
 
 import {
   ArrowLeft, Phone, MapPin, Target, Sparkles, CheckCircle2,
@@ -567,41 +558,42 @@ export default function LeadDetalhePage() {
   const [newLinkTitle, setNewLinkTitle] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
 
-  // Firestore Sub
   useEffect(() => {
     if (!leadId) return;
-    const unsub = onSnapshot(doc(db, "leads", leadId), (snap) => {
-      if (snap.exists()) {
-        const d = snap.data() as Lead;
-        setLead({ ...d, id: snap.id });
-        setOwner(d.owner || "");
-        setNotes(d.notes || "");
-        setStageDraft((d.stage as StageKey | undefined) || undefined);
-        
-        // Populate edit form
+    let cancelled = false;
+    const loadLead = async () => {
+      try {
+        const response = await authedFetch(`/api/admin/leads/${encodeURIComponent(leadId)}`);
+        const data = (await response.json()) as { lead?: Lead; events?: LeadEvent[]; error?: string };
+        if (!response.ok || !data.lead) throw new Error(data.error || "Falha ao carregar lead.");
+        if (cancelled) return;
+        const nextLead = data.lead;
+        setLead(nextLead);
+        setEvents(data.events || []);
+        setOwner(nextLead.owner || "");
+        setNotes(nextLead.notes || "");
+        setStageDraft((nextLead.stage as StageKey | undefined) || undefined);
         setEditForm({
-            nome: d.nome || "",
-            endereco: d.endereco || "",
-            telefone: d.telefone || "",
-            website: d.website || "",
-            cnpj: d.cnpj || "",
-            instagram: d.instagram || "",
-            linkedin: d.linkedin || ""
+          nome: nextLead.nome || "",
+          endereco: nextLead.endereco || "",
+          telefone: nextLead.telefone || "",
+          website: nextLead.website || "",
+          cnpj: nextLead.cnpj || "",
+          instagram: nextLead.instagram || "",
+          linkedin: nextLead.linkedin || "",
         });
+      } catch (error) {
+        if (!cancelled) showToast("err", error instanceof Error ? error.message : "Falha ao carregar lead.");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
-    });
-    return () => unsub();
-  }, [leadId]);
-
-  // Events Sub
-  useEffect(() => {
-    if (!leadId) return;
-    const q = query(collection(db, "leads", leadId, "events"), orderBy("createdAt", "desc"), limit(20));
-    const unsub = onSnapshot(q, (snap) => {
-       setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as LeadEvent)));
-    });
-    return () => unsub();
+    };
+    void loadLead();
+    const interval = window.setInterval(() => void loadLead(), 20_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [leadId]);
 
   useEffect(() => {

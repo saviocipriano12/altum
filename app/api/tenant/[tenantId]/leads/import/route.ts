@@ -3,6 +3,9 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { recordInboundLead } from "@/lib/server/lead-intake";
+import { normalizePhoneBR } from "@/app/lib/server/phone";
+import { assertTenantLimitAvailable, assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { adminDb } from "@/app/lib/server/firebase-admin";
 
 const MAX_CSV_CHARS = 1_200_000;
 const MAX_IMPORT_ROWS = 1200;
@@ -388,6 +391,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "edit_leads");
 
     const body = (await req.json()) as ImportBody;
@@ -427,6 +431,46 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     }
 
     const parsedRows = parsed.rows.map((row) => parseImportRow(row, defaults));
+    const currentLeadsSnap = await adminDb.collection("leads").where("tenantId", "==", tenantId).get();
+    const knownEmails = new Set<string>();
+    const knownPhones = new Set<string>();
+    const knownExternalIds = new Set<string>();
+    const knownSourceIds = new Set<string>();
+    currentLeadsSnap.docs.forEach((doc) => {
+      const data = doc.data() as Record<string, unknown>;
+      const email = clean(data.email, 180).toLowerCase();
+      const phone = normalizePhoneBR(clean(data.telefone, 60));
+      const externalId = clean(data.externalProfileId, 180);
+      const sourceId = clean(data.sourceId, 180);
+      if (email) knownEmails.add(email);
+      if (phone) knownPhones.add(phone);
+      if (externalId) knownExternalIds.add(externalId);
+      if (sourceId) knownSourceIds.add(sourceId);
+    });
+
+    let projectedNewContacts = 0;
+    for (const row of parsedRows) {
+      const email = row.email.toLowerCase();
+      const phone = normalizePhoneBR(row.telefone);
+      const isKnown = Boolean(
+        (row.sourceId && knownSourceIds.has(row.sourceId)) ||
+        (row.externalProfileId && knownExternalIds.has(row.externalProfileId)) ||
+        (phone && knownPhones.has(phone)) ||
+        (email && knownEmails.has(email))
+      );
+      if (isKnown) continue;
+      projectedNewContacts += 1;
+      if (row.sourceId) knownSourceIds.add(row.sourceId);
+      if (row.externalProfileId) knownExternalIds.add(row.externalProfileId);
+      if (phone) knownPhones.add(phone);
+      if (email) knownEmails.add(email);
+    }
+    await assertTenantLimitAvailable({
+      tenantId,
+      limitId: "contacts",
+      currentUsage: currentLeadsSnap.size,
+      increment: projectedNewContacts,
+    });
     const results: RowResult[] = [];
     let created = 0;
     let updated = 0;
@@ -516,7 +560,10 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
     if (error instanceof TenantAccessError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.code === "tenant_limit_exceeded" ? 409 : 403 }
+      );
     }
     console.error("Erro ao importar base de leads:", error);
     return NextResponse.json({ error: "Falha ao importar base de leads." }, { status: 500 });

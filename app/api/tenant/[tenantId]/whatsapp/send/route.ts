@@ -4,8 +4,10 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhone } from "@/app/lib/server/phone";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
-import { getWhatsAppChannelForTenant, sendMetaTextMessage } from "@/app/lib/server/whatsapp-channel";
+import { getWhatsAppChannelForTenant } from "@/app/lib/server/whatsapp-channel";
+import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 import { getChatStateDocId } from "@/lib/server/ai/agent";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   text?: string;
@@ -22,6 +24,8 @@ type Destination = {
   chatRef: DocumentReference | null;
   ownerId: string | null;
   contactName: string;
+  leadId: string | null;
+  isNew: boolean;
 };
 
 async function resolveDestination(input: {
@@ -66,6 +70,8 @@ async function resolveDestination(input: {
       chatRef,
       ownerId: chat.ownerId || chat.assignedTo || input.user.uid,
       contactName: chat.contactName || phone,
+      leadId: input.body.leadId || null,
+      isNew: false,
     };
   }
 
@@ -117,6 +123,8 @@ async function resolveDestination(input: {
       chatRef: found.ref,
       ownerId,
       contactName,
+      leadId: input.body.leadId || null,
+      isNew: false,
     };
   }
 
@@ -132,6 +140,7 @@ async function resolveDestination(input: {
     updatedAt: FieldValue.serverTimestamp(),
     lastMessageTime: FieldValue.serverTimestamp(),
     lastMessage: "",
+    ...(input.body.leadId ? { leadId: input.body.leadId } : {}),
   });
 
   return {
@@ -142,6 +151,8 @@ async function resolveDestination(input: {
     chatRef: created,
     ownerId,
     contactName,
+    leadId: input.body.leadId || null,
+    isNew: true,
   };
 }
 
@@ -153,6 +164,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "whatsapp");
     assertTenantCapability(membership, "respond_inbox");
 
     const channel = await getWhatsAppChannelForTenant(tenantId, { allowAgencyFallback: false });
@@ -170,8 +182,39 @@ export async function POST(
       body,
     });
 
-    const data = await sendMetaTextMessage({
-      channel,
+    const provider = getWhatsAppMessagingProvider(channel);
+    if (destination.isNew && provider.id === "meta_cloud" && destination.chatRef && destination.chatId) {
+      await destination.chatRef.set(
+        {
+          tenantId,
+          leadId: destination.leadId,
+          contactName: destination.contactName,
+          contactPhone: destination.phone,
+          contactPhoneNormalized: destination.phone,
+          channel: "whatsapp",
+          channelPhoneNumberId: channel.phoneNumberId,
+          status: "open",
+          ownerId: destination.ownerId,
+          ownerName: user.name,
+          requiresTemplate: true,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          lastMessageTime: FieldValue.serverTimestamp(),
+          lastMessage: "Conversa pronta para iniciar com template aprovado.",
+        },
+        { merge: true }
+      );
+      return NextResponse.json({
+        ok: true,
+        tenantId,
+        chatId: destination.chatId,
+        phoneNumberId: channel.phoneNumberId,
+        requiresTemplate: true,
+        message: "A API oficial exige um template aprovado para iniciar esta conversa.",
+      });
+    }
+
+    const data = await provider.sendText({
       to: destination.phone,
       text: destination.text,
     });
@@ -188,6 +231,8 @@ export async function POST(
             lastMessageTime: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
             status: "open",
+            requiresTemplate: false,
+            ...(destination.leadId ? { leadId: destination.leadId } : {}),
           },
           { merge: true }
         ),
@@ -199,7 +244,9 @@ export async function POST(
           senderId: user.uid,
           senderName: user.name,
           status: "sent",
+          deliveryStatus: "sent",
           type: "text",
+          ...(data.externalMessageId ? { metaMessageId: data.externalMessageId } : {}),
           channelPhoneNumberId: channel.phoneNumberId,
           createdAt: FieldValue.serverTimestamp(),
         }),
@@ -224,7 +271,7 @@ export async function POST(
       tenantId,
       chatId: destination.chatId,
       phoneNumberId: channel.phoneNumberId,
-      metaMessageId: data?.messages?.[0]?.id || null,
+      metaMessageId: data.externalMessageId,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {

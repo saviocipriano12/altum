@@ -5,6 +5,7 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   status?: string;
@@ -32,6 +33,7 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, financeId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "manage_commercial");
 
     const ref = adminDb.collection("financeiro").doc(financeId);

@@ -1,0 +1,14 @@
+[Unit]
+Description=Job operacional Altum (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=altumops
+Group=altumops
+EnvironmentFile=/opt/altum-jobs/.env
+ExecStart=/opt/altum-jobs/run-job.sh %i
+NoNewPrivileges=true
+PrivateTmp=true
+

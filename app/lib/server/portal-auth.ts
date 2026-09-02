@@ -8,6 +8,9 @@ import {
   isTenantBillingBlocked,
   type TenantCapability,
 } from "@/lib/server/tenant";
+import { getTenantEntitlements } from "@/lib/server/tenant-entitlements";
+import type { TenantEntitlementsSnapshot } from "@/lib/tenant-entitlements";
+import { timestampToMillis } from "@/lib/server/self-service-auth";
 
 export type PortalUserStatus = "active" | "blocked";
 export type PortalTenantRole =
@@ -45,6 +48,7 @@ export type PortalRequestUser = {
   clientName: string;
   status: PortalUserStatus;
   capabilities: TenantCapability[];
+  entitlements: TenantEntitlementsSnapshot;
   token: DecodedIdToken;
 };
 
@@ -135,13 +139,43 @@ async function buildPortalUserFromMembership(
     throw error;
   });
   const tenantData = tenantSnap.exists ? (tenantSnap.data() as Record<string, unknown>) : {};
+  if (tenantData.signupSource === "self_service" && !decoded.email_verified) {
+    throw new PortalAuthError(403, "email_not_verified", "Confirme seu e-mail antes de acessar a plataforma.");
+  }
   if (tenantData.status === "blocked" || tenantData.billingStatus === "blocked") {
     throw new PortalAuthError(403, "tenant_billing_blocked", "Acesso ao portal pausado por pendencia financeira.");
+  }
+  const trialEndsAt = timestampToMillis(tenantData.trialEndsAt);
+  const billingStatus = String(tenantData.billingStatus || "").toLowerCase();
+  const billingBlockAt = timestampToMillis(tenantData.billingBlockAt);
+  if (billingStatus === "past_due" && billingBlockAt && billingBlockAt <= Date.now()) {
+    throw new PortalAuthError(
+      402,
+      "billing_grace_expired",
+      "O prazo de tolerancia do pagamento terminou. Regularize a assinatura para continuar."
+    );
+  }
+  const accessEndsAt = timestampToMillis(tenantData.accessEndsAt);
+  if (billingStatus === "cancel_scheduled" && accessEndsAt && accessEndsAt <= Date.now()) {
+    throw new PortalAuthError(
+      402,
+      "subscription_ended",
+      "O periodo contratado terminou. Escolha um plano para reativar a ALTUM."
+    );
+  }
+  const trialCanExpire = !billingStatus || billingStatus === "trial" || billingStatus === "pending";
+  if (trialEndsAt && trialEndsAt <= Date.now() && trialCanExpire) {
+    throw new PortalAuthError(
+      402,
+      "trial_expired",
+      "Seu periodo gratuito terminou. Escolha um plano para continuar usando a ALTUM."
+    );
   }
   const settings = await getTenantSettings(membership.tenantId).catch((error) => {
     console.warn("Falha ao carregar configuracoes do tenant no portal:", membership.tenantId, error);
     return null;
   });
+  const entitlements = await getTenantEntitlements(membership.tenantId);
 
   const tenantName =
     (typeof settings?.name === "string" ? settings.name : "") ||
@@ -159,6 +193,7 @@ async function buildPortalUserFromMembership(
     clientName: tenantName,
     status: "active" as const,
     capabilities: getTenantCapabilities(membership),
+    entitlements,
     token: decoded,
   };
 }
@@ -253,6 +288,7 @@ export async function requirePortalRequestUser(
   if (billingBlocked) {
     throw new PortalAuthError(403, "tenant_billing_blocked", "Acesso ao portal pausado por pendencia financeira.");
   }
+  const entitlements = await getTenantEntitlements(tenantId);
 
   return {
     uid: decoded.uid,
@@ -269,6 +305,7 @@ export async function requirePortalRequestUser(
       status,
       capabilities: [],
     }),
+    entitlements,
     token: decoded,
   };
 }

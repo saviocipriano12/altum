@@ -7,6 +7,8 @@ import { getChatState, getChatStateDocId } from "@/lib/server/ai/agent";
 import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { buildManualQueuePatch } from "@/lib/server/chat-operations";
 import { recordLeadConversionStep } from "@/lib/server/conversion-trail";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   action?: "pause" | "resume" | "takeover" | "retry";
@@ -202,7 +204,10 @@ export async function GET(
     const { tenantId, chatId } = await context.params;
 
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
+    await assertTenantModule(tenantId, "ai");
     assertTenantRole(membership, "client_viewer");
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
     await assertChatInTenant(chatId, tenantId);
 
     const state = await getChatState(tenantId, chatId);
@@ -230,7 +235,10 @@ export async function POST(
     const { tenantId, chatId } = await context.params;
 
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
+    await assertTenantModule(tenantId, "ai");
     assertTenantCapability(membership, "respond_inbox");
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
     const { chatRef, chat } = await assertChatInTenant(chatId, tenantId);
 
     const body = (await req.json()) as Body;

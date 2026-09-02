@@ -6,9 +6,9 @@ import { useEffect } from "react";
 const whatsappNumber = "5500000000000";
 
 const links = {
-  consult: `https://wa.me/${whatsappNumber}?text=Ol%C3%A1%2C%20gostaria%20de%20agendar%20uma%20consulta.`,
-  analysis: `https://wa.me/${whatsappNumber}?text=Ol%C3%A1%2C%20gostaria%20de%20solicitar%20uma%20an%C3%A1lise%20inicial.`,
-  contact: `https://wa.me/${whatsappNumber}?text=Ol%C3%A1%2C%20vim%20pelo%20site%20e%20gostaria%20de%20mais%20informa%C3%A7%C3%B5es.`,
+  consult: "/diagnostico?entry=portfolio_advogadoeng_consult",
+  analysis: "/diagnostico?entry=portfolio_advogadoeng_analysis",
+  contact: "/diagnostico?entry=portfolio_advogadoeng_contact",
 };
 
 const capabilities = [

@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   type?: "faq" | "catalog" | "policy";
@@ -145,6 +146,7 @@ export async function GET(
     const { tenantId } = await context.params;
 
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     assertTenantRole(membership, "client_viewer");
 
     const snap = await adminDb
@@ -207,6 +209,7 @@ export async function POST(
     const { tenantId } = await context.params;
 
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "commerce");
     assertTenantCapability(membership, "manage_ai");
 
     const body = (await req.json()) as Body;

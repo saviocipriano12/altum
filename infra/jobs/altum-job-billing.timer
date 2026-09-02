@@ -1,0 +1,11 @@
+[Unit]
+Description=Processa cobrancas de contratos da Altum diariamente
+
+[Timer]
+OnCalendar=*-*-* 03:45:00 UTC
+Persistent=true
+Unit=altum-job@billing.service
+
+[Install]
+WantedBy=timers.target
+

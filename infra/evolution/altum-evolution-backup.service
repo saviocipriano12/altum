@@ -1,0 +1,9 @@
+[Unit]
+Description=Backup da Evolution API da Altum
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/altum-evolution/backup.sh
+

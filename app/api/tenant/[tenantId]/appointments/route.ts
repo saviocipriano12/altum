@@ -11,6 +11,8 @@ import {
 import { trackAppointmentOutcome } from "@/lib/server/ai/learning-outcomes";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertAssignedCommercialRecordAccess, canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   leadId?: string | null;
@@ -94,6 +96,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantRole(membership, "client_viewer");
 
     const snap = await adminDb.collection("appointments").where("tenantId", "==", tenantId).limit(240).get();
@@ -102,6 +105,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
         id: doc.id,
         ...(doc.data() as Record<string, unknown>),
       }))
+      .filter((appointment) => canAccessAssignedCommercialRecord(membership, user.uid, appointment))
       .sort((a, b) => new Date(String(a.startAt || 0)).getTime() - new Date(String(b.startAt || 0)).getTime());
 
     return NextResponse.json({ ok: true, tenantId, items });
@@ -122,6 +126,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "edit_leads");
 
     const body = (await req.json()) as Body;
@@ -142,9 +147,16 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       if (String(lead.tenantId || "") !== tenantId) {
         return NextResponse.json({ error: "Lead fora do tenant informado." }, { status: 403 });
       }
+      assertAssignedCommercialRecordAccess(membership, user.uid, lead);
     }
 
     const ownerUserId = clean(body.ownerUserId, 140) || clean(lead?.ownerId, 140) || user.uid;
+    if (ownerUserId !== user.uid && !hasTeamWideCommercialAccess(membership)) {
+      throw new TenantAccessError(
+        "appointment_owner_denied",
+        "Somente gestores podem agendar para outro vendedor."
+      );
+    }
     let ownerName = clean(lead?.owner, 180) || user.name;
     if (ownerUserId) {
       const membershipSnap = await adminDb.collection("tenant_users").doc(`${tenantId}_${ownerUserId}`).get();

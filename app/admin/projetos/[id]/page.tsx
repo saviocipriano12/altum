@@ -3,10 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import type { TimestampLike } from "@/app/types/domain";
-import { doc, getDoc } from "firebase/firestore";
 import {
   ArrowLeft,
   Layers,
@@ -76,14 +74,10 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
   useEffect(() => {
     async function fetchProjeto() {
       try {
-        const ref = doc(db, "projetos", params.id);
-        const snap = await getDoc(ref);
-
-        if (snap.exists()) {
-          const data = {
-            id: snap.id,
-            ...(snap.data() as Omit<Projeto, "id">),
-          };
+        const response = await authedFetch(`/api/admin/records/projetos/${encodeURIComponent(params.id)}`);
+        const payload = (await response.json()) as { item?: Projeto; error?: string };
+        if (response.ok && payload.item) {
+          const data = payload.item;
 
           setProjeto(data);
           setForm({

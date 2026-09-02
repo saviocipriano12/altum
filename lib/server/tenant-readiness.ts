@@ -362,6 +362,30 @@ function buildCriterion(input: Omit<TenantGoLiveCriterion, "tone">): TenantGoLiv
   };
 }
 
+function isChannelConnected(item: Record<string, unknown>) {
+  if (clean(item.status, 40).toLowerCase() !== "active") return false;
+  const connectionStatus = clean(item.connectionStatus, 40).toLowerCase();
+  return (
+    connectionStatus === "ready" ||
+    connectionStatus === "connected" ||
+    item.routingReady === true ||
+    item.syncReady === true ||
+    item.inboundReady === true ||
+    item.outboundReady === true
+  );
+}
+
+function isChannelOperational(item: Record<string, unknown>) {
+  const type = clean(item.type, 40).toLowerCase();
+  if (!["whatsapp", "instagram", "messenger", "meta_ads"].includes(type)) return false;
+  if (!isChannelConnected(item)) return false;
+
+  const connectionStatus = clean(item.connectionStatus, 40).toLowerCase();
+  if (connectionStatus === "ready" || item.routingReady === true) return true;
+  if (type === "meta_ads") return connectionStatus === "connected" || item.syncReady === true;
+  return item.inboundReady === true || item.outboundReady === true;
+}
+
 function normalizeSeverity(value: unknown): AiOperationalSeverity {
   const raw = clean(value, 40).toLowerCase();
   if (raw === "high") return "high";
@@ -465,16 +489,8 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
   ).length;
   const managedTeams = inboxRules.teams.length;
   const activeChannels = channels.filter((item) => clean(item.status, 40) === "active").length;
-  const connectedChannels = channels.filter((item) => {
-    if (clean(item.status, 40) !== "active") return false;
-    return item.routingReady === true || item.syncReady === true || item.inboundReady === true || item.outboundReady === true;
-  }).length;
-  const operationalChannels = channels.filter((item) => {
-    const type = clean(item.type, 40);
-    if (!["whatsapp", "instagram", "messenger", "meta_ads"].includes(type)) return false;
-    if (clean(item.status, 40) !== "active") return false;
-    return item.routingReady === true || (type === "meta_ads" && item.syncReady === true);
-  }).length;
+  const connectedChannels = channels.filter(isChannelConnected).length;
+  const operationalChannels = channels.filter(isChannelOperational).length;
   const activeForms = forms.filter((item) => clean(item.status, 40) === "active").length;
   const activeBacklog = chats.filter((item) => {
     const status = clean(item.status, 40).toLowerCase();
@@ -530,12 +546,7 @@ export async function getTenantReadinessSnapshot(tenantId: string): Promise<Tena
     previousWindow.conversion - currentWindow.conversion >= 5;
   const channelOfflineAlerts = channels
     .filter((item) => clean(item.status, 40) === "active")
-    .filter((item) => {
-      const type = clean(item.type, 60);
-      if (!["whatsapp", "instagram", "messenger", "meta_ads"].includes(type)) return false;
-      if (type === "meta_ads") return item.syncReady !== true;
-      return item.routingReady !== true && item.inboundReady !== true && item.outboundReady !== true;
-    })
+    .filter((item) => !isChannelOperational(item))
     .slice(0, 4)
     .map((item) => {
       const guidance = buildAiAlertGuidance({ type: "channel_offline" });

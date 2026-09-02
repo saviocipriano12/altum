@@ -11,14 +11,6 @@ import type {
   TeamMemberDoc,
   TimestampLike,
 } from "@/app/types/domain";
-import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-  getDocs,
-} from "firebase/firestore";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { canReceiveDistributedLeads } from "@/lib/agency-roles";
 import {
@@ -470,20 +462,24 @@ export default function ProspeccaoCRMPage() {
 
   // Buscar vendedores ativos (Somente se for Admin)
   useEffect(() => {
-    if (isAdmin) {
-      const q = query(collection(db, "users"), where("status", "==", "active"));
-      getDocs(q).then((snap) => {
-        const s = snap.docs
-          .map((d) => {
-            const userData = d.data() as TeamMemberDoc;
-            return { id: d.id, name: userData.name || "Sem nome", role: userData.role };
-          })
-          .filter((u) => canReceiveDistributedLeads(u.role))
-          .map(({ id, name }) => ({ id, name })); // Tira o admin da roleta
-        setSellers(s);
-      });
+    if (!isAdmin || !user) {
+      setSellers([]);
+      return;
     }
-  }, [isAdmin]);
+    void authedFetch("/api/admin/users")
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({}))) as {
+          items?: Array<TeamMemberDoc & { id: string }>;
+        };
+        if (!response.ok) throw new Error("Falha ao carregar vendedores.");
+        setSellers(
+          (payload.items || [])
+            .filter((member) => canReceiveDistributedLeads(member.role))
+            .map((member) => ({ id: member.id, name: member.name || "Sem nome" }))
+        );
+      })
+      .catch((error) => console.error("Erro ao carregar vendedores:", error));
+  }, [isAdmin, user]);
 
   // FUNÇÃO: Roleta de Distribuicao (Round-Robin)
   const handleAutoDistribute = async (mode: "today" | "all" = "today") => {
@@ -544,9 +540,10 @@ export default function ProspeccaoCRMPage() {
       const templatesData = await templatesRes.json().catch(() => ({}));
       const audiencesData = await audiencesRes.json().catch(() => ({}));
 
-      if (templatesRes.ok) {
+      if (templatesRes.ok && templatesData?.ok !== false) {
         setMetaTemplates(Array.isArray(templatesData.templates) ? templatesData.templates : []);
       } else {
+        setMetaTemplates([]);
         setTemplatesError(templatesData?.error || "Nao foi possivel carregar templates Meta.");
       }
 
@@ -574,29 +571,21 @@ export default function ProspeccaoCRMPage() {
     return;
   }
 
-  const leadsRef = collection(db, "leads");
-  const leadsQuery = isAdmin
-    ? query(leadsRef)
-    : query(leadsRef, where("ownerId", "==", user.uid));
+  let active = true;
+  void authedFetch("/api/admin/dashboard?include=leads")
+    .then(async (response) => {
+      const payload = (await response.json().catch(() => ({}))) as { leads?: Lead[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Falha ao carregar leads.");
+      if (active) setLeads(payload.leads || []);
+    })
+    .catch((error) => console.error("Erro ao carregar leads:", error))
+    .finally(() => {
+      if (active) setLoading(false);
+    });
 
-  const unsub = onSnapshot(
-    leadsQuery,
-    (snap) => {
-      const docs = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<Lead, "id">),
-      })) as Lead[];
-
-      setLeads(docs);
-      setLoading(false);
-    },
-    (error) => {
-      console.error("ERRO REAL FIRESTORE:", error);
-      setLoading(false);
-    }
-  );
-
-  return () => unsub();
+  return () => {
+    active = false;
+  };
 }, [user, authLoading, isAdmin]);
 
   /* ======================================================

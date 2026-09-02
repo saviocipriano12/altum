@@ -4,6 +4,7 @@ import { isGoogleAdsServerConfigured } from "@/app/lib/server/google-ads";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { decryptSecret } from "@/app/lib/server/secret-crypto";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type ConversionHealthItem = {
   channelId: string;
@@ -95,6 +96,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     if (
       !hasTenantCapability(membership, "manage_channels") &&
       !hasTenantCapability(membership, "view_metrics")

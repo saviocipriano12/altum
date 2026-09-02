@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { prepareAltumVoiceReplyText, storeAltumSpeech, synthesizeAltumSpeech } from "@/lib/server/ai/voice";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   text?: string;
@@ -21,6 +22,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "ai");
     assertTenantCapability(membership, "manage_ai");
 
     const body = (await req.json()) as Body;

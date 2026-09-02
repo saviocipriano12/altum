@@ -1,14 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  collection,
-  onSnapshot,
-  query,
-  orderBy,
-} from "firebase/firestore";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
+import { useAuth } from "@/context/AuthContext";
 import {
   Loader2,
   ArrowRight,
@@ -83,9 +77,13 @@ const PIPELINE_ORDER: PipelineStage[] = [
   "perdido",
 ];
 
-function toDate(value?: TimestampLike | number | null) {
+function toDate(value?: TimestampLike | number | string | null) {
   if (!value) return null;
   if (typeof value === "number") return new Date(value);
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
   if (typeof value === "object" && typeof value.toDate === "function") {
     return value.toDate();
   }
@@ -93,7 +91,9 @@ function toDate(value?: TimestampLike | number | null) {
 }
 
 export default function PipelinePage() {
+  const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [creating, setCreating] = useState(false);
   const [movingId, setMovingId] = useState<string | null>(null);
 
@@ -103,24 +103,28 @@ export default function PipelinePage() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, "leads"), orderBy("createdAt", "desc"));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs: Lead[] = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<Lead, "id">),
-        }));
-        setLeads(docs);
-      },
-      (err) => {
-        console.error("Erro ao carregar leads para pipeline:", err);
-      }
-    );
-
-    return () => unsub();
-  }, []);
+    if (!user) {
+      setLeads([]);
+      return;
+    }
+    let active = true;
+    void authedFetch("/api/admin/dashboard?include=leads")
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({}))) as { leads?: Lead[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Falha ao carregar o pipeline.");
+        if (active) {
+          setLeads(
+            [...(payload.leads || [])].sort(
+              (a, b) => new Date(String(b.createdAt || 0)).getTime() - new Date(String(a.createdAt || 0)).getTime()
+            )
+          );
+        }
+      })
+      .catch((error) => console.error("Erro ao carregar leads para pipeline:", error));
+    return () => {
+      active = false;
+    };
+  }, [user, refreshKey]);
 
   async function handleCreateLead(e: React.FormEvent) {
     e.preventDefault();
@@ -144,6 +148,7 @@ export default function PipelinePage() {
       }
 
       setNovoLead({ nome: "", origem: "" });
+      setRefreshKey((value) => value + 1);
     } catch (err) {
       console.error("Erro ao criar lead manual no pipeline:", err);
     } finally {
@@ -198,6 +203,7 @@ export default function PipelinePage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || "Falha ao mover lead.");
       }
+      setRefreshKey((value) => value + 1);
     } catch (err) {
       console.error("Erro ao mover lead no pipeline:", err);
     } finally {

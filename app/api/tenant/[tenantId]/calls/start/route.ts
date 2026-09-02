@@ -5,6 +5,7 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { normalizePhone } from "@/app/lib/server/phone";
 import { callWhatsAppGateway, getWhatsAppChannelForTenant } from "@/app/lib/server/whatsapp-channel";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   leadId?: string;
@@ -87,6 +88,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "calls");
     if (!hasTenantCapability(membership, "respond_inbox") && !hasTenantCapability(membership, "edit_leads")) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem permissao para iniciar ligacoes.");
     }
@@ -102,7 +104,9 @@ export async function POST(
 
     let gatewayResult: Record<string, unknown> | null = null;
     let mode: "gateway" | "tel" = "tel";
-    let callUrl = contextData.whatsappUrl || contextData.telUrl;
+    // wa.me abre uma conversa e nao inicia uma chamada. Sem um gateway de
+    // Calling API configurado, use a telefonia do dispositivo com clareza.
+    let callUrl = contextData.telUrl;
     let callStatus = "ready_to_call";
 
     if (channel?.callEndpoint) {

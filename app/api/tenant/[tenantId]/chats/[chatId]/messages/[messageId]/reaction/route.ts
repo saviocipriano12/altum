@@ -3,6 +3,8 @@ import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
 
 const ALLOWED_REACTIONS = new Set([
   "\u{1F44D}",
@@ -30,7 +32,9 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId, chatId, messageId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     assertTenantCapability(membership, "respond_inbox");
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
 
     const body = (await req.json()) as Body;
     const emoji = String(body.emoji || "").trim();

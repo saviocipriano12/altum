@@ -10,6 +10,7 @@ import {
   Bot,
   Building2,
   CheckCircle2,
+  CreditCard,
   FileText,
   Gauge,
   Loader2,
@@ -257,30 +258,20 @@ export default function ClienteConfiguracoesPage() {
       setLoading(true);
       setError(null);
 
-      const [settingsRes, usersRes, channelsRes, aiRes, formsRes, readinessRes] = await Promise.all([
+      const [settingsRes, usersRes, channelsRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
         authedFetch(`/api/tenant/${tenant.tenantId}/users`),
         authedFetch(`/api/tenant/${tenant.tenantId}/channels`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/capture/forms`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/readiness`),
       ]);
 
       const settingsPayload = (await settingsRes.json()) as SettingsPayload;
       const usersPayload = (await usersRes.json()) as UsersPayload;
       const channelsPayload = (await channelsRes.json()) as ChannelsPayload;
-      const aiPayload = (await aiRes.json()) as AiPayload;
-      const formsPayload = (await formsRes.json()) as CaptureFormsPayload;
-      const readinessPayload = (await readinessRes.json()) as ReadinessPayload;
-
-      if (!settingsRes.ok || !usersRes.ok || !channelsRes.ok || !aiRes.ok || !formsRes.ok || !readinessRes.ok) {
+      if (!settingsRes.ok || !usersRes.ok || !channelsRes.ok) {
         setError(
           settingsPayload.error ||
             usersPayload.error ||
             channelsPayload.error ||
-            aiPayload.error ||
-            formsPayload.error ||
-            readinessPayload.error ||
             "Falha ao carregar configuracoes."
         );
       }
@@ -288,9 +279,20 @@ export default function ClienteConfiguracoesPage() {
       setSettings(settingsPayload.settings || null);
       setUsers(usersPayload.items || []);
       setChannels(channelsPayload.items || []);
-      setAi(aiPayload.ai || null);
-      setForms(formsPayload.forms || []);
-      setReadiness(readinessPayload || null);
+      void Promise.all([
+        authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/capture/forms`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/readiness`),
+      ]).then(async ([aiRes, formsRes, readinessRes]) => {
+        const [aiPayload, formsPayload, readinessPayload] = await Promise.all([
+          aiRes.json().catch(() => ({})) as Promise<AiPayload>,
+          formsRes.json().catch(() => ({})) as Promise<CaptureFormsPayload>,
+          readinessRes.json().catch(() => null) as Promise<ReadinessPayload | null>,
+        ]);
+        if (aiRes.ok) setAi(aiPayload.ai || null);
+        if (formsRes.ok) setForms(formsPayload.forms || []);
+        if (readinessRes.ok) setReadiness(readinessPayload || null);
+      }).catch(() => undefined);
       await loadPushStatus();
     } catch {
       setError("Falha ao carregar configuracoes.");
@@ -598,6 +600,24 @@ export default function ClienteConfiguracoesPage() {
 
   const links: SettingsLink[] = [
     {
+      href: "/cliente/painel/configuracoes/faturamento",
+      title: "Faturamento e assinatura",
+      description: "Plano atual, vencimentos, historico de cobrancas, pagamento, upgrade e cancelamento.",
+      icon: CreditCard,
+      badge: "financeiro",
+      tone: "info" as const,
+      featured: true,
+    },
+    {
+      href: "/cliente/painel/onboarding",
+      title: "Implantacao guiada",
+      description: "Configure empresa, ofertas, canais, operacao comercial e base inicial em seis etapas simples.",
+      icon: Rocket,
+      badge: readiness?.onboarding?.progressPct === 100 ? "concluida" : `${readiness?.onboarding?.progressPct || 0}%`,
+      tone: readiness?.onboarding?.progressPct === 100 ? ("success" as const) : ("info" as const),
+      featured: true,
+    },
+    {
       href: "/cliente/painel/configuracoes/empresa",
       title: "Dados da empresa",
       description: settings?.name
@@ -725,10 +745,10 @@ export default function ClienteConfiguracoesPage() {
                   </p>
                   <div className="mt-5 flex flex-wrap gap-3">
                     <Link
-                      href="/cliente/painel/go-live"
+                      href="/cliente/painel/onboarding"
                       className="inline-flex items-center gap-2 rounded-xl border border-white/18 bg-white px-4 py-2 text-sm font-semibold text-[var(--cliente-primary)] transition hover:bg-white/92"
                     >
-                      Abrir go-live
+                      Continuar implantacao
                       <ArrowRight className="h-4 w-4" />
                     </Link>
                     {hasCapability("manage_settings") ? (

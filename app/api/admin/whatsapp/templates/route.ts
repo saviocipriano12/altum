@@ -77,9 +77,20 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
 
+    const message = error instanceof Error ? error.message : "Falha ao listar templates WhatsApp.";
+    const expiredToken = /token.*expired|expired.*token/i.test(message);
+    if (expiredToken) {
+      return NextResponse.json({
+        ok: false,
+        templates: [],
+        summary: summarize([]),
+        connectionStatus: "needs_reauth",
+        error: "A conexão oficial da Meta expirou. Reconecte o WhatsApp oficial para consultar ou enviar templates.",
+      });
+    }
     console.error("Erro ao listar templates WhatsApp no admin:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Falha ao listar templates WhatsApp." },
+      { error: message },
       { status: 500 }
     );
   }

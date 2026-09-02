@@ -7,6 +7,8 @@ import {
   assertTenantCapability,
   TenantAccessError,
 } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertTenantStorageAvailable, TenantUsageLimitError } from "@/lib/server/tenant-usage";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_BYTES = 6 * 1024 * 1024;
@@ -24,6 +26,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "respond_inbox");
 
     const bucketName = clean(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET, 300);
@@ -41,6 +44,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     if (!uploaded.size || uploaded.size > MAX_BYTES) {
       return NextResponse.json({ error: "A foto deve ter no maximo 6 MB." }, { status: 413 });
     }
+    await assertTenantStorageAvailable(tenantId, uploaded.size);
 
     const extension = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
     const token = randomUUID();
@@ -66,6 +70,9 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     }
     if (error instanceof TenantAccessError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    }
+    if (error instanceof TenantUsageLimitError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
     console.error("Erro ao subir foto do contato:", error);
     return NextResponse.json({ error: "Falha ao subir foto." }, { status: 500 });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 
 type AdminChatMessageItem = {
   id: string;
@@ -60,7 +60,7 @@ function toMillis(value: unknown) {
 
 export async function GET(req: Request, context: { params: Promise<{ chatId: string }> }) {
   try {
-    await requireRequestUser(req, {
+    const actor = await requireRequestUser(req, {
       roles: ["agency_owner", "agency_admin", "agency_agent"],
     });
 
@@ -68,6 +68,14 @@ export async function GET(req: Request, context: { params: Promise<{ chatId: str
     const cleanChatId = String(chatId || "").trim();
     if (!cleanChatId) {
       return NextResponse.json({ error: "Chat invalido." }, { status: 400 });
+    }
+
+    const chatSnap = await adminDb.collection("chats").doc(cleanChatId).get();
+    if (!chatSnap.exists) {
+      return NextResponse.json({ error: "Chat nao encontrado." }, { status: 404 });
+    }
+    if (!isAdmin(actor) && chatSnap.get("ownerId") !== actor.uid) {
+      return NextResponse.json({ error: "Sem permissao para acessar esta conversa." }, { status: 403 });
     }
 
     const snap = await adminDb.collection("messages").where("chatId", "==", cleanChatId).limit(500).get();

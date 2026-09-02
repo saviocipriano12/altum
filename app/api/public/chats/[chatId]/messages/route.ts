@@ -6,6 +6,7 @@ import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
+import { assertPublicRateLimit, PublicRateLimitError } from "@/lib/server/public-abuse";
 
 type Body = {
   token?: string;
@@ -100,6 +101,8 @@ export async function POST(
     const body = (await req.json()) as Body;
     const token = clean(body.token, 240);
     const text = clean(body.text, 4000);
+
+    await assertPublicRateLimit(req, { scope: "public_chat_message", subject: `${chatId}:${token}`, limit: 30, windowMs: 10 * 60 * 1000 });
 
     if (!token) {
       return NextResponse.json({ error: "Token obrigatorio." }, { status: 400 });
@@ -203,6 +206,9 @@ export async function POST(
 
     return NextResponse.json({ ok: true, chatId });
   } catch (error) {
+    if (error instanceof PublicRateLimitError) {
+      return NextResponse.json({ error: error.message }, { status: 429, headers: { "Retry-After": String(error.retryAfterSeconds) } });
+    }
     console.error("Erro ao criar mensagem publica:", error);
     return NextResponse.json({ error: "Falha ao enviar mensagem." }, { status: 500 });
   }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { SiteShell } from "@/components/public/site-shell";
 import { getAllBlogPosts } from "@/lib/blog";
 import { buildItemListSchema, toJsonLdScript } from "@/lib/schema";
 
@@ -40,12 +41,13 @@ export default async function BlogPage() {
   });
 
   return (
-    <main className="min-h-screen bg-[#0B0B0B] px-6 py-20 text-white">
+    <SiteShell>
+    <div className="min-h-screen bg-[#0B0B0B] px-6 py-20 text-white">
       <section className="mx-auto w-full max-w-6xl">
         <p className="mb-4 text-sm uppercase tracking-[0.2em] text-[#F56E0F]">Blog ALTUM</p>
-        <h1 className="mb-4 text-4xl font-bold md:text-5xl">Insights para construir uma operacao comercial previsivel</h1>
+        <h1 className="mb-4 text-4xl font-bold md:text-5xl">Inteligência para uma operação comercial mais previsível</h1>
         <p className="mb-12 max-w-3xl text-lg leading-8 text-white/75">
-          Artigos sobre engenharia de vendas, qualificacao com IA, acompanhamento de metricas e processos para escalar sem perder qualidade.
+          Artigos sobre atendimento, vendas, automação, inteligência artificial e decisões que aproximam a operação da receita.
         </p>
 
         <div className="grid gap-8 md:grid-cols-2">
@@ -84,6 +86,7 @@ export default async function BlogPage() {
       </section>
 
       <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(itemListSchema)} />
-    </main>
+    </div>
+    </SiteShell>
   );
 }

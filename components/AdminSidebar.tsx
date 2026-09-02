@@ -115,7 +115,7 @@ export default function AdminSidebar({
           ALTUM
         </span>
         <span className="mt-1 block truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-          Agency Command
+          Gestão da plataforma
         </span>
       </div>
     </div>
@@ -155,7 +155,7 @@ export default function AdminSidebar({
                   Sessao
                 </p>
                 <p className="mt-1 text-xs font-semibold text-slate-700">
-                  {isAdmin ? "Admin total" : "Operador"}
+                  {isAdmin ? "Administrador" : "Operador"}
                 </p>
               </div>
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.75)]" />
@@ -168,7 +168,7 @@ export default function AdminSidebar({
         {!collapsed ? (
           <div className="border-t border-slate-200 p-4">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.14em] text-slate-600">
-              <span>Altum OS</span>
+              <span>Altum SaaS</span>
               <span>2026</span>
             </div>
           </div>
@@ -206,7 +206,7 @@ export default function AdminSidebar({
                 Sessao
               </p>
               <p className="mt-1 text-xs font-semibold text-slate-700">
-                {isAdmin ? "Admin total" : "Operador"}
+                {isAdmin ? "Administrador" : "Operador"}
               </p>
             </div>
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.75)]" />

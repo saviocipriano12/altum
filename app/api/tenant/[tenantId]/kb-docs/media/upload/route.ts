@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { firebaseStorageBucketCandidates, saveFirebaseStorageFileWithFallback } from "@/lib/server/firebase-storage";
+import { assertTenantStorageAvailable, TenantUsageLimitError } from "@/lib/server/tenant-usage";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 64 * 1024 * 1024;
@@ -74,6 +76,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "ai");
     assertTenantCapability(membership, "manage_ai");
 
     if (firebaseStorageBucketCandidates().length === 0) {
@@ -100,6 +103,7 @@ export async function POST(
         { status: 413 }
       );
     }
+    await assertTenantStorageAvailable(tenantId, size);
 
     const originalName = safeFileName(uploaded.name, `material.${extensionFromNameOrMime("", mimeType)}`);
     const extension = extensionFromNameOrMime(originalName, mimeType);
@@ -145,6 +149,9 @@ export async function POST(
     }
     if (error instanceof TenantAccessError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    }
+    if (error instanceof TenantUsageLimitError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
     console.error("Erro ao subir midia da base de conhecimento:", error);
     return NextResponse.json({ error: "Falha ao subir midia." }, { status: 500 });

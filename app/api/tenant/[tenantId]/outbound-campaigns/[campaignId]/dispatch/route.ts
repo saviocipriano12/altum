@@ -9,6 +9,8 @@ import {
   enqueueOutboundCampaign,
   processOutboundCampaignJobs,
 } from "@/lib/server/outbound-campaigns";
+import { resolveImmediateOutboundProcessLimit } from "@/lib/server/outbound-scheduling";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 export async function POST(
   req: Request,
@@ -18,6 +20,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId, campaignId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantCapability(membership, "manage_automations");
 
     const body = (await req.json().catch(() => ({}))) as { scheduledAt?: unknown };
@@ -36,7 +39,10 @@ export async function POST(
       scheduledAt,
     });
     if (!scheduledAt || scheduledAt.getTime() <= Date.now()) {
-      await processOutboundCampaignJobs({ tenantId, limit: 1 });
+      await processOutboundCampaignJobs({
+        tenantId,
+        limit: resolveImmediateOutboundProcessLimit(result.jobs),
+      });
     }
 
     return NextResponse.json({ ok: true, tenantId, campaignId, ...result });

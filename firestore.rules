@@ -71,91 +71,162 @@ service cloud.firestore {
         get(/databases/$(database)/documents/tenant_users/$(tenantId + "_" + myUid())).data.status == "active";
     }
 
+    function tenantMembership(tenantId) {
+      return get(/databases/$(database)/documents/tenant_users/$(tenantId + "_" + myUid()));
+    }
+
+    function canManageTenant(tenantId) {
+      return isAgencyAdmin() || (
+        hasTenantMembership(tenantId) && (
+          tenantMembership(tenantId).data.role == "client_owner" ||
+          tenantMembership(tenantId).data.role == "client_admin"
+        )
+      );
+    }
+
+    // A API do painel aplica a mesma regra no servidor. Estas regras existem
+    // para impedir que um atendente contorne a API consultando o Firestore
+    // diretamente e leia a carteira de outro vendedor.
+    function isTenantCommercialManager(tenantId) {
+      return hasTenantMembership(tenantId) && (
+        tenantMembership(tenantId).data.role == "client_owner" ||
+        tenantMembership(tenantId).data.role == "client_admin"
+      );
+    }
+
+    function recordAssignedToMe(record) {
+      return (record.keys().hasAny(["assignedTo"]) && record.assignedTo == myUid()) ||
+        (record.keys().hasAny(["ownerId"]) && record.ownerId == myUid()) ||
+        (record.keys().hasAny(["ownerUserId"]) && record.ownerUserId == myUid()) ||
+        (record.keys().hasAny(["assignedUserId"]) && record.assignedUserId == myUid()) ||
+        (record.keys().hasAny(["responsavelId"]) && record.responsavelId == myUid());
+    }
+
+    function canReadCommercialRecord(tenantId, record) {
+      return isAgencyMember() || isTenantCommercialManager(tenantId) || (
+        hasTenantMembership(tenantId) && recordAssignedToMe(record)
+      );
+    }
+
+    function canWriteCommercialRecord(tenantId) {
+      return isAgencyMember() || isTenantCommercialManager(tenantId);
+    }
+
     function canReadChat(chatId) {
-      return isAdmin() ||
-        (
-          isActive() &&
-          (
-            get(/databases/$(database)/documents/chats/$(chatId)).data.ownerId == myUid() ||
-            hasTenantMembership(get(/databases/$(database)/documents/chats/$(chatId)).data.tenantId)
-          )
-        );
+      return canReadCommercialRecord(
+        get(/databases/$(database)/documents/chats/$(chatId)).data.tenantId,
+        get(/databases/$(database)/documents/chats/$(chatId)).data
+      );
     }
 
     match /users/{uid} {
       // Nao usar isActive/isOwner aqui para evitar ciclo de avaliacao no proprio users/{uid}.
       allow read: if isSelf(uid) || isAdmin();
-      allow create: if isSelf(uid) || isAdmin();
-      allow update: if isSelf(uid) || isAdmin();
+      // Cadastro e campos de autorizacao sao criados apenas pelo Admin SDK no servidor.
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (
+        isSelf(uid) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "name", "photoURL", "phone", "locale", "updatedAt"
+        ])
+      );
       allow delete: if isAdmin();
     }
 
     match /tenants/{tenantId} {
       allow read: if isAgencyMember() || hasTenantMembership(tenantId);
-      allow create, update, delete: if isAgencyAdmin();
+      allow create, delete: if isAgencyAdmin();
+      allow update: if isAgencyAdmin() || (
+        canManageTenant(tenantId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "name", "responsibleName", "responsibleEmail", "phone", "updatedAt"
+        ])
+      );
     }
 
     match /tenant_users/{docId} {
       allow read: if isAgencyMember() || resource.data.userId == myUid();
+      // Associacao, papel e bloqueio de usuario passam por API com autorizacao no servidor.
       allow create, update, delete: if isAgencyAdmin();
     }
 
     match /tenant_settings/{tenantId} {
       allow read: if isAgencyMember() || hasTenantMembership(tenantId);
-      allow create, update, delete: if isAgencyMember();
+      allow create, update: if isAgencyMember() || canManageTenant(tenantId);
+      allow delete: if isAgencyAdmin();
+    }
+
+    match /tenant_entitlements/{tenantId} {
+      allow read: if isAgencyMember() || hasTenantMembership(tenantId);
+      allow create, update, delete: if isAgencyAdmin();
     }
 
     match /tenant_channels/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create, update, delete: if isAgencyMember();
+      allow create: if isAgencyMember() || canManageTenant(request.resource.data.tenantId);
+      allow update: if isAgencyMember() || canManageTenant(resource.data.tenantId);
+      allow delete: if isAgencyAdmin() || canManageTenant(resource.data.tenantId);
+    }
+
+    match /client_contracts/{docId} {
+      allow read: if isAgencyAdmin() || hasTenantMembership(resource.data.tenantId);
+      allow write: if false;
+    }
+
+    match /platform_plans/{docId} {
+      allow read, write: if isAgencyAdmin();
+    }
+
+    match /asaas_checkouts/{docId} {
+      allow read, write: if false;
+    }
+
+    match /asaas_webhook_events_internal/{docId} {
+      allow read, write: if false;
     }
 
     match /leads/{leadId} {
-      allow read: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAdmin() || isOwner(request.resource.data.ownerId) || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
-      allow delete: if isAdmin() || isOwner(resource.data.ownerId);
+      allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
+      allow create: if canWriteCommercialRecord(request.resource.data.tenantId);
+      allow update: if canWriteCommercialRecord(resource.data.tenantId);
+      allow delete: if canWriteCommercialRecord(resource.data.tenantId);
 
       match /events/{eventId} {
-        allow read, create: if isAdmin() ||
-          isOwner(get(/databases/$(database)/documents/leads/$(leadId)).data.ownerId) ||
-          hasTenantMembership(get(/databases/$(database)/documents/leads/$(leadId)).data.tenantId);
-        allow update, delete: if isAdmin();
+        allow read: if canReadCommercialRecord(
+          get(/databases/$(database)/documents/leads/$(leadId)).data.tenantId,
+          get(/databases/$(database)/documents/leads/$(leadId)).data
+        );
+        allow create, update, delete: if canWriteCommercialRecord(
+          get(/databases/$(database)/documents/leads/$(leadId)).data.tenantId
+        );
       }
     }
 
     match /chats/{chatId} {
-      allow read: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAdmin() || isOwner(request.resource.data.ownerId) || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
-      allow delete: if isAdmin();
+      allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
+      allow create: if canWriteCommercialRecord(request.resource.data.tenantId);
+      allow update: if canWriteCommercialRecord(resource.data.tenantId);
+      allow delete: if canWriteCommercialRecord(resource.data.tenantId);
     }
 
     match /messages/{messageId} {
-      allow read: if isAdmin() || canReadChat(resource.data.chatId) || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAdmin() || canReadChat(request.resource.data.chatId) || hasTenantMembership(request.resource.data.tenantId);
-      allow update, delete: if isAdmin();
+      allow read: if canReadChat(resource.data.chatId);
+      allow create, update, delete: if canWriteCommercialRecord(resource.data.tenantId);
     }
 
     match /chat_notes/{noteId} {
-      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
-      allow delete: if isAgencyAdmin();
+      allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
+      allow create, update, delete: if canWriteCommercialRecord(request.resource.data.tenantId);
     }
 
     match /lead_notes/{noteId} {
-      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
-      allow delete: if isAgencyAdmin();
+      allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
+      allow create, update, delete: if canWriteCommercialRecord(request.resource.data.tenantId);
     }
 
     match /lead_tasks/{taskId} {
-      allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
-      allow delete: if isAgencyAdmin();
+      allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
+      allow create, update, delete: if canWriteCommercialRecord(request.resource.data.tenantId);
     }
 
     match /pipeline/{docId} {

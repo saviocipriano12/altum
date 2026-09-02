@@ -3,6 +3,8 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { normalizePipelineStageId } from "@/lib/pipeline";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { canAccessAssignedCommercialRecord } from "@/lib/server/commercial-access";
 
 type TaskItem = Record<string, unknown> & {
   id: string;
@@ -138,6 +140,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "automation");
     assertTenantRole(membership, "client_viewer");
 
     const snap = await adminDb.collection("lead_tasks").where("tenantId", "==", tenantId).limit(300).get();
@@ -162,6 +165,7 @@ export async function GET(
       if (!leadSnap.exists) continue;
       const data = leadSnap.data() as Record<string, unknown>;
       if (String(data.tenantId || "") !== tenantId) continue;
+      if (!canAccessAssignedCommercialRecord(membership, user.uid, data)) continue;
       leadsById.set(leadSnap.id, { id: leadSnap.id, ...data } as LeadItem);
     }
 
@@ -187,7 +191,7 @@ export async function GET(
     }
 
     const now = Date.now();
-    const items = tasks.map((task) => {
+    const items = tasks.filter((task) => leadsById.has(String(task.leadId || ""))).map((task) => {
       const lead = leadsById.get(String(task.leadId || ""));
       const dueAt = task.dueAt || null;
       const dueMillis = toMillis(dueAt);

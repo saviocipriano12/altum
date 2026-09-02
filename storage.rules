@@ -1,0 +1,47 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isActiveTenantUser(tenantId) {
+      return signedIn() &&
+        firestore.exists(/databases/(default)/documents/tenant_users/$(tenantId + "_" + request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/tenant_users/$(tenantId + "_" + request.auth.uid)).data.status == "active";
+    }
+
+    function isActiveAgencyUser() {
+      return signedIn() &&
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == "active" &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in [
+          "admin", "agency_owner", "agency_admin", "agency_agent", "closer", "sdr"
+        ];
+    }
+
+    // O navegador apenas prepara o arquivo. A API autenticada valida tenant,
+    // conversa, tipo, tamanho e permissao comercial antes de envia-lo ao canal.
+    match /chat-media/{tenantId}/{chatId}/{userId}/{fileName} {
+      allow create, update: if isActiveTenantUser(tenantId) &&
+        userId == request.auth.uid &&
+        request.resource.size > 0 &&
+        request.resource.size <= 32 * 1024 * 1024;
+      allow read: if isActiveTenantUser(tenantId) && userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Compatibilidade com a gravacao de voz do chat interno da agencia.
+    match /chats/{chatId}/{fileName} {
+      allow read: if isActiveAgencyUser();
+      allow create, update: if isActiveAgencyUser() &&
+        request.resource.size > 0 &&
+        request.resource.size <= 16 * 1024 * 1024;
+      allow delete: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

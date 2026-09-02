@@ -10,6 +10,7 @@ import {
   getTenantSocialAutomationSummary,
   saveTenantSocialAutomationConfig,
 } from "@/lib/server/social/service";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 export async function GET(
   req: Request,
@@ -19,6 +20,7 @@ export async function GET(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "social_automation");
     assertTenantRole(membership, "client_viewer");
 
     const payload = await getTenantSocialAutomationSummary(tenantId);
@@ -43,6 +45,7 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "social_automation");
     const canManage = hasTenantCapability(membership, "manage_channels") || hasTenantCapability(membership, "manage_automations");
 
     if (!canManage) {

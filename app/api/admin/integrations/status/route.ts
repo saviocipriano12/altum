@@ -46,7 +46,7 @@ function checkIntegrationWithAliases(
 
 export async function GET(req: Request) {
   try {
-    await requireRequestUser(req, { roles: ["admin"] });
+    await requireRequestUser(req, { roles: ["agency_admin"] });
 
     const integrations: IntegrationStatus[] = [
       checkIntegrationWithAliases(
@@ -78,27 +78,44 @@ export async function GET(req: Request) {
       ),
       checkIntegration(
         "google_places",
-        "Google Places (Prospecção)",
+        "Google Places (Prospeccao)",
         ["GOOGLE_PLACES_API_KEY"],
-        "Captação de leads no gerador de prospecção."
+        "Captacao de leads no gerador de prospeccao."
       ),
       checkIntegration(
         "asaas",
-        "Asaas (Cobrança)",
-        ["ASAAS_API_KEY", "ASAAS_API_URL", "ASAAS_WEBHOOK_TOKEN"],
-        "Checkout, cobrança e confirmação de pagamentos."
+        "Asaas (Cobranca)",
+        ["ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN"],
+        "Checkout, cobranca e confirmacao de pagamentos."
+      ),
+      checkIntegration(
+        "evolution",
+        "Evolution API (WhatsApp por QR)",
+        ["EVOLUTION_API_URL", "EVOLUTION_API_KEY"],
+        "Conexao de WhatsApp por QR, entrega de mensagens e midias da operacao."
+      ),
+      checkIntegration(
+        "stripe",
+        "Stripe (Plataforma SaaS)",
+        [
+          "STRIPE_SECRET_KEY",
+          "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+          "STRIPE_WEBHOOK_SECRET",
+          "NEXT_PUBLIC_SITE_URL",
+        ],
+        "Assinatura recorrente da plataforma, checkout e webhooks de billing."
       ),
       checkIntegration(
         "firebase_admin",
         "Firebase Admin SDK",
         ["FIREBASE_SERVICE_ACCOUNT_KEY"],
-        "Autenticação server-side, permissões de API e jobs administrativos."
+        "Autenticacao server-side, permissoes de API e jobs administrativos."
       ),
       checkIntegrationWithAliases(
         "ai_provider",
         "IA Generativa (futuro)",
         [["OPENAI_API_KEY", "OPENROUTER_API_KEY", "OPEN_ROUTER_API_KEY"]],
-        "Opcional nesta fase. Necessário para copiloto generativo completo."
+        "Opcional nesta fase. Necessario para copiloto generativo completo."
       ),
     ];
 
@@ -125,4 +142,3 @@ export async function GET(req: Request) {
     );
   }
 }
-

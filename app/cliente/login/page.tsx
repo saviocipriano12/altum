@@ -1,10 +1,17 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
+import {
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+} from "firebase/auth";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { auth } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
+import { firebaseAuthErrorMessage } from "@/lib/firebase-auth-errors";
 import { Loader2, Lock, Mail, ArrowRight, ShieldCheck } from "lucide-react";
 
 export default function ClienteLoginPage() {
@@ -17,6 +24,7 @@ export default function ClienteLoginPage() {
   const searchParams = useSearchParams();
   const tenantId = String(searchParams.get("tenantId") || "").trim();
   const next = String(searchParams.get("next") || "").trim();
+  const passwordReset = searchParams.get("passwordReset") === "1";
 
   const buildPortalEndpoint = useCallback(() => {
     return tenantId
@@ -45,6 +53,13 @@ export default function ClienteLoginPage() {
         return;
       }
 
+      const usesPassword = user.providerData.some((provider) => provider.providerId === "password");
+      if (usesPassword && !user.emailVerified) {
+        setChecking(false);
+        router.replace(`/cliente/verificar-email?email=${encodeURIComponent(user.email || "")}`);
+        return;
+      }
+
       try {
         const res = await authedFetch(buildPortalEndpoint());
         const payload = (await res.json()) as {
@@ -68,7 +83,11 @@ export default function ClienteLoginPage() {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      if (!credential.user.emailVerified) {
+        router.replace(`/cliente/verificar-email?email=${encodeURIComponent(credential.user.email || email)}`);
+        return;
+      }
       const res = await authedFetch(buildPortalEndpoint());
       const data = (await res.json()) as {
         error?: string;
@@ -80,8 +99,33 @@ export default function ClienteLoginPage() {
       }
 
       router.push(buildPostLoginHref(data.portalUser?.tenantId));
-    } catch {
-      setError("Nao foi possivel entrar. Verifique e-mail e senha.");
+    } catch (caught) {
+      setError(firebaseAuthErrorMessage(caught, "Nao foi possivel entrar. Verifique e-mail e senha."));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGoogleLogin() {
+    setError("");
+    setLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      await signInWithPopup(auth, provider);
+      const res = await authedFetch(buildPortalEndpoint());
+      const data = (await res.json().catch(() => ({}))) as { portalUser?: { tenantId?: string }; code?: string };
+      if (res.ok && data.portalUser?.tenantId) {
+        router.push(buildPostLoginHref(data.portalUser.tenantId));
+        return;
+      }
+      if (data.code === "portal_user_not_found") {
+        router.push("/cadastro?google=1");
+        return;
+      }
+      setError("Sua conta Google ainda nao esta vinculada a uma empresa.");
+    } catch (caught) {
+      setError(firebaseAuthErrorMessage(caught, "Nao foi possivel entrar com Google."));
     } finally {
       setLoading(false);
     }
@@ -128,6 +172,7 @@ export default function ClienteLoginPage() {
               <input
                 type="email"
                 required
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-transparent text-sm outline-none"
@@ -143,6 +188,7 @@ export default function ClienteLoginPage() {
               <input
                 type="password"
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-transparent text-sm outline-none"
@@ -150,6 +196,10 @@ export default function ClienteLoginPage() {
               />
             </div>
           </div>
+
+          {passwordReset && !error ? (
+            <p role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">Senha atualizada com sucesso. Entre usando sua nova senha.</p>
+          ) : null}
 
           {error ? (
             <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{error}</p>
@@ -163,7 +213,16 @@ export default function ClienteLoginPage() {
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
             Entrar no portal
           </button>
+          <Link href={email.trim() ? `/cliente/esqueci-senha?email=${encodeURIComponent(email.trim())}` : "/cliente/esqueci-senha"} className="block w-full text-center text-xs font-semibold text-[#93C5FD] hover:text-white">
+            Esqueci minha senha
+          </Link>
         </form>
+
+        <div className="my-5 flex items-center gap-3 text-[10px] uppercase tracking-widest text-white/30"><span className="h-px flex-1 bg-white/10" />ou<span className="h-px flex-1 bg-white/10" /></div>
+        <button type="button" onClick={() => void handleGoogleLogin()} disabled={loading} className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60">
+          <span className="text-base font-black text-[#60A5FA]">G</span> Continuar com Google
+        </button>
+        <p className="mt-5 text-center text-sm text-white/50">Ainda nao tem conta? <Link href="/cadastro" className="font-bold text-[#93C5FD]">Teste gratis por 7 dias</Link></p>
 
         <p className="mt-6 text-center text-[11px] uppercase tracking-[0.16em] text-white/35">ALTUM Operacao Comercial v1.0</p>
       </div>

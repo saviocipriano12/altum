@@ -65,6 +65,10 @@ function compactObject<T extends Record<string, unknown>>(value: T) {
   ) as Partial<T>;
 }
 
+function firestoreSafe<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 function sanitizeId(value: string, max = 240) {
   return value.replace(/[^a-zA-Z0-9:_-]/g, "_").slice(0, max);
 }
@@ -561,8 +565,8 @@ export async function dispatchLeadConversionEvents(input: DispatchInput) {
           reason: definition.reason,
           eventId: claim.eventId,
           status: "processed",
-          request: sent.request,
-          response: sent.response,
+          request: firestoreSafe(sent.request),
+          response: firestoreSafe(sent.response),
           processedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -626,8 +630,8 @@ export async function dispatchLeadConversionEvents(input: DispatchInput) {
           reason: definition.reason,
           eventId: claim.eventId,
           status: "processed",
-          request: sent.request,
-          response: sent.response,
+          request: firestoreSafe(sent.request),
+          response: firestoreSafe(sent.response),
           processedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         },

@@ -9,6 +9,13 @@ function clean(value: unknown, max = 140) {
 
 async function resolveTenantIdFromClient(clientId: string) {
   try {
+    const directTenant = await adminDb.collection("tenants").doc(clientId).get();
+    if (directTenant.exists) return directTenant.id;
+  } catch (error) {
+    console.warn("Falha ao resolver tenant direto:", clientId, error);
+  }
+
+  try {
     const clientSnap = await adminDb.collection("clientes").doc(clientId).get();
     if (clientSnap.exists) {
       const clientData = clientSnap.data() as Record<string, unknown>;

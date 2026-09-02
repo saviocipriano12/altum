@@ -39,10 +39,9 @@ import {
 } from "@/app/lib/server/meta-channel";
 import {
   getWhatsAppChannelForTenant,
-  sendMetaMediaLinkMessage,
-  sendMetaTemplateMessage,
-  sendMetaTextMessage,
+  isOfficialWhatsAppProvider,
 } from "@/app/lib/server/whatsapp-channel";
+import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 import { getTenantSettings, isTenantBillingBlocked } from "@/lib/server/tenant";
 import {
   getBusinessProfile,
@@ -59,6 +58,8 @@ import { runPipelineStageSideEffects } from "@/lib/server/crm/stage-effects";
 import type { AltumPlannerDecision } from "@/lib/server/ai/altum-agent-v2";
 import type { AltumConversationRuntimeState } from "@/lib/server/ai/runtime-state";
 import { buildAiTaskPreset, suggestPipelineStageForAiAction } from "@/lib/ai-next-actions";
+import { inferSalesMotion, type SalesMotion } from "@/lib/sales-journey";
+import { getTenantEntitlements } from "@/lib/server/tenant-entitlements";
 
 const MAX_CONTEXT_MESSAGES = 24;
 const MAX_KB_DOCS = 50;
@@ -143,6 +144,7 @@ type TenantAiConfig = {
   responsePaused: boolean;
   businessProfileId: BusinessProfileId;
   businessProfileLabel: string;
+  salesMotion: SalesMotion;
   agentName: string;
   toneOfVoice: string;
   businessSummary: string;
@@ -749,33 +751,42 @@ function inferResponseFormatPreference(input: {
   previousAskedAt?: Date | null;
 }) {
   const normalizedType = sanitizeText(input.messageType, 40).toLowerCase();
-  if (normalizedType === "audio") {
-    return { preference: "audio" as ResponseFormatPreference, reason: "inbound_audio" };
+  const text = normalizeResponsePreferenceText(input.inboundText);
+  if (!text) {
+    if (normalizedType === "audio") {
+      return { preference: "audio" as ResponseFormatPreference, reason: "inbound_audio" };
+    }
+    return { preference: null as ResponseFormatPreference | null, reason: "empty_text" };
   }
 
-  const text = normalizeResponsePreferenceText(input.inboundText);
-  if (!text) return { preference: null as ResponseFormatPreference | null, reason: "empty_text" };
+  const asksText =
+    (/\b(texto|escrito|digitado|mensagem)\b/.test(text) &&
+      /\b(prefiro|preferi|prefere|quero|manda|mandar|envia|enviar|pode|poderia|responde|responder)\b/.test(text)) ||
+    /\b(nao consigo ouvir|nao consigo escutar|nao posso ouvir|nao posso escutar|sem audio|sem voz|manda em texto|envia em texto|pode mandar em texto|pode enviar em texto|me manda em texto|me envia em texto)\b/.test(
+      text
+    );
+  if (asksText) return { preference: "text" as ResponseFormatPreference, reason: "explicit_text_preference" };
 
   const asksAudio =
     /\b(audio|voz|falado|falar|locucao)\b/.test(text) &&
     /\b(prefiro|preferi|prefere|quero|manda|mandar|envia|enviar|pode|poderia|responde|responder)\b/.test(text);
-  const asksText =
-    (/\b(texto|escrito|digitado|mensagem)\b/.test(text) &&
-      /\b(prefiro|preferi|prefere|quero|manda|mandar|envia|enviar|pode|poderia|responde|responder)\b/.test(text)) ||
-    /\b(nao consigo ouvir|nao posso ouvir|sem audio|sem voz|manda em texto|envia em texto|pode mandar em texto|pode enviar em texto)\b/.test(
-      text
-    );
 
   if (asksAudio) return { preference: "audio" as ResponseFormatPreference, reason: "explicit_audio_preference" };
-  if (asksText) return { preference: "text" as ResponseFormatPreference, reason: "explicit_text_preference" };
+
+  if (normalizedType === "audio") {
+    return { preference: "audio" as ResponseFormatPreference, reason: "inbound_audio" };
+  }
 
   const askedRecently =
     Boolean(input.previousAskedAt) && Date.now() - (input.previousAskedAt?.getTime() || 0) <= 30 * 60 * 1000;
   if (askedRecently) {
-    if (/^(sim|pode|claro|fechado|ok|okay|manda|pode mandar)(\s|$)/.test(text)) {
+    const shortFormatReply =
+      text.length <= 36 &&
+      !/\b(exemplo|modelo|landing|lp|pagina|site|oferta|campanha|diagnostico|reuniao|proposta|orcamento)\b/.test(text);
+    if (shortFormatReply && /^(sim|pode sim|pode ser|claro|fechado|ok|okay)(\s|$)/.test(text)) {
       return { preference: "audio" as ResponseFormatPreference, reason: "reply_yes_after_audio_offer" };
     }
-    if (/^(nao|melhor nao|prefiro texto|texto)(\s|$)/.test(text)) {
+    if (shortFormatReply && /^(nao|melhor nao|prefiro texto|texto|em texto|melhor texto)(\s|$)/.test(text)) {
       return { preference: "text" as ResponseFormatPreference, reason: "reply_no_after_audio_offer" };
     }
   }
@@ -827,9 +838,9 @@ function shouldProactivelySendVoiceReply(input: {
   }
 
   const inboundType = sanitizeText(input.inboundMessageType, 40).toLowerCase();
-  if (inboundType === "audio") return { shouldSend: true, reason: "inbound_audio" };
   if (input.preference === "text") return { shouldSend: false, reason: "lead_prefers_text" };
   if (input.preference === "audio") return { shouldSend: true, reason: "lead_prefers_audio" };
+  if (inboundType === "audio") return { shouldSend: true, reason: "inbound_audio" };
   if (input.voiceReplyMode === "audio_only") return { shouldSend: false, reason: "voice_audio_only_mode" };
   if (input.voiceReplyMode === "always") return { shouldSend: false, reason: "voice_always_requires_explicit_signal" };
 
@@ -844,9 +855,9 @@ function shouldPlanAudioResponse(input: {
 }) {
   if (!input.voiceReplyEnabled) return false;
   const inboundType = sanitizeText(input.inboundMessageType, 40).toLowerCase();
-  if (inboundType === "audio") return true;
   if (input.preference === "text") return false;
   if (input.preference === "audio") return true;
+  if (inboundType === "audio") return true;
   return false;
 }
 
@@ -1084,6 +1095,15 @@ function summarizeCommercialBrainForAgent(brain: TenantAiConfig["commercialBrain
   return lines.join("\n").slice(0, 1800);
 }
 
+function salesMotionInstruction(motion: SalesMotion) {
+  if (motion === "appointment") return "Quando houver intenção de compra, ofereça horários reais em vez de empurrar uma reunião comercial.";
+  if (motion === "store_visit") return "Quando houver intenção de compra, conduza para uma visita com dia e período definidos.";
+  if (motion === "direct_checkout") return "Quando a opção estiver clara, facilite a compra e o checkout sem criar reunião ou proposta desnecessária.";
+  if (motion === "digital_delivery") return "Quando a opção estiver clara, facilite pagamento e explique a entrega do acesso digital.";
+  if (motion === "assisted_purchase") return "Ajude a escolher a opção correta e conclua a compra na conversa quando possível.";
+  return "Conduza a venda consultiva para uma decisão clara, usando proposta ou reunião somente quando elas forem necessárias.";
+}
+
 function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>): TenantAiConfig {
   const ai =
     settings && typeof settings.ai === "object" && settings.ai
@@ -1094,16 +1114,24 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
   const playbookPreset = getBusinessProfilePlaybookPreset(businessProfileId);
   const operatingProfile = normalizeTenantAiOperatingProfile(ai.operatingProfile);
   const commercialBrain = normalizeCommercialBrain(ai.commercialBrain);
+  const blueprintRoot = settings?.businessBlueprint && typeof settings.businessBlueprint === "object" ? settings.businessBlueprint as Record<string, unknown> : {};
+  const activeBlueprint = blueprintRoot.active && typeof blueprintRoot.active === "object" ? blueprintRoot.active as Record<string, unknown> : {};
+  const blueprintAiPolicy = activeBlueprint.aiPolicy && typeof activeBlueprint.aiPolicy === "object" ? activeBlueprint.aiPolicy as Record<string, unknown> : {};
+  const blueprintMotion = sanitizeText(activeBlueprint.salesMotion, 40);
+  const salesMotion = ["consultative", "appointment", "store_visit", "assisted_purchase", "direct_checkout", "digital_delivery"].includes(blueprintMotion)
+    ? blueprintMotion as SalesMotion
+    : inferSalesMotion({ lead: {}, settings: settings as Record<string, unknown> });
 
   return {
     enabled: ai.enabled !== false,
     responsePaused: ai.responsePaused === true,
     businessProfileId,
     businessProfileLabel: businessProfile.label,
+    salesMotion,
     agentName:
       sanitizeText(ai.agentName, 80) ||
       `Agente ${sanitizeText(settings?.name, 80) || businessProfile.label}`,
-    toneOfVoice: sanitizeText(ai.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
+    toneOfVoice: sanitizeText(ai.toneOfVoice, 120) || sanitizeText(blueprintAiPolicy.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
     businessSummary:
       sanitizeText(ai.businessSummary, 360) ||
       sanitizeText(settings?.name, 120) ||
@@ -1125,9 +1153,9 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
     whatsappTemplateFollowUpName: sanitizeText(ai.whatsappTemplateFollowUpName, 120) || "follow_up_geral",
     whatsappTemplateFollowUpLanguage: sanitizeText(ai.whatsappTemplateFollowUpLanguage, 24) || "pt_BR",
     whatsappTemplateFollowUpParams: parseLines(ai.whatsappTemplateFollowUpParams, 12),
-    guardrails: Array.from(new Set([...DEFAULT_GUARDRAILS, ...businessProfile.ai.guardrails, ...parseGuardrails(ai.guardrails)])).slice(0, 24),
+    guardrails: Array.from(new Set([...DEFAULT_GUARDRAILS, ...businessProfile.ai.guardrails, ...parseGuardrails(blueprintAiPolicy.guardrails), ...parseGuardrails(ai.guardrails)])).slice(0, 24),
     mandatoryQuestions: Array.from(new Set([...businessProfile.ai.mandatoryQuestions, ...parseLines(ai.mandatoryQuestions, 12)])).slice(0, 12),
-    escalationTopics: Array.from(new Set([...businessProfile.ai.escalationTopics, ...parseLines(ai.escalationTopics, 12)])).slice(0, 12),
+    escalationTopics: Array.from(new Set([...businessProfile.ai.escalationTopics, ...parseLines(blueprintAiPolicy.handoffWhen, 12), ...parseLines(ai.escalationTopics, 12)])).slice(0, 12),
     playbookOffers: playbookPreset.offers.slice(0, 6),
     playbookScripts: playbookPreset.scripts.slice(0, 6),
     ...operatingProfile,
@@ -1561,6 +1589,78 @@ function buildOutboundCampaignContinuation(input: {
   return [intro, promise, close].join("\n\n");
 }
 
+function hasActiveOutboundCampaignContext(leadMemory: AltumLeadMemory | null) {
+  return Boolean(
+    cleanLeadFacingCampaignText(leadMemory?.campaignOfferName, 180) ||
+      cleanLeadFacingCampaignText(leadMemory?.lastOutboundCampaignName, 180) ||
+      cleanLeadFacingCampaignText(leadMemory?.campaignOfferSummary, 260) ||
+      cleanLeadFacingCampaignText(leadMemory?.campaignExampleUrl, 700)
+  );
+}
+
+function shouldForceCampaignContextReply(input: {
+  inboundText: string;
+  responseText: string;
+  leadMemory: AltumLeadMemory | null;
+}) {
+  if (!hasActiveOutboundCampaignContext(input.leadMemory)) return false;
+
+  const inbound = normalizeComparable(input.inboundText);
+  const outbound = normalizeComparable(input.responseText);
+  const offerName = normalizeComparable(
+    [
+      cleanLeadFacingCampaignText(input.leadMemory?.campaignOfferName, 180),
+      cleanLeadFacingCampaignText(input.leadMemory?.lastOutboundCampaignName, 180),
+      cleanLeadFacingCampaignText(input.leadMemory?.campaignOfferSummary, 260),
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const offerWords = offerName.split(" ").filter((word) => word.length >= 5).slice(0, 10);
+  const responseMentionsOffer = offerWords.length > 0 && offerWords.some((word) => outbound.includes(word));
+  const leadIsReferencingCampaign =
+    /\b(exemplo|modelo|mostra|manda|envia|ver|quero|pode|sim|isso|ofereceu|oferta|anuncio|campanha|lp|landing|pagina|site)\b/.test(
+      inbound
+    ) || inbound.length <= 90;
+  const responseLooksGeneric =
+    /\b(principal desafio comercial|dar andamento|informe seu nome|setor responsavel|atendimento|demanda|me conta|gargalo comercial|diagnostico inicial)\b/.test(
+      outbound
+    );
+
+  return leadIsReferencingCampaign && (!responseMentionsOffer || responseLooksGeneric);
+}
+
+function buildQualityRescueReply(input: {
+  inboundText: string;
+  finalOutboundText: string;
+  leadMemory: AltumLeadMemory | null;
+  businessType?: string | null;
+  primaryGoal?: string | null;
+  currentChannels?: string | null;
+  recommendedOffer?: string | null;
+  nextAction?: string | null;
+}) {
+  if (shouldForceCampaignContextReply({
+    inboundText: input.inboundText,
+    responseText: input.finalOutboundText,
+    leadMemory: input.leadMemory,
+  })) {
+    return buildSafeCampaignLeadReply({
+      inboundText: input.inboundText,
+      leadMemory: input.leadMemory,
+      fallbackText: "",
+    });
+  }
+
+  return buildDirectDiagnosticClose({
+    businessType: input.businessType || null,
+    primaryGoal: input.primaryGoal || null,
+    currentChannels: input.currentChannels || null,
+    recommendedOffer: input.recommendedOffer || null,
+    nextAction: input.nextAction || null,
+  });
+}
+
 function looksLikeRepeatedQuestion(currentText: string, previousText?: string | null) {
   const current = normalizeComparable(currentText);
   const previous = normalizeComparable(String(previousText || ""));
@@ -1573,6 +1673,49 @@ function looksLikeRepeatedQuestion(currentText: string, previousText?: string | 
   if (previousWords.length < 3) return false;
   const hits = previousWords.filter((word) => current.includes(word)).length;
   return hits >= Math.min(4, previousWords.length);
+}
+
+function comparableSignificantWords(value: string) {
+  return normalizeComparable(value)
+    .split(/\s+/)
+    .filter((word) => word.length >= 4)
+    .filter(
+      (word) =>
+        ![
+          "voce",
+          "para",
+          "como",
+          "essa",
+          "esse",
+          "isso",
+          "aqui",
+          "agora",
+          "posso",
+          "pode",
+          "quero",
+          "sobre",
+          "comercial",
+          "cliente",
+          "lead",
+        ].includes(word)
+    );
+}
+
+function isHighlySimilarOutbound(currentText: string, previousText?: string | null) {
+  const current = normalizeComparable(currentText);
+  const previous = normalizeComparable(String(previousText || ""));
+  if (!current || !previous) return false;
+  if (current === previous) return true;
+  if (current.includes(previous.slice(0, 80))) return true;
+
+  const currentWords = new Set(comparableSignificantWords(current));
+  const previousWords = new Set(comparableSignificantWords(previous));
+  if (currentWords.size < 5 || previousWords.size < 5) return false;
+  let hits = 0;
+  for (const word of currentWords) {
+    if (previousWords.has(word)) hits += 1;
+  }
+  return hits / Math.min(currentWords.size, previousWords.size) >= 0.72;
 }
 
 function buildDirectDiagnosticClose(input: {
@@ -1607,6 +1750,53 @@ function buildDirectDiagnosticClose(input: {
       close,
     ].join(" "),
     900
+  );
+}
+
+function buildNonRepeatingProgressReply(input: {
+  inboundText: string;
+  leadMemory: AltumLeadMemory | null;
+  recommendedOffer?: string | null;
+  nextAction?: string | null;
+}) {
+  if (shouldForceCampaignContextReply({
+    inboundText: input.inboundText,
+    responseText: "",
+    leadMemory: input.leadMemory,
+  })) {
+    return buildSafeCampaignLeadReply({
+      inboundText: input.inboundText,
+      leadMemory: input.leadMemory,
+      fallbackText: "",
+    });
+  }
+
+  const offer =
+    cleanLeadFacingCampaignText(input.leadMemory?.campaignOfferName, 180) ||
+    cleanLeadFacingCampaignText(input.recommendedOffer, 180) ||
+    cleanLeadFacingCampaignText(input.leadMemory?.recommendedOffer, 180) ||
+    "um plano comercial mais direto";
+  const normalizedInbound = normalizeComparable(input.inboundText);
+  const askedForText = /\b(texto|escrito|ouvir|escutar|sem audio|sem voz)\b/.test(normalizedInbound);
+  const askedForExample = /\b(exemplo|modelo|mostra|manda|envia|ver|pode|quero|sim)\b/.test(normalizedInbound);
+
+  if (askedForExample) {
+    return sanitizeText(
+      `Sim. O exemplo que faz sentido para voce e ${offer}. Posso te mandar um material pratico e, em seguida, validar em uma conversa curta como adaptar isso ao seu caso?`,
+      520
+    );
+  }
+
+  if (askedForText) {
+    return sanitizeText(
+      `Claro, em texto: o caminho recomendado agora e ${offer}. Vou manter simples e direto. Faz sentido eu te mostrar um exemplo pratico antes de marcarmos uma conversa curta?`,
+      520
+    );
+  }
+
+  return sanitizeText(
+    `Entendi. Para avancar sem repetir: o ponto central agora e ${offer}. O melhor proximo passo e validar isso numa conversa curta e sair com uma acao clara. Faz sentido?`,
+    520
   );
 }
 
@@ -2006,6 +2196,8 @@ async function saveAiLog(input: {
   conversationLedBy?: string | null;
   qualityScore?: number | null;
   qualityNotes?: string[] | null;
+  qualityGateApplied?: boolean;
+  qualityGateReason?: string | null;
 }) {
   await adminDb.collection("ai_logs").doc(input.logDocId).set(
     {
@@ -2041,6 +2233,8 @@ async function saveAiLog(input: {
       conversationLedBy: input.conversationLedBy || null,
       qualityScore: typeof input.qualityScore === "number" ? input.qualityScore : null,
       qualityNotes: input.qualityNotes || [],
+      qualityGateApplied: input.qualityGateApplied === true,
+      qualityGateReason: input.qualityGateReason || null,
       createdAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
@@ -3448,6 +3642,22 @@ function selectMediaDocForLead(input: {
     "portfolio",
     "prova",
     "exemplo",
+    "modelo",
+    "demonstracao",
+    "demonstração",
+    "material",
+    "link",
+    "mostra",
+    "mostrar",
+    "manda",
+    "envia",
+    "cade",
+    "cadê",
+    "lp",
+    "landing",
+    "pagina",
+    "página",
+    "site",
   ]);
   const normalizedOffer = normalizeComparable(sanitizeText(input.recommendedOffer, 160));
   const commercialTemperature = sanitizeText(input.commercialTemperature, 40).toLowerCase();
@@ -4363,10 +4573,18 @@ export async function handleIncomingMessage(
   const agentDisplayName = sanitizeText(aiConfig.agentName, 80) || "Agente IA";
   const runtimeProvider = aiConfig.runtimePolicy.primaryProvider;
   const runtimeModel = aiConfig.runtimePolicy.conversationModel;
-  const monthlyUsage = await getAiMonthlyUsageSnapshot(tenantId);
+  const [monthlyUsage, tenantEntitlements] = await Promise.all([
+    getAiMonthlyUsageSnapshot(tenantId),
+    getTenantEntitlements(tenantId),
+  ]);
+  const configuredUsageCaps = [
+    Number(aiConfig.monthlyUsageCap || 0),
+    Number(tenantEntitlements.limits.aiRunsPerMonth || 0),
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  const effectiveUsageCap = configuredUsageCaps.length ? Math.min(...configuredUsageCaps) : 0;
   const usageCapExceeded =
-    Number(aiConfig.monthlyUsageCap || 0) > 0 &&
-    Number(monthlyUsage.conversationRuns || 0) >= Number(aiConfig.monthlyUsageCap || 0);
+    effectiveUsageCap > 0 &&
+    Number(monthlyUsage.conversationRuns || 0) >= effectiveUsageCap;
   const budgetCapExceeded =
     Number(aiConfig.monthlyBudgetUsd || 0) > 0 &&
     Number(monthlyUsage.estimatedCostUsd || 0) >= Number(aiConfig.monthlyBudgetUsd || 0);
@@ -4384,7 +4602,7 @@ export async function handleIncomingMessage(
       severity: "high",
       title: usageCapExceeded ? "Limite mensal de execucoes da IA atingido" : "Budget mensal da IA atingido",
       detail: usageCapExceeded
-        ? `A IA entrou em contingencia. Execucoes no mes: ${monthlyUsage.conversationRuns}/${aiConfig.monthlyUsageCap}.`
+        ? `A IA entrou em contingencia. Execucoes no mes: ${monthlyUsage.conversationRuns}/${effectiveUsageCap}.`
         : `A IA entrou em contingencia. Custo estimado no mes: US$ ${Number(monthlyUsage.estimatedCostUsd || 0).toFixed(2)} / US$ ${Number(aiConfig.monthlyBudgetUsd || 0).toFixed(2)}.`,
       dedupeWindowMinutes: 360,
     });
@@ -4534,7 +4752,7 @@ export async function handleIncomingMessage(
           toneOfVoice: aiConfig.toneOfVoice,
           businessSummary: aiConfig.businessSummary,
           objective: aiConfig.objective,
-          guardrails: aiConfig.guardrails,
+          guardrails: [...aiConfig.guardrails, salesMotionInstruction(aiConfig.salesMotion)],
           mandatoryQuestions: aiConfig.mandatoryQuestions,
           escalationTopics: aiConfig.escalationTopics,
           playbookOffers: aiConfig.playbookOffers,
@@ -4589,6 +4807,7 @@ export async function handleIncomingMessage(
       escalationTopics: aiConfig.escalationTopics,
       playbookOffers: aiConfig.playbookOffers,
       learningHints: tenantAiWithLearning.learningHints,
+      salesMotion: aiConfig.salesMotion,
     },
   });
   const commercialOfferBundle = recommendCommercialOffers({
@@ -4967,12 +5186,13 @@ export async function handleIncomingMessage(
       runtimeState,
     });
 
+    let leadAckMessageId: string | null = null;
     if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
-      await sendMetaTextMessage({
-        channel: whatsappChannel,
+      const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendText({
         to: leadPhone,
         text: leadAck,
       });
+      leadAckMessageId = sent.externalMessageId;
     } else if (isMetaConversation && metaChannel && metaRecipientId) {
       await sendMetaConversationText({
         channel: metaChannel,
@@ -4989,6 +5209,7 @@ export async function handleIncomingMessage(
       channel: chatChannel,
       channelPhoneNumberId: whatsappChannel?.phoneNumberId,
       senderName: agentDisplayName,
+      metaMessageId: leadAckMessageId,
     });
 
     const systemEventText =
@@ -5069,8 +5290,7 @@ export async function handleIncomingMessage(
 
       const notifyResults = await Promise.allSettled(
         handoffRecipients.map((recipient) =>
-          sendMetaTextMessage({
-            channel: whatsappChannel,
+          getWhatsAppMessagingProvider(whatsappChannel).sendText({
             to: recipient.phone,
             text: notification,
           })
@@ -5394,7 +5614,18 @@ export async function handleIncomingMessage(
     responseText,
     leadMemory,
   });
-  if (outboundCampaignContinuation) {
+  const forcedCampaignContextReply = shouldForceCampaignContextReply({
+    inboundText,
+    responseText,
+    leadMemory,
+  });
+  if (forcedCampaignContextReply) {
+    responseText = buildSafeCampaignLeadReply({
+      inboundText,
+      leadMemory,
+      fallbackText: outboundCampaignContinuation || responseText,
+    });
+  } else if (outboundCampaignContinuation) {
     responseText = outboundCampaignContinuation;
   }
   responseText =
@@ -5411,7 +5642,7 @@ export async function handleIncomingMessage(
     conversation,
     mandatoryQuestions: aiConfig.mandatoryQuestions,
   });
-  if (outboundCampaignContinuation) {
+  if (outboundCampaignContinuation || forcedCampaignContextReply) {
     secondaryResponseText = null;
   }
   if (secondaryResponseText) {
@@ -5421,7 +5652,7 @@ export async function handleIncomingMessage(
       leadMemory,
     });
   }
-  const whatsappServiceWindowClosed = shouldUseWhatsApp
+  const whatsappServiceWindowClosed = shouldUseWhatsApp && whatsappChannel && isOfficialWhatsAppProvider(whatsappChannel.provider)
     ? isWhatsAppServiceWindowClosed(chatData.lastClientMessageAt)
     : false;
   const voiceReplyDecision = shouldProactivelySendVoiceReply({
@@ -5439,14 +5670,16 @@ export async function handleIncomingMessage(
     recommendedOffer: recommendedOfferResolved,
   });
   const inboundMessageType = sanitizeText(incomingMessage.type, 40).toLowerCase();
-  const voiceRequestedThisTurn = resolvedResponsePreference === "audio" || inboundMessageType === "audio";
+  const leadPrefersText = resolvedResponsePreference === "text";
+  const voiceRequestedThisTurn = !leadPrefersText && (resolvedResponsePreference === "audio" || inboundMessageType === "audio");
   const voiceAvailableThisTurn =
     aiConfig.voiceReplyEnabled === true &&
     shouldUseWhatsApp &&
     !whatsappServiceWindowClosed &&
     Boolean(whatsappChannel) &&
     Boolean(leadPhone);
-  const shouldSendVoiceReply = voiceReplyDecision.shouldSend || (voiceRequestedThisTurn && voiceAvailableThisTurn);
+  const shouldSendVoiceReply =
+    !leadPrefersText && (voiceReplyDecision.shouldSend || (voiceRequestedThisTurn && voiceAvailableThisTurn));
   const voiceReplyDecisionReason = voiceReplyDecision.shouldSend
     ? voiceReplyDecision.reason
     : shouldSendVoiceReply
@@ -5496,7 +5729,78 @@ export async function handleIncomingMessage(
     finalOutboundText = prepareOutboundTextForVoiceUnavailable(finalOutboundText, inboundText);
     secondaryResponseText = "";
   }
-  const primaryTextToSend = secondaryResponseText ? responseText : finalOutboundText;
+  let qualityGateApplied = false;
+  let qualityGateReason = "";
+  let quality = scoreAltumConversationQuality({
+    inboundText,
+    outboundText: finalOutboundText,
+    plan: plannerDecision,
+    runtimeState,
+  });
+  const previousOutboundSimilar = isHighlySimilarOutbound(finalOutboundText, runtimeState?.lastOutboundText || null);
+  const qualityNeedsRescue =
+    quality.score < 0.58 ||
+    quality.notes.includes("vazou_jargao_interno") ||
+    quality.notes.includes("resposta_repetida") ||
+    quality.notes.includes("muito_parecida_com_a_anterior") ||
+    previousOutboundSimilar ||
+    shouldForceCampaignContextReply({
+      inboundText,
+      responseText: finalOutboundText,
+      leadMemory,
+    });
+  if (qualityNeedsRescue) {
+    const rawRescueReply = previousOutboundSimilar
+      ? buildNonRepeatingProgressReply({
+          inboundText,
+          leadMemory,
+          recommendedOffer: recommendedOfferResolved,
+          nextAction,
+        })
+      : buildQualityRescueReply({
+          inboundText,
+          finalOutboundText,
+          leadMemory,
+          businessType: extractedFields?.businessType || extractedFields?.niche || leadMemory?.businessType || null,
+          primaryGoal: extractedFields?.primaryGoal || extractedFields?.goal || leadMemory?.primaryGoal || null,
+          currentChannels: extractedFields?.currentChannels || leadMemory?.currentChannels || null,
+          recommendedOffer: recommendedOfferResolved,
+          nextAction,
+        });
+    let rescueReply =
+      sanitizeLeadFacingAiText({
+        text: rawRescueReply,
+        inboundText,
+        leadMemory,
+      }) || "";
+    if (rescueReply && isHighlySimilarOutbound(rescueReply, runtimeState?.lastOutboundText || null)) {
+      const nonRepeatingOffer =
+        cleanLeadFacingCampaignText(leadMemory?.campaignOfferName, 180) ||
+        cleanLeadFacingCampaignText(recommendedOfferResolved, 180) ||
+        "essa solucao";
+      rescueReply =
+        sanitizeLeadFacingAiText({
+          text: `Vou seguir em texto e direto: o assunto aqui e ${nonRepeatingOffer}. Para eu te ajudar agora, posso mandar o exemplo pratico ou ja deixar uma conversa curta marcada para adaptar isso ao seu caso?`,
+          inboundText,
+          leadMemory,
+        }) || rescueReply;
+    }
+    if (rescueReply && normalizeComparable(rescueReply) !== normalizeComparable(finalOutboundText)) {
+      finalOutboundText = rescueReply;
+      secondaryResponseText = "";
+      qualityGateApplied = true;
+      qualityGateReason =
+        [previousOutboundSimilar ? "previous_outbound_similarity" : "", ...quality.notes]
+          .filter(Boolean)
+          .join(",") || "low_quality_or_campaign_context";
+      quality = scoreAltumConversationQuality({
+        inboundText,
+        outboundText: finalOutboundText,
+        plan: plannerDecision,
+        runtimeState,
+      });
+    }
+  }
   const openQuestionForMemory = finalOutboundText;
   const conversationSummary = buildPersistentConversationSummary({
     llmMemorySummary: llmResult?.memorySummary || null,
@@ -5512,18 +5816,14 @@ export async function handleIncomingMessage(
     recommendedOffer: recommendedOfferResolved,
     nextAction,
   });
-  const quality = scoreAltumConversationQuality({
-    inboundText,
-    outboundText: finalOutboundText,
-    plan: plannerDecision,
-    runtimeState,
-  });
+  const primaryTextToSend = secondaryResponseText ? responseText : finalOutboundText;
 
   let sentAsTemplate = false;
   let sentTemplateName: string | null = null;
   let sentTemplateLanguage: string | null = null;
   let sentTemplateParams: string[] = [];
   let sentTemplateMetaMessageId: string | null = null;
+  let sentOutboundMessageId: string | null = null;
   let voiceReplySent = false;
   let voiceReplyError: string | null = null;
 
@@ -5547,15 +5847,15 @@ export async function handleIncomingMessage(
         contactPhone: chatData.contactPhone,
         tenantName: tenantSettings?.name,
       });
-      let templatePayload: { messages?: Array<{ id?: string }> } | null = null;
+      let templateMessageId: string | null = null;
       try {
-        templatePayload = await sendMetaTemplateMessage({
-          channel: whatsappChannel,
+        const templatePayload = await getWhatsAppMessagingProvider(whatsappChannel).sendTemplate({
           to: leadPhone,
           templateName: sentTemplateName,
           languageCode: sentTemplateLanguage,
           bodyParams: sentTemplateParams,
         });
+        templateMessageId = templatePayload.externalMessageId;
       } catch (error) {
         if (leadId) {
           await createAiInternalNotificationOnce({
@@ -5573,7 +5873,8 @@ export async function handleIncomingMessage(
         }
         throw error;
       }
-      sentTemplateMetaMessageId = String(templatePayload?.messages?.[0]?.id || "").trim() || null;
+      sentTemplateMetaMessageId = templateMessageId;
+      sentOutboundMessageId = templateMessageId;
       sentAsTemplate = true;
       finalOutboundText = sentTemplateParams.length
         ? `Template enviado: ${sentTemplateName}\nVariaveis: ${sentTemplateParams.join(" | ")}`
@@ -5631,11 +5932,11 @@ export async function handleIncomingMessage(
       }
 
       if (!voiceReplySent) {
-        await sendMetaTextMessage({
-          channel: whatsappChannel,
+        const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendText({
           to: leadPhone,
           text: shouldSendVoiceReply || voiceRequestedThisTurn ? finalOutboundText : primaryTextToSend,
         });
+        sentOutboundMessageId = sent.externalMessageId;
       }
     }
   } else if (isMetaConversation && metaChannel && metaRecipientId) {
@@ -5656,7 +5957,7 @@ export async function handleIncomingMessage(
       channel: chatChannel,
       channelPhoneNumberId: whatsappChannel?.phoneNumberId,
       senderName: agentDisplayName,
-      metaMessageId: sentTemplateMetaMessageId,
+      metaMessageId: sentOutboundMessageId || sentTemplateMetaMessageId,
       templateName: sentTemplateName,
       templateLanguage: sentTemplateLanguage,
       templateParams: sentTemplateParams,
@@ -5664,12 +5965,13 @@ export async function handleIncomingMessage(
   }
 
   if (secondaryResponseText && !sentAsTemplate && !voiceReplySent) {
+    let secondaryMessageId: string | null = null;
     if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
-      await sendMetaTextMessage({
-        channel: whatsappChannel,
+      const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendText({
         to: leadPhone,
         text: secondaryResponseText,
       });
+      secondaryMessageId = sent.externalMessageId;
     } else if (isMetaConversation && metaChannel && metaRecipientId) {
       await sendMetaConversationText({
         channel: metaChannel,
@@ -5686,6 +5988,7 @@ export async function handleIncomingMessage(
       channel: chatChannel,
       channelPhoneNumberId: whatsappChannel?.phoneNumberId,
       senderName: agentDisplayName,
+      metaMessageId: secondaryMessageId,
     });
   }
 
@@ -5703,15 +6006,16 @@ export async function handleIncomingMessage(
       sanitizeText(mediaDoc.content, 180) ||
       "Material relacionado ao que voce pediu.";
     try {
+      let mediaMessageId: string | null = null;
       if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
-        await sendMetaMediaLinkMessage({
-          channel: whatsappChannel,
+        const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendMedia({
           to: leadPhone,
           mediaUrl: mediaDoc.mediaUrl,
           mediaType: mediaDoc.mediaType,
           caption: mediaCaption,
           filename: mediaDoc.mediaTitle || "material",
         });
+        mediaMessageId = sent.externalMessageId;
       } else if (isMetaConversation && metaChannel && metaRecipientId) {
         await sendMetaConversationText({
           channel: metaChannel,
@@ -5733,6 +6037,7 @@ export async function handleIncomingMessage(
         mediaName: mediaDoc.mediaTitle || mediaDoc.serviceKey || "Material enviado pela IA",
         mediaMimeType: mediaDoc.mediaMimeType || undefined,
         mediaSize: mediaDoc.mediaSize || undefined,
+        metaMessageId: mediaMessageId,
       });
       mediaAssetSent = true;
     } catch (error) {
@@ -5812,6 +6117,8 @@ export async function handleIncomingMessage(
     conversationLedBy: choice.ledBy,
     qualityScore: quality.score,
     qualityNotes: quality.notes,
+    qualityGateApplied,
+    qualityGateReason,
   });
   await logAiUsage({
     tenantId,
@@ -5863,6 +6170,8 @@ export async function handleIncomingMessage(
       conversationLedBy: choice.ledBy,
       qualityScore: quality.score,
       qualityNotes: quality.notes,
+      qualityGateApplied,
+      qualityGateReason,
       secondaryResponseSent: Boolean(secondaryResponseText),
       secondaryResponseText: secondaryResponseText || null,
       executedActions,

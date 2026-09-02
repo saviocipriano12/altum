@@ -66,3 +66,50 @@ export async function saveFirebaseStorageFileWithFallback(input: {
 
   throw lastError || new Error("Nenhum bucket de storage disponivel.");
 }
+
+function extensionFromContentType(contentType: string, filename: string) {
+  const mime = contentType.toLowerCase().split(";")[0].trim();
+  const byMime: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/webm": "webm",
+    "application/pdf": "pdf",
+  };
+  if (byMime[mime]) return byMime[mime];
+  const filenameExtension = filename.toLowerCase().match(/\.([a-z0-9]{1,8})$/)?.[1];
+  return filenameExtension || "bin";
+}
+
+export async function saveChatMediaBuffer(input: {
+  tenantId: string;
+  chatId: string;
+  messageId: string;
+  data: Buffer;
+  contentType: string;
+  filename: string;
+  variant?: string;
+}) {
+  const extension = extensionFromContentType(input.contentType, input.filename);
+  const variant = clean(input.variant, 40).replace(/[^a-zA-Z0-9_-]/g, "_");
+  const suffix = variant ? `-${variant}` : "";
+  const path = `chat-media/${clean(input.tenantId, 180)}/${clean(input.chatId, 180)}/${clean(input.messageId, 180)}${suffix}.${extension}`;
+  await saveFirebaseStorageFileWithFallback({
+    path,
+    data: input.data,
+    options: {
+      metadata: {
+        contentType: input.contentType || "application/octet-stream",
+        cacheControl: "private,max-age=3600",
+      },
+      resumable: false,
+    },
+  });
+  return path;
+}

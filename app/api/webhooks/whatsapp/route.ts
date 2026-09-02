@@ -17,6 +17,9 @@ import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { recordInboundLead } from "@/lib/server/lead-intake";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
+import { parseEvolutionWebhook, type EvolutionInbound } from "@/lib/server/messaging/evolution-webhook";
+import { cacheEvolutionProfilePicture, downloadEvolutionInboundMedia, fetchEvolutionProfilePicture } from "@/lib/server/messaging/evolution-provider";
+import { resolveCanonicalWhatsAppChat } from "@/lib/server/whatsapp-chat-identity";
 
 function sanitizeId(value: string, max = 220) {
   const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, "_").trim();
@@ -457,6 +460,7 @@ async function persistGenericWhatsAppInbound(input: {
   contactName?: string;
   messageId?: string;
   messageType?: string;
+  media?: Pick<EvolutionInbound, "mediaUrl" | "mediaBase64" | "mediaMimeType" | "mediaName" | "mediaThumbnail" | "rawMessage">;
 }) {
   const tenantId = input.channel.tenantId;
   const phoneNumberId = input.channel.phoneNumberId || input.channel.id;
@@ -484,11 +488,15 @@ async function persistGenericWhatsAppInbound(input: {
 
   const ownerFromLead = await resolveLeadOwner(from, tenantId);
   let resolvedLeadId = ownerFromLead.leadId;
-  let resolvedOwnerId = ownerFromLead.ownerId;
+  let resolvedOwnerId = ownerFromLead.ownerId || input.channel.ownerUserId || null;
   let resolvedOwnerName = await resolveOwnerName(resolvedOwnerId);
 
   if (!resolvedLeadId) {
-    const inboundAssignee = await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium" });
+    const inboundAssignee = input.channel.channelScope === "personal" && input.channel.ownerUserId
+      ? { userId: input.channel.ownerUserId, name: input.channel.ownerUserName || await resolveOwnerName(input.channel.ownerUserId) || "Vendedor" }
+      : input.channel.distributionEnabled !== false
+        ? await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium" })
+        : null;
     const intake = await recordInboundLead({
       tenantId,
       sourceType: "whatsapp_inbound",
@@ -509,16 +517,11 @@ async function persistGenericWhatsAppInbound(input: {
     resolvedOwnerName = inboundAssignee?.name || null;
   }
 
-  const chatsRef = adminDb.collection("chats");
-  const chatQuery = await chatsRef
-    .where("contactPhone", "==", from)
-    .where("tenantId", "==", tenantId)
-    .limit(1)
-    .get();
-
-  let chatId = "";
-  if (chatQuery.empty) {
-    const newChat = await chatsRef.add({
+  const canonicalChat = await resolveCanonicalWhatsAppChat({
+    tenantId,
+    channelId: input.channel.id,
+    phone: from,
+    createData: {
       contactName,
       contactPhone: from,
       contactPhoneNormalized: from,
@@ -539,14 +542,15 @@ async function persistGenericWhatsAppInbound(input: {
       }),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    });
-    chatId = newChat.id;
-  } else {
-    const chatDoc = chatQuery.docs[0];
+    },
+  });
+
+  const chatDoc = await canonicalChat.chatRef.get();
+  const chatId = canonicalChat.chatRef.id;
+  if (!canonicalChat.created) {
     const chatData = chatDoc.data() as { ownerId?: string; assignedTo?: string; leadId?: string };
     const currentOwnerId = chatData.ownerId || chatData.assignedTo || resolvedOwnerId;
-    chatId = chatDoc.id;
-    await chatDoc.ref.set(
+    await canonicalChat.chatRef.set(
       {
         contactName,
         channel: "whatsapp",
@@ -578,6 +582,46 @@ async function persistGenericWhatsAppInbound(input: {
     name: contactName,
   });
 
+  const existingPhotoSource = cleanString(chatDoc.data()?.contactPhotoSource, 80);
+  // URLs da Evolution expiram. Enquanto a foto ainda não estiver armazenada
+  // pela Altum, cada nova interação pode reparar uma URL antiga/quebrada.
+  if (input.channel.provider === "evolution" && existingPhotoSource !== "whatsapp_profile_cached") {
+    after(async () => {
+      try {
+        const remotePhotoUrl = await fetchEvolutionProfilePicture(input.channel, from);
+        if (!remotePhotoUrl) return;
+        const cachedPhotoUrl = await cacheEvolutionProfilePicture({ tenantId, phone: from, sourceUrl: remotePhotoUrl });
+        const photoUrl = cachedPhotoUrl || remotePhotoUrl;
+        await Promise.all([
+          canonicalChat.chatRef.set(
+            {
+              contactPhotoUrl: photoUrl,
+              contactPhotoSource: cachedPhotoUrl ? "whatsapp_profile_cached" : "whatsapp_profile",
+              contactPhotoUpdatedAt: FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          ),
+          upsertContactProfile({
+            tenantId,
+            phone: from,
+            leadId: resolvedLeadId,
+            channel: "whatsapp",
+            name: contactName,
+            photoUrl,
+          }),
+        ]);
+      } catch (error) {
+        console.warn("[whatsapp-webhook] profile photo unavailable", {
+          tenantId,
+          channelId: input.channel.id,
+          chatId,
+          reason: error instanceof Error ? cleanString(error.message, 180) : "profile_photo_failed",
+        });
+      }
+    });
+  }
+
   const incomingMessageRef = adminDb
     .collection("messages")
     .doc(sanitizeId(`in_${tenantId}_${phoneNumberId}_${inboundMessageId}`, 240));
@@ -594,10 +638,63 @@ async function persistGenericWhatsAppInbound(input: {
       channelPhoneNumberId: phoneNumberId,
       inboundMetaMessageId: inboundMessageId,
       source: "whatsapp_gateway",
+      ...(input.media?.mediaName ? { mediaName: input.media.mediaName } : {}),
+      ...(input.media?.mediaMimeType ? { mediaMimeType: input.media.mediaMimeType } : {}),
+      ...(input.media?.mediaThumbnail
+        ? { mediaThumbnail: `data:image/jpeg;base64,${input.media.mediaThumbnail}` }
+        : {}),
       createdAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
+
+  if (["audio", "image", "video", "document"].includes(messageType) && input.media) {
+    try {
+      let base64 = input.media.mediaBase64;
+      let contentType = input.media.mediaMimeType || "application/octet-stream";
+      let filename = input.media.mediaName;
+      // O webhook da Evolution pode trazer apenas a miniatura em `base64`.
+      // Para exibir e analisar o arquivo real, sempre baixamos a midia original.
+      if (input.channel.provider === "evolution") {
+        const downloaded = await downloadEvolutionInboundMedia(input.channel, input.media.rawMessage);
+        base64 = downloaded.base64;
+        contentType = downloaded.contentType || contentType;
+        filename = downloaded.filename || filename;
+      }
+      const mediaSource = base64
+        ? (base64.startsWith("data:") ? base64 : `data:${contentType};base64,${base64}`)
+        : input.media.mediaUrl;
+      if (mediaSource) {
+        await cacheInboundMessageMedia({
+          tenantId,
+          chatId,
+          messageId: incomingMessageRef.id,
+          message: {
+            type: messageType,
+            mediaUrl: mediaSource,
+            mediaMimeType: contentType,
+            mediaName: filename,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("[whatsapp-webhook] inbound media processing failed", {
+        tenantId,
+        channelId: input.channel.id,
+        chatId,
+        messageId: incomingMessageRef.id,
+        messageType,
+        error: error instanceof Error ? cleanString(error.message, 500) : "evolution_media_failed",
+      });
+      await incomingMessageRef.set(
+        {
+          mediaProcessingError: error instanceof Error ? cleanString(error.message, 500) : "evolution_media_failed",
+          mediaProcessingFailedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  }
 
   if (resolvedLeadId) {
     await runLeadAutomations({
@@ -622,6 +719,22 @@ async function persistGenericWhatsAppInbound(input: {
 
   await processAiJobNow(queue.jobId);
   triggerAiQueueWorker({ limit: 8, drain: true });
+
+  if (claim.eventRef) {
+    await claim.eventRef.set(
+      { status: "processed", processedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+  }
+
+  if (canonicalChat.duplicateRefs.length > 0) {
+    console.warn("[whatsapp-webhook] duplicate chats detected", {
+      tenantId,
+      channelId: input.channel.id,
+      canonicalChatId: chatId,
+      duplicateCount: canonicalChat.duplicateRefs.length,
+    });
+  }
 
   return {
     status: "ok",
@@ -655,26 +768,74 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Token do gateway invalido." }, { status: 401 });
       }
 
+      const evolutionEvent = channel.provider === "evolution" ? parseEvolutionWebhook(body) : null;
+      if (evolutionEvent?.kind === "delivery") {
+        const result = await persistWhatsappStatusEvents({
+          tenantId: channel.tenantId,
+          phoneNumberId: channel.phoneNumberId || channel.id,
+          events: [{
+            messageId: evolutionEvent.messageId,
+            status: evolutionEvent.status,
+            timestampMs: Date.now(),
+            recipientId: evolutionEvent.recipientId,
+            errorCode: evolutionEvent.errorCode,
+            errorMessage: evolutionEvent.errorMessage,
+          }],
+        });
+        return NextResponse.json({ status: "ok_status_update", tenantId: channel.tenantId, ...result });
+      }
+      if (evolutionEvent?.kind === "connection") {
+        const connectionStatus = evolutionEvent.status === "connected"
+          ? "ready"
+          : evolutionEvent.status === "connecting"
+            ? "syncing"
+            : evolutionEvent.status === "error"
+              ? "error"
+              : "degraded";
+        await adminDb.collection("tenant_channels").doc(channel.id).set(
+          {
+            connectionStatus,
+            lastSyncAt: FieldValue.serverTimestamp(),
+            lastActivityAt: FieldValue.serverTimestamp(),
+            lastError: evolutionEvent.errorMessage || (connectionStatus === "ready" ? "" : "WhatsApp desconectado."),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        return NextResponse.json({ status: "ok_connection_update", tenantId: channel.tenantId, connectionStatus });
+      }
+      const evolutionInbound = evolutionEvent?.kind === "message" ? evolutionEvent : null;
+      if (channel.provider === "evolution" && !evolutionInbound) {
+        return NextResponse.json({ status: "ignored_evolution_event" });
+      }
       const result = await persistGenericWhatsAppInbound({
         channel,
-        from:
+        from: evolutionInbound?.from ||
           cleanString(body.from, 80) ||
           cleanString(body.phone, 80) ||
           cleanString(body.contactPhone, 80) ||
           cleanString(body.to, 80),
-        text:
+        text: evolutionInbound?.text ||
           cleanString(body.text, 4000) ||
           cleanString((body.message as { text?: unknown } | undefined)?.text, 4000) ||
           cleanString((body.message as { body?: unknown } | undefined)?.body, 4000),
-        contactName:
+        contactName: evolutionInbound?.contactName ||
           cleanString(body.contactName, 180) ||
           cleanString(body.name, 180) ||
           cleanString((body.contact as { name?: unknown } | undefined)?.name, 180),
-        messageId:
+        messageId: evolutionInbound?.messageId ||
           cleanString(body.messageId, 260) ||
           cleanString(body.id, 260) ||
           cleanString((body.message as { id?: unknown } | undefined)?.id, 260),
-        messageType: cleanString(body.type, 40) || cleanString((body.message as { type?: unknown } | undefined)?.type, 40),
+        messageType: evolutionInbound?.messageType || cleanString(body.type, 40) || cleanString((body.message as { type?: unknown } | undefined)?.type, 40),
+        media: evolutionInbound ? {
+          mediaUrl: evolutionInbound.mediaUrl,
+          mediaBase64: evolutionInbound.mediaBase64,
+          mediaThumbnail: evolutionInbound.mediaThumbnail,
+          mediaMimeType: evolutionInbound.mediaMimeType,
+          mediaName: evolutionInbound.mediaName,
+          rawMessage: evolutionInbound.rawMessage,
+        } : undefined,
       });
 
       return NextResponse.json(result);
@@ -1136,7 +1297,7 @@ export async function POST(req: Request) {
       queueJobId: queue.jobId,
       queueCreated: queue.created,
     });
-  } catch (error) {
+    } catch (error) {
     if (eventRef) {
       await eventRef.set(
         {

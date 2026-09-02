@@ -7,10 +7,9 @@ import { getTenantForCurrentUser } from "@/lib/server/tenant";
 import {
   AGENCY_TENANT_ID,
   getWhatsAppChannelForTenant,
-  sendMetaTemplateMessage,
-  sendMetaTextMessage,
   type WhatsAppTemplateHeaderMedia,
 } from "@/app/lib/server/whatsapp-channel";
+import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 import {
   evaluateWhatsAppBulkCompliance,
   WHATSAPP_BULK_MIN_INTERVAL_HOURS,
@@ -324,20 +323,18 @@ export async function POST(req: Request) {
         if (!body.dryRun) {
           const payload =
             mode === "template"
-              ? await sendMetaTemplateMessage({
-                  channel,
+              ? await getWhatsAppMessagingProvider(channel).sendTemplate({
                   to: phone,
                   templateName,
                   languageCode,
                   bodyParams: renderedBodyParams,
                   headerMedia,
                 })
-              : await sendMetaTextMessage({
-                  channel,
+              : await getWhatsAppMessagingProvider(channel).sendText({
                   to: phone,
                   text: messageText,
                 });
-          const metaMessageId = payload?.messages?.[0]?.id || null;
+          const metaMessageId = payload.externalMessageId;
           const deliveryRef = adminDb.collection("outbound_campaign_deliveries").doc();
           const campaignContext = {
             campaignId: batchRef.id,

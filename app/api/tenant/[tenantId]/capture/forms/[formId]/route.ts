@@ -6,6 +6,7 @@ import { normalizeCaptureFields } from "@/lib/capture-form";
 import { normalizeCaptureLandingConfig } from "@/lib/capture-landing";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type Body = {
   name?: string;
@@ -69,6 +70,7 @@ export async function PATCH(
     const user = await requireRequestUser(req);
     const { tenantId, formId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantCapability(membership, "manage_settings");
 
     const { formRef } = await getForm(formId, tenantId);
@@ -143,6 +145,7 @@ export async function DELETE(
     const user = await requireRequestUser(req);
     const { tenantId, formId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantCapability(membership, "manage_settings");
 
     const { formRef } = await getForm(formId, tenantId);

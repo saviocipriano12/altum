@@ -115,6 +115,72 @@ function personalizeTemplate(template: string, actorName: string) {
   return template.replace(/\{\{\s*nome\s*\}\}/gi, firstName);
 }
 
+function findMatchingCommentRule(config: TenantSocialAutomationConfig, event: ParsedMetaSocialEvent) {
+  if (event.eventType !== "comment") return null;
+  const normalizedText = normalizeText(event.text);
+  return config.commentRules.find((rule) => {
+    if (!rule.enabled) return false;
+    if (rule.mediaIds.length > 0 && (!event.postId || !rule.mediaIds.includes(event.postId))) return false;
+    return rule.keywords.length === 0 || rule.keywords.some((keyword) => normalizedText.includes(normalizeText(keyword)));
+  }) || null;
+}
+
+function knowledgeSearchTerms(value: string) {
+  return Array.from(
+    new Set(
+      normalizeText(value)
+        .split(" ")
+        .filter((item) => item.length >= 3)
+        .slice(0, 16)
+    )
+  );
+}
+
+type SocialKnowledgeSummary = {
+  total: number;
+  catalog: number;
+  faq: number;
+  policy: number;
+  context: string;
+};
+
+async function getSocialKnowledgeSummary(tenantId: string, question = ""): Promise<SocialKnowledgeSummary> {
+  const snapshot = await adminDb.collection("kb_docs").where("tenantId", "==", tenantId).limit(120).get();
+  const terms = knowledgeSearchTerms(question);
+  let catalog = 0;
+  let faq = 0;
+  let policy = 0;
+
+  const candidates = snapshot.docs.map((doc) => {
+    const data = doc.data() as Record<string, unknown>;
+    const type = cleanText(data.type, 40).toLowerCase();
+    if (type === "catalog") catalog += 1;
+    else if (type === "policy") policy += 1;
+    else faq += 1;
+
+    const content = cleanText(data.content, 700);
+    const product = cleanText(data.productName, 160);
+    const category = cleanText(data.productCategory, 120);
+    const tags = Array.isArray(data.tags) ? data.tags.map((item) => cleanText(item, 80)).join(" ") : "";
+    const haystack = normalizeText([product, category, tags, content].filter(Boolean).join(" "));
+    const score = terms.reduce((total, term) => total + (haystack.includes(term) ? 2 : 0), type === "catalog" ? 1 : 0);
+    const title = [product, category].filter(Boolean).join(" · ");
+    return {
+      score,
+      text: cleanText(`${title ? `${title}: ` : ""}${content}`, 420),
+    };
+  });
+
+  const context = candidates
+    .filter((item) => item.text)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+    .map((item) => `- ${item.text}`)
+    .join("\n");
+
+  return { total: snapshot.size, catalog, faq, policy, context };
+}
+
 function detectSocialCommentIntent(config: TenantSocialAutomationConfig, text: string): SocialIntentSignal {
   const normalized = normalizeText(text);
   if (!normalized) {
@@ -262,7 +328,7 @@ export async function listRecentSocialAutomationLogs(tenantId: string, limit = 2
 }
 
 export async function getTenantSocialAutomationSummary(tenantId: string) {
-  const [config, channelsSnap, logs] = await Promise.all([
+  const [config, channelsSnap, logs, knowledge] = await Promise.all([
     getTenantSocialAutomationConfig(tenantId),
     adminDb
       .collection("tenant_channels")
@@ -270,6 +336,7 @@ export async function getTenantSocialAutomationSummary(tenantId: string) {
       .limit(40)
       .get(),
     listRecentSocialAutomationLogs(tenantId, 30),
+    getSocialKnowledgeSummary(tenantId),
   ]);
 
   const socialChannels = channelsSnap.docs
@@ -307,6 +374,12 @@ export async function getTenantSocialAutomationSummary(tenantId: string) {
     },
     channels: socialChannels,
     logs,
+    knowledge: {
+      total: knowledge.total,
+      catalog: knowledge.catalog,
+      faq: knowledge.faq,
+      policy: knowledge.policy,
+    },
   };
 }
 
@@ -711,7 +784,10 @@ async function generateSocialReply(input: {
     return personalizeTemplate(input.config.newFollowerMessageTemplate, input.actorName);
   }
 
-  const tenantSettings = await getTenantSettings(input.tenantId);
+  const [tenantSettings, knowledge] = await Promise.all([
+    getTenantSettings(input.tenantId),
+    getSocialKnowledgeSummary(input.tenantId, input.text),
+  ]);
   const businessName = cleanText(tenantSettings?.name, 180) || "a marca";
   const niche = cleanText(tenantSettings?.niche, 180) || "negocio";
   const tone = cleanText(tenantSettings?.ai?.toneOfVoice, 180) || "consultivo";
@@ -719,8 +795,9 @@ async function generateSocialReply(input: {
     `Voce cuida das automacoes sociais de ${businessName}, empresa do nicho ${niche}.`,
     `Tom esperado: ${tone}.`,
     input.config.commentPrompt,
+    knowledge.context ? `Base oficial da empresa (use somente o que estiver confirmado):\n${knowledge.context}` : "",
     "Escreva em portugues do Brasil, sem markdown, em no maximo 280 caracteres.",
-    "Nunca diga que voce e uma IA.",
+    "Nunca invente preco, estoque, prazo, politica ou promessa. Se faltar informacao, convide para continuar no direct.",
   ].join(" ");
   const userPrompt = [
     `Canal: ${input.channelType}.`,
@@ -760,6 +837,54 @@ async function sendMetaCommentReply(input: {
   }
 
   return payload;
+}
+
+async function sendInstagramPrivateCommentReply(input: {
+  channel: MetaChannelConfig;
+  commentId: string;
+  text: string;
+}) {
+  const accountId = cleanText(input.channel.externalAccountId, 180);
+  if (!accountId) throw new Error("Conta do Instagram sem identificador para resposta privada.");
+  const response = await fetch(`https://graph.facebook.com/${VERSION}/${accountId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.channel.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      recipient: { comment_id: input.commentId },
+      message: { text: input.text },
+    }),
+  });
+  const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+  if (!response.ok) throw new Error(payload.error?.message || "Erro na API da Meta ao enviar resposta privada.");
+  return payload;
+}
+
+export async function listInstagramAutomationMedia(tenantId: string) {
+  const channel = await getMetaChannelForTenant(tenantId, "instagram");
+  if (!channel?.externalAccountId) return [];
+  const url = new URL(`https://graph.facebook.com/${VERSION}/${channel.externalAccountId}/media`);
+  url.searchParams.set("fields", "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp");
+  url.searchParams.set("limit", "30");
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${channel.accessToken}` },
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => ({}))) as {
+    data?: Array<Record<string, unknown>>;
+    error?: { message?: string };
+  };
+  if (!response.ok) throw new Error(payload.error?.message || "Nao foi possivel listar as publicacoes do Instagram.");
+  return (payload.data || []).map((item) => ({
+    id: cleanText(item.id, 180),
+    caption: cleanText(item.caption, 220),
+    mediaType: cleanText(item.media_type, 40),
+    thumbnailUrl: cleanText(item.thumbnail_url || item.media_url, 1200),
+    permalink: cleanText(item.permalink, 1200),
+    timestamp: cleanText(item.timestamp, 80),
+  })).filter((item) => item.id);
 }
 
 export function shouldAutoReplyToDm(input: {
@@ -885,8 +1010,9 @@ export async function handleMetaSocialEvent(input: {
     return { status: "ignored_inactive_hours" as const };
   }
 
+  const matchingRule = findMatchingCommentRule(config, event);
   const shouldReply =
-    (event.eventType === "comment" && config.commentAutoReply) ||
+    (event.eventType === "comment" && (config.commentAutoReply || Boolean(matchingRule))) ||
     (event.eventType === "new_follower" && config.newFollowerMessageEnabled);
 
   const intent =
@@ -944,7 +1070,9 @@ export async function handleMetaSocialEvent(input: {
   }
 
   try {
-    const replyText = await generateSocialReply({
+    const replyText = matchingRule
+      ? personalizeTemplate(matchingRule.message, event.actorName)
+      : await generateSocialReply({
       tenantId,
       actorName: event.actorName,
       channelType: event.channelType,
@@ -952,17 +1080,17 @@ export async function handleMetaSocialEvent(input: {
       text: event.text,
       config,
       intentHint: intent.reasonLabel,
-    });
+        });
 
     if (event.eventType === "comment") {
       if (!event.commentId) {
         throw new Error("Comentario sem identificador para reply.");
       }
-      await sendMetaCommentReply({
-        channel,
-        commentId: event.commentId,
-        text: replyText,
-      });
+      if (event.channelType === "instagram" && matchingRule?.privateReply) {
+        await sendInstagramPrivateCommentReply({ channel, commentId: event.commentId, text: replyText });
+      } else {
+        await sendMetaCommentReply({ channel, commentId: event.commentId, text: replyText });
+      }
     } else {
       await sendMetaConversationText({
         channel,
@@ -978,6 +1106,8 @@ export async function handleMetaSocialEvent(input: {
       chatId: match.chatId,
       respondedAt: FieldValue.serverTimestamp(),
       commercialIntent: intent.reasonLabel,
+      automationRuleId: matchingRule?.id || null,
+      automationRuleName: matchingRule?.name || null,
     });
 
     return {

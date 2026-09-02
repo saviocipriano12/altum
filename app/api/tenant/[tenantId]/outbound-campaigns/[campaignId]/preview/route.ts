@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { previewOutboundCampaign } from "@/lib/server/outbound-campaigns";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 export async function POST(
   req: Request,
@@ -11,6 +12,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId, campaignId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "marketing");
     assertTenantCapability(membership, "manage_automations");
 
     const result = await previewOutboundCampaign({

@@ -1,0 +1,11 @@
+[Unit]
+Description=Sincroniza campanhas da Altum diariamente
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+Persistent=true
+Unit=altum-job@campaigns.service
+
+[Install]
+WantedBy=timers.target
+

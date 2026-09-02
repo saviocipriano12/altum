@@ -10,6 +10,7 @@ import {
   hasTenantCapability,
   TenantAccessError,
 } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type ChatRow = Record<string, unknown> & {
   id: string;
@@ -117,6 +118,7 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     if (!hasTenantCapability(membership, "manage_settings") && !hasTenantCapability(membership, "manage_users")) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para distribuir a fila.");
     }

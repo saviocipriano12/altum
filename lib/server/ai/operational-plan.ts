@@ -1,6 +1,7 @@
 import type { AltumPlannerDecision } from "@/lib/server/ai/altum-agent-v2";
 import type { AltumConversationRuntimeState, AltumConversationStage, AltumLeadMemory } from "@/lib/server/ai/runtime-state";
 import type { AltumTenantLearningHints } from "@/lib/server/ai/tenant-learning";
+import type { SalesMotion } from "@/lib/sales-journey";
 
 type ConversationMessage = {
   sender: "agent" | "client" | "system";
@@ -20,6 +21,7 @@ type TenantAiOperationalContext = {
   escalationTopics?: string[];
   playbookOffers?: Array<{ title?: string }>;
   learningHints?: AltumTenantLearningHints | null;
+  salesMotion?: SalesMotion | null;
 };
 
 type ConversationalChoice = {
@@ -106,12 +108,13 @@ function detectIntent(input: {
   llmTurnGoal?: string | null;
 }) {
   const messageType = sanitizeText(input.messageType, 40).toLowerCase();
-  if (messageType === "audio") return "send_audio";
-  if (messageType === "image") return "send_image";
-  if (messageType === "document") return "send_document";
-
   const normalized = normalizeComparable(input.inboundText);
-  if (!normalized) return "generic";
+  if (!normalized) {
+    if (messageType === "audio") return "send_audio";
+    if (messageType === "image") return "send_image";
+    if (messageType === "document") return "send_document";
+    return "generic";
+  }
 
   if (/\b(humano|pessoa|atendente|suporte|consultor)\b/.test(normalized)) return "request_human";
   if (/^(oi|ola|bom dia|boa tarde|boa noite)\b/.test(normalized)) return "greeting";
@@ -124,6 +127,15 @@ function detectIntent(input: {
   if (normalizeWords(sanitizeText(input.llmTurnGoal, 120)).some((word) => ["qualify", "discovery", "aprofundar", "investigar"].includes(word))) {
     return "qualification";
   }
+
+  const mediaPlaceholderOnly =
+    /^\s*(audio|imagem|foto|arquivo|documento)\s*(recebido|recebida|enviado|enviada)?\s*$/.test(normalized);
+  if (mediaPlaceholderOnly || normalized.length < 3) {
+    if (messageType === "audio") return "send_audio";
+    if (messageType === "image") return "send_image";
+    if (messageType === "document") return "send_document";
+  }
+
   return "generic";
 }
 
@@ -260,6 +272,10 @@ function inferNextAction(input: {
   if (input.intent === "proposal_interest") return "preparar_proposta_comercial";
   if (input.intent === "meeting_interest") return "agendar_proximo_passo";
   if (input.responseGoal === "move_to_next_step") {
+    if (input.tenantAi.salesMotion === "appointment") return "oferecer_horarios_disponiveis";
+    if (input.tenantAi.salesMotion === "store_visit") return "agendar_visita";
+    if (input.tenantAi.salesMotion === "direct_checkout" || input.tenantAi.salesMotion === "digital_delivery") return "enviar_checkout_e_concluir_compra";
+    if (input.tenantAi.salesMotion === "assisted_purchase") return "confirmar_opcao_e_facilitar_pagamento";
     if (input.tenantAi.learningHints?.preferredClosingMotion === "proposal") return "preparar_proposta_comercial";
     if (input.tenantAi.learningHints?.preferredClosingMotion === "meeting") return "agendar_proximo_passo";
     return "conduzir_para_proximo_passo";
@@ -308,6 +324,7 @@ export function deriveOperationalPlan(input: DeriveOperationalPlanInput): AltumP
   const forcedHandoff =
     input.choice.decision === "handoff" ||
     input.llmDecision === "handoff" ||
+    intent === "request_human" ||
     matchesEscalationTopic(inboundText, input.tenantAi.escalationTopics || []);
 
   const fallbackResponseGoal = inferFallbackResponseGoal(intent, input.choice);

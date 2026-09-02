@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video"]);
 
@@ -116,15 +119,39 @@ function normalizeTemplateHeaderMedia(value: unknown) {
   };
 }
 
+async function listChatMessages(chatId: string, sinceMs: number | null) {
+  if (!sinceMs) {
+    return adminDb.collection("messages").where("chatId", "==", chatId).limit(500).get();
+  }
+
+  try {
+    return await adminDb
+      .collection("messages")
+      .where("chatId", "==", chatId)
+      .where("createdAt", ">", Timestamp.fromMillis(sinceMs))
+      .orderBy("createdAt", "asc")
+      .limit(200)
+      .get();
+  } catch (error) {
+    // Enquanto o indice composto e propagado, a conversa continua funcional.
+    // O cliente deduplica a resposta completa e preserva o historico aberto.
+    console.warn("Indice incremental de mensagens indisponivel; usando fallback:", error);
+    return adminDb.collection("messages").where("chatId", "==", chatId).limit(500).get();
+  }
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string; chatId: string }> }
 ) {
   try {
     const user = await requireRequestUser(req);
+    const url = new URL(req.url);
     const { tenantId, chatId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "inbox");
     assertTenantRole(membership, "client_viewer");
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
 
     const chatRef = adminDb.collection("chats").doc(chatId);
     const chatSnap = await chatRef.get();
@@ -137,11 +164,13 @@ export async function GET(
       return NextResponse.json({ error: "Chat fora do tenant informado." }, { status: 403 });
     }
 
-    const messagesSnap = await adminDb
-      .collection("messages")
-      .where("chatId", "==", chatId)
-      .limit(500)
-      .get();
+    const requestedSince = Number(url.searchParams.get("since") || 0);
+    // A margem absorve timestamps iguais do Firestore. O cliente elimina os
+    // ids repetidos antes de renderizar as mensagens novas.
+    const sinceMs = Number.isFinite(requestedSince) && requestedSince > 0
+      ? Math.max(0, Math.round(requestedSince) - 1_000)
+      : null;
+    const messagesSnap = await listChatMessages(chatId, sinceMs);
 
     const items = messagesSnap.docs
       .map((doc) => {
@@ -173,6 +202,7 @@ export async function GET(
           mediaWidth: numericValue(data.mediaWidth),
           mediaHeight: numericValue(data.mediaHeight),
           mediaSize: numericValue(data.mediaSize),
+          aiMultimodalSummary: cleanMessageText(data.aiMultimodalSummary, 900) || null,
           mediaThumbnail:
             canRenderMedia && (type === "image" || type === "video")
               ? buildProtectedMediaUrl(tenantId, chatId, doc.id)
@@ -186,7 +216,7 @@ export async function GET(
       })
       .sort((a, b) => toTime(a.createdAt) - toTime(b.createdAt));
 
-    return NextResponse.json({ ok: true, tenantId, chatId, items });
+    return NextResponse.json({ ok: true, tenantId, chatId, items, incremental: Boolean(sinceMs) });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });

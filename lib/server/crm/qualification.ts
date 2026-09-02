@@ -36,6 +36,10 @@ function cleanNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function asRecord(value: unknown) {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
 function createReason(input: LeadQualificationReason) {
   return input;
 }
@@ -88,12 +92,38 @@ export function evaluateLeadQualification(input: {
   const email = cleanText(input.lead.email, 180);
   const telefone = cleanText(input.lead.telefone, 40);
   const empresa = cleanText(input.lead.empresa, 180);
-  const notes = cleanText(input.lead.notes, 2000);
+  const customFields = asRecord(input.lead.customFields);
+  const aiMemory = asRecord(input.lead.aiMemory);
+  const notes = cleanText(input.lead.notes || input.lead.aiLeadSummary, 2000);
   const source = cleanText(input.lead.origem || input.lead.channel, 120);
+  const businessType = cleanText(
+    input.lead.aiBusinessType || aiMemory.businessType || customFields.nicho,
+    160
+  );
+  const primaryGoal = cleanText(
+    input.lead.aiPrimaryGoal || aiMemory.primaryGoal || customFields.objetivo_principal,
+    220
+  );
+  const budgetBand = cleanText(
+    input.lead.aiBudgetBand || aiMemory.budgetBand || customFields.orcamento || customFields.budget,
+    160
+  );
+  const urgency = cleanText(
+    input.lead.aiUrgency || aiMemory.urgency || customFields.urgencia,
+    120
+  );
+  const decisionMaker = cleanText(
+    input.lead.aiDecisionMaker || aiMemory.decisionMaker || customFields.decisor,
+    160
+  );
+  const recommendedOffer = cleanText(
+    input.lead.aiRecommendedOffer || aiMemory.recommendedOffer || aiMemory.serviceInterest || customFields.servico_interesse,
+    180
+  );
   const potentialValue =
     cleanNumber(input.lead.potentialValue) ??
     cleanNumber(input.lead.valorPotencial) ??
-    cleanNumber(input.lead.customFields && (input.lead.customFields as Record<string, unknown>).budget) ??
+    cleanNumber(customFields.budget) ??
     null;
   const relatedChats = input.relatedChats || [];
 
@@ -187,6 +217,82 @@ export function evaluateLeadQualification(input: {
     }));
   }
 
+  if (businessType) {
+    score += 8;
+    reasons.push(createReason({
+      code: "business_type_mapped",
+      label: "Negocio compreendido",
+      detail: `A IA identificou o contexto como ${businessType}.`,
+      direction: "positive",
+      impact: 8,
+    }));
+  } else {
+    missingFields.push("tipo_empresa");
+  }
+
+  if (primaryGoal) {
+    score += 12;
+    reasons.push(createReason({
+      code: "primary_goal_mapped",
+      label: "Objetivo comercial identificado",
+      detail: primaryGoal,
+      direction: "positive",
+      impact: 12,
+    }));
+  } else {
+    missingFields.push("objetivo");
+  }
+
+  if (budgetBand || potentialValue) {
+    if (budgetBand) {
+      score += 10;
+      reasons.push(createReason({
+        code: "budget_band_mapped",
+        label: "Investimento compreendido",
+        detail: budgetBand,
+        direction: "positive",
+        impact: 10,
+      }));
+    }
+  } else {
+    missingFields.push("orcamento");
+  }
+
+  if (urgency) {
+    score += 6;
+    reasons.push(createReason({
+      code: "urgency_mapped",
+      label: "Prazo ou urgencia identificado",
+      detail: urgency,
+      direction: "positive",
+      impact: 6,
+    }));
+  } else {
+    missingFields.push("urgencia");
+  }
+
+  if (decisionMaker) {
+    score += 6;
+    reasons.push(createReason({
+      code: "decision_maker_mapped",
+      label: "Decisor identificado",
+      detail: decisionMaker,
+      direction: "positive",
+      impact: 6,
+    }));
+  }
+
+  if (recommendedOffer) {
+    score += 8;
+    reasons.push(createReason({
+      code: "recommended_offer_mapped",
+      label: "Oferta conectada a necessidade",
+      detail: recommendedOffer,
+      direction: "positive",
+      impact: 8,
+    }));
+  }
+
   if (relatedChats.length > 0) {
     score += 10;
     reasons.push(createReason({
@@ -251,7 +357,7 @@ export function evaluateLeadQualification(input: {
     score -= 6;
   }
 
-  if (!empresa && !potentialValue) {
+  if (!empresa && !potentialValue && !budgetBand) {
     missingFields.push("empresa_ou_budget");
   }
 

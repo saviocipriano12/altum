@@ -7,11 +7,18 @@ import { verticals } from "@/lib/verticals";
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag").replace(/\/$/, "");
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const now = new Date();
+  const siteUpdatedAt = new Date(process.env.NEXT_PUBLIC_SITE_UPDATED_AT || "2026-08-27T00:00:00-03:00");
   const posts = await getAllBlogPosts();
   const staticRoutes = [
     "",
     "/blog",
+    "/contato",
+    "/diagnostico",
+    "/implantacao",
+    "/plataforma",
+    "/precos",
+    "/politica-de-privacidade",
+    "/termos",
     "/rss.xml",
     "/solucoes",
     "/segmentos",
@@ -22,7 +29,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const staticEntries: MetadataRoute.Sitemap = staticRoutes.map((route) => ({
     url: `${SITE_URL}${route}`,
-    lastModified: now,
+    lastModified: siteUpdatedAt,
     changeFrequency: "weekly",
     priority: route === "" ? 1 : 0.9,
   }));
@@ -36,21 +43,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const verticalEntries: MetadataRoute.Sitemap = verticals.map((vertical) => ({
     url: `${SITE_URL}/solucoes/${vertical.slug}`,
-    lastModified: now,
+    lastModified: siteUpdatedAt,
     changeFrequency: "weekly",
     priority: 0.78,
   }));
 
   const segmentEntries: MetadataRoute.Sitemap = segmentPages.map((segment) => ({
     url: `${SITE_URL}/segmentos/${segment.slug}`,
-    lastModified: now,
+    lastModified: siteUpdatedAt,
     changeFrequency: "weekly",
     priority: 0.72,
   }));
 
   const cityEntries: MetadataRoute.Sitemap = cityPages.map((city) => ({
     url: `${SITE_URL}/cidades/${city.slug}`,
-    lastModified: now,
+    lastModified: siteUpdatedAt,
     changeFrequency: "weekly",
     priority: 0.7,
   }));

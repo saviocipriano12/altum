@@ -685,14 +685,14 @@ export default function ClienteIaPage() {
       setLoading(true);
       setError(null);
 
-      const [settingsRes, kbRes, logsRes, usageRes, campaignsRes] = await Promise.all([
+      const [settingsRes, kbRes, logsRes, usageRes, campaignsRes, tenantSettingsRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`),
         authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
         authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`),
         authedFetch(`/api/tenant/${tenant.tenantId}/ai-usage`),
         authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/overview`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
       ]);
-      const tenantSettingsRes = await authedFetch(`/api/tenant/${tenant.tenantId}/settings`);
 
       const settingsPayload = (await settingsRes.json()) as { ai?: AiSettings; error?: string };
       const kbPayload = (await kbRes.json()) as { items?: KbDoc[]; error?: string };
@@ -2696,7 +2696,6 @@ export default function ClienteIaPage() {
                   {[
                     { value: "audio_only", label: "Responder audio com audio", detail: "Melhor para nao invadir conversas em texto." },
                     { value: "smart", label: "Audio sob demanda", detail: "Usa audio quando o cliente manda audio ou pede audio." },
-                    { value: "always", label: "Sempre que possivel", detail: "Mais forte para operacoes que vendem por voz." },
                   ].map((option) => {
                     const active = (settings.voiceReplyMode || "smart") === option.value;
                     return (

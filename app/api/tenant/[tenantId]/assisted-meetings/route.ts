@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import {
   generateAssistedMeetingSummary,
   summaryToMarkdown,
@@ -109,6 +110,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "assisted_meetings");
     assertTenantRole(membership, "client_viewer");
 
     const snap = await adminDb
@@ -139,6 +141,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    await assertTenantModule(tenantId, "assisted_meetings");
     assertTenantCapability(membership, "edit_leads");
 
     const body = (await req.json().catch(() => ({}))) as Body;

@@ -29,6 +29,22 @@ export type TenantReadinessPayload = {
     pilotReady?: boolean;
     readinessScore?: number;
   };
+  onboarding?: {
+    completed?: number;
+    total?: number;
+    progressPct?: number;
+    pendingCritical?: number;
+    steps?: Array<{
+      id: string;
+      title: string;
+      description: string;
+      href: string;
+      status: "done" | "pending" | "blocked";
+      critical: boolean;
+      done: boolean;
+      evidence?: string;
+    }>;
+  };
   blockers?: Array<{
     id: string;
     href: string;

@@ -3,9 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
-import { doc, getDoc } from "firebase/firestore";
 import type {
   FinanceStatus,
   FinanceTransaction,
@@ -98,17 +96,15 @@ export default function FinanceiroDetalhePage() {
   useEffect(() => {
     async function fetchRecord() {
       try {
-        const ref = doc(db, "financeiro", params.id);
-        const snap = await getDoc(ref);
-
-        if (!snap.exists()) {
+        const response = await authedFetch(`/api/admin/records/financeiro/${encodeURIComponent(params.id)}`);
+        const payload = (await response.json()) as { item?: FinancialRecord; error?: string };
+        if (!response.ok || !payload.item) {
           setRecord(null);
           return;
         }
 
-        const data = snap.data() as Omit<FinancialRecord, "id">;
+        const data = payload.item;
         setRecord({
-          id: snap.id,
           ...data,
           status: normalizeStatus(data.status),
           tipo: data.tipo || "Receita",

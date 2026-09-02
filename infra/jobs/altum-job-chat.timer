@@ -1,0 +1,11 @@
+[Unit]
+Description=Recupera entregas de conversa pendentes da Altum a cada minuto
+
+[Timer]
+OnBootSec=35s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=altum-job@chat.service
+
+[Install]
+WantedBy=timers.target
