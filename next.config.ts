@@ -14,6 +14,11 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        source: "/chatbot-para-empresas",
+        destination: "/chatbot-whatsapp",
+        permanent: true,
+      },
+      {
         source: "/:path*",
         has: [{ type: "host", value: "www.altumia.com.br" }],
         destination: "https://altumia.com.br/:path*",
