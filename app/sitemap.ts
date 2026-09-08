@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 import { segmentPages } from "@/data/segment-pages";
 import { getAllBlogPosts } from "@/lib/blog";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://altumia.com.br").trim().replace(/\/+$/, "");
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const siteUpdatedAt = new Date(process.env.NEXT_PUBLIC_SITE_UPDATED_AT || "2026-09-08T00:00:00-03:00");
