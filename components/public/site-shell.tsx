@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ArrowRight, Menu } from "lucide-react";
-import { ALTUM_EMAIL } from "@/lib/public-site";
 
 const navigation = [
   { href: "/", label: "Início" },
@@ -60,7 +59,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
           </div>
           <div>
             <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-white/26">Contato</p>
-            <div className="mt-4 space-y-3 text-sm font-semibold text-white/44"><div><Link href="/contato" className="hover:text-white">Falar com a Altum</Link></div><div><a href={`mailto:${ALTUM_EMAIL}`} className="hover:text-white">{ALTUM_EMAIL}</a></div><div><Link href="/politica-de-privacidade" className="hover:text-white">Privacidade</Link></div></div>
+            <div className="mt-4 space-y-3 text-sm font-semibold text-white/44"><div><Link href="/contato" className="hover:text-white">Falar com a Altum</Link></div><div><Link href="/politica-de-privacidade" className="hover:text-white">Privacidade</Link></div></div>
           </div>
         </div>
         <div className="mx-auto mt-9 max-w-[1280px] border-t border-white/8 pt-6 text-xs text-white/22">© 2026 Altum. Todos os direitos reservados.</div>
