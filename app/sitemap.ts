@@ -30,7 +30,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/automacoes",
     "/automacao-com-ia",
     "/ia-no-whatsapp",
-    "/chatbot-para-empresas",
+    "/chatbot-whatsapp",
   ];
 
   const staticEntries: MetadataRoute.Sitemap = staticRoutes.map((route) => ({
