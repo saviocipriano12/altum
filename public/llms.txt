@@ -1,25 +1,28 @@
 # ALTUM
 
-ALTUM e uma empresa B2B de engenharia de vendas que combina IA, automacao, WhatsApp e paginas de alta conversao para gerar demanda qualificada e pipeline previsivel.
+ALTUM e uma plataforma de vendas e relacionamento com inteligencia artificial para centralizar atendimento, CRM, pipeline, follow-ups, automacoes, agenda, campanhas e metricas em uma unica operacao comercial.
 
-## Services
-- Geracao de leads B2B para e-commerce, clinicas, lojas e servicos.
-- Qualificacao automatica com IA em WhatsApp e formulários.
-- Estruturacao de funil comercial e operacao de follow-up.
-- Landing pages, sites e lojas virtuais orientados a conversao.
-- Dashboards de conversao, CAC e ROI por etapa.
+## Produto
+- CRM para organizar contatos, oportunidades, historico, tarefas e contexto comercial.
+- Inbox para centralizar conversas e reduzir perda de atendimento.
+- IA para interpretar contexto, qualificar contatos, sugerir proximas acoes e apoiar handoff para pessoas.
+- Pipeline para acompanhar oportunidades e etapas de venda.
+- Follow-ups e automacoes para reduzir leads esquecidos e tarefas manuais.
+- Agenda para transformar atendimento em reunioes e compromissos comerciais.
+- Campanhas para ativacao e reativacao da base.
+- Metricas para acompanhar operacao e desempenho comercial.
 
-## Pillars
+## Principais paginas publicas
+- /
+- /solucoes
+- /segmentos
 - /automacao-com-ia
 - /ia-no-whatsapp
 - /chatbot-para-empresas
-
-## Blog
 - /blog
 
-## Solutions
-- /solucoes
-- /segmentos
+## Conteudo
+O blog publica materiais sobre vendas, CRM, atendimento, automacao, inteligencia artificial, follow-up, pipeline e conversao.
 
-## Contact
-- /
+## Entidade oficial
+Site: https://www.altumia.com.br
