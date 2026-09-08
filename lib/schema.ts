@@ -10,6 +10,17 @@ type OrganizationSchemaOptions = {
   socialLinks?: string[];
 };
 
+type WebSiteSchemaOptions = {
+  siteUrl?: string;
+  name?: string;
+};
+
+type SoftwareApplicationSchemaOptions = {
+  siteUrl?: string;
+  name?: string;
+  description?: string;
+};
+
 type ArticleSchemaOptions = {
   headline: string;
   description: string;
@@ -29,9 +40,11 @@ type ItemListSchemaOptions = {
   itemUrls: string[];
 };
 
+const DEFAULT_SITE_URL = "https://www.altumia.com.br";
 const normalizeSiteUrl = (value: string): string => value.replace(/\/$/, "");
 
-export const getSiteUrl = (): string => normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000");
+export const getSiteUrl = (): string =>
+  normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL ?? DEFAULT_SITE_URL);
 
 export const toAbsoluteUrl = (siteUrl: string, pathOrUrl: string): string => {
   if (!pathOrUrl) return siteUrl;
@@ -49,7 +62,9 @@ export const getSocialLinksFromEnv = (): string[] => {
     process.env.NEXT_PUBLIC_X_URL,
   ];
 
-  return maybeLinks.filter((item): item is string => Boolean(item && /^https?:\/\//i.test(item) && item !== siteUrl));
+  return maybeLinks.filter(
+    (item): item is string => Boolean(item && /^https?:\/\//i.test(item) && item !== siteUrl),
+  );
 };
 
 export const buildOrganizationSchema = (options: OrganizationSchemaOptions = {}) => {
@@ -60,6 +75,7 @@ export const buildOrganizationSchema = (options: OrganizationSchemaOptions = {})
   const schema: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": `${siteUrl}/#organization`,
     name: options.name ?? "ALTUM",
     url: siteUrl,
   };
@@ -73,6 +89,43 @@ export const buildOrganizationSchema = (options: OrganizationSchemaOptions = {})
   }
 
   return schema;
+};
+
+export const buildWebSiteSchema = (options: WebSiteSchemaOptions = {}) => {
+  const siteUrl = normalizeSiteUrl(options.siteUrl ?? getSiteUrl());
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": `${siteUrl}/#website`,
+    name: options.name ?? "ALTUM",
+    url: siteUrl,
+    inLanguage: "pt-BR",
+    publisher: {
+      "@id": `${siteUrl}/#organization`,
+    },
+  };
+};
+
+export const buildSoftwareApplicationSchema = (
+  options: SoftwareApplicationSchemaOptions = {},
+) => {
+  const siteUrl = normalizeSiteUrl(options.siteUrl ?? getSiteUrl());
+  return {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "@id": `${siteUrl}/#software`,
+    name: options.name ?? "ALTUM",
+    url: siteUrl,
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    inLanguage: "pt-BR",
+    description:
+      options.description ??
+      "Plataforma de vendas e relacionamento com CRM, atendimento, pipeline, automações e inteligência artificial.",
+    publisher: {
+      "@id": `${siteUrl}/#organization`,
+    },
+  };
 };
 
 export const buildArticleSchema = (options: ArticleSchemaOptions) => {
