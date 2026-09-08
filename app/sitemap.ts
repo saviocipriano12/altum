@@ -1,8 +1,6 @@
 import type { MetadataRoute } from "next";
-import { cityPages } from "@/data/city-pages";
 import { segmentPages } from "@/data/segment-pages";
 import { getAllBlogPosts } from "@/lib/blog";
-import { verticals } from "@/lib/verticals";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.altumia.com.br").replace(/\/$/, "");
 
@@ -31,23 +29,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }));
 
-  const verticalEntries: MetadataRoute.Sitemap = verticals.map((vertical) => ({
-    url: `${SITE_URL}/solucoes/${vertical.slug}`,
-    changeFrequency: "monthly",
-    priority: 0.78,
-  }));
-
   const segmentEntries: MetadataRoute.Sitemap = segmentPages.map((segment) => ({
     url: `${SITE_URL}/segmentos/${segment.slug}`,
     changeFrequency: "monthly",
     priority: 0.72,
   }));
 
-  const cityEntries: MetadataRoute.Sitemap = cityPages.map((city) => ({
-    url: `${SITE_URL}/cidades/${city.slug}`,
-    changeFrequency: "monthly",
-    priority: 0.55,
-  }));
-
-  return [...staticEntries, ...blogEntries, ...verticalEntries, ...segmentEntries, ...cityEntries];
+  return [...staticEntries, ...blogEntries, ...segmentEntries];
 }
