@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
+import { trackLeadGenerated } from "@/components/analytics/track-event";
 import {
   publicCommercialInterests,
   getCommercialInterest,
@@ -78,6 +79,15 @@ export function CommercialContactForm() {
       setSubmitState({
         leadId: payload.leadId,
         message: payload.message,
+      });
+
+      trackLeadGenerated({
+        lead_source: "commercial_contact_form",
+        interest: interest.id,
+        source_page: searchParams.get("from") || "/contato",
+        utm_source: utm.utmSource || undefined,
+        utm_medium: utm.utmMedium || undefined,
+        utm_campaign: utm.utmCampaign || undefined,
       });
     } catch {
       setSubmitError("Falha ao enviar contato.");

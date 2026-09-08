@@ -41,7 +41,7 @@ type ItemListSchemaOptions = {
   itemUrls: string[];
 };
 
-const DEFAULT_SITE_URL = "https://www.altumia.com.br";
+const DEFAULT_SITE_URL = "https://altumia.com.br";
 
 const normalizeSiteUrl = (value: string): string => value.trim().replace(/\/+$/, "");
 

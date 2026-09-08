@@ -4,10 +4,11 @@ import Link from "next/link";
 import { ArrowRight, BarChart3, Check, Clock3, Route, Tags, Target, UserRoundCheck } from "lucide-react";
 import { SiteShell } from "@/components/public/site-shell";
 import { buildMarketingMetadata } from "@/lib/public-site";
+import { buildFaqSchema, toJsonLdScript } from "@/lib/schema";
 
 export const metadata: Metadata = buildMarketingMetadata({
-  title: "Pipeline de Vendas com IA e CRM",
-  description: "Acompanhe oportunidades, etapas, responsáveis, valor, tarefas e próximas ações em um pipeline de vendas conectado ao CRM e à IA da ALTUM.",
+  title: "Pipeline de Vendas: o que é, como funciona e como gerenciar",
+  description: "Entenda o que é pipeline de vendas e veja como acompanhar etapas, responsáveis, valores, tarefas e próximas ações com CRM e IA na ALTUM.",
   path: "/pipeline",
 });
 
@@ -20,7 +21,32 @@ const features = [
   [Route, "Pipeline conectado", "Inbox, CRM, IA e automações alimentam o funil e mantêm o contexto vivo durante a negociação."],
 ] as const;
 
+const faqs = [
+  {
+    question: "O que é pipeline de vendas?",
+    answer: "Pipeline de vendas é a representação das oportunidades comerciais ao longo das etapas do processo de venda. Ele mostra onde cada negociação está, quem é responsável, qual é o próximo passo e quais oportunidades estão avançando, paradas, ganhas ou perdidas.",
+  },
+  {
+    question: "Qual a diferença entre pipeline e funil de vendas?",
+    answer: "Os termos são relacionados, mas podem ser usados com focos diferentes. O funil costuma mostrar o volume de oportunidades por etapa e a conversão entre elas. O pipeline enfatiza a gestão das negociações individuais e das ações necessárias para fazê-las avançar.",
+  },
+  {
+    question: "Quais etapas um pipeline de vendas deve ter?",
+    answer: "As etapas dependem do processo comercial. Um pipeline pode incluir novo lead, qualificação, diagnóstico, proposta, negociação, ganho e perda. O mais importante é que cada etapa tenha significado operacional e uma próxima ação clara.",
+  },
+  {
+    question: "Como fazer gestão de pipeline de vendas?",
+    answer: "A gestão de pipeline exige acompanhar volume, valor, tempo parado, responsável, próxima ação e conversão por etapa. Reuniões de pipeline funcionam melhor quando usam esses dados para decidir ações, e não apenas para atualizar cartões.",
+  },
+  {
+    question: "Como a IA pode ajudar no pipeline de vendas?",
+    answer: "A IA pode apoiar qualificação, leitura de contexto, identificação de sinais, priorização e recomendação de próxima ação. Na ALTUM, esses sinais podem ficar ligados ao CRM, histórico, tarefas e oportunidade em vez de existir em uma ferramenta separada.",
+  },
+];
+
 export default function PipelinePage() {
+  const faqSchema = buildFaqSchema(faqs);
+
   return (
     <SiteShell>
       <section className="px-5 pb-20 pt-24 lg:px-8 lg:pb-28 lg:pt-32">
@@ -37,6 +63,15 @@ export default function PipelinePage() {
           <div className="overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#0b0b0b] p-2.5 shadow-[0_30px_90px_rgba(0,0,0,0.5)]">
             <Image src="/images/platform/marketing/platform-crm-pipeline.png" alt="Pipeline de vendas da ALTUM" width={1586} height={992} priority sizes="(min-width:1280px) 58vw, 96vw" className="h-auto w-full rounded-[1.15rem]" />
           </div>
+        </div>
+      </section>
+
+      <section className="border-y border-white/8 bg-[#080808] px-5 py-20 lg:px-8 lg:py-24">
+        <div className="mx-auto max-w-[980px]">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#ff6a1f]">Resposta rápida</p>
+          <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-white md:text-4xl">O que é pipeline de vendas?</h2>
+          <p className="mt-5 text-lg leading-8 text-white/68">Pipeline de vendas é a representação das oportunidades comerciais ao longo das etapas do processo de venda. Ele ajuda a enxergar onde cada negociação está, quem é responsável, quanto ela vale, qual é a próxima ação e quais oportunidades precisam de atenção para continuar avançando.</p>
+          <div className="mt-7 grid gap-3 md:grid-cols-2">{["Etapas claras do processo comercial", "Oportunidades com responsável e valor", "Próxima ação e prazo visíveis", "Conversão e gargalos por etapa"].map((item) => <div key={item} className="flex gap-3 rounded-xl border border-white/8 bg-white/[0.025] p-4 text-sm leading-6 text-white/62"><Check className="mt-1 h-4 w-4 shrink-0 text-[#ff6a1f]" />{item}</div>)}</div>
         </div>
       </section>
 
@@ -65,7 +100,11 @@ export default function PipelinePage() {
         </div>
       </section>
 
+      <section className="px-5 py-24 lg:px-8 lg:py-28"><div className="mx-auto max-w-[980px]"><p className="text-xs font-bold uppercase tracking-[0.2em] text-[#ff6a1f]">Perguntas frequentes</p><h2 className="mt-5 text-[clamp(2.5rem,5vw,4.6rem)] font-semibold leading-[0.96] tracking-[-0.055em] text-white">Pipeline de vendas sem complicação.</h2><div className="mt-10 space-y-3">{faqs.map((faq) => <article key={faq.question} className="rounded-2xl border border-white/9 bg-white/[0.025] p-6"><h3 className="text-lg font-semibold text-white">{faq.question}</h3><p className="mt-3 text-sm leading-7 text-white/56">{faq.answer}</p></article>)}</div></div></section>
+
       <section className="px-5 py-24 lg:px-8"><div className="mx-auto max-w-[980px] rounded-[1.7rem] border border-white/10 bg-[#0b0b0b] p-8 md:p-12"><p className="text-xs font-bold uppercase tracking-[0.2em] text-[#ff6a1f]">Pipeline + execução</p><h2 className="mt-5 max-w-[15ch] text-[clamp(2.6rem,5vw,4.7rem)] font-semibold leading-[0.96] tracking-[-0.055em] text-white">Descubra onde sua operação perde oportunidades entre uma etapa e outra.</h2><div className="mt-8 flex flex-wrap gap-3 text-sm text-white/62">{["CRM", "Pipeline", "Follow-up", "Automação", "IA", "Relatórios"].map((item) => <span key={item} className="flex items-center gap-2 rounded-md border border-white/10 px-3 py-2"><Check className="h-3.5 w-3.5 text-[#ff6a1f]" />{item}</span>)}</div><Link href="/contato?interest=demonstracao" className="mt-9 inline-flex items-center gap-2 rounded-lg bg-[#e85002] px-6 py-3.5 text-sm font-semibold text-white">Agendar demonstração <ArrowRight className="h-4 w-4" /></Link></div></section>
+
+      <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(faqSchema)} />
     </SiteShell>
   );
 }

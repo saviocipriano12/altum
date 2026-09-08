@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DEFAULT_PLATFORM_PLANS } from "@/lib/platform-plans";
 
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://altumia.com.br").trim().replace(/\/+$/, "");
 export const ALTUM_PHONE = "5531972545430";
 export const ALTUM_EMAIL = "contato@altum.ag";
 

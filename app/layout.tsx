@@ -14,7 +14,7 @@ import {
 } from "@/lib/schema";
 import { TrackingScripts } from "@/components/analytics/TrackingScripts";
 
-const PUBLIC_SITE_URL = "https://www.altumia.com.br";
+const PUBLIC_SITE_URL = "https://altumia.com.br";
 
 const manrope = Manrope({
   subsets: ["latin"],

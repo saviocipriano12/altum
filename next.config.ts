@@ -11,6 +11,21 @@ const nextConfig = {
     "/api/tenant/*/chats/*/send-stored-media": ["./node_modules/ffmpeg-static/ffmpeg*"],
     "/api/tenant/*/chats/*/messages/*/media": ["./node_modules/ffmpeg-static/ffmpeg*"],
   },
+  async redirects() {
+    return [
+      {
+        source: "/chatbot-para-empresas",
+        destination: "/chatbot-whatsapp",
+        permanent: true,
+      },
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.altumia.com.br" }],
+        destination: "https://altumia.com.br/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     const isDev = process.env.NODE_ENV !== "production";
     const scriptSrc = isDev
