@@ -52,7 +52,7 @@ const faqs = [
     answer:
       "O primeiro passo é conectar o canal de WhatsApp a uma plataforma compatível e definir como contatos, responsáveis, etapas, tarefas e automações serão tratados. A ALTUM pode centralizar esse fluxo e conectar a conversa ao processo comercial da empresa.",
   },
-] as const;
+];
 
 export default function CrmParaWhatsappPage() {
   const faqSchema = buildFaqSchema(faqs);
