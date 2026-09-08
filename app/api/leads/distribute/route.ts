@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { getTenantForCurrentUser } from "@/lib/server/tenant";
+import { AGENCY_SELLER_ROLES, canReceiveDistributedLeads } from "@/lib/agency-roles";
 
 type Body = {
   leadIds?: string[];
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
       : [];
 
     const mergedTargets = [...sellerIdsRaw, ...vendedorIdsRaw];
-    const roleSet = new Set(["closer", "sdr", "agency_agent"]);
+    const roleSet = new Set<string>(AGENCY_SELLER_ROLES);
     const targetRoles = new Set<string>(sellerRolesRaw.filter((role) => roleSet.has(role)));
 
     const explicitIds = mergedTargets.filter((target) => {
@@ -111,11 +112,7 @@ export async function POST(req: Request) {
     }
 
     const sellers = Array.from(sellerMap.values()).filter(
-      (user) =>
-        user.status === "active" &&
-        user.role !== "admin" &&
-        user.role !== "agency_owner" &&
-        user.role !== "agency_admin"
+      (user) => user.status === "active" && canReceiveDistributedLeads(user.role)
     );
 
     if (!sellers.length) {

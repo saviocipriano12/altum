@@ -48,11 +48,11 @@ export default function AdminHeader({
   }
 
   return (
-    <header className="h-16 flex items-center justify-between px-4 md:px-6 border-b border-white/10 bg-[#0B0B0B]/80 backdrop-blur">
+    <header className="h-16 flex items-center justify-between border-b border-slate-200 bg-white px-4 text-slate-900 shadow-sm md:px-6">
       <div className="flex items-center gap-2">
         <button
           onClick={onOpenSidebar}
-          className="md:hidden p-2 rounded-lg hover:bg-white/10 transition"
+          className="rounded-lg p-2 transition hover:bg-slate-100 md:hidden"
           aria-label="Abrir menu"
         >
           <Menu size={18} />
@@ -60,7 +60,7 @@ export default function AdminHeader({
 
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="hidden md:inline-flex p-2 rounded-lg hover:bg-white/10 transition"
+          className="hidden rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 md:inline-flex"
           aria-label="Recolher/Expandir sidebar"
           title={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
         >
@@ -68,24 +68,24 @@ export default function AdminHeader({
         </button>
 
         <div className="hidden md:flex flex-col leading-tight">
-          <span className="text-[12px] text-white/80 font-medium">ALTUM - Painel Administrativo</span>
-          <span className="text-[10px] text-white/35">Console operacional</span>
+          <span className="text-[12px] font-semibold text-slate-900">ALTUM Agency OS</span>
+          <span className="text-[10px] font-medium text-slate-500">Comando da agencia</span>
         </div>
       </div>
 
       <form onSubmit={handleSearchSubmit} className="flex-1 max-w-xl mx-4 hidden md:block">
-        <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#111111] px-3 py-2 text-white/70">
-          <Search size={16} className="text-white/40" />
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+          <Search size={16} className="text-slate-400" />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar acoes, paginas e atalhos"
-            className="w-full bg-transparent text-xs outline-none placeholder:text-white/35"
+            placeholder="Buscar modulo, cliente, campanha ou acao"
+            className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
           />
           <button
             type="button"
             onClick={() => openCommandPalette(search.trim())}
-            className="text-[10px] text-white/35 border border-white/10 rounded-md px-2 py-0.5 hover:text-white/70"
+            className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-500 hover:text-slate-900"
           >
             Ctrl+K
           </button>
@@ -93,15 +93,15 @@ export default function AdminHeader({
       </form>
 
       <div className="flex items-center gap-2">
-        <div className="hidden md:flex items-center gap-2 text-xs text-white/70 rounded-xl border border-white/10 px-3 py-1.5 bg-white/5">
-          {isAdmin ? <Shield size={14} className="text-blue-300" /> : <User2 size={14} className="text-emerald-300" />}
+        <div className="hidden items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 md:flex">
+          {isAdmin ? <Shield size={14} className="text-blue-600" /> : <User2 size={14} className="text-emerald-600" />}
           <span>{profile?.name || "Operador"}</span>
-          <span className="text-white/35">- {roleLabel}</span>
+          <span className="text-slate-400">- {roleLabel}</span>
         </div>
 
         <button
           onClick={() => void signOutUser()}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/70 hover:text-white hover:bg-white/10"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 hover:text-slate-900"
           title="Sair"
         >
           <LogOut size={14} />

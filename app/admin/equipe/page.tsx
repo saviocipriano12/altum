@@ -20,8 +20,9 @@ import {
 import { db } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import type { TimestampLike } from "@/app/types/domain";
+import { isClientRole } from "@/lib/agency-roles";
 
-type UserRole = "admin" | "closer" | "sdr" | "client";
+type EditableRole = "admin" | "closer" | "sdr" | "agency_agent";
 type UserStatus = "active" | "blocked";
 
 type SystemUser = {
@@ -29,7 +30,7 @@ type SystemUser = {
   uid?: string;
   name: string;
   email: string;
-  role: UserRole;
+  role: EditableRole | string;
   status: UserStatus;
   commissionRate: number;
   asaasWalletId?: string | null;
@@ -44,7 +45,7 @@ type Notice = {
 type FormState = {
   name: string;
   email: string;
-  role: UserRole;
+  role: EditableRole;
   commissionRate: number;
   asaasWalletId: string;
 };
@@ -57,12 +58,15 @@ const initialForm: FormState = {
   asaasWalletId: "",
 };
 
-const ROLE_LABEL: Record<UserRole, string> = {
+const ROLE_LABEL: Record<EditableRole, string> = {
   admin: "Administrador",
   closer: "Closer",
   sdr: "SDR",
-  client: "Cliente",
+  agency_agent: "Operador",
 };
+
+const inputClass =
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400 transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-500";
 
 function formatDate(value?: TimestampLike | number | null) {
   if (!value) return "-";
@@ -73,6 +77,10 @@ function formatDate(value?: TimestampLike | number | null) {
   return "-";
 }
 
+function roleLabel(role: string) {
+  return ROLE_LABEL[role as EditableRole] || role || "Sem papel";
+}
+
 async function requestJson<T>(path: string, body: Record<string, unknown>) {
   const response = await authedFetch(path, {
     method: "POST",
@@ -81,9 +89,7 @@ async function requestJson<T>(path: string, body: Record<string, unknown>) {
   });
 
   const data = (await response.json()) as T & { error?: string };
-  if (!response.ok) {
-    throw new Error(data.error || "Falha na API");
-  }
+  if (!response.ok) throw new Error(data.error || "Falha na API");
   return data;
 }
 
@@ -92,13 +98,12 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | EditableRole>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | UserStatus>("all");
 
   useEffect(() => {
@@ -110,8 +115,7 @@ export default function TeamPage() {
           id: item.id,
           ...(item.data() as Omit<SystemUser, "id">),
         })) as SystemUser[];
-        const filtered = next.filter((item) => item.role !== "client");
-        setUsers(filtered);
+        setUsers(next.filter((item) => !isClientRole(item.role)));
         setLoading(false);
       },
       (error) => {
@@ -139,9 +143,10 @@ export default function TeamPage() {
       if (roleFilter !== "all" && user.role !== roleFilter) return false;
       if (statusFilter !== "all" && user.status !== statusFilter) return false;
       if (!term) return true;
-      const name = (user.name || "").toLowerCase();
-      const email = (user.email || "").toLowerCase();
-      return name.includes(term) || email.includes(term);
+      return (
+        (user.name || "").toLowerCase().includes(term) ||
+        (user.email || "").toLowerCase().includes(term)
+      );
     });
   }, [users, searchTerm, roleFilter, statusFilter]);
 
@@ -162,7 +167,9 @@ export default function TeamPage() {
     setForm({
       name: user.name || "",
       email: user.email || "",
-      role: user.role || "sdr",
+      role: (user.role === "admin" || user.role === "closer" || user.role === "sdr" || user.role === "agency_agent"
+        ? user.role
+        : "agency_agent") as EditableRole,
       commissionRate: Number(user.commissionRate || 0),
       asaasWalletId: user.asaasWalletId || "",
     });
@@ -196,17 +203,15 @@ export default function TeamPage() {
           commissionRate: Number(form.commissionRate || 0),
           asaasWalletId: form.asaasWalletId.trim() || null,
         });
+        setNotice({ type: "ok", text: "Colaborador atualizado com sucesso." });
       } else {
-        const data = await requestJson<{ ok: boolean; inviteLink?: string }>(
-          "/api/admin/users/invite",
-          {
-            name: form.name.trim(),
-            email: form.email.trim().toLowerCase(),
-            role: form.role,
-            commissionRate: Number(form.commissionRate || 0),
-            asaasWalletId: form.asaasWalletId.trim() || null,
-          }
-        );
+        const data = await requestJson<{ ok: boolean; inviteLink?: string }>("/api/admin/users/invite", {
+          name: form.name.trim(),
+          email: form.email.trim().toLowerCase(),
+          role: form.role,
+          commissionRate: Number(form.commissionRate || 0),
+          asaasWalletId: form.asaasWalletId.trim() || null,
+        });
 
         if (data.inviteLink) {
           const copied = await copyToClipboard(data.inviteLink);
@@ -214,17 +219,13 @@ export default function TeamPage() {
             type: "ok",
             text: copied
               ? "Convite gerado. Link copiado para a area de transferencia."
-              : "Convite gerado. Copie o link no log da API para compartilhar.",
+              : "Convite gerado. Copie o link retornado pela API.",
           });
         } else {
           setNotice({ type: "ok", text: "Colaborador convidado com sucesso." });
         }
       }
-
       setModalOpen(false);
-      if (editingUser) {
-        setNotice({ type: "ok", text: "Colaborador atualizado com sucesso." });
-      }
     } catch (error) {
       console.error("Erro ao salvar usuario:", error);
       setNotice({
@@ -244,10 +245,7 @@ export default function TeamPage() {
     try {
       if (block) {
         const reason = window.prompt("Motivo do bloqueio (opcional):", "") || "";
-        await requestJson<{ ok: boolean }>(endpoint, {
-          uid: user.id,
-          reason: reason.trim() || null,
-        });
+        await requestJson<{ ok: boolean }>(endpoint, { uid: user.id, reason: reason.trim() || null });
         setNotice({ type: "ok", text: `Usuario ${user.name} bloqueado.` });
       } else {
         await requestJson<{ ok: boolean }>(endpoint, { uid: user.id });
@@ -267,20 +265,15 @@ export default function TeamPage() {
   async function resendInvite(user: SystemUser) {
     setBusyId(user.id);
     try {
-      const data = await requestJson<{ ok: boolean; inviteLink?: string }>(
-        "/api/admin/users/resend-invite",
-        {
-          uid: user.id,
-        }
-      );
+      const data = await requestJson<{ ok: boolean; inviteLink?: string }>("/api/admin/users/resend-invite", {
+        uid: user.id,
+      });
 
       if (data.inviteLink) {
         const copied = await copyToClipboard(data.inviteLink);
         setNotice({
           type: "ok",
-          text: copied
-            ? "Novo link de convite copiado para a area de transferencia."
-            : "Convite reenviado. Copie o link retornado pela API.",
+          text: copied ? "Novo link de convite copiado." : "Convite reenviado.",
         });
       } else {
         setNotice({ type: "ok", text: "Convite reenviado com sucesso." });
@@ -297,75 +290,58 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-white/10 bg-[#111] p-5">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div className="mx-auto max-w-[1480px] space-y-5 pb-10 text-slate-900">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-[11px] uppercase tracking-wider text-white/45">IAM Interno</p>
-            <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <Users className="h-6 w-6 text-blue-400" />
-              Gestao de Equipe
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Equipe da agencia</p>
+            <h1 className="mt-1 flex items-center gap-2 text-3xl font-black tracking-tight text-slate-950">
+              <Users className="h-7 w-7 text-blue-600" />
+              Gestao de equipe
             </h1>
-            <p className="text-sm text-white/60 mt-1">
-              Convite, permissao e bloqueio centralizados via API segura.
+            <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600">
+              Convites, permissoes, comissao e bloqueio de colaboradores. Usuarios de cliente ficam fora desta area.
             </p>
           </div>
 
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 transition"
-          >
+          <button onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700">
             <UserPlus className="h-4 w-4" />
             Novo colaborador
           </button>
         </div>
       </section>
 
-      <section className="grid md:grid-cols-3 gap-3">
+      <section className="grid gap-3 md:grid-cols-3">
         <MetricCard label="Ativos" value={String(metrics.active)} />
         <MetricCard label="Bloqueados" value={String(metrics.blocked)} />
         <MetricCard label="Comissao media" value={`${metrics.avgCommission.toFixed(1)}%`} />
       </section>
 
-      {notice && (
+      {notice ? (
         <div
-          className={`rounded-xl border px-3 py-2 text-sm ${
+          className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
             notice.type === "ok"
-              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
               : notice.type === "warn"
-                ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
-                : "border-red-500/40 bg-red-500/10 text-red-100"
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-red-200 bg-red-50 text-red-700"
           }`}
         >
           {notice.text}
         </div>
-      )}
+      ) : null}
 
-      <section className="rounded-2xl border border-white/10 bg-[#111] p-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-3 md:grid-cols-3">
-          <input
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Buscar por nome ou email"
-            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-          />
-
-          <select
-            value={roleFilter}
-            onChange={(event) => setRoleFilter(event.target.value as "all" | UserRole)}
-            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-          >
+          <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar por nome ou email" className={inputClass} />
+          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as "all" | EditableRole)} className={inputClass}>
             <option value="all">Todos os papeis</option>
             <option value="admin">Administrador</option>
+            <option value="agency_agent">Operador</option>
             <option value="closer">Closer</option>
             <option value="sdr">SDR</option>
           </select>
-
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as "all" | UserStatus)}
-            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-          >
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | UserStatus)} className={inputClass}>
             <option value="all">Todos os status</option>
             <option value="active">Ativo</option>
             <option value="blocked">Bloqueado</option>
@@ -373,14 +349,13 @@ export default function TeamPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-[#0f0f0f] overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/10 text-sm text-white/75">
-          Membros cadastrados
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-5 py-4 text-sm font-bold text-slate-700">
+          Colaboradores cadastrados
         </div>
-
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-white/5 text-white/45 uppercase text-[11px]">
+            <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3 text-left">Usuario</th>
                 <th className="px-4 py-3 text-left">Papel</th>
@@ -389,83 +364,51 @@ export default function TeamPage() {
                 <th className="px-4 py-3 text-right">Acoes</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-white/55">
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                  <td colSpan={5} className="px-4 py-10 text-center text-slate-500">
+                    <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                   </td>
                 </tr>
               ) : visibleUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-white/55">
+                  <td colSpan={5} className="px-4 py-10 text-center font-medium text-slate-500">
                     Nenhum usuario encontrado para os filtros aplicados.
                   </td>
                 </tr>
               ) : (
                 visibleUsers.map((user) => (
-                  <tr key={user.id} className="border-t border-white/5">
+                  <tr key={user.id} className="transition hover:bg-slate-50">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-white/90">{user.name || "Sem nome"}</p>
-                      <p className="text-xs text-white/45">{user.email || "-"}</p>
-                      <p className="text-[11px] text-white/30 mt-1">
-                        Criado em {formatDate(user.createdAt)}
-                      </p>
+                      <p className="font-bold text-slate-950">{user.name || "Sem nome"}</p>
+                      <p className="text-xs font-medium text-slate-500">{user.email || "-"}</p>
+                      <p className="mt-1 text-[11px] text-slate-400">Criado em {formatDate(user.createdAt)}</p>
                     </td>
-                    <td className="px-4 py-3 text-white/75">{ROLE_LABEL[user.role] || user.role}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-700">{roleLabel(user.role)}</td>
                     <td className="px-4 py-3">
-                      <p className="text-white/85">{Number(user.commissionRate || 0)}%</p>
-                      <p className="text-xs text-white/40 inline-flex items-center gap-1">
+                      <p className="font-bold text-slate-800">{Number(user.commissionRate || 0)}%</p>
+                      <p className="inline-flex items-center gap-1 text-xs text-slate-500">
                         <Wallet className="h-3.5 w-3.5" />
                         {user.asaasWalletId ? "Wallet conectada" : "Sem wallet"}
                       </p>
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex px-2 py-1 rounded-lg text-xs border ${
-                          user.status === "active"
-                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-100"
-                            : "bg-red-500/10 border-red-500/30 text-red-100"
-                        }`}
-                      >
+                      <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-bold ${user.status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}>
                         {user.status === "active" ? "Ativo" : "Bloqueado"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => openEdit(user)}
-                          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs hover:bg-white/10"
-                        >
+                        <IconButton onClick={() => openEdit(user)} title="Editar">
                           <Pencil className="h-3.5 w-3.5" />
-                        </button>
-
-                        <button
-                          onClick={() => resendInvite(user)}
-                          disabled={busyId === user.id}
-                          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs hover:bg-white/10 disabled:opacity-50"
-                          title="Reenviar convite"
-                        >
-                          {busyId === user.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <MailPlus className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-
-                        <button
-                          onClick={() => toggleUserStatus(user)}
-                          disabled={busyId === user.id}
-                          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs hover:bg-white/10 disabled:opacity-50"
-                        >
-                          {busyId === user.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : user.status === "active" ? (
-                            <Lock className="h-3.5 w-3.5" />
-                          ) : (
-                            <Unlock className="h-3.5 w-3.5" />
-                          )}
-                        </button>
+                        </IconButton>
+                        <IconButton onClick={() => resendInvite(user)} disabled={busyId === user.id} title="Reenviar convite">
+                          {busyId === user.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MailPlus className="h-3.5 w-3.5" />}
+                        </IconButton>
+                        <IconButton onClick={() => toggleUserStatus(user)} disabled={busyId === user.id} title={user.status === "active" ? "Bloquear" : "Desbloquear"}>
+                          {busyId === user.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : user.status === "active" ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                        </IconButton>
                       </div>
                     </td>
                   </tr>
@@ -476,101 +419,85 @@ export default function TeamPage() {
         </div>
       </section>
 
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#121212] p-5 space-y-4">
+      {modalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-lg space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                {editingUser ? <Shield className="h-5 w-5 text-blue-300" /> : <Plus className="h-5 w-5 text-blue-300" />}
+              <h2 className="flex items-center gap-2 text-lg font-black text-slate-950">
+                {editingUser ? <Shield className="h-5 w-5 text-blue-600" /> : <Plus className="h-5 w-5 text-blue-600" />}
                 {editingUser ? "Editar colaborador" : "Convidar colaborador"}
               </h2>
-              <button
-                onClick={() => setModalOpen(false)}
-                className="rounded-lg border border-white/10 bg-white/5 p-2 hover:bg-white/10"
-              >
+              <button onClick={() => setModalOpen(false)} className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:bg-slate-50">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <div className="space-y-3">
-              <Field
-                label="Nome"
-                value={form.name}
-                onChange={(value) => setForm((prev) => ({ ...prev, name: value }))}
-              />
-
-              <Field
-                label="Email"
-                value={form.email}
-                disabled={Boolean(editingUser)}
-                onChange={(value) => setForm((prev) => ({ ...prev, email: value }))}
-              />
+              <Field label="Nome" value={form.name} onChange={(value) => setForm((prev) => ({ ...prev, name: value }))} />
+              <Field label="Email" value={form.email} disabled={Boolean(editingUser)} onChange={(value) => setForm((prev) => ({ ...prev, email: value }))} />
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-white/50 block mb-1">Papel</label>
-                  <select
-                    value={form.role}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, role: event.target.value as UserRole }))
-                    }
-                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none"
-                  >
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Papel</label>
+                  <select value={form.role} onChange={(event) => setForm((prev) => ({ ...prev, role: event.target.value as EditableRole }))} className={inputClass}>
                     <option value="sdr">SDR</option>
                     <option value="closer">Closer</option>
+                    <option value="agency_agent">Operador</option>
                     <option value="admin">Administrador</option>
                   </select>
                 </div>
-
-                <Field
-                  label="Comissao (%)"
-                  value={String(form.commissionRate)}
-                  onChange={(value) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      commissionRate: Number(value || 0),
-                    }))
-                  }
-                />
+                <Field label="Comissao (%)" value={String(form.commissionRate)} onChange={(value) => setForm((prev) => ({ ...prev, commissionRate: Number(value || 0) }))} />
               </div>
 
-              <Field
-                label="Asaas Wallet ID"
-                value={form.asaasWalletId}
-                onChange={(value) => setForm((prev) => ({ ...prev, asaasWalletId: value }))}
-              />
+              <Field label="Asaas Wallet ID" value={form.asaasWalletId} onChange={(value) => setForm((prev) => ({ ...prev, asaasWalletId: value }))} />
             </div>
 
             <div className="flex justify-end gap-2 pt-1">
-              <button
-                onClick={() => setModalOpen(false)}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
-              >
+              <button onClick={() => setModalOpen(false)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
                 <RefreshCw className="h-4 w-4" />
                 Cancelar
               </button>
-              <button
-                onClick={saveUser}
-                disabled={saving}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold disabled:opacity-50"
-              >
+              <button onClick={saveUser} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Salvar
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-[#111] p-4">
-      <p className="text-xs uppercase tracking-wide text-white/45">{label}</p>
-      <p className="text-2xl font-semibold mt-1">{value}</p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-3xl font-black text-slate-950">{value}</p>
     </div>
+  );
+}
+
+function IconButton({
+  children,
+  onClick,
+  disabled,
+  title,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 disabled:opacity-50"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -587,13 +514,8 @@ function Field({
 }) {
   return (
     <div>
-      <label className="text-xs text-white/50 block mb-1">{label}</label>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
-        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none disabled:opacity-60"
-      />
+      <label className="mb-1 block text-xs font-bold text-slate-600">{label}</label>
+      <input value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className={inputClass} />
     </div>
   );
 }
