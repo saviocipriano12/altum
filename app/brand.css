@@ -1,0 +1,72 @@
+:root {
+  --altum-font-family: var(--font-altum), "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: var(--altum-font-family);
+  --font-altum-public: var(--font-altum);
+  --altum-primary: #2563eb;
+  --altum-primary-hover: #1d4ed8;
+  --altum-primary-soft: rgba(37, 99, 235, 0.12);
+  --altum-primary-contrast: #ffffff;
+  --altum-ai: #7c3aed;
+  --altum-success: #16a34a;
+  --altum-warning: #d97706;
+  --altum-danger: #dc2626;
+  --altum-public-bg: #07111f;
+  --altum-public-panel: #0e1c31;
+  --altum-public-muted: #94a3b8;
+  --altum-primary-text: #93c5fd;
+  --altum-radius-control: 0.75rem;
+  --altum-radius-card: 1rem;
+  --altum-focus-ring: #60a5fa;
+}
+
+body {
+  font-family: var(--altum-font-family);
+}
+
+:where([data-altum-surface="public"], [data-altum-surface="auth"], .client-portal) :where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--altum-focus-ring);
+  outline-offset: 3px;
+}
+
+[data-altum-surface="public"] {
+  --altum-surface-background: var(--altum-public-bg);
+  --altum-surface-panel: var(--altum-public-panel);
+  --altum-surface-muted: var(--altum-public-muted);
+  min-height: 100%;
+  background: var(--altum-public-bg);
+  color: #f8fafc;
+  font-family: var(--altum-font-family);
+}
+
+[data-altum-surface="auth"] {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.2), transparent 34rem),
+    radial-gradient(circle at 92% 18%, rgba(124, 58, 237, 0.14), transparent 30rem),
+    #07111f;
+  font-family: var(--altum-font-family);
+}
+
+.client-portal[data-client-style="v3"] {
+  --cliente-font-family: var(--altum-font-family);
+  --cliente-primary: var(--altum-primary);
+  --cliente-primary-hover: var(--altum-primary-hover);
+  --cliente-primary-soft: var(--altum-primary-soft);
+}
+
+.client-portal[data-client-style="v3"][data-client-theme="dark"] {
+  --cliente-primary: #60a5fa;
+  --cliente-primary-hover: #3b82f6;
+  --cliente-primary-soft: rgba(96, 165, 250, 0.16);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where([data-altum-surface], .client-portal) *,
+  :where([data-altum-surface], .client-portal) *::before,
+  :where([data-altum-surface], .client-portal) *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

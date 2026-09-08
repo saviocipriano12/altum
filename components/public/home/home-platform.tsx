@@ -10,7 +10,7 @@ export function HomePlatform() {
       id="plataforma"
       className="relative border-b border-white/10 bg-[#070707] px-5 py-24 lg:px-8"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(245,110,15,0.10),transparent_26%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(37,99,235,0.10),transparent_26%)]" />
       <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.88fr_1.12fr] lg:items-center">
         <div>
           <AnimatedSection>
@@ -41,11 +41,11 @@ export function HomePlatform() {
           <div className="mt-8 grid gap-3">
             {homePlatformModules.map((item, index) => (
               <AnimatedSection key={item.title} delay={index * 0.05}>
-                <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))] p-4 transition hover:border-[#f56e0f]/25 hover:bg-white/[0.05]">
+                <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))] p-4 transition hover:border-[#2563eb]/25 hover:bg-white/[0.05]">
                   <div className="flex gap-4">
-                    <div className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-[#f8a25d] ${
+                    <div className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-[#93c5fd] ${
                       index % 3 === 0
-                        ? "border-[#f56e0f]/20 bg-[#f56e0f]/10"
+                        ? "border-[#2563eb]/20 bg-[#2563eb]/10"
                         : "border-white/10 bg-white/[0.035]"
                     }`}>
                       <LayoutDashboard className="h-5 w-5" />

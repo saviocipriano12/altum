@@ -5,7 +5,7 @@ import { SiteShell } from "@/components/public/site-shell";
 import { getAllBlogPosts } from "@/lib/blog";
 import { buildItemListSchema, toJsonLdScript } from "@/lib/schema";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag").replace(/\/$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
 
 export const metadata: Metadata = {
   title: "Blog",

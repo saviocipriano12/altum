@@ -82,7 +82,8 @@ function normalizeRole(value: unknown): UserRole {
     const normalized = ROLE_NORMALIZATION[value.trim().toLowerCase()];
     if (normalized) return normalized;
   }
-  return "agency_agent";
+  // Papel ausente ou desconhecido nunca deve receber privilegios de agencia.
+  return "client_viewer";
 }
 
 function normalizeStatus(value: unknown): UserStatus {

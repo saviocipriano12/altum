@@ -16,6 +16,8 @@ import {
   SelfServiceAuthError,
   timestampToMillis,
 } from "@/lib/server/self-service-auth";
+import { getTenantCommercialUsage } from "@/lib/server/tenant-usage";
+import { getTenantEntitlements } from "@/lib/server/tenant-entitlements";
 
 function clean(value: unknown, max = 240) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -51,6 +53,13 @@ export async function GET(req: Request) {
     const actor = await requireFirebaseUser(req);
     const { membership, tenant } = await billingContext(actor.uid);
     const subscriptionId = clean(tenant.asaasSubscriptionId, 180);
+    const [usage, entitlements] = await Promise.all([
+      getTenantCommercialUsage(membership.tenantId).catch((error) => {
+        console.error("Falha ao calcular consumo comercial:", error);
+        return null;
+      }),
+      getTenantEntitlements(membership.tenantId),
+    ]);
     let providerAvailable = Boolean(subscriptionId);
     let subscription: Record<string, unknown> = {};
     let payments: Array<Record<string, unknown>> = [];
@@ -96,6 +105,8 @@ export async function GET(req: Request) {
         invoiceUrl: clean(payment.invoiceUrl, 800) || null,
         bankSlipUrl: clean(payment.bankSlipUrl, 800) || null,
       })),
+      usage,
+      limits: entitlements.limits,
       policy: { refundWindowDays: REFUND_WINDOW_DAYS, graceDays: 3 },
     });
   } catch (error) {
@@ -164,7 +175,7 @@ export async function PATCH(req: Request) {
         applyPlatformPlanEntitlements({
           tenantId: membership.tenantId,
           planId: plan.id,
-          source: "asaas_webhook",
+          source: "asaas_subscription_upgrade",
           actorId: actor.uid,
           actorName: actor.name || actor.email || "Cliente",
         }),

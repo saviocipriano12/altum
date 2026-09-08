@@ -17,8 +17,8 @@ export function HomeProblem() {
         <div className="mt-12 grid gap-4 md:grid-cols-2">
           {homeProblems.map((item, index) => (
             <AnimatedSection key={item.title} delay={index * 0.06}>
-              <article className="rounded-[30px] border border-white/10 bg-white/[0.035] p-6 transition duration-300 hover:-translate-y-1 hover:border-[#f56e0f]/25 hover:bg-white/[0.055]">
-                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#f8a25d]">
+              <article className="rounded-[30px] border border-white/10 bg-white/[0.035] p-6 transition duration-300 hover:-translate-y-1 hover:border-[#2563eb]/25 hover:bg-white/[0.055]">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#93c5fd]">
                   Gargalo {String(index + 1).padStart(2, "0")}
                 </p>
                 <h3 className="altum-display mt-5 text-2xl font-semibold tracking-[-0.04em] text-white">

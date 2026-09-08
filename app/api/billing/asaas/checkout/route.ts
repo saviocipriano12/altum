@@ -7,6 +7,8 @@ import { getPlatformPlan } from "@/lib/server/platform-plans";
 import { requireFirebaseUser, SelfServiceAuthError, timestampToMillis } from "@/lib/server/self-service-auth";
 import { buildAsaasRecurringCheckoutPayload } from "@/lib/asaas-checkout";
 import { isValidBrazilianDocument, normalizeBrazilianDocument } from "@/lib/brazilian-document";
+import { PLATFORM_CATALOG_VERSION } from "@/lib/platform-plans";
+import { canReuseAsaasCheckout, hasManagedAsaasSubscription } from "@/lib/asaas-checkout-state";
 
 function clean(value: unknown, max = 300) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -29,26 +31,46 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Informe um CPF ou CNPJ valido para o checkout seguro." }, { status: 400 });
     }
     const plan = await getPlatformPlan(body.planId);
-    if (!plan || !plan.active || !plan.checkoutEnabled || !plan.monthlyPrice) {
+    if (
+      !plan ||
+      !plan.active ||
+      !plan.checkoutEnabled ||
+      typeof plan.monthlyPrice !== "number" ||
+      plan.monthlyPrice <= 0
+    ) {
       return NextResponse.json({ error: "Este plano nao esta disponivel para checkout." }, { status: 400 });
     }
+    const monthlyPrice = plan.monthlyPrice;
 
     const apiKey = clean(process.env.ASAAS_API_KEY, 500);
     const apiUrl = clean(process.env.ASAAS_API_URL, 300) || "https://api.asaas.com/v3";
-    const siteUrl = (clean(process.env.NEXT_PUBLIC_SITE_URL, 300) || "https://altum.ag").replace(/\/$/, "");
+    const siteUrl = (clean(process.env.NEXT_PUBLIC_SITE_URL, 300) || "https://www.altumia.com.br").replace(/\/$/, "");
     if (!apiKey) return NextResponse.json({ error: "Checkout temporariamente indisponivel." }, { status: 503 });
 
     const tenantRef = adminDb.collection("tenants").doc(membership.tenantId);
     const tenantSnap = await tenantRef.get();
     const tenant = (tenantSnap.data() || {}) as Record<string, unknown>;
+    if (hasManagedAsaasSubscription({
+      subscriptionId: tenant.asaasSubscriptionId,
+      billingStatus: tenant.billingStatus,
+    })) {
+      return NextResponse.json(
+        { error: "Esta empresa ja possui uma assinatura gerenciada. Use a central de faturamento para alterar o plano.", code: "subscription_already_exists" },
+        { status: 409 }
+      );
+    }
     const reusableCheckoutUrl = clean(tenant.asaasCheckoutUrl, 800);
-    const reusableCheckoutAt = timestampToMillis(tenant.asaasCheckoutCreatedAt);
-    if (
-      reusableCheckoutUrl &&
-      clean(tenant.pendingPlan, 80) === plan.id &&
-      reusableCheckoutAt &&
-      Date.now() - reusableCheckoutAt < 10 * 60 * 1000
-    ) {
+    const reusableCheckoutAt = timestampToMillis(tenant.asaasCheckoutCreatedAt) || 0;
+    if (canReuseAsaasCheckout({
+      checkoutUrl: reusableCheckoutUrl,
+      checkoutCreatedAt: reusableCheckoutAt,
+      pendingPlan: tenant.pendingPlan,
+      pendingMonthlyPrice: tenant.pendingMonthlyPrice,
+      catalogVersion: tenant.platformCatalogVersion,
+      planId: plan.id,
+      monthlyPrice,
+      expectedCatalogVersion: PLATFORM_CATALOG_VERSION,
+    })) {
       return NextResponse.json({ ok: true, checkoutUrl: reusableCheckoutUrl, reused: true });
     }
     const checkoutRef = randomUUID();
@@ -104,11 +126,16 @@ export async function POST(req: Request) {
       adminDb.collection("asaas_checkouts").doc(checkoutId).set({
         checkoutId, externalReference, checkoutUrl, tenantId: membership.tenantId,
         userId: actor.uid, planId: plan.id, monthlyPrice: plan.monthlyPrice,
+        setupFee: plan.setupFee, setupMode: plan.setupMode,
+        catalogVersion: PLATFORM_CATALOG_VERSION,
         billingDocumentLast4: cpfCnpj.slice(-4),
         status: "pending", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true }),
       tenantRef.set({
         billingProvider: "asaas", billingStatus: "pending", pendingPlan: plan.id,
+        pendingMonthlyPrice: plan.monthlyPrice,
+        pendingSetupFee: plan.setupFee,
+        platformCatalogVersion: PLATFORM_CATALOG_VERSION,
         asaasCheckoutId: checkoutId, asaasCheckoutUrl: checkoutUrl,
         asaasCheckoutCreatedAt: FieldValue.serverTimestamp(),
         billingDocumentLast4: cpfCnpj.slice(-4),

@@ -90,7 +90,7 @@ export function CommercialContactForm() {
     <section id="formulario-comercial" className="bg-black px-5 pb-24 lg:px-8 lg:pb-32">
       <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <div className="rounded-[32px] border border-white/10 bg-[#0b0b0b] p-6">
-          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#ff6a1f]">Sua próxima etapa</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#60a5fa]">Sua próxima etapa</p>
           <h2 className="mt-4 text-4xl font-extrabold tracking-[-0.05em] text-white">
             Vamos entender onde a Altum pode gerar mais avanço.
           </h2>
@@ -106,7 +106,7 @@ export function CommercialContactForm() {
                 onClick={() => setInterestId(item.id)}
                 className={`w-full rounded-[22px] border px-4 py-4 text-left transition ${
                   item.id === interest.id
-                    ? "border-[#e85002]/45 bg-[#e85002]/12"
+                    ? "border-[#2563eb]/45 bg-[#2563eb]/12"
                     : "border-white/10 bg-white/[0.03] hover:border-white/20"
                 }`}
               >
@@ -117,12 +117,12 @@ export function CommercialContactForm() {
           </div>
         </div>
 
-        <div className="rounded-[32px] border border-white/10 bg-[#0b0b0b] p-6 shadow-[0_40px_120px_-48px_rgba(232,80,2,0.34)]">
+        <div className="rounded-[32px] border border-white/10 bg-[#0b0b0b] p-6 shadow-[0_40px_120px_-48px_rgba(37,99,235,0.34)]">
           {!submitState ? (
             <>
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#ff6a1f]">Contato comercial</p>
+                  <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#60a5fa]">Contato comercial</p>
                   <h3 className="mt-4 text-3xl font-extrabold tracking-[-0.04em] text-white">{interest.title}</h3>
                 </div>
                 <div className="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/62">
@@ -179,7 +179,7 @@ export function CommercialContactForm() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#e85002] px-6 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#ff5c0b] disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#2563eb] px-6 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#1d4ed8] disabled:opacity-60"
                   >
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     Enviar contato

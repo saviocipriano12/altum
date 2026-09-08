@@ -6,10 +6,10 @@ type SiteFooterProps = {
 
 export function SiteFooter({ items }: SiteFooterProps) {
   return (
-    <footer className="border-t border-white/10 bg-[#050505] px-5 py-10 lg:px-8">
+    <footer data-altum-surface="public" className="border-t border-white/10 bg-[#081525] px-5 py-10 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-lg font-black text-[#f56e0f]">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-lg font-black text-[#2563eb]">
             A
           </span>
           <div>

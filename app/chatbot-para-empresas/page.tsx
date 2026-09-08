@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { buildFaqSchema, toJsonLdScript } from "@/lib/schema";
+import { SiteShell } from "@/components/public/site-shell";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag").replace(/\/$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
 
 export const metadata: Metadata = {
   title: "Chatbot para empresas: estrategia, operacao e ROI",
@@ -44,9 +45,10 @@ export default function ChatbotParaEmpresasPage() {
   );
 
   return (
-    <main className="min-h-screen bg-[#0B0B0B] px-6 py-20 text-white">
+    <SiteShell>
+    <div className="px-6 py-20 text-white">
       <article className="mx-auto w-full max-w-4xl">
-        <p className="mb-3 text-sm uppercase tracking-[0.15em] text-[#F56E0F]">Pilar 3</p>
+        <p className="mb-3 text-sm uppercase tracking-[0.15em] text-[#60A5FA]">Pilar 3</p>
         <h1 className="mb-5 text-4xl font-bold leading-tight md:text-5xl">Chatbot para empresas com foco em resultado comercial</h1>
         <p className="mb-10 text-lg text-white/75">
           Chatbot nao e apenas atendimento automatico. Em operacoes de vendas, ele atua como camada de qualificacao, distribuicao e ganho de velocidade
@@ -80,27 +82,27 @@ export default function ChatbotParaEmpresasPage() {
         <section className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
           <h2 className="mb-4 text-2xl font-semibold">Conteudos e paginas relacionadas</h2>
           <div className="mb-4 flex flex-wrap gap-3">
-            <Link href="/solucoes/consultorias-empresariais" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#F56E0F]">
+            <Link href="/solucoes/consultorias-empresariais" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#60A5FA]">
               Solucao para consultorias
             </Link>
-            <Link href="/solucoes/contabilidades" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#F56E0F]">
+            <Link href="/solucoes/contabilidades" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#60A5FA]">
               Solucao para contabilidades
             </Link>
-            <Link href="/solucoes/equipamentos-industriais" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#F56E0F]">
+            <Link href="/solucoes/equipamentos-industriais" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#60A5FA]">
               Solucao para industria
             </Link>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link href="/blog/engenharia-de-vendas-high-ticket" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#F56E0F]">
+            <Link href="/blog/engenharia-de-vendas-high-ticket" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#60A5FA]">
               Post: engenharia de vendas high-ticket
             </Link>
-            <Link href="/blog/ia-qualificacao-leads" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#F56E0F]">
+            <Link href="/blog/ia-qualificacao-leads" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#60A5FA]">
               Post: IA para qualificacao de leads
             </Link>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-[#F56E0F]/30 bg-[#F56E0F]/10 p-6 md:p-8">
+        <section className="rounded-2xl border border-[#60A5FA]/30 bg-[#60A5FA]/10 p-6 md:p-8">
           <h2 className="mb-4 text-2xl font-semibold">FAQ</h2>
           <div className="space-y-4">
             {faqs.map((faq) => (
@@ -114,6 +116,7 @@ export default function ChatbotParaEmpresasPage() {
       </article>
 
       <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(faqSchema)} />
-    </main>
+    </div>
+    </SiteShell>
   );
 }

@@ -5,7 +5,7 @@ import {
   SelfServiceAuthError,
 } from "@/lib/server/self-service-auth";
 
-type Body = { name?: string; companyName?: string; acceptedTerms?: boolean };
+type Body = { name?: string; companyName?: string; acceptedTerms?: boolean; selectedPlanId?: string };
 
 export async function POST(req: Request) {
   try {
@@ -25,6 +25,7 @@ export async function POST(req: Request) {
       name: String(body.name || decoded.name || ""),
       companyName: String(body.companyName || ""),
       provider,
+      selectedPlanId: body.selectedPlanId,
     });
     return NextResponse.json({ ok: true, ...result }, { status: result.existing ? 200 : 201 });
   } catch (error) {

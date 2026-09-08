@@ -31,7 +31,7 @@ export function EsqueciSenhaForm({ initialEmail }: { initialEmail: string }) {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#dbeafe_0,transparent_38%),#f8fafc] px-4 py-10 text-slate-950 sm:py-16">
+    <main data-altum-surface="auth" className="px-4 py-10 text-slate-950 sm:py-16">
       <section className="mx-auto w-full max-w-lg overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_32px_100px_-50px_rgba(15,23,42,.5)]">
         <div className="bg-[linear-gradient(135deg,#0f172a,#172554_58%,#5b21b6)] px-7 py-8 text-white sm:px-9">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold"><ShieldCheck className="h-4 w-4" /> Recuperacao segura</span>

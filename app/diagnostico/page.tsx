@@ -13,7 +13,7 @@ export const metadata: Metadata = buildMarketingMetadata({
 
 export default function DiagnosticoPage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[#0b0b0b] text-white">
+    <main data-altum-surface="public" className="min-h-screen overflow-hidden text-white">
       <div className="relative min-h-screen">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,110,15,0.22),transparent_28%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.10),transparent_22%),linear-gradient(180deg,#0b0b0b_0%,#111111_100%)]" />
         <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] [background-size:44px_44px]" />

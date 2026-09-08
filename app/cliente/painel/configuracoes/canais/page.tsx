@@ -1551,7 +1551,6 @@ export default function ClienteCanaisPage() {
                       </div>
                       {whatsAppSession.qr ? (
                         whatsAppSession.qr.startsWith("http") || whatsAppSession.qr.startsWith("data:image") ? (
-                          // eslint-disable-next-line @next/next/no-img-element
                           <div className="mt-3 inline-flex rounded-2xl border border-[var(--cliente-border)] bg-white p-4 shadow-sm">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img

@@ -42,7 +42,7 @@ export function HomeHero() {
           <span className="text-[9px] font-semibold uppercase tracking-[0.32em] text-white/35">
             Estrutura digital
           </span>
-          <span className="h-px w-10 bg-[#f56e0f]" />
+          <span className="h-px w-10 bg-[#2563eb]" />
           <span className="text-[9px] font-semibold uppercase tracking-[0.32em] text-white/35">
             Crescimento
           </span>
@@ -51,7 +51,7 @@ export function HomeHero() {
         <a
           href="#como-funciona"
           aria-label="Ir para a próxima seção"
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 text-white/55 transition hover:border-[#f56e0f] hover:text-[#f56e0f]"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 text-white/55 transition hover:border-[#2563eb] hover:text-[#2563eb]"
         >
           <ArrowDown className="h-4 w-4" />
         </a>
@@ -59,7 +59,7 @@ export function HomeHero() {
 
       <div className="relative min-h-[100svh] lg:pl-[72px]">
         {/* Bloco laranja principal */}
-        <div className="absolute right-0 top-0 h-[46%] w-[68%] bg-[#f56e0f] sm:h-[48%] lg:h-full lg:w-[37%]" />
+        <div className="absolute right-0 top-0 h-[46%] w-[68%] bg-[#2563eb] sm:h-[48%] lg:h-full lg:w-[37%]" />
 
         {/* Palavra gigante de fundo */}
         <div
@@ -76,7 +76,7 @@ export function HomeHero() {
           <AnimatedSection>
             <div className="flex items-start justify-between gap-6">
               <div className="flex items-center gap-3">
-                <Asterisk className="h-4 w-4 text-[#f56e0f]" />
+                <Asterisk className="h-4 w-4 text-[#2563eb]" />
                 <span className="max-w-[260px] text-[10px] font-semibold uppercase leading-5 tracking-[0.26em] text-white/45">
                   Estrutura digital e comercial para empresas em crescimento
                 </span>
@@ -108,13 +108,13 @@ export function HomeHero() {
                   Precisa de uma estrutura digital
                 </span>
 
-                <span className="mt-[0.14em] block max-w-[12ch] text-[#f56e0f] lg:ml-[31%] lg:text-white">
+                <span className="mt-[0.14em] block max-w-[12ch] text-[#2563eb] lg:ml-[31%] lg:text-white">
                   que atraia, organize e venda melhor.
                 </span>
               </h1>
 
               {/* Marcador editorial */}
-              <div className="absolute -left-1 top-[8%] hidden h-20 w-px bg-[#f56e0f] sm:block" />
+              <div className="absolute -left-1 top-[8%] hidden h-20 w-px bg-[#2563eb] sm:block" />
             </div>
           </AnimatedSection>
 
@@ -132,7 +132,7 @@ export function HomeHero() {
               <div className="flex flex-col gap-3">
                 <Link
                   href="/diagnostico?entry=home_hero"
-                  className="group flex min-h-[62px] items-center justify-between bg-white px-5 text-sm font-semibold text-black transition duration-300 hover:bg-[#f56e0f] hover:text-white"
+                  className="group flex min-h-[62px] items-center justify-between bg-white px-5 text-sm font-semibold text-black transition duration-300 hover:bg-[#2563eb] hover:text-white"
                 >
                   Fazer diagnóstico gratuito
 
@@ -159,7 +159,7 @@ export function HomeHero() {
                 </p>
 
                 <div className="mt-6 flex items-center gap-3 lg:justify-end">
-                  <span className="h-2 w-2 bg-[#f56e0f]" />
+                  <span className="h-2 w-2 bg-[#2563eb]" />
                   <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-white/35">
                     Diagnóstico sem compromisso
                   </span>
@@ -181,7 +181,7 @@ export function HomeHero() {
               <span className="altum-display text-sm font-medium uppercase tracking-[0.12em] text-white/45">
                 {item}
               </span>
-              <Asterisk className="h-3 w-3 text-[#f56e0f]" />
+              <Asterisk className="h-3 w-3 text-[#2563eb]" />
             </div>
           ))}
         </div>
@@ -192,7 +192,7 @@ export function HomeHero() {
         <div className="mx-auto max-w-[1600px]">
           {heroSupportItems.map((item, index) => (
             <AnimatedSection key={item.title} delay={index * 0.06}>
-              <div className="group grid min-h-[180px] border-b border-black/12 px-5 py-8 transition duration-500 hover:bg-[#f56e0f] sm:px-8 lg:grid-cols-[120px_0.8fr_1fr_80px] lg:items-center lg:px-12 xl:px-16">
+              <div className="group grid min-h-[180px] border-b border-black/12 px-5 py-8 transition duration-500 hover:bg-[#2563eb] sm:px-8 lg:grid-cols-[120px_0.8fr_1fr_80px] lg:items-center lg:px-12 xl:px-16">
                 <span className="text-xs font-semibold tracking-[0.22em] text-black/35 transition group-hover:text-black/55">
                   0{index + 1}
                 </span>

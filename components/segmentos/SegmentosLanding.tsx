@@ -17,6 +17,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { verticals } from "@/lib/verticals";
+import { SiteShell } from "@/components/public/site-shell";
 
 type SegmentosLandingProps = {
   title: string;
@@ -91,9 +92,10 @@ const cardIconByIndex = [Building2, Sparkles, Rocket, ShieldCheck, BadgeCheck];
 
 export default function SegmentosLanding({ title, subtitle, sourceLabel }: SegmentosLandingProps) {
   return (
-    <main className="min-h-screen bg-[#0B0B0B] text-white">
+    <SiteShell>
+    <div className="text-white">
       <section className="relative overflow-hidden px-6 pb-20 pt-24">
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_20%,rgba(245,110,15,0.22),transparent_45%),radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.06),transparent_35%)]" />
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_20%,rgba(37,99,235,0.22),transparent_45%),radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.06),transparent_35%)]" />
         <motion.div
           variants={fadeUp}
           initial="hidden"
@@ -101,11 +103,11 @@ export default function SegmentosLanding({ title, subtitle, sourceLabel }: Segme
           transition={{ duration: 0.5, ease: "easeOut" }}
           className="mx-auto w-full max-w-6xl"
         >
-          <p className="mb-4 text-sm uppercase tracking-[0.14em] text-[#F56E0F]">{sourceLabel}</p>
+          <p className="mb-4 text-sm uppercase tracking-[0.14em] text-[#60A5FA]">{sourceLabel}</p>
           <h1 className="mb-5 max-w-4xl text-4xl font-bold leading-tight md:text-6xl">{title}</h1>
           <p className="mb-8 max-w-3xl text-lg leading-8 text-white/75">{subtitle}</p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/solucoes/imobiliarias" className="rounded-full bg-[#F56E0F] px-6 py-3 text-sm font-semibold text-white hover:bg-[#ff8e44]">
+            <Link href="/solucoes/imobiliarias" className="rounded-full bg-[#60A5FA] px-6 py-3 text-sm font-semibold text-white hover:bg-[#3B82F6]">
               Ver exemplos por vertical
             </Link>
             <Link href="/blog" className="rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white/90 hover:border-white">
@@ -129,7 +131,7 @@ export default function SegmentosLanding({ title, subtitle, sourceLabel }: Segme
                 transition={{ duration: 0.45, delay: index * 0.08 }}
                 className="rounded-2xl border border-white/10 bg-white/[0.03] p-6"
               >
-                <item.icon className="mb-4 text-[#F56E0F]" size={24} />
+                <item.icon className="mb-4 text-[#60A5FA]" size={24} />
                 <h3 className="mb-2 text-xl font-semibold">{item.title}</h3>
                 <p className="text-white/75">{item.text}</p>
               </motion.article>
@@ -152,7 +154,7 @@ export default function SegmentosLanding({ title, subtitle, sourceLabel }: Segme
                 transition={{ duration: 0.45, delay: index * 0.08 }}
                 className="rounded-2xl border border-white/10 bg-white/[0.03] p-6"
               >
-                <item.icon className="mb-4 text-[#F56E0F]" size={24} />
+                <item.icon className="mb-4 text-[#60A5FA]" size={24} />
                 <h3 className="mb-2 text-xl font-semibold">{item.title}</h3>
                 <p className="text-white/75">{item.text}</p>
               </motion.article>
@@ -175,7 +177,7 @@ export default function SegmentosLanding({ title, subtitle, sourceLabel }: Segme
                 transition={{ duration: 0.45, delay: index * 0.08 }}
                 className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
               >
-                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[#F56E0F]">Etapa {index + 1}</p>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[#60A5FA]">Etapa {index + 1}</p>
                 <h3 className="mb-2 text-lg font-semibold">{step.title}</h3>
                 <p className="text-sm text-white/75">{step.text}</p>
               </motion.div>
@@ -193,7 +195,7 @@ export default function SegmentosLanding({ title, subtitle, sourceLabel }: Segme
             whileInView="show"
             viewport={{ once: true, margin: "-80px" }}
             transition={{ duration: 0.45 }}
-            className="mb-8 rounded-2xl border border-[#F56E0F]/35 bg-[#F56E0F]/10 p-6"
+            className="mb-8 rounded-2xl border border-[#60A5FA]/35 bg-[#60A5FA]/10 p-6"
           >
             <p className="text-lg font-semibold text-white">Resultados tipicos: -30% tempo resposta, +20% leads qualificados</p>
           </motion.div>
@@ -211,10 +213,10 @@ export default function SegmentosLanding({ title, subtitle, sourceLabel }: Segme
                   transition={{ duration: 0.45, delay: index * 0.06 }}
                   className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
                 >
-                  <Icon className="mb-3 text-[#F56E0F]" size={20} />
+                  <Icon className="mb-3 text-[#60A5FA]" size={20} />
                   <h3 className="mb-2 text-lg font-semibold">{vertical.name}</h3>
                   <p className="mb-4 text-sm text-white/75">{vertical.description}</p>
-                  <Link href={`/solucoes/${vertical.slug}`} className="inline-flex items-center gap-2 text-sm font-semibold text-[#F56E0F] hover:text-[#ff8e44]">
+                  <Link href={`/solucoes/${vertical.slug}`} className="inline-flex items-center gap-2 text-sm font-semibold text-[#60A5FA] hover:text-[#3B82F6]">
                     Ver detalhes <ArrowRight size={14} />
                   </Link>
                 </motion.article>
@@ -253,14 +255,14 @@ export default function SegmentosLanding({ title, subtitle, sourceLabel }: Segme
           whileInView="show"
           viewport={{ once: true, margin: "-80px" }}
           transition={{ duration: 0.45 }}
-          className="mx-auto w-full max-w-6xl rounded-3xl border border-[#F56E0F]/35 bg-[#F56E0F]/10 p-8 md:p-10"
+          className="mx-auto w-full max-w-6xl rounded-3xl border border-[#60A5FA]/35 bg-[#60A5FA]/10 p-8 md:p-10"
         >
           <h2 className="mb-3 text-3xl font-bold">Pronto para acelerar sua operacao comercial?</h2>
           <p className="mb-6 max-w-3xl text-white/85">
             Estruturamos um plano simples para captacao, qualificacao e acompanhamento de vendas com foco em crescimento previsivel.
           </p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/" className="rounded-full bg-[#F56E0F] px-6 py-3 text-sm font-semibold text-white hover:bg-[#ff8e44]">
+            <Link href="/" className="rounded-full bg-[#60A5FA] px-6 py-3 text-sm font-semibold text-white hover:bg-[#3B82F6]">
               Solicitar diagnostico
             </Link>
             <Link href="/blog" className="rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white/90 hover:border-white">
@@ -269,6 +271,7 @@ export default function SegmentosLanding({ title, subtitle, sourceLabel }: Segme
           </div>
         </motion.div>
       </section>
-    </main>
+    </div>
+    </SiteShell>
   );
 }

@@ -9,10 +9,10 @@ import {
 export function HomeAgencyPlatform() {
   return (
     <section className="relative border-b border-white/10 bg-[#101010] px-5 py-24 lg:px-8">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(245,110,15,0.12),transparent_24%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(37,99,235,0.12),transparent_24%)]" />
       <div className="mx-auto max-w-7xl">
         <AnimatedSection className="max-w-4xl">
-          <p className="altum-display text-xs font-bold uppercase tracking-[0.28em] text-[#f8a25d]">
+          <p className="altum-display text-xs font-bold uppercase tracking-[0.28em] text-[#93c5fd]">
             Duas frentes, uma estrutura
           </p>
           <h2 className="altum-display mt-4 text-[clamp(2.35rem,6vw,5.4rem)] font-semibold leading-[0.94] tracking-[-0.07em] text-white">
@@ -35,7 +35,7 @@ export function HomeAgencyPlatform() {
         <div className="mt-12 grid gap-4 lg:grid-cols-2">
           <AnimatedSection delay={0.06}>
             <article className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.18)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#f8a25d]">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#93c5fd]">
                 Altum Agencia
               </p>
               <h3 className="altum-display mt-5 text-3xl font-semibold tracking-[-0.06em] text-white">
@@ -46,7 +46,7 @@ export function HomeAgencyPlatform() {
               <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 {homeAgencyItems.map((item) => (
                   <div key={item} className="flex items-start gap-3 rounded-2xl border border-white/8 bg-black/14 px-4 py-3 text-sm leading-6 text-white/66">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#f8a25d]" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#93c5fd]" />
                     {item}
                   </div>
                 ))}
@@ -55,8 +55,8 @@ export function HomeAgencyPlatform() {
           </AnimatedSection>
 
           <AnimatedSection delay={0.12}>
-            <article className="rounded-[34px] border border-[#f56e0f]/20 bg-[radial-gradient(circle_at_top_left,rgba(245,110,15,0.22),transparent_28%),rgba(245,110,15,0.10)] p-6 shadow-[0_28px_90px_rgba(245,110,15,0.10)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#f8a25d]">
+            <article className="rounded-[34px] border border-[#2563eb]/20 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.22),transparent_28%),rgba(37,99,235,0.10)] p-6 shadow-[0_28px_90px_rgba(37,99,235,0.10)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#93c5fd]">
                 Altum Plataforma
               </p>
               <h3 className="altum-display mt-5 text-3xl font-semibold tracking-[-0.06em] text-white">
@@ -70,7 +70,7 @@ export function HomeAgencyPlatform() {
                     key={item}
                     className={`rounded-full border px-3 py-2 text-xs font-semibold ${
                       index < 3
-                        ? "border-[#f56e0f]/28 bg-black/20 text-white"
+                        ? "border-[#2563eb]/28 bg-black/20 text-white"
                         : "border-white/10 bg-black/20 text-white/74"
                     }`}
                   >

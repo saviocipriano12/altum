@@ -10,6 +10,8 @@
     "typegen": "next typegen",
     "typecheck": "npm run typegen && npx tsc --noEmit --incremental false",
     "test:smoke": "node scripts/run-smoke-tests.mjs",
+    "test:firebase-rules": "npx --yes firebase-tools@15.29.0 emulators:exec --only firestore,storage --project demo-altum-rules \"npm run test:firebase-rules:run\"",
+    "test:firebase-rules:run": "node --test --experimental-strip-types tests/firebase-rules.emulator.mts",
     "check:saas-readiness": "node scripts/check-saas-readiness.mjs",
     "verify:postdeploy": "node scripts/post-deploy-verify.mjs",
     "test:agent-closure": "node scripts/run-agent-closure-gate.mjs",
@@ -44,6 +46,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -55,6 +58,7 @@
     "typescript": "^5"
   },
   "overrides": {
+    "@humanfs/node": "^0.16.8",
     "fast-xml-parser": "^5.7.0",
     "node-forge": "^1.4.0",
     "yaml": "^2.8.3",

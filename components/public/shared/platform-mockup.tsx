@@ -4,12 +4,12 @@ import { homePlatformModules } from "@/lib/public-site/home-content";
 export function PlatformMockup() {
   return (
     <div className="relative">
-      <div className="altum-pulse absolute -inset-6 rounded-[48px] bg-[#f56e0f]/10 blur-3xl" />
+      <div className="altum-pulse absolute -inset-6 rounded-[48px] bg-[#2563eb]/10 blur-3xl" />
 
       <div className="relative overflow-hidden rounded-[38px] border border-white/12 bg-[#111111] shadow-[0_40px_140px_rgba(0,0,0,0.55)]">
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-[#f8a25d]">
+            <p className="text-xs uppercase tracking-[0.24em] text-[#93c5fd]">
               Plataforma Altum
             </p>
             <p className="mt-1 text-sm text-white/42">Conversas, CRM, agenda e operacao</p>
@@ -24,7 +24,7 @@ export function PlatformMockup() {
                 key={item.title}
                 className={`rounded-2xl border px-4 py-3 text-sm font-medium ${
                   index === 1
-                    ? "border-[#f56e0f]/30 bg-[#f56e0f]/10 text-[#f8a25d]"
+                    ? "border-[#2563eb]/30 bg-[#2563eb]/10 text-[#93c5fd]"
                     : "border-white/10 bg-white/[0.035] text-white/56"
                 }`}
               >
@@ -55,14 +55,14 @@ export function PlatformMockup() {
                     <p className="altum-display text-sm font-semibold text-white">{stage}</p>
                     <p className="mt-1 text-xs text-white/42">{company}</p>
                   </div>
-                  <p className="text-xs font-semibold text-[#f8a25d]">{value}</p>
+                  <p className="text-xs font-semibold text-[#93c5fd]">{value}</p>
                 </div>
               ))}
             </div>
 
-            <div className="mt-5 rounded-2xl border border-[#f56e0f]/20 bg-[#f56e0f]/10 p-4">
+            <div className="mt-5 rounded-2xl border border-[#2563eb]/20 bg-[#2563eb]/10 p-4">
               <div className="flex items-start gap-3">
-                <Bot className="mt-0.5 h-5 w-5 text-[#f8a25d]" />
+                <Bot className="mt-0.5 h-5 w-5 text-[#93c5fd]" />
                 <p className="text-sm leading-6 text-white/68">
                   A IA ajuda a priorizar oportunidades e indicar proximos passos.
                 </p>
@@ -77,7 +77,7 @@ export function PlatformMockup() {
           <p className="altum-display text-sm font-medium text-white/70">
             Uma visao unica para nao deixar oportunidades espalhadas.
           </p>
-          <span className="rounded-full bg-[#f56e0f] px-4 py-2 text-xs font-bold text-white">
+          <span className="rounded-full bg-[#2563eb] px-4 py-2 text-xs font-bold text-white">
             centralizado
           </span>
         </div>

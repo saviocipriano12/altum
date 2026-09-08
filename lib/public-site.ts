@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import { DEFAULT_PLATFORM_PLANS } from "@/lib/platform-plans";
 
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag").replace(/\/$/, "");
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
 export const ALTUM_PHONE = "5531972545430";
 export const ALTUM_EMAIL = "contato@altum.ag";
 
@@ -54,7 +55,7 @@ export const publicNav = [
 
 export const heroMetrics = [
   { value: "1 operacao", label: "Conversas, CRM, agenda, campanhas e IA no mesmo fluxo." },
-  { value: "R$ 797", label: "Faixa sugerida para entrada recorrente da plataforma." },
+  { value: "R$ 397", label: "Entrada mensal para organizar a operacao comercial." },
   { value: "2 motores", label: "SaaS recorrente e servicos de implantacao ou growth." },
 ] as const;
 
@@ -158,38 +159,23 @@ export const implementationSteps = [
   },
 ];
 
-export const platformPlans = [
-  {
-    name: "Essencial",
-    price: "R$ 797",
-    period: "/mes",
-    description: "Para empresas que precisam organizar atendimento, clientes e agenda sem depender de processos soltos.",
-    bullets: ["Conversas e CRM", "Agenda e follow-up", "Relatorios basicos", "1 canal principal"],
-    featured: false,
-  },
-  {
-    name: "Operacao",
-    price: "R$ 997",
-    period: "/mes",
-    description: "Para times que ja possuem demanda e querem operar com mais velocidade, visibilidade e IA aplicada.",
-    bullets: ["Tudo do Essencial", "Campanhas e captacao", "Assistente Altum", "Mais controles de operacao"],
-    featured: true,
-  },
-  {
-    name: "Estrutura Assistida",
-    price: "Sob diagnostico",
-    period: "",
-    description: "Plataforma + implantacao + acompanhamento inicial para empresas que querem entrar rodando.",
-    bullets: ["Setup dedicado", "Treinamento inicial", "Revisao de fluxo comercial", "Ativacao orientada"],
-    featured: false,
-  },
-] as const;
+export const platformPlans = DEFAULT_PLATFORM_PLANS.map((plan) => ({
+  name: plan.name,
+  price: plan.monthlyPrice
+    ? plan.monthlyPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
+    : "Sob consulta",
+  period: plan.monthlyPrice ? "/mes" : "",
+  description: plan.description,
+  bullets: plan.features,
+  featured: plan.featured,
+}));
 
 export const pricingPolicies = [
   "Plataforma com recorrencia em checkout seguro hospedado pelo Asaas.",
-  "Implantacao, projetos e contratos de agencia tambem podem ser cobrados via Asaas.",
+  "Configuracao opcional no Essencial e implantacao assistida nos planos Operacao e Escala.",
+  "Custos oficiais de mensagens e consumos adicionais sao cobrados separadamente.",
   "Cliente de agencia pode receber acesso incluso por liberacao do admin.",
-  "Planos trimestrais ou anuais podem ser tratados como proposta comercial fechada.",
+  "Condicoes promocionais sao registradas por contrato e nao alteram o catalogo publico.",
 ] as const;
 
 export const faqItems = [
@@ -206,7 +192,17 @@ export const faqItems = [
   {
     question: "Preciso contratar setup?",
     answer:
-      "Nao. O setup e opcional, mas acelera a entrada em operacao quando a empresa quer ganhar velocidade sem montar tudo sozinha.",
+      "No Essencial, a configuracao guiada e opcional. Nos planos Operacao e Escala, a implantacao assistida e obrigatoria para configurar canais, IA e automacoes com seguranca.",
+  },
+  {
+    question: "O teste libera todos os recursos?",
+    answer:
+      "Sim. Durante 7 dias voce pode conhecer todos os modulos da plataforma, com limites de consumo controlados e sem informar cartao. Nenhuma cobranca e feita sem sua confirmacao.",
+  },
+  {
+    question: "Existem custos alem da mensalidade?",
+    answer:
+      "A mensalidade cobre a plataforma dentro dos limites do plano. Implantacao, adicionais contratados e tarifas oficiais de provedores como Meta e WhatsApp aparecem separadamente e sempre antes da confirmacao.",
   },
   {
     question: "A Altum substitui meu WhatsApp e minhas planilhas?",

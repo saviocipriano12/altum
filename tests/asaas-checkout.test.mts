@@ -8,7 +8,7 @@ test("formata data do checkout no contrato exigido pelo Asaas", () => {
 
 test("gera checkout recorrente com identificacao e retorno ao painel", () => {
   const payload = buildAsaasRecurringCheckoutPayload({
-    plan: { id: "operacao", name: "Operacao", description: "Plano", monthlyPrice: 997 },
+    plan: { id: "operacao", name: "Operacao", description: "Plano", monthlyPrice: 697 },
     siteUrl: "https://www.altumia.com.br",
     externalReference: "altum:tenant:operacao:ref",
     customerData: { name: "Cliente", email: "cliente@altum.test", cpfCnpj: "52998224725" },

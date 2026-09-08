@@ -4,9 +4,9 @@ import { CtaButton } from "@/components/public/shared/cta-button";
 export function HomeFinalCta() {
   return (
     <section className="relative bg-[#070707] px-5 py-24 lg:px-8">
-      <div className="mx-auto max-w-6xl overflow-hidden rounded-[42px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(245,110,15,0.18),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] px-6 py-12 shadow-[0_40px_140px_rgba(0,0,0,0.45)] md:px-10 md:py-16">
+      <div className="mx-auto max-w-6xl overflow-hidden rounded-[42px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.18),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] px-6 py-12 shadow-[0_40px_140px_rgba(0,0,0,0.45)] md:px-10 md:py-16">
         <AnimatedSection className="relative">
-          <p className="altum-display text-xs font-bold uppercase tracking-[0.28em] text-[#f8a25d]">
+          <p className="altum-display text-xs font-bold uppercase tracking-[0.28em] text-[#93c5fd]">
             Proximo passo
           </p>
 

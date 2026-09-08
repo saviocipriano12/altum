@@ -22,7 +22,9 @@ service cloud.firestore {
     }
 
     function isActive() {
-      return signedIn() && myUserDoc().exists() && myStatus() == "active";
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(myUid())) &&
+        myStatus() == "active";
     }
 
     function isAgencyAdmin() {
@@ -82,6 +84,14 @@ service cloud.firestore {
           tenantMembership(tenantId).data.role == "client_admin"
         )
       );
+    }
+
+    function tenantIdIsUnchanged() {
+      return request.resource.data.tenantId == resource.data.tenantId;
+    }
+
+    function ownerIdIsUnchanged() {
+      return request.resource.data.ownerId == resource.data.ownerId;
     }
 
     // A API do painel aplica a mesma regra no servidor. Estas regras existem
@@ -164,7 +174,9 @@ service cloud.firestore {
     match /tenant_channels/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
       allow create: if isAgencyMember() || canManageTenant(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || canManageTenant(resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && (
+        isAgencyMember() || canManageTenant(resource.data.tenantId)
+      );
       allow delete: if isAgencyAdmin() || canManageTenant(resource.data.tenantId);
     }
 
@@ -188,7 +200,7 @@ service cloud.firestore {
     match /leads/{leadId} {
       allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
       allow create: if canWriteCommercialRecord(request.resource.data.tenantId);
-      allow update: if canWriteCommercialRecord(resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && canWriteCommercialRecord(resource.data.tenantId);
       allow delete: if canWriteCommercialRecord(resource.data.tenantId);
 
       match /events/{eventId} {
@@ -205,123 +217,130 @@ service cloud.firestore {
     match /chats/{chatId} {
       allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
       allow create: if canWriteCommercialRecord(request.resource.data.tenantId);
-      allow update: if canWriteCommercialRecord(resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && canWriteCommercialRecord(resource.data.tenantId);
       allow delete: if canWriteCommercialRecord(resource.data.tenantId);
     }
 
     match /messages/{messageId} {
       allow read: if canReadChat(resource.data.chatId);
-      allow create, update, delete: if canWriteCommercialRecord(resource.data.tenantId);
+      allow create: if canWriteCommercialRecord(request.resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && canWriteCommercialRecord(resource.data.tenantId);
+      allow delete: if canWriteCommercialRecord(resource.data.tenantId);
     }
 
     match /chat_notes/{noteId} {
       allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
-      allow create, update, delete: if canWriteCommercialRecord(request.resource.data.tenantId);
+      allow create: if canWriteCommercialRecord(request.resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && canWriteCommercialRecord(resource.data.tenantId);
+      allow delete: if canWriteCommercialRecord(resource.data.tenantId);
     }
 
     match /lead_notes/{noteId} {
       allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
-      allow create, update, delete: if canWriteCommercialRecord(request.resource.data.tenantId);
+      allow create: if canWriteCommercialRecord(request.resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && canWriteCommercialRecord(resource.data.tenantId);
+      allow delete: if canWriteCommercialRecord(resource.data.tenantId);
     }
 
     match /lead_tasks/{taskId} {
       allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
-      allow create, update, delete: if canWriteCommercialRecord(request.resource.data.tenantId);
+      allow create: if canWriteCommercialRecord(request.resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && canWriteCommercialRecord(resource.data.tenantId);
+      allow delete: if canWriteCommercialRecord(resource.data.tenantId);
     }
 
     match /pipeline/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow create: if isAgencyMember() || canManageTenant(request.resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && (
+        isAgencyMember() || canManageTenant(resource.data.tenantId)
+      );
       allow delete: if isAgencyAdmin();
     }
 
     match /kb_docs/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow create: if isAgencyMember() || canManageTenant(request.resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && (
+        isAgencyMember() || canManageTenant(resource.data.tenantId)
+      );
       allow delete: if isAgencyAdmin();
     }
 
     match /chat_state/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
-      allow delete: if isAgencyAdmin();
+      allow write: if false;
     }
 
     match /ai_logs/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
-      allow delete: if isAgencyAdmin();
+      allow write: if false;
     }
 
     match /automations/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow create: if isAgencyMember() || canManageTenant(request.resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && (
+        isAgencyMember() || canManageTenant(resource.data.tenantId)
+      );
       allow delete: if isAgencyAdmin();
     }
 
     match /jobs/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
-      allow delete: if isAgencyAdmin();
+      allow write: if false;
     }
 
     match /metrics/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
-      allow delete: if isAgencyAdmin();
+      allow write: if false;
     }
 
     match /capture_forms/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
+      allow create: if isAgencyMember() || canManageTenant(request.resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && (
+        isAgencyMember() || canManageTenant(resource.data.tenantId)
+      );
       allow delete: if isAgencyAdmin();
     }
 
     match /capture_submissions/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
-      allow delete: if isAgencyAdmin();
+      allow write: if false;
     }
 
     match /whatsapp_webhook_events/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
-      allow delete: if isAgencyAdmin();
+      allow write: if false;
     }
 
     match /meta_webhook_events/{docId} {
       allow read: if isAgencyMember() || hasTenantMembership(resource.data.tenantId);
-      allow create: if isAgencyMember() || hasTenantMembership(request.resource.data.tenantId);
-      allow update: if isAgencyMember() || hasTenantMembership(resource.data.tenantId) || hasTenantMembership(request.resource.data.tenantId);
-      allow delete: if isAgencyAdmin();
+      allow write: if false;
     }
 
     match /clientes/{docId} {
       allow read: if isAdmin() || isOwner(resource.data.ownerId);
       allow create: if isAdmin() || isOwner(request.resource.data.ownerId);
-      allow update, delete: if isAdmin() || isOwner(resource.data.ownerId);
+      allow update: if ownerIdIsUnchanged() && (isAdmin() || isOwner(resource.data.ownerId));
+      allow delete: if isAdmin() || isOwner(resource.data.ownerId);
     }
 
     match /projetos/{docId} {
       allow read: if isAdmin() || isOwner(resource.data.ownerId);
       allow create: if isAdmin() || isOwner(request.resource.data.ownerId);
-      allow update, delete: if isAdmin() || isOwner(resource.data.ownerId);
+      allow update: if ownerIdIsUnchanged() && (isAdmin() || isOwner(resource.data.ownerId));
+      allow delete: if isAdmin() || isOwner(resource.data.ownerId);
     }
 
     match /orcamentos/{docId} {
       allow read: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
       allow create: if isAdmin() || isOwner(request.resource.data.ownerId) || hasTenantMembership(request.resource.data.tenantId);
-      allow update, delete: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && ownerIdIsUnchanged() && (
+        isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId)
+      );
+      allow delete: if isAdmin() || isOwner(resource.data.ownerId) || hasTenantMembership(resource.data.tenantId);
     }
 
     match /financeiro/{docId} {
@@ -331,14 +350,16 @@ service cloud.firestore {
         hasTenantMembership(resource.data.tenantId);
       allow create: if isAdmin() ||
         hasTenantMembership(request.resource.data.tenantId);
-      allow update, delete: if isAdmin() ||
-        hasTenantMembership(resource.data.tenantId);
+      allow update: if tenantIdIsUnchanged() && (isAdmin() ||
+        hasTenantMembership(resource.data.tenantId));
+      allow delete: if isAdmin() || hasTenantMembership(resource.data.tenantId);
     }
 
     match /atividades/{docId} {
       allow read: if isAdmin() || isOwner(resource.data.ownerId);
       allow create: if isAdmin() || isOwner(request.resource.data.ownerId);
-      allow update, delete: if isAdmin() || isOwner(resource.data.ownerId);
+      allow update: if ownerIdIsUnchanged() && (isAdmin() || isOwner(resource.data.ownerId));
+      allow delete: if isAdmin() || isOwner(resource.data.ownerId);
     }
 
     match /config/{docId} {

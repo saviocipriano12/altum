@@ -32,7 +32,7 @@ export function HomeServices() {
         <div className="relative grid gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:items-end">
           <AnimatedSection>
             <div>
-              <p className="altum-display text-xs font-bold uppercase tracking-[0.28em] text-[#f56e0f]">
+              <p className="altum-display text-xs font-bold uppercase tracking-[0.28em] text-[#2563eb]">
                 O que fazemos
               </p>
               <h2 className="altum-display mt-4 max-w-4xl text-[clamp(2.45rem,6.5vw,5.6rem)] font-semibold leading-[0.94] tracking-[-0.07em]">
@@ -91,7 +91,7 @@ export function HomeServices() {
           <AnimatedSection delay={0.12}>
             <div className="flex h-full flex-col justify-between rounded-[34px] border border-black/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.74),rgba(255,255,255,0.92))] p-6 shadow-[0_24px_90px_rgba(0,0,0,0.06)]">
               <div>
-                <p className="altum-display text-xs font-bold uppercase tracking-[0.24em] text-[#f56e0f]">
+                <p className="altum-display text-xs font-bold uppercase tracking-[0.24em] text-[#2563eb]">
                   Estrutura, nao peca solta
                 </p>
                 <h3 className="altum-display mt-4 text-[clamp(2rem,2.7vw,3rem)] font-semibold leading-[0.95] tracking-[-0.06em] text-[#111111]">
@@ -110,7 +110,7 @@ export function HomeServices() {
                     key={item}
                     className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
                       index === 1 || index === 4
-                        ? "border-[#f56e0f]/24 bg-[#f56e0f]/10 text-[#111111]"
+                        ? "border-[#2563eb]/24 bg-[#2563eb]/10 text-[#111111]"
                         : "border-black/10 bg-white/72 text-black/64"
                     }`}
                   >
@@ -129,7 +129,7 @@ export function HomeServices() {
             return (
               <AnimatedSection key={item.title} delay={index * 0.04}>
                 <article className="group h-full rounded-[28px] border border-black/10 bg-white/84 p-5 shadow-[0_18px_70px_rgba(0,0,0,0.05)] transition duration-300 hover:-translate-y-1 hover:bg-white hover:shadow-[0_28px_100px_rgba(0,0,0,0.08)]">
-                  <div className="inline-flex rounded-2xl bg-[#111111] p-3 text-[#f8a25d]">
+                  <div className="inline-flex rounded-2xl bg-[#111111] p-3 text-[#93c5fd]">
                     <Icon className="h-5 w-5" />
                   </div>
 

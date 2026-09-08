@@ -9,7 +9,7 @@ export function HomeCases() {
       id="cases"
       className="relative border-b border-white/10 bg-[#101010] px-5 py-24 lg:px-8"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_12%,rgba(245,110,15,0.12),transparent_22%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_12%,rgba(37,99,235,0.12),transparent_22%)]" />
       <div className="mx-auto max-w-7xl">
         <AnimatedSection>
           <SectionHeader
@@ -39,7 +39,7 @@ export function HomeCases() {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/78 via-black/14 to-transparent" />
                   <div className="absolute bottom-5 left-5 right-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#f8a25d]">
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#93c5fd]">
                       {item.tag}
                     </p>
                     <h3 className="altum-display mt-2 text-3xl font-semibold tracking-[-0.05em] text-white">

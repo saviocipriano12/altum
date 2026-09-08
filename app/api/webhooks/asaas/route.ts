@@ -6,6 +6,7 @@ import { runLeadAutomations } from "@/lib/server/automations";
 import { reactivateTenantAfterBillingPayment } from "@/lib/server/contract-billing";
 import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
 import { applyPlatformPlanEntitlements } from "@/lib/server/platform-plan-entitlements";
+import { checkoutSubscriptionFields } from "@/lib/asaas-checkout-state";
 import { getBillingBlockAt } from "@/lib/platform-subscription-policy";
 
 const ASAAS_WEBHOOK_TOKEN = process.env.ASAAS_WEBHOOK_TOKEN;
@@ -194,15 +195,12 @@ export async function POST(req: Request) {
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
         if (paid && tenantId) {
-          const checkoutSubscription = checkout.subscription && typeof checkout.subscription === "object"
-            ? checkout.subscription as Record<string, unknown>
-            : {};
+          const subscriptionFields = checkoutSubscriptionFields(checkout);
           await Promise.all([
             adminDb.collection("tenants").doc(tenantId).set({
               status: "active", billingStatus: "active", billingProvider: "asaas",
               platformPlan: planId, blockedReason: null,
-              asaasSubscriptionId: clean(checkoutSubscription.id, 180) || null,
-              asaasNextDueDate: clean(checkoutSubscription.nextDueDate, 80) || null,
+              ...subscriptionFields,
               billingActivatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
             }, { merge: true }),
             adminDb.collection("client_contracts").doc(tenantId).set({

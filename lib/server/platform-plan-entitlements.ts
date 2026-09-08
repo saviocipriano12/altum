@@ -2,7 +2,7 @@ import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { getPlatformPlanEntitlements } from "@/lib/platform-plan-entitlements";
+import { getPlatformPlanEntitlements, PLATFORM_TRIAL_ENTITLEMENTS } from "@/lib/platform-plan-entitlements";
 import type { TenantEntitlementsSnapshot } from "@/lib/tenant-entitlements";
 
 function timestampToMillis(value: unknown) {
@@ -20,7 +20,7 @@ function timestampToMillis(value: unknown) {
 
 function hasSameTrialAccess(current: Pick<TenantEntitlementsSnapshot, "modules" | "limits"> | null | undefined) {
   if (!current) return false;
-  const expected = getPlatformPlanEntitlements("operacao");
+  const expected = PLATFORM_TRIAL_ENTITLEMENTS;
   return Object.entries(expected.modules).every(([key, value]) => current.modules[key as keyof typeof current.modules] === value)
     && Object.entries(expected.limits).every(([key, value]) => current.limits[key as keyof typeof current.limits] === value);
 }
@@ -28,7 +28,7 @@ function hasSameTrialAccess(current: Pick<TenantEntitlementsSnapshot, "modules" 
 export async function applyPlatformPlanEntitlements(input: {
   tenantId: string;
   planId: unknown;
-  source: "trial" | "asaas_webhook" | "admin";
+  source: "trial" | "asaas_webhook" | "asaas_subscription_upgrade" | "admin";
   actorId?: string;
   actorName?: string;
 }) {
@@ -66,17 +66,22 @@ export async function ensureActiveTrialFullAccess(input: {
     && timestampToMillis(tenantData.trialEndsAt) > Date.now();
   if (!activeTrial) return { activeTrial: false, changed: false, entitlements: null };
 
-  const entitlements = getPlatformPlanEntitlements("operacao");
+  const entitlements = PLATFORM_TRIAL_ENTITLEMENTS;
   if (hasSameTrialAccess(input.currentEntitlements)) {
     return { activeTrial: true, changed: false, entitlements };
   }
 
-  await applyPlatformPlanEntitlements({
+  await adminDb.collection("tenant_entitlements").doc(tenantId).set({
+    version: 1,
     tenantId,
-    planId: "operacao",
-    source: "trial",
-    actorId: input.actorId || "trial_reconciliation",
-    actorName: "Trial completo Altum",
-  });
+    mode: "custom",
+    modules: entitlements.modules,
+    limits: entitlements.limits,
+    entitlementSource: "trial",
+    platformPlan: String(tenantData.platformPlan || "essencial"),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: input.actorId || "trial_reconciliation",
+    updatedByName: "Trial completo Altum",
+  }, { merge: true });
   return { activeTrial: true, changed: true, entitlements };
 }

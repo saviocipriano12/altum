@@ -11,6 +11,24 @@ service firebase.storage {
         firestore.get(/databases/(default)/documents/tenant_users/$(tenantId + "_" + request.auth.uid)).data.status == "active";
     }
 
+    function tenantMembership(tenantId) {
+      return firestore.get(/databases/(default)/documents/tenant_users/$(tenantId + "_" + request.auth.uid));
+    }
+
+    function canUploadTenantMedia(tenantId) {
+      return isActiveTenantUser(tenantId) && tenantMembership(tenantId).data.role in [
+        "client_owner", "client_admin", "client_agent"
+      ];
+    }
+
+    function isAcceptedChatMedia() {
+      return request.resource.size > 0 &&
+        request.resource.size <= 32 * 1024 * 1024 &&
+        request.resource.contentType is string &&
+        request.resource.contentType.matches("(image|video|audio)/.*|application/.*|text/plain") &&
+        request.resource.metadata.keys().hasAll(["tenantId", "chatId", "uploadedBy"]);
+    }
+
     function isActiveAgencyUser() {
       return signedIn() &&
         firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
@@ -23,10 +41,14 @@ service firebase.storage {
     // O navegador apenas prepara o arquivo. A API autenticada valida tenant,
     // conversa, tipo, tamanho e permissao comercial antes de envia-lo ao canal.
     match /chat-media/{tenantId}/{chatId}/{userId}/{fileName} {
-      allow create, update: if isActiveTenantUser(tenantId) &&
+      allow create: if canUploadTenantMedia(tenantId) &&
+        resource == null &&
         userId == request.auth.uid &&
-        request.resource.size > 0 &&
-        request.resource.size <= 32 * 1024 * 1024;
+        request.resource.metadata.tenantId == tenantId &&
+        request.resource.metadata.chatId == chatId &&
+        request.resource.metadata.uploadedBy == request.auth.uid &&
+        isAcceptedChatMedia();
+      allow update: if false;
       allow read: if isActiveTenantUser(tenantId) && userId == request.auth.uid;
       allow delete: if false;
     }
@@ -34,9 +56,11 @@ service firebase.storage {
     // Compatibilidade com a gravacao de voz do chat interno da agencia.
     match /chats/{chatId}/{fileName} {
       allow read: if isActiveAgencyUser();
-      allow create, update: if isActiveAgencyUser() &&
+      allow create: if isActiveAgencyUser() &&
+        resource == null &&
         request.resource.size > 0 &&
         request.resource.size <= 16 * 1024 * 1024;
+      allow update: if false;
       allow delete: if false;
     }
 

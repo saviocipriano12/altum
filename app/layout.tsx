@@ -1,12 +1,20 @@
 import "./globals.css";
+import "./brand.css";
 import type { Metadata, Viewport } from "next";
+import { Manrope } from "next/font/google";
 import { Suspense } from "react";
 import { AuthProvider } from "@/context/AuthContext";
 import { buildOrganizationSchema, getSiteUrl, getSocialLinksFromEnv, toJsonLdScript } from "@/lib/schema";
 import { TrackingScripts } from "@/components/analytics/TrackingScripts";
 
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-altum",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag"),
+  metadataBase: new URL((process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim()),
   applicationName: "ALTUM",
   title: {
     default: "ALTUM | Operacao Comercial com IA",
@@ -19,7 +27,7 @@ export const metadata: Metadata = {
     title: "ALTUM | Operacao Comercial com IA",
     description:
       "Conversas, clientes, oportunidades, agenda e IA em uma plataforma para responder melhor, vender mais e acompanhar tudo em um so lugar.",
-    url: "https://altum.ag",
+    url: "/",
     siteName: "ALTUM",
     images: [
       {
@@ -66,8 +74,8 @@ export default function RootLayout({
   });
 
   return (
-    <html lang="pt-BR" className="scroll-smooth" data-scroll-behavior="smooth">
-      <body className="bg-[#04131f] font-sans text-white antialiased selection:bg-[#f97316] selection:text-white">
+    <html lang="pt-BR" className={`${manrope.variable} scroll-smooth`} data-scroll-behavior="smooth">
+      <body className="bg-[#07111f] font-sans text-white antialiased selection:bg-blue-600 selection:text-white">
         <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(organizationSchema)} />
         <Suspense fallback={null}>
           <TrackingScripts />

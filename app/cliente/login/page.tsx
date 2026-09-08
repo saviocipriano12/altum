@@ -133,7 +133,7 @@ export default function ClienteLoginPage() {
 
   if (checking) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#050505] text-white">
+      <div data-altum-surface="auth" className="relative flex items-center justify-center overflow-hidden text-white">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute -left-16 top-[-120px] h-[280px] w-[280px] rounded-full bg-[#2563EB]/25 blur-3xl" />
           <div className="absolute right-[-80px] top-[120px] h-[240px] w-[240px] rounded-full bg-[#7C3AED]/20 blur-3xl" />
@@ -145,7 +145,7 @@ export default function ClienteLoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#050505] p-4 text-white">
+    <div data-altum-surface="auth" className="relative flex items-center justify-center overflow-hidden p-4 text-white">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -left-20 top-[-140px] h-[340px] w-[340px] rounded-full bg-[#2563EB]/25 blur-3xl" />
         <div className="absolute right-[-120px] top-[130px] h-[300px] w-[300px] rounded-full bg-[#7C3AED]/20 blur-3xl" />

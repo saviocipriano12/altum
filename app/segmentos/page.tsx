@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SegmentosLanding from "@/components/segmentos/SegmentosLanding";
 import { verticals } from "@/lib/verticals";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag").replace(/\/$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
 
 export const metadata: Metadata = {
   title: "Segmentos",

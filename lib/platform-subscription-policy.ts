@@ -7,7 +7,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PLAN_RANK: Record<PlatformPlanId, number> = {
   essencial: 10,
   operacao: 20,
-  estrutura_assistida: 30,
+  escala: 30,
+  estrutura_assistida: 40,
 };
 
 export function parseBillingDate(value: unknown): Date | null {

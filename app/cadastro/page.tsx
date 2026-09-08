@@ -13,6 +13,7 @@ import {
 import { ArrowRight, Building2, Check, Eye, EyeOff, Loader2, LockKeyhole, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { auth } from "@/firebaseConfig";
 import { firebaseAuthErrorMessage } from "@/lib/firebase-auth-errors";
+import { getDefaultPlatformPlan, type PlatformPlanId } from "@/lib/platform-plans";
 
 function passwordChecks(password: string) {
   return {
@@ -31,6 +32,7 @@ export default function CadastroPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState<PlatformPlanId>("essencial");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -38,6 +40,8 @@ export default function CadastroPage() {
   const strongPassword = Object.values(checks).every(Boolean);
 
   useEffect(() => {
+    const requestedPlan = getDefaultPlatformPlan(new URLSearchParams(window.location.search).get("plan"));
+    if (requestedPlan?.trialEligible && requestedPlan.checkoutEnabled) setSelectedPlanId(requestedPlan.id);
     if (auth.currentUser) {
       setName(auth.currentUser.displayName || "");
       setEmail(auth.currentUser.email || "");
@@ -49,7 +53,7 @@ export default function CadastroPage() {
     const response = await fetch("/api/auth/bootstrap", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name, companyName, acceptedTerms }),
+      body: JSON.stringify({ name, companyName, acceptedTerms, selectedPlanId }),
     });
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
     if (!response.ok) throw new Error(payload.error || "Nao foi possivel preparar sua conta.");
@@ -109,7 +113,7 @@ export default function CadastroPage() {
       const response = await fetch("/api/auth/bootstrap", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: resolvedName, companyName, acceptedTerms }),
+        body: JSON.stringify({ name: resolvedName, companyName, acceptedTerms, selectedPlanId }),
       });
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Nao foi possivel preparar sua conta.");
@@ -122,7 +126,7 @@ export default function CadastroPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f7fb] px-4 py-8 text-slate-950 sm:py-12">
+    <main data-altum-surface="auth" className="px-4 py-8 text-slate-950 sm:py-12">
       <div className="mx-auto grid w-full max-w-5xl overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_100px_-50px_rgba(15,23,42,.45)] lg:grid-cols-[.9fr_1.1fr]">
         <section className="hidden bg-[linear-gradient(145deg,#0f172a,#172554_55%,#5b21b6)] p-10 text-white lg:block">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold"><ShieldCheck className="h-4 w-4" /> ALTUM segura desde o primeiro acesso</div>
@@ -136,7 +140,10 @@ export default function CadastroPage() {
         <section className="p-6 sm:p-9">
           <p className="text-xs font-black uppercase tracking-[.18em] text-blue-600">Criar conta</p>
           <h2 className="mt-2 text-3xl font-black tracking-tight">Comece seus 7 dias gratis</h2>
-          <p className="mt-2 text-sm text-slate-500">Sem cartao agora. Depois do cadastro, voce confirma seu e-mail para liberar o acesso.</p>
+          <p className="mt-2 text-sm text-slate-500">Sem cartao agora. Teste todos os recursos com limites controlados e decida ao final.</p>
+          <p className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
+            Plano de interesse: <strong>{getDefaultPlatformPlan(selectedPlanId)?.name}</strong>. Voce podera trocar antes de assinar.
+          </p>
 
           <form onSubmit={handleSubmit} className="mt-7 space-y-4">
             <Field icon={UserRound} label="Seu nome" value={name} onChange={setName} placeholder="Nome completo" autoComplete="name" />

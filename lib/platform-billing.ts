@@ -1,8 +1,6 @@
-export type PlatformBillingPlanId =
-  | "essencial"
-  | "operacao"
-  | "estrutura_assistida"
-  | "custom";
+import { DEFAULT_PLATFORM_PLANS, type PlatformPlanId } from "@/lib/platform-plans";
+
+export type PlatformBillingPlanId = PlatformPlanId | "custom";
 
 export type PlatformBillingPlan = {
   id: PlatformBillingPlanId;
@@ -31,37 +29,21 @@ export type StripePlanReadiness = {
 };
 
 export const PLATFORM_BILLING_PLANS: readonly PlatformBillingPlan[] = [
+  ...DEFAULT_PLATFORM_PLANS.map((plan) => ({
+    id: plan.id,
+    label: plan.name,
+    monthlyPrice: plan.monthlyPrice,
+    interval: "month" as const,
+    stripeEnvKey: `STRIPE_PRICE_ALTUM_${plan.id.toUpperCase()}_MONTHLY`,
+    description: plan.description,
+  })),
   {
-    id: "essencial",
-    label: "Essencial",
-    monthlyPrice: 797,
-    interval: "month",
-    stripeEnvKey: "STRIPE_PRICE_ALTUM_ESSENCIAL_MONTHLY",
-    description: "Entrada da plataforma para operacao comercial mais enxuta.",
-  },
-  {
-    id: "operacao",
-    label: "Operacao",
-    monthlyPrice: 997,
-    interval: "month",
-    stripeEnvKey: "STRIPE_PRICE_ALTUM_OPERACAO_MONTHLY",
-    description: "Plano principal com mais capacidade operacional e IA aplicada.",
-  },
-  {
-    id: "estrutura_assistida",
-    label: "Estrutura Assistida",
-    monthlyPrice: null,
-    interval: "month",
-    stripeEnvKey: "STRIPE_PRICE_ALTUM_ESTRUTURA_ASSISTIDA_MONTHLY",
-    description: "Plano sob diagnostico para operacao mais acompanhada.",
-  },
-  {
-    id: "custom",
+    id: "custom" as const,
     label: "Custom",
     monthlyPrice: null,
-    interval: "month",
+    interval: "month" as const,
     stripeEnvKey: null,
-    description: "Contrato especial, sem price padrao definido.",
+    description: "Contrato especial, sem preco padrao definido.",
   },
 ] as const;
 
@@ -75,6 +57,7 @@ export function normalizePlatformBillingPlanId(value: unknown): PlatformBillingP
   if (
     normalized === "essencial" ||
     normalized === "operacao" ||
+    normalized === "escala" ||
     normalized === "estrutura_assistida" ||
     normalized === "custom"
   ) {
@@ -83,13 +66,14 @@ export function normalizePlatformBillingPlanId(value: unknown): PlatformBillingP
 
   if (normalized.includes("essencial")) return "essencial";
   if (normalized.includes("operacao")) return "operacao";
+  if (normalized.includes("escala")) return "escala";
   if (normalized.includes("estrutura")) return "estrutura_assistida";
   return "custom";
 }
 
 export function getPlatformBillingPlan(value: unknown): PlatformBillingPlan {
   const planId = normalizePlatformBillingPlanId(value);
-  return PLATFORM_BILLING_PLANS.find((item) => item.id === planId) || PLATFORM_BILLING_PLANS[3];
+  return PLATFORM_BILLING_PLANS.find((item) => item.id === planId) || PLATFORM_BILLING_PLANS.at(-1)!;
 }
 
 export function getStripeIntegrationEnvStatus() {
@@ -120,37 +104,24 @@ export function buildStripePlanReadiness(input: {
   stripeCurrentPeriodEnd?: string | null;
   stripeCheckoutUrl?: string | null;
   stripeCustomerPortalUrl?: string | null;
-}) : StripePlanReadiness {
+}): StripePlanReadiness {
   const plan = getPlatformBillingPlan(input.platformPlan);
   const envStatus = getStripeIntegrationEnvStatus();
   const resolvedPriceId = plan.stripeEnvKey ? clean(process.env[plan.stripeEnvKey], 200) : "";
   const billingProvider = clean(input.billingProvider, 40).toLowerCase();
   const accessMode = clean(input.platformAccessMode, 80).toLowerCase();
-  const enabled =
-    billingProvider === "stripe" || accessMode === "stripe_subscription";
+  const enabled = billingProvider === "stripe" || accessMode === "stripe_subscription";
 
   const missing: string[] = [];
-  if (enabled && !envStatus.ready) {
-    missing.push(...envStatus.missing.map((item) => `env:${item}`));
-  }
-  if (enabled && plan.stripeEnvKey && !resolvedPriceId) {
-    missing.push(`price:${plan.stripeEnvKey}`);
-  }
-  if (enabled && !clean(input.stripeCustomerId, 180)) {
-    missing.push("customer_id");
-  }
-  if (enabled && !clean(input.stripeSubscriptionId, 180)) {
-    missing.push("subscription_id");
-  }
+  if (enabled && !envStatus.ready) missing.push(...envStatus.missing.map((item) => `env:${item}`));
+  if (enabled && plan.stripeEnvKey && !resolvedPriceId) missing.push(`price:${plan.stripeEnvKey}`);
+  if (enabled && !clean(input.stripeCustomerId, 180)) missing.push("customer_id");
+  if (enabled && !clean(input.stripeSubscriptionId, 180)) missing.push("subscription_id");
 
   let nextStep = "Configurar o modo Stripe quando a operacao comercial estiver pronta.";
-  if (!enabled) {
-    nextStep = "Marcar provider Stripe ou modo assinatura da plataforma para ativar este trilho.";
-  } else if (missing.length > 0) {
-    nextStep = "Preencher os itens faltantes antes de criar ou sincronizar a assinatura.";
-  } else {
-    nextStep = "Pronto para sincronizar checkout, assinatura e webhook do Stripe.";
-  }
+  if (!enabled) nextStep = "Marcar provider Stripe ou modo assinatura da plataforma para ativar este trilho.";
+  else if (missing.length > 0) nextStep = "Preencher os itens faltantes antes de criar ou sincronizar a assinatura.";
+  else nextStep = "Pronto para sincronizar checkout, assinatura e webhook do Stripe.";
 
   return {
     enabled,

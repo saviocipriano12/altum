@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SiteShell } from "@/components/public/site-shell";
 
 export const metadata: Metadata = {
   title: "Politica de Privacidade | ALTUM",
@@ -6,19 +7,20 @@ export const metadata: Metadata = {
     "Politica de Privacidade da ALTUM com regras de tratamento de dados pessoais em conformidade com a LGPD.",
 };
 
-const LAST_UPDATED = "15/04/2026";
+const LAST_UPDATED = "06/09/2026";
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50">
+    <SiteShell>
+    <div className="bg-slate-950 text-slate-50">
       <section className="mx-auto max-w-4xl px-4 py-16">
         <header className="mb-10 border-b border-white/10 pb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400/80">
-            ALTUM · Politica de Privacidade
+            ALTUM · Política de Privacidade
           </p>
-          <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">Politica de Privacidade</h1>
+          <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">Política de Privacidade</h1>
           <p className="mt-3 text-sm text-slate-300">
-            Ultima atualizacao: <span className="font-medium text-slate-100">{LAST_UPDATED}</span>
+            Última atualização: <span className="font-medium text-slate-100">{LAST_UPDATED}</span>
           </p>
         </header>
 
@@ -56,6 +58,7 @@ export default function PrivacyPolicyPage() {
               <li>Dados de interacao em canais (mensagens, historico de conversas e eventos de atendimento).</li>
               <li>Dados de navegacao e dispositivo (IP, browser, sistema, cookies e logs tecnicos).</li>
               <li>Dados de operacao comercial (origem do lead, status de funil, agendamentos e conversoes).</li>
+              <li>Conteúdo enviado à IA, respostas geradas, feedback, consumo e registros de segurança.</li>
             </ul>
           </section>
 
@@ -93,7 +96,21 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="mb-2 text-lg font-semibold text-amber-300">6. Transferencia Internacional</h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">6. Cookies e analytics</h2>
+            <p className="text-slate-300">
+              Cookies estritamente necessários sustentam autenticação, segurança e funcionamento da
+              plataforma. Cookies opcionais de medição e publicidade somente são ativados após sua
+              autorização no site público. Eles não são carregados nas áreas autenticadas da ALTUM.
+              A recusa não reduz as funcionalidades contratadas.
+            </p>
+            <p className="mt-2 text-slate-300">
+              A preferência fica registrada neste navegador, com data e versão, e pode ser alterada a
+              qualquer momento pelo botão “Preferências de cookies” disponível no site público.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">7. Transferencia Internacional</h2>
             <p className="text-slate-300">
               Parte dos provedores pode processar dados fora do Brasil. Nesses casos, adotamos
               mecanismos contratuais e salvaguardas adequadas, conforme a LGPD e normas da ANPD.
@@ -101,7 +118,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="mb-2 text-lg font-semibold text-amber-300">7. Retencao e Descarte</h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">8. Retencao e Descarte</h2>
             <p className="text-slate-300">
               Os dados sao mantidos apenas pelo periodo necessario para as finalidades desta Politica,
               observando requisitos legais, regulatórios e de defesa de direitos. Encerrado o prazo,
@@ -110,7 +127,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="mb-2 text-lg font-semibold text-amber-300">8. Seguranca da Informacao</h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">9. Seguranca da Informacao</h2>
             <p className="text-slate-300">
               Adotamos medidas tecnicas e organizacionais proporcionais ao risco, incluindo:
             </p>
@@ -123,7 +140,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="mb-2 text-lg font-semibold text-amber-300">9. Direitos dos Titulares</h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">10. Direitos dos Titulares</h2>
             <p className="text-slate-300">
               Nos termos da LGPD, o titular pode solicitar confirmacao de tratamento, acesso, correcao,
               anonimização, bloqueio, eliminacao, portabilidade, informacao sobre compartilhamentos,
@@ -132,7 +149,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="mb-2 text-lg font-semibold text-amber-300">10. Canal de Privacidade</h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">11. Canal de Privacidade</h2>
             <p className="text-slate-300">
               Solicitacoes de privacidade e exercicio de direitos podem ser enviados para:
             </p>
@@ -140,7 +157,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="mb-2 text-lg font-semibold text-amber-300">11. Atualizacoes</h2>
+            <h2 className="mb-2 text-lg font-semibold text-amber-300">12. Atualizacoes</h2>
             <p className="text-slate-300">
               Esta Politica pode ser atualizada para refletir evolucoes legais, tecnicas e operacionais.
               A versao vigente estara sempre publicada nesta pagina.
@@ -148,6 +165,7 @@ export default function PrivacyPolicyPage() {
           </section>
         </div>
       </section>
-    </main>
+    </div>
+    </SiteShell>
   );
 }

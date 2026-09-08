@@ -110,17 +110,17 @@ const automationSteps = [
 
 export function ProductHome() {
   return (
-    <div className="min-h-screen overflow-x-hidden bg-black text-[#f9f9f9]">
+    <div data-altum-surface="public" className="min-h-screen overflow-x-hidden text-[#f9f9f9]">
       <HomeStyles />
       <Header />
 
       <section className="relative overflow-hidden px-5 pb-16 pt-32 lg:px-8 lg:pb-24 lg:pt-40">
         <div className="altum-grid absolute inset-0" />
-        <div className="absolute left-1/2 top-8 h-[34rem] w-[58rem] -translate-x-1/2 rounded-full bg-[#e85002]/15 blur-[150px]" />
+        <div className="absolute left-1/2 top-8 h-[34rem] w-[58rem] -translate-x-1/2 rounded-full bg-[#2563eb]/15 blur-[150px]" />
 
         <div className="relative mx-auto max-w-[1280px] text-center">
-          <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-[#e85002]/30 bg-[#e85002]/10 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.22em] text-[#ff7a32]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#e85002] shadow-[0_0_18px_#e85002]" />
+          <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-[#2563eb]/30 bg-[#2563eb]/10 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.22em] text-[#93c5fd]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#2563eb] shadow-[0_0_18px_#2563eb]" />
             O sistema comercial da sua empresa
           </div>
 
@@ -145,18 +145,18 @@ export function ProductHome() {
           <div className="mx-auto mt-8 flex max-w-3xl flex-wrap items-center justify-center gap-x-7 gap-y-3 text-sm font-semibold text-white/46">
             {["Sem operação fragmentada", "IA com humano no controle", "Do lead ao fechamento"].map((item) => (
               <span key={item} className="flex items-center gap-2">
-                <CircleCheck className="h-4 w-4 text-[#e85002]" />
+                <CircleCheck className="h-4 w-4 text-[#2563eb]" />
                 {item}
               </span>
             ))}
           </div>
 
           <div className="relative mx-auto mt-16 max-w-[1180px] lg:mt-20">
-            <div className="absolute -inset-x-10 inset-y-16 rounded-full bg-[#e85002]/20 blur-[100px]" />
+            <div className="absolute -inset-x-10 inset-y-16 rounded-full bg-[#2563eb]/20 blur-[100px]" />
             <div className="relative rounded-[2rem] border border-white/12 bg-[#111111] p-2.5 shadow-[0_45px_120px_rgba(0,0,0,0.72)] md:p-4">
               <div className="flex items-center justify-between border-b border-white/8 px-3 pb-3 md:px-4">
                 <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#e85002]" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#2563eb]" />
                   <span className="h-2.5 w-2.5 rounded-full bg-white/16" />
                   <span className="h-2.5 w-2.5 rounded-full bg-white/16" />
                 </div>
@@ -177,7 +177,7 @@ export function ProductHome() {
             <div className="absolute -bottom-7 left-4 hidden rounded-2xl border border-white/10 bg-[#101010]/94 p-4 text-left shadow-2xl backdrop-blur-xl md:block">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/36">IA encontrou</p>
               <p className="mt-2 flex items-center gap-2 text-sm font-bold text-white">
-                <Sparkles className="h-4 w-4 text-[#ff6a1f]" /> 3 oportunidades pedem ação
+                <Sparkles className="h-4 w-4 text-[#60a5fa]" /> 3 oportunidades pedem ação
               </p>
             </div>
 
@@ -211,11 +211,11 @@ export function ProductHome() {
       <RevenueLoop />
 
       <section id="ia" className="relative overflow-hidden border-y border-white/8 bg-[#0b0b0b] px-5 py-24 lg:px-8 lg:py-32">
-        <div className="absolute -right-40 top-10 h-[32rem] w-[32rem] rounded-full bg-[#d90c3a]/12 blur-[130px]" />
+        <div className="absolute -right-40 top-10 h-[32rem] w-[32rem] rounded-full bg-[#8b5cf6]/12 blur-[130px]" />
         <div className="relative mx-auto max-w-[1280px]">
           <div className="grid gap-12 xl:grid-cols-[0.82fr_1.18fr] xl:items-center">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#e85002]/25 bg-[#e85002]/8 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#ff7a32]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#2563eb]/25 bg-[#2563eb]/8 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#93c5fd]">
                 <Bot className="h-4 w-4" /> Assistente Altum
               </div>
               <h2 className="mt-7 max-w-[11ch] text-[clamp(2.8rem,5.8vw,5.8rem)] font-extrabold leading-[0.95] tracking-[-0.065em] text-white">
@@ -228,14 +228,14 @@ export function ProductHome() {
               <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 {["Resposta com contexto", "Resumo automático", "Sinal de intenção", "Escalada para humano"].map((item) => (
                   <div key={item} className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.025] px-4 py-3 text-sm font-semibold text-white/72">
-                    <Check className="h-4 w-4 text-[#e85002]" /> {item}
+                    <Check className="h-4 w-4 text-[#2563eb]" /> {item}
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="relative">
-              <div className="absolute -inset-8 rounded-full bg-[#e85002]/10 blur-[90px]" />
+              <div className="absolute -inset-8 rounded-full bg-[#2563eb]/10 blur-[90px]" />
               <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-black p-3 shadow-[0_35px_90px_rgba(0,0,0,0.65)]">
                 <Image
                   src={productImages.ai}
@@ -252,7 +252,7 @@ export function ProductHome() {
           <div className="mt-20 rounded-[2rem] border border-white/9 bg-black/60 p-5 md:p-8">
             <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
               <div>
-                <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-[#ff6a1f]">Automação em ação</p>
+                <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-[#60a5fa]">Automação em ação</p>
                 <h3 className="mt-3 text-2xl font-bold tracking-[-0.04em] text-white md:text-4xl">Um lead entra. A operação inteira reage.</h3>
               </div>
               <span className="text-sm font-semibold text-white/38">Sem copiar dados. Sem perder contexto.</span>
@@ -261,12 +261,12 @@ export function ProductHome() {
               {automationSteps.map((step, index) => (
                 <div key={step.label} className="relative rounded-2xl border border-white/8 bg-white/[0.025] p-5">
                   <div className="flex items-center justify-between">
-                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#e85002]/12 text-[#ff6a1f]"><step.icon className="h-5 w-5" /></span>
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#2563eb]/12 text-[#60a5fa]"><step.icon className="h-5 w-5" /></span>
                     <span className="text-[10px] font-extrabold tracking-[0.18em] text-white/24">0{index + 1}</span>
                   </div>
                   <p className="mt-5 font-bold text-white">{step.label}</p>
                   <p className="mt-2 text-sm leading-6 text-white/44">{step.detail}</p>
-                  {index < automationSteps.length - 1 ? <ChevronRight className="absolute -right-3 top-1/2 z-10 hidden h-5 w-5 -translate-y-1/2 text-[#e85002] lg:block" /> : null}
+                  {index < automationSteps.length - 1 ? <ChevronRight className="absolute -right-3 top-1/2 z-10 hidden h-5 w-5 -translate-y-1/2 text-[#2563eb] lg:block" /> : null}
                 </div>
               ))}
             </div>
@@ -283,9 +283,9 @@ export function ProductHome() {
           />
           <div className="mt-14 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {capabilities.map((item, index) => (
-              <article key={item.title} className="group min-h-52 rounded-[1.6rem] border border-white/8 bg-[#0b0b0b] p-6 transition duration-300 hover:border-[#e85002]/35 hover:bg-[#101010]">
+              <article key={item.title} className="group min-h-52 rounded-[1.6rem] border border-white/8 bg-[#0b0b0b] p-6 transition duration-300 hover:border-[#2563eb]/35 hover:bg-[#101010]">
                 <div className="flex items-center justify-between">
-                  <span className="grid h-11 w-11 place-items-center rounded-xl border border-white/8 bg-white/[0.035] text-[#ff6a1f] transition group-hover:bg-[#e85002]/12"><item.icon className="h-5 w-5" /></span>
+                  <span className="grid h-11 w-11 place-items-center rounded-xl border border-white/8 bg-white/[0.035] text-[#60a5fa] transition group-hover:bg-[#2563eb]/12"><item.icon className="h-5 w-5" /></span>
                   <span className="text-[10px] font-extrabold tracking-[0.18em] text-white/18">0{index + 1}</span>
                 </div>
                 <h3 className="mt-7 text-xl font-bold tracking-[-0.03em] text-white">{item.title}</h3>
@@ -300,7 +300,7 @@ export function ProductHome() {
         <div className="mx-auto max-w-[1280px]">
           <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-[#ff6a1f]">Ecossistema conectado</p>
+              <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-[#60a5fa]">Ecossistema conectado</p>
               <h2 className="mt-5 max-w-[11ch] text-[clamp(2.8rem,5.4vw,5.4rem)] font-extrabold leading-[0.95] tracking-[-0.06em] text-white">
                 A Altum conecta onde sua venda já acontece.
               </h2>
@@ -322,9 +322,9 @@ export function ProductHome() {
                 </div>
               </div>
             ))}
-            <div className="flex min-h-32 items-center gap-4 rounded-2xl border border-dashed border-[#e85002]/30 bg-[#e85002]/5 p-5">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#e85002]/10 text-[#ff6a1f]"><Zap className="h-6 w-6" /></span>
-              <div><p className="font-bold text-white">Novas conexões</p><p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#ff6a1f]/70">Em expansão</p></div>
+            <div className="flex min-h-32 items-center gap-4 rounded-2xl border border-dashed border-[#2563eb]/30 bg-[#2563eb]/5 p-5">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#2563eb]/10 text-[#60a5fa]"><Zap className="h-6 w-6" /></span>
+              <div><p className="font-bold text-white">Novas conexões</p><p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#60a5fa]/70">Em expansão</p></div>
             </div>
           </div>
 
@@ -335,9 +335,9 @@ export function ProductHome() {
       <section className="px-5 py-24 lg:px-8 lg:py-32">
         <div className="mx-auto grid max-w-[1280px] gap-5 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="relative overflow-hidden rounded-[2rem] border border-white/9 bg-[#0b0b0b] p-7 md:p-10">
-            <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#e85002]/14 blur-[90px]" />
+            <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#2563eb]/14 blur-[90px]" />
             <div className="relative">
-              <BadgeCheck className="h-8 w-8 text-[#ff6a1f]" />
+              <BadgeCheck className="h-8 w-8 text-[#60a5fa]" />
               <h2 className="mt-8 max-w-[12ch] text-[clamp(2.5rem,4.7vw,4.6rem)] font-extrabold leading-[0.98] tracking-[-0.06em] text-white">
                 Tecnologia forte. Operação simples.
               </h2>
@@ -354,7 +354,7 @@ export function ProductHome() {
       </section>
 
       <section className="px-5 pb-24 lg:px-8 lg:pb-32">
-        <div className="relative mx-auto max-w-[1280px] overflow-hidden rounded-[2.4rem] bg-[#e85002] px-7 py-14 text-white shadow-[0_35px_100px_rgba(232,80,2,0.25)] md:px-12 md:py-16">
+        <div className="relative mx-auto max-w-[1280px] overflow-hidden rounded-[2.4rem] bg-[#2563eb] px-7 py-14 text-white shadow-[0_35px_100px_rgba(37,99,235,0.25)] md:px-12 md:py-16">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_15%,rgba(255,190,85,0.48),transparent_28%),radial-gradient(circle_at_15%_100%,rgba(217,12,58,0.42),transparent_32%)]" />
           <div className="relative grid gap-10 lg:grid-cols-[1fr_auto] lg:items-end">
             <div>
@@ -397,14 +397,14 @@ function Header() {
 
         <div className="hidden items-center gap-2 md:flex">
           <Link href="/cliente/login" className="rounded-lg px-4 py-2.5 text-sm font-bold text-white/68 transition hover:text-white">Entrar</Link>
-          <Link href="/contato?interest=demonstracao" className="inline-flex items-center gap-2 rounded-lg bg-[#e85002] px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-[#ff5c0b]">Agendar demonstração <ArrowRight className="h-4 w-4" /></Link>
+          <Link href="/contato?interest=demonstracao" className="inline-flex items-center gap-2 rounded-lg bg-[#2563eb] px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-[#1d4ed8]">Agendar demonstração <ArrowRight className="h-4 w-4" /></Link>
         </div>
 
         <details className="relative md:hidden">
           <summary className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-lg border border-white/10 text-white" aria-label="Abrir menu"><Menu className="h-5 w-5" /></summary>
           <div className="absolute right-0 top-13 w-72 rounded-2xl border border-white/10 bg-[#0b0b0b] p-3 shadow-2xl">
             {navItems.map((item) => <Link key={item.href} href={item.href} className="block rounded-lg px-3 py-3 text-sm font-semibold text-white/62 hover:bg-white/5 hover:text-white">{item.label}</Link>)}
-            <Link href="/contato?interest=demonstracao" className="mt-2 flex items-center justify-between rounded-lg bg-[#e85002] px-4 py-3 text-sm font-bold text-white">Agendar demonstração <ChevronRight className="h-4 w-4" /></Link>
+            <Link href="/contato?interest=demonstracao" className="mt-2 flex items-center justify-between rounded-lg bg-[#2563eb] px-4 py-3 text-sm font-bold text-white">Agendar demonstração <ChevronRight className="h-4 w-4" /></Link>
           </div>
         </details>
       </div>
@@ -434,7 +434,7 @@ function IntegrationMarquee() {
 function SectionHeading({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return (
     <div className="mx-auto max-w-4xl text-center">
-      <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#ff6a1f]">{eyebrow}</p>
+      <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#60a5fa]">{eyebrow}</p>
       <h2 className="mt-5 text-[clamp(2.8rem,5.8vw,5.8rem)] font-extrabold leading-[0.94] tracking-[-0.065em] text-white">{title}</h2>
       <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-white/48">{description}</p>
     </div>
@@ -445,13 +445,13 @@ function ProductFeature({ number, icon: Icon, title, description, bullets, image
   return (
     <article className="grid gap-12 lg:grid-cols-[0.78fr_1.22fr] lg:items-center">
       <div className={reverse ? "lg:order-2" : ""}>
-        <div className="flex items-center gap-4"><span className="text-xs font-extrabold tracking-[0.2em] text-[#e85002]">{number}</span><span className="grid h-11 w-11 place-items-center rounded-xl border border-white/8 bg-white/[0.035] text-[#ff6a1f]"><Icon className="h-5 w-5" /></span></div>
+        <div className="flex items-center gap-4"><span className="text-xs font-extrabold tracking-[0.2em] text-[#2563eb]">{number}</span><span className="grid h-11 w-11 place-items-center rounded-xl border border-white/8 bg-white/[0.035] text-[#60a5fa]"><Icon className="h-5 w-5" /></span></div>
         <h3 className="mt-7 max-w-[12ch] text-[clamp(2.4rem,4.6vw,4.6rem)] font-extrabold leading-[0.96] tracking-[-0.06em] text-white">{title}</h3>
         <p className="mt-6 max-w-xl text-lg leading-8 text-white/50">{description}</p>
-        <div className="mt-7 space-y-3">{bullets.map((bullet) => <div key={bullet} className="flex items-center gap-3 text-sm font-semibold text-white/68"><CircleCheck className="h-4 w-4 shrink-0 text-[#e85002]" />{bullet}</div>)}</div>
+        <div className="mt-7 space-y-3">{bullets.map((bullet) => <div key={bullet} className="flex items-center gap-3 text-sm font-semibold text-white/68"><CircleCheck className="h-4 w-4 shrink-0 text-[#2563eb]" />{bullet}</div>)}</div>
       </div>
       <div className={`relative ${reverse ? "lg:order-1" : ""}`}>
-        <div className="absolute -inset-7 rounded-full bg-[#e85002]/10 blur-[90px]" />
+        <div className="absolute -inset-7 rounded-full bg-[#2563eb]/10 blur-[90px]" />
         <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#0b0b0b] p-3 shadow-[0_35px_90px_rgba(0,0,0,0.6)]"><Image src={image} alt={alt} width={1586} height={992} sizes="(min-width: 1024px) 60vw, 96vw" className="h-auto w-full rounded-[1.35rem]" /></div>
       </div>
     </article>
@@ -459,7 +459,7 @@ function ProductFeature({ number, icon: Icon, title, description, bullets, image
 }
 
 function ValueCard({ icon: Icon, title, text }: { icon: typeof ShieldCheck; title: string; text: string }) {
-  return <article className="rounded-[1.7rem] border border-white/9 bg-[#0b0b0b] p-7"><span className="grid h-11 w-11 place-items-center rounded-xl bg-[#e85002]/10 text-[#ff6a1f]"><Icon className="h-5 w-5" /></span><h3 className="mt-6 text-xl font-bold text-white">{title}</h3><p className="mt-3 text-sm leading-7 text-white/46">{text}</p></article>;
+  return <article className="rounded-[1.7rem] border border-white/9 bg-[#0b0b0b] p-7"><span className="grid h-11 w-11 place-items-center rounded-xl bg-[#2563eb]/10 text-[#60a5fa]"><Icon className="h-5 w-5" /></span><h3 className="mt-6 text-xl font-bold text-white">{title}</h3><p className="mt-3 text-sm leading-7 text-white/46">{text}</p></article>;
 }
 
 function RevenueLoop() {
@@ -503,7 +503,7 @@ function RevenueLoop() {
       <div className="mx-auto max-w-[1280px]">
         <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
           <div>
-            <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#e85002]">A vantagem Altum</p>
+            <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#2563eb]">A vantagem Altum</p>
             <h2 className="mt-5 max-w-[10ch] text-[clamp(3rem,6vw,6.2rem)] font-extrabold leading-[0.9] tracking-[-0.07em]">
               A conversa é só o começo.
             </h2>
@@ -514,27 +514,27 @@ function RevenueLoop() {
         </div>
 
         <div className="relative mt-16 grid gap-4 lg:grid-cols-4">
-          <div className="absolute left-[12.5%] right-[12.5%] top-12 hidden h-px bg-gradient-to-r from-transparent via-[#e85002]/40 to-transparent lg:block" />
+          <div className="absolute left-[12.5%] right-[12.5%] top-12 hidden h-px bg-gradient-to-r from-transparent via-[#2563eb]/40 to-transparent lg:block" />
           {stages.map((stage) => (
             <article key={stage.number} className="relative rounded-[1.7rem] border border-black/10 bg-white p-6 shadow-[0_18px_50px_rgba(20,20,20,0.06)]">
               <div className="flex items-center justify-between">
-                <span className="relative z-10 grid h-12 w-12 place-items-center rounded-xl bg-black text-[#ff681e]"><stage.icon className="h-5 w-5" /></span>
+                <span className="relative z-10 grid h-12 w-12 place-items-center rounded-xl bg-black text-[#60a5fa]"><stage.icon className="h-5 w-5" /></span>
                 <span className="text-xs font-extrabold tracking-[0.18em] text-black/20">{stage.number}</span>
               </div>
-              <p className="mt-7 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#e85002]">{stage.label}</p>
+              <p className="mt-7 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#2563eb]">{stage.label}</p>
               <h3 className="mt-3 text-2xl font-extrabold leading-tight tracking-[-0.04em]">{stage.title}</h3>
               <p className="mt-4 text-sm leading-7 text-black/52">{stage.text}</p>
               <div className="mt-6 space-y-3 border-t border-black/8 pt-5">
-                {stage.items.map((item) => <div key={item} className="flex items-center gap-2 text-xs font-bold text-black/58"><Check className="h-3.5 w-3.5 text-[#e85002]" />{item}</div>)}
+                {stage.items.map((item) => <div key={item} className="flex items-center gap-2 text-xs font-bold text-black/58"><Check className="h-3.5 w-3.5 text-[#2563eb]" />{item}</div>)}
               </div>
             </article>
           ))}
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl bg-black p-6 text-white"><Mic2 className="h-5 w-5 text-[#ff681e]" /><h3 className="mt-5 text-xl font-bold">IA que também fala</h3><p className="mt-3 text-sm leading-6 text-white/46">Respostas em áudio no WhatsApp quando a operação vende melhor por voz.</p></div>
-          <div className="rounded-2xl bg-black p-6 text-white"><Video className="h-5 w-5 text-[#ff681e]" /><h3 className="mt-5 text-xl font-bold">Reuniões assistidas</h3><p className="mt-3 text-sm leading-6 text-white/46">Contexto antes, apoio durante e resumo comercial depois da reunião.</p></div>
-          <div className="rounded-2xl bg-black p-6 text-white"><Bot className="h-5 w-5 text-[#ff681e]" /><h3 className="mt-5 text-xl font-bold">Perguntar à Altum</h3><p className="mt-3 text-sm leading-6 text-white/46">Perguntas sobre tráfego, atendimento, vendas, retenção e risco respondidas com dados da conta.</p></div>
+          <div className="rounded-2xl bg-black p-6 text-white"><Mic2 className="h-5 w-5 text-[#60a5fa]" /><h3 className="mt-5 text-xl font-bold">IA que também fala</h3><p className="mt-3 text-sm leading-6 text-white/46">Respostas em áudio no WhatsApp quando a operação vende melhor por voz.</p></div>
+          <div className="rounded-2xl bg-black p-6 text-white"><Video className="h-5 w-5 text-[#60a5fa]" /><h3 className="mt-5 text-xl font-bold">Reuniões assistidas</h3><p className="mt-3 text-sm leading-6 text-white/46">Contexto antes, apoio durante e resumo comercial depois da reunião.</p></div>
+          <div className="rounded-2xl bg-black p-6 text-white"><Bot className="h-5 w-5 text-[#60a5fa]" /><h3 className="mt-5 text-xl font-bold">Perguntar à Altum</h3><p className="mt-3 text-sm leading-6 text-white/46">Perguntas sobre tráfego, atendimento, vendas, retenção e risco respondidas com dados da conta.</p></div>
         </div>
       </div>
     </section>
@@ -559,9 +559,9 @@ function Footer() {
 function HomeStyles() {
   return <style>{`
     .altum-grid{background-image:linear-gradient(to right,rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.035) 1px,transparent 1px);background-size:64px 64px;mask-image:linear-gradient(to bottom,black 30%,transparent 94%)}
-    .altum-gradient-text{background:linear-gradient(100deg,#ffb54a 0%,#ff5a0a 44%,#f01601 72%,#d90c3a 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .altum-gradient-text{background:linear-gradient(100deg,#93c5fd 0%,#3b82f6 44%,#7c3aed 72%,#8b5cf6 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
     .altum-primary-cta,.altum-secondary-cta{display:inline-flex;min-height:3.5rem;align-items:center;justify-content:center;gap:.65rem;border-radius:.75rem;padding:.85rem 1.5rem;font-size:.9rem;font-weight:800;transition:.2s ease}
-    .altum-primary-cta{background:#e85002;color:white;box-shadow:0 18px 45px rgba(232,80,2,.22)}.altum-primary-cta:hover{background:#ff5c0b;transform:translateY(-1px)}
+    .altum-primary-cta{background:#2563eb;color:white;box-shadow:0 18px 45px rgba(37,99,235,.22)}.altum-primary-cta:hover{background:#1d4ed8;transform:translateY(-1px)}
     .altum-secondary-cta{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.035);color:white}.altum-secondary-cta:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.2)}
     @keyframes altumMarquee{to{transform:translateX(-50%)}}.altum-marquee{animation:altumMarquee 34s linear infinite}.altum-marquee:hover{animation-play-state:paused}
     @media(prefers-reduced-motion:reduce){.altum-marquee{animation:none}.altum-primary-cta:hover{transform:none}}

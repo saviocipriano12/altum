@@ -150,11 +150,11 @@ export function DiagnosticWizard() {
   }
 
   return (
-    <div className="overflow-hidden rounded-[32px] border border-white/10 bg-[#111111]/95 shadow-[0_40px_120px_-48px_rgba(245,110,15,0.32)]">
-      <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(245,110,15,0.16),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] px-6 py-6">
+    <div className="overflow-hidden rounded-[32px] border border-white/10 bg-[#111111]/95 shadow-[0_40px_120px_-48px_rgba(37,99,235,0.32)]">
+      <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] px-6 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-[#f8a25d]">Quiz estrategico Altum</p>
+            <p className="text-xs uppercase tracking-[0.28em] text-[#93c5fd]">Quiz estrategico Altum</p>
             <h2 className="mt-3 text-2xl font-semibold text-white md:text-3xl">
               Um diagnóstico rápido para entender sua operação e indicar o melhor ponto de entrada na Altum.
             </h2>
@@ -166,7 +166,7 @@ export function DiagnosticWizard() {
 
         <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-white/10">
           <div
-            className="h-full rounded-full bg-[linear-gradient(90deg,#f8a25d_0%,#f56e0f_55%,#fff2e6_100%)] transition-all duration-300"
+            className="h-full rounded-full bg-[linear-gradient(90deg,#93c5fd_0%,#2563eb_55%,#dbeafe_100%)] transition-all duration-300"
             style={{ width: `${Math.min(((step + 1) / (TOTAL_STEPS + 1)) * 100, 100)}%` }}
           />
         </div>
@@ -207,7 +207,7 @@ export function DiagnosticWizard() {
         </div>
 
         <aside className="border-t border-white/10 bg-black/20 px-6 py-6 lg:border-l lg:border-t-0">
-          <p className="text-xs uppercase tracking-[0.22em] text-[#f8a25d]">Como isso entra na Altum</p>
+          <p className="text-xs uppercase tracking-[0.22em] text-[#93c5fd]">Como isso entra na Altum</p>
           <div className="mt-5 space-y-4">
             <SideCard
               title="Lead com contexto"
@@ -228,7 +228,7 @@ export function DiagnosticWizard() {
           </div>
 
           <div className="mt-6 rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#f56e0f]/15 bg-[#f56e0f]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#f8a25d]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#2563eb]/15 bg-[#2563eb]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#93c5fd]">
               <Sparkles className="h-3.5 w-3.5" />
               Logica comercial
             </div>
@@ -425,7 +425,7 @@ function StepLayout({
 }) {
   return (
     <>
-      <p className="text-xs uppercase tracking-[0.22em] text-[#f8a25d]">{eyebrow}</p>
+      <p className="text-xs uppercase tracking-[0.22em] text-[#93c5fd]">{eyebrow}</p>
       <h3 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-white md:text-4xl">{title}</h3>
       <p className="mt-4 max-w-2xl text-sm leading-7 text-white/68 md:text-base">{description}</p>
 
@@ -447,7 +447,7 @@ function StepLayout({
           type="button"
           onClick={onNext}
           disabled={!canContinue}
-          className="inline-flex items-center gap-2 rounded-full bg-[#f56e0f] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#ff7f26] disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-full bg-[#2563eb] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {nextLabel}
           <ArrowRight className="h-4 w-4" />
@@ -476,7 +476,7 @@ function QuestionStep({
 }) {
   return (
     <>
-      <p className="text-xs uppercase tracking-[0.22em] text-[#f8a25d]">{eyebrow}</p>
+      <p className="text-xs uppercase tracking-[0.22em] text-[#93c5fd]">{eyebrow}</p>
       <h3 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-white md:text-4xl">{title}</h3>
       <p className="mt-4 max-w-2xl text-sm leading-7 text-white/68 md:text-base">{description}</p>
 
@@ -490,8 +490,8 @@ function QuestionStep({
               onClick={() => onSelect(option.value)}
               className={`rounded-[22px] border px-5 py-4 text-left transition ${
                 active
-                  ? "border-[#f56e0f]/40 bg-[#f56e0f]/12"
-                  : "border-white/10 bg-white/[0.03] hover:border-[#f56e0f]/25 hover:bg-[#f56e0f]/8"
+                  ? "border-[#2563eb]/40 bg-[#2563eb]/12"
+                  : "border-white/10 bg-white/[0.03] hover:border-[#2563eb]/25 hover:bg-[#2563eb]/8"
               }`}
             >
               <span className="text-base font-semibold text-white">{option.label}</span>
@@ -547,7 +547,7 @@ function ReviewStep({
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="rounded-[26px] border border-white/10 bg-white/[0.03] p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#f8a25d]">Resumo enviado para a Altum</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-[#93c5fd]">Resumo enviado para a Altum</p>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <SummaryItem label="Contato" value={contact.nome} />
             <SummaryItem label="Empresa" value={contact.empresa} />
@@ -563,7 +563,7 @@ function ReviewStep({
         </div>
 
         <div className="rounded-[26px] border border-white/10 bg-black/20 p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#f8a25d]">Antes de enviar</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-[#93c5fd]">Antes de enviar</p>
           <p className="mt-4 text-sm leading-7 text-white/68">
             Seu lead vai entrar na base da Altum com contexto, rota sugerida e dados suficientes para o comercial agir sem retrabalho.
           </p>
@@ -584,7 +584,7 @@ function ReviewStep({
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex items-center gap-2 rounded-full bg-[#f56e0f] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#ff7f26] disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-full bg-[#2563eb] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4ed8] disabled:opacity-60"
         >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           Enviar diagnóstico
@@ -622,7 +622,7 @@ function SuccessState({
       <div className="mt-8 flex flex-wrap gap-3">
         <Link
           href={whatsappUrl}
-          className="inline-flex items-center gap-2 rounded-full bg-[#f56e0f] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#ff7f26]"
+          className="inline-flex items-center gap-2 rounded-full bg-[#2563eb] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4ed8]"
         >
           Abrir WhatsApp com contexto <ArrowRight className="h-4 w-4" />
         </Link>
@@ -668,8 +668,8 @@ function ChoiceGroup({
               onClick={() => onChange(option.value)}
               className={`rounded-[22px] border px-4 py-4 text-left transition ${
                 active
-                  ? "border-[#f56e0f]/40 bg-[#f56e0f]/12"
-                  : "border-white/10 bg-white/[0.03] hover:border-[#f56e0f]/25 hover:bg-[#f56e0f]/8"
+                  ? "border-[#2563eb]/40 bg-[#2563eb]/12"
+                  : "border-white/10 bg-white/[0.03] hover:border-[#2563eb]/25 hover:bg-[#2563eb]/8"
               }`}
             >
               <span className="text-sm font-semibold text-white">{option.label}</span>

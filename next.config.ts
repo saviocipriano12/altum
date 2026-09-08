@@ -56,7 +56,7 @@ const nextConfig = {
               "img-src 'self' data: blob: https://images.unsplash.com https://www.facebook.com https://*.facebook.com https://*.fbcdn.net https://*.cdninstagram.com https://lookaside.fbsbx.com https://platform-lookaside.fbsbx.com https://www.google.com https://*.googleusercontent.com https://firebasestorage.googleapis.com https://storage.googleapis.com https://grainy-gradients.vercel.app; " +
               "media-src 'self' data: blob: https://*.fbcdn.net https://*.cdninstagram.com https://firebasestorage.googleapis.com https://storage.googleapis.com; " +
               "font-src 'self' https://fonts.gstatic.com data:; " +
-              "connect-src 'self' https://graph.facebook.com https://www.google-analytics.com https://region1.google-analytics.com https://www.googleapis.com https://*.googleapis.com https://accounts.google.com https://googleads.googleapis.com https://api.openai.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.firebaseapp.com https://typebot.io https://*.typebot.io; " +
+              "connect-src 'self' https://graph.facebook.com https://www.google-analytics.com https://*.google-analytics.com https://www.googleapis.com https://*.googleapis.com https://accounts.google.com https://googleads.googleapis.com https://api.openai.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.firebaseapp.com https://typebot.io https://*.typebot.io; " +
               "frame-src 'self' https://meet.jit.si https://*.firebaseapp.com https://*.google.com https://accounts.google.com https://typebot.io https://*.typebot.io; " +
               "frame-ancestors 'none'; " +
               "base-uri 'self'; " +

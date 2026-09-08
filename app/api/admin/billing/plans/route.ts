@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { isPlatformPlanId } from "@/lib/platform-plans";
+import { isPlatformPlanId, PLATFORM_CATALOG_VERSION } from "@/lib/platform-plans";
 import { listPlatformPlans } from "@/lib/server/platform-plans";
 
 export async function GET(req: Request) {
@@ -25,6 +25,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Valor mensal invalido." }, { status: 400 });
     }
     await adminDb.collection("platform_plans").doc(body.id).set({
+      catalogVersion: PLATFORM_CATALOG_VERSION,
       monthlyPrice: price,
       active: Boolean(body.active),
       checkoutEnabled: price !== null && Boolean(body.checkoutEnabled),

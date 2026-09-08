@@ -61,7 +61,8 @@ function normalizeRole(value: unknown): UserProfile["role"] {
   ) {
     return value;
   }
-  return "agency_agent";
+  // Mantem a interface em fail-closed para perfis legados ou corrompidos.
+  return "client_viewer";
 }
 
 function normalizeStatus(value: unknown): UserProfile["status"] {

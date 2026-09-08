@@ -19,7 +19,7 @@ export function SectionHeader({
     <div className={centered ? "mx-auto max-w-4xl text-center" : "max-w-4xl"}>
       <p
         className={`altum-display text-xs font-bold uppercase tracking-[0.28em] ${
-          light ? "text-[#f56e0f]" : "text-[#f8a25d]"
+          light ? "text-[#2563eb]" : "text-[#93c5fd]"
         }`}
       >
         {eyebrow}

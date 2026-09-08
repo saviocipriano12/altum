@@ -8,7 +8,7 @@ export function HomeFounder() {
     <section id="sobre" className="relative border-b border-white/10 bg-[#f5f1eb] px-5 py-24 text-[#111111] lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.78fr_1.22fr] lg:items-center">
         <AnimatedSection className="relative mx-auto w-full max-w-[410px]">
-          <div className="absolute -inset-6 rounded-[46px] bg-[#f56e0f]/12 blur-3xl" />
+          <div className="absolute -inset-6 rounded-[46px] bg-[#2563eb]/12 blur-3xl" />
           <div className="relative overflow-hidden rounded-[38px] bg-[#111111] shadow-[0_34px_120px_rgba(0,0,0,0.20)]">
             <div className="relative aspect-[4/5]">
               <Image
@@ -23,7 +23,7 @@ export function HomeFounder() {
                 <p className="altum-display text-3xl font-semibold tracking-[-0.06em] text-white">
                   Savio Cipriano
                 </p>
-                <p className="mt-1 text-sm font-semibold text-[#f8a25d]">
+                <p className="mt-1 text-sm font-semibold text-[#93c5fd]">
                   Fundador e estrategista da Altum
                 </p>
               </div>
@@ -32,7 +32,7 @@ export function HomeFounder() {
         </AnimatedSection>
 
         <AnimatedSection delay={0.08}>
-          <p className="altum-display text-xs font-bold uppercase tracking-[0.28em] text-[#f56e0f]">
+          <p className="altum-display text-xs font-bold uppercase tracking-[0.28em] text-[#2563eb]">
             Sobre a Altum
           </p>
           <h2 className="altum-display mt-4 text-[clamp(2.45rem,6.4vw,5.6rem)] font-semibold leading-[0.94] tracking-[-0.07em]">

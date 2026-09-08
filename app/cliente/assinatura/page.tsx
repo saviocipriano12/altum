@@ -46,6 +46,20 @@ type Payment = {
   bankSlipUrl: string | null;
 };
 
+type UsageKey = "users" | "whatsappChannels" | "contacts" | "messagesPerMonth" | "aiRunsPerMonth" | "automationsPerMonth" | "storageMb";
+type UsageState = Record<UsageKey, number> & { monthRef: string; measuredAt: string; messagesCapped: boolean };
+type LimitState = Record<UsageKey, number>;
+
+const usageLabels: Array<{ key: UsageKey; label: string }> = [
+  { key: "users", label: "Usuarios" },
+  { key: "whatsappChannels", label: "WhatsApps" },
+  { key: "contacts", label: "Contatos" },
+  { key: "messagesPerMonth", label: "Mensagens no mes" },
+  { key: "aiRunsPerMonth", label: "Uso de IA no mes" },
+  { key: "automationsPerMonth", label: "Automacoes no mes" },
+  { key: "storageMb", label: "Armazenamento (MB)" },
+];
+
 function formatDate(value: string | null) {
   if (!value) return "data ainda nao informada";
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(new Date(value));
@@ -65,6 +79,8 @@ export default function AssinaturaPage() {
   const [plans, setPlans] = useState<PlatformPlan[]>([]);
   const [billing, setBilling] = useState<BillingState | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [usage, setUsage] = useState<UsageState | null>(null);
+  const [limits, setLimits] = useState<LimitState | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -86,10 +102,12 @@ export default function AssinaturaPage() {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
-    const payload = (await response.json().catch(() => ({}))) as { billing?: BillingState; payments?: Payment[]; error?: string };
+    const payload = (await response.json().catch(() => ({}))) as { billing?: BillingState; payments?: Payment[]; usage?: UsageState; limits?: LimitState; error?: string };
     if (!response.ok) throw new Error(payload.error || "Nao foi possivel carregar sua assinatura.");
     setBilling(payload.billing || null);
     setPayments(payload.payments || []);
+    setUsage(payload.usage || null);
+    setLimits(payload.limits || null);
   }, []);
 
   useEffect(() => {
@@ -113,6 +131,10 @@ export default function AssinaturaPage() {
   const activePlan = useMemo(
     () => plans.find((plan) => plan.id === billing?.planId) || null,
     [billing?.planId, plans]
+  );
+  const checkoutPlan = useMemo(
+    () => plans.find((plan) => plan.id === checkoutPlanId) || null,
+    [checkoutPlanId, plans]
   );
   const hasSubscription = Boolean(billing?.subscriptionId);
 
@@ -208,7 +230,7 @@ export default function AssinaturaPage() {
         {error ? <p role="alert" className="mx-auto mt-4 max-w-2xl rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-sm font-bold text-red-700">{error}</p> : null}
 
         {loading ? <Loader2 className="mx-auto mt-14 h-7 w-7 animate-spin text-blue-600" /> : (
-          <section className="mt-10 grid gap-4 md:grid-cols-3">
+          <section className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => {
               const current = billing?.planId === plan.id && (billing.status === "active" || billing.status === "paid" || billing.status === "past_due" || billing.status === "cancel_scheduled");
               const upgrade = hasSubscription && (billing?.status === "active" || billing?.status === "paid") && isPlanUpgrade(billing?.planId, plan.id);
@@ -219,8 +241,10 @@ export default function AssinaturaPage() {
                     {current ? <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-700">Plano atual</span> : null}
                   </div>
                   <p className="mt-4 text-3xl font-black">{plan.monthlyPrice ? plan.monthlyPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "Sob consulta"}<span className="text-sm font-semibold text-slate-400">{plan.monthlyPrice ? "/mes" : ""}</span></p>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">{plan.description}</p>
+                  <p className="mt-3 text-sm font-bold leading-6 text-slate-900">{plan.promise}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{plan.description}</p>
                   <ul className="my-5 space-y-2 text-sm text-slate-700">{plan.features.map((feature) => <li key={feature} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> {feature}</li>)}</ul>
+                  <p className="mb-4 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><strong>{plan.setupLabel}</strong>{plan.setupFee ? `: ${plan.setupFee.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}.</p>
                   {current ? <div className="mt-auto grid h-12 place-items-center rounded-xl bg-emerald-50 text-sm font-black text-emerald-700">Assinatura atual</div>
                     : upgrade ? <button onClick={() => void manageSubscription("upgrade", plan.id)} disabled={Boolean(submitting) || billing?.status === "cancel_scheduled"} className="mt-auto flex h-12 items-center justify-center gap-2 rounded-xl bg-violet-600 text-sm font-black text-white disabled:opacity-60">{submitting === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Fazer upgrade</button>
                         : !hasSubscription && plan.checkoutEnabled && plan.monthlyPrice ? <button onClick={() => requestCheckout(plan.id)} disabled={Boolean(submitting)} className="mt-auto flex h-12 items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white disabled:opacity-60">{submitting === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Assinar agora</button>
@@ -230,6 +254,24 @@ export default function AssinaturaPage() {
             })}
           </section>
         )}
+
+        {usage && limits ? (
+          <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 text-slate-900" data-tour-key="billing-usage">
+            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+              <div><p className="text-sm font-black">Uso do seu plano</p><p className="mt-1 text-xs text-slate-500">Acompanhe o consumo antes do limite. Avisamos em 70%, 90% e 100%.</p></div>
+              <p className="text-xs font-semibold text-slate-400">Competencia {usage.monthRef}</p>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {usageLabels.map((item) => {
+                const used = Number(usage[item.key] || 0);
+                const limit = Number(limits[item.key] || 0);
+                const percentage = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+                const tone = percentage >= 100 ? "bg-red-500" : percentage >= 90 ? "bg-amber-500" : percentage >= 70 ? "bg-violet-500" : "bg-blue-500";
+                return <div key={item.key} className="rounded-xl border border-slate-100 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-bold text-slate-600">{item.label}</p><span className="text-[10px] font-black text-slate-400">{percentage}%</span></div><p className="mt-2 text-lg font-black">{used.toLocaleString("pt-BR")} <span className="text-xs font-semibold text-slate-400">de {limit.toLocaleString("pt-BR")}</span></p><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${tone}`} style={{ width: `${percentage}%` }} /></div></div>;
+              })}
+            </div>
+          </section>
+        ) : null}
 
         {billing?.canManage && hasSubscription && billing.status !== "cancel_scheduled" && billing.status !== "refund_pending" ? (
           <section className="mx-auto mt-8 max-w-2xl rounded-2xl border border-slate-200 bg-white p-5">
@@ -286,6 +328,7 @@ export default function AssinaturaPage() {
           <section className="w-full max-w-md rounded-[24px] bg-white p-6 text-slate-950 shadow-2xl">
             <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-blue-700">Checkout seguro</p><h2 className="mt-1 text-xl font-black">Informe o CPF ou CNPJ</h2></div><button onClick={() => setCheckoutPlanId(null)} aria-label="Fechar"><X className="h-5 w-5" /></button></div>
             <p className="mt-3 text-sm leading-6 text-slate-600">O Asaas exige este dado para emitir a assinatura. A Altum guarda somente os quatro ultimos digitos para conciliacao.</p>
+            {checkoutPlan ? <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900"><strong>{checkoutPlan.name}</strong>: {checkoutPlan.monthlyPrice?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/mes. {checkoutPlan.setupMode === "required" ? `A implantacao de ${checkoutPlan.setupFee?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} e obrigatoria e sera formalizada separadamente.` : "A configuracao guiada e opcional."}</div> : null}
             <label className="mt-5 block text-xs font-black text-slate-700">CPF ou CNPJ</label>
             <input value={cpfCnpj} onChange={(event) => setCpfCnpj(formatBrazilianDocument(event.target.value))} inputMode="numeric" autoFocus placeholder="000.000.000-00" className="mt-2 h-12 w-full rounded-xl border border-slate-200 px-4 text-sm outline-none focus:border-blue-500" />
             {cpfCnpj && !isValidBrazilianDocument(cpfCnpj) ? <p className="mt-2 text-xs font-bold text-red-600">Confira os digitos do documento.</p> : null}

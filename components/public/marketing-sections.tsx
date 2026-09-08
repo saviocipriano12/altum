@@ -76,7 +76,7 @@ export function PageHero({
   aside,
 }: HeroProps) {
   return (
-    <section className="relative overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(245,110,15,0.22),transparent_32%),radial-gradient(circle_at_85%_10%,rgba(168,85,247,0.12),transparent_24%),linear-gradient(180deg,#0b0b0b_0%,#101010_100%)]">
+    <section className="relative overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.22),transparent_32%),radial-gradient(circle_at_85%_10%,rgba(168,85,247,0.12),transparent_24%),linear-gradient(180deg,#0b0b0b_0%,#101010_100%)]">
       <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] [background-size:44px_44px]" />
       <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[1.15fr_0.85fr] lg:px-8 lg:py-24">
         <motion.div
@@ -86,7 +86,7 @@ export function PageHero({
           transition={{ duration: 0.55 }}
           className="relative z-10"
         >
-          <p className="text-xs uppercase tracking-[0.3em] text-[#f8a25d]">{eyebrow}</p>
+          <p className="text-xs uppercase tracking-[0.3em] text-[#93c5fd]">{eyebrow}</p>
           <h1 className="mt-5 max-w-3xl text-4xl font-semibold leading-[1.04] text-white sm:text-5xl md:text-6xl">
             {title}
           </h1>
@@ -95,7 +95,7 @@ export function PageHero({
           <div className="mt-9 flex flex-wrap gap-3">
             <Link
               href={primaryAction.href}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#f56e0f] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#ff7f26] sm:w-auto"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#2563eb] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4ed8] sm:w-auto"
             >
               {primaryAction.label} <ArrowRight className="h-4 w-4" />
             </Link>
@@ -158,7 +158,7 @@ export function SectionHeader({
 }) {
   return (
     <div className="mx-auto max-w-3xl text-center">
-      {eyebrow ? <p className="text-xs uppercase tracking-[0.28em] text-[#f8a25d]">{eyebrow}</p> : null}
+      {eyebrow ? <p className="text-xs uppercase tracking-[0.28em] text-[#93c5fd]">{eyebrow}</p> : null}
       <h2 className="mt-4 text-3xl font-semibold leading-tight text-white md:text-5xl">{title}</h2>
       <p className="mt-4 text-base leading-7 text-white/68 md:text-lg md:leading-8">{subtitle}</p>
     </div>
@@ -180,11 +180,11 @@ export function CardGrid({ title, subtitle, items }: CardGridProps) {
             transition={{ duration: 0.45, delay: index * 0.06 }}
             className={`rounded-[28px] border px-6 py-6 ${
               item.featured
-                ? "border-[#f56e0f]/40 bg-[linear-gradient(180deg,rgba(245,110,15,0.16),rgba(255,255,255,0.04))]"
+                ? "border-[#2563eb]/40 bg-[linear-gradient(180deg,rgba(37,99,235,0.16),rgba(255,255,255,0.04))]"
                 : "border-white/10 bg-white/[0.03]"
             }`}
           >
-            {item.eyebrow ? <p className="text-xs uppercase tracking-[0.24em] text-[#f8a25d]">{item.eyebrow}</p> : null}
+            {item.eyebrow ? <p className="text-xs uppercase tracking-[0.24em] text-[#93c5fd]">{item.eyebrow}</p> : null}
             <h3 className="mt-4 text-2xl font-semibold text-white">{item.title}</h3>
             <p className="mt-3 text-sm leading-7 text-white/66">{item.description}</p>
 
@@ -192,7 +192,7 @@ export function CardGrid({ title, subtitle, items }: CardGridProps) {
               <div className="mt-5 space-y-3">
                 {item.bullets.map((bullet) => (
                   <div key={bullet} className="flex items-start gap-3 text-sm leading-6 text-white/74">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#f56e0f]" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2563eb]" />
                     <span>{bullet}</span>
                   </div>
                 ))}
@@ -226,7 +226,7 @@ export function TimelineSection({ title, subtitle, items }: TimelineProps) {
             transition={{ duration: 0.45, delay: index * 0.07 }}
             className="rounded-[26px] border border-white/10 bg-white/[0.03] px-5 py-6"
           >
-            <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#f56e0f]/14 text-sm font-semibold text-[#f8a25d]">
+            <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#2563eb]/14 text-sm font-semibold text-[#93c5fd]">
               0{index + 1}
             </div>
             <h3 className="mt-5 text-xl font-semibold text-white">{item.title}</h3>
@@ -278,13 +278,13 @@ export function CalloutPanel({
   return (
     <section className="bg-[#061521] px-5 py-18 lg:px-8">
       <div className="mx-auto w-full max-w-6xl rounded-[36px] border border-white/10 bg-[linear-gradient(135deg,rgba(14,165,233,0.18),rgba(249,115,22,0.12),rgba(255,255,255,0.04))] px-6 py-10 md:px-10">
-        <p className="text-xs uppercase tracking-[0.28em] text-[#f8a25d]">Proximo passo</p>
+        <p className="text-xs uppercase tracking-[0.28em] text-[#93c5fd]">Proximo passo</p>
         <h2 className="mt-4 max-w-2xl text-3xl font-semibold text-white md:text-4xl">{title}</h2>
         <p className="mt-4 max-w-2xl text-base leading-7 text-white/72 md:text-lg md:leading-8">{description}</p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
             href={primaryAction.href}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#f56e0f] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#ff7f26] sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#2563eb] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4ed8] sm:w-auto"
           >
             {primaryAction.label} <ArrowRight className="h-4 w-4" />
           </Link>
@@ -320,7 +320,7 @@ export function PlatformStage() {
   ];
 
   return (
-    <div className="rounded-[34px] border border-white/10 bg-[#111111]/95 p-4 shadow-[0_40px_120px_-48px_rgba(245,110,15,0.32)]">
+    <div className="rounded-[34px] border border-white/10 bg-[#111111]/95 p-4 shadow-[0_40px_120px_-48px_rgba(37,99,235,0.32)]">
       <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
         <aside className="rounded-[26px] border border-white/10 bg-white/[0.03] p-4">
           <p className="text-xs uppercase tracking-[0.24em] text-white/40">Operacao diaria</p>
@@ -338,10 +338,10 @@ export function PlatformStage() {
           <div className="rounded-[26px] border border-white/10 bg-[linear-gradient(135deg,rgba(14,165,233,0.12),rgba(255,255,255,0.04))] p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-[#f8a25d]">Resumo da operacao</p>
+                <p className="text-xs uppercase tracking-[0.24em] text-[#93c5fd]">Resumo da operacao</p>
                 <h3 className="mt-3 text-2xl font-semibold text-white">A equipe entra e entende o que precisa fazer em minutos.</h3>
               </div>
-              <div className="rounded-full border border-[#f56e0f]/20 bg-[#f56e0f]/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#f8a25d]">
+              <div className="rounded-full border border-[#2563eb]/20 bg-[#2563eb]/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#93c5fd]">
                 Fluxo com IA
               </div>
             </div>
@@ -350,7 +350,7 @@ export function PlatformStage() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {primaryCards.map((item) => (
               <div key={item.label} className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
-                <item.icon className="h-4 w-4 text-[#f8a25d]" />
+                <item.icon className="h-4 w-4 text-[#93c5fd]" />
                 <p className="mt-4 text-3xl font-semibold text-white">{item.value}</p>
                 <p className="mt-2 text-sm text-white/62">{item.label}</p>
               </div>
@@ -362,15 +362,15 @@ export function PlatformStage() {
               <p className="text-sm font-semibold text-white">Prioridades sugeridas</p>
               <div className="mt-4 space-y-3 text-sm text-white/72">
                 <div className="flex items-start gap-3">
-                  <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#f56e0f]" />
+                  <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#2563eb]" />
                   <span>Responder as 3 conversas com sinal de proposta e sem retorno nas ultimas 2 horas.</span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <Settings2 className="mt-0.5 h-4 w-4 shrink-0 text-[#f8a25d]" />
+                  <Settings2 className="mt-0.5 h-4 w-4 shrink-0 text-[#93c5fd]" />
                   <span>Revisar regra de handoff da IA para conversas com pedido de valor final.</span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-[#f8a25d]" />
+                  <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-[#93c5fd]" />
                   <span>Alertar sobre proximo vencimento e manter o admin no controle de acesso.</span>
                 </div>
               </div>

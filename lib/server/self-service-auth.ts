@@ -2,10 +2,9 @@ import "server-only";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
-import { getPlatformPlanEntitlements } from "@/lib/platform-plan-entitlements";
+import { PLATFORM_TRIAL_ENTITLEMENTS } from "@/lib/platform-plan-entitlements";
+import { getDefaultPlatformPlan, PLATFORM_CATALOG_VERSION, PLATFORM_TRIAL_DAYS } from "@/lib/platform-plans";
 import { ensureActiveTrialFullAccess } from "@/lib/server/platform-plan-entitlements";
-
-const TRIAL_DAYS = 7;
 
 function clean(value: unknown, max = 180) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -64,19 +63,24 @@ export async function provisionSelfServiceAccount(input: {
   name: string;
   companyName: string;
   provider: string;
+  selectedPlanId?: unknown;
 }) {
   const uid = clean(input.uid, 140);
   const email = clean(input.email, 180).toLowerCase();
   const name = clean(input.name, 140);
   const companyName = clean(input.companyName, 180);
+  const requestedPlan = getDefaultPlatformPlan(input.selectedPlanId);
+  const selectedPlan = requestedPlan?.active && requestedPlan.checkoutEnabled && requestedPlan.trialEligible
+    ? requestedPlan
+    : getDefaultPlatformPlan("essencial")!;
   if (!uid || !email || !name || !companyName) {
     throw new SelfServiceAuthError(400, "invalid_profile", "Nome, empresa e e-mail sao obrigatorios.");
   }
 
   const tenantId = `saas_${uid}`;
   const membershipId = `${tenantId}_${uid}`;
-  const trialEndsAt = Timestamp.fromMillis(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-  const trialEntitlements = getPlatformPlanEntitlements("operacao");
+  const trialEndsAt = Timestamp.fromMillis(Date.now() + PLATFORM_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+  const trialEntitlements = PLATFORM_TRIAL_ENTITLEMENTS;
   const now = FieldValue.serverTimestamp();
 
   const existing = await adminDb.collection("tenant_users").doc(membershipId).get();
@@ -116,7 +120,8 @@ export async function provisionSelfServiceAccount(input: {
     billingStatus: "trial",
     billingProvider: "asaas",
     platformAccessMode: "asaas_subscription",
-    platformPlan: "essencial",
+    platformPlan: selectedPlan.id,
+    platformCatalogVersion: PLATFORM_CATALOG_VERSION,
     trialStartedAt: now,
     trialEndsAt,
     signupSource: "self_service",
@@ -150,7 +155,8 @@ export async function provisionSelfServiceAccount(input: {
     modules: trialEntitlements.modules,
     limits: trialEntitlements.limits,
     entitlementSource: "trial",
-    platformPlan: "operacao",
+    platformPlan: selectedPlan.id,
+    platformCatalogVersion: PLATFORM_CATALOG_VERSION,
     createdAt: now,
     createdBy: uid,
     createdByName: name,
@@ -167,8 +173,12 @@ export async function provisionSelfServiceAccount(input: {
     accessStatus: "trial",
     platformAccessMode: "asaas_subscription",
     billingProvider: "asaas",
-    platformPlan: "essencial",
+    platformPlan: selectedPlan.id,
+    platformCatalogVersion: PLATFORM_CATALOG_VERSION,
     monthlyValue: 0,
+    intendedMonthlyValue: selectedPlan.monthlyPrice,
+    setupFee: selectedPlan.setupFee,
+    setupMode: selectedPlan.setupMode,
     trialEndsAt,
     autoBillingEnabled: false,
     createdAt: now,

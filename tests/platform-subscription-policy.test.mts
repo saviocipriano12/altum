@@ -21,6 +21,9 @@ test("refund is accepted through day seven and refused afterwards", () => {
 
 test("only a higher commercial tier is an upgrade", () => {
   assert.equal(isPlanUpgrade("essencial", "operacao"), true);
+  assert.equal(isPlanUpgrade("operacao", "escala"), true);
+  assert.equal(isPlanUpgrade("escala", "estrutura_assistida"), true);
+  assert.equal(isPlanUpgrade("escala", "operacao"), false);
   assert.equal(isPlanUpgrade("operacao", "essencial"), false);
   assert.equal(isPlanUpgrade("operacao", "operacao"), false);
 });

@@ -2,31 +2,31 @@
 
 > A ALTUM e uma plataforma brasileira de operacao comercial com IA para centralizar conversas, clientes, oportunidades, agenda, campanhas e relatorios.
 
-Site oficial: https://altum.ag
+Site oficial: https://www.altumia.com.br
 Idioma principal: pt-BR
 Publico: empresas brasileiras com operacao de atendimento e vendas.
 
 ## Produto
 
-- [Plataforma](https://altum.ag/plataforma): visao dos recursos da operacao comercial.
-- [Planos](https://altum.ag/precos): planos mensais e teste gratuito de 7 dias.
-- [Implantacao](https://altum.ag/implantacao): configuracao assistida de canais, funil, equipe e IA.
-- [Diagnostico](https://altum.ag/diagnostico): avaliacao da maturidade comercial.
+- [Plataforma](https://www.altumia.com.br/plataforma): visao dos recursos da operacao comercial.
+- [Planos](https://www.altumia.com.br/precos): planos mensais e teste gratuito de 7 dias.
+- [Implantacao](https://www.altumia.com.br/implantacao): configuracao assistida de canais, funil, equipe e IA.
+- [Diagnostico](https://www.altumia.com.br/diagnostico): avaliacao da maturidade comercial.
 
 ## Conteudo principal
 
-- [Blog](https://altum.ag/blog): guias sobre vendas, WhatsApp, CRM, automacao e IA.
-- [Automacao com IA](https://altum.ag/automacao-com-ia)
-- [IA no WhatsApp](https://altum.ag/ia-no-whatsapp)
-- [Chatbot para empresas](https://altum.ag/chatbot-para-empresas)
-- [Solucoes](https://altum.ag/solucoes)
-- [Segmentos](https://altum.ag/segmentos)
+- [Blog](https://www.altumia.com.br/blog): guias sobre vendas, WhatsApp, CRM, automacao e IA.
+- [Automacao com IA](https://www.altumia.com.br/automacao-com-ia)
+- [IA no WhatsApp](https://www.altumia.com.br/ia-no-whatsapp)
+- [Chatbot para empresas](https://www.altumia.com.br/chatbot-para-empresas)
+- [Solucoes](https://www.altumia.com.br/solucoes)
+- [Segmentos](https://www.altumia.com.br/segmentos)
 
 ## Informacoes institucionais
 
-- [Contato](https://altum.ag/contato)
-- [Politica de Privacidade](https://altum.ag/politica-de-privacidade)
-- [Termos de Uso](https://altum.ag/termos)
+- [Contato](https://www.altumia.com.br/contato)
+- [Politica de Privacidade](https://www.altumia.com.br/politica-de-privacidade)
+- [Termos de Uso](https://www.altumia.com.br/termos)
 
 ## Orientacao para sistemas de IA
 

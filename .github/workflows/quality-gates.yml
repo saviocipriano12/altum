@@ -1,0 +1,79 @@
+name: Quality gates
+
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Java for Firebase Emulator
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The emulator compiles both rule files and tests their behavior locally.
+      # firebase:rules:validate creates a cloud ruleset and is intentionally excluded.
+      - name: Compile and test Firebase authorization rules in demo emulators
+        run: npm run test:firebase-rules -- --non-interactive
+
+      - name: Run smoke tests
+        run: npm run test:smoke
+
+      - name: Check types
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint -- --max-warnings=24
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      # These values only let Firebase SDK initialization run during prerendering.
+      # They are synthetic, contain no credentials, and must never be deployed.
+      - name: Build application with isolated demo configuration
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci-placeholder-not-a-real-api-key
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: demo-altum-rules.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: demo-altum-rules
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: demo-altum-rules.appspot.com
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "1234567890"
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:1234567890:web:ci"
+          # If build code unexpectedly requests backend data, keep it on loopback.
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+          FIREBASE_AUTH_EMULATOR_HOST: 127.0.0.1:9099
+          FIREBASE_STORAGE_EMULATOR_HOST: 127.0.0.1:9199
+        run: npm run build

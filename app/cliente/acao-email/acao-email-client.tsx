@@ -52,7 +52,7 @@ export function AcaoEmailClient({ mode, oobCode }: { mode: string; oobCode: stri
 
   const Icon = state === "working" ? Loader2 : state === "success" ? CheckCircle2 : TriangleAlert;
   return (
-    <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#dbeafe_0,transparent_38%),#f8fafc] px-4 py-10 text-slate-950">
+    <main data-altum-surface="auth" className="grid place-items-center px-4 py-10 text-slate-950">
       <section className="w-full max-w-lg overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_32px_100px_-50px_rgba(15,23,42,.5)]">
         <div className="bg-[linear-gradient(135deg,#0f172a,#172554_58%,#5b21b6)] px-7 py-8 text-white sm:px-9">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold"><ShieldCheck className="h-4 w-4" /> Seguranca Altum</span>

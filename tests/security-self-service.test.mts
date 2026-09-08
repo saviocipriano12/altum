@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { DEFAULT_PLATFORM_PLANS } from "../lib/platform-plans.ts";
+import { DEFAULT_PLATFORM_PLANS, PLATFORM_TRIAL_ACCESS, PLATFORM_TRIAL_DAYS } from "../lib/platform-plans.ts";
 
 async function source(path: string) {
   return readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -39,19 +39,25 @@ test("Asaas webhook validates token and deduplicates events", async () => {
 
 test("new accounts receive exactly seven trial days", async () => {
   const auth = await source("lib/server/self-service-auth.ts");
-  assert.match(auth, /const TRIAL_DAYS = 7/);
+  assert.equal(PLATFORM_TRIAL_DAYS, 7);
   assert.match(auth, /billingStatus: "trial"/);
-  assert.match(auth, /getPlatformPlanEntitlements\("operacao"\)/);
+  assert.match(auth, /PLATFORM_TRIAL_ENTITLEMENTS/);
+  assert.match(auth, /selectedPlan\.id/);
 });
 
 test("each commercial plan has explicit feature and usage limits", async () => {
-  const entitlements = await source("lib/platform-plan-entitlements.ts");
-  assert.match(entitlements, /essencial:/);
-  assert.match(entitlements, /operacao:/);
-  assert.match(entitlements, /estrutura_assistida:/);
-  assert.match(entitlements, /messagesPerMonth/);
-  assert.match(entitlements, /aiRunsPerMonth/);
-  assert.match(entitlements, /storageMb/);
+  assert.deepEqual(DEFAULT_PLATFORM_PLANS.map((plan) => plan.id), ["essencial", "operacao", "escala", "estrutura_assistida"]);
+  assert.ok(DEFAULT_PLATFORM_PLANS.every((plan) => Object.values(plan.modules).every((value) => typeof value === "boolean")));
+  assert.ok(DEFAULT_PLATFORM_PLANS.every((plan) => plan.limits.messagesPerMonth > 0 && plan.limits.aiRunsPerMonth > 0 && plan.limits.storageMb > 0));
+  assert.ok(Object.values(PLATFORM_TRIAL_ACCESS.modules).every(Boolean));
+});
+
+test("launch catalog uses the approved prices and setup policy", () => {
+  const summary = Object.fromEntries(DEFAULT_PLATFORM_PLANS.map((plan) => [plan.id, [plan.monthlyPrice, plan.setupFee, plan.setupMode]]));
+  assert.deepEqual(summary.essencial, [397, 397, "optional"]);
+  assert.deepEqual(summary.operacao, [697, 797, "required"]);
+  assert.deepEqual(summary.escala, [1197, 1497, "required"]);
+  assert.deepEqual(summary.estrutura_assistida, [2497, 2997, "proposal"]);
 });
 
 test("client session exposes billing state without payment secrets", async () => {

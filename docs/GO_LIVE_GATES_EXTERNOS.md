@@ -11,12 +11,17 @@ Este documento separa o que ja existe no codigo do que ainda depende de console,
 - Verificacao de email, recuperacao de senha e bootstrap seguro do tenant no servidor.
 - Firebase Admin gera links de verificacao/redefinicao; a Resend entrega e-mails personalizados e a pagina da Altum processa os codigos, sem depender da URL acionavel do console.
 - Login Google liberado na CSP para carregar os scripts oficiais exigidos pelo Firebase.
-- Trial de 7 dias, bloqueio do portal apos o vencimento e aviso de dias restantes.
-- Planos editaveis pelo admin, checkout recorrente Asaas e valor resolvido no servidor.
+- Trial de 7 dias com todos os modulos, limites controlados, bloqueio apos o vencimento e aviso de dias restantes.
+- Catalogo comercial versionado com Essencial, Operacao, Escala e Estrutura Assistida; checkout recorrente Asaas e valor resolvido no servidor.
 - Webhook Asaas com token, comparacao em tempo constante e deduplicacao por evento.
 - Aplicacao de modulos e limites do plano apos confirmacao do pagamento.
+- Central de faturamento com plano, consumo, limites, alertas visuais, cobrancas, upgrade e cancelamento.
+- Checkout Asaas impede uma segunda assinatura gerenciada, so reutiliza links do mesmo plano/preco/versao e preserva o identificador da assinatura quando o webhook nao o reenviar.
+- Limites executaveis derivados do catalogo comercial e cobertos por teste de contrato; promessas numericas sem bloqueio tecnico foram retiradas das paginas publicas.
 - Rules do Firestore com isolamento por tenant e protecao contra alteracao do proprio papel.
 - Cabecalhos de seguranca, `robots.txt`, `sitemap.xml`, `llms.txt`, metadados e paginas legais basicas.
+- Padrao visual compartilhado entre paginas publicas, autenticacao e area privada, documentado em [`docs/DESIGN_SYSTEM_ALTUM.md`](./DESIGN_SYSTEM_ALTUM.md).
+- Workflow de qualidade sem credenciais de producao com testes, typecheck, lint, auditoria de dependencias e build.
 - Testes estruturais de autenticacao, checkout, webhook, trial, rules e limites dos planos.
 
 ### Ainda nao autoriza producao
@@ -47,12 +52,12 @@ Passo a passo operacional: [`docs/FIREBASE_CONFIGURACAO_PASSO_A_PASSO.md`](./FIR
 
 ### 2. Firebase Rules e isolamento
 
-- [x] O `firestore.rules` vigente foi validado e publicado conforme o registro operacional atual.
-- [ ] Publicar `storage.rules`. A primeira release segue bloqueada por IAM: conceder ao service account da Altum `roles/firebaserules.admin` ou as permissoes minimas `firebaserules.releases.create`, `firebaserules.releases.update` e `firebaserules.rulesets.create`.
-- [ ] Executar testes no Firebase Emulator Suite para regras de Firestore e Storage; os testes estruturais atuais nao substituem o emulador.
-- [ ] Testar com quatro contas de homologacao: dono, gestor, vendedor A e vendedor B.
-- [ ] Confirmar `permission-denied` quando o vendedor A tenta ler/escrever dados exclusivos do vendedor B e quando qualquer usuario tenta trocar o proprio `role`, `tenantId` ou status.
-- Evidencia: log do Emulator Suite e matriz de acesso assinada pelo responsavel do teste.
+- [x] O ruleset anterior do Firestore foi validado e publicado conforme o registro operacional atual.
+- [ ] Publicar as novas regras endurecidas de Firestore e Storage. Em 06/09/2026, ambas compilaram no Firebase Rules API e passaram pela matriz local no Emulator; os rulesets publicados ainda diferem das versoes locais aprovadas.
+- [x] Executar testes no Firebase Emulator Suite para regras de Firestore e Storage.
+- [x] Testar a matriz com dono, gestor, vendedor A, vendedor B, viewer, agencia e usuario de outro tenant.
+- [x] Confirmar `permission-denied` quando o vendedor A tenta ler/escrever dados exclusivos do vendedor B e quando qualquer usuario tenta trocar o proprio `role`, `tenantId` ou status.
+- Evidencia: `npm run firebase:rules:validate` e os 8 testes de `npm run test:firebase-rules` aprovados em 06/09/2026. A primeira execucao encontrou e permitiu corrigir um erro de runtime que o compilador nao detectava; a suite tambem validou que arquivos nao podem ser sobrescritos. `npm run firebase:rules:inspect` confirma que os rulesets publicados ainda diferem das versoes locais aprovadas; a publicacao continua pendente.
 
 ### 3. Asaas em sandbox e producao
 
@@ -70,12 +75,15 @@ Passo a passo operacional: [`docs/FIREBASE_CONFIGURACAO_PASSO_A_PASSO.md`](./FIR
 
 ### 4. Decisoes comerciais e juridicas de cobranca
 
-- [ ] Definir os valores finais, limites e modulos de cada plano.
+- [x] Definir os valores, limites, modulos e regras de implantacao do catalogo de lancamento. Fonte: [`docs/MATRIZ_COMERCIAL_ALTUM.md`](./MATRIZ_COMERCIAL_ALTUM.md).
 - [x] Trial sem cartao por 7 dias.
+- [x] Trial libera todos os modulos com limites de consumo proprios, sem criar cobranca automatica.
 - [x] Cancelamento solicitado ate 7 dias do primeiro pagamento inicia estorno integral e encerra a recorrencia; o acesso e encerrado quando o Asaas confirma o estorno.
 - [x] Cancelamento depois da janela de reembolso inativa novas cobrancas e mantem acesso ate o fim do ciclo contratado.
 - [x] Tolerancia de inadimplencia de 3 dias corridos, com aviso claro e data de bloqueio no painel.
 - [x] Upgrade para plano superior permitido; os recursos sao liberados apos a operacao e o novo valor vale para as proximas cobrancas.
+- [ ] Implementar e homologar a cobranca unica da implantacao, separada da assinatura recorrente. Ate la, a interface informa que a implantacao obrigatoria sera formalizada separadamente.
+- [ ] Implementar aceite e cobranca dos adicionais de usuarios, canais, contatos, IA e automacoes.
 - [ ] Definir downgrade, impostos e nota fiscal.
 - [ ] Revisar Termos de Uso, Politica de Privacidade, politica de cancelamento e identificacao empresarial com assessor juridico/contabil.
 - Evidencia: politica aprovada e publicada, com versao/data registradas.
@@ -87,7 +95,8 @@ Passo a passo operacional: [`docs/FIREBASE_CONFIGURACAO_PASSO_A_PASSO.md`](./FIR
 - [ ] Configurar WAF/rate limit no provedor de borda para `/api/public/*`, `/api/auth/*`, `/api/billing/*` e `/api/webhooks/*`.
 - [ ] Ativar Firebase App Check para os clientes web antes de abrir formularios publicos em escala.
 - [ ] Validar CSP, HSTS, protecao de frame e MIME no dominio de producao.
-- [ ] Executar `npm audit`, varredura de segredos e teste de dependencias no CI.
+- [x] Executar `npm audit` e teste de dependencias no CI. Auditoria local em 08/09/2026: 0 vulnerabilidades.
+- [ ] Executar varredura de segredos no CI.
 - Evidencia: export das regras WAF, relatorio de scanner e execucao de `verify:postdeploy`.
 
 ### 6. Backup, recuperacao e observabilidade
@@ -106,8 +115,9 @@ Passo a passo operacional: [`docs/FIREBASE_CONFIGURACAO_PASSO_A_PASSO.md`](./FIR
 - [ ] Persistir rapidamente o webhook e processar o trabalho pesado de forma assincrona, com retries e fila de falhas.
 - [ ] Criar reconciliacao diaria entre contratos locais e assinaturas/pagamentos do Asaas.
 - [ ] Implementar dunning: avisos de falha/atraso, nova tentativa e bloqueio conforme a politica aprovada.
-- [ ] Implementar cancelamento, upgrade e downgrade somente depois das decisoes comerciais do P0.
-- [ ] Criar trilha de auditoria de mudancas de plano/preco feitas pelo admin.
+- [x] Implementar cancelamento e upgrade conforme as decisoes comerciais aprovadas.
+- [ ] Implementar downgrade depois da definicao da politica comercial.
+- [x] Criar trilha de auditoria para upgrade e cancelamento feitos pelo cliente e para alteracoes de catalogo feitas pelo admin.
 
 ### Autenticacao avancada
 
@@ -169,6 +179,8 @@ Cada artigo deve responder uma intencao concreta, demonstrar experiencia da Altu
 
 ```bash
 npm run check:saas-readiness
+npm run test:firebase-rules
+npm audit --audit-level=high
 npm run typecheck
 npm run lint
 npm run test:smoke

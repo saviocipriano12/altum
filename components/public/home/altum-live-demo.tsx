@@ -99,7 +99,7 @@ export function AltumLiveDemo() {
       <div className="mx-auto max-w-[1280px]">
         <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-end">
           <div>
-            <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#ff6a1f]">
+            <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#60a5fa]">
               Produto ao vivo
             </p>
             <h2 className="mt-5 max-w-[11ch] text-[clamp(2.9rem,5.8vw,5.8rem)] font-extrabold leading-[0.93] tracking-[-0.065em] text-white">
@@ -126,11 +126,11 @@ export function AltumLiveDemo() {
                       aria-pressed={selected}
                       className={`flex min-w-48 items-center gap-3 rounded-xl border px-4 py-4 text-left transition xl:w-full ${
                         selected
-                          ? "border-[#e85002]/35 bg-[#e85002]/12 text-white"
+                          ? "border-[#2563eb]/35 bg-[#2563eb]/12 text-white"
                           : "border-transparent text-white/42 hover:border-white/8 hover:bg-white/[0.025] hover:text-white"
                       }`}
                     >
-                      <Icon className={`h-4 w-4 ${selected ? "text-[#ff6a1f]" : ""}`} />
+                      <Icon className={`h-4 w-4 ${selected ? "text-[#60a5fa]" : ""}`} />
                       <span className="text-sm font-bold">{view.label}</span>
                     </button>
                   );
@@ -139,7 +139,7 @@ export function AltumLiveDemo() {
 
               <div className="mt-4 hidden rounded-xl border border-white/8 bg-white/[0.025] p-4 xl:block">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/30">
-                  <Sparkles className="h-3.5 w-3.5 text-[#ff6a1f]" /> Operação conectada
+                  <Sparkles className="h-3.5 w-3.5 text-[#60a5fa]" /> Operação conectada
                 </div>
                 <div className="mt-4 space-y-3 text-xs font-semibold text-white/45">
                   <div className="flex items-center gap-2"><UsersRound className="h-3.5 w-3.5" /> Atendimento</div>
@@ -160,7 +160,7 @@ export function AltumLiveDemo() {
                   className="grid gap-6 2xl:grid-cols-[0.72fr_1.28fr] 2xl:items-center"
                 >
                   <div className="2xl:py-4">
-                    <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#ff6a1f]">{active.eyebrow}</p>
+                    <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#60a5fa]">{active.eyebrow}</p>
                     <h3 className="mt-4 max-w-[12ch] text-[clamp(2rem,4vw,3.65rem)] font-extrabold leading-[0.98] tracking-[-0.055em] text-white">{active.title}</h3>
                     <p className="mt-5 max-w-xl text-base leading-7 text-white/48">{active.description}</p>
 
@@ -173,16 +173,16 @@ export function AltumLiveDemo() {
                       ))}
                     </div>
 
-                    <div className="mt-5 rounded-xl border border-[#e85002]/20 bg-[#e85002]/8 p-4">
+                    <div className="mt-5 rounded-xl border border-[#2563eb]/20 bg-[#2563eb]/8 p-4">
                       <div className="flex items-start gap-3">
-                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#ff6a1f]" />
+                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#60a5fa]" />
                         <p className="text-sm leading-6 text-white/62">{active.insight}</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-black p-2.5">
-                    <div className="absolute inset-x-10 top-0 h-28 bg-[#e85002]/14 blur-[70px]" />
+                    <div className="absolute inset-x-10 top-0 h-28 bg-[#2563eb]/14 blur-[70px]" />
                     <Image
                       src={active.image}
                       alt={active.alt}
@@ -200,12 +200,12 @@ export function AltumLiveDemo() {
 
         <div className="mt-8 flex flex-col items-start justify-between gap-5 rounded-2xl border border-white/8 bg-white/[0.02] px-5 py-5 md:flex-row md:items-center">
           <div className="flex items-start gap-3">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#e85002]" />
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#2563eb]" />
             <p className="max-w-3xl text-sm leading-6 text-white/52">
               Esta demonstração usa telas reais da plataforma. Recursos e integrações podem variar por plano e configuração da operação.
             </p>
           </div>
-          <Link href="/plataforma" className="inline-flex shrink-0 items-center gap-2 text-sm font-extrabold text-white hover:text-[#ff6a1f]">
+          <Link href="/plataforma" className="inline-flex shrink-0 items-center gap-2 text-sm font-extrabold text-white hover:text-[#60a5fa]">
             Explorar o produto <ArrowRight className="h-4 w-4" />
           </Link>
         </div>

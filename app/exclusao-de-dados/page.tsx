@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SiteShell } from "@/components/public/site-shell";
 
 export const metadata: Metadata = {
   title: "Exclusao de Dados | ALTUM",
@@ -19,7 +20,8 @@ export default async function DataDeletionPage(props: PageProps) {
   const code = clean(searchParams?.code, 120);
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50">
+    <SiteShell>
+    <div className="bg-slate-950 text-slate-50">
       <section className="mx-auto max-w-3xl px-4 py-16">
         <header className="mb-10 border-b border-white/10 pb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400/80">
@@ -58,6 +60,7 @@ export default async function DataDeletionPage(props: PageProps) {
           </section>
         </div>
       </section>
-    </main>
+    </div>
+    </SiteShell>
   );
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SiteShell } from "@/components/public/site-shell";
 import { notFound } from "next/navigation";
 import { buildFaqSchema, toJsonLdScript } from "@/lib/schema";
 import { getVerticalBySlug, verticals } from "@/lib/verticals";
@@ -10,7 +11,7 @@ type PageProps = {
   }>;
 };
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag").replace(/\/$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
 
 const PILLAR_LINKS = [
   { href: "/automacao-com-ia", label: "Pilar 1: Automacao com IA" },
@@ -87,13 +88,14 @@ export default async function VerticalPage({ params }: PageProps) {
   );
 
   return (
-    <main className="min-h-screen bg-[#0B0B0B] px-6 py-20 text-white">
+    <SiteShell>
+    <div className="px-6 py-20 text-white">
       <section className="mx-auto w-full max-w-4xl">
-        <Link href="/solucoes" className="mb-8 inline-block text-sm font-semibold text-[#F56E0F] hover:text-[#ff8e44]">
+        <Link href="/solucoes" className="mb-8 inline-block text-sm font-semibold text-[#60A5FA] hover:text-[#3B82F6]">
           Voltar para solucoes
         </Link>
 
-        <p className="mb-3 text-sm uppercase tracking-[0.14em] text-[#F56E0F]">Vertical: {page.name}</p>
+        <p className="mb-3 text-sm uppercase tracking-[0.14em] text-[#60A5FA]">Vertical: {page.name}</p>
         <h1 className="mb-4 text-4xl font-bold leading-tight md:text-5xl">{page.title}</h1>
         <p className="mb-10 max-w-3xl text-lg text-white/75">{page.description}</p>
 
@@ -132,7 +134,7 @@ export default async function VerticalPage({ params }: PageProps) {
               <Link
                 key={pillar.href}
                 href={pillar.href}
-                className="rounded-xl border border-white/15 bg-black/20 px-4 py-3 text-sm font-semibold text-white/90 transition-colors hover:border-[#F56E0F] hover:text-[#F56E0F]"
+                className="rounded-xl border border-white/15 bg-black/20 px-4 py-3 text-sm font-semibold text-white/90 transition-colors hover:border-[#60A5FA] hover:text-[#60A5FA]"
               >
                 {pillar.label}
               </Link>
@@ -152,13 +154,13 @@ export default async function VerticalPage({ params }: PageProps) {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-[#F56E0F]/30 bg-[#F56E0F]/10 p-6 md:p-8">
+        <section className="rounded-2xl border border-[#60A5FA]/30 bg-[#60A5FA]/10 p-6 md:p-8">
           <h2 className="mb-3 text-2xl font-semibold">Proximo passo</h2>
           <p className="mb-5 text-white/85">
             Se voce atua em {page.name.toLowerCase()} e quer aumentar previsibilidade comercial, podemos montar um plano com metas por etapa do funil.
           </p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/" className="rounded-full bg-[#F56E0F] px-5 py-2 text-sm font-semibold text-white hover:bg-[#ff8e44]">
+            <Link href="/" className="rounded-full bg-[#60A5FA] px-5 py-2 text-sm font-semibold text-white hover:bg-[#3B82F6]">
               Solicitar diagnostico
             </Link>
             <Link href="/blog" className="rounded-full border border-white/25 px-5 py-2 text-sm font-semibold text-white/90 hover:border-white">
@@ -170,6 +172,7 @@ export default async function VerticalPage({ params }: PageProps) {
 
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(faqJsonLd)} />
-    </main>
+    </div>
+    </SiteShell>
   );
 }

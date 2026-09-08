@@ -7,12 +7,12 @@ type SiteHeaderProps = {
 
 export function SiteHeader({ items }: SiteHeaderProps) {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 px-4 pt-4">
+    <header data-altum-surface="public" className="fixed inset-x-0 top-0 z-50 px-4 pt-4">
       <div className="mx-auto flex max-w-7xl items-center justify-between rounded-[26px] border border-white/10 bg-[#090909]/78 px-4 py-3 shadow-[0_24px_80px_rgba(0,0,0,0.36)] backdrop-blur-2xl lg:px-5">
         <Link href="/" className="flex items-center gap-3">
           <span className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
-            <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(245,110,15,0.65),transparent_32%)] opacity-80" />
-            <span className="relative text-lg font-black text-[#f56e0f]">A</span>
+            <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(37,99,235,0.65),transparent_32%)] opacity-80" />
+            <span className="relative text-lg font-black text-[#2563eb]">A</span>
           </span>
 
           <span className="hidden leading-tight sm:block">
@@ -46,7 +46,7 @@ export function SiteHeader({ items }: SiteHeaderProps) {
           </Link>
           <Link
             href="/diagnostico?entry=header"
-            className="group inline-flex items-center gap-2 rounded-full bg-[#f56e0f] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_48px_rgba(245,110,15,0.28)] transition hover:bg-[#ff7f26]"
+            className="group inline-flex items-center gap-2 rounded-full bg-[#2563eb] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_48px_rgba(37,99,235,0.28)] transition hover:bg-[#1d4ed8]"
           >
             Fazer quiz estrategico
             <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
@@ -71,7 +71,7 @@ export function SiteHeader({ items }: SiteHeaderProps) {
             </div>
             <Link
               href="/diagnostico?entry=mobile_menu"
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#f56e0f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#ff7f26]"
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#2563eb] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4ed8]"
             >
               Fazer o quiz
               <ArrowRight className="h-4 w-4" />
