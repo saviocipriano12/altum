@@ -1,0 +1,1 @@
+Recalibração em andamento na branch `chore/recalibrate-seo-ga4-20260908`. Ver documentos relacionados nesta pasta para baseline, mensuração e checklist.
