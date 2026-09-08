@@ -1,13 +1,11 @@
 import type { MetadataRoute } from "next";
-import { cityPages } from "@/data/city-pages";
 import { segmentPages } from "@/data/segment-pages";
 import { getAllBlogPosts } from "@/lib/blog";
-import { verticals } from "@/lib/verticals";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const siteUpdatedAt = new Date(process.env.NEXT_PUBLIC_SITE_UPDATED_AT || "2026-08-27T00:00:00-03:00");
+  const siteUpdatedAt = new Date(process.env.NEXT_PUBLIC_SITE_UPDATED_AT || "2026-09-08T00:00:00-03:00");
   const posts = await getAllBlogPosts();
   const staticRoutes = [
     "",
@@ -22,6 +20,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/rss.xml",
     "/solucoes",
     "/segmentos",
+    "/crm",
+    "/crm-para-whatsapp",
+    "/inbox",
+    "/pipeline",
+    "/follow-up",
+    "/ia-para-vendas",
+    "/qualificacao-de-leads-com-ia",
+    "/automacoes",
     "/automacao-com-ia",
     "/ia-no-whatsapp",
     "/chatbot-para-empresas",
@@ -30,7 +36,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticEntries: MetadataRoute.Sitemap = staticRoutes.map((route) => ({
     url: `${SITE_URL}${route}`,
     lastModified: siteUpdatedAt,
-    changeFrequency: "weekly",
+    changeFrequency: route === "" ? "weekly" : "monthly",
     priority: route === "" ? 1 : 0.9,
   }));
 
@@ -41,26 +47,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }));
 
-  const verticalEntries: MetadataRoute.Sitemap = verticals.map((vertical) => ({
-    url: `${SITE_URL}/solucoes/${vertical.slug}`,
-    lastModified: siteUpdatedAt,
-    changeFrequency: "weekly",
-    priority: 0.78,
-  }));
-
   const segmentEntries: MetadataRoute.Sitemap = segmentPages.map((segment) => ({
     url: `${SITE_URL}/segmentos/${segment.slug}`,
     lastModified: siteUpdatedAt,
-    changeFrequency: "weekly",
+    changeFrequency: "monthly",
     priority: 0.72,
   }));
 
-  const cityEntries: MetadataRoute.Sitemap = cityPages.map((city) => ({
-    url: `${SITE_URL}/cidades/${city.slug}`,
-    lastModified: siteUpdatedAt,
-    changeFrequency: "weekly",
-    priority: 0.7,
-  }));
-
-  return [...staticEntries, ...blogEntries, ...verticalEntries, ...segmentEntries, ...cityEntries];
+  return [...staticEntries, ...blogEntries, ...segmentEntries];
 }

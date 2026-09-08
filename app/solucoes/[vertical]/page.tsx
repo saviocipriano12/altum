@@ -35,6 +35,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: page.title,
     description: page.description,
+    robots: {
+      index: false,
+      follow: true,
+      googleBot: {
+        index: false,
+        follow: true,
+      },
+    },
     alternates: {
       canonical,
     },
@@ -59,7 +67,7 @@ export default async function VerticalPage({ params }: PageProps) {
     },
     {
       q: "Em quanto tempo os primeiros indicadores melhoram?",
-      a: "Normalmente em poucas semanas ja e possivel observar ganho em tempo de resposta, taxa de lead qualificado e avanço no funil comercial.",
+      a: "Normalmente em poucas semanas ja e possivel observar ganho em tempo de resposta, taxa de lead qualificado e avanço no funil comercial.",
     },
     {
       q: "A estrategia funciona para equipe comercial pequena?",
