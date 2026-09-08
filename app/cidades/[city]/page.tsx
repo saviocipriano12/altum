@@ -11,7 +11,7 @@ type PageProps = {
   }>;
 };
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.altumia.com.br").replace(/\/$/, "");
 
 export const dynamicParams = false;
 
@@ -29,6 +29,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `Geracao de leads em ${item.city} (${item.state}) com IA e WhatsApp | ALTUM`,
     description: `Operacao comercial para empresas em ${item.city}/${item.state} com IA, automacao e WhatsApp focados em demanda qualificada.`,
+    robots: {
+      index: false,
+      follow: true,
+      googleBot: {
+        index: false,
+        follow: true,
+      },
+    },
     alternates: {
       canonical,
     },
