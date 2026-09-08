@@ -2,42 +2,52 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { AuthProvider } from "@/context/AuthContext";
-import { buildOrganizationSchema, getSiteUrl, getSocialLinksFromEnv, toJsonLdScript } from "@/lib/schema";
+import {
+  buildOrganizationSchema,
+  buildSoftwareApplicationSchema,
+  buildWebSiteSchema,
+  getSiteUrl,
+  getSocialLinksFromEnv,
+  toJsonLdScript,
+} from "@/lib/schema";
 import { TrackingScripts } from "@/components/analytics/TrackingScripts";
 
+const PUBLIC_SITE_URL = "https://www.altumia.com.br";
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://altum.ag"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? PUBLIC_SITE_URL),
   applicationName: "ALTUM",
+  alternates: {
+    canonical: "/",
+  },
   title: {
-    default: "ALTUM | Operacao Comercial com IA",
+    default: "ALTUM | Plataforma de Vendas e Relacionamento com IA",
     template: "%s | ALTUM",
   },
   description:
-    "Conversas, clientes, oportunidades, agenda e IA em uma plataforma para responder melhor, vender mais e acompanhar tudo em um so lugar.",
-  keywords: ["Operacao comercial com IA", "CRM", "WhatsApp", "Plataforma de vendas", "Atendimento"],
+    "Centralize atendimento, CRM, pipeline, automacoes, follow-up e inteligencia artificial em uma unica operacao comercial.",
+  keywords: [
+    "plataforma de vendas com IA",
+    "CRM com IA",
+    "CRM para WhatsApp",
+    "automacao comercial",
+    "atendimento com IA",
+    "pipeline de vendas",
+  ],
   openGraph: {
-    title: "ALTUM | Operacao Comercial com IA",
+    title: "ALTUM | Plataforma de Vendas e Relacionamento com IA",
     description:
-      "Conversas, clientes, oportunidades, agenda e IA em uma plataforma para responder melhor, vender mais e acompanhar tudo em um so lugar.",
-    url: "https://altum.ag",
+      "Atendimento, CRM, pipeline, automacoes, follow-up e IA trabalhando juntos para transformar conversas em vendas.",
+    url: PUBLIC_SITE_URL,
     siteName: "ALTUM",
-    images: [
-      {
-        url: "/logo-a.png",
-        width: 1200,
-        height: 630,
-        alt: "ALTUM",
-      },
-    ],
     locale: "pt_BR",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ALTUM | Operacao Comercial com IA",
+    title: "ALTUM | Plataforma de Vendas e Relacionamento com IA",
     description:
-      "Conversas, clientes, oportunidades, agenda e IA em uma plataforma para responder melhor, vender mais e acompanhar tudo em um so lugar.",
-    images: ["/logo-a.png"],
+      "Atendimento, CRM, pipeline, automacoes, follow-up e IA em uma unica operacao comercial.",
   },
   icons: {
     icon: "/favicon.ico",
@@ -64,11 +74,25 @@ export default function RootLayout({
     logoPath: process.env.NEXT_PUBLIC_SITE_LOGO_PATH ?? "/logo-a.png",
     socialLinks: getSocialLinksFromEnv(),
   });
+  const websiteSchema = buildWebSiteSchema({
+    siteUrl,
+    name: "ALTUM",
+    description:
+      "Plataforma de vendas e relacionamento com IA para centralizar atendimento, CRM, pipeline e automacoes.",
+  });
+  const softwareSchema = buildSoftwareApplicationSchema({
+    siteUrl,
+    name: "ALTUM",
+    description:
+      "Plataforma de vendas e relacionamento com CRM, inbox, pipeline, automacoes, follow-up e inteligencia artificial.",
+  });
 
   return (
     <html lang="pt-BR" className="scroll-smooth" data-scroll-behavior="smooth">
       <body className="bg-[#04131f] font-sans text-white antialiased selection:bg-[#f97316] selection:text-white">
         <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(organizationSchema)} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(websiteSchema)} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(softwareSchema)} />
         <Suspense fallback={null}>
           <TrackingScripts />
         </Suspense>
