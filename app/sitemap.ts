@@ -20,6 +20,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/rss.xml",
     "/solucoes",
     "/segmentos",
+    "/crm",
+    "/ia-para-vendas",
     "/automacao-com-ia",
     "/ia-no-whatsapp",
     "/chatbot-para-empresas",
