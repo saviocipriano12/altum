@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://altumia.com.br").trim().replace(/\/+$/, "");
 
 export default function robots(): MetadataRoute.Robots {
   return {
