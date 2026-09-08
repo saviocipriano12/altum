@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Bot, Check, Clock3, MessageCircleMore, Route, ShieldCheck, Sparkles, UserRoundCheck } from "lucide-react";
+import { ArrowRight, Bot, Check, MessageCircleMore, Route, ShieldCheck, Sparkles, UserRoundCheck } from "lucide-react";
 import { SiteShell } from "@/components/public/site-shell";
 import { buildMarketingMetadata } from "@/lib/public-site";
 import { buildFaqSchema, toJsonLdScript } from "@/lib/schema";
@@ -42,7 +42,7 @@ const faqs = [
     answer:
       "Não precisa substituir. Na ALTUM, a automação pode cuidar de etapas repetitivas, triagem e organização de contexto, enquanto pessoas assumem quando existe negociação, exceção ou momento comercial que exige intervenção humana.",
   },
-] as const;
+];
 
 const capabilities = [
   [MessageCircleMore, "Resposta imediata", "O contato recebe uma primeira resposta mesmo fora do horário ou quando a equipe está ocupada."],
