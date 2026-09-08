@@ -1,0 +1,1 @@
+Use os documentos de recalibração como referência antes de alterar SEO, analytics ou site público.
