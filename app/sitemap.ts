@@ -31,6 +31,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/qualificacao-de-leads-com-ia",
     "/automacoes",
     "/automacao-com-ia",
+    "/automacao-instagram",
     "/ia-no-whatsapp",
     "/chatbot-whatsapp",
   ];
