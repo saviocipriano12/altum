@@ -34,7 +34,6 @@ import {
   SiInstagram,
   SiMeta,
   SiShopify,
-  SiStripe,
   SiWhatsapp,
   SiWoocommerce,
 } from "react-icons/si";
@@ -98,7 +97,7 @@ const integrationItems = [
   { name: "Google Ads", icon: SiGoogleads, color: "#4285F4", status: "Campanhas" },
   { name: "Shopify", icon: SiShopify, color: "#7AB55C", status: "E-commerce" },
   { name: "WooCommerce", icon: SiWoocommerce, color: "#96588A", status: "E-commerce" },
-  { name: "Stripe", icon: SiStripe, color: "#635BFF", status: "Pagamentos" },
+  { name: "Nuvemshop", icon: PackageSearch, color: "#2D7FF9", status: "E-commerce" },
 ] as const;
 
 const automationSteps = [
@@ -306,7 +305,7 @@ export function ProductHome() {
               </h2>
             </div>
             <p className="max-w-2xl text-lg leading-8 text-white/52 lg:justify-self-end">
-              Canais, mídia, e-commerce e pagamentos deixam de ser ilhas. A Altum reúne sinais dessas plataformas para dar contexto ao atendimento, ao funil e à IA.
+              Canais, mídia e e-commerce deixam de ser ilhas. A Altum reúne sinais dessas plataformas para dar contexto ao atendimento, ao funil e à IA.
             </p>
           </div>
 
