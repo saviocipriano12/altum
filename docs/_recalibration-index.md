@@ -1,5 +1,0 @@
-- `recalibration-2026-09-08.md`: baseline atual
-- `ga4-measurement-plan.md`: plano de mensuração
-- `current-release-source-of-truth.md`: fonte de verdade
-- `release-checklist-seo-ga4.md`: checklist
-- `do-not-regress.md`: guardrails
