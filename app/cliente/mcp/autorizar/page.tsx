@@ -19,6 +19,7 @@ function scopeLabel(scope: string) {
     "reports:read": "Resumo e relatórios",
     "integrations:read": "Saúde das integrações",
     "events:read": "Eventos e auditoria operacional",
+    offline_access: "Manter a conexão ativa",
   };
   return labels[scope] || scope;
 }

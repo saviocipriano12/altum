@@ -96,7 +96,7 @@ Fluxo esperado:
 4. A Altum retorna um authorization code com PKCE.
 5. O cliente troca o code em `/api/mcp/oauth/token` e passa a chamar `/api/mcp/remote` com `Authorization: Bearer`.
 
-O token remoto e opaco, salvo por hash no Firestore e limitado ao usuario, tenant e escopos autorizados.
+O token remoto e opaco, salvo por hash no Firestore e limitado ao usuario, tenant e escopos autorizados. A descoberta anuncia `offline_access`, e a Altum emite `refresh_token` para o cliente renovar a conexao sem exigir novo login a cada expiracao.
 
 ## Governanca e rascunhos
 
