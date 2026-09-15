@@ -17,6 +17,7 @@ export function hasTeamWideCommercialAccess(membership: TenantMembership) {
   }
 
   return (
+    membership.capabilities.includes("view_team_records") ||
     membership.capabilities.includes("manage_users") ||
     membership.capabilities.includes("manage_settings")
   );

@@ -16,6 +16,7 @@ type Body = {
   allowedChannels?: string[] | string;
   maxOpenChats?: number;
   capabilities?: TenantCapability[] | string;
+  accessProfile?: string;
 };
 type TenantUserItem = {
   id: string;
@@ -226,6 +227,7 @@ export async function POST(
     const allowedChannels = parseChannels(body.allowedChannels);
     const maxOpenChats = normalizeMaxOpenChats(body.maxOpenChats);
     const capabilities = parseCapabilities(body.capabilities);
+    const accessProfile = clean(body.accessProfile, 40).toLowerCase();
 
     if (!email) {
       return NextResponse.json({ error: "Campo obrigatorio: email." }, { status: 400 });
@@ -303,6 +305,7 @@ export async function POST(
         allowedChannels,
         maxOpenChats,
         capabilities: nextCapabilities,
+        accessProfile,
         invitedBy: actor.uid,
         invitedByName: actor.name,
         ...(existingMembership ? {} : { createdAt: FieldValue.serverTimestamp() }),

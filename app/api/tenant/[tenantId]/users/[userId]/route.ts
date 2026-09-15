@@ -14,6 +14,7 @@ type Body = {
   allowedChannels?: string[] | string;
   maxOpenChats?: number | null;
   capabilities?: TenantCapability[] | string;
+  accessProfile?: string;
 };
 
 const ALLOWED_ROLES = new Set(["client_admin", "client_agent", "client_viewer"]);
@@ -179,6 +180,9 @@ export async function PATCH(
     }
     if (body.capabilities !== undefined) {
       patch.capabilities = parseCapabilities(body.capabilities);
+    }
+    if (body.accessProfile !== undefined) {
+      patch.accessProfile = clean(body.accessProfile, 40).toLowerCase();
     }
 
     await ref.set(patch, { merge: true });

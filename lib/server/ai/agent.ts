@@ -4566,8 +4566,19 @@ export async function handleIncomingMessage(
     messageId,
     message: incomingMessage,
   });
-  const inboundText = sanitizeText(multimodal.normalizedText || summarizeMessageForAgent(incomingMessage), 1400);
   const messageType = sanitizeText(incomingMessage.type, 40);
+  const explicitInboundText = sanitizeText(
+    incomingMessage.text || incomingMessage.message || incomingMessage.body || incomingMessage.content || incomingMessage.caption,
+    1400
+  );
+  const normalizedInboundText = sanitizeText(multimodal.normalizedText, 1400);
+  const supportedNonTextMessage = ["audio", "image", "video", "document", "sticker", "location"].includes(
+    messageType.toLowerCase()
+  );
+  if (!explicitInboundText && !normalizedInboundText && !supportedNonTextMessage) {
+    return { decision: "skip", reason: "empty_inbound_message" };
+  }
+  const inboundText = sanitizeText(normalizedInboundText || summarizeMessageForAgent(incomingMessage), 1400);
 
   const aiConfig = parseAiConfig(tenantSettings);
   const agentDisplayName = sanitizeText(aiConfig.agentName, 80) || "Agente IA";

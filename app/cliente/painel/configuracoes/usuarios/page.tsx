@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, MailPlus, ShieldCheck, UserCog } from "lucide-react
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
+import { CLIENT_ACCESS_PROFILES, getClientAccessProfile, inferClientAccessProfile, type ClientAccessProfileId } from "@/lib/client-access-profiles";
 
 type TenantUser = {
   id: string;
@@ -19,6 +20,7 @@ type TenantUser = {
   allowedChannels?: string[];
   maxOpenChats?: number | null;
   capabilities?: string[];
+  accessProfile?: ClientAccessProfileId;
 };
 
 type InviteForm = {
@@ -30,10 +32,12 @@ type InviteForm = {
   allowedChannels: string;
   maxOpenChats: string;
   capabilities: string[];
+  accessProfile: ClientAccessProfileId;
 };
 
 const CAPABILITY_OPTIONS = [
   { id: "view_metrics", label: "Ver métricas" },
+  { id: "view_team_records", label: "Ver toda a operação da equipe" },
   { id: "respond_inbox", label: "Responder conversas" },
   { id: "edit_leads", label: "Editar leads" },
   { id: "manage_pipeline", label: "Gerir clientes e funil" },
@@ -45,21 +49,7 @@ const CAPABILITY_OPTIONS = [
   { id: "manage_settings", label: "Gerir configurações" },
 ] as const;
 
-const DEFAULT_CAPABILITIES_BY_ROLE: Record<InviteRole | "client_owner", string[]> = {
-  client_owner: CAPABILITY_OPTIONS.map((item) => item.id),
-  client_admin: CAPABILITY_OPTIONS.map((item) => item.id),
-  client_agent: ["view_metrics", "respond_inbox", "edit_leads", "manage_pipeline", "manage_commercial"],
-  client_viewer: ["view_metrics"],
-};
-
 type InviteRole = "client_admin" | "client_agent" | "client_viewer";
-
-function roleLabel(role?: string) {
-  if (role === "client_owner") return "Dono da conta";
-  if (role === "client_admin") return "Admin do cliente";
-  if (role === "client_agent") return "Vendedor / atendente";
-  return "Visualizador";
-}
 
 function availabilityLabel(value?: string) {
   if (value === "busy") return "Ocupado";
@@ -89,12 +79,13 @@ export default function ClienteUsuariosPage() {
   const [inviteForm, setInviteForm] = useState<InviteForm>({
     name: "",
     email: "",
-    role: "client_viewer",
+    role: "client_agent",
+    accessProfile: "seller",
     team: "comercial",
     availability: "online",
     allowedChannels: "whatsapp",
     maxOpenChats: "12",
-    capabilities: DEFAULT_CAPABILITIES_BY_ROLE.client_viewer,
+    capabilities: [...getClientAccessProfile("seller").capabilities],
   });
 
   const canManage = hasCapability("manage_users");
@@ -169,6 +160,7 @@ export default function ClienteUsuariosPage() {
           email: inviteForm.email,
           name: inviteForm.name,
           role: inviteForm.role,
+          accessProfile: inviteForm.accessProfile,
           team: inviteForm.team,
           availability: inviteForm.availability,
           allowedChannels: inviteForm.allowedChannels,
@@ -190,12 +182,13 @@ export default function ClienteUsuariosPage() {
       setInviteForm({
         name: "",
         email: "",
-        role: "client_viewer",
+        role: "client_agent",
+        accessProfile: "seller",
         team: "comercial",
         availability: "online",
         allowedChannels: "whatsapp",
         maxOpenChats: "12",
-        capabilities: DEFAULT_CAPABILITIES_BY_ROLE.client_viewer,
+        capabilities: [...getClientAccessProfile("seller").capabilities],
       });
       setInviteLink(payload.inviteLink || null);
       if (payload.existingUser) {
@@ -283,25 +276,23 @@ export default function ClienteUsuariosPage() {
             <Field label="E-mail" type="email" required value={inviteForm.email} onChange={(value) => setInviteForm((current) => ({ ...current, email: value }))} />
             <Field label="Time" value={inviteForm.team} onChange={(value) => setInviteForm((current) => ({ ...current, team: value }))} />
             <label className="block space-y-1">
-              <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Perfil</span>
+              <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Função na empresa</span>
               <select
-                value={inviteForm.role}
-                onChange={(event) =>
-                  setInviteForm((current) => {
-                    const nextRole = event.target.value as InviteRole;
-                    return {
-                      ...current,
-                      role: nextRole,
-                      capabilities: [...DEFAULT_CAPABILITIES_BY_ROLE[nextRole]],
-                    };
-                  })
-                }
+                value={inviteForm.accessProfile}
+                onChange={(event) => {
+                  const profile = getClientAccessProfile(event.target.value);
+                  setInviteForm((current) => ({
+                    ...current,
+                    accessProfile: profile.id,
+                    role: profile.role,
+                    capabilities: [...profile.capabilities],
+                  }));
+                }}
                 className="settings-users-select client-input w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
               >
-                <option value="client_admin">Admin do cliente</option>
-                <option value="client_agent">Vendedor / atendente</option>
-                <option value="client_viewer">Visualizador</option>
+                {CLIENT_ACCESS_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
               </select>
+              <p className="text-xs leading-5 text-[var(--cliente-card-text-soft)]">{getClientAccessProfile(inviteForm.accessProfile).description}</p>
             </label>
             <div className="grid gap-3 md:grid-cols-3">
               <label className="block space-y-1">
@@ -319,8 +310,8 @@ export default function ClienteUsuariosPage() {
               <Field label="Canais permitidos" value={inviteForm.allowedChannels} onChange={(value) => setInviteForm((current) => ({ ...current, allowedChannels: value }))} />
               <Field label="Limite de conversas" value={inviteForm.maxOpenChats} onChange={(value) => setInviteForm((current) => ({ ...current, maxOpenChats: value }))} />
             </div>
-            <div className="settings-users-capabilities space-y-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-              <p className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Permissões do usuário</p>
+            <details className="settings-users-capabilities rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Ajustar permissões avançadas</summary>
               <div className="grid gap-2 md:grid-cols-2">
                 {CAPABILITY_OPTIONS.map((capability) => (
                   <label key={capability.id} className="settings-users-capability-item flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm text-[var(--cliente-card-text-muted)]">
@@ -334,7 +325,7 @@ export default function ClienteUsuariosPage() {
                   </label>
                 ))}
               </div>
-            </div>
+            </details>
             {canManage ? (
               <button
                 type="submit"
@@ -393,7 +384,7 @@ export default function ClienteUsuariosPage() {
                       </p>
                     </div>
                   <div className="flex flex-wrap gap-2">
-                      <StateBadge label={roleLabel(user.role)} tone={user.role === "client_admin" || user.role === "client_owner" ? "info" : "neutral"} />
+                      <StateBadge label={user.role === "client_owner" ? "Dono da conta" : inferClientAccessProfile(user).label} tone={user.role === "client_admin" || user.role === "client_owner" ? "info" : "neutral"} />
                       <StateBadge label={userStatusLabel(user.status)} tone={user.status === "blocked" ? "warning" : "success"} />
                       {(user.allowedChannels || []).slice(0, 2).map((channel) => (
                         <StateBadge key={`${user.id}_${channel}`} label={channel} tone="neutral" />
@@ -407,14 +398,19 @@ export default function ClienteUsuariosPage() {
                   {canManage && user.role !== "client_owner" ? (
                     <div className="mt-4 flex flex-wrap gap-2">
                       <select
-                        defaultValue={user.role || "client_viewer"}
-                        onChange={(event) => void updateUser(String(user.userId || ""), { role: event.target.value })}
+                        value={inferClientAccessProfile(user).id}
+                        onChange={(event) => {
+                          const profile = getClientAccessProfile(event.target.value);
+                          void updateUser(String(user.userId || ""), {
+                            accessProfile: profile.id,
+                            role: profile.role,
+                            capabilities: profile.capabilities,
+                          });
+                        }}
                         disabled={busyUserId === user.userId}
                         className="settings-users-select client-input rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                       >
-                        <option value="client_admin">Admin do cliente</option>
-                        <option value="client_agent">Vendedor / atendente</option>
-                        <option value="client_viewer">Visualizador</option>
+                        {CLIENT_ACCESS_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
                       </select>
                       <button
                         type="button"

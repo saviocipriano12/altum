@@ -15,6 +15,7 @@ import {
   type TenantLimitId,
   type TenantModuleId,
 } from "@/lib/tenant-entitlements";
+import { getClientRouteAccessRule } from "@/lib/client-route-access";
 
 type TenantSession = {
   tenantId: string;
@@ -238,6 +239,8 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
   const moduleDefinition = requiredModule
     ? TENANT_MODULE_CATALOG.find((definition) => definition.id === requiredModule)
     : null;
+  const routeAccessRule = getClientRouteAccessRule(pathname);
+  const hasRouteAccess = !routeAccessRule || Boolean((tenant.capabilities || []).includes(routeAccessRule.capability));
 
   if (!moduleAvailable) {
     return (
@@ -262,6 +265,24 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
             <Link href="/cliente/painel" className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700">
               Voltar ao início
             </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasRouteAccess && routeAccessRule) {
+    return (
+      <div className="min-h-screen bg-[#F6F8FB] px-5 py-12 text-slate-950">
+        <div className="mx-auto max-w-xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_28px_90px_-48px_rgba(15,23,42,0.45)]">
+          <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#EFF6FF,#F5F3FF)] p-6">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white"><LockKeyhole className="h-5 w-5" /></span>
+            <h1 className="mt-5 text-2xl font-bold tracking-tight">{routeAccessRule.title}</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{routeAccessRule.description}</p>
+          </div>
+          <div className="p-6">
+            <p className="text-sm leading-6 text-slate-600">Peça ao administrador de {tenant.tenantName || "sua empresa"} para alterar seu perfil ou liberar essa responsabilidade.</p>
+            <Link href="/cliente/painel" className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700">Voltar ao início</Link>
           </div>
         </div>
       </div>

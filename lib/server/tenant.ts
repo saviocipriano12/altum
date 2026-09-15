@@ -42,6 +42,7 @@ export type TenantUserRole =
 
 export type TenantCapability =
   | "view_metrics"
+  | "view_team_records"
   | "respond_inbox"
   | "edit_leads"
   | "manage_pipeline"
@@ -54,6 +55,7 @@ export type TenantCapability =
 
 export const TENANT_CAPABILITIES: TenantCapability[] = [
   "view_metrics",
+  "view_team_records",
   "respond_inbox",
   "edit_leads",
   "manage_pipeline",
