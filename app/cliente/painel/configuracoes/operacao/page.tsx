@@ -53,6 +53,7 @@ type TenantUser = {
   availability?: string;
   allowedChannels?: string[];
   maxOpenChats?: number | null;
+  capabilities?: string[];
 };
 
 type OperationForm = {
@@ -153,7 +154,7 @@ export default function ClienteOperacaoPage() {
     const source = [{ id: "comercial", name: "Comercial" }, ...(teamOptions || [])];
     const seen = new Set<string>();
     return source.filter((team) => {
-      const key = String(team.id || team.name || "").trim();
+      const key = String(team.id || team.name || "").trim().toLowerCase();
       if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -163,6 +164,7 @@ export default function ClienteOperacaoPage() {
   const teamCapacity = useMemo(() => {
     const operationalUsers = users.filter((user) => {
       if (user.status === "blocked") return false;
+      if (Array.isArray(user.capabilities)) return user.capabilities.includes("respond_inbox");
       return user.role === "client_owner" || user.role === "client_admin" || user.role === "client_agent";
     });
     const online = operationalUsers.filter((user) => String(user.availability || "online") === "online").length;

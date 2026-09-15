@@ -73,6 +73,7 @@ export type TenantMembership = {
   status: "active" | "blocked";
   isDefault: boolean;
   capabilities: TenantCapability[];
+  capabilitiesConfigured?: boolean;
 };
 
 export type TenantSettings = {
@@ -197,6 +198,7 @@ function normalizeMembership(
     status: data.status === "blocked" ? "blocked" : "active",
     isDefault: Boolean(data.isDefault),
     capabilities: normalizeCapabilities(data.capabilities),
+    capabilitiesConfigured: Object.prototype.hasOwnProperty.call(data, "capabilities"),
   };
 }
 
@@ -248,6 +250,28 @@ async function assertTenantNotBillingBlocked(membership: TenantMembership) {
       "Acesso ao tenant pausado por pendencia financeira."
     );
   }
+}
+
+export async function getTenantMembershipForUser(userId: string, tenantId: string) {
+  const normalizedUserId = userId.trim();
+  const normalizedTenantId = tenantId.trim();
+  if (!normalizedUserId || !normalizedTenantId) return null;
+
+  const snap = await adminDb
+    .collection("tenant_users")
+    .where("userId", "==", normalizedUserId)
+    .where("tenantId", "==", normalizedTenantId)
+    .limit(1)
+    .get();
+
+  if (!snap.empty) {
+    return normalizeMembership(snap.docs[0].id, snap.docs[0].data() as Record<string, unknown>);
+  }
+
+  const compositeId = `${normalizedTenantId}_${normalizedUserId}`;
+  const direct = await adminDb.collection("tenant_users").doc(compositeId).get();
+  if (!direct.exists) return null;
+  return normalizeMembership(direct.id, direct.data() as Record<string, unknown>);
 }
 
 export async function getDefaultTenantMembershipForUser(userId: string) {
@@ -377,8 +401,12 @@ export function assertTenantRole(
   }
 }
 
-export function getTenantCapabilities(membership: Pick<TenantMembership, "role" | "status" | "capabilities">) {
+export function getTenantCapabilities(
+  membership: Pick<TenantMembership, "role" | "status" | "capabilities" | "capabilitiesConfigured">
+) {
   if (membership.status !== "active") return [] as TenantCapability[];
+  const customAware = membership as Pick<TenantMembership, "capabilitiesConfigured">;
+  if (customAware.capabilitiesConfigured) return membership.capabilities;
   return membership.capabilities.length > 0
     ? membership.capabilities
     : DEFAULT_CAPABILITIES_BY_ROLE[membership.role] || [];

@@ -57,7 +57,7 @@ type InviteRole = "client_admin" | "client_agent" | "client_viewer";
 function roleLabel(role?: string) {
   if (role === "client_owner") return "Dono da conta";
   if (role === "client_admin") return "Admin do cliente";
-  if (role === "client_agent") return "Atendente";
+  if (role === "client_agent") return "Vendedor / atendente";
   return "Visualizador";
 }
 
@@ -180,6 +180,8 @@ export default function ClienteUsuariosPage() {
         error?: string;
         inviteLink?: string;
         inviteLinkWarning?: string | null;
+        emailDelivery?: "not_sent" | "sent" | "unavailable" | "failed";
+        existingUser?: boolean;
       };
       if (!res.ok) {
         setError(payload.error || "Falha ao convidar usuário.");
@@ -196,11 +198,19 @@ export default function ClienteUsuariosPage() {
         capabilities: DEFAULT_CAPABILITIES_BY_ROLE.client_viewer,
       });
       setInviteLink(payload.inviteLink || null);
-      setNotice(
-        payload.inviteLinkWarning
-          ? "Usuario convidado. Link gerado em modo fallback (sem redirect personalizado)."
-          : "Usuario convidado com sucesso."
-      );
+      if (payload.existingUser) {
+        setNotice("Usuario existente vinculado a esta conta. Ele pode entrar com o acesso atual ou recuperar a senha pela tela de login.");
+      } else if (payload.emailDelivery === "sent") {
+        setNotice("Usuario convidado com sucesso. O e-mail de primeiro acesso foi enviado.");
+      } else if (payload.emailDelivery === "unavailable") {
+        setNotice("Usuario criado. O envio de e-mail nao esta configurado, entao use o link de primeiro acesso abaixo.");
+      } else if (payload.emailDelivery === "failed") {
+        setNotice("Usuario criado. O e-mail nao foi entregue agora, entao use o link de primeiro acesso abaixo.");
+      } else if (payload.inviteLinkWarning) {
+        setNotice("Usuario convidado. Link gerado em modo fallback.");
+      } else {
+        setNotice("Usuario convidado com sucesso.");
+      }
       await loadUsers();
     } catch {
       setError("Falha ao convidar usuário da conta.");
@@ -270,7 +280,7 @@ export default function ClienteUsuariosPage() {
           <form onSubmit={inviteUser} className="space-y-3">
             <CardTitle title="Convidar usuário" subtitle="Adicione operadores com papel, canais e limites claros desde o primeiro acesso." />
             <Field label="Nome" value={inviteForm.name} onChange={(value) => setInviteForm((current) => ({ ...current, name: value }))} />
-            <Field label="E-mail" value={inviteForm.email} onChange={(value) => setInviteForm((current) => ({ ...current, email: value }))} />
+            <Field label="E-mail" type="email" required value={inviteForm.email} onChange={(value) => setInviteForm((current) => ({ ...current, email: value }))} />
             <Field label="Time" value={inviteForm.team} onChange={(value) => setInviteForm((current) => ({ ...current, team: value }))} />
             <label className="block space-y-1">
               <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Perfil</span>
@@ -289,7 +299,7 @@ export default function ClienteUsuariosPage() {
                 className="settings-users-select client-input w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
               >
                 <option value="client_admin">Admin do cliente</option>
-                <option value="client_agent">Atendente</option>
+                <option value="client_agent">Vendedor / atendente</option>
                 <option value="client_viewer">Visualizador</option>
               </select>
             </label>
@@ -403,7 +413,7 @@ export default function ClienteUsuariosPage() {
                         className="settings-users-select client-input rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
                       >
                         <option value="client_admin">Admin do cliente</option>
-                        <option value="client_agent">Atendente</option>
+                        <option value="client_agent">Vendedor / atendente</option>
                         <option value="client_viewer">Visualizador</option>
                       </select>
                       <button
@@ -500,11 +510,13 @@ export default function ClienteUsuariosPage() {
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function Field({ label, value, onChange, type = "text", required = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) {
   return (
     <label className="settings-users-field block space-y-1">
       <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</span>
       <input
+        type={type}
+        required={required}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="settings-users-input client-input w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition placeholder:text-[var(--cliente-card-text-soft)] focus:border-[var(--cliente-border-strong)]"

@@ -163,7 +163,7 @@ function confidenceLabel(value?: number | null) {
 }
 
 export default function ClienteLogsPage() {
-  const { tenant } = useClienteTenant();
+  const { tenant, hasCapability } = useClienteTenant();
   const router = useRouter();
   const searchParams = useSearchParams();
   const searchFromQuery = searchParams.get("q") || "";
@@ -192,6 +192,7 @@ export default function ClienteLogsPage() {
       : "all"
   );
   const [search, setSearch] = useState(searchFromQuery);
+  const canViewAdvancedLogs = hasCapability("manage_ai") || hasCapability("manage_automations");
 
   const loadData = useCallback(async () => {
     if (!tenant?.tenantId) return;
@@ -201,15 +202,19 @@ export default function ClienteLogsPage() {
       setError(null);
 
       const [logsRes, summaryRes] = await Promise.all([
-        authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/automation-summary`),
+        hasCapability("manage_ai")
+          ? authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`)
+          : Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 })),
+        canViewAdvancedLogs
+          ? authedFetch(`/api/tenant/${tenant.tenantId}/automation-summary`)
+          : Promise.resolve(new Response(JSON.stringify({}), { status: 200 })),
       ]);
 
       const logsPayload = (await logsRes.json()) as { items?: AiLog[]; error?: string };
       const summaryPayload = (await summaryRes.json()) as AutomationSummaryResponse;
 
-      if (!logsRes.ok) throw new Error(logsPayload.error || "Falha ao carregar auditoria do assistente.");
-      if (!summaryRes.ok) throw new Error(summaryPayload.error || "Falha ao carregar auditoria operacional.");
+      if (!logsRes.ok && hasCapability("manage_ai")) throw new Error(logsPayload.error || "Falha ao carregar auditoria do assistente.");
+      if (!summaryRes.ok && canViewAdvancedLogs) throw new Error(summaryPayload.error || "Falha ao carregar auditoria operacional.");
 
       setLogs(logsPayload.items || []);
       setSummary(summaryPayload);
@@ -218,7 +223,7 @@ export default function ClienteLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tenant?.tenantId]);
+  }, [canViewAdvancedLogs, hasCapability, tenant?.tenantId]);
 
   useEffect(() => {
     void loadData();

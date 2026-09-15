@@ -8,12 +8,14 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
+    const { searchParams } = new URL(req.url);
+    const attemptRepair = searchParams.get("attemptRepair") === "1";
     if (!hasTenantCapability(membership, "manage_channels") && !hasTenantCapability(membership, "view_metrics")) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para health check dos conectores.");
     }
-
-    const { searchParams } = new URL(req.url);
-    const attemptRepair = searchParams.get("attemptRepair") === "1";
+    if (attemptRepair && !hasTenantCapability(membership, "manage_channels")) {
+      throw new TenantAccessError("tenant_capability_denied", "Apenas quem gerencia canais pode tentar reparos nos conectores.");
+    }
     const summary = await runTenantIntegrationHealthCheck({ tenantId, attemptRepair });
     return NextResponse.json({ ok: true, ...summary });
   } catch (error) {

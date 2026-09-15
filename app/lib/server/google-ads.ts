@@ -1,4 +1,4 @@
-const GOOGLE_ADS_VERSION = process.env.GOOGLE_ADS_API_VERSION || "v22";
+const GOOGLE_ADS_VERSION = process.env.GOOGLE_ADS_API_VERSION || "v25";
 
 function clean(value: unknown, max = 4000) {
   if (typeof value !== "string") return "";
@@ -24,7 +24,7 @@ function getGoogleAdsEnv() {
 
 export function isGoogleAdsServerConfigured() {
   const env = getGoogleAdsEnv();
-  return Boolean(env.clientId && env.clientSecret && env.developerToken);
+  return Boolean(env.clientId && env.clientSecret);
 }
 
 function getGoogleAdsErrorMessage(payload: unknown) {
@@ -100,10 +100,6 @@ export async function fetchGoogleAdsDailyMetrics(input: {
   conversionActionIds?: string[];
 }) {
   const env = getGoogleAdsEnv();
-  if (!env.developerToken) {
-    throw new Error("Servidor sem GOOGLE_ADS_DEVELOPER_TOKEN configurado.");
-  }
-
   const customerId = normalizeCustomerId(input.customerId);
   if (!customerId) {
     throw new Error("Customer ID do Google Ads invalido.");
@@ -128,7 +124,7 @@ export async function fetchGoogleAdsDailyMetrics(input: {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
-          "developer-token": env.developerToken,
+          ...(env.developerToken ? { "developer-token": env.developerToken } : {}),
           ...(loginCustomerId ? { "login-customer-id": loginCustomerId } : {}),
         },
         body: JSON.stringify({ query }),

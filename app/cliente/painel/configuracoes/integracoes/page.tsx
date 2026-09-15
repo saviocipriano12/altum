@@ -174,7 +174,7 @@ function statusTone(status: string): "success" | "warning" | "danger" | "info" |
 
 export default function ClienteIntegracoesPage() {
   const { tenant, hasCapability } = useClienteTenant();
-  const canManage = hasCapability("manage_channels") || hasCapability("manage_settings");
+  const canManage = hasCapability("manage_channels");
   const canHandleActions = canManage || hasCapability("edit_leads");
   const [payload, setPayload] = useState<EcommercePayload | null>(null);
   const [loading, setLoading] = useState(true);

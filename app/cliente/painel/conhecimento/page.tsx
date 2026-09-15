@@ -176,12 +176,14 @@ export default function ClienteConhecimentoPage() {
       setError(null);
       const [docsRes, logsRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`),
+        canManage
+          ? authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`)
+          : Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 })),
       ]);
       const docsPayload = (await docsRes.json()) as { items?: KbDoc[]; error?: string };
       const logsPayload = (await logsRes.json()) as { items?: AiLog[]; error?: string };
       if (!docsRes.ok) throw new Error(docsPayload.error || "Falha ao carregar conhecimento.");
-      if (!logsRes.ok) throw new Error(logsPayload.error || "Falha ao carregar uso da IA.");
+      if (!logsRes.ok && canManage) throw new Error(logsPayload.error || "Falha ao carregar uso da IA.");
       setDocs(docsPayload.items || []);
       setLogs(logsPayload.items || []);
     } catch (loadError) {
@@ -189,7 +191,7 @@ export default function ClienteConhecimentoPage() {
     } finally {
       setLoading(false);
     }
-  }, [tenant?.tenantId]);
+  }, [canManage, tenant?.tenantId]);
 
   useEffect(() => {
     void loadData();

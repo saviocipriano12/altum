@@ -53,6 +53,21 @@ service firebase.storage {
       allow delete: if false;
     }
 
+    // Gravacoes de reuniao sobem direto para o Storage para nao exceder o
+    // limite de payload das funcoes web. A API apaga o arquivo apos transcrever.
+    match /meeting-media/{tenantId}/{userId}/{fileName} {
+      allow create: if (canUploadTenantMedia(tenantId) || isActiveAgencyUser()) &&
+        resource == null &&
+        userId == request.auth.uid &&
+        request.resource.size > 0 &&
+        request.resource.size <= 24 * 1024 * 1024 &&
+        request.resource.contentType is string &&
+        request.resource.contentType.matches("(audio|video)/.*") &&
+        request.resource.metadata.tenantId == tenantId &&
+        request.resource.metadata.uploadedBy == request.auth.uid;
+      allow read, update, delete: if false;
+    }
+
     // Compatibilidade com a gravacao de voz do chat interno da agencia.
     match /chats/{chatId}/{fileName} {
       allow read: if isActiveAgencyUser();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import {
   deleteTenantTrashPermanently,
   listTenantTrash,
@@ -12,7 +12,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
-    assertTenantRole(membership, "client_viewer");
+    assertTenantCapability(membership, "manage_settings");
     return NextResponse.json({ ok: true, items: await listTenantTrash(tenantId) });
   } catch (error) {
     if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message }, { status: error.status });

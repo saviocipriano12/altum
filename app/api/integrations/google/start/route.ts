@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   try {
     if (!isGooglePlatformConfigured()) {
       return NextResponse.json(
-        { error: "Google Ads da plataforma nao configurado. Defina CLIENT_ID/CLIENT_SECRET/DEVELOPER_TOKEN." },
+        { error: "Google Ads da plataforma nao configurado. Defina GOOGLE_ADS_CLIENT_ID e GOOGLE_ADS_CLIENT_SECRET." },
         { status: 503 }
       );
     }

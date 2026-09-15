@@ -4,6 +4,7 @@ import { upsertCampaignSnapshot } from "@/app/lib/server/campaign-sync";
 import { fetchGoogleAdsDailyMetrics } from "@/app/lib/server/google-ads";
 import { resolveAiOperationalAlert, upsertAiOperationalAlert } from "@/lib/server/ai/observability";
 import { decryptSecret } from "@/app/lib/server/secret-crypto";
+import { adportGoogleCredentials, fetchAdportCampaignMetrics, fetchAdportGoogleOperatorReport, fetchAdportMetaCreativeMetrics, fetchAdportMetaOperatorReport, hasAdportGoogleCredentials } from "@/lib/server/growth/adport-connectors";
 
 type TenantChannelItem = {
   id: string;
@@ -42,20 +43,9 @@ type RunTenantCampaignSyncInput = {
   source?: string;
 };
 
-const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
-
 function clean(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
-}
-
-function toNumber(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function toInt(value: unknown) {
-  return Math.max(0, Math.round(toNumber(value)));
 }
 
 function normalizeMetaAccountId(externalId: string) {
@@ -64,30 +54,6 @@ function normalizeMetaAccountId(externalId: string) {
   if (cleaned.startsWith("act_")) return cleaned;
   if (/^\d+$/.test(cleaned)) return `act_${cleaned}`;
   return cleaned;
-}
-
-function sumLeadActions(actions: unknown, filters?: string[]) {
-  if (!Array.isArray(actions)) return 0;
-  const normalizedFilters = Array.isArray(filters)
-    ? filters.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean)
-    : [];
-  let total = 0;
-  for (const action of actions) {
-    const item = action as { action_type?: string; value?: unknown };
-    const actionType = String(item.action_type || "").toLowerCase();
-    const matchesDefaultLeadPattern =
-      actionType.includes("lead") ||
-      actionType.includes("offsite_conversion.fb_pixel_lead") ||
-      actionType.includes("onsite_conversion.lead_grouped");
-    const matchesFilter =
-      normalizedFilters.length === 0
-        ? matchesDefaultLeadPattern
-        : normalizedFilters.some((filter) => actionType.includes(filter));
-    if (matchesFilter) {
-      total += toNumber(item.value);
-    }
-  }
-  return Math.max(0, Math.round(total));
 }
 
 function buildDateRefs(days: number) {
@@ -177,54 +143,61 @@ async function syncMetaChannel(input: {
     throw new Error("Canal Meta Ads sem ad account ID ou access token.");
   }
 
-  const fields = ["impressions", "clicks", "spend", "actions"].join(",");
-  const timeRange = encodeURIComponent(JSON.stringify({ since: input.dateRef, until: input.dateRef }));
-  const url =
-    `https://graph.facebook.com/${VERSION}/${externalId}/insights` +
-    `?fields=${fields}` +
-    `&level=account` +
-    `&time_range=${timeRange}`;
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${input.accessToken}`,
-    },
-    cache: "no-store",
-  });
-
-  const payload = (await response.json()) as {
-    data?: Array<{
-      impressions?: unknown;
-      clicks?: unknown;
-      spend?: unknown;
-      actions?: unknown;
-    }>;
-    error?: { message?: string };
+  const connectorInput = {
+    platform: "meta_ads" as const,
+    accountId: externalId,
+    accessToken: input.accessToken,
+    actionTypeFilters: input.actionTypeFilters,
+    dateRef: input.dateRef,
   };
-
-  if (!response.ok) {
-    throw new Error(payload.error?.message || "Falha ao sincronizar Meta Ads.");
-  }
-
-  const row = payload.data?.[0];
-  const impressions = toInt(row?.impressions);
-  const clicks = toInt(row?.clicks);
-  const spend = Number(toNumber(row?.spend).toFixed(2));
-  const leads = sumLeadActions(row?.actions, input.actionTypeFilters);
-  await upsertCampaignSnapshot({
+  const [campaigns, creatives] = await Promise.all([
+    fetchAdportCampaignMetrics(connectorInput),
+    fetchAdportMetaCreativeMetrics(connectorInput),
+  ]);
+  await Promise.all([
+    ...campaigns.map((campaign) => upsertCampaignSnapshot({
     tenantId: input.tenantId,
     clientId: input.tenantId,
-    adAccountId: input.channelId,
+    adAccountId: externalId,
     channelId: input.channelId,
     platform: "meta_ads",
     dateRef: input.dateRef,
-    impressions,
-    clicks,
-    spend,
-    leads,
+    impressions: campaign.impressions,
+    clicks: campaign.clicks,
+    spend: campaign.spend,
+    leads: campaign.leads,
+    roas: campaign.roas,
+    campaignId: campaign.campaignId,
+    campaignName: campaign.campaignName,
     source: "api",
-  });
+    })),
+    ...creatives.map((creative) => {
+      const snapshotId = [input.tenantId, input.channelId, creative.adId, input.dateRef]
+        .map((part) => clean(part, 180).replaceAll("/", "_"))
+        .join("_");
+      return adminDb.collection("ad_creative_snapshots").doc(snapshotId).set({
+        tenantId: input.tenantId,
+        clientId: input.tenantId,
+        channelId: input.channelId,
+        adAccountId: externalId,
+        platform: "meta_ads",
+        dateRef: input.dateRef,
+        campaignId: creative.campaignId || null,
+        campaignName: creative.campaignName || null,
+        adId: creative.adId,
+        adName: creative.adName,
+        impressions: creative.impressions,
+        clicks: creative.clicks,
+        spend: creative.spend,
+        ctr: creative.ctr,
+        cpc: creative.cpc,
+        frequency: creative.frequency,
+        source: "api",
+        updatedAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }),
+  ]);
 }
 
 async function syncGoogleChannel(input: {
@@ -237,6 +210,32 @@ async function syncGoogleChannel(input: {
   conversionActionIds?: string[];
   dateRef: string;
 }) {
+  if (!input.conversionActionIds?.length && hasAdportGoogleCredentials({ refreshToken: input.refreshToken })) {
+    const campaigns = await fetchAdportCampaignMetrics({
+      platform: "google_ads",
+      accountId: input.externalAccountId,
+      dateRef: input.dateRef,
+      ...adportGoogleCredentials({ refreshToken: input.refreshToken, loginCustomerId: input.loginCustomerId }),
+    });
+    await Promise.all(campaigns.map((campaign) => upsertCampaignSnapshot({
+      tenantId: input.tenantId,
+      clientId: input.tenantId,
+      adAccountId: input.externalAccountId,
+      channelId: input.channelId,
+      platform: "google_ads",
+      dateRef: input.dateRef,
+      impressions: campaign.impressions,
+      clicks: campaign.clicks,
+      spend: campaign.spend,
+      leads: campaign.leads,
+      roas: campaign.roas,
+      campaignId: campaign.campaignId,
+      campaignName: campaign.campaignName,
+      source: "api",
+    })));
+    return;
+  }
+
   const metrics = await fetchGoogleAdsDailyMetrics({
     customerId: input.externalAccountId,
     dateRef: input.dateRef,
@@ -422,6 +421,43 @@ export async function runTenantCampaignSync(
           });
         }
       }
+      const refreshToken = clean(decryptSecret(channel.refreshToken), 4000);
+      const accountId = clean(channel.externalAccountId, 180).replace(/[^\d]/g, "");
+      if (accountId && hasAdportGoogleCredentials({ refreshToken })) {
+        try {
+          const report = await fetchAdportGoogleOperatorReport({
+            platform: "google_ads",
+            accountId,
+            channelId: channel.id,
+            from: dateRefs[0],
+            to: dateRefs[dateRefs.length - 1],
+            currency: clean(metadata.currency, 3) || "BRL",
+            ...adportGoogleCredentials({ refreshToken, loginCustomerId: clean(metadata.loginCustomerId, 180) || clean(channel.pageId, 180) }),
+          });
+          const reportId = `${tenantId}_${channel.id}`.replaceAll("/", "_");
+          await adminDb.collection("google_ads_operator_reports").doc(reportId).set({
+            tenantId,
+            channelId: channel.id,
+            accountId,
+            report,
+            generatedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            source: "campaign_sync_job",
+          }, { merge: true });
+        } catch (error) {
+          await adminDb.collection("campaign_sync_logs").add({
+            tenantId,
+            channelId: channel.id,
+            platform: "google_ads",
+            ok: false,
+            scope: "operator_report",
+            error: clean(error instanceof Error ? error.message : "Falha no relatorio do operador.", 800),
+            runId: clean(input.runId, 160) || null,
+            source: clean(input.source, 80) || "campaign_sync_job",
+            createdAt: FieldValue.serverTimestamp(),
+          });
+        }
+      }
       continue;
     }
 
@@ -522,6 +558,16 @@ export async function runTenantCampaignSync(
           error: finalMessage,
           attempts: maxAttempts,
         });
+      }
+    }
+    const metaAccessToken = clean(decryptSecret(channel.accessToken), 4000);
+    const metaAccountId = clean(channel.externalAccountId, 180);
+    if (metaAccessToken && metaAccountId) {
+      try {
+        const report = await fetchAdportMetaOperatorReport({ platform: "meta_ads", accountId: metaAccountId, channelId: channel.id, accessToken: metaAccessToken, appId: clean(metadata.appId, 180) || undefined, appSecret: clean(metadata.appSecret, 4000) || undefined, actionTypeFilters: metaActionTypeFilters, currency: clean(metadata.currency, 3) || "BRL", from: dateRefs[0], to: dateRefs[dateRefs.length - 1] });
+        await adminDb.collection("meta_ads_operator_reports").doc(`${tenantId}_${channel.id}`.replaceAll("/", "_")).set({ tenantId, channelId: channel.id, accountId: report.accountId, report, generatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), source: "campaign_sync_job" }, { merge: true });
+      } catch (error) {
+        await adminDb.collection("campaign_sync_logs").add({ tenantId, channelId: channel.id, platform: "meta_ads", ok: false, scope: "operator_report", error: clean(error instanceof Error ? error.message : "Falha no relatorio do operador.", 800), runId: clean(input.runId, 160) || null, source: clean(input.source, 80) || "campaign_sync_job", createdAt: FieldValue.serverTimestamp() });
       }
     }
   }

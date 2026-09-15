@@ -108,7 +108,7 @@ export function getGoogleAdsEnv() {
     clientId: clean(process.env.GOOGLE_ADS_CLIENT_ID, 300),
     clientSecret: clean(process.env.GOOGLE_ADS_CLIENT_SECRET, 300),
     developerToken: clean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN, 300),
-    apiVersion: clean(process.env.GOOGLE_ADS_API_VERSION, 20) || "v22",
+    apiVersion: clean(process.env.GOOGLE_ADS_API_VERSION, 20) || "v25",
   };
 }
 
@@ -186,7 +186,7 @@ export function isMetaPlatformConfigured() {
 
 export function isGooglePlatformConfigured() {
   const env = getGoogleAdsEnv();
-  return Boolean(env.clientId && env.clientSecret && env.developerToken);
+  return Boolean(env.clientId && env.clientSecret);
 }
 
 export async function createIntegrationOAuthState(input: {

@@ -67,12 +67,19 @@ function cleanDays(value: unknown) {
 
 function cleanTime(value: unknown, fallback: string) {
   const candidate = cleanText(value, 5);
-  return /^\d{2}:\d{2}$/.test(candidate) ? candidate : fallback;
+  if (!/^\d{2}:\d{2}$/.test(candidate)) return fallback;
+  const [hour, minute] = candidate.split(":").map((item) => Number(item));
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59 ? candidate : fallback;
 }
 
 function cleanTimezone(value: unknown, fallback: string) {
-  const candidate = cleanText(value, 80);
-  return candidate || fallback;
+  const candidate = cleanText(value, 80) || fallback;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format(new Date());
+    return candidate;
+  } catch {
+    return fallback || "America/Sao_Paulo";
+  }
 }
 
 function cleanStringList(value: unknown, maxItems: number, maxLength: number) {
@@ -236,7 +243,8 @@ export function isWithinSocialActiveHours(
   activeHours: SocialActiveHours,
   now = new Date()
 ) {
-  const { dayOfWeek, minutes } = extractTimeParts(now, activeHours.timezone);
+  const timezone = cleanTimezone(activeHours.timezone, "America/Sao_Paulo");
+  const { dayOfWeek, minutes } = extractTimeParts(now, timezone);
   if (!activeHours.days.includes(dayOfWeek)) {
     return false;
   }

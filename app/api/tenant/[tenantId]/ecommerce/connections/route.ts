@@ -58,8 +58,21 @@ function rowFromDoc(doc: FirebaseFirestore.QueryDocumentSnapshot) {
 }
 
 async function tenantRows(collectionName: string, tenantId: string, limit: number) {
-  const snap = await adminDb.collection(collectionName).where("tenantId", "==", tenantId).limit(limit).get();
-  return snap.docs.map(rowFromDoc);
+  try {
+    const snap = await adminDb
+      .collection(collectionName)
+      .where("tenantId", "==", tenantId)
+      .orderBy("updatedAt", "desc")
+      .limit(limit)
+      .get();
+    return snap.docs.map(rowFromDoc);
+  } catch (error) {
+    console.warn(`Consulta ordenada indisponivel para ${collectionName}; usando fallback local.`, error);
+    const snap = await adminDb.collection(collectionName).where("tenantId", "==", tenantId).limit(limit).get();
+    return snap.docs
+      .map(rowFromDoc)
+      .sort((a, b) => (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || ""));
+  }
 }
 
 export async function GET(req: Request, context: { params: Promise<{ tenantId: string }> }) {

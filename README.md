@@ -53,7 +53,7 @@ O projeto depende de chaves de plataforma e segredos operacionais. Os grupos mai
 - `META_APP_ID`, `META_APP_SECRET`, `META_VERIFY_TOKEN`
 - `META_WA_TOKEN` e/ou `META_ADS_ACCESS_TOKEN`
 - `EVOLUTION_API_URL` e `EVOLUTION_API_KEY` (conexao QR gerenciada pela Altum)
-- `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_DEVELOPER_TOKEN`
+- `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET` e `GOOGLE_ADS_API_VERSION` (`GOOGLE_ADS_DEVELOPER_TOKEN` apenas para compatibilidade legada)
 - `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`
 - `AI_JOBS_PROCESS_TOKEN`, `AUTOMATION_JOBS_PROCESS_TOKEN`, `CAMPAIGN_SYNC_TOKEN`, `CHAT_OUTBOUND_PROCESS_TOKEN` ou `CRON_SECRET`
 - `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY`
@@ -69,6 +69,7 @@ npm run lint
 npm run typecheck
 npm run test:smoke
 npm run test:agent-closure
+npm run test:mcp
 ```
 
 Verificacao de deploy:
@@ -103,6 +104,30 @@ npm run outbound:queue:check
 ```
 
 O runbook da VPS esta em `infra/jobs/README.md`.
+
+## MCP Altum
+
+O MCP da Altum e um command center com 35 ferramentas de leitura e rascunhos supervisionados em modo local e remoto. Codex, Claude, ChatGPT web e outros clientes MCP podem consultar a operacao, crescimento, jornada de receita, Google Ads e Meta Ads; tambem podem preparar configuracoes, segmentos e mudancas de campanha. Toda acao real passa por previa, aprovacao humana, validacao no provedor e auditoria. O MCP nao envia mensagens, nao cria cobrancas nem exclui dados.
+
+Runbook: `docs/mcp/setup.md`.
+
+Demo isolado com dados ficticios:
+
+```bash
+npm run mcp:demo
+```
+
+Servidor local real, depois de configurar as variaveis `ALTUM_MCP_ENABLED`, `MCP_CONTEXT_SECRET`, `MCP_READ_GRANTS`, `ALTUM_MCP_BASE_URL` e `ALTUM_MCP_TOKEN_FILE`:
+
+```bash
+npm run mcp:start
+```
+
+Para ChatGPT web, publique a Altum em HTTPS, configure `ALTUM_PUBLIC_URL`, habilite o tenant em `Configuracoes > MCP` e use a URL remota:
+
+```text
+https://app.seudominio.com/api/mcp/remote
+```
 
 ## Go-live por tenant
 

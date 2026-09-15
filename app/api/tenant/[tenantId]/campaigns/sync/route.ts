@@ -17,7 +17,7 @@ export async function POST(
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
     await assertTenantModule(tenantId, "marketing");
-    if (!hasTenantCapability(membership, "manage_channels") && !hasTenantCapability(membership, "view_metrics")) {
+    if (!hasTenantCapability(membership, "manage_channels") && !hasTenantCapability(membership, "manage_automations")) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para sincronizar campanhas.");
     }
 

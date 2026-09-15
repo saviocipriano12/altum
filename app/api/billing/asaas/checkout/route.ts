@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { getDefaultTenantMembershipForUser } from "@/lib/server/tenant";
+import { getDefaultTenantMembershipForUser, getTenantMembershipForUser } from "@/lib/server/tenant";
 import { getPlatformPlan } from "@/lib/server/platform-plans";
 import { requireFirebaseUser, SelfServiceAuthError, timestampToMillis } from "@/lib/server/self-service-auth";
 import { buildAsaasRecurringCheckoutPayload } from "@/lib/asaas-checkout";
@@ -17,7 +17,11 @@ function clean(value: unknown, max = 300) {
 export async function POST(req: Request) {
   try {
     const actor = await requireFirebaseUser(req);
-    const membership = await getDefaultTenantMembershipForUser(actor.uid);
+    const body = (await req.json()) as { planId?: unknown; cpfCnpj?: unknown; tenantId?: unknown };
+    const requestedTenantId = clean(body.tenantId, 180);
+    const membership = requestedTenantId
+      ? await getTenantMembershipForUser(actor.uid, requestedTenantId)
+      : await getDefaultTenantMembershipForUser(actor.uid);
     if (!membership || membership.status !== "active") {
       return NextResponse.json({ error: "Conta da empresa nao encontrada." }, { status: 403 });
     }
@@ -25,7 +29,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Apenas o responsavel pela conta pode contratar um plano." }, { status: 403 });
     }
 
-    const body = (await req.json()) as { planId?: unknown; cpfCnpj?: unknown };
     const cpfCnpj = normalizeBrazilianDocument(body.cpfCnpj);
     if (!isValidBrazilianDocument(cpfCnpj)) {
       return NextResponse.json({ error: "Informe um CPF ou CNPJ valido para o checkout seguro." }, { status: 400 });

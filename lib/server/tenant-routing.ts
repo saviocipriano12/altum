@@ -6,6 +6,7 @@ type TenantOperator = {
   userId: string;
   name: string;
   team: string;
+  teamId: string;
   availability: "online" | "busy" | "offline";
   allowedChannels: string[];
   maxOpenChats: number | null;
@@ -14,6 +15,46 @@ type TenantOperator = {
 function clean(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+function normalizeTeamId(value: unknown) {
+  return clean(value, 80).toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+}
+
+function getLocalBusinessDateParts(timezone: string) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone || "America/Sao_Paulo",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
+  return {
+    weekday: String(parts.weekday || "").toLowerCase(),
+    minutes: Number(parts.hour || 0) * 60 + Number(parts.minute || 0),
+  };
+}
+
+function parseHourToMinutes(value: string) {
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+function isWithinBusinessHours(settings: Record<string, unknown> | null) {
+  const raw = clean(settings?.businessHours, 240) || "Seg-Sex 09:00-18:00";
+  const match = raw.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
+  const start = parseHourToMinutes(match?.[1] || "09:00") ?? 9 * 60;
+  const end = parseHourToMinutes(match?.[2] || "18:00") ?? 18 * 60;
+  const { weekday, minutes } = getLocalBusinessDateParts(clean(settings?.timezone, 80) || "America/Sao_Paulo");
+  const isWeekend = weekday === "sat" || weekday === "sun";
+  const weekdaysOnly = /seg\s*[-a]\s*sex|mon\s*[-a]\s*fri/i.test(raw) || !/sab|dom|sat|sun/i.test(raw);
+  if (weekdaysOnly && isWeekend) return false;
+  return minutes >= start && minutes <= end;
 }
 
 function getInboxRules(settings: Record<string, unknown> | null) {
@@ -33,6 +74,21 @@ function getInboxRules(settings: Record<string, unknown> | null) {
     preferOnlineAgents: inbox.preferOnlineAgents !== false,
     strictChannelRouting: inbox.strictChannelRouting === true,
     fallbackToAnyAgent: inbox.fallbackToAnyAgent !== false,
+    businessHoursOnly: inbox.businessHoursOnly === true,
+    defaultTeam: normalizeTeamId(inbox.defaultTeam) || "comercial",
+    teams: Array.isArray(inbox.teams)
+      ? inbox.teams
+          .map((item) => {
+            const team = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+            return {
+              id: normalizeTeamId(team.id || team.name),
+              channels: parseStringList(team.channels),
+              isDefault: team.isDefault === true,
+            };
+          })
+          .filter((item) => item.id)
+          .slice(0, 20)
+      : [],
     lastAssignedUserId: clean(inbox.lastAssignedUserId, 140),
   };
 }
@@ -89,6 +145,7 @@ export async function listTenantOperators(tenantId: string) {
         userId,
         name: clean(userData.name, 140) || clean(data.name, 140) || "Usuario",
         team: clean(data.team, 80) || "operacao",
+        teamId: normalizeTeamId(data.team) || "operacao",
         availability: normalizeAvailability(data.availability),
         allowedChannels: parseStringList(data.allowedChannels),
         maxOpenChats: (() => {
@@ -136,6 +193,14 @@ function filterEligibleOperators(input: {
 }) {
   const channel = clean(input.channel, 40).toLowerCase();
   let eligible = [...input.operators];
+  const channelTeamIds = channel
+    ? input.rules.teams.filter((team) => team.channels.length === 0 || team.channels.includes(channel)).map((team) => team.id)
+    : [];
+  const preferredTeamIds = channelTeamIds.length > 0 ? channelTeamIds : [input.rules.defaultTeam].filter(Boolean);
+  const teamMatched = eligible.filter((item) => preferredTeamIds.includes(item.teamId));
+  if (teamMatched.length > 0) {
+    eligible = teamMatched;
+  }
 
   if (input.rules.preferOnlineAgents) {
     const online = eligible.filter((item) => item.availability === "online");
@@ -181,6 +246,9 @@ export async function resolveInboundAssignment(
   if (!rules.autoAssignOnInbound) {
     return null;
   }
+  if (rules.businessHoursOnly && !isWithinBusinessHours((settings || null) as Record<string, unknown> | null)) {
+    return null;
+  }
 
   const operators = await listTenantOperators(tenantId);
   if (operators.length === 0) return null;
@@ -221,10 +289,14 @@ export async function resolveInboundAssignment(
   await adminDb.collection("tenant_settings").doc(tenantId).set(
     {
       tenantId,
-      "rules.inbox.assignmentMode": rules.assignmentMode,
-      "rules.inbox.autoAssignOnInbound": true,
-      "rules.inbox.lastAssignedUserId": next.userId,
-      "rules.inbox.lastAssignedAt": FieldValue.serverTimestamp(),
+      rules: {
+        inbox: {
+          assignmentMode: rules.assignmentMode,
+          autoAssignOnInbound: true,
+          lastAssignedUserId: next.userId,
+          lastAssignedAt: FieldValue.serverTimestamp(),
+        },
+      },
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }

@@ -32,6 +32,12 @@ export default function ClientTrashPage() {
 
   const load = useCallback(async () => {
     if (!tenant?.tenantId) return;
+    if (!canRestore) {
+      setItems([]);
+      setLoading(false);
+      setError("");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -44,7 +50,7 @@ export default function ClientTrashPage() {
     } finally {
       setLoading(false);
     }
-  }, [tenant?.tenantId]);
+  }, [canRestore, tenant?.tenantId]);
 
   useEffect(() => {
     void load();
@@ -103,7 +109,11 @@ export default function ClientTrashPage() {
         }
       />
       {error ? <div className="rounded-[16px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-      {loading ? (
+      {!canRestore ? (
+        <PanelCard className="p-6">
+          <EmptyState title="Acesso restrito" description="A lixeira guarda dados sensiveis apagados. Apenas admins da conta podem consultar, restaurar ou excluir definitivamente." />
+        </PanelCard>
+      ) : loading ? (
         <div className="flex min-h-48 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[var(--cliente-primary)]" /></div>
       ) : items.length ? (
         <PanelCard className="overflow-hidden p-0">

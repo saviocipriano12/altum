@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 
 type AiLogItem = {
@@ -43,7 +43,7 @@ export async function GET(
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
     await assertTenantModule(tenantId, "ai");
-    assertTenantRole(membership, "client_viewer");
+    assertTenantCapability(membership, "manage_ai");
 
     const snap = await adminDb.collection("ai_logs").where("tenantId", "==", tenantId).limit(150).get();
     const items: AiLogItem[] = snap.docs

@@ -16,6 +16,7 @@ import { recordInboundLead } from "@/lib/server/lead-intake";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
 import { assertPublicRateLimit, PublicRateLimitError } from "@/lib/server/public-abuse";
+import { recordNativeGrowthEvent } from "@/lib/server/growth/record-event";
 
 type Body = {
   nome?: string;
@@ -219,6 +220,16 @@ export async function POST(
     }
 
     await chatRef.set(chatPayload, { merge: true });
+
+    await recordNativeGrowthEvent({
+      tenantId,
+      eventId: `site-chat:${chatRef.id}:${Date.now()}`,
+      name: "form_submitted",
+      externalId: intake.leadId,
+      url: landingPage,
+      properties: { formId, chatId: chatRef.id, channel: "site_chat" },
+      attribution: { source: utmSource, medium: utmMedium || "chat", campaign: utmCampaign, content: utmContent, term: utmTerm, gclid, fbclid },
+    }).catch((error) => console.error("Falha ao registrar evento nativo do chat:", error));
 
     await upsertContactProfile({
       tenantId,

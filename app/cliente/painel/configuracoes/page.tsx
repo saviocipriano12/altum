@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Package,
   Plug,
+  PlugZap,
   RefreshCw,
   Rocket,
   Send,
@@ -36,12 +37,14 @@ type SettingsPayload = {
     businessProfileId?: string;
     phone?: string;
     website?: string;
-    inboxRules?: {
-      defaultResponseSlaMinutes?: number;
-      mode?: string;
-      businessHoursOnly?: boolean;
-      defaultTeam?: string;
-      teams?: Array<{ id?: string; name?: string }>;
+    rules?: {
+      inbox?: {
+        firstResponseSlaMinutes?: number;
+        assignmentMode?: string;
+        businessHoursOnly?: boolean;
+        defaultTeam?: string;
+        teams?: Array<{ id?: string; name?: string }>;
+      };
     };
   };
   error?: string;
@@ -381,6 +384,7 @@ export default function ClienteConfiguracoesPage() {
   }
 
   const summary = useMemo(() => {
+    const inboxRules = settings?.rules?.inbox;
     const activeUsers = (users || []).filter((item) => item.status !== "blocked").length;
     const onlineUsers = (users || []).filter(
       (item) => item.status !== "blocked" && String(item.availability || "online") === "online"
@@ -392,7 +396,7 @@ export default function ClienteConfiguracoesPage() {
           .filter(Boolean)
       )
     ).length;
-    const managedTeams = Array.isArray(settings?.inboxRules?.teams) ? settings.inboxRules.teams.length : 0;
+    const managedTeams = Array.isArray(inboxRules?.teams) ? inboxRules.teams.length : 0;
     const activeChannels = (channels || []).filter((item) => item.status === "active").length;
     const operationalChannels = (channels || []).filter((item) =>
       ["whatsapp", "instagram", "messenger"].includes(String(item.type || ""))
@@ -410,8 +414,8 @@ export default function ClienteConfiguracoesPage() {
       activeChannels > 0,
       operationalChannels > 0,
       activeForms > 0,
-      Boolean(settings?.inboxRules?.defaultResponseSlaMinutes),
-      Boolean(settings?.inboxRules?.defaultTeam),
+      Boolean(inboxRules?.firstResponseSlaMinutes),
+      Boolean(inboxRules?.defaultTeam),
       Boolean(ai?.responsiblePhone),
       Array.isArray(ai?.guardrails) && ai.guardrails.length > 0,
     ];
@@ -420,8 +424,8 @@ export default function ClienteConfiguracoesPage() {
       Boolean(settings?.phone || settings?.website) &&
       activeUsers > 0 &&
       (operationalChannels > 0 || activeForms > 0) &&
-      Boolean(settings?.inboxRules?.defaultResponseSlaMinutes) &&
-      Boolean(settings?.inboxRules?.defaultTeam) &&
+      Boolean(inboxRules?.firstResponseSlaMinutes) &&
+      Boolean(inboxRules?.defaultTeam) &&
       ai?.enabled !== false &&
       Boolean(ai?.responsiblePhone) &&
       (Array.isArray(ai?.guardrails) ? ai.guardrails.length > 0 : false);
@@ -446,9 +450,9 @@ export default function ClienteConfiguracoesPage() {
       hasAiOwner: Boolean(ai?.responsiblePhone),
       aiEnabled: ai?.enabled !== false,
       guardrails: Array.isArray(ai?.guardrails) ? ai?.guardrails.length : 0,
-      hasSla: Boolean(settings?.inboxRules?.defaultResponseSlaMinutes),
-      hasDefaultTeam: Boolean(settings?.inboxRules?.defaultTeam),
-      businessHoursOnly: Boolean(settings?.inboxRules?.businessHoursOnly),
+      hasSla: Boolean(inboxRules?.firstResponseSlaMinutes),
+      hasDefaultTeam: Boolean(inboxRules?.defaultTeam),
+      businessHoursOnly: Boolean(inboxRules?.businessHoursOnly),
       pilotReady,
       readinessScore,
     };
@@ -458,10 +462,7 @@ export default function ClienteConfiguracoesPage() {
     ai?.responsiblePhone,
     channels,
     forms,
-    settings?.inboxRules?.businessHoursOnly,
-    settings?.inboxRules?.defaultResponseSlaMinutes,
-    settings?.inboxRules?.defaultTeam,
-    settings?.inboxRules?.teams,
+    settings?.rules?.inbox,
     settings?.businessProfileId,
     settings?.name,
     settings?.niche,
@@ -664,6 +665,17 @@ export default function ClienteConfiguracoesPage() {
       badge: "conectores",
       tone: "info" as const,
     },
+    ...(hasCapability("manage_settings")
+      ? [{
+      href: "/cliente/painel/configuracoes/mcp",
+      title: "MCP e assistentes conectados",
+      description: "Conecte Codex, Claude, ChatGPT e outros clientes MCP para operar a Altum pelo chat com controle de acesso.",
+      icon: PlugZap,
+      badge: "MCP",
+      tone: "info" as const,
+      featured: true,
+    }]
+      : []),
     {
       href: "/cliente/painel/produtos-servicos",
       title: "Produtos & Serviços",
@@ -701,9 +713,9 @@ export default function ClienteConfiguracoesPage() {
     {
       href: "/cliente/painel/configuracoes/operacao",
       title: "Operacao de atendimento",
-      description: `Distribuicao em modo ${settings?.inboxRules?.mode || "manual"} e meta de resposta de ${settings?.inboxRules?.defaultResponseSlaMinutes || 15} min.`,
+      description: `Distribuicao em modo ${settings?.rules?.inbox?.assignmentMode || "manual"} e meta de resposta de ${settings?.rules?.inbox?.firstResponseSlaMinutes || 15} min.`,
       icon: Shuffle,
-      badge: settings?.inboxRules?.businessHoursOnly ? "horario comercial" : "24/7",
+      badge: settings?.rules?.inbox?.businessHoursOnly ? "horario comercial" : "24/7",
       tone: "info" as const,
     },
    ];
@@ -917,7 +929,7 @@ export default function ClienteConfiguracoesPage() {
                     />
                     <Insight
                       title="Fluxo da operacao"
-                      description={`Distribuicao atual em modo ${settings?.inboxRules?.mode || "manual"} com meta de resposta de ${settings?.inboxRules?.defaultResponseSlaMinutes || 15} minutos.`}
+                      description={`Distribuicao atual em modo ${settings?.rules?.inbox?.assignmentMode || "manual"} com meta de resposta de ${settings?.rules?.inbox?.firstResponseSlaMinutes || 15} minutos.`}
                     />
                     <Insight
                       title="Carga atual dos canais"

@@ -194,6 +194,7 @@ const PRIMARY_NAV: NavItem[] = [
     capability: "manage_settings",
     aliases: [
       { href: "/cliente/painel/configuracoes", label: "Visao geral" },
+      { href: "/cliente/painel/configuracoes/mcp", label: "MCP", capability: "manage_settings" },
       { href: "/cliente/painel/onboarding", label: "Implantacao guiada", capability: "manage_settings" },
       { href: "/cliente/painel/configuracoes/lixeira", label: "Lixeira", capability: "manage_settings" },
     ],
@@ -208,7 +209,9 @@ const PRIMARY_NAV: NavItem[] = [
   },
 ];
 
-const ADVANCED_LINKS: NavAlias[] = [];
+const ADVANCED_LINKS: NavAlias[] = [
+  { href: "/cliente/painel/configuracoes/mcp", label: "MCP", capability: "manage_settings" },
+];
 const ALTUM_SUPPORT_WHATSAPP_URL =
   "https://wa.me/5531972545430?text=Oi%2C%20preciso%20de%20ajuda%20com%20a%20plataforma%20Altum.";
 const NAV_GROUPS: Array<{ id: NavItem["group"]; label: string }> = [

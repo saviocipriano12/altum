@@ -26,6 +26,7 @@ import {
   PanelCard,
   StateBadge,
 } from "@/app/cliente/painel/components/ui";
+import { AdsOperatorNav } from "./components/ads-operator-nav";
 
 type CampaignStatus = "draft" | "active" | "paused";
 
@@ -240,7 +241,7 @@ function percent(value?: number | null) {
 export default function ClienteCampanhasPage() {
   const { tenant, hasCapability } = useClienteTenant();
   const canManage = hasCapability("manage_automations");
-  const canSyncCampaigns = hasCapability("view_metrics") || hasCapability("manage_channels");
+  const canSyncCampaigns = hasCapability("manage_channels") || hasCapability("manage_automations");
 
   const [loading, setLoading] = useState(true);
   const [syncingCampaigns, setSyncingCampaigns] = useState(false);
@@ -254,6 +255,9 @@ export default function ClienteCampanhasPage() {
   const [formsPayload, setFormsPayload] = useState<CaptureFormsPayload | null>(null);
   const [catalogDocs, setCatalogDocs] = useState<CatalogDoc[]>([]);
   const paidCampaigns = useMemo(() => metrics?.commercialAttribution?.byCampaign || [], [metrics?.commercialAttribution?.byCampaign]);
+  const paidSales = paidCampaigns.reduce((sum, item) => sum + Number(item.wonLeads || 0), 0);
+  const paidMeetings = paidCampaigns.reduce((sum, item) => sum + Number(item.meetings || 0), 0);
+  const qualifiedPaidLeads = paidCampaigns.reduce((sum, item) => sum + Number(item.qualifiedLeads || 0), 0);
   const activeForms = formsPayload?.forms?.filter((form) => form.status === "active").length || 0;
   const totalFormSubmissions = formsPayload?.forms?.reduce((sum, form) => sum + Number(form.submissionsCount || 0), 0) || 0;
   const growthSnapshot = useMemo(() => {
@@ -424,18 +428,19 @@ export default function ClienteCampanhasPage() {
 
   return (
     <div className="campanhas-refined client-daily-page space-y-4">
+      <AdsOperatorNav active="overview" />
       <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_12%,var(--cliente-card)),var(--cliente-card)_52%,color-mix(in_srgb,var(--cliente-ai)_8%,var(--cliente-card)))] p-4 shadow-[var(--cliente-shadow-soft)] md:p-5">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div>
             <div className="flex flex-wrap gap-2">
               <StateBadge label="Crescimento" tone="info" />
-              <StateBadge label="Trafego -> venda" tone="ai" />
+              <StateBadge label="Do tráfego à venda" tone="ai" />
             </div>
             <h1 className="mt-4 max-w-3xl text-2xl font-extrabold leading-tight tracking-normal text-[var(--cliente-card-text)] md:text-[2rem]">
-              Campanhas conectadas ao atendimento e ao dinheiro.
+              Veja rápido se suas campanhas estão trazendo negócio.
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-muted)]">
-              Anuncios, UTMs, formularios, WhatsApp e ofertas em uma leitura comercial.
+              Investimento, leads, vendas e próximos passos em uma leitura clara. A operação detalhada fica disponível por plataforma.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {canManage ? (
@@ -486,10 +491,10 @@ export default function ClienteCampanhasPage() {
       {notice ? <div className="rounded-[24px] border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">{notice}</div> : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Campanhas pagas" value={String(summary.paidCampaigns)} icon={BarChart3} trend={`${summary.activePaidCampaigns} ativa(s) nos ultimos 7 dias`} tone="brand" />
-        <MetricCard label="Gasto em midia" value={money(summary.spend)} icon={DollarSign} trend={`CPL ${money(metrics?.traffic?.cpl || 0)}`} tone="brand" />
-        <MetricCard label="Campanhas WhatsApp" value={String(summary.total)} icon={Megaphone} trend={`${summary.active} ativa(s)`} tone="ai" />
-        <MetricCard label="Retorno para pixels" value={`${conversionHealthSummary.ready}/${conversionHealthSummary.total}`} icon={ShieldCheck} trend={conversionHealthSummary.label} tone={conversionHealthSummary.tone === "danger" ? "danger" : conversionHealthSummary.tone} />
+        <MetricCard label="Investimento em anúncios" value={money(summary.spend)} icon={DollarSign} trend={`${summary.activePaidCampaigns} campanha(s) ativa(s)`} tone="brand" />
+        <MetricCard label="Leads dos anúncios" value={String(summary.paidLeads)} icon={Target} trend={`${qualifiedPaidLeads} qualificado(s)`} tone="success" />
+        <MetricCard label="Vendas das campanhas" value={String(paidSales)} icon={BarChart3} trend={`${paidMeetings} reunião(ões) gerada(s)`} tone="ai" />
+        <MetricCard label="Custo por lead" value={money(metrics?.traffic?.cpl || 0)} icon={Megaphone} trend={`${summary.paidCampaigns} campanha(s) acompanhada(s)`} />
       </section>
 
       <GrowthCommandCenter

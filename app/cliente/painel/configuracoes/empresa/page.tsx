@@ -71,7 +71,11 @@ export default function ClienteEmpresaPage() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!tenant?.tenantId || !canManage) return;
+    if (!tenant?.tenantId) return;
+    if (!canManage) {
+      setError("Seu perfil pode consultar estes dados, mas nao pode alterar configuracoes da empresa.");
+      return;
+    }
 
     try {
       setSaving(true);
@@ -103,7 +107,7 @@ export default function ClienteEmpresaPage() {
         action={
           <Link
             href="/cliente/painel/configuracoes"
-            className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/72 transition hover:bg-white/[0.08]"
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)]"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Voltar
@@ -115,48 +119,55 @@ export default function ClienteEmpresaPage() {
         <PanelCard className="p-5">
           <form onSubmit={onSubmit} className="space-y-3">
             <CardTitle title="Identidade do negocio" subtitle="Esses dados organizam atendimento, relatorios, IA e rotina comercial." />
+            {!canManage ? (
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                Seu perfil pode consultar estes dados, mas apenas admins podem alterar configuracoes da empresa.
+              </p>
+            ) : null}
 
             {loading ? (
-              <div className="py-10 text-center text-white/60">
+              <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
             ) : (
               <>
-                <Field label="Nome da empresa" value={form.name || ""} onChange={(value) => setForm((current) => ({ ...current, name: value }))} />
-                <Field label="Nicho" value={form.niche || ""} onChange={(value) => setForm((current) => ({ ...current, niche: value }))} />
+                <Field disabled={!canManage} label="Nome da empresa" value={form.name || ""} onChange={(value) => setForm((current) => ({ ...current, name: value }))} />
+                <Field disabled={!canManage} label="Nicho" value={form.niche || ""} onChange={(value) => setForm((current) => ({ ...current, niche: value }))} />
                 <SelectField
                   label="Modo do negocio"
                   value={form.businessProfileId || "generic"}
                   onChange={(value) => setForm((current) => ({ ...current, businessProfileId: value as BusinessProfileId }))}
+                  disabled={!canManage}
                   options={Object.values(BUSINESS_PROFILES).map((profile) => ({
                     value: profile.id,
                     label: profile.label,
                   }))}
                 />
-                <Field label="Responsavel" value={form.responsibleName || ""} onChange={(value) => setForm((current) => ({ ...current, responsibleName: value }))} />
-                <Field label="E-mail do responsavel" value={form.responsibleEmail || ""} onChange={(value) => setForm((current) => ({ ...current, responsibleEmail: value }))} />
-                <Field label="Telefone principal" value={form.phone || ""} onChange={(value) => setForm((current) => ({ ...current, phone: value }))} />
-                <Field label="Website" value={form.website || ""} onChange={(value) => setForm((current) => ({ ...current, website: value }))} />
-                <Field label="Endereco" value={form.addressLine || ""} onChange={(value) => setForm((current) => ({ ...current, addressLine: value }))} />
+                <Field disabled={!canManage} label="Responsavel" value={form.responsibleName || ""} onChange={(value) => setForm((current) => ({ ...current, responsibleName: value }))} />
+                <Field disabled={!canManage} type="email" label="E-mail do responsavel" value={form.responsibleEmail || ""} onChange={(value) => setForm((current) => ({ ...current, responsibleEmail: value }))} />
+                <Field disabled={!canManage} label="Telefone principal" value={form.phone || ""} onChange={(value) => setForm((current) => ({ ...current, phone: value }))} />
+                <Field disabled={!canManage} label="Website" value={form.website || ""} onChange={(value) => setForm((current) => ({ ...current, website: value }))} />
+                <Field disabled={!canManage} label="Endereco" value={form.addressLine || ""} onChange={(value) => setForm((current) => ({ ...current, addressLine: value }))} />
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Field label="Cidade" value={form.city || ""} onChange={(value) => setForm((current) => ({ ...current, city: value }))} />
-                  <Field label="Estado" value={form.state || ""} onChange={(value) => setForm((current) => ({ ...current, state: value }))} />
+                  <Field disabled={!canManage} label="Cidade" value={form.city || ""} onChange={(value) => setForm((current) => ({ ...current, city: value }))} />
+                  <Field disabled={!canManage} label="Estado" value={form.state || ""} onChange={(value) => setForm((current) => ({ ...current, state: value }))} />
                 </div>
-                <Field label="Fuso horario" value={form.timezone || "America/Sao_Paulo"} onChange={(value) => setForm((current) => ({ ...current, timezone: value }))} />
-                <Field label="Horario comercial" value={form.businessHours || "Seg-Sex 09:00-18:00"} onChange={(value) => setForm((current) => ({ ...current, businessHours: value }))} />
+                <Field disabled={!canManage} label="Fuso horario" value={form.timezone || "America/Sao_Paulo"} onChange={(value) => setForm((current) => ({ ...current, timezone: value }))} />
+                <Field disabled={!canManage} label="Horario comercial" value={form.businessHours || "Seg-Sex 09:00-18:00"} onChange={(value) => setForm((current) => ({ ...current, businessHours: value }))} />
 
-                <div className="rounded-2xl border border-white/12 bg-white/[0.03] p-4">
+                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white/92">Fechamento do Dia Altum</p>
-                      <p className="mt-1 text-sm text-white/58">
+                      <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Fechamento do Dia Altum</p>
+                      <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">
                         Relatorio executivo enviado no WhatsApp do dono com resumo, alertas e plano para amanha.
                       </p>
                     </div>
-                    <label className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/20 px-3 py-1.5 text-xs text-white/72">
+                    <label className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--cliente-card-text-muted)]">
                       <input
                         type="checkbox"
                         checked={form.dailyReport?.enabled !== false}
+                        disabled={!canManage}
                         onChange={(event) =>
                           setForm((current) => ({
                             ...current,
@@ -169,6 +180,7 @@ export default function ClienteEmpresaPage() {
                   </div>
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <Field
+                      disabled={!canManage}
                       label="Nome do dono"
                       value={form.dailyReport?.ownerName || form.responsibleName || ""}
                       onChange={(value) =>
@@ -179,6 +191,7 @@ export default function ClienteEmpresaPage() {
                       }
                     />
                     <Field
+                      disabled={!canManage}
                       label="WhatsApp do dono"
                       value={form.dailyReport?.ownerPhone || form.phone || ""}
                       onChange={(value) =>
@@ -189,6 +202,8 @@ export default function ClienteEmpresaPage() {
                       }
                     />
                     <Field
+                      disabled={!canManage}
+                      type="time"
                       label="Horario de envio"
                       value={form.dailyReport?.sendHour || "18:30"}
                       onChange={(value) =>
@@ -199,6 +214,7 @@ export default function ClienteEmpresaPage() {
                       }
                     />
                     <Field
+                      disabled={!canManage}
                       label="Modelo de mensagem"
                       value={form.dailyReport?.templateName || "fechamento_dia_altum"}
                       onChange={(value) =>
@@ -209,14 +225,14 @@ export default function ClienteEmpresaPage() {
                       }
                     />
                   </div>
-                  <p className="mt-3 text-xs leading-5 text-white/45">
+                  <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
                     A mensagem precisa estar aprovada no WhatsApp Business para enviar o fechamento do dia com resumo, alertas, plano e link.
                   </p>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || !canManage}
                   className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60"
                 >
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -226,37 +242,37 @@ export default function ClienteEmpresaPage() {
             )}
           </form>
 
-          {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
-          {notice ? <p className="mt-3 text-sm text-emerald-300">{notice}</p> : null}
+          {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+          {notice ? <p className="mt-3 text-sm text-emerald-600">{notice}</p> : null}
         </PanelCard>
 
         <div className="space-y-4">
           <PanelCard className="p-5">
-            <div className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] p-2 text-white/85">
+            <div className="inline-flex rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-2 text-[var(--cliente-primary)]">
               <BriefcaseBusiness className="h-4 w-4" />
             </div>
-            <p className="mt-3 text-sm font-semibold text-white/92">Modo de negocio</p>
-            <p className="mt-1 text-sm text-white/58">{selectedProfile.description}</p>
-            <p className="mt-3 text-xs text-white/50">{selectedProfile.commercialMotion}</p>
+            <p className="mt-3 text-sm font-semibold text-[var(--cliente-card-text)]">Modo de negocio</p>
+            <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{selectedProfile.description}</p>
+            <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">{selectedProfile.commercialMotion}</p>
           </PanelCard>
 
           <PanelCard className="p-5">
-            <div className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] p-2 text-white/85">
+            <div className="inline-flex rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-2 text-[var(--cliente-primary)]">
               <Building2 className="h-4 w-4" />
             </div>
-            <p className="mt-3 text-sm font-semibold text-white/92">Tenant identificado</p>
-            <p className="mt-1 text-sm text-white/58">Nome e nicho alimentam contexto comercial, IA e governanca do painel.</p>
-            {form.website ? <p className="mt-3 text-xs text-white/50">{form.website}</p> : null}
+            <p className="mt-3 text-sm font-semibold text-[var(--cliente-card-text)]">Tenant identificado</p>
+            <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Nome e nicho alimentam contexto comercial, IA e governanca do painel.</p>
+            {form.website ? <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">{form.website}</p> : null}
           </PanelCard>
 
           <PanelCard className="p-5">
-            <div className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] p-2 text-white/85">
+            <div className="inline-flex rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-2 text-[var(--cliente-primary)]">
               <Clock3 className="h-4 w-4" />
             </div>
-            <p className="mt-3 text-sm font-semibold text-white/92">Horario operacional</p>
-            <p className="mt-1 text-sm text-white/58">Esse campo prepara base para SLA, janela de handoff e automacoes por horario.</p>
+            <p className="mt-3 text-sm font-semibold text-[var(--cliente-card-text)]">Horario operacional</p>
+            <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Esse campo prepara base para SLA, janela de handoff e automacoes por horario.</p>
             {(form.city || form.state || form.addressLine) ? (
-              <p className="mt-3 text-xs text-white/50">
+              <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">
                 {[form.addressLine, form.city, form.state].filter(Boolean).join(" • ")}
               </p>
             ) : null}
@@ -267,14 +283,16 @@ export default function ClienteEmpresaPage() {
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function Field({ label, value, onChange, disabled = false, type = "text" }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean; type?: string }) {
   return (
     <label className="block space-y-1">
-      <span className="text-xs uppercase tracking-[0.14em] text-white/55">{label}</span>
+      <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</span>
       <input
+        type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[var(--cliente-border-strong)] focus:bg-black/45"
+        disabled={disabled}
+        className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2.5 text-sm text-[var(--cliente-card-text)] outline-none transition placeholder:text-[var(--cliente-card-text-soft)] focus:border-[var(--cliente-primary)] focus:bg-white disabled:cursor-not-allowed disabled:bg-[var(--cliente-surface-muted)] disabled:opacity-70"
       />
     </label>
   );
@@ -285,22 +303,25 @@ function SelectField({
   value,
   onChange,
   options,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
+  disabled?: boolean;
 }) {
   return (
     <label className="block space-y-1">
-      <span className="text-xs uppercase tracking-[0.14em] text-white/55">{label}</span>
+      <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-[var(--cliente-border-strong)] focus:bg-black/45"
+        disabled={disabled}
+        className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2.5 text-sm text-[var(--cliente-card-text)] outline-none transition focus:border-[var(--cliente-primary)] focus:bg-white disabled:cursor-not-allowed disabled:bg-[var(--cliente-surface-muted)] disabled:opacity-70"
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value} className="bg-[#111827] text-white">
+          <option key={option.value} value={option.value} className="bg-white text-slate-900">
             {option.label}
           </option>
         ))}

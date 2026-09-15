@@ -948,7 +948,7 @@ export default function ClienteCanaisPage() {
   }
 
   async function testManagedChannelConnection() {
-    if (!tenant?.tenantId || selectedType === "whatsapp") return;
+    if (!tenant?.tenantId || !canManage || selectedType === "whatsapp") return;
     setTestingConnection(true);
     setError(null);
     setNotice(null);
@@ -1199,7 +1199,7 @@ export default function ClienteCanaisPage() {
         action={
           <Link
             href="/cliente/painel/configuracoes"
-            className="settings-channels-back inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/72 transition hover:bg-white/[0.08]"
+            className="settings-channels-back inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)]"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Voltar
@@ -1208,10 +1208,14 @@ export default function ClienteCanaisPage() {
       />
 
       {!canManage ? (
-        <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
           Seu acesso e somente leitura para canais. Alteracoes exigem permissao de gestao.
         </div>
       ) : null}
+
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
+        Esta tela mostra o que esta conectado e pronto para operar. Tokens, IDs e reparos ficam disponiveis apenas para admins porque afetam integracoes externas.
+      </div>
 
       <section className="space-y-5">
         <PanelCard className="settings-channels-catalog p-5 md:p-6">
@@ -1244,7 +1248,7 @@ export default function ClienteCanaisPage() {
                   className={`settings-channel-card group relative min-h-44 rounded-2xl border p-4 text-left transition ${
                     isSelected
                       ? "is-selected border-[var(--cliente-border-strong)] bg-[var(--cliente-accent-soft)]"
-                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                      : "border-[var(--cliente-border)] bg-white hover:bg-[var(--cliente-surface-muted)]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -1712,7 +1716,7 @@ export default function ClienteCanaisPage() {
                   <button
                     type="button"
                     onClick={() => void testManagedChannelConnection()}
-                    disabled={testingConnection || !selectedChannel?.id}
+                    disabled={testingConnection || !selectedChannel?.id || !canManage}
                     className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/72 transition hover:bg-white/[0.08] disabled:opacity-60"
                   >
                     {testingConnection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}

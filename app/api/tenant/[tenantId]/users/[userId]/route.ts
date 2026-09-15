@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, assertTenantCapability, TenantAccessError, TENANT_CAPABILITIES, type TenantCapability } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantCapability, getTenantCapabilities, TenantAccessError, TENANT_CAPABILITIES, type TenantCapability, type TenantUserRole } from "@/lib/server/tenant";
+import { assertTenantLimitAvailable } from "@/lib/server/tenant-entitlements";
+import { getTenantUserUsage } from "@/lib/server/tenant-usage";
 
 type Body = {
   role?: "client_admin" | "client_agent" | "client_viewer";
@@ -66,6 +68,10 @@ function parseCapabilities(value: unknown) {
   );
 }
 
+function defaultCapabilitiesForRole(role: TenantUserRole) {
+  return getTenantCapabilities({ role, status: "active", capabilities: [], capabilitiesConfigured: false });
+}
+
 async function getMembership(tenantId: string, userId: string) {
   const ref = adminDb.collection("tenant_users").doc(`${tenantId}_${userId}`);
   const snap = await ref.get();
@@ -79,6 +85,21 @@ async function getMembership(tenantId: string, userId: string) {
   }
 
   return { ref, data };
+}
+
+async function countActiveAdmins(tenantId: string) {
+  const snap = await adminDb
+    .collection("tenant_users")
+    .where("tenantId", "==", tenantId)
+    .where("status", "==", "active")
+    .limit(80)
+    .get();
+
+  return snap.docs.filter((doc) => {
+    const data = doc.data() as Record<string, unknown>;
+    const role = clean(data.role, 40).toLowerCase();
+    return role === "client_owner" || role === "client_admin";
+  }).length;
 }
 
 export async function PATCH(
@@ -99,13 +120,47 @@ export async function PATCH(
     const body = (await req.json()) as Body;
     const nextRole = clean(body.role, 40).toLowerCase();
     const nextStatus = clean(body.status, 20).toLowerCase();
+    const currentRole = clean(data.role, 40).toLowerCase();
+    const currentStatus = data.status === "blocked" ? "blocked" : "active";
+
+    if (
+      actor.uid === userId &&
+      (nextStatus === "blocked" || (nextRole && nextRole !== currentRole) || body.capabilities !== undefined)
+    ) {
+      return NextResponse.json({ error: "Nao e permitido alterar o proprio acesso critico pelo painel." }, { status: 403 });
+    }
+
+    const removingAdmin =
+      currentStatus === "active" &&
+      (currentRole === "client_admin" || currentRole === "client_owner") &&
+      (nextStatus === "blocked" || (nextRole && nextRole !== "client_admin"));
+    if (removingAdmin && (await countActiveAdmins(tenantId)) <= 1) {
+      return NextResponse.json({ error: "A conta precisa manter ao menos um admin ativo." }, { status: 409 });
+    }
+    if (currentStatus === "blocked" && nextStatus === "active") {
+      const email = clean(data.email, 180).toLowerCase();
+      const tenantUserUsage = await getTenantUserUsage(tenantId);
+      if (!tenantUserUsage.hasActiveEmail(email)) {
+        await assertTenantLimitAvailable({
+          tenantId,
+          limitId: "users",
+          currentUsage: tenantUserUsage.activeClientUsers,
+          increment: 1,
+        });
+      }
+    }
 
     const patch: Record<string, unknown> = {
       updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actor.uid,
+      updatedByName: actor.name,
     };
 
     if (nextRole && ALLOWED_ROLES.has(nextRole)) {
       patch.role = nextRole;
+      if (body.capabilities === undefined) {
+        patch.capabilities = defaultCapabilitiesForRole(nextRole as TenantUserRole);
+      }
     }
     if (nextStatus === "active" || nextStatus === "blocked") {
       patch.status = nextStatus;
@@ -126,11 +181,7 @@ export async function PATCH(
       patch.capabilities = parseCapabilities(body.capabilities);
     }
 
-    await Promise.all([
-      ref.set(patch, { merge: true }),
-      adminDb.collection("users").doc(userId).set(patch, { merge: true }),
-      adminDb.collection("client_portal_users").doc(userId).set(patch, { merge: true }),
-    ]);
+    await ref.set(patch, { merge: true });
 
     return NextResponse.json({ ok: true, tenantId, userId });
   } catch (error) {

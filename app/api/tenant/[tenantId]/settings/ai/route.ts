@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError, getTenantSettings } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantCapability, assertTenantRole, hasTenantCapability, TenantAccessError, getTenantSettings } from "@/lib/server/tenant";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { getBusinessProfile, normalizeBusinessProfileId } from "@/lib/business-profiles";
 import {
@@ -238,6 +238,27 @@ function normalizeAiConfig(
   };
 }
 
+function publicAiConfig(ai: ReturnType<typeof normalizeAiConfig>) {
+  return {
+    enabled: ai.enabled,
+    responsePaused: ai.responsePaused,
+    agentName: ai.agentName,
+    toneOfVoice: ai.toneOfVoice,
+    businessSummary: ai.businessSummary,
+    objective: ai.objective,
+    responsiblePhone: ai.responsiblePhone,
+    handoffNotifyEnabled: ai.handoffNotifyEnabled,
+    voiceReplyEnabled: ai.voiceReplyEnabled,
+    voiceReplyMode: ai.voiceReplyMode,
+    guardrailsCount: ai.guardrails.length,
+    mandatoryQuestionsCount: ai.mandatoryQuestions.length,
+    escalationTopicsCount: ai.escalationTopics.length,
+    tier: ai.tier,
+    autonomyMode: ai.autonomyMode,
+    responseStyle: ai.responseStyle,
+  };
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -251,7 +272,8 @@ export async function GET(
     assertTenantRole(membership, "client_viewer");
 
     const settings = await getTenantSettings(tenantId);
-    const ai = normalizeAiConfig(settings);
+    const rawAi = normalizeAiConfig(settings);
+    const ai = hasTenantCapability(membership, "manage_ai") ? rawAi : publicAiConfig(rawAi);
 
     return NextResponse.json({ ok: true, tenantId, ai });
   } catch (error) {

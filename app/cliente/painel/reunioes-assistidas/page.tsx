@@ -18,11 +18,14 @@ import {
   Radio,
   RefreshCw,
   Sparkles,
+  Upload,
   Video,
   Wand2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
+import { auth, storage } from "@/firebaseConfig";
+import { ref as storageRef, uploadBytesResumable } from "firebase/storage";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import {
   CrmBadge,
@@ -178,6 +181,9 @@ export default function AssistedMeetingsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<AssistedMeeting | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const shouldKeepListeningRef = useRef(false);
+  const recognitionRestartRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement | null>(null);
   const [listening, setListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [liveTranscript, setLiveTranscript] = useState("");
@@ -185,6 +191,8 @@ export default function AssistedMeetingsPage() {
   const [coaching, setCoaching] = useState(false);
   const [coach, setCoach] = useState<LiveMeetingCoach | null>(null);
   const [speechSupported, setSpeechSupported] = useState(true);
+  const [transcribingMedia, setTranscribingMedia] = useState(false);
+  const [transcribingMediaName, setTranscribingMediaName] = useState("");
   const [form, setForm] = useState({
     appointmentId: searchParams.get("appointmentId") || "",
     leadId: searchParams.get("leadId") || "",
@@ -230,6 +238,8 @@ export default function AssistedMeetingsPage() {
 
   useEffect(() => {
     return () => {
+      shouldKeepListeningRef.current = false;
+      if (recognitionRestartRef.current) clearTimeout(recognitionRestartRef.current);
       recognitionRef.current?.abort();
       recognitionRef.current = null;
     };
@@ -315,6 +325,7 @@ export default function AssistedMeetingsPage() {
       return;
     }
     recognitionRef.current?.abort();
+    if (recognitionRestartRef.current) clearTimeout(recognitionRestartRef.current);
     const recognition = new Recognition();
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -333,21 +344,97 @@ export default function AssistedMeetingsPage() {
       setInterimTranscript(interimText.trim());
     };
     recognition.onerror = (event) => {
-      setListening(false);
-      setError(event.error ? `Falha na captura de audio: ${event.error}` : "Falha na captura de audio.");
+      if (event.error === "no-speech") return;
+      if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "audio-capture") {
+        shouldKeepListeningRef.current = false;
+        setListening(false);
+      }
+      setError(event.error ? `Falha na captura de áudio: ${event.error}` : "Falha na captura de áudio.");
     };
-    recognition.onend = () => setListening(false);
+    recognition.onend = () => {
+      if (!shouldKeepListeningRef.current) {
+        setListening(false);
+        return;
+      }
+      recognitionRestartRef.current = setTimeout(() => {
+        try {
+          recognition.start();
+          setListening(true);
+        } catch {
+          shouldKeepListeningRef.current = false;
+          setListening(false);
+          setError("A escuta foi interrompida pelo navegador. Clique em Ouvir reunião para continuar.");
+        }
+      }, 350);
+    };
     recognitionRef.current = recognition;
     setError(null);
     setSpeechSupported(true);
+    shouldKeepListeningRef.current = true;
     setListening(true);
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      shouldKeepListeningRef.current = false;
+      setListening(false);
+      setError("Não foi possível iniciar o microfone. Verifique a permissão do navegador.");
+    }
   }
 
   function stopListening() {
+    shouldKeepListeningRef.current = false;
+    if (recognitionRestartRef.current) clearTimeout(recognitionRestartRef.current);
     recognitionRef.current?.stop();
     setListening(false);
     setInterimTranscript("");
+  }
+
+  async function transcribeMedia(file: File | null) {
+    if (!tenant?.tenantId || !file || transcribingMedia) return;
+    setTranscribingMedia(true);
+    setTranscribingMediaName(file.name);
+    setError(null);
+    setNotice(null);
+    try {
+      if (file.size > 24 * 1024 * 1024) throw new Error("Use uma gravação de até 24 MB.");
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Sua sessão expirou. Entre novamente para transcrever.");
+      const extension = (file.name.split(".").pop() || "webm").replace(/[^a-z0-9]/gi, "").slice(0, 8) || "webm";
+      const uniqueId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const storagePath = `meeting-media/${tenant.tenantId}/${currentUser.uid}/${uniqueId}.${extension}`;
+      let response: Response;
+      try {
+        const upload = uploadBytesResumable(storageRef(storage, storagePath), file, {
+          contentType: file.type || "application/octet-stream",
+          customMetadata: { tenantId: tenant.tenantId, uploadedBy: currentUser.uid },
+        });
+        await new Promise<void>((resolve, reject) => upload.on("state_changed", undefined, reject, resolve));
+        response = await authedFetch(`/api/tenant/${tenant.tenantId}/assisted-meetings/transcribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ storagePath, fileName: file.name, contentType: file.type, language: form.language }),
+        });
+      } catch (uploadError) {
+        if (file.size > 4 * 1024 * 1024) throw uploadError;
+        const data = new FormData();
+        data.append("media", file);
+        data.append("language", form.language);
+        response = await authedFetch(`/api/tenant/${tenant.tenantId}/assisted-meetings/transcribe`, { method: "POST", body: data });
+      }
+      const payload = (await response.json().catch(() => ({}))) as { transcript?: string; error?: string };
+      if (!response.ok || !payload.transcript) throw new Error(payload.error || "Falha ao transcrever a gravação.");
+      setForm((current) => ({
+        ...current,
+        transcript: [current.transcript, payload.transcript].filter(Boolean).join("\n\n"),
+      }));
+      setNotice("Gravação transcrita. Revise o texto e gere a análise para atualizar o CRM.");
+    } catch (transcriptionError) {
+      setError(transcriptionError instanceof Error ? transcriptionError.message : "Falha ao transcrever a gravação.");
+    } finally {
+      setTranscribingMedia(false);
+      setTranscribingMediaName("");
+      if (mediaInputRef.current) mediaInputRef.current.value = "";
+    }
   }
 
   async function requestLiveCoach() {
@@ -502,12 +589,30 @@ export default function AssistedMeetingsPage() {
 
             <div className="grid gap-3 lg:grid-cols-2">
               <label className="space-y-1.5">
-                <span className="text-xs font-bold text-[var(--cliente-card-text-soft)]">Transcricao da reuniao</span>
+                <span className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-[var(--cliente-card-text-soft)]">
+                  <span>Transcrição da reunião</span>
+                  <button
+                    type="button"
+                    onClick={() => mediaInputRef.current?.click()}
+                    disabled={!canOperate || transcribingMedia}
+                    className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-bold text-[var(--cliente-primary)] transition hover:bg-[var(--cliente-primary-soft)] disabled:opacity-50"
+                  >
+                    {transcribingMedia ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                    {transcribingMedia ? `Transcrevendo ${transcribingMediaName}` : "Importar áudio ou vídeo"}
+                  </button>
+                  <input
+                    ref={mediaInputRef}
+                    type="file"
+                    accept="audio/*,video/*"
+                    className="hidden"
+                    onChange={(event) => void transcribeMedia(event.target.files?.[0] || null)}
+                  />
+                </span>
                 <CrmTextarea
                   value={form.transcript}
                   onChange={(event) => setForm((current) => ({ ...current, transcript: event.target.value }))}
                   className="min-h-64"
-                  placeholder="Cole aqui a transcricao do Meet/Zoom, ou o que foi falado na reuniao..."
+                  placeholder="Cole a transcrição, importe uma gravação ou use a escuta ao vivo..."
                 />
               </label>
               <label className="space-y-1.5">

@@ -280,8 +280,12 @@ export async function POST(
         adminDb.collection("tenant_settings").doc(tenantId),
         {
           tenantId,
-          "rules.inbox.lastAssignedUserId": lastAssigned.userId,
-          "rules.inbox.lastAssignedAt": FieldValue.serverTimestamp(),
+          rules: {
+            inbox: {
+              lastAssignedUserId: lastAssigned.userId,
+              lastAssignedAt: FieldValue.serverTimestamp(),
+            },
+          },
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }

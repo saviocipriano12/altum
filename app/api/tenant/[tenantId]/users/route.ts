@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError, TENANT_CAPABILITIES, type TenantCapability } from "@/lib/server/tenant";
+import { sendPasswordResetEmail, AuthEmailConfigurationError, AuthEmailDeliveryError } from "@/lib/server/auth-email";
+import { assertTenantAccess, assertTenantCapability, assertTenantRole, getTenantCapabilities, TenantAccessError, TENANT_CAPABILITIES, type TenantCapability, type TenantUserRole } from "@/lib/server/tenant";
 import { assertTenantLimitAvailable } from "@/lib/server/tenant-entitlements";
 import { getTenantUserUsage } from "@/lib/server/tenant-usage";
 
@@ -77,6 +78,10 @@ function normalizeRole(value: unknown): Body["role"] {
   return "client_viewer";
 }
 
+function defaultCapabilitiesForRole(role: TenantUserRole) {
+  return getTenantCapabilities({ role, status: "active", capabilities: [], capabilitiesConfigured: false });
+}
+
 function parseCapabilities(value: unknown) {
   const source = Array.isArray(value)
     ? value
@@ -122,6 +127,10 @@ function getSafeSiteUrl(req: Request) {
   return "https://altum.ag";
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 async function generateInviteLinkWithFallback(input: { req: Request; email: string }) {
   const siteUrl = getSafeSiteUrl(input.req);
   const redirectUrl = `${siteUrl}/cliente/login`;
@@ -163,10 +172,23 @@ export async function GET(
 
     const snap = await adminDb.collection("tenant_users").where("tenantId", "==", tenantId).limit(80).get();
     const items: TenantUserItem[] = snap.docs
-      .map((doc): TenantUserItem => ({
-        id: doc.id,
-        ...(doc.data() as Record<string, unknown>),
-      }))
+      .map((doc): TenantUserItem => {
+        const data = doc.data() as Record<string, unknown>;
+        const role = clean(data.role, 40).toLowerCase() as TenantUserRole;
+        const status = data.status === "blocked" ? "blocked" : "active";
+        const capabilities = parseCapabilities(data.capabilities);
+        return {
+          id: doc.id,
+          ...data,
+          status,
+          capabilities: getTenantCapabilities({
+            role,
+            status,
+            capabilities,
+            capabilitiesConfigured: Object.prototype.hasOwnProperty.call(data, "capabilities"),
+          }),
+        };
+      })
       .sort((a, b) => String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "pt-BR"));
 
     return NextResponse.json({ ok: true, tenantId, items });
@@ -208,6 +230,9 @@ export async function POST(
     if (!email) {
       return NextResponse.json({ error: "Campo obrigatorio: email." }, { status: 400 });
     }
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: "Informe um e-mail valido." }, { status: 400 });
+    }
 
     const tenantUserUsage = await getTenantUserUsage(tenantId);
     if (!tenantUserUsage.hasActiveEmail(email)) {
@@ -229,6 +254,7 @@ export async function POST(
     const legacyClientId = clean(tenantData.legacyClientId, 120) || tenantId;
 
     let authUser;
+    let createdAuthUser = false;
     try {
       authUser = await adminAuth.getUserByEmail(email);
       if (name && authUser.displayName !== name) {
@@ -243,17 +269,27 @@ export async function POST(
         displayName: name || tenantName,
         emailVerified: true,
       });
+      createdAuthUser = true;
     }
 
     const uid = authUser.uid;
     const docId = `${tenantId}_${uid}`;
+    const membershipRef = adminDb.collection("tenant_users").doc(docId);
+    const membershipSnap = await membershipRef.get();
+    const existingMembership = membershipSnap.exists ? (membershipSnap.data() as Record<string, unknown>) : null;
+    if (existingMembership?.role === "client_owner") {
+      return NextResponse.json({ error: "O dono da conta nao pode ser sobrescrito por convite." }, { status: 403 });
+    }
+
     const existingUserSnap = await adminDb.collection("users").doc(uid).get();
     const existingUser = existingUserSnap.exists
-      ? (existingUserSnap.data() as { role?: string; defaultTenantId?: string })
+      ? (existingUserSnap.data() as { role?: string; defaultTenantId?: string; status?: string })
       : null;
     const nextGlobalRole = shouldPreserveGlobalRole(existingUser?.role) ? existingUser?.role : role;
+    const hasCustomCapabilities = Array.isArray(body.capabilities) || typeof body.capabilities === "string";
+    const nextCapabilities = hasCustomCapabilities ? capabilities : defaultCapabilitiesForRole(role as TenantUserRole);
 
-    await adminDb.collection("tenant_users").doc(docId).set(
+    await membershipRef.set(
       {
         tenantId,
         userId: uid,
@@ -261,15 +297,15 @@ export async function POST(
         name: name || authUser.displayName || tenantName,
         role,
         status: "active",
-        isDefault: false,
+        isDefault: existingMembership?.isDefault === true,
         team,
         availability,
         allowedChannels,
         maxOpenChats,
-        capabilities,
+        capabilities: nextCapabilities,
         invitedBy: actor.uid,
         invitedByName: actor.name,
-        createdAt: FieldValue.serverTimestamp(),
+        ...(existingMembership ? {} : { createdAt: FieldValue.serverTimestamp() }),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -282,13 +318,13 @@ export async function POST(
           email,
           name: name || authUser.displayName || tenantName,
           role: nextGlobalRole,
-          status: "active",
+          status: existingUser?.status === "blocked" ? "blocked" : "active",
           defaultTenantId:
             shouldPreserveGlobalRole(existingUser?.role) && existingUser?.defaultTenantId
               ? existingUser.defaultTenantId
               : tenantId,
           updatedAt: FieldValue.serverTimestamp(),
-          createdAt: FieldValue.serverTimestamp(),
+          ...(existingUserSnap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
         },
         { merge: true }
       ),
@@ -306,13 +342,29 @@ export async function POST(
           invitedBy: actor.uid,
           invitedByName: actor.name,
           updatedAt: FieldValue.serverTimestamp(),
-          createdAt: FieldValue.serverTimestamp(),
+          ...(existingMembership ? {} : { createdAt: FieldValue.serverTimestamp() }),
         },
         { merge: true }
       ),
     ]);
 
-    const inviteResult = await generateInviteLinkWithFallback({ req, email });
+    const inviteResult = createdAuthUser
+      ? await generateInviteLinkWithFallback({ req, email })
+      : { inviteLink: null as string | null, inviteLinkWarning: "usuario_existente_sem_reset" };
+    let emailDelivery: "not_sent" | "sent" | "unavailable" | "failed" = createdAuthUser ? "not_sent" : "not_sent";
+    if (createdAuthUser) {
+      try {
+        await sendPasswordResetEmail({ email, name: name || authUser.displayName || tenantName });
+        emailDelivery = "sent";
+      } catch (deliveryError) {
+        emailDelivery =
+          deliveryError instanceof AuthEmailConfigurationError
+            ? "unavailable"
+            : deliveryError instanceof AuthEmailDeliveryError
+              ? "failed"
+              : "failed";
+      }
+    }
 
     return NextResponse.json({
       ok: true,
@@ -322,6 +374,8 @@ export async function POST(
       role,
       inviteLink: inviteResult.inviteLink,
       inviteLinkWarning: inviteResult.inviteLinkWarning,
+      emailDelivery,
+      existingUser: !createdAuthUser,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {

@@ -46,6 +46,11 @@ export type LiveMeetingCoach = {
   };
 };
 
+export type MeetingTranscriptionResult = {
+  text: string;
+  model: string;
+};
+
 function clean(value: unknown, max = 600) {
   if (typeof value !== "string") return "";
   return value
@@ -244,8 +249,8 @@ export async function generateAssistedMeetingSummary(input: {
   appointment: MeetingAssistantAppointment | null;
 }) {
   const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
-  const transcript = clean(input.transcript, 12000);
-  const notes = clean(input.notes, 3000);
+  const transcript = clean(input.transcript, 60000);
+  const notes = clean(input.notes, 6000);
   if (!apiKey) {
     return fallbackSummary({ transcript, notes, objective: clean(input.objective, 500), lead: input.lead });
   }
@@ -273,7 +278,7 @@ export async function generateAssistedMeetingSummary(input: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MEETING_SUMMARY_MODEL || "gpt-4.1-mini",
+        model: process.env.OPENAI_MEETING_SUMMARY_MODEL || "gpt-4.1-nano",
         temperature: 0.2,
         response_format: { type: "json_object" },
         messages: [
@@ -306,8 +311,8 @@ export async function generateLiveMeetingCoach(input: {
   lead: MeetingAssistantLead | null;
 }) {
   const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
-  const transcript = clean(input.transcript, 10000);
-  const notes = clean(input.notes, 2500);
+  const transcript = clean(input.transcript, 24000);
+  const notes = clean(input.notes, 4000);
   const objective = clean(input.objective, 500) || "conduzir a reunião para venda, proposta ou próximo passo claro";
   const translateTo = clean(input.translateTo, 80);
 
@@ -323,7 +328,7 @@ export async function generateLiveMeetingCoach(input: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MEETING_COACH_MODEL || process.env.OPENAI_MEETING_SUMMARY_MODEL || "gpt-4.1-mini",
+        model: process.env.OPENAI_MEETING_COACH_MODEL || process.env.OPENAI_MEETING_SUMMARY_MODEL || "gpt-4.1-nano",
         temperature: 0.25,
         response_format: { type: "json_object" },
         messages: [
@@ -358,4 +363,42 @@ export async function generateLiveMeetingCoach(input: {
   }
 
   return fallbackLiveCoach({ transcript, objective, translateTo });
+}
+
+export async function transcribeMeetingMedia(input: {
+  bytes: Uint8Array;
+  contentType: string;
+  fileName: string;
+  language: string;
+}): Promise<MeetingTranscriptionResult> {
+  const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
+  if (!apiKey) throw new Error("OPENAI_API_KEY_NOT_CONFIGURED");
+
+  const model = String(process.env.OPENAI_MEETING_TRANSCRIPTION_MODEL || "gpt-4o-mini-transcribe").trim();
+  const fileName = clean(input.fileName, 180) || "reuniao.webm";
+  const contentType = clean(input.contentType, 120) || "application/octet-stream";
+  const language = clean(input.language, 20).toLowerCase().split(/[_-]/)[0] || "pt";
+  const form = new FormData();
+  const fileBytes = new Uint8Array(input.bytes.byteLength);
+  fileBytes.set(input.bytes);
+  form.append("file", new Blob([fileBytes.buffer as ArrayBuffer], { type: contentType }), fileName);
+  form.append("model", model);
+  form.append("language", language);
+  form.append("response_format", "json");
+
+  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!response.ok) {
+    const detail = clean(await response.text().catch(() => ""), 500);
+    throw new Error(`meeting_transcription_http_${response.status}${detail ? `:${detail}` : ""}`);
+  }
+
+  const payload = (await response.json()) as { text?: string };
+  const text = clean(payload.text, 90000);
+  if (!text) throw new Error("meeting_transcription_empty");
+  return { text, model };
 }

@@ -75,7 +75,7 @@ function statusMessage(billing: BillingState | null) {
   return `Seu teste gratuito termina em ${formatDate(billing.trialEndsAt)}.`;
 }
 
-export default function AssinaturaPage() {
+export default function AssinaturaPage({ tenantId }: { tenantId?: string } = {}) {
   const [plans, setPlans] = useState<PlatformPlan[]>([]);
   const [billing, setBilling] = useState<BillingState | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -98,7 +98,10 @@ export default function AssinaturaPage() {
       return;
     }
     const token = await user.getIdToken();
-    const response = await fetch("/api/billing/asaas/subscription", {
+    const subscriptionUrl = tenantId
+      ? `/api/billing/asaas/subscription?tenantId=${encodeURIComponent(tenantId)}`
+      : "/api/billing/asaas/subscription";
+    const response = await fetch(subscriptionUrl, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
@@ -108,7 +111,7 @@ export default function AssinaturaPage() {
     setPayments(payload.payments || []);
     setUsage(payload.usage || null);
     setLimits(payload.limits || null);
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     setCheckout(new URLSearchParams(window.location.search).get("checkout"));
@@ -149,7 +152,7 @@ export default function AssinaturaPage() {
       const response = await fetch("/api/billing/asaas/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId, cpfCnpj }),
+        body: JSON.stringify({ planId, cpfCnpj, tenantId }),
       });
       const payload = (await response.json().catch(() => ({}))) as { checkoutUrl?: string; error?: string };
       if (!response.ok || !payload.checkoutUrl) throw new Error(payload.error || "Nao foi possivel abrir o checkout.");
@@ -182,6 +185,7 @@ export default function AssinaturaPage() {
           planId,
           confirmation: action === "cancel" ? "CANCELAR" : undefined,
           reason: cancelReason,
+          tenantId,
         }),
       });
       const payload = (await response.json().catch(() => ({}))) as { error?: string; action?: string; accessEndsAt?: string };

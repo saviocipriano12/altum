@@ -233,6 +233,7 @@ export default function ClienteHandoffsPage() {
   const assignment = searchParams.get("assignment") || "all";
   const risk = searchParams.get("risk") || "all";
   const chatId = searchParams.get("chatId") || "";
+  const canViewAiLogs = hasCapability("manage_ai");
 
   const updateQuery = useCallback(
     (key: string, value?: string | null) => {
@@ -251,7 +252,9 @@ export default function ClienteHandoffsPage() {
 
       const [chatsRes, logsRes, usersRes, settingsRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/chats`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`),
+        canViewAiLogs
+          ? authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`)
+          : Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 })),
         authedFetch(`/api/tenant/${tenant.tenantId}/users`),
         authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
       ]);
@@ -262,7 +265,7 @@ export default function ClienteHandoffsPage() {
       const settingsPayload = (await settingsRes.json()) as TenantSettingsResponse;
 
       if (!chatsRes.ok) throw new Error(chatsPayload.error || "Falha ao carregar chats.");
-      if (!logsRes.ok) throw new Error(logsPayload.error || "Falha ao carregar logs de IA.");
+      if (!logsRes.ok && canViewAiLogs) throw new Error(logsPayload.error || "Falha ao carregar logs de IA.");
       if (!usersRes.ok) throw new Error(usersPayload.error || "Falha ao carregar usuarios.");
 
       setChats(chatsPayload.items || []);
@@ -274,7 +277,7 @@ export default function ClienteHandoffsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tenant?.tenantId]);
+  }, [canViewAiLogs, tenant?.tenantId]);
 
   const canOperate = hasCapability("respond_inbox");
   const businessProfile = useMemo(() => getBusinessProfile(businessProfileId), [businessProfileId]);

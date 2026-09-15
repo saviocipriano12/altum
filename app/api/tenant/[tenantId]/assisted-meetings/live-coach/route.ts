@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { generateLiveMeetingCoach } from "@/lib/server/ai/meeting-assistant";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
@@ -34,11 +34,11 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
     await assertTenantModule(tenantId, "assisted_meetings");
-    assertTenantRole(membership, "client_viewer");
+    assertTenantCapability(membership, "edit_leads");
 
     const body = (await req.json().catch(() => ({}))) as Body;
-    const transcript = clean(body.transcript, 10000);
-    const notes = clean(body.notes, 2500);
+    const transcript = clean(body.transcript, 24000);
+    const notes = clean(body.notes, 4000);
     if (!transcript && !notes) {
       return NextResponse.json({ error: "Informe transcricao ou notas para a IA orientar a reuniao." }, { status: 400 });
     }

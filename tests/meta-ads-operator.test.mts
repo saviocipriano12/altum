@@ -1,0 +1,4 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { analyzeMetaAdsOperator } from "../lib/server/growth/meta-ads-operator.ts";
+test("Meta operator detects campaign waste and creative fatigue",()=>{const report=analyzeMetaAdsOperator({accountId:"act_123",channelId:"meta",currency:"BRL",from:"2026-09-01",to:"2026-09-09",campaigns:[{id:"c1",name:"Topo",status:"ACTIVE",impressions:10000,clicks:100,spend:200,leads:0,purchaseValue:0,ctr:1,cpc:2,frequency:2,roas:0}],adSets:[],ads:[{id:"a1",name:"Video",campaignId:"c1",campaignName:"Topo",adSetId:"s1",adSetName:"Frio",status:"ACTIVE",impressions:5000,clicks:30,spend:80,leads:0,purchaseValue:0,ctr:.6,cpc:2.67,frequency:4.2,roas:0}]});assert.equal(report.totals.spend,200);assert.ok(report.recommendations.some(x=>x.type==="stop_waste"&&x.nextAction?.tool==="draft_campaign_pause"));assert.ok(report.recommendations.some(x=>x.type==="creative_fatigue"));});

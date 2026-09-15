@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { getDefaultTenantMembershipForUser } from "@/lib/server/tenant";
+import { getDefaultTenantMembershipForUser, getTenantMembershipForUser } from "@/lib/server/tenant";
 import { getPlatformPlan } from "@/lib/server/platform-plans";
 import { applyPlatformPlanEntitlements } from "@/lib/server/platform-plan-entitlements";
 import { asaasRequest, AsaasApiError } from "@/lib/server/asaas-api";
@@ -28,8 +28,11 @@ function toIso(value: unknown) {
   return millis ? new Date(millis).toISOString() : null;
 }
 
-async function billingContext(uid: string) {
-  const membership = await getDefaultTenantMembershipForUser(uid);
+async function billingContext(uid: string, tenantIdHint?: unknown) {
+  const requestedTenantId = clean(tenantIdHint, 180);
+  const membership = requestedTenantId
+    ? await getTenantMembershipForUser(uid, requestedTenantId)
+    : await getDefaultTenantMembershipForUser(uid);
   if (!membership || membership.status !== "active") {
     throw new SelfServiceAuthError(403, "tenant_not_found", "Conta da empresa nao encontrada.");
   }
@@ -51,7 +54,8 @@ function assertBillingOwner(role: unknown) {
 export async function GET(req: Request) {
   try {
     const actor = await requireFirebaseUser(req);
-    const { membership, tenant } = await billingContext(actor.uid);
+    const { searchParams } = new URL(req.url);
+    const { membership, tenant } = await billingContext(actor.uid, searchParams.get("tenantId"));
     const subscriptionId = clean(tenant.asaasSubscriptionId, 180);
     const [usage, entitlements] = await Promise.all([
       getTenantCommercialUsage(membership.tenantId).catch((error) => {
@@ -128,9 +132,9 @@ type ActionBody = {
 export async function PATCH(req: Request) {
   try {
     const actor = await requireFirebaseUser(req);
-    const { membership, tenantRef, tenant } = await billingContext(actor.uid);
+    const body = (await req.json()) as ActionBody & { tenantId?: unknown };
+    const { membership, tenantRef, tenant } = await billingContext(actor.uid, body.tenantId);
     assertBillingOwner(membership.role);
-    const body = (await req.json()) as ActionBody;
     const action = clean(body.action, 40);
     const subscriptionId = clean(tenant.asaasSubscriptionId, 180);
     if (!subscriptionId) {

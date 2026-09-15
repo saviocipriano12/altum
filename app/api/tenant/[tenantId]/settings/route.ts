@@ -57,6 +57,10 @@ function parseBoolean(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function hasOwn(input: object, key: string) {
+  return Object.prototype.hasOwnProperty.call(input, key);
+}
+
 function clampNumber(value: unknown, fallback: number, min: number, max: number) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -80,7 +84,7 @@ function parseRules(value: unknown) {
       const id = clean(team.id, 80) || clean(team.name, 80).toLowerCase().replace(/\s+/g, "_") || `team_${index + 1}`;
       const name = clean(team.name, 80) || "Time";
       return {
-        id,
+        id: id.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 80) || `team_${index + 1}`,
         name,
         description: clean(team.description, 180),
         channels,
@@ -104,15 +108,23 @@ function parseRules(value: unknown) {
       businessHoursOnly: parseBoolean(inbox.businessHoursOnly, false),
       defaultTeam: clean(inbox.defaultTeam, 80) || "comercial",
       teams,
+      lastAssignedUserId: clean(inbox.lastAssignedUserId, 140),
+      lastAssignedAt: inbox.lastAssignedAt,
     },
   };
+}
+
+function isValidHour(value: string) {
+  if (!/^\d{2}:\d{2}$/.test(value)) return false;
+  const [hour, minute] = value.split(":").map(Number);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
 }
 
 function parseDailyReport(value: unknown, current?: unknown) {
   const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const fallback = current && typeof current === "object" ? (current as Record<string, unknown>) : {};
   const sendHour = clean(raw.sendHour ?? fallback.sendHour, 5);
-  const normalizedSendHour = /^\d{2}:\d{2}$/.test(sendHour) ? sendHour : "18:30";
+  const normalizedSendHour = isValidHour(sendHour) ? sendHour : "18:30";
 
   return {
     enabled:
@@ -187,50 +199,72 @@ export async function POST(
     assertTenantCapability(membership, "manage_settings");
 
     const body = (await req.json()) as Body;
+    const rawBody = body as Record<string, unknown>;
     const currentSettings = await getTenantSettings(tenantId);
     const currentRules = parseRules(currentSettings?.rules);
     const nextInboxRules = {
       ...currentRules.inbox,
       ...(((body.rules || {}).inbox as Record<string, unknown>) || {}),
     };
-    const patch = {
+
+    const patch: Record<string, unknown> = {
       tenantId,
-      name: clean(body.name, 180),
-      niche: clean(body.niche, 120),
-      businessProfileId: normalizeBusinessProfileId(body.businessProfileId || currentSettings?.businessProfileId),
-      responsibleName: clean(body.responsibleName, 140),
-      responsibleEmail: clean(body.responsibleEmail, 180).toLowerCase(),
-      phone: clean(body.phone, 40),
-      website: clean(body.website, 180),
-      addressLine: clean(body.addressLine, 180),
-      city: clean(body.city, 80),
-      state: clean(body.state, 60),
-      timezone: clean(body.timezone, 80) || "America/Sao_Paulo",
-      businessHours: clean(body.businessHours, 240) || "Seg-Sex 09:00-18:00",
-      dailyReport: parseDailyReport(body.dailyReport, currentSettings?.dailyReport),
       rules: parseRules({ inbox: nextInboxRules }),
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: user.uid,
       updatedByName: user.name,
     };
+    const tenantPatch: Record<string, unknown> = {
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    const copyStringField = (field: keyof Body, max: number, targetField = field) => {
+      if (!hasOwn(rawBody, field)) return;
+      const value = clean(rawBody[field], max);
+      patch[targetField] = field === "responsibleEmail" ? value.toLowerCase() : value;
+      if (
+        targetField === "name" ||
+        targetField === "niche" ||
+        targetField === "responsibleName" ||
+        targetField === "responsibleEmail" ||
+        targetField === "phone" ||
+        targetField === "website" ||
+        targetField === "city" ||
+        targetField === "state"
+      ) {
+        tenantPatch[targetField] = patch[targetField];
+      }
+    };
+
+    copyStringField("name", 180);
+    copyStringField("niche", 120);
+    copyStringField("responsibleName", 140);
+    copyStringField("responsibleEmail", 180);
+    copyStringField("phone", 40);
+    copyStringField("website", 180);
+    copyStringField("addressLine", 180);
+    copyStringField("city", 80);
+    copyStringField("state", 60);
+
+    if (hasOwn(rawBody, "businessProfileId")) {
+      patch.businessProfileId = normalizeBusinessProfileId(body.businessProfileId);
+      tenantPatch.businessProfileId = patch.businessProfileId;
+    }
+    if (hasOwn(rawBody, "timezone")) {
+      patch.timezone = clean(body.timezone, 80) || "America/Sao_Paulo";
+    }
+    if (hasOwn(rawBody, "businessHours")) {
+      patch.businessHours = clean(body.businessHours, 240) || "Seg-Sex 09:00-18:00";
+    }
+    if (hasOwn(rawBody, "dailyReport")) {
+      patch.dailyReport = parseDailyReport(body.dailyReport, currentSettings?.dailyReport);
+    }
 
     await Promise.all([
       adminDb.collection("tenant_settings").doc(tenantId).set(patch, { merge: true }),
-      adminDb.collection("tenants").doc(tenantId).set(
-        {
-          name: patch.name,
-          niche: patch.niche,
-          businessProfileId: patch.businessProfileId,
-          responsibleName: patch.responsibleName,
-          responsibleEmail: patch.responsibleEmail,
-          phone: patch.phone,
-          website: patch.website,
-          city: patch.city,
-          state: patch.state,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      ),
+      Object.keys(tenantPatch).length > 1
+        ? adminDb.collection("tenants").doc(tenantId).set(tenantPatch, { merge: true })
+        : Promise.resolve(),
     ]);
 
     return NextResponse.json({ ok: true, tenantId });

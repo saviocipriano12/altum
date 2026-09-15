@@ -31,7 +31,7 @@ async function fetchGoogleCustomerPreview(input: {
   customerId: string;
   accessToken: string;
   apiVersion: string;
-  developerToken: string;
+  developerToken?: string;
 }) {
   const response = await fetch(
     `https://googleads.googleapis.com/${input.apiVersion}/customers/${input.customerId}/googleAds:searchStream`,
@@ -40,7 +40,7 @@ async function fetchGoogleCustomerPreview(input: {
       headers: {
         Authorization: `Bearer ${input.accessToken}`,
         "Content-Type": "application/json",
-        "developer-token": input.developerToken,
+        ...(input.developerToken ? { "developer-token": input.developerToken } : {}),
       },
       body: JSON.stringify({
         query: [
@@ -130,7 +130,7 @@ export async function GET(req: Request) {
         method: "GET",
         headers: {
           Authorization: `Bearer ${tokenPayload.access_token}`,
-          "developer-token": env.developerToken,
+          ...(env.developerToken ? { "developer-token": env.developerToken } : {}),
           "Content-Type": "application/json",
         },
         cache: "no-store",

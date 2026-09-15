@@ -41,6 +41,13 @@ function normalizeTeamId(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 80) || `time_${Date.now()}`;
 }
 
+function getNextTeamId(teams: TeamConfig[]) {
+  let index = teams.length + 1;
+  const used = new Set(teams.map((team) => normalizeTeamId(team.id || team.name)));
+  while (used.has(`time_${index}`)) index += 1;
+  return `time_${index}`;
+}
+
 export default function ClienteTimesPage() {
   const { tenant, hasCapability } = useClienteTenant();
   const [loading, setLoading] = useState(true);
@@ -114,7 +121,7 @@ export default function ClienteTimesPage() {
     setTeams((current) => [
       ...current,
       {
-        id: normalizeTeamId(`time_${current.length + 1}`),
+        id: getNextTeamId(current),
         name: `Time ${current.length + 1}`,
         description: "",
         channels: ["whatsapp"],
@@ -129,19 +136,39 @@ export default function ClienteTimesPage() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!tenant?.tenantId || !canManage) return;
+    if (!tenant?.tenantId) return;
+    if (!canManage) {
+      setError("Seu perfil pode consultar os times, mas nao pode alterar a estrutura operacional.");
+      return;
+    }
 
     try {
       setSaving(true);
       setError(null);
       setNotice(null);
 
-      const normalizedTeams = teams.map((team) => ({
-        id: normalizeTeamId(team.id || team.name),
-        name: team.name.trim() || "Time",
-        description: String(team.description || "").trim(),
-        channels: Array.from(new Set((team.channels || []).map((channel) => channel.trim().toLowerCase()).filter(Boolean))),
-        isDefault: normalizeTeamId(team.id || team.name) === defaultTeam,
+      const seen = new Set<string>();
+      const normalizedDefaultTeam = normalizeTeamId(defaultTeam);
+      const normalizedTeams = teams
+        .map((team, index) => {
+          let id = normalizeTeamId(team.id || team.name || `time_${index + 1}`);
+          while (seen.has(id)) id = `${id}_${seen.size + 1}`;
+          seen.add(id);
+          return {
+            id,
+            name: team.name.trim() || "Time",
+            description: String(team.description || "").trim(),
+            channels: Array.from(new Set((team.channels || []).map((channel) => channel.trim().toLowerCase()).filter(Boolean))),
+            isDefault: id === normalizedDefaultTeam,
+          };
+        });
+      const nextDefaultTeam =
+        normalizedTeams.find((team) => team.isDefault)?.id ||
+        normalizedTeams[0]?.id ||
+        "comercial";
+      const teamsWithDefault = normalizedTeams.map((team) => ({
+        ...team,
+        isDefault: team.id === nextDefaultTeam,
       }));
 
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/settings`, {
@@ -150,8 +177,8 @@ export default function ClienteTimesPage() {
         body: JSON.stringify({
           rules: {
             inbox: {
-              defaultTeam,
-              teams: normalizedTeams,
+              defaultTeam: nextDefaultTeam,
+              teams: teamsWithDefault,
             },
           },
         }),
@@ -162,7 +189,8 @@ export default function ClienteTimesPage() {
         return;
       }
       setNotice("Times operacionais atualizados.");
-      setTeams(normalizedTeams);
+      setTeams(teamsWithDefault);
+      setDefaultTeam(nextDefaultTeam);
     } catch {
       setError("Falha ao salvar times.");
     } finally {
@@ -178,7 +206,7 @@ export default function ClienteTimesPage() {
         action={
           <Link
             href="/cliente/painel/configuracoes"
-            className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/72 transition hover:bg-white/[0.08]"
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)]"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Voltar
@@ -190,24 +218,29 @@ export default function ClienteTimesPage() {
         <PanelCard className="p-5">
           <form onSubmit={onSubmit} className="space-y-4">
             <CardTitle title="Estrutura de times" subtitle="Defina nomes, descricao, canais e o time padrao do workspace." />
+            {!canManage ? (
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                Seu perfil pode consultar a estrutura, mas apenas admins podem alterar times e roteamento.
+              </p>
+            ) : null}
 
             {loading ? (
-              <div className="py-10 text-center text-white/60">
+              <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
             ) : (
               <>
                 <label className="block space-y-1">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Time padrao</span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Time padrao</span>
                   <select
                     value={defaultTeam}
                     onChange={(event) => setDefaultTeam(event.target.value)}
                     disabled={!canManage}
-                    className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                    className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2.5 text-sm text-[var(--cliente-card-text)] outline-none disabled:cursor-not-allowed disabled:bg-[var(--cliente-surface-muted)] disabled:opacity-70"
                   >
                     {teams.length === 0 ? <option value="comercial">Comercial</option> : null}
                     {teams.map((team) => (
-                      <option key={team.id} value={normalizeTeamId(team.id || team.name)} className="bg-[#111111] text-white">
+                      <option key={team.id} value={normalizeTeamId(team.id || team.name)} className="bg-white text-slate-900">
                         {team.name}
                       </option>
                     ))}
@@ -216,7 +249,7 @@ export default function ClienteTimesPage() {
 
                 <div className="space-y-3">
                   {teams.map((team, index) => (
-                    <div key={`${team.id}_${index}`} className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                    <div key={`${team.id}_${index}`} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                       <div className="grid gap-3 md:grid-cols-2">
                         <Field
                           label="Nome"
@@ -248,7 +281,7 @@ export default function ClienteTimesPage() {
                           <button
                             type="button"
                             onClick={() => removeTeam(index)}
-                            className="self-end inline-flex items-center justify-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2.5 text-sm text-rose-100 transition hover:bg-rose-500/15"
+                            className="self-end inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
                           >
                             <Trash2 className="h-4 w-4" />
                             Remover
@@ -264,7 +297,7 @@ export default function ClienteTimesPage() {
                     <button
                       type="button"
                       onClick={addTeam}
-                      className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/82 transition hover:bg-white/[0.08]"
+                      className="rounded-xl border border-[var(--cliente-border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)]"
                     >
                       Adicionar time
                     </button>
@@ -282,17 +315,17 @@ export default function ClienteTimesPage() {
             )}
           </form>
 
-          {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
-          {notice ? <p className="mt-3 text-sm text-emerald-300">{notice}</p> : null}
+          {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+          {notice ? <p className="mt-3 text-sm text-emerald-600">{notice}</p> : null}
         </PanelCard>
 
         <div className="space-y-4">
           <PanelCard className="p-5">
-            <div className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] p-2 text-white/85">
+            <div className="inline-flex rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-2 text-[var(--cliente-primary)]">
               <UsersRound className="h-4 w-4" />
             </div>
-            <p className="mt-3 text-sm font-semibold text-white/92">Cobertura dos times</p>
-            <p className="mt-1 text-sm text-white/58">Compare o que ja esta configurado com os times usados pelos membros da equipe.</p>
+            <p className="mt-3 text-sm font-semibold text-[var(--cliente-card-text)]">Cobertura dos times</p>
+            <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">Compare o que ja esta configurado com os times usados pelos membros da equipe.</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <StateBadge label={`${coverage.configured} configurados`} tone={coverage.configured > 0 ? "info" : "warning"} />
               <StateBadge label={`${coverage.referenced} referenciados`} tone="neutral" />
@@ -304,14 +337,14 @@ export default function ClienteTimesPage() {
             <CardTitle title="Ajustes sugeridos" subtitle="Onde a estrutura ainda pode ganhar consistencia." />
             <div className="mt-4 space-y-3">
               {coverage.missing.length === 0 ? (
-                <div className="rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-white/68">
+                <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 text-sm text-[var(--cliente-card-text-muted)]">
                   Os times usados pelos membros ja estao refletidos na configuracao operacional.
                 </div>
               ) : (
                 coverage.missing.map((team) => (
-                  <div key={team} className="rounded-2xl border border-white/10 bg-black/25 p-4">
-                    <p className="text-sm font-medium text-white">Time sem configuracao formal</p>
-                    <p className="mt-1 text-sm text-white/58">{team}</p>
+                  <div key={team} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                    <p className="text-sm font-medium text-[var(--cliente-card-text)]">Time sem configuracao formal</p>
+                    <p className="mt-1 text-sm text-[var(--cliente-card-text-muted)]">{team}</p>
                   </div>
                 ))
               )}
@@ -326,12 +359,12 @@ export default function ClienteTimesPage() {
 function Field({ label, value, onChange, disabled }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
   return (
     <label className="block space-y-1">
-      <span className="text-xs uppercase tracking-[0.14em] text-white/55">{label}</span>
+      <span className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">{label}</span>
       <input
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[var(--cliente-border-strong)] focus:bg-black/45 disabled:opacity-60"
+        className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2.5 text-sm text-[var(--cliente-card-text)] outline-none disabled:cursor-not-allowed disabled:bg-[var(--cliente-surface-muted)] disabled:opacity-70 transition placeholder:text-white/35 focus:border-[var(--cliente-border-strong)] focus:bg-black/45 disabled:opacity-60"
       />
     </label>
   );

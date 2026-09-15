@@ -24,7 +24,13 @@ export async function GET(
     assertTenantRole(membership, "client_viewer");
 
     const payload = await getTenantSocialAutomationSummary(tenantId);
-    return NextResponse.json({ ok: true, tenantId, ...payload });
+    const canManage = hasTenantCapability(membership, "manage_channels") || hasTenantCapability(membership, "manage_automations");
+    return NextResponse.json({
+      ok: true,
+      tenantId,
+      ...payload,
+      logs: canManage ? payload.logs : [],
+    });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });

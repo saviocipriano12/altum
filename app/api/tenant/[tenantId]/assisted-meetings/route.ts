@@ -153,8 +153,8 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       return NextResponse.json({ error: "Selecione um lead ou uma reuniao vinculada a um lead." }, { status: 400 });
     }
 
-    const transcript = clean(body.transcript, 16000);
-    const notes = clean(body.notes, 4000);
+    const transcript = clean(body.transcript, 80000);
+    const notes = clean(body.notes, 8000);
     if (!transcript && !notes) {
       return NextResponse.json({ error: "Informe transcricao ou notas da reuniao." }, { status: 400 });
     }

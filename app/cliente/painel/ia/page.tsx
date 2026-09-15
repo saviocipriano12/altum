@@ -688,8 +688,12 @@ export default function ClienteIaPage() {
       const [settingsRes, kbRes, logsRes, usageRes, campaignsRes, tenantSettingsRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`),
         authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/ai-usage`),
+        canManage
+          ? authedFetch(`/api/tenant/${tenant.tenantId}/ai-logs`)
+          : Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 })),
+        canManage
+          ? authedFetch(`/api/tenant/${tenant.tenantId}/ai-usage`)
+          : Promise.resolve(new Response(JSON.stringify({ summary: { total: 0, estimatedCostUsd: 0, rulesLane: 0, premiumLane: 0, conversationRuns: 0, fallbackRuns: 0 } }), { status: 200 })),
         authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/overview`),
         authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
       ]);
@@ -729,8 +733,8 @@ export default function ClienteIaPage() {
 
       if (logsRes.ok) {
         setLogs(logsPayload.items || []);
-      } else {
-      setError(logsPayload.error || "Falha ao carregar auditoria do assistente.");
+      } else if (canManage) {
+        setError(logsPayload.error || "Falha ao carregar auditoria do assistente.");
       }
 
       if (usageRes.ok) {
@@ -754,7 +758,7 @@ export default function ClienteIaPage() {
     } finally {
       setLoading(false);
     }
-  }, [tenant?.tenantId]);
+  }, [canManage, tenant?.tenantId]);
 
   useEffect(() => {
     void loadData();

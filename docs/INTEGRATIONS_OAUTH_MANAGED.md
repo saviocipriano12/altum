@@ -14,8 +14,8 @@
 - `META_GRAPH_VERSION` (opcional, default `v21.0`)
 - `GOOGLE_ADS_CLIENT_ID`
 - `GOOGLE_ADS_CLIENT_SECRET`
-- `GOOGLE_ADS_DEVELOPER_TOKEN`
-- `GOOGLE_ADS_API_VERSION` (opcional, default `v22`)
+- `GOOGLE_ADS_DEVELOPER_TOKEN` (opcional, apenas compatibilidade legada)
+- `GOOGLE_ADS_API_VERSION` (opcional, default `v25`)
 - `SECRET_ENCRYPTION_KEY` (obrigatorio para criptografia de tokens tenant)
 
 ### Credenciais por tenant/canal (`tenant_channels`)

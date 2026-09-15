@@ -10,10 +10,12 @@ import {
 import type { WhatsAppTemplateHeaderMedia } from "@/app/lib/server/whatsapp-channel";
 import { evaluateWhatsAppBulkCompliance, hasWhatsAppOptOut, readTimestampMs } from "@/lib/server/whatsapp-compliance";
 import { buildOutboundJobSchedule } from "@/lib/server/outbound-scheduling";
+import { matchesGrowthSegmentCondition, normalizeGrowthSegmentConditions, type GrowthSegmentCondition } from "@/lib/server/growth/segment-engine";
 
 export type OutboundAudienceBehavior = "all" | "no_response" | "inactive" | "proposal_stalled" | "new_inbound";
 
 export type OutboundCampaignFilters = {
+  growthSegmentId?: string;
   stageIds: string[];
   ownerIds: string[];
   sources: string[];
@@ -296,6 +298,7 @@ export function normalizeOutboundCampaignFilters(value: unknown): OutboundCampai
     ? behavior
     : "all") as OutboundAudienceBehavior;
   return {
+    growthSegmentId: clean(filters.growthSegmentId, 180),
     stageIds: cleanList(filters.stageIds, 80, 20),
     ownerIds: cleanList(filters.ownerIds, 140, 20),
     sources: cleanList(filters.sources, 80, 20),
@@ -639,13 +642,33 @@ function buildAudienceSelection(input: {
   leads: OutboundLeadRow[];
   filters: OutboundCampaignFilters;
   maxRecipients: number;
+  growthSegment?: { match: "all" | "any"; conditions: GrowthSegmentCondition[] } | null;
 }) {
   const nowMs = Date.now();
-  const filtered = input.leads.filter((item) => matchLeadFilters(item.data, input.filters, nowMs));
+  const filtered = input.leads.filter((item) => {
+    if (!matchLeadFilters(item.data, input.filters, nowMs)) return false;
+    if (!input.growthSegment) return true;
+    const lead = { id: item.id, ...item.data };
+    const results = input.growthSegment.conditions.map((condition) => matchesGrowthSegmentCondition(lead, condition));
+    return input.growthSegment.match === "any" ? results.some(Boolean) : results.every(Boolean);
+  });
   return {
     filtered,
     selected: filtered.slice(0, input.maxRecipients),
   };
+}
+
+async function loadGrowthSegmentForCampaign(tenantId: string, segmentId?: string) {
+  const id = clean(segmentId, 180);
+  if (!id) return null;
+  const snap = await adminDb.collection("growth_segments").doc(id).get();
+  if (!snap.exists) throw new Error("Segmento comercial nao encontrado.");
+  const data = snap.data() as Record<string, unknown>;
+  if (clean(data.tenantId, 180) !== tenantId || clean(data.status, 30) !== "active") throw new Error("Segmento comercial indisponivel para esta empresa.");
+  const definition = data.definition && typeof data.definition === "object" ? data.definition as Record<string, unknown> : {};
+  const match = clean(definition.match, 10);
+  if (match !== "all" && match !== "any") throw new Error("Definicao do segmento comercial invalida.");
+  return { match: match as "all" | "any", conditions: normalizeGrowthSegmentConditions(definition.conditions) };
 }
 
 function summarizeAudience(input: {
@@ -751,11 +774,15 @@ async function findOrCreateLeadChat(input: {
 export async function previewOutboundCampaign(input: { tenantId: string; campaignId: string }) {
   const { campaign } = await loadCampaignContext(input);
 
-  const leads = await loadOutboundAudienceLeads(input.tenantId);
+  const [leads, growthSegment] = await Promise.all([
+    loadOutboundAudienceLeads(input.tenantId),
+    loadGrowthSegmentForCampaign(input.tenantId, campaign.filters.growthSegmentId),
+  ]);
   const audience = buildAudienceSelection({
     leads,
     filters: campaign.filters,
     maxRecipients: campaign.maxRecipients,
+    growthSegment,
   });
   const summary = summarizeAudience({
     totalLeads: leads.length,
@@ -798,11 +825,15 @@ export async function dispatchOutboundCampaign(input: {
     throw new Error("A campanha precisa de uma mensagem para ser enviada.");
   }
 
-  const leads = await loadOutboundAudienceLeads(input.tenantId);
+  const [leads, growthSegment] = await Promise.all([
+    loadOutboundAudienceLeads(input.tenantId),
+    loadGrowthSegmentForCampaign(input.tenantId, campaign.filters.growthSegmentId),
+  ]);
   const audience = buildAudienceSelection({
     leads,
     filters: campaign.filters,
     maxRecipients: campaign.maxRecipients,
+    growthSegment,
   });
   const selectedLeadIds = new Set((input.leadIds || []).map((item) => clean(item, 180)).filter(Boolean));
   const matchedLeads = selectedLeadIds.size
@@ -1069,11 +1100,15 @@ export async function enqueueOutboundCampaign(input: {
     throw new Error("Escreva a mensagem do disparo.");
   }
 
-  const leads = await loadOutboundAudienceLeads(input.tenantId);
+  const [leads, growthSegment] = await Promise.all([
+    loadOutboundAudienceLeads(input.tenantId),
+    loadGrowthSegmentForCampaign(input.tenantId, campaign.filters.growthSegmentId),
+  ]);
   const audience = buildAudienceSelection({
     leads,
     filters: campaign.filters,
     maxRecipients: campaign.maxRecipients,
+    growthSegment,
   });
   const eligible = audience.selected.filter((item) => {
     const compliance = evaluateWhatsAppBulkCompliance(item.data);

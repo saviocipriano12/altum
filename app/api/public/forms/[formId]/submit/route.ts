@@ -8,6 +8,7 @@ import {
 } from "@/lib/capture-form";
 import { recordInboundLead } from "@/lib/server/lead-intake";
 import { assertPublicRateLimit, PublicRateLimitError } from "@/lib/server/public-abuse";
+import { recordNativeGrowthEvent } from "@/lib/server/growth/record-event";
 
 type Body = {
   nome?: string;
@@ -159,6 +160,16 @@ export async function POST(
       },
       { merge: true }
     );
+
+    await recordNativeGrowthEvent({
+      tenantId,
+      eventId: `capture-form:${formId}:${lead.leadId}:${Date.now()}`,
+      name: "form_submitted",
+      externalId: lead.leadId,
+      url: landingPage,
+      properties: { formId, formName: clean(form.name, 140) || "Formulario" },
+      attribution: { source: utmSource, medium: utmMedium || "form", campaign: utmCampaign, content: utmContent, term: utmTerm, gclid, fbclid },
+    }).catch((error) => console.error("Falha ao registrar evento nativo do formulario:", error));
 
     return NextResponse.json({
       ok: true,

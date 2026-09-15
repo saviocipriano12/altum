@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Bot, CalendarCheck, CalendarDays, Database, Loader2, Megaphone, Send, Sparkles, Target } from "lucide-react";
+import { ArrowUpRight, Bot, CalendarCheck, CalendarDays, Database, Loader2, Megaphone, RotateCcw, Send, Sparkles, Target } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, ClientActionButton, PanelCard, StateBadge } from "@/app/cliente/painel/components/ui";
@@ -13,6 +13,8 @@ type InsightResponse = {
   metrics?: Record<string, number>;
   sources?: Array<{ collection: string }>;
   suggestedQuestions?: string[];
+  mode?: "ai" | "verified_fallback";
+  asOf?: string;
   error?: string;
 };
 
@@ -24,6 +26,15 @@ type Message = {
   sources?: Array<{ collection: string }>;
   metrics?: Record<string, number>;
   suggestedQuestions?: string[];
+  mode?: "ai" | "verified_fallback";
+};
+
+const INTRO_MESSAGE: Message = {
+  id: "intro",
+  role: "assistant",
+  title: "Perguntar a Altum",
+  text: "Pergunte sobre tráfego, conversas, clientes, campanhas, agenda, vendas, retenção e IA. Eu leio os dados da conta e devolvo uma resposta prática para decidir o próximo passo.",
+  sources: [{ collection: "leads" }, { collection: "chats" }, { collection: "kb_docs" }, { collection: "ai_logs" }],
 };
 
 const STARTER_QUESTIONS = [
@@ -110,25 +121,37 @@ function sourceLabel(collection: string) {
 
 export default function PerguntarAltumPage() {
   const { tenant, hasCapability } = useClienteTenant();
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "intro",
-      role: "assistant",
-      title: "Perguntar a Altum",
-      text:
-        "Pergunte sobre trafego, conversas, clientes, campanhas, agenda, vendas, retencao e IA. Eu leio os dados da conta e devolvo uma resposta pratica para decidir o proximo passo.",
-      sources: [
-        { collection: "leads" },
-        { collection: "chats" },
-        { collection: "kb_docs" },
-        { collection: "ai_logs" },
-      ],
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([INTRO_MESSAGE]);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canAsk = hasCapability("manage_ai") || hasCapability("manage_settings") || hasCapability("view_reports");
+  const canAsk = hasCapability("view_metrics") || hasCapability("manage_ai") || hasCapability("manage_settings");
+  const hydratedStorageKey = useRef<string | null>(null);
+  const skipNextPersist = useRef(false);
+  const conversationEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!tenant?.tenantId) return;
+    const key = `altum:business-chat:${tenant.tenantId}`;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "[]") as Message[];
+      setMessages(Array.isArray(parsed) && parsed.length ? parsed.slice(-30) : [INTRO_MESSAGE]);
+    } catch {
+      setMessages([INTRO_MESSAGE]);
+    }
+    hydratedStorageKey.current = key;
+    skipNextPersist.current = true;
+  }, [tenant?.tenantId]);
+
+  useEffect(() => {
+    if (!hydratedStorageKey.current) return;
+    if (skipNextPersist.current) {
+      skipNextPersist.current = false;
+      return;
+    }
+    localStorage.setItem(hydratedStorageKey.current, JSON.stringify(messages.slice(-30)));
+    conversationEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, loading]);
 
   const lastAssistant = useMemo(() => [...messages].reverse().find((item) => item.role === "assistant"), [messages]);
   const suggestions = lastAssistant?.suggestedQuestions?.length ? lastAssistant.suggestedQuestions : STARTER_QUESTIONS;
@@ -170,6 +193,7 @@ export default function PerguntarAltumPage() {
           sources: payload.sources || [],
           metrics: payload.metrics || {},
           suggestedQuestions: payload.suggestedQuestions || [],
+          mode: payload.mode,
         },
       ]);
     } catch (askError) {
@@ -182,6 +206,12 @@ export default function PerguntarAltumPage() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void askAltum();
+  }
+
+  function resetConversation() {
+    setMessages([INTRO_MESSAGE]);
+    setError(null);
+    setQuestion("");
   }
 
   return (
@@ -247,7 +277,19 @@ export default function PerguntarAltumPage() {
                   <p className="text-sm text-[var(--cliente-card-text-muted)]">Analista comercial da sua operacao</p>
                 </div>
               </div>
-              <StateBadge label="dados da conta" tone="ai" />
+              <div className="flex items-center gap-2">
+                <StateBadge label={lastAssistant?.mode === "verified_fallback" ? "dados verificados" : "IA conectada"} tone="ai" />
+                <button
+                  type="button"
+                  onClick={resetConversation}
+                  disabled={loading || messages.length <= 1}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--cliente-border)] text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)] disabled:opacity-40"
+                  aria-label="Iniciar nova conversa"
+                  title="Nova conversa"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -282,6 +324,7 @@ export default function PerguntarAltumPage() {
                 Lendo os dados da operacao...
               </div>
             ) : null}
+            <div ref={conversationEndRef} />
           </div>
 
           <form onSubmit={submit} className="border-t border-[var(--cliente-border)] p-4 md:p-5">

@@ -489,14 +489,16 @@ async function sendGoogleConversion(input: {
     validateOnly: false,
   };
 
+  const apiVersion = clean(process.env.GOOGLE_ADS_API_VERSION, 20) || "v25";
+  const developerToken = clean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN, 200);
   const response = await fetch(
-    `https://googleads.googleapis.com/v22/customers/${input.channel.customerId}:uploadClickConversions`,
+    `https://googleads.googleapis.com/${apiVersion}/customers/${input.channel.customerId}:uploadClickConversions`,
     {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        "developer-token": clean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN, 200),
+        ...(developerToken ? { "developer-token": developerToken } : {}),
         ...(input.channel.loginCustomerId ? { "login-customer-id": input.channel.loginCustomerId.replace(/[^\d]/g, "") } : {}),
       },
       body: JSON.stringify(payload),

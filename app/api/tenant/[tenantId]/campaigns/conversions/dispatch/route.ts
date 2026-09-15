@@ -27,7 +27,7 @@ export async function POST(
     await assertTenantModule(tenantId, "marketing");
     if (
       !hasTenantCapability(membership, "manage_channels") &&
-      !hasTenantCapability(membership, "view_metrics") &&
+      !hasTenantCapability(membership, "manage_automations") &&
       !hasTenantCapability(membership, "edit_leads")
     ) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para disparar conversoes.");
