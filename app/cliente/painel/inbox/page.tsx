@@ -101,6 +101,11 @@ type ChatItem = {
   channel?: string;
   channelId?: string;
   channelPhoneNumberId?: string;
+  channelDisplayName?: string;
+  channelPhoneNumber?: string;
+  channelProvider?: string;
+  channelScope?: string;
+  channelOwnerUserName?: string;
   status?: string;
   priority?: string;
   queueStatus?: string;
@@ -369,9 +374,13 @@ type ChatListPayload = {
 type TenantChannelItem = {
   id: string;
   type?: string;
+  provider?: string;
   status?: string;
   connectionStatus?: string;
   displayName?: string;
+  phoneNumber?: string;
+  channelScope?: string;
+  ownerUserName?: string;
 };
 
 type TenantChannelsPayload = {
@@ -865,10 +874,15 @@ function audioExtensionForMime(type: string) {
   return "webm";
 }
 
-function isWhatsAppServiceWindowClosed(chat?: ChatItem | null) {
+function isWhatsAppServiceWindowClosed(chat?: ChatItem | null, provider?: string) {
   if (!chat) return false;
   const channel = String(chat.channel || "whatsapp").toLowerCase();
   if (channel !== "whatsapp") return false;
+  const normalizedProvider = String(provider || "").trim().toLowerCase();
+  const official = ["meta_whatsapp", "meta_cloud", "whatsapp_cloud", "whatsapp_cloud_api", "whatsapp_business_cloud_api"].includes(normalizedProvider);
+  // The 24-hour template rule belongs to Meta's official Cloud API. Personal
+  // WhatsApp sessions (Evolution/linked device) continue with free text.
+  if (!official) return false;
   if (chat.requiresTemplate === true) return true;
   const lastClientMessageAt = toDate(chat.lastClientMessageAt);
   if (!lastClientMessageAt) return false;
@@ -2093,6 +2107,7 @@ export default function ClienteInboxPage() {
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
   const [aiFilter, setAiFilter] = useState<AiFilter>("all");
   const [channelFilter, setChannelFilter] = useState("all");
+  const [channelInstanceFilter, setChannelInstanceFilter] = useState("all");
   const [assignedUserFilter, setAssignedUserFilter] = useState(() => searchParams.get("assignee") || "all");
   const [temperatureFilter, setTemperatureFilter] = useState("all");
   const [metaForm, setMetaForm] = useState({
@@ -2503,7 +2518,14 @@ export default function ClienteInboxPage() {
   const aiPaused = useMemo(() => isAiPaused(activeChat), [activeChat]);
   const aiStateDescription = useMemo(() => getAiStateDescription(activeChat), [activeChat]);
   const aiRetryAvailable = useMemo(() => shouldOfferAiRetry(activeChat), [activeChat]);
-  const whatsappWindowClosed = useMemo(() => isWhatsAppServiceWindowClosed(activeChat), [activeChat]);
+  const activeChannelConfig = useMemo(
+    () => tenantChannels.find((channel) => channel.id === activeChat?.channelId) || null,
+    [activeChat?.channelId, tenantChannels]
+  );
+  const whatsappWindowClosed = useMemo(
+    () => isWhatsAppServiceWindowClosed(activeChat, activeChat?.channelProvider || activeChannelConfig?.provider),
+    [activeChat, activeChannelConfig?.provider]
+  );
   const activeChannel = String(activeChat?.channel || "whatsapp").trim().toLowerCase();
   const canSendMediaInChat = activeChannel === "whatsapp" && !whatsappWindowClosed;
   const handoffNotifyHint = useMemo(
@@ -2516,6 +2538,7 @@ export default function ClienteInboxPage() {
       if (statusFilter !== "all" && (chat.status || "open") !== statusFilter) return false;
       if (priorityFilter !== "all" && (chat.priority || "low") !== priorityFilter) return false;
       if (channelFilter !== "all" && (chat.channel || "whatsapp").toLowerCase() !== channelFilter.toLowerCase()) return false;
+      if (channelInstanceFilter !== "all" && String(chat.channelId || "") !== channelInstanceFilter) return false;
       const temperature = String(chat.leadTemperature || chat.leadHeat || "").trim().toLowerCase();
       const normalizedTemperature = ["hot", "quente", "alta", "high"].includes(temperature)
         ? "hot"
@@ -2553,7 +2576,19 @@ export default function ClienteInboxPage() {
 
       return haystack.includes(search.trim().toLowerCase());
     });
-  }, [aiFilter, assignedUserFilter, channelFilter, chats, leadIdFromQuery, priorityFilter, queueFilter, search, statusFilter, temperatureFilter]);
+  }, [aiFilter, assignedUserFilter, channelFilter, channelInstanceFilter, chats, leadIdFromQuery, priorityFilter, queueFilter, search, statusFilter, temperatureFilter]);
+
+  const availableChannelInstances = useMemo(() => {
+    const usedIds = new Set(chats.map((chat) => String(chat.channelId || "")).filter(Boolean));
+    return tenantChannels
+      .filter((channel) => usedIds.has(channel.id) || channel.status === "active")
+      .map((channel) => ({
+        id: channel.id,
+        label: [channel.displayName || formatChannelLabel(channel.type), channel.phoneNumber, channel.ownerUserName]
+          .filter(Boolean)
+          .join(" · "),
+      }));
+  }, [chats, tenantChannels]);
 
   const availableChannels = useMemo(() => {
     const configuredChannels = tenantChannels
@@ -4441,7 +4476,7 @@ export default function ClienteInboxPage() {
                 </button>
               </div>
 
-              <div className={cn("grid-cols-1 gap-2 sm:grid-cols-3", showAdvancedFilters ? "grid" : "hidden", "sm:grid")}>
+              <div className={cn("grid-cols-1 gap-2 sm:grid-cols-2", showAdvancedFilters ? "grid" : "hidden", "sm:grid")}>
                 <label className="min-w-0">
                   <span className="sr-only">Filtrar por canal</span>
                   <select
@@ -4454,6 +4489,19 @@ export default function ClienteInboxPage() {
                       <option key={channel} value={channel}>
                         {formatChannelLabel(channel)}
                       </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="min-w-0">
+                  <span className="sr-only">Filtrar por numero conectado</span>
+                  <select
+                    value={channelInstanceFilter}
+                    onChange={(event) => setChannelInstanceFilter(event.target.value)}
+                    className="client-input w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none"
+                  >
+                    <option value="all">Todos os numeros e contas</option>
+                    {availableChannelInstances.map((channel) => (
+                      <option key={channel.id} value={channel.id}>{channel.label}</option>
                     ))}
                   </select>
                 </label>
@@ -4627,8 +4675,9 @@ export default function ClienteInboxPage() {
                       {activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
                     </h3>
                     <span className="hidden sm:inline-flex">
-                      <StateBadge label={formatChannelLabel(activeChat?.channel)} tone="neutral" />
+                      <StateBadge label={activeChat?.channelDisplayName || formatChannelLabel(activeChat?.channel)} tone="neutral" />
                     </span>
+                    {activeChat?.channelPhoneNumber ? <span className="hidden text-xs font-semibold text-[var(--cliente-card-text-soft)] sm:inline">{activeChat.channelPhoneNumber}</span> : null}
                     <span className="hidden sm:inline-flex">
                       <StateBadge label={activeResponseState.label} tone={activeResponseState.tone} />
                     </span>

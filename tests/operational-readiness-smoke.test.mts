@@ -252,7 +252,7 @@ test("inbox listing is bounded and does not block normal refreshes on external s
   const page = readFileSync(join(process.cwd(), "app/cliente/painel/inbox/page.tsx"), "utf8");
   assert.match(route, /Math\.max\(25, Math\.min\(200/);
   assert.match(route, /url\.searchParams\.get\("sync"\) === "recent"/);
-  assert.match(route, /const \[snap, stateSnap, enrichment\] = await Promise\.all/);
+  assert.match(route, /const \[snap, stateSnap, enrichment, channelsSnap\] = await Promise\.all/);
   assert.match(route, /ENRICHMENT_CACHE_TTL_MS = 30_000/);
   assert.match(page, /async \(withMessages = false, syncExternal = false\)/);
   assert.match(page, /loadChats\(\{ silent: true, syncExternal \}\)/);

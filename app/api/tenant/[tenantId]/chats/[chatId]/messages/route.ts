@@ -121,7 +121,19 @@ function normalizeTemplateHeaderMedia(value: unknown) {
 
 async function listChatMessages(chatId: string, sinceMs: number | null) {
   if (!sinceMs) {
-    return adminDb.collection("messages").where("chatId", "==", chatId).limit(500).get();
+    try {
+      // Always load the newest page. An unordered limit can return an old,
+      // arbitrary slice and makes recent messages appear to disappear.
+      return await adminDb
+        .collection("messages")
+        .where("chatId", "==", chatId)
+        .orderBy("createdAt", "desc")
+        .limit(500)
+        .get();
+    } catch (error) {
+      console.warn("Indice de historico de mensagens indisponivel; usando fallback:", error);
+      return adminDb.collection("messages").where("chatId", "==", chatId).limit(1000).get();
+    }
   }
 
   try {
@@ -138,6 +150,13 @@ async function listChatMessages(chatId: string, sinceMs: number | null) {
     console.warn("Indice incremental de mensagens indisponivel; usando fallback:", error);
     return adminDb.collection("messages").where("chatId", "==", chatId).limit(500).get();
   }
+}
+
+function messageText(data: Record<string, unknown>) {
+  return cleanMessageText(
+    data.text || data.message || data.body || data.content || data.caption,
+    4000
+  );
 }
 
 export async function GET(
@@ -181,7 +200,7 @@ export async function GET(
 
         return {
           id: doc.id,
-          text: cleanMessageText(data.text, 4000),
+          text: messageText(data),
           sender: normalizeSender(data.sender),
           senderName: cleanText(data.senderName, 180) || cleanText(data.agentName, 180) || null,
           status: cleanText(data.status, 40) || null,

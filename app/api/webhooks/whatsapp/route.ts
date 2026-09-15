@@ -488,7 +488,9 @@ async function persistGenericWhatsAppInbound(input: {
 
   const ownerFromLead = await resolveLeadOwner(from, tenantId);
   let resolvedLeadId = ownerFromLead.leadId;
-  let resolvedOwnerId = ownerFromLead.ownerId || input.channel.ownerUserId || null;
+  let resolvedOwnerId = input.channel.channelScope === "personal" && input.channel.ownerUserId
+    ? input.channel.ownerUserId
+    : ownerFromLead.ownerId || input.channel.ownerUserId || null;
   let resolvedOwnerName = await resolveOwnerName(resolvedOwnerId);
 
   if (!resolvedLeadId) {
@@ -528,6 +530,8 @@ async function persistGenericWhatsAppInbound(input: {
       channel: "whatsapp",
       channelId: input.channel.id,
       channelPhoneNumberId: phoneNumberId,
+      channelScope: input.channel.channelScope,
+      channelOwnerUserId: input.channel.ownerUserId || null,
       lastMessage: text,
       lastMessageTime: FieldValue.serverTimestamp(),
       ownerId: resolvedOwnerId,
@@ -549,13 +553,17 @@ async function persistGenericWhatsAppInbound(input: {
   const chatId = canonicalChat.chatRef.id;
   if (!canonicalChat.created) {
     const chatData = chatDoc.data() as { ownerId?: string; assignedTo?: string; leadId?: string };
-    const currentOwnerId = chatData.ownerId || chatData.assignedTo || resolvedOwnerId;
+    const currentOwnerId = input.channel.channelScope === "personal" && input.channel.ownerUserId
+      ? input.channel.ownerUserId
+      : chatData.ownerId || chatData.assignedTo || resolvedOwnerId;
     await canonicalChat.chatRef.set(
       {
         contactName,
         channel: "whatsapp",
         channelId: input.channel.id,
         channelPhoneNumberId: phoneNumberId,
+        channelScope: input.channel.channelScope,
+        channelOwnerUserId: input.channel.ownerUserId || null,
         lastMessage: text,
         lastMessageTime: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),

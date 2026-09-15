@@ -29,13 +29,29 @@ type SettingsPayload = {
 
 type UsersPayload = {
   items?: Array<{
+    id?: string;
+    userId?: string;
+    name?: string;
+    email?: string;
+    role?: string;
     team?: string;
     availability?: string;
     status?: string;
     allowedChannels?: string[];
+    maxOpenChats?: number | null;
   }>;
   error?: string;
 };
+
+type TeamMemberConfig = NonNullable<UsersPayload["items"]>[number];
+
+const OPERATION_CHANNELS = [
+  { id: "whatsapp", label: "WhatsApp" },
+  { id: "instagram", label: "Instagram" },
+  { id: "messenger", label: "Messenger" },
+  { id: "site_chat", label: "Chat do site" },
+  { id: "site_form", label: "Formularios" },
+] as const;
 
 function normalizeTeamId(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 80) || `time_${Date.now()}`;
@@ -57,7 +73,9 @@ export default function ClienteTimesPage() {
   const [teams, setTeams] = useState<TeamConfig[]>([]);
   const [defaultTeam, setDefaultTeam] = useState("comercial");
   const [userTeams, setUserTeams] = useState<string[]>([]);
+  const [members, setMembers] = useState<TeamMemberConfig[]>([]);
   const canManage = hasCapability("manage_settings");
+  const canManageUsers = hasCapability("manage_users");
 
   useEffect(() => {
     if (!tenant?.tenantId) return;
@@ -90,6 +108,7 @@ export default function ClienteTimesPage() {
             )
           )
         );
+        setMembers(usersPayload.items || []);
       } catch {
         if (!mounted) return;
         setError("Falha ao carregar times.");
@@ -132,6 +151,28 @@ export default function ClienteTimesPage() {
 
   function removeTeam(index: number) {
     setTeams((current) => current.filter((_, teamIndex) => teamIndex !== index));
+  }
+
+  function toggleTeamChannel(index: number, channelId: string) {
+    const current = teams[index]?.channels || [];
+    updateTeam(index, {
+      channels: current.includes(channelId)
+        ? current.filter((item) => item !== channelId)
+        : [...current, channelId],
+    });
+  }
+
+  function updateMember(index: number, patch: Partial<TeamMemberConfig>) {
+    setMembers((current) => current.map((member, memberIndex) => memberIndex === index ? { ...member, ...patch } : member));
+  }
+
+  function toggleMemberChannel(index: number, channelId: string) {
+    const current = members[index]?.allowedChannels || [];
+    updateMember(index, {
+      allowedChannels: current.includes(channelId)
+        ? current.filter((item) => item !== channelId)
+        : [...current, channelId],
+    });
   }
 
   async function onSubmit(event: FormEvent) {
@@ -187,6 +228,29 @@ export default function ClienteTimesPage() {
       if (!res.ok) {
         setError(payload.error || "Falha ao salvar times.");
         return;
+      }
+
+      if (canManageUsers) {
+        const editableMembers = members.filter((member) => member.userId && member.role !== "client_owner");
+        const memberResponses = await Promise.all(
+          editableMembers.map((member) => authedFetch(
+            `/api/tenant/${tenant.tenantId}/users/${encodeURIComponent(String(member.userId))}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                team: normalizeTeamId(String(member.team || nextDefaultTeam)),
+                availability: member.availability || "online",
+                allowedChannels: member.allowedChannels || [],
+                maxOpenChats: member.maxOpenChats || null,
+              }),
+            }
+          ))
+        );
+        if (memberResponses.some((response) => !response.ok)) {
+          setError("A estrutura foi salva, mas um ou mais membros nao puderam ser atualizados.");
+          return;
+        }
       }
       setNotice("Times operacionais atualizados.");
       setTeams(teamsWithDefault);
@@ -264,18 +328,12 @@ export default function ClienteTimesPage() {
                           onChange={(value) => updateTeam(index, { id: normalizeTeamId(value) })}
                         />
                       </div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto]">
                         <Field
                           label="Descricao"
                           value={team.description || ""}
                           disabled={!canManage}
                           onChange={(value) => updateTeam(index, { description: value })}
-                        />
-                        <Field
-                          label="Canais"
-                          value={(team.channels || []).join(", ")}
-                          disabled={!canManage}
-                          onChange={(value) => updateTeam(index, { channels: value.split(",").map((item) => item.trim()).filter(Boolean) })}
                         />
                         {canManage ? (
                           <button
@@ -287,6 +345,25 @@ export default function ClienteTimesPage() {
                             Remover
                           </button>
                         ) : null}
+                      </div>
+                      <div className="mt-3">
+                        <p className="text-xs uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Canais atendidos pelo time</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {OPERATION_CHANNELS.map((channel) => {
+                            const active = (team.channels || []).includes(channel.id);
+                            return (
+                              <button
+                                key={channel.id}
+                                type="button"
+                                disabled={!canManage}
+                                onClick={() => toggleTeamChannel(index, channel.id)}
+                                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${active ? "border-blue-200 bg-blue-50 text-blue-700" : "border-[var(--cliente-border)] bg-white text-[var(--cliente-card-text-muted)]"}`}
+                              >
+                                {channel.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -320,6 +397,50 @@ export default function ClienteTimesPage() {
         </PanelCard>
 
         <div className="space-y-4">
+          <PanelCard className="p-5">
+            <CardTitle title="Equipe e distribuicao" subtitle="Defina o time, disponibilidade, capacidade e canais de cada pessoa." />
+            <div className="mt-4 space-y-3">
+              {members.map((member, index) => {
+                const locked = member.role === "client_owner" || !canManageUsers;
+                return (
+                  <div key={member.userId || member.id || index} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{member.name || member.email || "Membro"}</p>
+                        <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{member.email || (member.role === "client_owner" ? "Dono da conta" : "Equipe")}</p>
+                      </div>
+                      <StateBadge label={member.role === "client_owner" ? "Dono" : member.status === "blocked" ? "Bloqueado" : "Ativo"} tone={member.status === "blocked" ? "warning" : "success"} />
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <label className="block space-y-1">
+                        <span className="text-xs text-[var(--cliente-card-text-soft)]">Time</span>
+                        <select value={String(member.team || defaultTeam)} disabled={locked} onChange={(event) => updateMember(index, { team: event.target.value })} className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-sm disabled:opacity-60">
+                          {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                        </select>
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-xs text-[var(--cliente-card-text-soft)]">Disponibilidade</span>
+                        <select value={String(member.availability || "online")} disabled={locked} onChange={(event) => updateMember(index, { availability: event.target.value })} className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-sm disabled:opacity-60">
+                          <option value="online">Disponivel</option><option value="busy">Ocupado</option><option value="offline">Fora da escala</option>
+                        </select>
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-xs text-[var(--cliente-card-text-soft)]">Max. conversas abertas</span>
+                        <input type="number" min={1} max={200} value={member.maxOpenChats || 20} disabled={locked} onChange={(event) => updateMember(index, { maxOpenChats: Number(event.target.value) || null })} className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-sm disabled:opacity-60" />
+                      </label>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {OPERATION_CHANNELS.map((channel) => {
+                        const active = (member.allowedChannels || []).includes(channel.id);
+                        return <button key={channel.id} type="button" disabled={locked} onClick={() => toggleMemberChannel(index, channel.id)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-[var(--cliente-border)] bg-white text-[var(--cliente-card-text-soft)]"}`}>{channel.label}</button>;
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </PanelCard>
+
           <PanelCard className="p-5">
             <div className="inline-flex rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-2 text-[var(--cliente-primary)]">
               <UsersRound className="h-4 w-4" />

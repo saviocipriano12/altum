@@ -36,7 +36,21 @@ export async function assertChatCommercialAccess(input: {
   if (clean(chat.tenantId, 140) !== clean(input.tenantId, 140)) {
     throw new TenantAccessError("chat_tenant_mismatch", "Conversa fora desta empresa.");
   }
-  assertAssignedCommercialRecordAccess(input.membership, input.userId, chat);
+  if (!canAccessAssignedCommercialRecord(input.membership, input.userId, chat)) {
+    const channelId = clean(chat.channelId, 180);
+    if (channelId) {
+      const channelSnap = await adminDb.collection("tenant_channels").doc(channelId).get();
+      const channel = channelSnap.exists ? channelSnap.data() as Record<string, unknown> : {};
+      const enriched = {
+        ...chat,
+        channelScope: channel.channelScope,
+        channelOwnerUserId: channel.ownerUserId,
+      };
+      assertAssignedCommercialRecordAccess(input.membership, input.userId, enriched);
+      return enriched;
+    }
+    assertAssignedCommercialRecordAccess(input.membership, input.userId, chat);
+  }
   return chat;
 }
 

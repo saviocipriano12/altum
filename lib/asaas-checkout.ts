@@ -39,7 +39,9 @@ export function buildAsaasRecurringCheckoutPayload(input: {
   const nextDueDate = new Date(now.getTime() + 5 * 60 * 1000);
 
   return {
-    billingTypes: ["CREDIT_CARD", "PIX"],
+    // Asaas only accepts CREDIT_CARD for RECURRENT checkouts. PIX requires a
+    // detached charge and therefore cannot share this subscription payload.
+    billingTypes: ["CREDIT_CARD"],
     chargeTypes: ["RECURRENT"],
     minutesToExpire: 60,
     externalReference: input.externalReference,

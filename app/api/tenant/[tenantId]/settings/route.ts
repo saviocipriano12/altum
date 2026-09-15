@@ -93,8 +93,7 @@ function parseRules(value: unknown) {
     })
     .slice(0, 20);
 
-  return {
-    inbox: {
+  const parsedInbox: Record<string, unknown> = {
       firstResponseSlaMinutes: clampNumber(inbox.firstResponseSlaMinutes, 15, 5, 24 * 60),
       assignmentMode:
         assignmentMode === "round_robin" || assignmentMode === "least_loaded"
@@ -109,8 +108,15 @@ function parseRules(value: unknown) {
       defaultTeam: clean(inbox.defaultTeam, 80) || "comercial",
       teams,
       lastAssignedUserId: clean(inbox.lastAssignedUserId, 140),
-      lastAssignedAt: inbox.lastAssignedAt,
-    },
+  };
+  // Firestore rejects undefined values. This field only exists after the
+  // first automatic distribution, so new workspaces must omit it entirely.
+  if (inbox.lastAssignedAt !== undefined && inbox.lastAssignedAt !== null) {
+    parsedInbox.lastAssignedAt = inbox.lastAssignedAt;
+  }
+
+  return {
+    inbox: parsedInbox,
   };
 }
 

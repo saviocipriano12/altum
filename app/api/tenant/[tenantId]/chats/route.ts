@@ -242,7 +242,7 @@ export async function GET(
       });
     }
 
-    const [snap, stateSnap, enrichment] = await Promise.all([
+    const [snap, stateSnap, enrichment, channelsSnap] = await Promise.all([
       listRecentChats(tenantId, pageLimit),
       compact
         ? Promise.resolve({ docs: [] as FirebaseFirestore.QueryDocumentSnapshot[] })
@@ -257,8 +257,14 @@ export async function GET(
             .limit(500)
             .get(),
       compact ? Promise.resolve(emptyChatEnrichment()) : getChatEnrichment(tenantId),
+      adminDb.collection("tenant_channels")
+        .where("tenantId", "==", tenantId)
+        .select("displayName", "phoneNumber", "provider", "channelScope", "ownerUserId", "ownerUserName")
+        .limit(100)
+        .get(),
     ]);
     const { contacts, leadSignals } = enrichment;
+    const channelMap = new Map(channelsSnap.docs.map((doc) => [doc.id, doc.data() as Record<string, unknown>]));
 
     const stateMap = new Map<string, ChatStateItem>(
       stateSnap.docs.map((doc) => {
@@ -308,6 +314,8 @@ export async function GET(
         id: doc.id,
         ...(() => {
           const chat = doc.data() as Record<string, unknown>;
+          const channelId = cleanString(chat.channelId, 180);
+          const channelConfig = channelMap.get(channelId) || {};
           const contactPhone = cleanString(chat.contactPhone, 60);
           const leadId = cleanString(chat.leadId, 180);
           const profile = contacts.byPhone.get(contactPhone) || contacts.byPhone.get(phoneKey(contactPhone)) || contacts.byLeadId.get(leadId);
@@ -335,6 +343,12 @@ export async function GET(
             leadNextAction: leadSignal?.aiNextAction || "",
             leadPriority: leadSignal?.priority || "",
             leadStage: leadSignal?.pipelineStage || leadSignal?.stage || "",
+            channelDisplayName: cleanString(channelConfig.displayName, 180),
+            channelPhoneNumber: cleanString(channelConfig.phoneNumber, 80),
+            channelProvider: cleanString(channelConfig.provider, 80),
+            channelScope: cleanString(channelConfig.channelScope, 40),
+            channelOwnerUserId: cleanString(channelConfig.ownerUserId, 140),
+            channelOwnerUserName: cleanString(channelConfig.ownerUserName, 140),
           };
         })(),
         aiState: stateMap.get(doc.id) || null,

@@ -15,7 +15,7 @@ test("gera checkout recorrente com identificacao e retorno ao painel", () => {
     now: new Date("2026-09-01T20:00:00.000Z"),
   });
 
-  assert.deepEqual(payload.billingTypes, ["CREDIT_CARD", "PIX"]);
+  assert.deepEqual(payload.billingTypes, ["CREDIT_CARD"]);
   assert.deepEqual(payload.chargeTypes, ["RECURRENT"]);
   assert.equal(payload.subscription.nextDueDate, "2026-09-01 17:05:00");
   assert.equal(payload.customerData.cpfCnpj, "52998224725");
