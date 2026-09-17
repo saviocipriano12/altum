@@ -227,19 +227,17 @@ export async function requirePortalRequestUser(
   if (requestedTenantId) {
     try {
       const requestedMembership = await getTenantMembershipForUser(decoded.uid, requestedTenantId);
-      if (!requestedMembership) throw new PortalAuthError(403, "portal_user_not_found", "Acesso a esta empresa nao encontrado.");
       const requestedPortalUser = await buildPortalUserFromMembership(decoded, requestedMembership);
       if (requestedPortalUser) {
         return requestedPortalUser;
       }
     } catch (error) {
       if (isResourceExhausted(error)) throw quotaExceededError();
-      if (error instanceof PortalAuthError) throw error;
       throw error;
     }
   }
 
-  const membership = await getDefaultTenantMembershipForUser(decoded.uid).catch((error) => {
+  const membership = requestedTenantId ? null : await getDefaultTenantMembershipForUser(decoded.uid).catch((error) => {
     if (isResourceExhausted(error)) throw quotaExceededError();
     throw error;
   });
@@ -266,6 +264,9 @@ export async function requirePortalRequestUser(
   const tenantId = String(portalData.tenantId || portalData.clientId || "").trim();
   if (!tenantId) {
     throw new PortalAuthError(403, "portal_tenant_missing", "Tenant do portal nao configurado.");
+  }
+  if (requestedTenantId && tenantId !== requestedTenantId) {
+    throw new PortalAuthError(403, "portal_user_not_found", "Acesso a esta empresa nao encontrado.");
   }
 
   const billingBlocked = await isTenantBillingBlocked(tenantId).catch((error) => {
