@@ -202,6 +202,11 @@ export async function POST(req: Request) {
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
         if (paid && tenantId) {
+          const latestTenant = (await adminDb.collection("tenants").doc(tenantId).get()).data() || {};
+          if (latestTenant.asaasCheckoutId && latestTenant.asaasCheckoutId !== checkoutId) {
+            await eventLedgerRef.set({ status: "completed", ignored: "previous_checkout", completedAt: FieldValue.serverTimestamp() }, { merge: true });
+            return NextResponse.json({ received: true, ignored: true });
+          }
           const subscriptionFields = checkoutSubscriptionFields(checkout);
           await Promise.all([
             adminDb.collection("tenants").doc(tenantId).set({
@@ -284,7 +289,7 @@ export async function POST(req: Request) {
           tenantPatch.status = currentTenant.status;
           tenantPatch.platformPlan = currentTenant.platformPlan;
         }
-      } else if (mapped.status === "atrasado") {
+      } else if (mapped.status === "atrasado" && !currentTenant.cancelAtPeriodEnd && !currentTenant.billingOperationPending && !["refund_pending", "cancelled"].includes(String(currentTenant.billingStatus))) {
         tenantPatch.billingStatus = "past_due";
         tenantPatch.status = "active";
         tenantPatch.billingOverdueAt = FieldValue.serverTimestamp();
@@ -299,7 +304,7 @@ export async function POST(req: Request) {
         tenantPatch.status = "blocked";
         tenantPatch.blockedReason = "asaas_refunded";
         tenantPatch.refundedAt = FieldValue.serverTimestamp();
-      } else if (mapped.status === "cancelado" && currentTenant.billingStatus !== "cancel_scheduled") {
+      } else if (mapped.status === "cancelado" && !currentTenant.cancelAtPeriodEnd && !currentTenant.billingOperationPending && !["cancel_scheduled", "refund_pending", "cancelled"].includes(String(currentTenant.billingStatus))) {
         tenantPatch.billingStatus = "blocked";
         tenantPatch.status = "blocked";
         tenantPatch.blockedReason = `asaas_${mapped.status}`;
