@@ -17,7 +17,6 @@ import {
 import { auth } from "@/firebaseConfig";
 import type { PlatformPlan, PlatformPlanId } from "@/lib/platform-plans";
 import { isPlanUpgrade } from "@/lib/platform-subscription-policy";
-import { formatBrazilianDocument, isValidBrazilianDocument } from "@/lib/brazilian-document";
 
 type BillingState = {
   status: string;
@@ -94,7 +93,6 @@ export default function AssinaturaPage({ tenantId: suppliedTenantId }: { tenantI
   const [showCancel, setShowCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
-  const [cpfCnpj, setCpfCnpj] = useState("");
 
   const loadBilling = useCallback(async () => {
     const user = auth.currentUser;
@@ -159,7 +157,7 @@ export default function AssinaturaPage({ tenantId: suppliedTenantId }: { tenantI
       const response = await fetch("/api/billing/asaas/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId, cpfCnpj, tenantId }),
+        body: JSON.stringify({ planId, tenantId }),
       });
       const payload = (await response.json().catch(() => ({}))) as { checkoutUrl?: string; error?: string };
       if (!response.ok || !payload.checkoutUrl) throw new Error(payload.error || "Nao foi possivel abrir o checkout.");
@@ -338,13 +336,10 @@ export default function AssinaturaPage({ tenantId: suppliedTenantId }: { tenantI
       {checkoutPlanId ? (
         <div className="fixed inset-0 z-[120] grid place-items-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label="Identificacao para pagamento">
           <section className="w-full max-w-md rounded-[24px] bg-white p-6 text-slate-950 shadow-2xl">
-            <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-blue-700">Checkout seguro</p><h2 className="mt-1 text-xl font-black">Informe o CPF ou CNPJ</h2></div><button onClick={() => setCheckoutPlanId(null)} aria-label="Fechar"><X className="h-5 w-5" /></button></div>
-            <p className="mt-3 text-sm leading-6 text-slate-600">O Asaas exige este dado para emitir a assinatura. A Altum guarda somente os quatro ultimos digitos para conciliacao.</p>
+            <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-blue-700">Checkout seguro</p><h2 className="mt-1 text-xl font-black">Confirmar assinatura</h2></div><button onClick={() => setCheckoutPlanId(null)} aria-label="Fechar"><X className="h-5 w-5" /></button></div>
+            <p className="mt-3 text-sm leading-6 text-slate-600">Você preencherá seus dados de identificação, endereço e cartão diretamente no checkout seguro do Asaas.</p>
             {checkoutPlan ? <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900"><strong>{checkoutPlan.name}</strong>: {checkoutPlan.monthlyPrice?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/mes. {checkoutPlan.setupMode === "required" ? `A implantacao de ${checkoutPlan.setupFee?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} e obrigatoria e sera formalizada separadamente.` : "A configuracao guiada e opcional."}</div> : null}
-            <label className="mt-5 block text-xs font-black text-slate-700">CPF ou CNPJ</label>
-            <input value={cpfCnpj} onChange={(event) => setCpfCnpj(formatBrazilianDocument(event.target.value))} inputMode="numeric" autoFocus placeholder="000.000.000-00" className="mt-2 h-12 w-full rounded-xl border border-slate-200 px-4 text-sm outline-none focus:border-blue-500" />
-            {cpfCnpj && !isValidBrazilianDocument(cpfCnpj) ? <p className="mt-2 text-xs font-bold text-red-600">Confira os digitos do documento.</p> : null}
-            <button onClick={() => void startCheckout(checkoutPlanId)} disabled={!isValidBrazilianDocument(cpfCnpj) || Boolean(submitting)} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white disabled:opacity-50">{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Continuar no Asaas</button>
+            <button onClick={() => void startCheckout(checkoutPlanId)} disabled={Boolean(submitting)} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white disabled:opacity-50">{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Continuar no Asaas</button>
           </section>
         </div>
       ) : null}

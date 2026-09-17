@@ -28,11 +28,6 @@ export function buildAsaasRecurringCheckoutPayload(input: {
   plan: AsaasCheckoutPlan;
   siteUrl: string;
   externalReference: string;
-  customerData: {
-    name: string;
-    email: string;
-    cpfCnpj: string;
-  };
   now?: Date;
 }) {
   const now = input.now || new Date();
@@ -61,6 +56,14 @@ export function buildAsaasRecurringCheckoutPayload(input: {
       cycle: "MONTHLY",
       nextDueDate: formatAsaasDateTime(nextDueDate),
     },
-    customerData: input.customerData,
+    // The payer supplies complete billing details on the hosted Asaas checkout.
   };
+}
+
+export function buildAsaasCheckoutUrl(checkoutId: string, apiUrl: string) {
+  if (!/^[a-zA-Z0-9_-]{1,180}$/.test(checkoutId)) return "";
+  const apiHost = new URL(apiUrl).hostname;
+  const host = apiHost === "api.asaas.com" ? "asaas.com"
+    : apiHost === "api-sandbox.asaas.com" || apiHost === "sandbox.asaas.com" ? "sandbox.asaas.com" : "";
+  return host ? `https://${host}/checkoutSession/show?id=${encodeURIComponent(checkoutId)}` : "";
 }
