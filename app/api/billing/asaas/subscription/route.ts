@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { getDefaultTenantMembershipForUser, getTenantMembershipForUser } from "@/lib/server/tenant";
@@ -8,7 +8,6 @@ import { asaasRequest, AsaasApiError } from "@/lib/server/asaas-api";
 import {
   isPlanUpgrade,
   isWithinRefundWindow,
-  parseBillingDate,
   REFUND_WINDOW_DAYS,
 } from "@/lib/platform-subscription-policy";
 import {
@@ -17,6 +16,10 @@ import {
   timestampToMillis,
 } from "@/lib/server/self-service-auth";
 import { getTenantCommercialUsage } from "@/lib/server/tenant-usage";
+import { cancelPlatformSubscription } from "@/lib/server/subscription-cancellation";
+import { deliverSubscriptionReceipts } from "@/lib/server/subscription-notifications";
+import { billingLink, paidAccessEnd } from "@/lib/subscription-lifecycle";
+import type { AsaasInvoice } from "@/lib/vendor/asaas/invoice";
 import { getTenantEntitlements } from "@/lib/server/tenant-entitlements";
 
 function clean(value: unknown, max = 240) {
@@ -56,33 +59,38 @@ export async function GET(req: Request) {
     const actor = await requireFirebaseUser(req);
     const { searchParams } = new URL(req.url);
     const { membership, tenant } = await billingContext(actor.uid, searchParams.get("tenantId"));
+    assertBillingOwner(membership.role);
     const subscriptionId = clean(tenant.asaasSubscriptionId, 180);
-    const [usage, entitlements] = await Promise.all([
-      getTenantCommercialUsage(membership.tenantId).catch((error) => {
-        console.error("Falha ao calcular consumo comercial:", error);
-        return null;
-      }),
-      getTenantEntitlements(membership.tenantId),
+    const providerReads = subscriptionId ? Promise.allSettled([
+      asaasRequest<Record<string, unknown>>(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
+      asaasRequest<{ data?: Array<Record<string, unknown>> }>(`/subscriptions/${encodeURIComponent(subscriptionId)}/payments?limit=24`),
+      asaasRequest<{ data?: AsaasInvoice[] }>(`/subscriptions/${encodeURIComponent(subscriptionId)}/invoices?limit=24`),
+    ]) : Promise.resolve([]);
+    const [usage, entitlements, providerResults, operations] = await Promise.all([
+      getTenantCommercialUsage(membership.tenantId).catch(() => null),
+      getTenantEntitlements(membership.tenantId), providerReads,
+      adminDb.collection("billing_operations").where("tenantId", "==", membership.tenantId).limit(30).get(),
     ]);
-    let providerAvailable = Boolean(subscriptionId);
-    let subscription: Record<string, unknown> = {};
-    let payments: Array<Record<string, unknown>> = [];
-
-    if (subscriptionId) {
-      try {
-        const [subscriptionPayload, paymentsPayload] = await Promise.all([
-          asaasRequest<Record<string, unknown>>(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
-          asaasRequest<{ data?: Array<Record<string, unknown>> }>(`/subscriptions/${encodeURIComponent(subscriptionId)}/payments?limit=12`),
-        ]);
-        subscription = subscriptionPayload;
-        payments = paymentsPayload.data || [];
-      } catch (error) {
-        providerAvailable = false;
-        console.error("Falha ao atualizar detalhes da assinatura no Asaas:", error);
-      }
-    }
-    return NextResponse.json({
+    const subscriptionResult = providerResults[0];
+    const paymentsResult = providerResults[1];
+    const invoicesResult = providerResults[2];
+    const subscription: Record<string, unknown> = subscriptionResult?.status === "fulfilled" ? subscriptionResult.value : {};
+    const paymentsPayload = paymentsResult?.status === "fulfilled" ? paymentsResult.value as { data?: Array<Record<string, unknown>> } : null;
+    const payments = paymentsPayload?.data || (Array.isArray(tenant.billingPaymentsSnapshot) ? tenant.billingPaymentsSnapshot as Array<Record<string, unknown>> : []);
+    const invoicesPayload = invoicesResult?.status === "fulfilled" ? invoicesResult.value as { data?: AsaasInvoice[] } : null;
+    const invoices = invoicesPayload?.data || [];
+    const invoicesAvailable = Boolean(invoicesPayload);
+    const providerAvailable = subscriptionResult?.status === "fulfilled" || paymentsResult?.status === "fulfilled" || tenant.asaasSubscriptionStatus === "DELETED";
+    const activity = operations.docs.map((doc) => ({ id: doc.id, action: "cancel",
+      createdAt: toIso(doc.data().createdAt), protocol: clean(doc.data().result?.protocol, 80) || null,
+      pending: doc.data().status !== "completed" })).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    const paidEnd = paidAccessEnd(payments);
+    const responseData = {
       ok: true,
+      invoicesAvailable,
+      activity,
+      invoices: invoices.map((invoice) => ({ id: invoice.id, status: invoice.status, number: invoice.number || null,
+        value: invoice.value, effectiveDate: invoice.effectiveDate, pdfUrl: billingLink(invoice.pdfUrl), xmlUrl: billingLink(invoice.xmlUrl) })),
       billing: {
         tenantId: membership.tenantId,
         status: clean(tenant.billingStatus, 40) || "trial",
@@ -97,6 +105,11 @@ export async function GET(req: Request) {
         billingType: clean(subscription.billingType, 40) || clean(tenant.asaasBillingType, 40) || null,
         value: typeof subscription.value === "number" ? subscription.value : null,
         providerAvailable,
+        fiscalStatus: clean(tenant.billingFiscalStatus, 80) || "not_configured",
+        operationPending: Boolean(tenant.billingOperationPending),
+        cancelProtocol: clean(tenant.cancelProtocol, 80) || null,
+        paidAccessEndsAt: paidEnd?.toISOString() || toIso(tenant.accessEndsAt),
+        refundEligible: isWithinRefundWindow(toIso(tenant.subscriptionStartedAt) || toIso(tenant.firstPaymentAt)),
         canManage: membership.role === "client_owner" || membership.role === "client_admin",
       },
       payments: payments.map((payment) => ({
@@ -106,13 +119,19 @@ export async function GET(req: Request) {
         dueDate: clean(payment.dueDate, 40) || null,
         paidAt: clean(payment.confirmedDate, 40) || clean(payment.paymentDate, 40) || null,
         billingType: clean(payment.billingType, 40) || null,
-        invoiceUrl: clean(payment.invoiceUrl, 800) || null,
-        bankSlipUrl: clean(payment.bankSlipUrl, 800) || null,
+        invoiceUrl: billingLink(payment.invoiceUrl),
+        bankSlipUrl: billingLink(payment.bankSlipUrl),
       })),
       usage,
       limits: entitlements.limits,
       policy: { refundWindowDays: REFUND_WINDOW_DAYS, graceDays: 3 },
-    });
+    };
+    if (searchParams.get("download") === "1") {
+      return new NextResponse(JSON.stringify(responseData, null, 2), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": "attachment; filename=altum-assinatura.json", "Cache-Control": "no-store" },
+      });
+    }
+    return NextResponse.json(responseData, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof SelfServiceAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
@@ -141,6 +160,9 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "A assinatura do Asaas ainda nao foi sincronizada." }, { status: 409 });
     }
 
+    if (action === "upgrade" && tenant.billingOperationPending) {
+      return NextResponse.json({ error: "Existe uma solicitacao de cancelamento em conciliacao." }, { status: 409 });
+    }
     if (action === "upgrade") {
       const currentBillingStatus = clean(tenant.billingStatus, 40).toLowerCase();
       if (currentBillingStatus !== "active" && currentBillingStatus !== "paid") {
@@ -200,125 +222,12 @@ export async function PATCH(req: Request) {
       if (clean(body.confirmation, 40).toUpperCase() !== "CANCELAR") {
         return NextResponse.json({ error: "Confirme o cancelamento para continuar." }, { status: 400 });
       }
-      const subscription = await asaasRequest<Record<string, unknown>>(`/subscriptions/${encodeURIComponent(subscriptionId)}`);
-      const payments = await asaasRequest<{ data?: Array<Record<string, unknown>> }>(`/subscriptions/${encodeURIComponent(subscriptionId)}/payments`);
-      const paidPayments = (payments.data || []).filter((payment) => {
-        const status = clean(payment.status, 40).toUpperCase();
-        return status === "CONFIRMED" || status === "RECEIVED";
+      const result = await cancelPlatformSubscription({
+        tenantId: membership.tenantId, subscriptionId, actorId: actor.uid,
+        reason: clean(body.reason, 300) || "Cancelamento solicitado pelo cliente",
       });
-      const orderedPayments = paidPayments.sort((left, right) => {
-        const leftDate = parseBillingDate(left.confirmedDate || left.paymentDate || left.dateCreated)?.getTime() || 0;
-        const rightDate = parseBillingDate(right.confirmedDate || right.paymentDate || right.dateCreated)?.getTime() || 0;
-        return leftDate - rightDate;
-      });
-      const firstPaid = orderedPayments[0];
-      const firstPaymentAt =
-        toIso(tenant.subscriptionStartedAt) ||
-        toIso(tenant.firstPaymentAt) ||
-        parseBillingDate(firstPaid?.confirmedDate || firstPaid?.paymentDate || firstPaid?.dateCreated)?.toISOString() ||
-        null;
-      const refundEligible = isWithinRefundWindow(firstPaymentAt);
-      const reason = clean(body.reason, 300) || "Cancelamento solicitado pelo cliente";
-
-      if (refundEligible) {
-        const refundable = orderedPayments[orderedPayments.length - 1];
-        const paymentId = clean(refundable?.id, 180);
-        if (!paymentId) {
-          return NextResponse.json({ error: "Nao encontramos um pagamento elegivel para estorno." }, { status: 409 });
-        }
-        await tenantRef.set({
-          billingStatus: "refund_pending",
-          cancelRequestedAt: FieldValue.serverTimestamp(),
-          refundPaymentId: paymentId,
-          cancelReason: reason,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        try {
-          await asaasRequest(`/payments/${encodeURIComponent(paymentId)}/refund`, {
-            method: "POST",
-            body: { description: reason },
-          });
-        } catch (error) {
-          await tenantRef.set({
-            billingStatus: clean(tenant.billingStatus, 40) || "active",
-            cancelRequestedAt: FieldValue.delete(),
-            refundPaymentId: FieldValue.delete(),
-            cancelReason: FieldValue.delete(),
-            updatedAt: FieldValue.serverTimestamp(),
-          }, { merge: true });
-          throw error;
-        }
-        let subscriptionCancellationPending = false;
-        try {
-          await asaasRequest(`/subscriptions/${encodeURIComponent(subscriptionId)}`, { method: "DELETE" });
-        } catch (error) {
-          subscriptionCancellationPending = true;
-          console.error("Estorno iniciado, mas a assinatura ainda precisa ser removida no Asaas:", error);
-        }
-        await tenantRef.set({
-          refundRequestedAt: FieldValue.serverTimestamp(),
-          subscriptionCancellationPending,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        await adminDb.collection("audit_logs").add({
-          type: "asaas_refund_and_cancel_requested",
-          actorId: actor.uid,
-          tenantId: membership.tenantId,
-          subscriptionId,
-          paymentId,
-          reason,
-          createdAt: FieldValue.serverTimestamp(),
-        });
-        return NextResponse.json({ ok: true, action: "refund_pending", refundEligible: true, subscriptionCancellationPending });
-      }
-
-      const nextDueDate = parseBillingDate(subscription.nextDueDate);
-      if (!nextDueDate || nextDueDate.getTime() <= Date.now()) {
-        return NextResponse.json({ error: "O Asaas nao informou o fim do ciclo atual. Tente novamente ou fale com o suporte." }, { status: 409 });
-      }
-      await tenantRef.set({
-        status: "active",
-        billingStatus: "cancel_scheduled",
-        cancelAtPeriodEnd: true,
-        cancelRequestedAt: FieldValue.serverTimestamp(),
-        accessEndsAt: nextDueDate,
-        cancelReason: reason,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-      try {
-        await asaasRequest(`/subscriptions/${encodeURIComponent(subscriptionId)}`, {
-          method: "PUT",
-          body: { status: "INACTIVE" },
-        });
-      } catch (error) {
-        await tenantRef.set({
-          billingStatus: clean(tenant.billingStatus, 40) || "active",
-          cancelAtPeriodEnd: false,
-          cancelRequestedAt: FieldValue.delete(),
-          accessEndsAt: FieldValue.delete(),
-          cancelReason: FieldValue.delete(),
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        throw error;
-      }
-      await Promise.all([
-        adminDb.collection("client_contracts").doc(membership.tenantId).set({
-          accessStatus: "cancel_scheduled",
-          cancelAtPeriodEnd: true,
-          accessEndsAt: nextDueDate,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true }),
-        adminDb.collection("audit_logs").add({
-          type: "asaas_subscription_cancel_scheduled",
-          actorId: actor.uid,
-          tenantId: membership.tenantId,
-          subscriptionId,
-          accessEndsAt: nextDueDate,
-          reason,
-          createdAt: FieldValue.serverTimestamp(),
-        }),
-      ]);
-      return NextResponse.json({ ok: true, action: "cancel_scheduled", accessEndsAt: nextDueDate.toISOString(), refundEligible: false });
+      after(() => deliverSubscriptionReceipts(membership.tenantId).then(() => undefined));
+      return NextResponse.json(result);
     }
 
     return NextResponse.json({ error: "Acao de assinatura invalida." }, { status: 400 });

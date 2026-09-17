@@ -1,3 +1,4 @@
+import { BILLING_TERMS_VERSION } from "@/lib/subscription-lifecycle";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
@@ -17,7 +18,7 @@ function clean(value: unknown, max = 300) {
 export async function POST(req: Request) {
   try {
     const actor = await requireFirebaseUser(req);
-    const body = (await req.json()) as { planId?: unknown; cpfCnpj?: unknown; tenantId?: unknown };
+    const body = (await req.json()) as { planId?: unknown; cpfCnpj?: unknown; tenantId?: unknown; termsVersion?: unknown };
     const requestedTenantId = clean(body.tenantId, 180);
     const membership = requestedTenantId
       ? await getTenantMembershipForUser(actor.uid, requestedTenantId)
@@ -29,6 +30,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Apenas o responsavel pela conta pode contratar um plano." }, { status: 403 });
     }
 
+    if (body.termsVersion !== BILLING_TERMS_VERSION) {
+      return NextResponse.json({ error: "Leia e aceite os termos da assinatura antes de continuar. Atualize a pagina se necessario." }, { status: 400 });
+    }
     const cpfCnpj = normalizeBrazilianDocument(body.cpfCnpj);
     if (cpfCnpj && !isValidBrazilianDocument(cpfCnpj)) {
       return NextResponse.json({ error: "Informe um CPF ou CNPJ valido para o checkout seguro." }, { status: 400 });
@@ -53,9 +57,13 @@ export async function POST(req: Request) {
     const tenantRef = adminDb.collection("tenants").doc(membership.tenantId);
     const tenantSnap = await tenantRef.get();
     const tenant = (tenantSnap.data() || {}) as Record<string, unknown>;
+    if (tenant.billingOperationPending) {
+      return NextResponse.json({ error: "Existe uma solicitacao financeira em conciliacao. Fale com a Altum." }, { status: 409 });
+    }
+    const endedCancellation = tenant.billingStatus === "cancel_scheduled" && Boolean(timestampToMillis(tenant.accessEndsAt) && timestampToMillis(tenant.accessEndsAt)! <= Date.now());
     if (hasManagedAsaasSubscription({
       subscriptionId: tenant.asaasSubscriptionId,
-      billingStatus: tenant.billingStatus,
+      billingStatus: endedCancellation ? "cancelled" : tenant.billingStatus,
     })) {
       return NextResponse.json(
         { error: "Esta empresa ja possui uma assinatura gerenciada. Use a central de faturamento para alterar o plano.", code: "subscription_already_exists" },
@@ -98,6 +106,7 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify(checkoutPayload),
       cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
     });
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {
@@ -127,6 +136,7 @@ export async function POST(req: Request) {
         setupFee: plan.setupFee, setupMode: plan.setupMode,
         catalogVersion: PLATFORM_CATALOG_VERSION,
         ...(cpfCnpj ? { billingDocumentLast4: cpfCnpj.slice(-4) } : {}),
+        termsVersion: BILLING_TERMS_VERSION, termsAcceptedBy: actor.uid, termsAcceptedAt: FieldValue.serverTimestamp(),
         status: "pending", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true }),
       tenantRef.set({

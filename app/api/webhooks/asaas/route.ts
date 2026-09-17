@@ -131,15 +131,18 @@ export async function POST(req: Request) {
     const duplicate = await adminDb.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(eventLedgerRef!);
       if (snapshot.exists && snapshot.data()?.status === "completed") return true;
+      if (snapshot.data()?.status === "processing" && Number(snapshot.data()?.lockUntil) > Date.now()) return "busy";
       transaction.set(eventLedgerRef!, {
         event, chargeId: chargeId || null, checkoutId: checkoutId || null,
         subscriptionId: webhookSubscriptionId || null,
         status: "processing", attempts: FieldValue.increment(1),
+        lockUntil: Date.now() + 120_000,
         receivedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       return false;
     });
-    if (duplicate) return NextResponse.json({ received: true, duplicate: true });
+    if (duplicate === "busy") return NextResponse.json({ error: "Evento em processamento. Tente novamente." }, { status: 503 });
+    if (duplicate === true) return NextResponse.json({ received: true, duplicate: true });
 
     if (webhookSubscriptionId && event.startsWith("SUBSCRIPTION_")) {
       let reference = parseSelfServiceReference(subscription.externalReference);
@@ -157,7 +160,11 @@ export async function POST(req: Request) {
         const tenantRef = adminDb.collection("tenants").doc(reference.tenantId);
         const currentSnap = await tenantRef.get();
         const current = (currentSnap.data() || {}) as Record<string, unknown>;
-        const scheduledCancellation = current.billingStatus === "cancel_scheduled";
+        if (current.asaasSubscriptionId && current.asaasSubscriptionId !== webhookSubscriptionId && event !== "SUBSCRIPTION_CREATED") {
+          await eventLedgerRef.set({ status: "completed", ignored: "previous_subscription", completedAt: FieldValue.serverTimestamp() }, { merge: true });
+          return NextResponse.json({ received: true, ignored: true });
+        }
+        const scheduledCancellation = current.billingStatus === "cancel_scheduled" || Boolean(current.billingOperationPending);
         const inactive = event === "SUBSCRIPTION_INACTIVATED" || event === "SUBSCRIPTION_DELETED";
         const patch: Record<string, unknown> = {
           asaasSubscriptionId: webhookSubscriptionId,
@@ -167,7 +174,7 @@ export async function POST(req: Request) {
           asaasLastEvent: event,
           updatedAt: FieldValue.serverTimestamp(),
         };
-        if (reference.planId) patch.platformPlan = reference.planId;
+        // Subscription changes alone are not proof of payment or entitlement.
         if (inactive && !scheduledCancellation) {
           patch.billingStatus = "cancelled";
           patch.status = "blocked";
@@ -199,6 +206,8 @@ export async function POST(req: Request) {
           await Promise.all([
             adminDb.collection("tenants").doc(tenantId).set({
               status: "active", billingStatus: "active", billingProvider: "asaas",
+              cancelAtPeriodEnd: false, accessEndsAt: FieldValue.delete(),
+              billingOperationPending: false, cancelProtocol: FieldValue.delete(),
               platformPlan: planId, blockedReason: null,
               ...subscriptionFields,
               billingActivatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
@@ -248,6 +257,10 @@ export async function POST(req: Request) {
       const tenantRef = adminDb.collection("tenants").doc(selfService.tenantId);
       const currentTenantSnap = await tenantRef.get();
       const currentTenant = (currentTenantSnap.data() || {}) as Record<string, unknown>;
+      if (subscriptionId && currentTenant.asaasSubscriptionId && currentTenant.asaasSubscriptionId !== subscriptionId) {
+        await eventLedgerRef.set({ status: "completed", ignored: "previous_subscription", completedAt: FieldValue.serverTimestamp() }, { merge: true });
+        return NextResponse.json({ received: true, ignored: true });
+      }
       const tenantPatch: Record<string, unknown> = {
         billingProvider: "asaas",
         asaasLastEvent: event,
@@ -265,6 +278,11 @@ export async function POST(req: Request) {
         tenantPatch.billingOverdueAt = FieldValue.delete();
         if (!currentTenant.subscriptionStartedAt) {
           tenantPatch.subscriptionStartedAt = FieldValue.serverTimestamp();
+        }
+        if (currentTenant.cancelAtPeriodEnd || currentTenant.billingStatus === "refund_pending" || currentTenant.billingStatus === "cancelled" || currentTenant.billingOperationPending) {
+          tenantPatch.billingStatus = currentTenant.billingStatus;
+          tenantPatch.status = currentTenant.status;
+          tenantPatch.platformPlan = currentTenant.platformPlan;
         }
       } else if (mapped.status === "atrasado") {
         tenantPatch.billingStatus = "past_due";
@@ -292,12 +310,12 @@ export async function POST(req: Request) {
           billingProvider: "asaas",
           platformAccessMode: "asaas_subscription",
           platformPlan: selfService.planId,
-          accessStatus: mapped.isPaid ? "active" : mapped.status,
-          asaasSubscriptionId: subscriptionId || null,
+          accessStatus: currentTenant.cancelAtPeriodEnd || currentTenant.billingOperationPending ? clean(currentTenant.billingStatus, 40) : mapped.isPaid ? "active" : mapped.status,
+          ...(subscriptionId ? { asaasSubscriptionId: subscriptionId } : {}),
           asaasLastPaymentId: chargeId,
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true }),
-        ...(mapped.isPaid ? [applyPlatformPlanEntitlements({
+        ...(mapped.isPaid && !currentTenant.cancelAtPeriodEnd && !currentTenant.billingOperationPending && !["cancelled", "refund_pending"].includes(String(currentTenant.billingStatus)) ? [applyPlatformPlanEntitlements({
           tenantId: selfService.tenantId,
           planId: selfService.planId,
           source: "asaas_webhook",
