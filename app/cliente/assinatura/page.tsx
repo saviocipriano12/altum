@@ -171,7 +171,6 @@ export default function AssinaturaPage({ tenantId: suppliedTenantId }: { tenantI
   function requestCheckout(planId: string) {
     setError("");
     setCheckoutPlanId(planId);
-    setCpfCnpj("");
   }
 
   async function manageSubscription(action: "upgrade" | "cancel", planId?: PlatformPlanId) {
@@ -337,7 +336,7 @@ export default function AssinaturaPage({ tenantId: suppliedTenantId }: { tenantI
         <div className="fixed inset-0 z-[120] grid place-items-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label="Identificacao para pagamento">
           <section className="w-full max-w-md rounded-[24px] bg-white p-6 text-slate-950 shadow-2xl">
             <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-blue-700">Checkout seguro</p><h2 className="mt-1 text-xl font-black">Confirmar assinatura</h2></div><button onClick={() => setCheckoutPlanId(null)} aria-label="Fechar"><X className="h-5 w-5" /></button></div>
-            <p className="mt-3 text-sm leading-6 text-slate-600">Você preencherá seus dados de identificação, endereço e cartão diretamente no checkout seguro do Asaas.</p>
+            <p className="mt-3 text-sm leading-6 text-slate-600">VocÃª preencherÃ¡ seus dados de identificaÃ§Ã£o, endereÃ§o e cartÃ£o diretamente no checkout seguro do Asaas.</p>
             {checkoutPlan ? <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900"><strong>{checkoutPlan.name}</strong>: {checkoutPlan.monthlyPrice?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/mes. {checkoutPlan.setupMode === "required" ? `A implantacao de ${checkoutPlan.setupFee?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} e obrigatoria e sera formalizada separadamente.` : "A configuracao guiada e opcional."}</div> : null}
             <button onClick={() => void startCheckout(checkoutPlanId)} disabled={Boolean(submitting)} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white disabled:opacity-50">{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Continuar no Asaas</button>
           </section>
