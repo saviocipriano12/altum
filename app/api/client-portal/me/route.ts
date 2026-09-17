@@ -111,7 +111,7 @@ export async function GET(req: Request) {
   } catch (error) {
     if (error instanceof PortalAuthError) {
       return NextResponse.json(
-        { error: error.message, code: error.code },
+        { error: error.message, code: error.code, tenantId: error.tenantId },
         { status: error.status }
       );
     }

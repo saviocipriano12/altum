@@ -1,7 +1,8 @@
+import { getTenantBillingAccessDenial } from "@/lib/tenant-billing-access";
 import { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
 import {
-  assertTenantAccess,
+  getTenantMembershipForUser,
   getDefaultTenantMembershipForUser,
   getTenantCapabilities,
   getTenantSettings,
@@ -10,7 +11,6 @@ import {
 } from "@/lib/server/tenant";
 import { getTenantEntitlements } from "@/lib/server/tenant-entitlements";
 import type { TenantEntitlementsSnapshot } from "@/lib/tenant-entitlements";
-import { timestampToMillis } from "@/lib/server/self-service-auth";
 
 export type PortalUserStatus = "active" | "blocked";
 export type PortalTenantRole =
@@ -55,6 +55,7 @@ export type PortalRequestUser = {
 export class PortalAuthError extends Error {
   status: number;
   code: string;
+  tenantId?: string;
 
   constructor(status: number, code: string, message: string) {
     super(message);
@@ -121,7 +122,7 @@ function isPortalRole(value: unknown) {
   );
 }
 
-async function buildPortalUserFromMembership(
+async function buildPortalUserFromMembershipUnchecked(
   decoded: DecodedIdToken,
   membership: Awaited<ReturnType<typeof getDefaultTenantMembershipForUser>>
 ) {
@@ -142,35 +143,8 @@ async function buildPortalUserFromMembership(
   if (tenantData.signupSource === "self_service" && !decoded.email_verified) {
     throw new PortalAuthError(403, "email_not_verified", "Confirme seu e-mail antes de acessar a plataforma.");
   }
-  if (tenantData.status === "blocked" || tenantData.billingStatus === "blocked") {
-    throw new PortalAuthError(403, "tenant_billing_blocked", "Acesso ao portal pausado por pendencia financeira.");
-  }
-  const trialEndsAt = timestampToMillis(tenantData.trialEndsAt);
-  const billingStatus = String(tenantData.billingStatus || "").toLowerCase();
-  const billingBlockAt = timestampToMillis(tenantData.billingBlockAt);
-  if (billingStatus === "past_due" && billingBlockAt && billingBlockAt <= Date.now()) {
-    throw new PortalAuthError(
-      402,
-      "billing_grace_expired",
-      "O prazo de tolerancia do pagamento terminou. Regularize a assinatura para continuar."
-    );
-  }
-  const accessEndsAt = timestampToMillis(tenantData.accessEndsAt);
-  if (billingStatus === "cancel_scheduled" && accessEndsAt && accessEndsAt <= Date.now()) {
-    throw new PortalAuthError(
-      402,
-      "subscription_ended",
-      "O periodo contratado terminou. Escolha um plano para reativar a ALTUM."
-    );
-  }
-  const trialCanExpire = !billingStatus || billingStatus === "trial" || billingStatus === "pending";
-  if (trialEndsAt && trialEndsAt <= Date.now() && trialCanExpire) {
-    throw new PortalAuthError(
-      402,
-      "trial_expired",
-      "Seu periodo gratuito terminou. Escolha um plano para continuar usando a ALTUM."
-    );
-  }
+  const billingDenial = getTenantBillingAccessDenial(tenantData);
+  if (billingDenial) throw new PortalAuthError(billingDenial.status, billingDenial.code, billingDenial.message);
   const settings = await getTenantSettings(membership.tenantId).catch((error) => {
     console.warn("Falha ao carregar configuracoes do tenant no portal:", membership.tenantId, error);
     return null;
@@ -196,6 +170,17 @@ async function buildPortalUserFromMembership(
     entitlements,
     token: decoded,
   };
+}
+
+async function buildPortalUserFromMembership(
+  decoded: DecodedIdToken,
+  membership: Awaited<ReturnType<typeof getDefaultTenantMembershipForUser>>
+) {
+  try { return await buildPortalUserFromMembershipUnchecked(decoded, membership); }
+  catch (error) {
+    if (error instanceof PortalAuthError) error.tenantId = membership?.tenantId;
+    throw error;
+  }
 }
 
 export async function requirePortalRequestUser(
@@ -241,14 +226,16 @@ export async function requirePortalRequestUser(
   const requestedTenantId = String(options?.tenantId || "").trim();
   if (requestedTenantId) {
     try {
-      const requestedMembership = await assertTenantAccess(decoded.uid, requestedTenantId);
+      const requestedMembership = await getTenantMembershipForUser(decoded.uid, requestedTenantId);
+      if (!requestedMembership) throw new PortalAuthError(403, "portal_user_not_found", "Acesso a esta empresa nao encontrado.");
       const requestedPortalUser = await buildPortalUserFromMembership(decoded, requestedMembership);
       if (requestedPortalUser) {
         return requestedPortalUser;
       }
     } catch (error) {
       if (isResourceExhausted(error)) throw quotaExceededError();
-      // Falls back to default membership or legacy portal below.
+      if (error instanceof PortalAuthError) throw error;
+      throw error;
     }
   }
 
@@ -286,7 +273,9 @@ export async function requirePortalRequestUser(
     throw error;
   });
   if (billingBlocked) {
-    throw new PortalAuthError(403, "tenant_billing_blocked", "Acesso ao portal pausado por pendencia financeira.");
+    const error = new PortalAuthError(403, "tenant_billing_blocked", "Acesso ao portal pausado por pendencia financeira.");
+    error.tenantId = tenantId;
+    throw error;
   }
   const entitlements = await getTenantEntitlements(tenantId);
 

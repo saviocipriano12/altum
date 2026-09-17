@@ -15,6 +15,7 @@ import {
   type TenantLimitId,
   type TenantModuleId,
 } from "@/lib/tenant-entitlements";
+import { getClientBillingRedirect } from "@/lib/client-billing-redirect";
 
 type TenantSession = {
   tenantId: string;
@@ -51,6 +52,7 @@ type MeResponse = {
   };
   error?: string;
   code?: string;
+  tenantId?: string;
   billing?: {
     status?: string;
     provider?: string | null;
@@ -162,9 +164,12 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
         const res = await authedFetch(endpoint);
         const payload = (await res.json()) as MeResponse;
 
-        if (res.status === 402 && ["trial_expired", "billing_grace_expired", "subscription_ended"].includes(String(payload.code || ""))) {
+        const billingHref = getClientBillingRedirect(payload, res.status);
+        if (billingHref) {
+          cachedTenantSession = null;
+          cachedTenantUserId = "";
           setTenant(null);
-          router.replace(`/cliente/assinatura?reason=${encodeURIComponent(String(payload.code || "access_required"))}`);
+          router.replace(billingHref);
           return;
         }
         if (res.status === 403 && payload.code === "email_not_verified") {

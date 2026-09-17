@@ -1,3 +1,4 @@
+import { getTenantBillingAccessDenial } from "@/lib/tenant-billing-access";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 
 export const TENANT_SCOPED_COLLECTIONS = [
@@ -239,7 +240,7 @@ export async function isTenantBillingBlocked(tenantId: string) {
   const snap = await adminDb.collection("tenants").doc(normalizedTenantId).get();
   if (!snap.exists) return false;
   const data = snap.data() as Record<string, unknown>;
-  return data.status === "blocked" || data.billingStatus === "blocked";
+  return Boolean(getTenantBillingAccessDenial(data));
 }
 
 async function assertTenantNotBillingBlocked(membership: TenantMembership) {

@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { getClientBillingRedirect } from "@/lib/client-billing-redirect";
 import { auth } from "@/firebaseConfig";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { firebaseAuthErrorMessage } from "@/lib/firebase-auth-errors";
@@ -63,8 +64,11 @@ export default function ClienteLoginPage() {
       try {
         const res = await authedFetch(buildPortalEndpoint());
         const payload = (await res.json()) as {
+          code?: string; tenantId?: string;
           portalUser?: { tenantId?: string };
         };
+        const billingHref = getClientBillingRedirect(payload, res.status);
+        if (billingHref) { router.replace(billingHref); return; }
         if (res.ok && payload.portalUser?.tenantId) {
           router.push(buildPostLoginHref(payload.portalUser.tenantId));
           return;
@@ -90,9 +94,11 @@ export default function ClienteLoginPage() {
       }
       const res = await authedFetch(buildPortalEndpoint());
       const data = (await res.json()) as {
-        error?: string;
+        error?: string; code?: string; tenantId?: string;
         portalUser?: { tenantId?: string };
       };
+      const billingHref = getClientBillingRedirect(data, res.status);
+      if (billingHref) { router.replace(billingHref); return; }
       if (!res.ok) {
         setError(data.error || "Seu acesso ao portal ainda nao foi liberado.");
         return;
@@ -114,7 +120,9 @@ export default function ClienteLoginPage() {
       provider.setCustomParameters({ prompt: "select_account" });
       await signInWithPopup(auth, provider);
       const res = await authedFetch(buildPortalEndpoint());
-      const data = (await res.json().catch(() => ({}))) as { portalUser?: { tenantId?: string }; code?: string };
+      const data = (await res.json().catch(() => ({}))) as { portalUser?: { tenantId?: string }; code?: string; tenantId?: string };
+      const billingHref = getClientBillingRedirect(data, res.status);
+      if (billingHref) { router.replace(billingHref); return; }
       if (res.ok && data.portalUser?.tenantId) {
         router.push(buildPostLoginHref(data.portalUser.tenantId));
         return;

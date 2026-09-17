@@ -75,7 +75,12 @@ function statusMessage(billing: BillingState | null) {
   return `Seu teste gratuito termina em ${formatDate(billing.trialEndsAt)}.`;
 }
 
-export default function AssinaturaPage({ tenantId }: { tenantId?: string } = {}) {
+export default function AssinaturaPage({ tenantId: suppliedTenantId }: { tenantId?: string } = {}) {
+  const [queryTenantId, setQueryTenantId] = useState<string | undefined>();
+  const [accessReason, setAccessReason] = useState("");
+  const [queryReady, setQueryReady] = useState(false);
+  const tenantId = suppliedTenantId || queryTenantId;
+  useEffect(() => { const query = new URLSearchParams(window.location.search); setQueryTenantId(query.get("tenantId") || undefined); setAccessReason(query.get("reason") || ""); setQueryReady(true); }, []);
   const [plans, setPlans] = useState<PlatformPlan[]>([]);
   const [billing, setBilling] = useState<BillingState | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -108,12 +113,14 @@ export default function AssinaturaPage({ tenantId }: { tenantId?: string } = {})
     const payload = (await response.json().catch(() => ({}))) as { billing?: BillingState; payments?: Payment[]; usage?: UsageState; limits?: LimitState; error?: string };
     if (!response.ok) throw new Error(payload.error || "Nao foi possivel carregar sua assinatura.");
     setBilling(payload.billing || null);
+    if (payload.billing && ["active", "paid"].includes(payload.billing.status)) setAccessReason("");
     setPayments(payload.payments || []);
     setUsage(payload.usage || null);
     setLimits(payload.limits || null);
   }, [tenantId]);
 
   useEffect(() => {
+    if (!queryReady) return;
     setCheckout(new URLSearchParams(window.location.search).get("checkout"));
     const unsubscribe = onAuthStateChanged(auth, async () => {
       try {
@@ -129,7 +136,7 @@ export default function AssinaturaPage({ tenantId }: { tenantId?: string } = {})
       }
     });
     return () => unsubscribe();
-  }, [loadBilling]);
+  }, [loadBilling, queryReady]);
 
   const activePlan = useMemo(
     () => plans.find((plan) => plan.id === billing?.planId) || null,
@@ -206,11 +213,12 @@ export default function AssinaturaPage({ tenantId }: { tenantId?: string } = {})
     }
   }
 
-  const banner = statusMessage(billing);
+  const banner = accessReason ? "Seu acesso operacional esta pausado. Escolha um plano ou fale com a Altum para continuar." : statusMessage(billing);
 
   return (
     <main className="min-h-full rounded-[24px] bg-[var(--cliente-bg)] px-2 py-2 text-[var(--cliente-text)] sm:px-4 sm:py-4" data-tour-key="subscription-content">
       <div className="mx-auto max-w-6xl">
+        {accessReason ? <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-slate-900"><h1 className="text-xl font-bold">Continue sua operacao com a Altum</h1><p className="mt-2 text-sm">Voce entrou na sua conta. Para voltar a atender e vender, regularize sua assinatura abaixo.</p><a href="mailto:suporte.altum@gmail.com" className="mt-3 inline-flex rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white">Falar com a Altum</a></div> : null}
         <Link href="/cliente/painel" className="inline-flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-blue-700">
           <ArrowLeft className="h-4 w-4" /> Voltar ao painel
         </Link>
