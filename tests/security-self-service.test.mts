@@ -87,7 +87,13 @@ test("subscription management enforces refund, grace, upgrade and audit", async 
   const webhook = await source("app/api/webhooks/asaas/route.ts");
   assert.match(subscription, /isWithinRefundWindow/);
   assert.match(subscription, /isPlanUpgrade/);
-  assert.match(subscription, /status: "INACTIVE"/);
+  const cancellation = await source("lib/server/subscription-cancellation.ts");
+  assert.match(subscription, /cancelPlatformSubscription/);
+  assert.match(cancellation, /completeProviderCancellation/);
+  assert.match(cancellation, /runTransaction/);
+  const provider = await source("lib/subscription-provider-cancellation.ts");
+  assert.match(provider, /refundAttempted/);
+  assert.match(provider, /method: "DELETE"/);
   assert.match(subscription, /audit_logs/);
   assert.match(webhook, /billingStatus = "past_due"/);
   assert.match(webhook, /getBillingBlockAt/);

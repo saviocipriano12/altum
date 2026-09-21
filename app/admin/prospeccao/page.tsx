@@ -284,7 +284,7 @@ function Pill({
               ? "bg-blue-600 text-white border-blue-600"
               : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
             : active
-              ? "bg-slate-900 text-white border-slate-900"
+              ? "bg-white text-slate-900 border-slate-900"
               : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50";
 
   return (
@@ -478,7 +478,7 @@ export default function ProspeccaoCRMPage() {
             .map((member) => ({ id: member.id, name: member.name || "Sem nome" }))
         );
       })
-      .catch((error) => console.error("Erro ao carregar vendedores:", error));
+      .catch((error) => console.error("Erro ao carregar ", error));
   }, [isAdmin, user]);
 
   // FUNÇÃO: Roleta de Distribuicao (Round-Robin)
@@ -578,7 +578,7 @@ export default function ProspeccaoCRMPage() {
       if (!response.ok) throw new Error(payload.error || "Falha ao carregar leads.");
       if (active) setLeads(payload.leads || []);
     })
-    .catch((error) => console.error("Erro ao carregar leads:", error))
+    .catch((error) => console.error("Erro ao carregar ", error))
     .finally(() => {
       if (active) setLoading(false);
     });
@@ -961,7 +961,7 @@ export default function ProspeccaoCRMPage() {
 
       const ok = settled.filter((item) => item.status === "fulfilled").length;
       const fail = settled.length - ok;
-      alert(`IA atualizada. Sucesso: ${ok} | Falhas: ${fail}`);
+      alert(`IA atualizada. Sucesso: ${ok} |  ${fail}`);
     } catch (error) {
       console.error(error);
       alert("Falha ao executar atualizacao em lote da IA.");
@@ -1179,16 +1179,16 @@ export default function ProspeccaoCRMPage() {
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
     if (search.trim()) labels.push("Busca");
-    if (statusFilter !== "todos") labels.push(`Status: ${statusFilter}`);
-    if (priorityFilter !== "todas") labels.push(`Prioridade: ${priorityFilter}`);
-    if (heatFilter !== "todas") labels.push(`Temperatura: ${heatFilter}`);
-    if (iaFilter !== "todos") labels.push(`IA: ${iaFilter}`);
-    if (stageFilter !== "todos") labels.push(stageFilter === "sem" ? "Sem etapa" : `Etapa: ${stageFilter}`);
+    if (statusFilter !== "todos") labels.push(` ${statusFilter}`);
+    if (priorityFilter !== "todas") labels.push(` ${priorityFilter}`);
+    if (heatFilter !== "todas") labels.push(` ${heatFilter}`);
+    if (iaFilter !== "todos") labels.push(` ${iaFilter}`);
+    if (stageFilter !== "todos") labels.push(stageFilter === "sem" ? "Sem etapa" : ` ${stageFilter}`);
     if (offerFilter !== "todos") labels.push(offerFilter === "com" ? "Com oferta" : "Sem oferta");
     if (contactFilter !== "todos") labels.push(contactFilter === "contatado" ? "Ja contatado" : "Nunca contatado");
     if (workedFilter !== "todos") labels.push(workedFilter === "trabalhado" ? "Trabalhados" : "Leads crus");
-    if (datePreset !== "all") labels.push(`Data: ${datePreset}`);
-    if (queueMode !== "none") labels.push(`Fila: ${queueMode}`);
+    if (datePreset !== "all") labels.push(` ${datePreset}`);
+    if (queueMode !== "none") labels.push(` ${queueMode}`);
     if (showDiscarded) labels.push("Mostrando descartados");
     return labels;
   }, [
@@ -1317,7 +1317,7 @@ export default function ProspeccaoCRMPage() {
         </div>
 
         <div className="mt-5 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard icon={<BarChart3 className="h-5 w-5" />} label="Exibidos" value={`${filtered.length}`} sub={`Base: ${metrics.total}`} />
+          <StatCard icon={<BarChart3 className="h-5 w-5" />} label="Exibidos" value={`${filtered.length}`} sub={` ${metrics.total}`} />
           <StatCard icon={<Phone className="h-5 w-5" />} label="Sem contato" value={`${metrics.nuncaContatado}`} />
           <StatCard icon={<Flame className="h-5 w-5" />} label="Quentes" value={`${metrics.quentes}`} />
           <StatCard icon={<BrainCircuit className="h-5 w-5" />} label="IA pronta" value={`${metrics.iaReady}`} />
@@ -1532,7 +1532,7 @@ export default function ProspeccaoCRMPage() {
               className={cx(
                 "inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm transition",
                 showDiscarded
-                  ? "border-red-500/25 bg-red-500/10 text-red-100 hover:bg-red-500/15"
+                  ? "border-red-500/25 bg-red-500/10 text-red-700 hover:bg-red-500/15"
                   : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950"
               )}
             >
@@ -1587,15 +1587,15 @@ export default function ProspeccaoCRMPage() {
                 className={cx(
                   "rounded-xl border px-4 py-3 text-left transition",
                   bulkMode === "template"
-                    ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-50"
-                    : "border-slate-700/70 bg-slate-950/45 text-slate-300 hover:bg-slate-900"
+                    ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-700"
+                    : "border-slate-700/70 bg-white text-slate-700 hover:bg-white"
                 )}
               >
                 <span className="flex items-center gap-2 text-sm font-semibold">
                   <ShieldCheck className="h-4 w-4" />
                   Template Meta
                 </span>
-                <span className="mt-1 block text-[11px] leading-relaxed text-white/50">
+                <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">
                   Recomendado para listas frias, fora da janela de 24h.
                 </span>
               </button>
@@ -1605,15 +1605,15 @@ export default function ProspeccaoCRMPage() {
                 className={cx(
                   "rounded-xl border px-4 py-3 text-left transition",
                   bulkMode === "text"
-                    ? "border-amber-400/40 bg-amber-500/15 text-amber-50"
-                    : "border-slate-700/70 bg-slate-950/45 text-slate-300 hover:bg-slate-900"
+                    ? "border-amber-400/40 bg-amber-500/15 text-amber-700"
+                    : "border-slate-700/70 bg-white text-slate-700 hover:bg-white"
                 )}
               >
                 <span className="flex items-center gap-2 text-sm font-semibold">
                   <MessageCircle className="h-4 w-4" />
                   Texto legado
                 </span>
-                <span className="mt-1 block text-[11px] leading-relaxed text-white/50">
+                <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">
                   Use apenas em operacoes controladas e com base legitima.
                 </span>
               </button>
@@ -1622,26 +1622,26 @@ export default function ProspeccaoCRMPage() {
             <input
               value={bulkCampaignName}
               onChange={(event) => setBulkCampaignName(event.target.value)}
-              className="w-full rounded-lg border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-sm text-white/85 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50"
+              className="w-full rounded-lg border border-slate-700/70 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50"
               placeholder="Nome da campanha. Ex: Advogados - landing page"
             />
 
             {bulkMode === "template" ? (
-              <div className="rounded-xl border border-emerald-400/15 bg-slate-950/35 p-4">
-                <div className="mb-3 rounded-xl border border-slate-700/70 bg-slate-950/45 p-3">
+              <div className="rounded-xl border border-emerald-400/15 bg-white p-4">
+                <div className="mb-3 rounded-xl border border-slate-700/70 bg-white p-3">
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-white/45">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Biblioteca Meta
                       </p>
-                      <p className="mt-1 text-[11px] text-white/45">
+                      <p className="mt-1 text-[11px] text-slate-500">
                         Escolha um template aprovado do WABA da Altum.
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => void loadCampaignAssets()}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-slate-800/70 px-3 py-2 text-[11px] text-slate-300 transition hover:bg-slate-700/70 hover:text-white"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-white px-3 py-2 text-[11px] text-slate-700 transition hover:bg-slate-700/70 hover:text-slate-900"
                     >
                       {templatesLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
                       Atualizar
@@ -1649,7 +1649,7 @@ export default function ProspeccaoCRMPage() {
                   </div>
 
                   {templatesError ? (
-                    <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100">
+                    <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700">
                       {templatesError}
                     </p>
                   ) : null}
@@ -1664,7 +1664,7 @@ export default function ProspeccaoCRMPage() {
                         );
                         if (template) applyMetaTemplate(template);
                       }}
-                      className="mt-3 w-full rounded-lg border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-sm text-white/85 outline-none"
+                      className="mt-3 w-full rounded-lg border border-slate-700/70 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
                     >
                       <option value={`${bulkTemplateName}::${bulkLanguageCode}`}>Selecionar template aprovado</option>
                       {approvedMetaTemplates.map((template) => (
@@ -1674,7 +1674,7 @@ export default function ProspeccaoCRMPage() {
                       ))}
                     </select>
                   ) : (
-                    <p className="mt-3 text-[11px] text-white/45">
+                    <p className="mt-3 text-[11px] text-slate-500">
                       Nenhum template aprovado carregado ainda. Voce ainda pode informar o nome manualmente.
                     </p>
                   )}
@@ -1684,13 +1684,13 @@ export default function ProspeccaoCRMPage() {
                   <input
                     value={bulkTemplateName}
                     onChange={(event) => setBulkTemplateName(event.target.value)}
-                    className="w-full rounded-lg border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-sm text-white/85 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50"
+                    className="w-full rounded-lg border border-slate-700/70 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50"
                     placeholder="Nome do template aprovado. Ex: prospect_lp_altum"
                   />
                   <input
                     value={bulkLanguageCode}
                     onChange={(event) => setBulkLanguageCode(event.target.value)}
-                    className="w-full rounded-lg border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-sm text-white/85 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50"
+                    className="w-full rounded-lg border border-slate-700/70 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50"
                     placeholder="pt_BR"
                   />
                 </div>
@@ -1699,7 +1699,7 @@ export default function ProspeccaoCRMPage() {
                   value={bulkBodyParams}
                   onChange={(event) => setBulkBodyParams(event.target.value)}
                   rows={3}
-                  className="mt-3 w-full resize-none rounded-lg border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-sm text-white/85 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50"
+                  className="mt-3 w-full resize-none rounded-lg border border-slate-700/70 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50"
                   placeholder="Uma variavel por linha. Ex: {nome}"
                 />
 
@@ -1707,7 +1707,7 @@ export default function ProspeccaoCRMPage() {
                   <select
                     value={bulkHeaderMediaType}
                     onChange={(event) => setBulkHeaderMediaType(event.target.value as BulkHeaderMediaType)}
-                    className="w-full rounded-lg border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-sm text-white/85 outline-none"
+                    className="w-full rounded-lg border border-slate-700/70 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
                   >
                     <option value="none">Sem midia</option>
                     <option value="image">Imagem</option>
@@ -1718,7 +1718,7 @@ export default function ProspeccaoCRMPage() {
                     value={bulkHeaderMediaLink}
                     onChange={(event) => setBulkHeaderMediaLink(event.target.value)}
                     disabled={bulkHeaderMediaType === "none"}
-                    className="w-full rounded-lg border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-sm text-white/85 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50 disabled:opacity-45"
+                    className="w-full rounded-lg border border-slate-700/70 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50 disabled:opacity-45"
                     placeholder="URL publica da midia aprovada no template"
                   />
                 </div>
@@ -1727,20 +1727,20 @@ export default function ProspeccaoCRMPage() {
                   <input
                     value={bulkHeaderMediaFilename}
                     onChange={(event) => setBulkHeaderMediaFilename(event.target.value)}
-                    className="mt-3 w-full rounded-lg border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-sm text-white/85 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50"
+                    className="mt-3 w-full rounded-lg border border-slate-700/70 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50"
                     placeholder="Nome do arquivo. Ex: proposta-altum.pdf"
                   />
                 ) : null}
 
                 {selectedTemplate ? (
                   <div className="mt-3 rounded-xl border border-blue-500/15 bg-blue-500/10 p-3">
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-blue-100">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-blue-700">
                       <BadgeCheck className="h-3.5 w-3.5" />
                       <span>{selectedTemplate.category}</span>
                       <span>{getTemplateVariables(selectedTemplate).length} variavel(is)</span>
                       <span>header: {getTemplateHeader(selectedTemplate)?.format || "sem midia"}</span>
                     </div>
-                    <p className="mt-2 line-clamp-3 text-[11px] leading-relaxed text-blue-50/65">
+                    <p className="mt-2 line-clamp-3 text-[11px] leading-relaxed text-blue-700">
                       {getTemplateBody(selectedTemplate) || "Template sem corpo retornado pela Meta."}
                     </p>
                   </div>
@@ -1751,46 +1751,46 @@ export default function ProspeccaoCRMPage() {
                 value={bulkMessage}
                 onChange={(event) => setBulkMessage(event.target.value)}
                 rows={4}
-                className="w-full resize-none rounded-lg border border-amber-500/20 bg-slate-950/55 px-4 py-3 text-sm text-white/85 outline-none transition placeholder:text-slate-500 focus:border-amber-400/50"
+                className="w-full resize-none rounded-lg border border-amber-500/20 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-amber-400/50"
                 placeholder="Escreva uma mensagem objetiva para iniciar a conversa..."
               />
             )}
 
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/45">
-              <span className="rounded-full border border-slate-700/70 bg-slate-950/45 px-2.5 py-1">Variaveis: {"{nome}"}</span>
-              <span className="rounded-full border border-slate-700/70 bg-slate-950/45 px-2.5 py-1">{"{categoria}"}</span>
-              <span className="rounded-full border border-slate-700/70 bg-slate-950/45 px-2.5 py-1">{"{origem}"}</span>
-              <span className="rounded-full border border-slate-700/70 bg-slate-950/45 px-2.5 py-1">{"{cidade}"}</span>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+              <span className="rounded-full border border-slate-700/70 bg-white px-2.5 py-1">Variaveis: {"{nome}"}</span>
+              <span className="rounded-full border border-slate-700/70 bg-white px-2.5 py-1">{"{categoria}"}</span>
+              <span className="rounded-full border border-slate-700/70 bg-white px-2.5 py-1">{"{origem}"}</span>
+              <span className="rounded-full border border-slate-700/70 bg-white px-2.5 py-1">{"{cidade}"}</span>
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-700/70 bg-slate-950/45 p-4">
+          <div className="rounded-xl border border-slate-700/70 bg-white p-4">
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>
-                <p className="text-xl font-semibold text-white/90">{filtered.length}</p>
-                <p className="text-[10px] uppercase tracking-wide text-white/40">filtrados</p>
+                <p className="text-xl font-semibold text-slate-900">{filtered.length}</p>
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">filtrados</p>
               </div>
               <div>
-                <p className="text-xl font-semibold text-emerald-100">{selectableFilteredLeads.length}</p>
-                <p className="text-[10px] uppercase tracking-wide text-white/40">com telefone</p>
+                <p className="text-xl font-semibold text-emerald-700">{selectableFilteredLeads.length}</p>
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">com telefone</p>
               </div>
               <div>
-                <p className="text-xl font-semibold text-blue-100">{selectedWithPhone.length}</p>
-                <p className="text-[10px] uppercase tracking-wide text-white/40">no lote</p>
+                <p className="text-xl font-semibold text-blue-700">{selectedWithPhone.length}</p>
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">no lote</p>
               </div>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
-              <div className="rounded-lg border border-emerald-500/15 bg-emerald-500/10 px-3 py-2 text-emerald-100">
+              <div className="rounded-lg border border-emerald-500/15 bg-emerald-500/10 px-3 py-2 text-emerald-700">
                 {bulkAudienceSummary.hot} quentes
               </div>
-              <div className="rounded-lg border border-blue-500/15 bg-blue-500/10 px-3 py-2 text-blue-100">
+              <div className="rounded-lg border border-blue-500/15 bg-blue-500/10 px-3 py-2 text-blue-700">
                 {bulkAudienceSummary.withIaReady} com IA
               </div>
-              <div className="rounded-lg border border-purple-500/15 bg-purple-500/10 px-3 py-2 text-purple-100">
+              <div className="rounded-lg border border-purple-500/15 bg-purple-500/10 px-3 py-2 text-purple-700">
                 {bulkAudienceSummary.withOffer} com oferta
               </div>
-              <div className="rounded-lg border border-amber-500/15 bg-amber-500/10 px-3 py-2 text-amber-100">
+              <div className="rounded-lg border border-amber-500/15 bg-amber-500/10 px-3 py-2 text-amber-700">
                 {bulkAudienceSummary.missingPhone} sem telefone
               </div>
             </div>
@@ -1800,7 +1800,7 @@ export default function ProspeccaoCRMPage() {
                 type="button"
                 onClick={selectVisibleLeads}
                 disabled={selectableFilteredLeads.length === 0 || bulkSending}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-slate-800/70 px-3 py-2 text-xs text-slate-200 transition hover:bg-slate-700/70 disabled:opacity-50"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-white px-3 py-2 text-xs text-slate-700 transition hover:bg-slate-700/70 disabled:opacity-50"
               >
                 <CheckSquare className="h-4 w-4" />
                 Selecionar visiveis
@@ -1809,27 +1809,27 @@ export default function ProspeccaoCRMPage() {
                 type="button"
                 onClick={clearSelection}
                 disabled={selectedLeadIds.length === 0 || bulkSending}
-                className="inline-flex items-center justify-center rounded-lg border border-slate-700/70 bg-slate-800/70 px-3 py-2 text-xs text-slate-300 transition hover:bg-slate-700/70 disabled:opacity-50"
+                className="inline-flex items-center justify-center rounded-lg border border-slate-700/70 bg-white px-3 py-2 text-xs text-slate-700 transition hover:bg-slate-700/70 disabled:opacity-50"
               >
                 Limpar
               </button>
             </div>
 
-            <div className="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/45 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">
+            <div className="mt-3 rounded-xl border border-slate-700/70 bg-white p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                 Audiencia persistente
               </p>
               <input
                 value={audienceName}
                 onChange={(event) => setAudienceName(event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-700/70 bg-slate-950/55 px-3 py-2 text-xs text-white/80 outline-none placeholder:text-slate-500"
+                className="mt-2 w-full rounded-lg border border-slate-700/70 bg-white px-3 py-2 text-xs text-slate-900 outline-none placeholder:text-slate-500"
                 placeholder="Nome da audiencia"
               />
               <button
                 type="button"
                 onClick={() => void saveAudience()}
                 disabled={audienceSaving || selectedWithPhone.length === 0}
-                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/15 disabled:opacity-45"
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-500/15 disabled:opacity-45"
               >
                 {audienceSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardList className="h-3.5 w-3.5" />}
                 Salvar audiencia
@@ -1837,21 +1837,21 @@ export default function ProspeccaoCRMPage() {
             </div>
 
             {audiences.length > 0 ? (
-              <div className="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/45 p-3">
+              <div className="mt-3 rounded-xl border border-slate-700/70 bg-white p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Ultimas audiencias
                   </p>
-                  {audiencesLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-white/35" /> : null}
+                  {audiencesLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" /> : null}
                 </div>
                 <div className="mt-2 space-y-2">
                   {audiences.slice(0, 3).map((audience) => (
-                    <div key={audience.id} className="rounded-lg border border-slate-700/70 bg-slate-900/60 px-3 py-2">
+                    <div key={audience.id} className="rounded-lg border border-slate-700/70 bg-white px-3 py-2">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-xs font-medium text-white/75">{audience.name}</p>
-                        <span className="shrink-0 text-[11px] text-white/40">{audience.leadCount}</span>
+                        <p className="truncate text-xs font-medium text-slate-700">{audience.name}</p>
+                        <span className="shrink-0 text-[11px] text-slate-400">{audience.leadCount}</span>
                       </div>
-                      <p className="mt-1 text-[11px] text-white/40">
+                      <p className="mt-1 text-[11px] text-slate-400">
                         {audience.summary?.hot || 0} quentes / {audience.summary?.withIaReady || 0} com IA
                       </p>
                     </div>
@@ -1869,13 +1869,13 @@ export default function ProspeccaoCRMPage() {
                 (bulkMode === "text" && !bulkMessage.trim()) ||
                 (bulkMode === "template" && !bulkTemplateName.trim())
               }
-              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/35"
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-white/35"
             >
               {bulkSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {bulkMode === "template" ? "Enviar template Meta" : "Enviar texto legado"}
             </button>
 
-            <p className="mt-3 text-[11px] leading-relaxed text-white/45">
+            <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
               Limite atual de 50 leads por lote. Opt-out e contatos recentes sao bloqueados antes do envio.
               A resposta entra no workspace e a IA recebe o contexto da campanha.
             </p>
@@ -1883,20 +1883,20 @@ export default function ProspeccaoCRMPage() {
         </div>
 
         {bulkResult ? (
-          <div className="mt-4 rounded-xl border border-slate-700/70 bg-slate-950/45 p-4">
+          <div className="mt-4 rounded-xl border border-slate-700/70 bg-white p-4">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-emerald-100">
+              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-emerald-700">
                 Enviados: {bulkResult.sent}
               </span>
-              <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-amber-100">
+              <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-amber-700">
                 Ignorados: {bulkResult.skipped}
               </span>
-              <span className="rounded-full border border-red-500/25 bg-red-500/10 px-3 py-1 text-red-100">
+              <span className="rounded-full border border-red-500/25 bg-red-500/10 px-3 py-1 text-red-700">
                 Falhas: {bulkResult.failed}
               </span>
             </div>
             {bulkResult.results.some((item) => item.status !== "sent") ? (
-              <div className="mt-3 space-y-1 text-xs text-white/55">
+              <div className="mt-3 space-y-1 text-xs text-slate-500">
                 {bulkResult.results
                   .filter((item) => item.status !== "sent")
                   .slice(0, 5)
@@ -1993,7 +1993,7 @@ export default function ProspeccaoCRMPage() {
 
       {/* MODAL DELETE */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
           <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl shadow-black/20">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -2028,7 +2028,7 @@ export default function ProspeccaoCRMPage() {
                 onClick={confirmDeleteLead}
                 className={cx(
                   "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm transition",
-                  "border border-red-500/25 bg-red-500/10 text-red-100 hover:bg-red-500/15",
+                  "border border-red-500/25 bg-red-500/10 text-red-700 hover:bg-red-500/15",
                   deleting && "opacity-60"
                 )}
               >
@@ -2126,7 +2126,7 @@ function LeadCard({
             </span>
 
             {!hasStage ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-100">
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-700">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Sem etapa
               </span>
@@ -2159,7 +2159,7 @@ function LeadCard({
             <span className="font-medium text-slate-800">{lead.telefone}</span>
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-amber-100">
+          <div className="flex items-center gap-2 text-amber-700">
             <AlertTriangle className="h-4 w-4" />
             <span>Sem telefone (sem WhatsApp)</span>
           </div>
@@ -2196,7 +2196,7 @@ function LeadCard({
           </div>
         ) : (
           <div className="flex items-center gap-2 text-slate-400">
-            <User className="h-4 w-4 text-slate-300" />
+            <User className="h-4 w-4 text-slate-700" />
             <span>Sem responsavel definido</span>
           </div>
         )}
@@ -2238,7 +2238,7 @@ function LeadCard({
             </div>
 
             {hasOffer ? (
-              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-100">
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-700">
                 <BadgeCheck className="h-4 w-4" />
               </div>
             ) : (

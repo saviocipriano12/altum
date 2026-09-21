@@ -1,4 +1,9 @@
-const SW_VERSION = "altum-client-v4";
+/* Navigation fallback adapted from GoogleChrome/samples (Apache-2.0).
+ * Copyright 2015, 2019 Google Inc. All Rights Reserved.
+ * Modified for Altum: client-only scope, isolated caches and no private data cache.
+ * License and pinned source: lib/vendor/googlechrome-offline/.
+ */
+const SW_VERSION = "altum-client-v5";
 const STATIC_CACHE = `static-${SW_VERSION}`;
 const OFFLINE_URL = "/offline.html";
 
@@ -13,22 +18,20 @@ const STATIC_ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS.map((url) => new Request(url, { cache: "reload" }))))
   );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== STATIC_CACHE)
-          .map((key) => caches.delete(key))
-      )
-    )
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => key.includes("altum-client") && key !== STATIC_CACHE).map((key) => caches.delete(key)));
+      if ("navigationPreload" in self.registration) await self.registration.navigationPreload.enable();
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
 function isStaticAsset(url) {
@@ -47,12 +50,18 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return;
   if (url.pathname.startsWith("/_next/")) return;
 
-  if (request.mode === "navigate" && url.pathname.startsWith("/cliente")) {
+  if (request.mode === "navigate" && url.pathname.startsWith("/cliente/")) {
     event.respondWith(
-      fetch(request).catch(async () => {
-        const cache = await caches.open(STATIC_CACHE);
-        return cache.match(OFFLINE_URL);
-      })
+      (async () => {
+        try {
+          const preloadResponse = await event.preloadResponse;
+          if (preloadResponse) return preloadResponse;
+          return await fetch(request);
+        } catch {
+          const cache = await caches.open(STATIC_CACHE);
+          return (await cache.match(OFFLINE_URL)) || new Response("Sem conexão. Reconecte e recarregue a Altum.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+        }
+      })()
     );
     return;
   }
@@ -63,10 +72,10 @@ self.addEventListener("fetch", (event) => {
         const network = fetch(request)
           .then(async (response) => {
             const cache = await caches.open(STATIC_CACHE);
-            cache.put(request, response.clone());
+            if (response.ok) await cache.put(request, response.clone());
             return response;
           })
-          .catch(() => cached);
+          .catch(() => cached || Response.error());
 
         return cached || network;
       })
@@ -80,7 +89,8 @@ self.addEventListener("notificationclick", (event) => {
   const targetUrl = String(event.notification?.data?.url || "/cliente/painel");
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      const absolute = new URL(targetUrl, self.location.origin).href;
+      const target = new URL(targetUrl, self.location.origin);
+      const absolute = target.origin === self.location.origin && target.pathname.startsWith("/cliente/") ? target.href : new URL("/cliente/painel", self.location.origin).href;
       for (const client of clients) {
         if (client.url === absolute && "focus" in client) {
           return client.focus();

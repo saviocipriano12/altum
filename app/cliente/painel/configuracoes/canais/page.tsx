@@ -9,12 +9,15 @@ import {
   ChevronDown,
   Link2,
   Loader2,
+  MessageSquareText,
   Plus,
   RefreshCw,
   Save,
   Settings2,
   ShieldCheck,
+  Smartphone,
   Trash2,
+  UsersRound,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
@@ -741,6 +744,26 @@ export default function ClienteCanaisPage() {
     () => channels.filter((item) => item.status === "active"),
     [channels]
   );
+  const channelOperations = useMemo(() => {
+    const items = channels.map((channel) => {
+      const type = String(channel.type || "");
+      const isConversationChannel = ["whatsapp", "instagram", "messenger"].includes(type);
+      const connectionStatus = channel.connectionStatus || channel.status || "draft";
+      const needsAttention =
+        channel.status !== "active" ||
+        ["error", "degraded", "reauth_required", "revoked"].includes(connectionStatus) ||
+        channel.serverReady === false ||
+        (isConversationChannel && (!channel.inboundReady || !channel.routingReady));
+      return { ...channel, needsAttention, isConversationChannel };
+    });
+    return items.sort((a, b) => Number(b.needsAttention) - Number(a.needsAttention));
+  }, [channels]);
+  const channelOverview = useMemo(() => ({
+    ready: channelOperations.filter((channel) => !channel.needsAttention && channel.status === "active").length,
+    attention: channelOperations.filter((channel) => channel.needsAttention).length,
+    openChats: channelOperations.reduce((total, channel) => total + Number(channel.openChatCount || 0), 0),
+    personal: channelOperations.filter((channel) => channel.type === "whatsapp" && channel.channelScope === "personal").length,
+  }), [channelOperations]);
   const selectedOperations = useMemo(() => ({
     chatCount: Number(selectedChannel?.chatCount || 0),
     openChatCount: Number(selectedChannel?.openChatCount || 0),
@@ -1216,6 +1239,83 @@ export default function ClienteCanaisPage() {
       <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
         Esta tela mostra o que esta conectado e pronto para operar. Tokens, IDs e reparos ficam disponiveis apenas para admins porque afetam integracoes externas.
       </div>
+
+      <section className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { label: "Prontos para operar", value: channelOverview.ready, detail: "entrada e distribuição ativas", icon: CheckCircle2, tone: "text-emerald-700 bg-emerald-50 border-emerald-200" },
+            { label: "Precisam de atenção", value: channelOverview.attention, detail: "reconexão ou configuração", icon: AlertTriangle, tone: channelOverview.attention ? "text-amber-700 bg-amber-50 border-amber-200" : "text-slate-600 bg-slate-50 border-slate-200" },
+            { label: "Conversas abertas", value: channelOverview.openChats, detail: "em todos os canais", icon: MessageSquareText, tone: "text-blue-700 bg-blue-50 border-blue-200" },
+            { label: "Números pessoais", value: channelOverview.personal, detail: "vinculados a vendedores", icon: UsersRound, tone: "text-indigo-700 bg-indigo-50 border-indigo-200" },
+          ].map((metric) => {
+            const Icon = metric.icon;
+            return (
+              <div key={metric.label} className={`rounded-2xl border p-4 ${metric.tone}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] opacity-75">{metric.label}</p>
+                    <p className="mt-2 text-3xl font-black tracking-tight">{metric.value}</p>
+                    <p className="mt-1 text-xs opacity-70">{metric.detail}</p>
+                  </div>
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/70"><Icon className="h-5 w-5" /></span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <PanelCard className="overflow-hidden p-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--cliente-border)] px-5 py-4">
+            <CardTitle title="Operação por canal" subtitle="Saúde, uso, responsável e volume em uma única visão." />
+            <Link href="/cliente/painel/inbox" className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-3 py-2 text-xs font-bold text-white">
+              <MessageSquareText className="h-3.5 w-3.5" /> Abrir conversas
+            </Link>
+          </div>
+          {loading ? (
+            <div className="py-10 text-center text-[var(--cliente-card-text-soft)]"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+          ) : channelOperations.length === 0 ? (
+            <div className="px-5 py-8 text-center">
+              <Smartphone className="mx-auto h-8 w-8 text-[var(--cliente-card-text-soft)]" />
+              <p className="mt-3 text-sm font-bold text-[var(--cliente-card-text)]">Nenhum canal conectado</p>
+              <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Comece pelo WhatsApp oficial da empresa ou pelo número pessoal de um vendedor.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-[var(--cliente-border)]">
+              {channelOperations.map((channel) => {
+                const definition = CONNECTORS.find((item) => item.type === channel.type) || CONNECTORS[0];
+                const owner = channel.channelScope === "personal" ? channel.ownerUserName || "Vendedor não definido" : "Equipe da empresa";
+                return (
+                  <div key={channel.id || `${channel.type}_${channel.phoneNumberId || channel.externalAccountId}`} className="grid gap-4 px-5 py-4 transition hover:bg-[var(--cliente-surface-muted)] lg:grid-cols-[minmax(220px,1.3fr)_minmax(180px,1fr)_minmax(180px,1fr)_auto] lg:items-center">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <BrandIcon id={definition.brand} size="md" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{channel.displayName || definition.label}</p>
+                        <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{channel.phoneNumber || channel.username || channel.externalAccountId || whatsappProviderLabel(channel.provider)}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">Responsável</p>
+                      <p className="mt-1 text-sm font-semibold text-[var(--cliente-card-text-muted)]">{owner}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{channel.channelScope === "personal" ? "Número pessoal" : "Canal compartilhado"}</p>
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap gap-2">
+                        <StateBadge label={channel.needsAttention ? "Revisar" : "Operando"} tone={channel.needsAttention ? "warning" : "success"} />
+                        <StateBadge label={`${Number(channel.openChatCount || 0)} abertas`} tone={Number(channel.openChatCount || 0) ? "info" : "neutral"} />
+                      </div>
+                      <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">Última atividade: {formatDateTime(channel.lastActivityAt || channel.updatedAt)}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 lg:justify-end">
+                      {channel.isConversationChannel ? <Link href={`/cliente/painel/inbox?channelAccount=${encodeURIComponent(channel.id || "")}`} className="rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)]">Ver conversas</Link> : null}
+                      <button type="button" onClick={() => { setSelectedType(definition.type); if (definition.type === "whatsapp") setSelectedWhatsAppChannelId(channel.id || ""); }} className="rounded-xl bg-[var(--cliente-accent)] px-3 py-2 text-xs font-bold text-white">Gerenciar</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </PanelCard>
+      </section>
 
       <section className="space-y-5">
         <PanelCard className="settings-channels-catalog p-5 md:p-6">

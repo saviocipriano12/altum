@@ -1,0 +1,57 @@
+{
+  "screens": 24,
+  "existingScreens": 23,
+  "adminApis": 37,
+  "directRequests": 119,
+  "mappedDirectRequests": 111,
+  "manualReview": [
+    {
+      "file": "app/admin/campanhas/page.tsx",
+      "line": 220,
+      "expression": "`/api/ad-accounts/list${qs}`",
+      "status": "manual_review_unresolved"
+    },
+    {
+      "file": "app/admin/campanhas/page.tsx",
+      "line": 244,
+      "expression": "url",
+      "status": "manual_review_computed_or_external"
+    },
+    {
+      "file": "app/admin/chat/page.tsx",
+      "line": 438,
+      "expression": "finalUrl",
+      "status": "manual_review_computed_or_external"
+    },
+    {
+      "file": "app/admin/equipe/page.tsx",
+      "line": 83,
+      "expression": "path",
+      "status": "manual_review_computed_or_external"
+    },
+    {
+      "file": "app/admin/equipe/page.tsx",
+      "line": 247,
+      "expression": "endpoint",
+      "status": "manual_review_computed_or_external"
+    },
+    {
+      "file": "app/admin/equipe/page.tsx",
+      "line": 250,
+      "expression": "endpoint",
+      "status": "manual_review_computed_or_external"
+    },
+    {
+      "file": "app/admin/prospeccao/[id]/page.tsx",
+      "line": 627,
+      "expression": "path",
+      "status": "manual_review_computed_or_external"
+    },
+    {
+      "file": "app/admin/templates/page.tsx",
+      "line": 218,
+      "expression": "\"/api/admin/whatsapp/templates\"",
+      "status": "http_method_missing_static"
+    }
+  ]
+}

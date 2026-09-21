@@ -37,7 +37,9 @@ test("inbound routing honors configured teams and writes nested inbox rules", as
   const chatDistribution = await source("app/api/tenant/[tenantId]/chats/distribute/route.ts");
   const leadDistribution = await source("app/api/tenant/[tenantId]/leads/distribute/route.ts");
   assert.match(routing, /defaultTeam/);
-  assert.match(routing, /teamMatched/);
+  const policy = await source("lib/inbox-routing-policy.ts");
+  assert.match(routing, /filterEligibleOperators/);
+  assert.match(policy, /teamMatched/);
   assert.match(routing, /businessHoursOnly/);
   assert.match(routing, /rules:\s*\{\s*inbox:/s);
   assert.doesNotMatch(routing, /"rules\.inbox\.lastAssignedUserId"/);

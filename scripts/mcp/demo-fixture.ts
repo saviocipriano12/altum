@@ -18,7 +18,7 @@ export function createDemo(now = Date.now()) {
     channels: [{ id: "canal-demo", tenantId, type: "whatsapp", status: "active", connectionStatus: "connected", lastHealthCheckAt: date(0.1) }],
     campaign_snapshots: [
       { id: "snap-meta", tenantId, platform: "meta_ads", channelId: "channel-meta-demo", adAccountId: "act-meta-demo", campaignId: "cmp-venda-setembro", campaignName: "Venda Setembro", dateRef: "2026-09-09", spend: 420, impressions: 12000, clicks: 380, leads: 34 },
-      { id: "snap-google", tenantId, platform: "google_ads", channelId: "channel-google-demo", adAccountId: "google-demo", campaignId: "cmp-pesquisa-alta", campaignName: "Pesquisa Alta Intencao", dateRef: "2026-09-09", spend: 260, impressions: 2800, clicks: 140, leads: 8 },
+      { id: "snap-google", tenantId, platform: "google_ads", channelId: "channel-google-demo", adAccountId: "1234567890", campaignId: "cmp-pesquisa-alta", campaignName: "Pesquisa Alta Intencao", dateRef: "2026-09-09", spend: 260, impressions: 2800, clicks: 140, leads: 8 },
       { id: "snap-waste", tenantId, platform: "meta_ads", channelId: "channel-meta-demo", adAccountId: "act-meta-demo", campaignId: "cmp-topo-frio", campaignName: "Topo Frio", dateRef: "2026-09-09", spend: 390, impressions: 18000, clicks: 520, leads: 2 },
     ],
     ad_creative_snapshots: [

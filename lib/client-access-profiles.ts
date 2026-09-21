@@ -35,7 +35,7 @@ export const CLIENT_ACCESS_PROFILES: ClientAccessProfile[] = [
     label: "Vendedor",
     description: "Atende e gerencia somente as conversas, clientes e oportunidades atribuídos a ele.",
     role: "client_agent",
-    capabilities: ["view_metrics", "respond_inbox", "edit_leads", "manage_pipeline", "manage_commercial"],
+    capabilities: ["view_metrics", "respond_inbox", "edit_leads", "manage_pipeline", "manage_commercial", "manage_personal_channel"],
   },
   {
     id: "support",

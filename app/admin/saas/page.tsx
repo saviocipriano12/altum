@@ -177,11 +177,11 @@ export default function AdminSaasPage() {
   return (
     <main className="mx-auto max-w-[1480px] space-y-6 pb-12 text-slate-950">
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-5 bg-[linear-gradient(135deg,#0f172a,#172554_58%,#1d4ed8)] px-6 py-7 text-white md:flex-row md:items-end md:justify-between md:px-8">
+        <div className="flex flex-col gap-5 bg-[linear-gradient(135deg,#0f172a,#172554_58%,#1d4ed8)] px-6 py-7 text-slate-900 md:flex-row md:items-end md:justify-between md:px-8">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-200">Altum · administracao</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Altum · administracao</p>
             <h1 className="mt-2 text-3xl font-black tracking-tight">Operacao SaaS</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-200">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
               Empresas, receita, acesso e riscos comerciais em uma unica fila de decisao.
             </p>
           </div>
@@ -189,7 +189,7 @@ export default function AdminSaasPage() {
             <Link href="/admin/clientes" className="inline-flex h-10 items-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-slate-950 transition hover:bg-blue-50">
               <Building2 className="h-4 w-4" /> Empresas
             </Link>
-            <button type="button" onClick={() => void loadOverview()} disabled={loading} className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-bold text-white transition hover:bg-white/15 disabled:opacity-60">
+            <button type="button" onClick={() => void loadOverview()} disabled={loading} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 transition hover:bg-slate-50 disabled:opacity-60">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Atualizar
             </button>
           </div>
@@ -334,11 +334,11 @@ export default function AdminSaasPage() {
             {!loading && integrationItems.length === 0 ? <p className="text-sm text-slate-500">Nao foi possivel carregar a saude das integracoes.</p> : null}
           </div>
         </div>
-        <aside className="rounded-[24px] border border-slate-200 bg-slate-950 p-5 text-white shadow-sm md:p-6">
-          <PlugZap className="h-5 w-5 text-blue-300" />
-          <p className="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-blue-200">Proxima acao</p>
+        <aside className="rounded-[24px] border border-slate-200 bg-white p-5 text-slate-900 shadow-sm md:p-6">
+          <PlugZap className="h-5 w-5 text-blue-700" />
+          <p className="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-blue-700">Proxima acao</p>
           <h2 className="mt-1 text-xl font-black">Libere a operacao por empresa.</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-300">Cadastre a empresa, defina modulos e limites, conecte os canais e acompanhe cobranca e acesso no mesmo lugar.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-700">Cadastre a empresa, defina modulos e limites, conecte os canais e acompanhe cobranca e acesso no mesmo lugar.</p>
           <Link href="/admin/clientes" className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-slate-950 transition hover:bg-blue-50">
             Abrir empresas <ExternalLink className="h-4 w-4" />
           </Link>

@@ -1,3 +1,4 @@
+import { isWhatsAppGroup, resolveWhatsAppRecipient } from "@/lib/whatsapp-conversation";
 ﻿import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhone } from "@/app/lib/server/phone";
@@ -215,7 +216,7 @@ export async function sendTenantChatText(input: {
       throw new Error("Canal WhatsApp ativo nao configurado para este tenant.");
     }
 
-    const phone = normalizePhone(chat.contactPhone);
+    const phone = resolveWhatsAppRecipient(chat.contactPhone, channel.provider, normalizePhone);
     if (!phone) {
       throw new Error("Chat sem telefone valido.");
     }
@@ -415,7 +416,7 @@ export async function sendTenantChatMedia(input: {
     throw new Error("Janela de 24h encerrada. Use um template aprovado para retomar o contato.");
   }
 
-  const phone = normalizePhone(chat.contactPhone);
+  const phone = resolveWhatsAppRecipient(chat.contactPhone, channel.provider, normalizePhone);
   if (!phone) {
     throw new Error("Chat sem telefone valido.");
   }
@@ -582,7 +583,7 @@ export async function sendTenantChatMediaLink(input: {
     throw new Error("Janela de 24h encerrada. Inclua a midia no cabecalho de um template aprovado.");
   }
 
-  const phone = normalizePhone(chat.contactPhone);
+  const phone = resolveWhatsAppRecipient(chat.contactPhone, channel.provider, normalizePhone);
   if (!phone) throw new Error("Chat sem telefone valido.");
 
   if (replyToId) {
@@ -731,7 +732,8 @@ export async function sendTenantChatTemplate(input: {
     throw new Error("Canal WhatsApp ativo nao configurado para este tenant.");
   }
 
-  const phone = normalizePhone(chat.contactPhone);
+  if (isWhatsAppGroup(chat.contactPhone)) throw new Error("Templates nao sao usados em grupos do WhatsApp.");
+  const phone = resolveWhatsAppRecipient(chat.contactPhone, channel.provider, normalizePhone);
   if (!phone) {
     throw new Error("Chat sem telefone valido.");
   }

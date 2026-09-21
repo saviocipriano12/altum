@@ -5,6 +5,7 @@ export type ClientRouteAccessRule = {
 };
 
 const CLIENT_ROUTE_ACCESS_RULES: Array<{ prefix: string; rule: ClientRouteAccessRule }> = [
+  { prefix: "/cliente/painel/configuracoes/meu-whatsapp", rule: { capability: "manage_personal_channel", title: "Meu WhatsApp restrito", description: "Este espaço permite conectar somente o seu número pessoal." } },
   { prefix: "/cliente/painel/configuracoes/usuarios", rule: { capability: "manage_users", title: "Gestão de acessos restrita", description: "Somente administradores da empresa podem convidar pessoas e alterar permissões." } },
   { prefix: "/cliente/painel/configuracoes/times", rule: { capability: "manage_users", title: "Gestão de equipes restrita", description: "Somente administradores da empresa podem criar times e definir seus membros." } },
   { prefix: "/cliente/painel/configuracoes/canais", rule: { capability: "manage_channels", title: "Gestão de canais restrita", description: "Seu perfil não pode conectar ou alterar os canais da empresa." } },

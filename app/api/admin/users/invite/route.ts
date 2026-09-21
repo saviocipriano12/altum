@@ -1,3 +1,4 @@
+import { assertAgencyUserManagement } from "@/lib/server/admin/user-access";
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
@@ -32,12 +33,13 @@ function randomPassword() {
 
 export async function POST(req: Request) {
   try {
-    const actor = await requireRequestUser(req, { roles: ["admin"] });
+    const actor = await requireRequestUser(req, { roles: ["agency_admin"] });
     const body = (await req.json()) as InviteBody;
 
     const email = (body.email || "").trim().toLowerCase();
     const name = (body.name || "").trim();
     const role = normalizeRole(body.role);
+    await assertAgencyUserManagement(actor, undefined, role);
     const commissionRate = Number(body.commissionRate || 0);
     const asaasWalletId = (body.asaasWalletId || "").trim() || null;
 
@@ -52,10 +54,13 @@ export async function POST(req: Request) {
     try {
       const existing = await adminAuth.getUserByEmail(email);
       uid = existing.uid;
+      await assertAgencyUserManagement(actor, uid, role);
       if (!existing.displayName || existing.displayName !== name) {
         await adminAuth.updateUser(uid, { displayName: name });
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof RouteAuthError) throw error;
+      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "auth/user-not-found") throw error;
       const created = await adminAuth.createUser({
         email,
         displayName: name,
@@ -100,7 +105,9 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       uid,
-      inviteSentAt: new Date().toISOString(),
+      inviteGeneratedAt: new Date().toISOString(),
+      inviteSentAt: null,
+      deliveryStatus: "manual_link",
       inviteLink,
     });
   } catch (error) {

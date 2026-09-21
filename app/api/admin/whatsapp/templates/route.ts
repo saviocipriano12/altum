@@ -4,11 +4,28 @@ import {
   AGENCY_TENANT_ID,
   getWhatsAppChannelForTenant,
   listWhatsAppMessageTemplates,
+  ensureDefaultWhatsAppFollowUpTemplates,
 } from "@/app/lib/server/whatsapp-channel";
 
 function clean(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+export async function POST(req: Request) {
+  try {
+    await requireRequestUser(req, { roles: ["agency_admin"] });
+    const body = await req.json() as Record<string, unknown>;
+    const tenantId = clean(body.tenantId, 140) || AGENCY_TENANT_ID;
+    const channel = await getWhatsAppChannelForTenant(tenantId, { allowAgencyFallback: tenantId === AGENCY_TENANT_ID });
+    if (!channel) return NextResponse.json({ error: "Nenhum canal WhatsApp oficial encontrado para esta empresa." }, { status: 404 });
+    const result = await ensureDefaultWhatsAppFollowUpTemplates(channel);
+    return NextResponse.json({ ok: result.failed.length === 0, ...result }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    console.error("Falha ao sincronizar templates:", error);
+    return NextResponse.json({ error: "Não foi possível sincronizar os templates. Confira a conexão oficial." }, { status: 502 });
+  }
 }
 
 function summarize(templates: Array<{ status: string; category: string }>) {

@@ -1,0 +1,2385 @@
+[
+  {
+    "route": "app/api/tenant/[tenantId]/ai-logs/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "ai_logs"
+    ],
+    "fixedReadLimits": [
+      150
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/ai-preview/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "kb_docs"
+    ],
+    "fixedReadLimits": [
+      50
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/ai-usage/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "ai_usage_ledger"
+    ],
+    "fixedReadLimits": [
+      200
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/ai-voice/preview/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "ai_voice_previews"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/appointments/[appointmentId]/route.ts",
+    "methods": [
+      "PATCH"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "appointments",
+      "events",
+      "leads",
+      "tenant_users"
+    ],
+    "fixedReadLimits": [
+      500
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/appointments/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "appointments",
+      "events",
+      "leads",
+      "tenant_users"
+    ],
+    "fixedReadLimits": [
+      240,
+      500
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/assisted-meetings/bot/[sessionId]/finalize/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "meeting_bot_sessions"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/assisted-meetings/bot/[sessionId]/route.ts",
+    "methods": [
+      "GET",
+      "DELETE"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "meeting_bot_sessions"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/assisted-meetings/bot/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "meeting_bot_sessions"
+    ],
+    "fixedReadLimits": [
+      30
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/assisted-meetings/live-coach/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "leads"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/assisted-meetings/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "appointments",
+      "assisted_meetings",
+      "documents",
+      "events",
+      "lead_notes",
+      "leads"
+    ],
+    "fixedReadLimits": [
+      80
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/assisted-meetings/transcribe/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/automation-summary/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "appointments",
+      "automations",
+      "chat_state",
+      "chats",
+      "financeiro",
+      "jobs",
+      "kb_docs",
+      "lead_tasks",
+      "leads",
+      "metrics"
+    ],
+    "fixedReadLimits": [
+      90,
+      100,
+      180,
+      200,
+      240,
+      250,
+      300,
+      320,
+      500
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/automations/[automationId]/route.ts",
+    "methods": [
+      "PATCH",
+      "DELETE"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "automations"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/automations/process/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/automations/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "automations",
+      "jobs"
+    ],
+    "fixedReadLimits": [
+      120
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/budgets/[budgetId]/route.ts",
+    "methods": [
+      "PATCH"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "events",
+      "financeiro",
+      "leads",
+      "orcamentos"
+    ],
+    "fixedReadLimits": [
+      1
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/budgets/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "events",
+      "leads",
+      "orcamentos"
+    ],
+    "fixedReadLimits": [
+      200
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/business-insights/ask/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/calls/start/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "call_logs",
+      "chats",
+      "events",
+      "lead_tasks",
+      "leads"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/campaigns/conversions/dispatch/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/campaigns/conversions/health/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "conversion_dispatches",
+      "tenant_channels"
+    ],
+    "fixedReadLimits": [
+      60,
+      120
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/campaigns/overview/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "campaign_snapshots",
+      "tenant_channels"
+    ],
+    "fixedReadLimits": [
+      60,
+      2000
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/campaigns/sync/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/capture/forms/[formId]/route.ts",
+    "methods": [
+      "PATCH",
+      "DELETE"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "capture_forms",
+      "tenant_users"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/capture/forms/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "capture_forms",
+      "capture_submissions",
+      "tenant_users"
+    ],
+    "fixedReadLimits": [
+      80
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/catalog-import/preview/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/catalog-import/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "catalog_imports",
+      "kb_docs"
+    ],
+    "fixedReadLimits": [
+      500
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/channels/[channelId]/whatsapp-session/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "tenant_channels"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/channels/health/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/channels/route.ts",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "campaign_snapshots",
+      "chats",
+      "tenant_channels",
+      "tenant_settings",
+      "tenant_users",
+      "users"
+    ],
+    "fixedReadLimits": [
+      1,
+      50,
+      800,
+      1800
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/channels/whatsapp/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "tenant_channels",
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [
+      1
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/[chatId]/ai-state/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chat_state",
+      "chats",
+      "messages",
+      "tenant_users"
+    ],
+    "fixedReadLimits": [
+      200
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/[chatId]/messages/[messageId]/media/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chats",
+      "messages"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": true
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/[chatId]/messages/[messageId]/reaction/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chats",
+      "messages"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/[chatId]/messages/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chats",
+      "messages"
+    ],
+    "fixedReadLimits": [
+      200,
+      500,
+      1000
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/[chatId]/notes/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chat_notes",
+      "chats",
+      "events",
+      "leads"
+    ],
+    "fixedReadLimits": [
+      100
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/[chatId]/route.ts",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chat_notes",
+      "chats",
+      "contacts",
+      "documents",
+      "events",
+      "financeiro",
+      "lead_notes",
+      "lead_tasks",
+      "leads",
+      "messages",
+      "orcamentos",
+      "tenant_users",
+      "users"
+    ],
+    "fixedReadLimits": [
+      1,
+      8,
+      16,
+      20,
+      24,
+      50,
+      100,
+      500
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/[chatId]/send/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/[chatId]/send-media/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/[chatId]/send-stored-media/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/[chatId]/send-template/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/bulk-delete/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/distribute/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chats",
+      "leads",
+      "tenant_channels",
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [
+      250
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/chats/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chat_state",
+      "chats",
+      "contacts",
+      "leads",
+      "tenant_channels"
+    ],
+    "fixedReadLimits": [
+      100,
+      500
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/contact-photo/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/daily-reports/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/ecommerce/actions/[actionId]/route.ts",
+    "methods": [
+      "PATCH"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "ecommerce_commercial_actions",
+      "events",
+      "leads"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/ecommerce/actions/[actionId]/send-template/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chats",
+      "ecommerce_commercial_actions",
+      "events",
+      "leads",
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [
+      1
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/ecommerce/actions/process/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chats",
+      "ecommerce_commercial_actions",
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [
+      1
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/ecommerce/automation/route.ts",
+    "methods": [
+      "GET",
+      "PATCH"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/ecommerce/connections/[connectionId]/route.ts",
+    "methods": [
+      "PATCH",
+      "DELETE"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "ecommerce_connections"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/ecommerce/connections/[connectionId]/sync/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "ecommerce_connections"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/ecommerce/connections/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "ecommerce_connections"
+    ],
+    "fixedReadLimits": [
+      40
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/finance/[financeId]/route.ts",
+    "methods": [
+      "PATCH"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "events",
+      "financeiro",
+      "leads"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/finance/create-charge/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "events",
+      "financeiro",
+      "leads",
+      "orcamentos"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": true
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/finance/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "events",
+      "financeiro",
+      "leads"
+    ],
+    "fixedReadLimits": [
+      240
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/follow-ups/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chats",
+      "lead_tasks",
+      "leads"
+    ],
+    "fixedReadLimits": [
+      300,
+      1200
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/growth/google-ads/operator/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "google_ads_operator_reports",
+      "tenant_channels"
+    ],
+    "fixedReadLimits": [
+      30
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/growth/meta-ads/operator/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "meta_ads_operator_reports",
+      "tenant_channels"
+    ],
+    "fixedReadLimits": [
+      30
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/growth/revenue-graph/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/growth/tracking/route.ts",
+    "methods": [
+      "GET",
+      "PATCH",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "growth_events",
+      "growth_tracking_configs"
+    ],
+    "fixedReadLimits": [
+      40
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/kb-docs/[docId]/route.ts",
+    "methods": [
+      "PATCH",
+      "DELETE"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "kb_docs"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/kb-docs/media/upload/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/kb-docs/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "kb_docs"
+    ],
+    "fixedReadLimits": [
+      200
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/leads/[leadId]/notes/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertLeadCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "events",
+      "lead_notes",
+      "leads"
+    ],
+    "fixedReadLimits": [
+      100
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/leads/[leadId]/route.ts",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "appointments",
+      "chats",
+      "documents",
+      "ecommerce_orders",
+      "events",
+      "lead_notes",
+      "lead_tasks",
+      "leads"
+    ],
+    "fixedReadLimits": [
+      12,
+      16,
+      20,
+      30,
+      60,
+      100
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/leads/[leadId]/stage/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertLeadCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "events",
+      "leads"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/leads/[leadId]/tasks/[taskId]/route.ts",
+    "methods": [
+      "PATCH"
+    ],
+    "authentication": [
+      "assertLeadCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "events",
+      "lead_tasks",
+      "leads"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/leads/[leadId]/tasks/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertLeadCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "events",
+      "lead_tasks",
+      "leads"
+    ],
+    "fixedReadLimits": [
+      100,
+      120
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/leads/bulk-delete/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/leads/distribute/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chats",
+      "leads",
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [
+      300,
+      500
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/leads/import/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "leads"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/leads/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "chats",
+      "events",
+      "leads"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/mcp/connections/[connectionId]/route.ts",
+    "methods": [
+      "DELETE"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/mcp/drafts/[draftId]/apply/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "growth_segments",
+      "mcp_action_drafts",
+      "outbound_campaigns",
+      "tenant_channels",
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/mcp/drafts/[draftId]/route.ts",
+    "methods": [
+      "PATCH"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "mcp_action_drafts"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/mcp/drafts/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "campaign_snapshots",
+      "google_ads_operator_reports",
+      "mcp_action_drafts",
+      "meta_ads_operator_reports"
+    ],
+    "fixedReadLimits": [
+      30,
+      80,
+      200
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/mcp/status/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/metrics-summary/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "ai_logs",
+      "chat_state",
+      "chats",
+      "messages",
+      "tenants",
+      "users"
+    ],
+    "fixedReadLimits": [
+      350,
+      400,
+      1800
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/notifications/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "ai_internal_notifications",
+      "chats",
+      "financeiro",
+      "leads",
+      "tenant_channels",
+      "tenant_notification_state"
+    ],
+    "fixedReadLimits": [
+      40,
+      60,
+      120,
+      250
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/onboarding/blueprint/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/onboarding/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "ecommerce_connections",
+      "kb_docs",
+      "tenant_channels",
+      "tenant_settings",
+      "tenants"
+    ],
+    "fixedReadLimits": [
+      40
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/outbound-campaigns/[campaignId]/dispatch/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/outbound-campaigns/[campaignId]/preview/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/outbound-campaigns/[campaignId]/route.ts",
+    "methods": [
+      "PATCH",
+      "DELETE"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "outbound_campaign_jobs",
+      "outbound_campaign_runs",
+      "outbound_campaigns"
+    ],
+    "fixedReadLimits": [
+      1000
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/outbound-campaigns/media/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/outbound-campaigns/process/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/outbound-campaigns/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "outbound_campaign_deliveries",
+      "outbound_campaign_runs",
+      "outbound_campaigns"
+    ],
+    "fixedReadLimits": [
+      120,
+      1200
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/pipeline/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "leads",
+      "pipeline"
+    ],
+    "fixedReadLimits": [
+      240
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/readiness/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/search/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chats",
+      "ecommerce_orders",
+      "financeiro",
+      "lead_tasks",
+      "leads",
+      "orcamentos"
+    ],
+    "fixedReadLimits": [
+      180
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/settings/ai/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "tenant_settings"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/settings/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "tenant_settings",
+      "tenants"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/social-automations/media/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/social-automations/retry/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/social-automations/route.ts",
+    "methods": [
+      "GET",
+      "PATCH"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "hasTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/trash/route.ts",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/users/[userId]/route.ts",
+    "methods": [
+      "PATCH"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "tenant_users"
+    ],
+    "fixedReadLimits": [
+      80
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/users/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "client_portal_users",
+      "tenant_users",
+      "tenants",
+      "users"
+    ],
+    "fixedReadLimits": [
+      80
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/whatsapp/send/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertChatCommercialAccess",
+      "assertLeadCommercialAccess",
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "chat_state",
+      "chats",
+      "leads",
+      "messages"
+    ],
+    "fixedReadLimits": [
+      20
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/tenant/[tenantId]/whatsapp-templates/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [
+      "tenant_channels"
+    ],
+    "fixedReadLimits": [
+      20
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/client-portal/dashboard/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "requirePortalRequestUser"
+    ],
+    "collections": [
+      "client_contracts",
+      "clientes",
+      "tenants"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/client-portal/me/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "requirePortalRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/client-portal/push/config/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "requirePortalRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/client-portal/push/subscription/route.ts",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "authentication": [
+      "requirePortalRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/client-portal/push/test/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "requirePortalRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/integrations/commerce/nuvemshop/callback/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": true
+  },
+  {
+    "route": "app/api/integrations/commerce/nuvemshop/start/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/integrations/commerce/shopify/callback/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": true
+  },
+  {
+    "route": "app/api/integrations/commerce/shopify/start/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "assertTenantModule",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/integrations/google/callback/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": true
+  },
+  {
+    "route": "app/api/integrations/google/start/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/integrations/meta/callback/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": true
+  },
+  {
+    "route": "app/api/integrations/meta/start/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/integrations/pending/[pendingId]/complete/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/integrations/pending/[pendingId]/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "authentication": [
+      "assertTenantAccess",
+      "assertTenantCapability",
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/billing/asaas/checkout/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "requireFirebaseUser"
+    ],
+    "collections": [
+      "asaas_checkouts",
+      "tenants"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": true
+  },
+  {
+    "route": "app/api/billing/asaas/subscription/route.ts",
+    "methods": [
+      "GET",
+      "PATCH"
+    ],
+    "authentication": [
+      "requireFirebaseUser"
+    ],
+    "collections": [
+      "audit_logs",
+      "client_contracts",
+      "tenants"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/mcp/oauth/authorize/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/mcp/oauth/token/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/mcp/read/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "requireRequestUser"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/mcp/remote/route.ts",
+    "methods": [
+      "OPTIONS",
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "authentication": [
+      "validateMcpAccessToken"
+    ],
+    "collections": [],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/webhooks/asaas/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [],
+    "collections": [
+      "asaas_checkouts",
+      "asaas_webhook_events_internal",
+      "client_contracts",
+      "events",
+      "financeiro",
+      "leads",
+      "tenants"
+    ],
+    "fixedReadLimits": [
+      1,
+      5,
+      20
+    ],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/webhooks/ecommerce/[provider]/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [
+      "assertTenantModule"
+    ],
+    "collections": [
+      "ecommerce_events"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/webhooks/meta/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "verifyMetaSignature"
+    ],
+    "collections": [
+      "campaign_snapshots",
+      "chats",
+      "events",
+      "leads",
+      "messages",
+      "meta_webhook_events",
+      "social_automation_logs",
+      "users"
+    ],
+    "fixedReadLimits": [
+      1
+    ],
+    "fetchWithoutLocalTimeout": true
+  },
+  {
+    "route": "app/api/webhooks/stripe/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "authentication": [],
+    "collections": [
+      "stripe_webhook_events"
+    ],
+    "fixedReadLimits": [],
+    "fetchWithoutLocalTimeout": false
+  },
+  {
+    "route": "app/api/webhooks/whatsapp/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "authentication": [
+      "verifyMetaSignature"
+    ],
+    "collections": [
+      "chats",
+      "lead_events",
+      "leads",
+      "messages",
+      "outbound_campaign_deliveries",
+      "tenant_channels",
+      "users",
+      "whatsapp_delivery_events",
+      "whatsapp_webhook_events"
+    ],
+    "fixedReadLimits": [
+      1,
+      20
+    ],
+    "fetchWithoutLocalTimeout": false
+  }
+]

@@ -48,13 +48,13 @@ const STAGE_LABELS: Record<PipelineStage, string> = {
 };
 
 const STAGE_BG: Record<PipelineStage, string> = {
-  captado: "from-slate-900/80 via-slate-900 to-black",
-  contato_enviado: "from-blue-950 via-slate-900 to-black",
-  respondido: "from-emerald-950 via-slate-900 to-black",
-  em_negociacao: "from-amber-950 via-slate-900 to-black",
-  proposta_enviada: "from-purple-950 via-slate-900 to-black",
-  fechado: "from-emerald-900 via-slate-900 to-black",
-  perdido: "from-red-950 via-slate-900 to-black",
+  captado: "  ",
+  contato_enviado: "  ",
+  respondido: "  ",
+  em_negociacao: "  ",
+  proposta_enviada: "  ",
+  fechado: "  ",
+  perdido: "  ",
 };
 
 const STAGE_BORDER: Record<PipelineStage, string> = {
@@ -170,7 +170,7 @@ export default function PipelinePage() {
     for (const lead of leads) {
       const stage: PipelineStage =
         (lead.pipelineStage as PipelineStage) || "captado";
-      base[stage].push(lead);
+      (base[stage] || base.captado).push(lead);
     }
 
     return base;
@@ -221,7 +221,7 @@ export default function PipelinePage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-wide">Pipeline Comercial</h1>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-slate-500">
             Visual completo das oportunidades da ALTUM, do primeiro contato ao fechamento.
           </p>
         </div>
@@ -229,15 +229,15 @@ export default function PipelinePage() {
         <div className="flex flex-wrap gap-2 text-xs">
           <span className="rounded-xl border border-emerald-500/50 bg-emerald-500/10 px-3 py-1.5">
             Fechados:{" "}
-            <span className="font-semibold text-emerald-100">{totalFechado}</span>
+            <span className="font-semibold text-emerald-700">{totalFechado}</span>
           </span>
           <span className="rounded-xl border border-blue-500/50 bg-blue-500/10 px-3 py-1.5">
             Em jogo:{" "}
-            <span className="font-semibold text-blue-100">{totalAtivos}</span>
+            <span className="font-semibold text-blue-700">{totalAtivos}</span>
           </span>
-          <span className="rounded-xl border border-white/20 bg-white/5 px-3 py-1.5">
+          <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5">
             Total de leads:{" "}
-            <span className="font-semibold text-white">{leads.length}</span>
+            <span className="font-semibold text-slate-900">{leads.length}</span>
           </span>
         </div>
       </div>
@@ -245,20 +245,20 @@ export default function PipelinePage() {
       {/* Criar lead rápido */}
       <form
         onSubmit={handleCreateLead}
-        className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3"
+        className="rounded-xl border border-slate-200 bg-white p-4 space-y-3"
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-white/70">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
             Criar oportunidade manual
           </h2>
-          <span className="text-[11px] text-white/40">
+          <span className="text-[11px] text-slate-400">
             Leads adicionados aqui entram direto no funil comercial.
           </span>
         </div>
 
         <div className="grid gap-2 md:grid-cols-3">
           <input
-            className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs outline-none placeholder:text-white/40"
+            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none placeholder:text-slate-400"
             placeholder="Nome do lead / empresa *"
             value={novoLead.nome}
             onChange={(e) =>
@@ -266,7 +266,7 @@ export default function PipelinePage() {
             }
           />
           <input
-            className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs outline-none placeholder:text-white/40"
+            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none placeholder:text-slate-400"
             placeholder="Origem (ex: Indicação, Insta, Prospecção...)"
             value={novoLead.origem}
             onChange={(e) =>
@@ -307,10 +307,10 @@ export default function PipelinePage() {
               >
                 <div className="mb-2 flex items-center justify-between">
                   <div>
-                    <p className="text-[11px] uppercase tracking-wide text-white/60">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">
                       {STAGE_LABELS[stage]}
                     </p>
-                    <p className="text-xs text-white/40">
+                    <p className="text-xs text-slate-400">
                       {stage === "captado" && "Entradas da máquina + manuais"}
                       {stage === "contato_enviado" && "Primeira abordagem feita"}
                       {stage === "respondido" && "Lead respondeu / abriu canal"}
@@ -320,14 +320,14 @@ export default function PipelinePage() {
                       {stage === "perdido" && "Não fechou (motivo registrar depois)"}
                     </p>
                   </div>
-                  <span className="rounded-full bg-black/50 px-2 py-0.5 text-[10px] text-white/60 border border-white/10">
+                  <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] text-slate-500 border border-slate-200">
                     {colunaLeads.length}
                   </span>
                 </div>
 
                 <div className="space-y-2 overflow-y-auto max-h-[460px] pr-1">
                   {colunaLeads.length === 0 && (
-                    <div className="rounded-xl border border-dashed border-white/10 bg-black/40 p-3 text-[11px] text-white/40">
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-400">
                       Nenhuma oportunidade neste estágio.
                     </div>
                   )}
@@ -335,7 +335,7 @@ export default function PipelinePage() {
                   {colunaLeads.map((lead) => (
                     <div
                       key={lead.id}
-                      className="rounded-xl border border-white/15 bg-black/40 p-3 text-xs text-white/80 space-y-2"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 space-y-2"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
@@ -343,39 +343,39 @@ export default function PipelinePage() {
                             {lead.nome || "Lead sem nome"}
                           </p>
                           {lead.origem && (
-                            <p className="mt-0.5 text-[11px] text-white/50 flex items-center gap-1">
-                              <Sparkles className="h-3 w-3 text-white/40" />
+                            <p className="mt-0.5 text-[11px] text-slate-500 flex items-center gap-1">
+                              <Sparkles className="h-3 w-3 text-slate-400" />
                               Origem: {lead.origem}
                             </p>
                           )}
                         </div>
-                        <span className="text-[10px] text-white/40">
+                        <span className="text-[10px] text-slate-400">
                           {lead.id.slice(0, 5)}…
                         </span>
                       </div>
 
-                      <div className="space-y-1 text-[11px] text-white/70">
+                      <div className="space-y-1 text-[11px] text-slate-700">
                         {lead.telefone && (
                           <p className="flex items-center gap-1">
-                            <Phone className="h-3 w-3 text-white/40" />
+                            <Phone className="h-3 w-3 text-slate-400" />
                             {lead.telefone}
                           </p>
                         )}
                         {lead.email && (
                           <p className="flex items-center gap-1">
-                            <Mail className="h-3 w-3 text-white/40" />
+                            <Mail className="h-3 w-3 text-slate-400" />
                             {lead.email}
                           </p>
                         )}
                         {lead.endereco && (
                           <p className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3 text-white/40" />
+                            <MapPin className="h-3 w-3 text-slate-400" />
                             {lead.endereco}
                           </p>
                         )}
                         {toDate(lead.createdAt) && (
-                          <p className="flex items-center gap-1 text-white/50">
-                            <Target className="h-3 w-3 text-white/40" />
+                          <p className="flex items-center gap-1 text-slate-500">
+                            <Target className="h-3 w-3 text-slate-400" />
                             {toDate(lead.createdAt)?.toLocaleDateString("pt-BR")}
                           </p>
                         )}
@@ -390,7 +390,7 @@ export default function PipelinePage() {
                               onClick={() =>
                                 moveLead(lead.id, getPrevStage(stage) as PipelineStage)
                               }
-                              className="inline-flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1 border border-white/10 hover:bg-white/10 transition disabled:opacity-50"
+                              className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-2 py-1 border border-slate-200 hover:bg-slate-50 transition disabled:opacity-50"
                             >
                               <ChevronLeft className="h-3 w-3" />
                             </button>

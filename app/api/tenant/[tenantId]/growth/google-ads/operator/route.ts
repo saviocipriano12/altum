@@ -1,3 +1,4 @@
+import { persistOperatorReport } from "@/lib/server/growth/operator-storage";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
@@ -89,12 +90,11 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       ...adportGoogleCredentials({ refreshToken, loginCustomerId: clean(metadata.loginCustomerId) || clean(channel.pageId) }),
     });
     const reportId = `${tenantId}_${channelId}`.replaceAll("/", "_");
-    await adminDb.collection("google_ads_operator_reports").doc(reportId).set({
+    await persistOperatorReport(channelSnap, "google_ads_operator_reports", reportId, {
       tenantId, channelId, accountId, report,
       generatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid,
       source: "adport_google_ads_api",
-    }, { merge: true });
-    await adminDb.collection("tenant_channels").doc(channelId).set({ lastSyncAt: FieldValue.serverTimestamp(), connectionStatus: "ready", lastError: "", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    });
     return NextResponse.json({ ok: true, channel: channelView(channel), generatedAt: new Date().toISOString(), report });
   } catch (error) {
     return routeError(error);

@@ -1,0 +1,1649 @@
+[
+  {
+    "source": "app/cliente/acao-email/acao-email-client.tsx",
+    "reference": "/api/auth/verification",
+    "resolvedRoutes": [
+      "app/api/auth/verification/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/assinatura/page.tsx",
+    "reference": "/api/billing/asaas/subscription?tenantId=${encodeURIComponent(tenantId)}",
+    "resolvedRoutes": [
+      "app/api/billing/asaas/subscription/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/assinatura/page.tsx",
+    "reference": "/api/billing/asaas/subscription",
+    "resolvedRoutes": [
+      "app/api/billing/asaas/subscription/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/assinatura/page.tsx",
+    "reference": "/api/public/platform-plans",
+    "resolvedRoutes": [
+      "app/api/public/platform-plans/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/assinatura/page.tsx",
+    "reference": "/api/billing/asaas/checkout",
+    "resolvedRoutes": [
+      "app/api/billing/asaas/checkout/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/ClientePanelGuard.tsx",
+    "reference": "/api/client-portal/me?tenantId=${encodeURIComponent(tenantHint)}",
+    "resolvedRoutes": [
+      "app/api/client-portal/me/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/ClientePanelGuard.tsx",
+    "reference": "/api/client-portal/me",
+    "resolvedRoutes": [
+      "app/api/client-portal/me/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/components/cliente-critical-notifications.tsx",
+    "reference": "/api/client-portal/push/subscription",
+    "resolvedRoutes": [
+      "app/api/client-portal/push/subscription/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/components/cliente-critical-notifications.tsx",
+    "reference": "/api/client-portal/push/test",
+    "resolvedRoutes": [
+      "app/api/client-portal/push/test/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/components/cliente-critical-notifications.tsx",
+    "reference": "/api/tenant/${tenantId}/automation-summary",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/automation-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/components/cliente-finance-screen-alert.tsx",
+    "reference": "/api/tenant/${tenantId}/automation-summary",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/automation-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/esqueci-senha/esqueci-senha-form.tsx",
+    "reference": "/api/auth/email/password-reset",
+    "resolvedRoutes": [
+      "app/api/auth/email/password-reset/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/login/page.tsx",
+    "reference": "/api/client-portal/me?tenantId=${encodeURIComponent(tenantId)}",
+    "resolvedRoutes": [
+      "app/api/client-portal/me/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/login/page.tsx",
+    "reference": "/api/client-portal/me",
+    "resolvedRoutes": [
+      "app/api/client-portal/me/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/mcp/autorizar/page.tsx",
+    "reference": "/api/mcp/oauth/authorize",
+    "resolvedRoutes": [
+      "app/api/mcp/oauth/authorize/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/agenda/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/appointments",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/appointments/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/agenda/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/agenda/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/appointments/${appointmentId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/appointments/[appointmentId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/automacoes/instagram/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/social-automations",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/social-automations/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/automacoes/instagram/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/social-automations/media",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/social-automations/media/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/automacoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/automation-summary",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/automation-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/automacoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/automacoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/automations/${draft.id}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/automations/[automationId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/automacoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/automations",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/automations/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/automacoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/automations/${id}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/automations/[automationId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/automacoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/automations/process",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/automations/process/route.ts",
+      "app/api/tenant/[tenantId]/automations/[automationId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/components/campaign-ai-box.tsx",
+    "reference": "/api/tenant/${tenantId}/business-insights/ask",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/business-insights/ask/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/google-ads/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/growth/google-ads/operator",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/growth/google-ads/operator/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/google-ads/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/mcp/drafts",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/mcp/drafts/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/meta-ads/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/growth/meta-ads/operator",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/growth/meta-ads/operator/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/meta-ads/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/mcp/drafts",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/mcp/drafts/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/outbound-campaigns",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/outbound-campaigns/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/metrics-summary?rangeDays=30",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/metrics-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/capture/forms",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/capture/forms/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/campaigns/conversions/health",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/campaigns/conversions/health/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/campaigns/overview",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/campaigns/overview/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/campaigns/sync",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/campaigns/sync/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/rastreamento/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/growth/tracking",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/growth/tracking/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/campanhas/rastreamento/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/growth/revenue-graph?rangeDays=${rangeDays}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/growth/revenue-graph/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/captacao/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/capture/forms",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/capture/forms/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/captacao/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/captacao/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/captacao/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/captacao/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/capture/forms/${formState.id}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/capture/forms/[formId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/comercial/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/comercial/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/budgets",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/budgets/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/comercial/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/finance",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/finance/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/comercial/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/budgets/${budgetId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/budgets/[budgetId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/comercial/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/finance/${financeId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/finance/[financeId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/comercial/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/finance/create-charge",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/finance/create-charge/route.ts",
+      "app/api/tenant/[tenantId]/finance/[financeId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/components/cliente-global-search.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/search?q=${encodeURIComponent(normalized)}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/search/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/components/cliente-notifications.tsx",
+    "reference": "/api/tenant/${tenantId}/notifications",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/notifications/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels/whatsapp",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/whatsapp/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/campaigns/conversions/health",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/campaigns/conversions/health/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/integrations/pending/${encodeURIComponent(pendingId)}",
+    "resolvedRoutes": [
+      "app/api/integrations/pending/[pendingId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/campaigns/sync",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/campaigns/sync/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/integrations/meta/start",
+    "resolvedRoutes": [
+      "app/api/integrations/meta/start/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/integrations/google/start",
+    "resolvedRoutes": [
+      "app/api/integrations/google/start/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels/health?attemptRepair=1",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/health/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels/${encodeURIComponent(selectedChannel.id)}/whatsapp-session?action=${action}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/[channelId]/whatsapp-session/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/integrations/pending/${encodeURIComponent(pendingSelection.pendingId)}/complete",
+    "resolvedRoutes": [
+      "app/api/integrations/pending/[pendingId]/complete/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/empresa/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/integracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ecommerce/connections",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ecommerce/connections/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/integracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ecommerce/automation",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ecommerce/automation/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/integracoes/page.tsx",
+    "reference": "/api/integrations/commerce/${provider}/start",
+    "resolvedRoutes": [],
+    "status": "manual_review_dynamic_expression"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/integracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ecommerce/connections/${connectionId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ecommerce/connections/[connectionId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/integracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ecommerce/connections/${connectionId}/sync",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ecommerce/connections/[connectionId]/sync/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/integracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ecommerce/actions/${actionId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ecommerce/actions/[actionId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/integracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ecommerce/actions/process",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ecommerce/actions/process/route.ts",
+      "app/api/tenant/[tenantId]/ecommerce/actions/[actionId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/integracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ecommerce/actions/${actionId}/send-template",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ecommerce/actions/[actionId]/send-template/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/lixeira/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/trash",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/trash/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/mcp/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/mcp/status",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/mcp/status/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/mcp/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/mcp/drafts",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/mcp/drafts/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/mcp/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/mcp/connections/${encodeURIComponent(connectionId)}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/mcp/connections/[connectionId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/mcp/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/mcp/drafts/${encodeURIComponent(draftId)}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/mcp/drafts/[draftId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/mcp/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/mcp/drafts/${encodeURIComponent(draftId)}/apply",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/mcp/drafts/[draftId]/apply/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/operacao/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/operacao/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/page.tsx",
+    "reference": "/api/client-portal/push/subscription",
+    "resolvedRoutes": [
+      "app/api/client-portal/push/subscription/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings/ai",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/ai/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/capture/forms",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/capture/forms/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/readiness",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/readiness/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/page.tsx",
+    "reference": "/api/client-portal/push/test",
+    "resolvedRoutes": [
+      "app/api/client-portal/push/test/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/social/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/social-automations",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/social-automations/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/times/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/times/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/times/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users/${encodeURIComponent(String(member.userId))}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/[userId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/usuarios/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/usuarios/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users/${userId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/[userId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/conhecimento/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/conhecimento/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ai-logs",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ai-logs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/conhecimento/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs/${editingDocId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/[docId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/conhecimento/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs/${docId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/[docId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads?limit=${CRM_PAGE_SIZE}&view=compact",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/pipeline",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/pipeline/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/metrics-summary",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/metrics-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads?limit=${CRM_PAGE_SIZE}&view=compact&offset=${encodeURIComponent(String(nextLeadOffset))}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${leadId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${leadId}/stage",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/stage/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${selectedLeadId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${selectedLeadId}/tasks",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/tasks/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${selectedLeadId}/notes",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/notes/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/import",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/import/route.ts",
+      "app/api/tenant/[tenantId]/leads/[leadId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/bulk-delete",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/bulk-delete/route.ts",
+      "app/api/tenant/[tenantId]/leads/[leadId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/distribute",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/distribute/route.ts",
+      "app/api/tenant/[tenantId]/leads/[leadId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/disparos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/outbound-campaigns",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/outbound-campaigns/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/disparos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/disparos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/outbound-campaigns/process",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/outbound-campaigns/process/route.ts",
+      "app/api/tenant/[tenantId]/outbound-campaigns/[campaignId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/disparos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/whatsapp-templates?channelId=${encodeURIComponent(editor.channelId)}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/whatsapp-templates/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/disparos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/import",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/import/route.ts",
+      "app/api/tenant/[tenantId]/leads/[leadId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/disparos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/outbound-campaigns/${editor.id}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/outbound-campaigns/[campaignId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/disparos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/outbound-campaigns/${campaignId}/preview",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/outbound-campaigns/[campaignId]/preview/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/disparos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/outbound-campaigns/${editor.id}/dispatch",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/outbound-campaigns/[campaignId]/dispatch/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/disparos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/outbound-campaigns/media",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/outbound-campaigns/media/route.ts",
+      "app/api/tenant/[tenantId]/outbound-campaigns/[campaignId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/follow-ups/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/follow-ups",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/follow-ups/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/follow-ups/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${item.leadId}/tasks/${item.id}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/tasks/[taskId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/go-live/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/readiness",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/readiness/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/go-live/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/onboarding",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/onboarding/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/handoffs/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/handoffs/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ai-logs",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ai-logs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/handoffs/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/handoffs/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/handoffs/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${chatIdToUpdate}/ai-state",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/[chatId]/ai-state/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/hooks/use-tenant-readiness.ts",
+    "reference": "/api/tenant/${tenantId}/readiness",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/readiness/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings/ai",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/ai/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ai-logs",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ai-logs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ai-usage",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ai-usage/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/campaigns/overview",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/campaigns/overview/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ai-preview",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ai-preview/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ai-voice/preview",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ai-voice/preview/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs/${editingDocId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/[docId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs/media/upload",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/media/upload/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs/${docId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/[docId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/bulk-delete",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/bulk-delete/route.ts",
+      "app/api/tenant/[tenantId]/chats/[chatId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats?${params.toString()}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/settings/ai",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/settings/ai/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${chatId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/[chatId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${chatId}/messages${params}",
+    "resolvedRoutes": [],
+    "status": "manual_review_dynamic_expression"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/messages/${messageId}/reaction",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/[chatId]/messages/[messageId]/reaction/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/[chatId]/send/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/whatsapp/send",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/whatsapp/send/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-media",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/[chatId]/send-media/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-stored-media",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/[chatId]/send-stored-media/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-template",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/[chatId]/send-template/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/ai-state",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/[chatId]/ai-state/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/[chatId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/contact-photo",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/contact-photo/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/notes",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/[chatId]/notes/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/chats/distribute",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/distribute/route.ts",
+      "app/api/tenant/[tenantId]/chats/[chatId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${detail.lead.id}/stage",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/stage/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${detail.lead.id}/tasks",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/tasks/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/calls/start",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/calls/start/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${detail.lead.id}/tasks/${task.id}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/tasks/[taskId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/inbox/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${detail.lead.id}/notes",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/notes/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/logs/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ai-logs",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ai-logs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/logs/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/automation-summary",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/automation-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/metricas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/metrics-summary?rangeDays=${rangeDays}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/metrics-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/metricas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/readiness",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/readiness/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/metricas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/campaigns/sync",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/campaigns/sync/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/onboarding/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/onboarding",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/onboarding/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/onboarding/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/onboarding/blueprint",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/onboarding/blueprint/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/page.tsx",
+    "reference": "/api/client-portal/dashboard",
+    "resolvedRoutes": [
+      "app/api/client-portal/dashboard/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/page.tsx",
+    "reference": "/api/tenant/${tenantId}/chats",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/page.tsx",
+    "reference": "/api/tenant/${tenantId}/follow-ups",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/follow-ups/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/page.tsx",
+    "reference": "/api/tenant/${tenantId}/appointments",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/appointments/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/page.tsx",
+    "reference": "/api/tenant/${tenantId}/leads",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/page.tsx",
+    "reference": "/api/tenant/${tenantId}/metrics-summary",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/metrics-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/page.tsx",
+    "reference": "/api/tenant/${tenantId}/automation-summary",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/automation-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/page.tsx",
+    "reference": "/api/tenant/${tenantId}/readiness",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/readiness/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/perguntar-altum/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/business-insights/ask",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/business-insights/ask/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/pipeline/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/pipeline",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/pipeline/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/pipeline/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/${leadId}/stage",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/[leadId]/stage/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/produtos-servicos/importar/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/catalog-import/preview",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/catalog-import/preview/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/produtos-servicos/importar/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/catalog-import",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/catalog-import/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/produtos-servicos/novo/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/produtos-servicos/novo/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs/media/upload",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/media/upload/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/produtos-servicos/novo/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs/${docId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/[docId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/produtos-servicos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/produtos-servicos/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs/${docId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/[docId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/produtos-servicos/[docId]/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/kb-docs",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/kb-docs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/relatorios/dia/[date]/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/daily-reports?dateKey=${encodeURIComponent(dateKey)}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/daily-reports/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/relatorios/dia/[date]/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/daily-reports",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/daily-reports/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/relatorios/page.tsx",
+    "reference": "/api/tenant/${tenantId}/metrics-summary",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/metrics-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/relatorios/page.tsx",
+    "reference": "/api/tenant/${tenantId}/leads",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/relatorios/page.tsx",
+    "reference": "/api/tenant/${tenantId}/chats",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/chats/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/reunioes-assistidas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/appointments",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/appointments/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/reunioes-assistidas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/reunioes-assistidas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/assisted-meetings",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/assisted-meetings/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/reunioes-assistidas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/assisted-meetings/transcribe",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/assisted-meetings/transcribe/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/reunioes-assistidas/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/assisted-meetings/live-coach",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/assisted-meetings/live-coach/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/reunioes-assistidas/page.tsx",
+    "reference": "/api/tenant/${tenantId}/assisted-meetings/bot",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/assisted-meetings/bot/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/reunioes-assistidas/page.tsx",
+    "reference": "/api/tenant/${tenantId}/assisted-meetings/bot/${session.id}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/assisted-meetings/bot/[sessionId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/reunioes-assistidas/page.tsx",
+    "reference": "/api/tenant/${tenantId}/assisted-meetings/bot/${session.id}/finalize",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/assisted-meetings/bot/[sessionId]/finalize/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/verificar-email/page.tsx",
+    "reference": "/api/auth/verification",
+    "resolvedRoutes": [
+      "app/api/auth/verification/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/verificar-email/page.tsx",
+    "reference": "/api/auth/email/verification",
+    "resolvedRoutes": [
+      "app/api/auth/email/verification/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  }
+]

@@ -1,16 +1,8 @@
+import { filterEligibleOperators, type TenantOperator } from "@/lib/inbox-routing-policy";
+export { filterEligibleOperators } from "@/lib/inbox-routing-policy";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { getTenantSettings } from "@/lib/server/tenant";
-
-type TenantOperator = {
-  userId: string;
-  name: string;
-  team: string;
-  teamId: string;
-  availability: "online" | "busy" | "offline";
-  allowedChannels: string[];
-  maxOpenChats: number | null;
-};
+import { getTenantCapabilities, getTenantSettings, type TenantMembership } from "@/lib/server/tenant";
 
 function clean(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
@@ -57,7 +49,7 @@ function isWithinBusinessHours(settings: Record<string, unknown> | null) {
   return minutes >= start && minutes <= end;
 }
 
-function getInboxRules(settings: Record<string, unknown> | null) {
+export function getInboxRules(settings: Record<string, unknown> | null) {
   const rules =
     settings?.rules && typeof settings.rules === "object"
       ? (settings.rules as Record<string, unknown>)
@@ -118,7 +110,7 @@ function normalizeAvailability(value: unknown): TenantOperator["availability"] {
 
 function isClosedChatStatus(value: unknown) {
   const status = clean(value, 40).toLowerCase();
-  return status === "resolved" || status === "archived";
+  return ["resolved", "archived", "closed", "merged"].includes(status);
 }
 
 export async function listTenantOperators(tenantId: string) {
@@ -135,11 +127,20 @@ export async function listTenantOperators(tenantId: string) {
       const role = clean(data.role, 40).toLowerCase();
       if (!["client_owner", "client_admin", "client_agent"].includes(role)) return null;
 
+      const capabilities = getTenantCapabilities({
+        role: role as TenantMembership["role"], status: "active",
+        capabilities: (Array.isArray(data.capabilities) ? data.capabilities : []) as TenantMembership["capabilities"],
+        capabilitiesConfigured: Object.prototype.hasOwnProperty.call(data, "capabilities"),
+      });
+      if (!capabilities.includes("respond_inbox")) return null;
+
       const userId = clean(data.userId, 140);
       if (!userId) return null;
 
       const userSnap = await adminDb.collection("users").doc(userId).get();
       const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : {};
+
+      if (userData.status === "blocked") return null;
 
       return {
         userId,
@@ -183,57 +184,6 @@ async function getActiveLoadMap(tenantId: string, operators: TenantOperator[]) {
   }
 
   return activeLoads;
-}
-
-function filterEligibleOperators(input: {
-  operators: TenantOperator[];
-  activeLoads: Map<string, number>;
-  channel?: string | null;
-  rules: ReturnType<typeof getInboxRules>;
-}) {
-  const channel = clean(input.channel, 40).toLowerCase();
-  let eligible = [...input.operators];
-  const channelTeamIds = channel
-    ? input.rules.teams.filter((team) => team.channels.length === 0 || team.channels.includes(channel)).map((team) => team.id)
-    : [];
-  const preferredTeamIds = channelTeamIds.length > 0 ? channelTeamIds : [input.rules.defaultTeam].filter(Boolean);
-  const teamMatched = eligible.filter((item) => preferredTeamIds.includes(item.teamId));
-  if (teamMatched.length > 0) {
-    eligible = teamMatched;
-  }
-
-  if (input.rules.preferOnlineAgents) {
-    const online = eligible.filter((item) => item.availability === "online");
-    if (online.length > 0) {
-      eligible = online;
-    }
-  } else {
-    eligible = eligible.filter((item) => item.availability !== "offline");
-  }
-
-  if (channel) {
-    const channelMatched = eligible.filter(
-      (item) => item.allowedChannels.length === 0 || item.allowedChannels.includes(channel)
-    );
-
-    if (input.rules.strictChannelRouting) {
-      if (channelMatched.length > 0) {
-        eligible = channelMatched;
-      } else if (!input.rules.fallbackToAnyAgent) {
-        eligible = [];
-      }
-    } else if (channelMatched.length > 0) {
-      eligible = channelMatched;
-    }
-  }
-
-  eligible = eligible.filter((item) => {
-    const maxOpenChats = Number(item.maxOpenChats || 0);
-    if (!maxOpenChats) return true;
-    return (input.activeLoads.get(item.userId) || 0) < maxOpenChats;
-  });
-
-  return eligible;
 }
 
 export async function resolveInboundAssignment(

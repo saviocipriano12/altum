@@ -47,6 +47,7 @@ export default function ProjetosPage() {
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [clientes, setClientes] = useState<ClienteOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -69,6 +70,7 @@ export default function ProjetosPage() {
 
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     void Promise.all([
       authedFetch("/api/clientes"),
       authedFetch("/api/admin/dashboard?include=projetos"),
@@ -84,8 +86,7 @@ export default function ProjetosPage() {
       .catch((error) => {
         console.error("Erro ao carregar projetos:", error);
         if (!cancelled) {
-          setClientes([]);
-          setProjetos([]);
+          setLoadError(error instanceof Error ? error.message : "Falha ao carregar projetos.");
         }
       })
       .finally(() => {
@@ -167,16 +168,17 @@ export default function ProjetosPage() {
 
   return (
     <div className="space-y-6">
+      {loadError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError} Os dados podem estar desatualizados.</p>}
       {/* Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-wide">Projetos</h1>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-slate-500">
             Acompanhe todos os projetos em andamento na ALTUM por cliente, canal e escopo.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 text-xs text-white/60">
+        <div className="flex flex-wrap gap-2 text-xs text-slate-500">
           <span className="px-3 py-1 rounded-full border border-emerald-500/50 bg-emerald-500/10">
             {ativos} ativos - {projetos.length} no total
           </span>
@@ -184,17 +186,17 @@ export default function ProjetosPage() {
       </div>
 
       {/* Filtro + criacao rapida */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="flex flex-col gap-4">
         {/* Busca */}
-        <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/60">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Buscar projeto
           </p>
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-sm text-white/80">
-            <Search size={16} className="text-white/40" />
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900">
+            <Search size={16} className="text-slate-400" />
             <input
               placeholder="Titulo do projeto, cliente ou canal"
-              className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
+              className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -202,15 +204,16 @@ export default function ProjetosPage() {
         </div>
 
         {/* Novo projeto rapido */}
+        <details className="rounded-xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer text-sm font-semibold text-indigo-700">Novo projeto</summary>
         <form
           onSubmit={handleCreateProject}
-          className="rounded-xl border border-white/10 bg-[#111111] p-4"
+          className="pt-4"
         >
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Novo projeto rapido
             </p>
-            <span className="text-[11px] text-white/40">
+            <span className="text-[11px] text-slate-400">
               Cadastro rapido para abrir o projeto e seguir para o detalhamento.
             </span>
           </div>
@@ -218,7 +221,7 @@ export default function ProjetosPage() {
           <div className="grid gap-2 md:grid-cols-2">
             {/* Cliente */}
             <select
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200"
               value={form.clientId}
               onChange={(e) =>
                 setForm((f) => ({ ...f, clientId: e.target.value }))
@@ -234,7 +237,7 @@ export default function ProjetosPage() {
 
             {/* Titulo */}
             <input
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200 placeholder:text-slate-400"
               placeholder="Titulo do projeto *"
               value={form.titulo}
               onChange={(e) =>
@@ -244,7 +247,7 @@ export default function ProjetosPage() {
 
             {/* Canal principal */}
             <input
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200 placeholder:text-slate-400"
               placeholder="Canal principal (Meta, Google, LP, etc.)"
               value={form.canalPrincipal}
               onChange={(e) =>
@@ -253,10 +256,10 @@ export default function ProjetosPage() {
             />
 
             {/* Valor mensal */}
-            <div className="flex items-center gap-2 rounded-lg bg-black/50 px-3 py-2 border border-white/10">
-              <DollarSign size={14} className="text-white/40" />
+            <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 border border-slate-200">
+              <DollarSign size={14} className="text-slate-400" />
               <input
-                className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
+                className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
                 placeholder="Valor mensal (opcional)"
                 value={form.valorMensal}
                 onChange={(e) =>
@@ -267,7 +270,7 @@ export default function ProjetosPage() {
 
             {/* Status */}
             <select
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200"
               value={form.status}
               onChange={(e) =>
                 setForm((f) => ({
@@ -285,7 +288,7 @@ export default function ProjetosPage() {
 
             {/* Servicos */}
             <input
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200 placeholder:text-slate-400"
               placeholder="Servicos (separados por virgula)"
               value={form.servicosText}
               onChange={(e) =>
@@ -312,19 +315,20 @@ export default function ProjetosPage() {
             )}
           </button>
         </form>
+        </details>
       </div>
 
       {/* Lista de projetos */}
       <div className="space-y-3">
         {loading && (
-          <div className="flex items-center gap-2 text-sm text-white/60">
+          <div className="flex items-center gap-2 text-sm text-slate-500">
             <Loader2 size={16} className="animate-spin" />
             Carregando projetos...
           </div>
         )}
 
         {!loading && filteredProjetos.length === 0 && (
-          <p className="text-sm text-white/50">
+          <p className="text-sm text-slate-500">
             Nenhum projeto encontrado. Crie o primeiro usando o formulario acima.
           </p>
         )}
@@ -332,23 +336,23 @@ export default function ProjetosPage() {
         {filteredProjetos.map((projeto) => {
           const statusStyles =
             projeto.status === "Ativo"
-              ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/40"
+              ? "bg-emerald-500/10 text-emerald-700 border border-emerald-500/40"
               : projeto.status === "Onboarding"
-              ? "bg-blue-500/10 text-blue-300 border border-blue-500/40"
+              ? "bg-blue-500/10 text-blue-700 border border-blue-500/40"
               : projeto.status === "Pausado"
-              ? "bg-amber-500/10 text-amber-300 border border-amber-500/40"
-              : "bg-white/5 text-white/60 border border-white/20";
+              ? "bg-amber-500/10 text-amber-700 border border-amber-500/40"
+              : "bg-slate-50 text-slate-500 border border-slate-200";
 
           return (
             <div
               key={projeto.id}
-              className="rounded-xl border border-white/10 bg-[#101010] p-4 hover:border-blue-500/60 transition"
+              className="rounded-xl border border-slate-200 bg-white p-4 hover:border-blue-500/60 transition"
             >
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 {/* Esquerda */}
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-base font-semibold text-white/90">
+                    <h2 className="text-base font-semibold text-slate-900">
                       {projeto.titulo}
                     </h2>
                     <span
@@ -358,18 +362,18 @@ export default function ProjetosPage() {
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-white/70">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
                     <span className="inline-flex items-center gap-1">
-                      <UserCircle2 size={14} className="text-white/40" />
+                      <UserCircle2 size={14} className="text-slate-400" />
                       {projeto.clientName}
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <Target size={14} className="text-white/40" />
+                      <Target size={14} className="text-slate-400" />
                       Canal: {projeto.canalPrincipal}
                     </span>
                     {typeof projeto.valorMensal === "number" && (
                       <span className="inline-flex items-center gap-1">
-                        <DollarSign size={14} className="text-white/40" />
+                        <DollarSign size={14} className="text-slate-400" />
                         {projeto.valorMensal.toLocaleString("pt-BR", {
                           style: "currency",
                           currency: "BRL",
@@ -385,7 +389,7 @@ export default function ProjetosPage() {
                       {projeto.servicos.map((s) => (
                         <span
                           key={s}
-                          className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/70"
+                          className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-700"
                         >
                           {s}
                         </span>
@@ -395,15 +399,15 @@ export default function ProjetosPage() {
                 </div>
 
                 {/* Direita */}
-                <div className="flex flex-col items-start gap-2 text-xs text-white/70 md:items-end">
-                  <span className="inline-flex items-center gap-1 text-[11px] text-white/50">
-                    <Layers size={14} className="text-white/40" />
+                <div className="flex flex-col items-start gap-2 text-xs text-slate-700 md:items-end">
+                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                    <Layers size={14} className="text-slate-400" />
                     ID: {projeto.id.slice(0, 6)}...
                   </span>
 
                   <Link
   href={`/admin/projetos/${projeto.id}`}
-  className="mt-2 inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] hover:bg-white/10 transition"
+  className="mt-2 inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] hover:bg-slate-50 transition"
 >
   <span>Ver detalhes do projeto</span>
   <ArrowRight size={14} />

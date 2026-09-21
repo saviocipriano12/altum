@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ClienteBottomNav } from "@/app/cliente/painel/components/cliente-bottom-nav";
 import { ClienteCommandPalette } from "@/app/cliente/painel/components/cliente-command-palette";
@@ -9,9 +9,12 @@ import { ClienteShellProvider, useClienteShell } from "@/app/cliente/painel/comp
 import { ClienteTopbar } from "@/app/cliente/painel/components/cliente-topbar";
 import { ClienteGuidedTour } from "@/app/cliente/painel/components/cliente-guided-tour";
 import { ClienteActivationCenter } from "@/app/cliente/painel/components/cliente-activation-center";
+import { ClienteCriticalNotifications } from "@/app/cliente/components/cliente-critical-notifications";
+import { ClienteTrialBanner } from "@/app/cliente/components/cliente-trial-banner";
 
 function ClientAppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const shellRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const { density } = useClienteShell();
   const compact = density === "compact";
@@ -31,8 +34,20 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("altum:cliente-sidebar-open", openSidebar);
   }, []);
 
+  useEffect(() => { setSidebarOpen(false); }, [pathname]);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const sync = () => shellRef.current?.style.setProperty("--cliente-viewport-height", `${viewport?.height || window.innerHeight}px`);
+    sync();
+    viewport?.addEventListener("resize", sync);
+    window.addEventListener("resize", sync);
+    return () => { viewport?.removeEventListener("resize", sync); window.removeEventListener("resize", sync); };
+  }, []);
+
   return (
     <div
+      ref={shellRef}
       data-client-area={clientArea}
       className="relative min-h-screen overflow-hidden bg-[var(--cliente-bg)] pb-[env(safe-area-inset-bottom)] text-[var(--cliente-text)] [font-family:var(--cliente-font-family)] transition-[background-color,color] duration-300"
     >
@@ -50,7 +65,8 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
       <ClienteGuidedTour />
 
       <div className="relative transition-[padding] duration-300 lg:pl-[var(--cliente-sidebar-width)]">
-        <main className={`min-h-screen transition-[padding] duration-300 ${mainPaddingClass}`}>
+        <main id="client-main" className={`min-h-[100dvh] min-w-0 transition-[padding] duration-300 ${mainPaddingClass}`}>
+          <ClienteTrialBanner />
           <div
             data-tour-key="page-content"
             className={`client-route-stage ${isInboxSurface || isCrmSurface ? "mx-0 max-w-none" : "mx-auto max-w-[1520px]"} ${compact ? "space-y-3" : "space-y-4"}`}
@@ -62,6 +78,7 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
 
       <Suspense fallback={null}>
         <ClienteBottomNav />
+        <ClienteCriticalNotifications />
       </Suspense>
     </div>
   );

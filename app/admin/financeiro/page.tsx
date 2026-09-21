@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import type {
@@ -16,9 +17,9 @@ import {
   Zap, Plus, X, Calculator, HandCoins, Search, Trash2,
   Eye, EyeOff, CheckCircle2, History
 } from "lucide-react";
-import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer 
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer
 } from 'recharts';
 
 /* ======================================================
@@ -97,12 +98,12 @@ const initialForm: LaunchForm = {
 
 export default function FinanceiroMasterPage() {
   const { user, isAdmin } = useAuth();
-  
+
   const [data, setData] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FinanceTab>("resumo");
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sellers, setSellers] = useState<SellerOption[]>([]);
@@ -116,15 +117,22 @@ export default function FinanceiroMasterPage() {
 
   // 1. CARREGAMENTO COM REGRA DE NEGÓCIO
   useEffect(() => {
+    if (!isModalOpen) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) setIsModalOpen(false); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [isModalOpen, saving]);
+
+  useEffect(() => {
     if (!user) {
       setLoading(false);
       return;
     }
     /* Legacy client listener retained below for historical context; data now loads through the authenticated API.
     const ref = collection(db, "financeiro");
-    
+
     // Admin vê o macro / Vendedor vê apenas seu micro
-    const q = isAdmin 
+    const q = isAdmin
       ? query(ref, orderBy("createdAt", "desc"))
       : query(ref, where("vendedorId", "==", user.uid));
 
@@ -252,7 +260,7 @@ export default function FinanceiroMasterPage() {
   const stats = useMemo(() => {
     const receitas = data.filter(t => t.tipo === "Receita" && t.status === "pago");
     const despesas = data.filter(t => t.tipo === "Despesa" && t.status === "pago");
-    
+
     const faturamentoBruto = receitas.reduce((acc, t) => acc + t.valor, 0);
     const custoFixo = despesas.reduce((acc, t) => acc + t.valor, 0);
     const comissoesTotais = receitas.reduce((acc, t) => acc + (t.valorComissao || 0), 0);
@@ -372,11 +380,11 @@ export default function FinanceiroMasterPage() {
     }
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-black"><Loader2 className="animate-spin text-white/20" size={50}/></div>;
+  if (loading) return <div className="h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-slate-400" size={50}/></div>;
   if (loadError) {
     return (
-      <div className="h-screen flex items-center justify-center bg-black text-white">
-        <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm text-white/80">
+      <div className="h-screen flex items-center justify-center bg-slate-50 text-slate-900">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-4 text-sm text-slate-900">
           {loadError}
         </div>
       </div>
@@ -384,28 +392,28 @@ export default function FinanceiroMasterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-6 lg:p-12 font-sans selection:bg-blue-500/20">
-      
+    <div className="space-y-6 text-slate-900">
+
       {/* HEADER */}
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
-        <div className="space-y-4">
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <div className="space-y-2">
           <div className="flex items-center gap-4">
-             <div className={cx("px-4 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border", 
-                isAdmin ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20")}>
-                {isAdmin ? "Authority System" : "Consultor Altum"}
+             <div className={cx("px-4 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border",
+                isAdmin ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-blue-500/10 text-blue-700 border-blue-500/20")}>
+                {isAdmin ? "Gestão financeira" : "Consultor Altum"}
              </div>
-             <button onClick={() => setHideValues(!hideValues)} className="text-white/10 hover:text-white transition">
+             <button aria-label={hideValues ? "Mostrar valores" : "Ocultar valores"} onClick={() => setHideValues(!hideValues)} className="text-slate-400 hover:text-slate-900 transition">
                 {hideValues ? <EyeOff size={18}/> : <Eye size={18}/>}
              </button>
           </div>
-          <h1 className="text-7xl lg:text-8xl font-black tracking-tighter uppercase italic leading-none">
-            Cofre <span className="text-white/10">Altum</span>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Financeiro
           </h1>
         </div>
 
         {isAdmin && (
-           <button onClick={() => setIsModalOpen(true)} className="bg-white text-black font-black px-10 py-5 rounded-full transition hover:bg-zinc-200 flex items-center gap-3 shadow-2xl active:scale-95 text-xs uppercase tracking-widest">
-             <Plus size={20} strokeWidth={4}/> Novo Lançamento
+           <button onClick={() => setIsModalOpen(true)} className="bg-indigo-600 text-white font-semibold px-4 py-2 rounded-lg transition hover:bg-indigo-700 flex items-center gap-2 text-sm">
+             <Plus size={16}/> Novo Lançamento
            </button>
         )}
       </div>
@@ -418,21 +426,21 @@ export default function FinanceiroMasterPage() {
           ) : (
             <StatBox label="Comissão Prevista" valor={hideValues ? "****" : money(stats.previsaoComissao)} sub="Pendente de repasse" icone={<Zap size={16}/>}/>
           )}
-          <StatBox label={isAdmin ? "MRR Ativo" : "Próximo Repasse"} valor={hideValues ? "****" : (isAdmin ? money(stats.mrr) : money(stats.proximoRepasseValor))} sub={isAdmin ? "Recorrência Mensal" : (stats.proximoRepasseData ? `Previsto: ${stats.proximoRepasseData}` : "Sem data prevista")} icone={<History size={16}/>}/>
+          <StatBox label={isAdmin ? "MRR Ativo" : "Próximo Repasse"} valor={hideValues ? "****" : (isAdmin ? money(stats.mrr) : money(stats.proximoRepasseValor))} sub={isAdmin ? "Recorrência Mensal" : (stats.proximoRepasseData ? ` ${stats.proximoRepasseData}` : "Sem data prevista")} icone={<History size={16}/>}/>
           <StatBox label={isAdmin ? "Lucro Líquido" : "Saldo Disponível"} valor={hideValues ? "****" : (isAdmin ? money(stats.lucroLiquido) : money(stats.pendentePayout))} sub="Líquido Real" icone={<Calculator size={16}/>} destaque />
       </div>
 
       {/* NAVEGAÇÃO SaaS */}
-      <div className="max-w-7xl mx-auto mt-20">
-        <div className="flex gap-10 border-b border-white/5 pb-4 overflow-x-auto scrollbar-hide">
-            <NavTab active={activeTab === "resumo"} click={() => setActiveTab("resumo")} label="Estatísticas BI"/>
-            <NavTab active={activeTab === "vendas"} click={() => setActiveTab("vendas")} label="Receitas / Vendas"/>
-            {isAdmin && <NavTab active={activeTab === "contas"} click={() => setActiveTab("contas")} label="Saídas / Despesas"/>}
-            {isAdmin && <NavTab active={activeTab === "equipe"} click={() => setActiveTab("equipe")} label="Gestão de Time"/>}
+      <div className="max-w-7xl mx-auto mt-6">
+        <div className="flex gap-6 border-b border-slate-200 pb-4 overflow-x-auto scrollbar-hide">
+            <NavTab active={activeTab === "resumo"} click={() => setActiveTab("resumo")} label="Visão geral"/>
+            <NavTab active={activeTab === "vendas"} click={() => setActiveTab("vendas")} label="Receitas"/>
+            {isAdmin && <NavTab active={activeTab === "contas"} click={() => setActiveTab("contas")} label="Despesas"/>}
+            {isAdmin && <NavTab active={activeTab === "equipe"} click={() => setActiveTab("equipe")} label="Comissões"/>}
         </div>
 
         {/* CONTEÚDO DINMICO */}
-        <div className="mt-12">
+        <div className="mt-6">
             {activeTab === "resumo" && (
               <div className="space-y-10">
                 {isAdmin && billingSummary ? (
@@ -441,14 +449,14 @@ export default function FinanceiroMasterPage() {
                 <ResumoVisual transactions={data} />
               </div>
             )}
-            
+
             {(activeTab === "vendas" || activeTab === "contas") && (
                 <div className="space-y-8 animate-in fade-in duration-500">
                     <div className="relative max-w-sm">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={18}/>
-                        <input placeholder="Filtrar lançamentos..." className="w-full bg-transparent border border-white/10 rounded-full py-3 pl-12 pr-4 text-xs focus:border-white/30 transition outline-none" value={search} onChange={e => setSearch(e.target.value)}/>
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+                        <input placeholder="Filtrar lançamentos..." className="w-full bg-transparent border border-slate-200 rounded-full py-3 pl-12 pr-4 text-xs focus:border-slate-200 transition outline-none" value={search} onChange={e => setSearch(e.target.value)}/>
                     </div>
-                    <TabelaFinanceira 
+                    <TabelaFinanceira
                         lista={data.filter(t => {
                             const match = (t.descricao || "").toLowerCase().includes(search.toLowerCase());
                             const tipo = activeTab === "vendas" ? t.tipo === "Receita" : t.tipo === "Despesa";
@@ -470,24 +478,24 @@ export default function FinanceiroMasterPage() {
 
       {/* MODAL DE LANÇAMENTO (ROBUSTO) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/98 backdrop-blur-3xl p-6">
-            <form onSubmit={handleSave} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-12 max-w-xl w-full shadow-4xl animate-in zoom-in">
-                <div className="flex justify-between items-center mb-10 text-white">
-                    <h3 className="text-3xl font-black uppercase italic tracking-tighter">Novo Registro</h3>
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="p-3 hover:bg-white/5 rounded-full transition"><X/></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm p-4">
+            <form role="dialog" aria-modal="true" aria-labelledby="finance-entry-title" onSubmit={handleSave} className="max-h-[90dvh] overflow-y-auto bg-white border border-slate-200 rounded-2xl p-6 max-w-xl w-full shadow-4xl animate-in zoom-in">
+                <div className="flex justify-between items-center mb-5 text-slate-900">
+                    <h3 id="finance-entry-title" className="text-xl font-semibold">Novo lançamento</h3>
+                    <button type="button" aria-label="Fechar novo lançamento" disabled={saving} onClick={() => setIsModalOpen(false)} className="p-3 hover:bg-slate-50 rounded-full transition"><X/></button>
                 </div>
-                <div className="grid grid-cols-2 gap-6 text-white text-xs font-bold uppercase tracking-widest">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-slate-900 text-sm font-medium">
                     <div className="col-span-full">
-                        <label className="text-white/20 mb-2 block">Descrição / Cliente</label>
-                        <input required value={form.descricao} onChange={e => setForm({...form, descricao: e.target.value})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none focus:border-white/20 transition"/>
+                        <label htmlFor="finance-descricao" className="text-slate-700 mb-1.5 block">Descrição / Cliente</label>
+                        <input id="finance-descricao" autoFocus required value={form.descricao} onChange={e => setForm({...form, descricao: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"/>
                     </div>
                     <div>
-                        <label className="text-white/20 mb-2 block">Valor Bruto</label>
-                        <input required type="number" step="0.01" value={form.valor} onChange={e => setForm({...form, valor: e.target.value})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none focus:border-white/20 transition"/>
+                        <label htmlFor="finance-valor" className="text-slate-700 mb-1.5 block">Valor Bruto</label>
+                        <input id="finance-valor" required type="number" min="0.01" step="0.01" value={form.valor} onChange={e => setForm({...form, valor: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"/>
                     </div>
                     <div>
-                        <label className="text-white/20 mb-2 block">Tipo</label>
-                        <select value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value as FinTipo, categoria: e.target.value === "Receita" ? "Mensalidade" : "Infra/API"})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none appearance-none">
+                        <label htmlFor="finance-tipo" className="text-slate-700 mb-1.5 block">Tipo</label>
+                        <select id="finance-tipo" value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value as FinTipo, categoria: e.target.value === "Receita" ? "Mensalidade" : "Infra/API"})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 outline-none focus:border-indigo-500">
                             <option value="Receita">Receita (Entrada)</option>
                             <option value="Despesa">Despesa (Gasto)</option>
                         </select>
@@ -495,8 +503,8 @@ export default function FinanceiroMasterPage() {
                     {form.tipo === "Receita" && (
                         <>
                             <div>
-                                <label className="text-white/20 mb-2 block">Vendedor</label>
-                                <select
+                                <label htmlFor="finance-vendedorId" className="text-slate-700 mb-1.5 block">Vendedor</label>
+                                <select id="finance-vendedorId"
                                   value={form.vendedorId}
                                   onChange={e => {
                                     const nextSellerId = e.target.value;
@@ -509,21 +517,21 @@ export default function FinanceiroMasterPage() {
                                         : form.comissaoPercent,
                                     });
                                   }}
-                                  className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none"
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 outline-none focus:border-indigo-500"
                                 >
                                     <option value="">Direto / Admin</option>
                                     {sellers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="text-white/20 mb-2 block">Comissão (%)</label>
-                                <input type="number" value={form.comissaoPercent} onChange={e => setForm({...form, comissaoPercent: e.target.value})} className="w-full bg-white/[0.02] border border-white/5 rounded-xl p-5 outline-none"/>
+                                <label htmlFor="finance-comissaoPercent" className="text-slate-700 mb-1.5 block">Comissão (%)</label>
+                                <input id="finance-comissaoPercent" type="number" min="0" max="100" value={form.comissaoPercent} onChange={e => setForm({...form, comissaoPercent: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 outline-none focus:border-indigo-500"/>
                             </div>
                         </>
                     )}
-                    <div className="col-span-full pt-6">
-                        <button disabled={saving} className="w-full py-6 bg-white text-black font-black rounded-full hover:bg-zinc-200 transition-all flex items-center justify-center gap-3 shadow-2xl">
-                            {saving ? <Loader2 className="animate-spin" size={16}/> : <CheckCircle2 size={16}/>} Efetivar Operação
+                    <div className="col-span-full flex justify-end gap-3 border-t border-slate-100 pt-4"><button type="button" disabled={saving} onClick={() => setIsModalOpen(false)} className="rounded-lg px-4 py-2 text-sm text-slate-600">Cancelar</button>
+                        <button disabled={saving} className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-50">
+                            {saving ? <Loader2 className="animate-spin" size={16}/> : <CheckCircle2 size={16}/>} Salvar lançamento
                         </button>
                     </div>
                 </div>
@@ -552,20 +560,20 @@ function StatBox({
   destaque?: boolean;
 }) {
     return (
-        <div className={cx("p-10 border border-white/5 rounded-3xl relative overflow-hidden transition-all", 
-            destaque ? "bg-white text-black shadow-2xl scale-[1.02]" : "bg-[#0A0A0A]")}>
-            <div className={cx("absolute top-6 right-6 opacity-10", destaque ? "text-black" : "text-white")}>{icone}</div>
-            <p className={cx("text-[10px] font-black uppercase tracking-[0.3em] mb-6", destaque ? "text-black/30" : "text-white/20")}>{label}</p>
-            <h3 className="text-4xl font-black tracking-tighter leading-none">{valor}</h3>
-            <p className={cx("text-[10px] mt-4 font-bold uppercase tracking-widest", destaque ? "text-black/30" : "text-white/5")}>{sub}</p>
+        <div className={cx("p-5 border border-slate-200 rounded-xl relative overflow-hidden transition-all",
+            destaque ? "bg-white text-black shadow-sm" : "bg-white")}>
+            <div className={cx("absolute top-6 right-6 opacity-10", destaque ? "text-black" : "text-slate-900")}>{icone}</div>
+            <p className={cx("text-[10px] font-medium text-sm mb-3", destaque ? "text-black/30" : "text-slate-400")}>{label}</p>
+            <h3 className="text-2xl font-semibold tracking-tight leading-none">{valor}</h3>
+            <p className={cx("text-[10px] mt-4 font-bold uppercase tracking-widest", destaque ? "text-black/30" : "text-slate-400")}>{sub}</p>
         </div>
     );
 }
 
 function NavTab({ active, click, label }: { active: boolean; click: () => void; label: string }) {
     return (
-        <button onClick={click} className={cx("text-[11px] font-black uppercase tracking-[0.4em] pb-3 border-b-2 transition-all shrink-0", 
-            active ? "text-white border-white" : "text-white/5 border-transparent hover:text-white/20")}>
+        <button onClick={click} className={cx("text-sm font-medium pb-3 border-b-2 transition-all shrink-0",
+            active ? "text-indigo-700 border-indigo-600" : "text-slate-500 border-transparent hover:text-slate-900")}>
             {label}
         </button>
     );
@@ -585,47 +593,47 @@ function TabelaFinanceira({
   onDelete: (id: string) => void;
 }) {
     return (
-        <div className="overflow-x-auto border-t border-white/5">
+        <div className="overflow-x-auto border-t border-slate-200">
             <table className="w-full text-left">
-                <thead className="text-[10px] font-black uppercase text-white/10 tracking-[0.2em]">
+                <thead className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
                     <tr>
-                        <th className="py-8 pr-4">Timeline</th>
-                        <th className="py-8 pr-4">Identificação</th>
-                        <th className="py-8 pr-4">Montante</th>
-                        <th className="py-8 text-right">Status / Ações</th>
+                        <th className="py-4 pr-4">Vencimento</th>
+                        <th className="py-4 pr-4">Identificação</th>
+                        <th className="py-4 pr-4">Valor</th>
+                        <th className="py-4 text-right">Status / Ações</th>
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5">
+                <tbody className="divide-y divide-slate-200">
                     {lista.map((t: Transaction) => (
-                        <tr key={t.id} className="group transition-colors hover:bg-white/[0.01]">
-                            <td className="py-8 pr-4 text-[10px] font-mono text-white/10 italic">{t.vencimento}</td>
-                            <td className="py-8 pr-4">
-                                <p className="text-sm font-black text-white/70 uppercase tracking-tighter group-hover:text-white transition-colors">{t.descricao}</p>
-                                <p className="text-[10px] text-white/10 font-bold uppercase mt-1 tracking-widest">{t.categoria}</p>
+                        <tr key={t.id} className="group transition-colors hover:bg-slate-50">
+                            <td className="py-4 pr-4 text-[10px] font-mono text-slate-400 italic">{t.vencimento}</td>
+                            <td className="py-4 pr-4">
+                                <p className="text-sm font-black text-slate-700 uppercase tracking-tighter group-hover:text-slate-900 transition-colors">{t.descricao}</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest">{t.categoria}</p>
                             </td>
-                            <td className="py-8 pr-4 text-xs font-black">
+                            <td className="py-4 pr-4 text-xs font-black">
                                 {isAdmin ? (
-                                  <span className={t.tipo === "Despesa" ? "text-white/20" : "text-white/80"}>
+                                  <span className={t.tipo === "Despesa" ? "text-slate-400" : "text-slate-900"}>
                                       {t.tipo === "Despesa" ? "-" : ""}{esconderValores ? "****" : money(t.valor)}
                                   </span>
                                 ) : (
                                   <div className="space-y-1">
-                                    <span className={t.tipo === "Despesa" ? "text-white/20" : "text-emerald-300"}>
+                                    <span className={t.tipo === "Despesa" ? "text-slate-400" : "text-emerald-700"}>
                                       {esconderValores ? "****" : money(t.valorComissao ?? 0)}
                                     </span>
-                                    <p className="text-[10px] uppercase tracking-widest text-white/25">
+                                    <p className="text-[10px] uppercase tracking-widest text-slate-400">
                                       venda {esconderValores ? "****" : money(t.valor)}
                                     </p>
                                   </div>
                                 )}
                             </td>
-                            <td className="py-8 text-right">
+                            <td className="py-4 text-right">
                                 <div className="flex items-center justify-end gap-6">
                                     {isAdmin ? (
-                                        <select 
-                                            value={t.status} 
+                                        <select
+                                            value={t.status}
                                             onChange={(e) => onUpdateStatus(t.id, e.target.value as FinStatus)}
-                                            className="bg-transparent text-[10px] font-black uppercase outline-none text-white/30 hover:text-white transition cursor-pointer"
+                                            className="bg-transparent text-[10px] font-black uppercase outline-none text-slate-400 hover:text-slate-900 transition cursor-pointer"
                                         >
                                             <option value="pago">Finalizado</option>
                                             <option value="pendente">Aguardando</option>
@@ -633,9 +641,9 @@ function TabelaFinanceira({
                                             <option value="cancelado">Cancelado</option>
                                         </select>
                                     ) : (
-                                        <span className="text-[10px] font-black uppercase text-white/20">{t.status}</span>
+                                        <span className="text-[10px] font-black uppercase text-slate-400">{t.status}</span>
                                     )}
-                                    {isAdmin && <button onClick={() => onDelete(t.id)} className="opacity-0 group-hover:opacity-100 text-white/10 hover:text-red-500 transition"><Trash2 size={16}/></button>}
+                                    {isAdmin && <button onClick={() => onDelete(t.id)} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition"><Trash2 size={16}/></button>}
                                 </div>
                             </td>
                         </tr>
@@ -657,33 +665,33 @@ function ModuloEquipe({
 }) {
     return (
         <div className="space-y-6 animate-in zoom-in duration-500">
-            <div className="p-12 border border-white/5 bg-[#080808] rounded-[3rem] flex justify-between items-center">
+            <div className="p-6 border border-slate-200 bg-white rounded-2xl flex justify-between items-center">
                 <div>
-                    <p className="text-[10px] font-black uppercase text-white/20 tracking-[0.3em]">Payout Acumulado</p>
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em]">Payout Acumulado</p>
                     <h3 className="text-6xl font-black mt-3 tracking-tighter">{money(pendente)}</h3>
                 </div>
-                <HandCoins size={48} className="text-white/5"/>
+                <HandCoins size={48} className="text-slate-400"/>
             </div>
 
-            <div className="bg-[#0a0a0a] border border-white/5 rounded-[3rem] overflow-hidden">
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
                 <table className="w-full text-left">
-                    <thead className="bg-white/5 text-[10px] font-black uppercase text-white/20 tracking-widest">
+                    <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-widest">
                         <tr>
                             <th className="px-10 py-8">Consultor</th>
                             <th className="px-10 py-8">Comissão</th>
                             <th className="px-10 py-8 text-right">Liquidação</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/5">
+                    <tbody className="divide-y divide-slate-200">
                         {lista.filter((t) => t.tipo === "Receita" && t.status === "pago").map((t) => (
                             <tr key={t.id}>
-                                <td className="px-10 py-8 font-bold text-white text-xs uppercase">{t.vendedorNome} <br/><span className="text-[9px] text-white/20 font-black tracking-widest">{t.descricao}</span></td>
-                                <td className="px-10 py-8 font-black text-white/80">{money(t.valorComissao ?? 0)}</td>
+                                <td className="px-10 py-8 font-bold text-slate-900 text-xs uppercase">{t.vendedorNome} <br/><span className="text-[9px] text-slate-400 font-black tracking-widest">{t.descricao}</span></td>
+                                <td className="px-10 py-8 font-black text-slate-900">{money(t.valorComissao ?? 0)}</td>
                                 <td className="px-10 py-8 text-right">
-                                    <button 
+                                    <button
                                         onClick={() => onTogglePayout(t.id, t.payoutStatus || "pendente")}
                                         className={cx("px-6 py-2 rounded-full text-[10px] font-black uppercase border transition-all",
-                                            t.payoutStatus === "liquidado" ? "bg-white text-black border-white" : "bg-white/5 text-white/30 border-white/10 hover:border-white/40")}
+                                            t.payoutStatus === "liquidado" ? "bg-white text-black border-slate-200" : "bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-200")}
                                     >
                                         {t.payoutStatus === "liquidado" ? "PAGO ✓" : "DAR BAIXA"}
                                     </button>
@@ -707,21 +715,22 @@ function ResumoVisual({ transactions }: { transactions: Transaction[] }) {
         return Object.entries(meses).map(([name, total]) => ({ name, total }));
     }, [transactions]);
 
+    if (!chartData.length) return <p className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">As receitas pagas aparecerão aqui ao registrar os primeiros lançamentos.</p>;
     return (
-        <div className="h-[450px] w-full animate-in fade-in duration-1000">
+        <div className="h-[300px] w-full animate-in fade-in duration-1000">
             <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                     <defs>
                         <linearGradient id="noir" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#fff" stopOpacity={0.05}/>
-                            <stop offset="95%" stopColor="#fff" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
                         </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff03" vertical={false} />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#ffffff10', fontSize: 10, fontWeight: 'bold'}} dy={15} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10, fontWeight: 'bold'}} dy={15} />
                     <YAxis hide domain={['auto', 'auto']} />
-                    <Tooltip cursor={{stroke: 'white', strokeWidth: 0.5}} contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #ffffff05', borderRadius: '12px' }} />
-                    <Area type="monotone" dataKey="total" stroke="#ffffff10" strokeWidth={1.5} fillOpacity={1} fill="url(#noir)" />
+                    <Tooltip cursor={{stroke: '#cbd5e1', strokeWidth: 1}} contentStyle={{ backgroundColor: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0', borderRadius: '12px' }} />
+                    <Area type="monotone" dataKey="total" stroke="#6366f1" strokeWidth={1.5} fillOpacity={1} fill="url(#noir)" />
                 </AreaChart>
             </ResponsiveContainer>
         </div>
@@ -740,58 +749,58 @@ function BillingOpsPanel({
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-        <div className="rounded-[2rem] border border-white/8 bg-[#0a0a0a] p-6">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Plataforma ativa</p>
-          <h3 className="mt-4 text-3xl font-black tracking-tight">
+        <div className="rounded-xl border border-slate-200 bg-white p-6">
+          <p className="text-xs font-medium text-slate-400">Plataforma ativa</p>
+          <h3 className="mt-4 text-2xl font-semibold tracking-tight">
             {summary.activeContracts}
-            <span className="ml-2 text-base text-white/20">/ {summary.totalContracts}</span>
+            <span className="ml-2 text-base text-slate-400">/ {summary.totalContracts}</span>
           </h3>
-          <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-white/35">
+          <p className="mt-3 text-xs text-slate-400">
             {summary.blockedContracts} bloqueados
           </p>
         </div>
 
-        <div className="rounded-[2rem] border border-white/8 bg-[#0a0a0a] p-6">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">MRR da plataforma</p>
-          <h3 className="mt-4 text-3xl font-black tracking-tight">
+        <div className="rounded-xl border border-slate-200 bg-white p-6">
+          <p className="text-xs font-medium text-slate-400">MRR da plataforma</p>
+          <h3 className="mt-4 text-2xl font-semibold tracking-tight">
             {esconderValores ? "****" : money(summary.monthlyPlatformValue)}
           </h3>
-          <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-white/35">
+          <p className="mt-3 text-xs text-slate-400">
             contratos com acesso ou estrutura ativa
           </p>
         </div>
 
-        <div className="rounded-[2rem] border border-white/8 bg-[#0a0a0a] p-6">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Cobrancas abertas</p>
-          <h3 className="mt-4 text-3xl font-black tracking-tight">
+        <div className="rounded-xl border border-slate-200 bg-white p-6">
+          <p className="text-xs font-medium text-slate-400">Cobrancas abertas</p>
+          <h3 className="mt-4 text-2xl font-semibold tracking-tight">
             {summary.openFinanceCount}
           </h3>
-          <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-white/35">
+          <p className="mt-3 text-xs text-slate-400">
             {summary.overdueFinanceCount} em atraso
           </p>
         </div>
 
-        <div className="rounded-[2rem] border border-white/8 bg-[#0a0a0a] p-6">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Trilho Stripe</p>
-          <h3 className="mt-4 text-3xl font-black tracking-tight">
+        <div className="rounded-xl border border-slate-200 bg-white p-6">
+          <p className="text-xs font-medium text-slate-400">Trilho Stripe</p>
+          <h3 className="mt-4 text-2xl font-semibold tracking-tight">
             {summary.stripeContracts}
           </h3>
-          <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-white/35">
+          <p className="mt-3 text-xs text-slate-400">
             {summary.stripeReady ? "ambiente pronto" : `faltando ${summary.stripeMissing.length} chave(s)`}
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-        <div className="rounded-[2rem] border border-white/8 bg-[#080808] p-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-6">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Fila de atencao</p>
+              <p className="text-xs font-medium text-slate-400">Fila de atencao</p>
               <h3 className="mt-3 text-2xl font-black tracking-tight">Quem precisa de acao agora</h3>
             </div>
             <div className="text-right">
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Em risco</p>
-              <p className="mt-2 text-lg font-black text-white">
+              <p className="text-xs font-medium text-slate-400">Em risco</p>
+              <p className="mt-2 text-lg font-black text-slate-900">
                 {esconderValores ? "****" : money(summary.overdueAmount)}
               </p>
             </div>
@@ -799,36 +808,36 @@ function BillingOpsPanel({
 
           <div className="mt-6 space-y-3">
             {items.length === 0 ? (
-              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 text-sm text-white/55">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
                 Nenhum cliente com alerta operacional relevante no momento.
               </div>
             ) : (
               items.map((item) => (
-                <div key={`${item.clientId}-${item.accessMode}`} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+                <div key={`${item.clientId}-${item.accessMode}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <p className="text-sm font-black uppercase tracking-[0.08em] text-white">{item.clientName}</p>
-                      <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-white/35">
+                      <Link href={`/admin/clientes/${encodeURIComponent(item.clientId)}/portal`} className="text-sm font-semibold text-indigo-600 hover:underline">{item.clientName}</Link>
+                      <p className="mt-1 text-xs text-slate-400">
                         {item.platformPlan || "sem plano"} • {item.billingProvider} • {item.accessMode}
                       </p>
                     </div>
                     <div className="text-left md:text-right">
-                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">
+                      <p className="text-xs font-medium text-slate-500">
                         {item.accessStatus}
                       </p>
-                      <p className="mt-1 text-sm font-black text-white">
+                      <p className="mt-1 text-sm font-black text-slate-900">
                         {esconderValores ? "****" : money(item.monthlyValue)}
                       </p>
                     </div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {item.reasons.map((reason) => (
-                      <span key={reason} className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-100">
+                      <span key={reason} className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-700">
                         {reason}
                       </span>
                     ))}
                   </div>
-                  <p className="mt-4 text-[11px] uppercase tracking-[0.16em] text-white/30">
+                  <p className="mt-4 text-xs text-slate-400">
                     {item.dueDate ? `proximo marco ${item.dueDate}` : "sem vencimento mapeado"}
                   </p>
                 </div>
@@ -837,8 +846,8 @@ function BillingOpsPanel({
           </div>
         </div>
 
-        <div className="rounded-[2rem] border border-white/8 bg-[#080808] p-6">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Composicao operacional</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-6">
+          <p className="text-xs font-medium text-slate-400">Composicao operacional</p>
           <div className="mt-6 space-y-4">
             <MiniMetric label="Stripe" value={summary.stripeContracts} />
             <MiniMetric label="Incluso na agencia" value={summary.includedContracts} />
@@ -846,12 +855,7 @@ function BillingOpsPanel({
             <MiniMetric label="Atrasos" value={summary.overdueFinanceCount} />
           </div>
 
-          <div className="mt-8 rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/25">Leitura rapida</p>
-            <p className="mt-3 text-sm text-white/70">
-              O que ainda falta para fechar o trilho completo e automatico e a criacao real do checkout Stripe, o webhook de assinatura e a virada dos CTAs publicos para compra direta.
-            </p>
-          </div>
+          <Link href="/admin/saas" className="mt-6 inline-block text-sm font-medium text-indigo-600">Gerenciar contratos e acessos →</Link>
         </div>
       </div>
     </div>
@@ -860,9 +864,9 @@ function BillingOpsPanel({
 
 function MiniMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3">
-      <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white/35">{label}</span>
-      <span className="text-lg font-black text-white">{value}</span>
+    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{label}</span>
+      <span className="text-lg font-black text-slate-900">{value}</span>
     </div>
   );
 }

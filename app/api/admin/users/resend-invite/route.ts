@@ -1,3 +1,4 @@
+import { assertAgencyUserManagement } from "@/lib/server/admin/user-access";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
@@ -9,7 +10,7 @@ type ResendInviteBody = {
 
 export async function POST(req: Request) {
   try {
-    const actor = await requireRequestUser(req, { roles: ["admin"] });
+    const actor = await requireRequestUser(req, { roles: ["agency_admin"] });
     const body = (await req.json()) as ResendInviteBody;
     const uid = (body.uid || "").trim();
 
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Campo obrigatorio: uid." }, { status: 400 });
     }
 
+    await assertAgencyUserManagement(actor, uid);
     const userSnap = await adminDb.collection("users").doc(uid).get();
     if (!userSnap.exists) {
       return NextResponse.json({ error: "Usuario nao encontrado." }, { status: 404 });
@@ -31,7 +33,8 @@ export async function POST(req: Request) {
     // Ensure user exists in Auth.
     try {
       await adminAuth.getUser(uid);
-    } catch {
+    } catch (error) {
+      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "auth/user-not-found") throw error;
       await adminAuth.createUser({
         uid,
         email,
@@ -56,7 +59,9 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       uid,
-      inviteSentAt: new Date().toISOString(),
+      inviteGeneratedAt: new Date().toISOString(),
+      inviteSentAt: null,
+      deliveryStatus: "manual_link",
       inviteLink,
     });
   } catch (error) {

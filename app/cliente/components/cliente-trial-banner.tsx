@@ -52,7 +52,7 @@ export function ClienteTrialBanner() {
           ? "O acesso sera atualizado assim que o Asaas confirmar."
           : "Escolha um plano antes do fim do trial para continuar sem interrupcao.";
   return (
-    <aside className={`fixed bottom-[calc(env(safe-area-inset-bottom)+5.6rem)] left-3 right-3 z-[75] rounded-2xl border bg-white p-3 text-slate-950 shadow-[0_22px_70px_-32px_rgba(76,29,149,.65)] sm:left-auto sm:right-5 sm:w-[370px] lg:bottom-5 ${isPastDue ? "border-amber-300" : "border-violet-200"}`}>
+    <aside className={`mx-auto mb-4 max-w-[1520px] rounded-2xl border bg-white p-3 text-slate-950 ${pathname.includes("/inbox") ? "hidden" : ""} ${isPastDue ? "border-amber-300" : "border-violet-200"}`}>
       <div className="flex items-start gap-3">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700">
           {isPastDue ? <AlertTriangle className="h-5 w-5" /> : pending || isRefundPending ? <CreditCard className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}

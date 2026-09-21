@@ -1,0 +1,794 @@
+[
+  {
+    "page": "app/cliente/acao-email/page.tsx",
+    "lines": 15,
+    "apiReferences": [],
+    "loadingState": false,
+    "errorState": false,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/assinatura/page.tsx",
+    "lines": 350,
+    "apiReferences": [
+      "/api/billing/asaas/checkout",
+      "/api/billing/asaas/subscription",
+      "/api/billing/asaas/subscription?tenantId=${encodeURIComponent",
+      "/api/public/platform-plans"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/esqueci-senha/page.tsx",
+    "lines": 11,
+    "apiReferences": [],
+    "loadingState": false,
+    "errorState": false,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/login/page.tsx",
+    "lines": 239,
+    "apiReferences": [
+      "/api/client-portal/me",
+      "/api/client-portal/me?tenantId=${encodeURIComponent"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/mcp/autorizar/page.tsx",
+    "lines": 137,
+    "apiReferences": [
+      "/api/mcp/oauth/authorize"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/agenda/page.tsx",
+    "lines": 503,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/appointments",
+      "/api/tenant/${tenant.tenantId}/appointments/${appointmentId}",
+      "/api/tenant/${tenant.tenantId}/leads"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "edit_leads"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/assinatura/page.tsx",
+    "lines": 1,
+    "apiReferences": [],
+    "loadingState": false,
+    "errorState": false,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/painel/automacao-instagram/page.tsx",
+    "lines": 1,
+    "apiReferences": [],
+    "loadingState": false,
+    "errorState": false,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/painel/automacoes/instagram/page.tsx",
+    "lines": 151,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/social-automations",
+      "/api/tenant/${tenant.tenantId}/social-automations/media"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_automations",
+      "manage_channels"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/automacoes/page.tsx",
+    "lines": 2197,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/automation-summary",
+      "/api/tenant/${tenant.tenantId}/automations",
+      "/api/tenant/${tenant.tenantId}/automations/${draft.id}",
+      "/api/tenant/${tenant.tenantId}/automations/${id}",
+      "/api/tenant/${tenant.tenantId}/automations/process",
+      "/api/tenant/${tenant.tenantId}/settings"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_automations"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/campanhas/google-ads/page.tsx",
+    "lines": 185,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/growth/google-ads/operator",
+      "/api/tenant/${tenant.tenantId}/mcp/drafts"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_channels",
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/campanhas/meta-ads/page.tsx",
+    "lines": 160,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/growth/meta-ads/operator",
+      "/api/tenant/${tenant.tenantId}/mcp/drafts"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_channels",
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/campanhas/page.tsx",
+    "lines": 1324,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/campaigns/conversions/health",
+      "/api/tenant/${tenant.tenantId}/campaigns/overview",
+      "/api/tenant/${tenant.tenantId}/campaigns/sync",
+      "/api/tenant/${tenant.tenantId}/capture/forms",
+      "/api/tenant/${tenant.tenantId}/kb-docs",
+      "/api/tenant/${tenant.tenantId}/metrics-summary?rangeDays=30",
+      "/api/tenant/${tenant.tenantId}/outbound-campaigns"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_automations",
+      "manage_channels"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/campanhas/rastreamento/page.tsx",
+    "lines": 217,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/growth/revenue-graph?rangeDays=${rangeDays}",
+      "/api/tenant/${tenant.tenantId}/growth/tracking"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": true,
+    "authorizationHints": [
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/captacao/page.tsx",
+    "lines": 1649,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/capture/forms",
+      "/api/tenant/${tenant.tenantId}/capture/forms/${formState.id}",
+      "/api/tenant/${tenant.tenantId}/channels",
+      "/api/tenant/${tenant.tenantId}/settings",
+      "/api/tenant/${tenant.tenantId}/users"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": true,
+    "authorizationHints": [
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/comercial/page.tsx",
+    "lines": 657,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/budgets",
+      "/api/tenant/${tenant.tenantId}/budgets/${budgetId}",
+      "/api/tenant/${tenant.tenantId}/finance",
+      "/api/tenant/${tenant.tenantId}/finance/${financeId}",
+      "/api/tenant/${tenant.tenantId}/finance/create-charge",
+      "/api/tenant/${tenant.tenantId}/leads"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": true,
+    "authorizationHints": [
+      "manage_commercial"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "lines": 2230,
+    "apiReferences": [
+      "/api/integrations/google/start",
+      "/api/integrations/meta/start",
+      "/api/integrations/pending/${encodeURIComponent",
+      "/api/tenant/${tenant.tenantId}/campaigns/conversions/health",
+      "/api/tenant/${tenant.tenantId}/campaigns/sync",
+      "/api/tenant/${tenant.tenantId}/channels",
+      "/api/tenant/${tenant.tenantId}/channels/${encodeURIComponent",
+      "/api/tenant/${tenant.tenantId}/channels/health?attemptRepair=1",
+      "/api/tenant/${tenant.tenantId}/channels/whatsapp",
+      "/api/tenant/${tenant.tenantId}/users"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_channels"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/empresa/page.tsx",
+    "lines": 332,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/settings"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/faturamento/page.tsx",
+    "lines": 9,
+    "apiReferences": [],
+    "loadingState": false,
+    "errorState": false,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/integracoes/page.tsx",
+    "lines": 1091,
+    "apiReferences": [
+      "/api/integrations/commerce/${provider}/start",
+      "/api/tenant/${tenant.tenantId}/ecommerce/actions/${actionId}",
+      "/api/tenant/${tenant.tenantId}/ecommerce/actions/${actionId}/send-template",
+      "/api/tenant/${tenant.tenantId}/ecommerce/actions/process",
+      "/api/tenant/${tenant.tenantId}/ecommerce/automation",
+      "/api/tenant/${tenant.tenantId}/ecommerce/connections",
+      "/api/tenant/${tenant.tenantId}/ecommerce/connections/${connectionId}",
+      "/api/tenant/${tenant.tenantId}/ecommerce/connections/${connectionId}/sync",
+      "/api/webhooks/ecommerce/${connection.provider}?${params.toString"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "edit_leads",
+      "manage_channels"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/lixeira/page.tsx",
+    "lines": 161,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/trash"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/mcp/page.tsx",
+    "lines": 741,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/mcp/connections/${encodeURIComponent",
+      "/api/tenant/${tenant.tenantId}/mcp/drafts",
+      "/api/tenant/${tenant.tenantId}/mcp/drafts/${encodeURIComponent",
+      "/api/tenant/${tenant.tenantId}/mcp/status"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/operacao/page.tsx",
+    "lines": 465,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/settings",
+      "/api/tenant/${tenant.tenantId}/users"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/page.tsx",
+    "lines": 1308,
+    "apiReferences": [
+      "/api/client-portal/push/subscription",
+      "/api/client-portal/push/test",
+      "/api/tenant/${tenant.tenantId}/capture/forms",
+      "/api/tenant/${tenant.tenantId}/channels",
+      "/api/tenant/${tenant.tenantId}/readiness",
+      "/api/tenant/${tenant.tenantId}/settings",
+      "/api/tenant/${tenant.tenantId}/settings/ai",
+      "/api/tenant/${tenant.tenantId}/users"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_settings",
+      "manage_users"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/social/page.tsx",
+    "lines": 669,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/social-automations"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_automations",
+      "manage_channels"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/times/page.tsx",
+    "lines": 558,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/settings",
+      "/api/tenant/${tenant.tenantId}/users",
+      "/api/tenant/${tenant.tenantId}/users/${encodeURIComponent"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_settings",
+      "manage_users"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/configuracoes/usuarios/page.tsx",
+    "lines": 524,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/users",
+      "/api/tenant/${tenant.tenantId}/users/${userId}"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_users"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/conhecimento/page.tsx",
+    "lines": 667,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/ai-logs",
+      "/api/tenant/${tenant.tenantId}/kb-docs",
+      "/api/tenant/${tenant.tenantId}/kb-docs/${docId}",
+      "/api/tenant/${tenant.tenantId}/kb-docs/${editingDocId}"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_ai"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/crm/page.tsx",
+    "lines": 2234,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/leads",
+      "/api/tenant/${tenant.tenantId}/leads/${leadId}",
+      "/api/tenant/${tenant.tenantId}/leads/${leadId}/stage",
+      "/api/tenant/${tenant.tenantId}/leads/${selectedLeadId}",
+      "/api/tenant/${tenant.tenantId}/leads/${selectedLeadId}/notes",
+      "/api/tenant/${tenant.tenantId}/leads/${selectedLeadId}/tasks",
+      "/api/tenant/${tenant.tenantId}/leads/bulk-delete",
+      "/api/tenant/${tenant.tenantId}/leads/distribute",
+      "/api/tenant/${tenant.tenantId}/leads/import",
+      "/api/tenant/${tenant.tenantId}/leads?limit=${CRM_PAGE_SIZE}",
+      "/api/tenant/${tenant.tenantId}/metrics-summary",
+      "/api/tenant/${tenant.tenantId}/pipeline"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "edit_leads"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/crm-preview/page.tsx",
+    "lines": 1008,
+    "apiReferences": [],
+    "loadingState": false,
+    "errorState": false,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/painel/disparos/page.tsx",
+    "lines": 2174,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/channels",
+      "/api/tenant/${tenant.tenantId}/leads/import",
+      "/api/tenant/${tenant.tenantId}/outbound-campaigns",
+      "/api/tenant/${tenant.tenantId}/outbound-campaigns/${campaignId}/preview",
+      "/api/tenant/${tenant.tenantId}/outbound-campaigns/${editor.id}",
+      "/api/tenant/${tenant.tenantId}/outbound-campaigns/${editor.id}/dispatch",
+      "/api/tenant/${tenant.tenantId}/outbound-campaigns/media",
+      "/api/tenant/${tenant.tenantId}/outbound-campaigns/process",
+      "/api/tenant/${tenant.tenantId}/whatsapp-templates?channelId=${encodeURIComponent"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": true,
+    "authorizationHints": [
+      "manage_automations"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/follow-ups/page.tsx",
+    "lines": 491,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/follow-ups",
+      "/api/tenant/${tenant.tenantId}/leads/${item.leadId}/tasks/${item.id}"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "edit_leads"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/go-live/page.tsx",
+    "lines": 553,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/onboarding",
+      "/api/tenant/${tenant.tenantId}/readiness"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/painel/handoffs/page.tsx",
+    "lines": 1015,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/ai-logs",
+      "/api/tenant/${tenant.tenantId}/chats",
+      "/api/tenant/${tenant.tenantId}/chats/${chatIdToUpdate}/ai-state",
+      "/api/tenant/${tenant.tenantId}/settings",
+      "/api/tenant/${tenant.tenantId}/users"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_ai",
+      "respond_inbox"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/ia/page.tsx",
+    "lines": 3709,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/ai-logs",
+      "/api/tenant/${tenant.tenantId}/ai-preview",
+      "/api/tenant/${tenant.tenantId}/ai-usage",
+      "/api/tenant/${tenant.tenantId}/ai-voice/preview",
+      "/api/tenant/${tenant.tenantId}/campaigns/overview",
+      "/api/tenant/${tenant.tenantId}/kb-docs",
+      "/api/tenant/${tenant.tenantId}/kb-docs/${docId}",
+      "/api/tenant/${tenant.tenantId}/kb-docs/${editingDocId}",
+      "/api/tenant/${tenant.tenantId}/kb-docs/media/upload",
+      "/api/tenant/${tenant.tenantId}/settings",
+      "/api/tenant/${tenant.tenantId}/settings/ai"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_ai"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/inbox/page.tsx",
+    "lines": 5233,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/calls/start",
+      "/api/tenant/${tenant.tenantId}/channels",
+      "/api/tenant/${tenant.tenantId}/chats/${chatId}",
+      "/api/tenant/${tenant.tenantId}/chats/${chatId}/messages${params}",
+      "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}",
+      "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/ai-state",
+      "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/messages/${messageId}/reaction",
+      "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/notes",
+      "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send",
+      "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-media",
+      "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-stored-media",
+      "/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-template",
+      "/api/tenant/${tenant.tenantId}/chats/bulk-delete",
+      "/api/tenant/${tenant.tenantId}/chats/distribute",
+      "/api/tenant/${tenant.tenantId}/chats?${params.toString",
+      "/api/tenant/${tenant.tenantId}/contact-photo",
+      "/api/tenant/${tenant.tenantId}/leads/${detail.lead.id}/notes",
+      "/api/tenant/${tenant.tenantId}/leads/${detail.lead.id}/stage",
+      "/api/tenant/${tenant.tenantId}/leads/${detail.lead.id}/tasks",
+      "/api/tenant/${tenant.tenantId}/leads/${detail.lead.id}/tasks/${task.id}",
+      "/api/tenant/${tenant.tenantId}/settings/ai",
+      "/api/tenant/${tenant.tenantId}/whatsapp/send"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": true,
+    "authorizationHints": [
+      "manage_ai",
+      "manage_settings",
+      "manage_users",
+      "respond_inbox",
+      "view_team_records"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/logs/page.tsx",
+    "lines": 624,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/ai-logs",
+      "/api/tenant/${tenant.tenantId}/automation-summary"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_ai",
+      "manage_automations"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/metricas/page.tsx",
+    "lines": 996,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/campaigns/sync",
+      "/api/tenant/${tenant.tenantId}/metrics-summary?rangeDays=${rangeDays}",
+      "/api/tenant/${tenant.tenantId}/readiness"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_channels"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/onboarding/page.tsx",
+    "lines": 384,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/onboarding",
+      "/api/tenant/${tenant.tenantId}/onboarding/blueprint"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/page.tsx",
+    "lines": 1511,
+    "apiReferences": [
+      "/api/client-portal/dashboard",
+      "/api/tenant/${tenantId}/appointments",
+      "/api/tenant/${tenantId}/automation-summary",
+      "/api/tenant/${tenantId}/chats",
+      "/api/tenant/${tenantId}/follow-ups",
+      "/api/tenant/${tenantId}/leads",
+      "/api/tenant/${tenantId}/metrics-summary",
+      "/api/tenant/${tenantId}/readiness"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_ai",
+      "manage_settings",
+      "manage_users",
+      "view_team_records"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/perguntar-altum/page.tsx",
+    "lines": 416,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/business-insights/ask"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_ai",
+      "manage_settings",
+      "view_metrics"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/pipeline/page.tsx",
+    "lines": 672,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/leads/${leadId}/stage",
+      "/api/tenant/${tenant.tenantId}/pipeline"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "edit_leads",
+      "manage_pipeline"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/produtos-servicos/[docId]/page.tsx",
+    "lines": 350,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/kb-docs"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_ai"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/produtos-servicos/importar/page.tsx",
+    "lines": 325,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/catalog-import",
+      "/api/tenant/${tenant.tenantId}/catalog-import/preview"
+    ],
+    "loadingState": false,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_ai"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/produtos-servicos/novo/page.tsx",
+    "lines": 1097,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/kb-docs",
+      "/api/tenant/${tenant.tenantId}/kb-docs/${docId}",
+      "/api/tenant/${tenant.tenantId}/kb-docs/media/upload"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_ai"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/produtos-servicos/page.tsx",
+    "lines": 616,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/kb-docs",
+      "/api/tenant/${tenant.tenantId}/kb-docs/${docId}"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_ai"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/relatorios/dia/[date]/page.tsx",
+    "lines": 316,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/daily-reports",
+      "/api/tenant/${tenant.tenantId}/daily-reports?dateKey=${encodeURIComponent"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": [
+      "manage_settings"
+    ]
+  },
+  {
+    "page": "app/cliente/painel/relatorios/page.tsx",
+    "lines": 601,
+    "apiReferences": [
+      "/api/tenant/${tenantId}/chats",
+      "/api/tenant/${tenantId}/leads",
+      "/api/tenant/${tenantId}/metrics-summary"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/painel/reunioes-assistidas/page.tsx",
+    "lines": 1250,
+    "apiReferences": [
+      "/api/tenant/${tenant.tenantId}/appointments",
+      "/api/tenant/${tenant.tenantId}/assisted-meetings",
+      "/api/tenant/${tenant.tenantId}/assisted-meetings/live-coach",
+      "/api/tenant/${tenant.tenantId}/assisted-meetings/transcribe",
+      "/api/tenant/${tenant.tenantId}/leads",
+      "/api/tenant/${tenantId}/assisted-meetings/bot",
+      "/api/tenant/${tenantId}/assisted-meetings/bot/${session.id}",
+      "/api/tenant/${tenantId}/assisted-meetings/bot/${session.id}/finalize"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": true,
+    "authorizationHints": [
+      "edit_leads"
+    ]
+  },
+  {
+    "page": "app/cliente/redefinir-senha/page.tsx",
+    "lines": 11,
+    "apiReferences": [],
+    "loadingState": false,
+    "errorState": false,
+    "polling": false,
+    "authorizationHints": []
+  },
+  {
+    "page": "app/cliente/verificar-email/page.tsx",
+    "lines": 213,
+    "apiReferences": [
+      "/api/auth/email/verification",
+      "/api/auth/verification"
+    ],
+    "loadingState": true,
+    "errorState": true,
+    "polling": true,
+    "authorizationHints": []
+  }
+]

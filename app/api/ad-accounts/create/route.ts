@@ -1,3 +1,4 @@
+import { resolveAdminCompany } from "@/lib/server/admin/companies";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
@@ -46,13 +47,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const clientRef = adminDb.collection("clientes").doc(clientId);
-    const clientSnap = await clientRef.get();
-    if (!clientSnap.exists) {
-      return NextResponse.json({ error: "Cliente nao encontrado." }, { status: 404 });
-    }
-
-    const clientData = clientSnap.data() as { ownerId?: string; owner?: string; name?: string };
+    const company = await resolveAdminCompany(user, clientId);
+    const clientData = company.data;
     const ownerId = clientData.ownerId || user.uid;
     const ownerName = clientData.owner || user.name;
     if (!isAdmin(user) && ownerId !== user.uid) {
@@ -61,6 +57,7 @@ export async function POST(req: Request) {
 
     const payload = {
       clientId,
+      tenantId: company.tenantId,
       clientName: clientData.name || "Cliente",
       ownerId,
       ownerName,

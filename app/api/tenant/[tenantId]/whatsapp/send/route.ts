@@ -1,3 +1,4 @@
+import { isWhatsAppGroup } from "@/lib/whatsapp-conversation";
 import { NextResponse } from "next/server";
 import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
@@ -8,12 +9,14 @@ import { getWhatsAppChannelForTenant } from "@/app/lib/server/whatsapp-channel";
 import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 import { getChatStateDocId } from "@/lib/server/ai/agent";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertChatCommercialAccess, assertLeadCommercialAccess, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   text?: string;
   chatId?: string;
   to?: string;
   leadId?: string;
+  channelId?: string;
 };
 
 type Destination = {
@@ -32,6 +35,7 @@ async function resolveDestination(input: {
   tenantId: string;
   user: { uid: string; name: string };
   body: Body;
+  channelId: string;
 }): Promise<Destination> {
   const text = (input.body.text || "").trim();
   if (!text) {
@@ -57,6 +61,7 @@ async function resolveDestination(input: {
       throw new RouteAuthError(403, "forbidden_tenant", "Chat fora do tenant informado.");
     }
 
+    if (isWhatsAppGroup(chat.contactPhone)) throw new RouteAuthError(400, "group_requires_chat_dispatch", "Envie pela conversa do grupo para preservar o canal e destinatario.");
     const phone = normalizePhone(chat.contactPhone);
     if (!phone) {
       throw new RouteAuthError(400, "invalid_phone", "Chat sem telefone valido.");
@@ -110,11 +115,15 @@ async function resolveDestination(input: {
     .collection("chats")
     .where("contactPhone", "==", phone)
     .where("tenantId", "==", input.tenantId)
-    .limit(1)
+    .limit(20)
     .get();
 
-  if (!existingChat.empty) {
-    const found = existingChat.docs[0];
+  const matchingChat = existingChat.docs.find((doc) => {
+    const data = doc.data() as { channelId?: string };
+    return String(data.channelId || "") === input.channelId;
+  });
+  if (matchingChat) {
+    const found = matchingChat;
     return {
       phone,
       text,
@@ -136,6 +145,8 @@ async function resolveDestination(input: {
     status: "open",
     ownerId,
     ownerName: input.user.name,
+    channel: "whatsapp",
+    channelId: input.channelId,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     lastMessageTime: FieldValue.serverTimestamp(),
@@ -167,19 +178,37 @@ export async function POST(
     await assertTenantModule(tenantId, "whatsapp");
     assertTenantCapability(membership, "respond_inbox");
 
-    const channel = await getWhatsAppChannelForTenant(tenantId, { allowAgencyFallback: false });
+    const body = (await req.json()) as Body;
+    if (body.chatId) {
+      await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId: body.chatId });
+    } else if (body.leadId) {
+      await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId: body.leadId });
+    }
+    const channel = await getWhatsAppChannelForTenant(tenantId, {
+      allowAgencyFallback: false,
+      channelId: body.channelId || null,
+    });
     if (!channel) {
       return NextResponse.json(
         { error: "Canal WhatsApp ativo nao configurado para este tenant." },
         { status: 400 }
       );
     }
-
-    const body = (await req.json()) as Body;
+    if (
+      channel.channelScope === "personal" &&
+      channel.ownerUserId !== user.uid &&
+      !hasTeamWideCommercialAccess(membership)
+    ) {
+      return NextResponse.json(
+        { error: "Este WhatsApp pessoal pertence a outro vendedor." },
+        { status: 403 }
+      );
+    }
     const destination = await resolveDestination({
       tenantId,
       user: { uid: user.uid, name: user.name },
       body,
+      channelId: channel.id,
     });
 
     const provider = getWhatsAppMessagingProvider(channel);
@@ -192,6 +221,7 @@ export async function POST(
           contactPhone: destination.phone,
           contactPhoneNormalized: destination.phone,
           channel: "whatsapp",
+          channelId: channel.id,
           channelPhoneNumberId: channel.phoneNumberId,
           status: "open",
           ownerId: destination.ownerId,
@@ -227,6 +257,7 @@ export async function POST(
             ownerId: destination.ownerId,
             ownerName: user.name,
             channelPhoneNumberId: channel.phoneNumberId,
+            channelId: channel.id,
             lastMessage: destination.text,
             lastMessageTime: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
@@ -248,6 +279,7 @@ export async function POST(
           type: "text",
           ...(data.externalMessageId ? { metaMessageId: data.externalMessageId } : {}),
           channelPhoneNumberId: channel.phoneNumberId,
+          channelId: channel.id,
           createdAt: FieldValue.serverTimestamp(),
         }),
         adminDb.collection("chat_state").doc(getChatStateDocId(tenantId, destination.chatId)).set(

@@ -8,6 +8,7 @@ import { CampaignPolicyError, createAdportCampaignPreview, resolveCampaignTarget
 import { GoogleDraftError, prepareGoogleDraft, type GoogleDraftTool, type GoogleOperatorSnapshot } from "@/lib/server/growth/google-ads-actions";
 import { MetaDraftError, prepareMetaDraft, type MetaDraftTool, type MetaOperatorSnapshot } from "@/lib/server/growth/meta-ads-actions";
 import { hashAdportOperation } from "@/lib/server/growth/adport-connectors";
+import { operatorCampaignTargets } from "@/lib/server/growth/operator-campaign-targets";
 
 export const dynamic = "force-dynamic";
 
@@ -108,8 +109,11 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       await adminDb.collection("audit_logs").add({ type: "meta_ads_operator_draft_created", tenantId, actorId: user.uid, actorName: user.name, draftId: ref.id, target: prepared.target, createdAt: FieldValue.serverTimestamp() });
       return NextResponse.json({ ok: true, draftId: ref.id, status: "pending_review", href: `/cliente/painel/configuracoes/mcp?draft=${encodeURIComponent(ref.id)}` }, { status: 201 });
     }
-    const snapshots = await adminDb.collection("campaign_snapshots").where("tenantId", "==", tenantId).limit(200).get();
-    const rows = snapshots.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const [snapshots, operatorReports] = await Promise.all([
+      adminDb.collection("campaign_snapshots").where("tenantId", "==", tenantId).limit(200).get(),
+      adminDb.collection(platform === "meta_ads" ? "meta_ads_operator_reports" : "google_ads_operator_reports").where("tenantId", "==", tenantId).limit(30).get(),
+    ]);
+    const rows = [...operatorCampaignTargets(operatorReports.docs.map(doc => ({ id: doc.id, ...doc.data() })), platform), ...snapshots.docs.map((doc) => ({ id: doc.id, ...doc.data() }))];
     const target = resolveCampaignTarget(rows, { platform, campaignId, adAccountId: adAccountId || undefined });
     const action = tool === "draft_campaign_pause" ? "pause_campaign" as const : "change_daily_budget" as const;
     const currentDailyBudget = Number(args.currentDailyBudget);

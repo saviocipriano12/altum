@@ -25,7 +25,10 @@ export async function GET(req: Request) {
     const snap = await query.get();
     const items: AdAccountDoc[] = snap.docs.map((doc) => ({
       id: doc.id,
-      ...(doc.data() as Omit<AdAccountDoc, "id">),
+      ...Object.fromEntries(Object.entries(doc.data()).filter(([key]) => [
+        "clientId", "clientName", "ownerId", "ownerName", "platform", "accountLabel", "externalAccountId",
+        "currency", "timezone", "status", "syncMode", "lastSyncAt", "createdAt", "updatedAt",
+      ].includes(key))) as Omit<AdAccountDoc, "id">,
     }));
 
     return NextResponse.json({ ok: true, items });

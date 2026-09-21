@@ -150,8 +150,9 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
           <button
             type="button"
             onClick={() => setMobileMenuOpen((current) => !current)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-text-muted)] transition hover:border-[var(--cliente-primary)]/25 hover:bg-[var(--cliente-surface-hover)] hover:text-[var(--cliente-text)] sm:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-text-muted)] transition hover:border-[var(--cliente-primary)]/25 hover:bg-[var(--cliente-surface-hover)] hover:text-[var(--cliente-text)] lg:hidden"
             aria-label="Mais opcoes"
+            aria-expanded={mobileMenuOpen}
           >
             <MoreHorizontal className="h-4 w-4" />
           </button>
@@ -159,8 +160,9 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
       </div>
 
       {mobileMenuOpen ? (
-        <div className="border-t border-[var(--cliente-border)] px-3 pb-3 pt-2 sm:hidden">
+        <div className="border-t border-[var(--cliente-border)] px-3 pb-3 pt-2 lg:hidden">
           <div className="grid gap-2">
+            <button type="button" onClick={() => { window.dispatchEvent(new Event("altum:cliente-install-open")); setMobileMenuOpen(false); }} className="min-h-11 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 text-left text-sm font-semibold text-[var(--cliente-text)]">Instalar Altum no celular</button>
             <button
               type="button"
               onClick={() => {

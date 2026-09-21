@@ -7,27 +7,17 @@ import {
   AlertTriangle,
   ArrowRight,
   Bot,
-  BrainCircuit,
   CalendarClock,
   CheckCircle2,
   CircleDot,
-  ClipboardList,
-  FileText,
   FolderKanban,
   Gauge,
   HandCoins,
   Handshake,
-  LineChart,
-  MessageSquare,
-  Radio,
   Rocket,
-  Route,
-  Send,
-  ShieldCheck,
   Target,
   Timer,
   UserPlus,
-  Users,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import type {
@@ -172,6 +162,7 @@ export default function AdminAgencyCockpit() {
   const [aiSignals, setAiSignals] = useState<AdminAiSignalsResponse>({});
   const [aiSignalsLoading, setAiSignalsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     if (!user) {
@@ -187,6 +178,7 @@ export default function AdminAgencyCockpit() {
     async function loadDashboard() {
       try {
         setLoading(true);
+        setLoadError("");
         const response = await authedFetch("/api/admin/dashboard");
         const data = (await response.json().catch(() => ({}))) as {
           leads?: DashboardLead[];
@@ -204,10 +196,7 @@ export default function AdminAgencyCockpit() {
       } catch (error) {
         console.error("Erro ao carregar cockpit administrativo:", error);
         if (active) {
-          setLeads([]);
-          setProjects([]);
-          setBudgets([]);
-          setActivities([]);
+          setLoadError(error instanceof Error ? error.message : "Falha ao carregar a visão geral.");
         }
       } finally {
         if (active) setLoading(false);
@@ -325,55 +314,10 @@ export default function AdminAgencyCockpit() {
   const aiSummary = aiSignals.summary || {};
   const aiTenants = (aiSignals.tenants || []).slice(0, 4);
 
+  if (loading || loadError) return <div className="space-y-6"><h1 className="text-2xl font-semibold">Visão geral</h1>{loadError ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700"><p>{loadError}</p><button className="mt-3 font-semibold underline" onClick={() => window.location.reload()}>Tentar novamente</button></div> : <p role="status" className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Carregando resultados da operação...</p>}</div>;
   return (
     <div className="mx-auto max-w-[1500px] space-y-6 pb-10">
-      <section className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
-        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-emerald-400 to-purple-500" />
-          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-            <div className="max-w-3xl">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                  <Radio className="h-3.5 w-3.5" />
-                  Operacao da agencia
-                </span>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
-                  {new Date().toLocaleDateString("pt-BR", {
-                    weekday: "long",
-                    day: "2-digit",
-                    month: "long",
-                  })}
-                </span>
-              </div>
-              <h1 className="mt-5 max-w-4xl text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
-                Cockpit Altum para vender, entregar e controlar a agencia
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
-                O admin vira a camada de comando. A operacao completa de conversas,
-                CRM e IA continua no workspace do cliente quando isso for melhor para
-                o usuario e para a estabilidade da plataforma.
-              </p>
-            </div>
-
-            <div className="flex shrink-0 flex-col gap-2 sm:flex-row xl:flex-col">
-              <ActionButton href="/admin/prospeccao/gerar" icon={Rocket} label="Gerar leads Maps" tone="primary" />
-              <ActionButton href="/admin/templates" icon={FileText} label="Templates Meta" tone="soft" />
-              <ActionButton href="/cliente/painel" icon={MessageSquare} label="Operar workspace" tone="soft" />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-            Diretriz de arquitetura
-          </p>
-          <div className="mt-4 space-y-4">
-            <OperatingLine icon={ShieldCheck} label="Admin" value="Comando, clientes, entrega, financeiro e governanca." />
-            <OperatingLine icon={Users} label="Cliente" value="Conversas, CRM, campanhas operacionais e IA do tenant." />
-            <OperatingLine icon={Bot} label="Altum" value="Usar tenant interno para operar WhatsApp e IA da propria agencia." />
-          </div>
-        </div>
-      </section>
+      <header className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight">Visão geral</h1><p className="mt-1 text-sm text-slate-500">Resultados, prioridades e próximos compromissos da Altum.</p></div><div className="flex flex-wrap gap-2"><ActionButton href="/admin/atividades" icon={CalendarClock} label="Ver agenda" tone="soft" /><ActionButton href="/admin/prospeccao/gerar" icon={Rocket} label="Captar empresas" tone="primary" /></div></header>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={UserPlus} label="Leads na agencia" value={String(metrics.totalLeads)} hint={`${metrics.leadsToday} captados hoje`} tone="blue" />
@@ -382,53 +326,25 @@ export default function AdminAgencyCockpit() {
         <MetricCard icon={Timer} label="Pendencias" value={String(metrics.pendingActivities)} hint={`${metrics.overdueActivities} atrasadas`} tone={metrics.overdueActivities ? "amber" : "slate"} />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+      <section className="space-y-4">
         <div className="space-y-4">
           <SectionHeader
-            eyebrow="Prioridades de hoje"
-            title="Onde colocar energia agora"
+            eyebrow="Prioridades"
+            title="Próximas ações"
             actionHref="/admin/atividades"
             actionLabel="Ver agenda"
           />
-          <div className="grid gap-3">
-            {priorities.map((item) => (
+          <div className="grid gap-3 md:grid-cols-3">
+            {priorities.filter((_, index) => index === 0 ? metrics.totalLeads > 0 : index === 1 ? metrics.totalLeads > 0 || budgets.length > 0 : metrics.overdueActivities > 0).map((item) => (
               <PriorityCard key={item.label} {...item} />
             ))}
+            {!metrics.totalLeads && !budgets.length && !metrics.overdueActivities && <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500 md:col-span-3">Nenhuma prioridade identificada nos registros carregados. Use a agenda para registrar a próxima ação.</p>}
           </div>
         </div>
 
-        <div className="space-y-4">
-          <SectionHeader
-            eyebrow="Arsenal da agencia"
-            title="O que existe, o que evolui e o que nasce"
-            actionHref="/admin/prospeccao"
-            actionLabel="Abrir prospeccao"
-          />
-          <div className="grid gap-3 md:grid-cols-2">
-            <ArsenalCard status="Ativo" icon={Target} title="Maps + CRM de prospeccao" text="Busca, filtra, pontua, salva audiencia e prepara campanha." tone="emerald" />
-            <ArsenalCard status="Ativo" icon={Send} title="Disparo Meta com midia" text="Templates aprovados, variaveis, header de imagem/video/documento e entrega registrada." tone="blue" />
-            <ArsenalCard status="Ativo" icon={Route} title="Contexto para IA" text="Campanha, template e oferta ficam no lead/chat para a IA continuar a resposta." tone="purple" />
-            <ArsenalCard status="Proximo" icon={LineChart} title="Compliance e saude" text="Opt-out, limite por lead, risco de cliente, implantacao, receita e qualidade da IA." tone="amber" />
-          </div>
-        </div>
       </section>
 
-      <section className="space-y-4">
-        <SectionHeader
-          eyebrow="Fluxo recomendado"
-          title="Prospectar no Maps sem duplicar a area do cliente"
-          actionHref="/admin/prospeccao/gerar"
-          actionLabel="Gerar nova lista"
-        />
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <WorkflowStep number="01" icon={Target} title="Maps" text="Buscar por nicho, cidade, filtros e qualidade." />
-          <WorkflowStep number="02" icon={BrainCircuit} title="Qualificar" text="Score, heat, motivos e inteligencia comercial." />
-          <WorkflowStep number="03" icon={ClipboardList} title="Lista" text="Salvar como audiencia do tenant Altum." />
-          <WorkflowStep number="04" icon={FileText} title="Template" text="Selecionar template Meta aprovado com midia." />
-          <WorkflowStep number="05" icon={Send} title="Disparo" text="Registrar entrega, status e oferta enviada." />
-          <WorkflowStep number="06" icon={MessageSquare} title="Resposta" text="IA continua no workspace com contexto." />
-        </div>
-      </section>
+
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-4">
@@ -494,7 +410,7 @@ export default function AdminAgencyCockpit() {
         <div className="space-y-4">
           <SectionHeader
             eyebrow="Ultimos leads"
-            title="Entradas recentes da maquina comercial"
+            title="Empresas captadas recentemente"
             actionHref="/admin/prospeccao"
             actionLabel="Ver todos"
           />
@@ -561,27 +477,6 @@ function ActionButton({
   );
 }
 
-function OperatingLine({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50">
-        <Icon className="h-4 w-4 text-blue-600" />
-      </div>
-      <div>
-        <p className="text-sm font-semibold text-slate-900">{label}</p>
-        <p className="mt-0.5 text-xs leading-5 text-slate-500">{value}</p>
-      </div>
-    </div>
-  );
-}
 
 function SectionHeader({
   eyebrow,
@@ -684,67 +579,12 @@ function PriorityCard({
         <span className="block text-sm font-semibold text-slate-950">{label}</span>
         <span className="mt-1 block text-xs leading-5 text-slate-500">{detail}</span>
       </span>
-      <ArrowRight className="h-4 w-4 shrink-0 text-slate-300" />
+      <ArrowRight className="h-4 w-4 shrink-0 text-slate-700" />
     </Link>
   );
 }
 
-function ArsenalCard({
-  status,
-  icon: Icon,
-  title,
-  text,
-  tone,
-}: {
-  status: string;
-  icon: LucideIcon;
-  title: string;
-  text: string;
-  tone: "blue" | "emerald" | "purple" | "amber";
-}) {
-  const toneClass = {
-    blue: "border-blue-100 bg-blue-50 text-blue-600",
-    emerald: "border-emerald-100 bg-emerald-50 text-emerald-600",
-    purple: "border-purple-100 bg-purple-50 text-purple-600",
-    amber: "border-amber-100 bg-amber-50 text-amber-600",
-  }[tone];
 
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <span className={cx("inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium", toneClass)}>
-          <Icon className="h-3.5 w-3.5" />
-          {status}
-        </span>
-      </div>
-      <h3 className="mt-4 text-sm font-semibold text-slate-950">{title}</h3>
-      <p className="mt-2 text-xs leading-5 text-slate-500">{text}</p>
-    </div>
-  );
-}
-
-function WorkflowStep({
-  number,
-  icon: Icon,
-  title,
-  text,
-}: {
-  number: string;
-  icon: LucideIcon;
-  title: string;
-  text: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-black tracking-[0.18em] text-slate-300">{number}</span>
-        <Icon className="h-4 w-4 text-blue-600" />
-      </div>
-      <h3 className="mt-5 text-sm font-semibold text-slate-950">{title}</h3>
-      <p className="mt-2 text-xs leading-5 text-slate-500">{text}</p>
-    </div>
-  );
-}
 
 function TenantSignalCard({
   tenant,
@@ -832,7 +672,7 @@ function ActivityRow({ activity }: { activity: DashboardActivity }) {
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-5 text-sm text-slate-500">
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
       {text}
     </div>
   );

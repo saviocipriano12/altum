@@ -57,7 +57,7 @@ function normalizeFinanceStatus(value: unknown) {
 
 export async function GET(req: Request) {
   try {
-    await requireRequestUser(req, { roles: ["admin"] });
+    await requireRequestUser(req, { roles: ["agency_admin"] });
     const { searchParams } = new URL(req.url);
     const clientId = clean(searchParams.get("clientId"), 120);
     if (!clientId) {

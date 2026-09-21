@@ -1,3 +1,4 @@
+import { resolveAdminCompany } from "@/lib/server/admin/companies";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
@@ -34,12 +35,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const clientSnap = await adminDb.collection("clientes").doc(clientId).get();
-    if (!clientSnap.exists) {
-      return NextResponse.json({ error: "Cliente nao encontrado." }, { status: 404 });
-    }
-    const clientData = clientSnap.data() as { name?: string; ownerId?: string };
-    if (!isAdmin(user) && clientData.ownerId !== user.uid) {
+    const company = await resolveAdminCompany(user, clientId);
+    const clientData = company.data;
+    if (!isAdmin(user) && company.kind === "commercial" && clientData.ownerId !== user.uid) {
       return NextResponse.json(
         { error: "Sem permissao para criar orcamento neste cliente." },
         { status: 403 }
@@ -87,6 +85,7 @@ export async function POST(req: Request) {
     const ref = await adminDb.collection("orcamentos").add({
       titulo,
       clientId,
+      tenantId: company.tenantId,
       clientName: clientData.name || "Cliente",
       projectId,
       projectTitle,

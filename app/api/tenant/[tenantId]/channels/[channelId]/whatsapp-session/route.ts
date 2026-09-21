@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { canManagePersonalChannel } from "@/lib/server/commercial-access";
 import { getWhatsAppChannelById, isOfficialWhatsAppProvider } from "@/app/lib/server/whatsapp-channel";
 import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
@@ -21,11 +22,18 @@ export async function GET(
     const { tenantId, channelId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
     await assertTenantModule(tenantId, "whatsapp");
-    assertTenantCapability(membership, "manage_channels");
+    const canManageAllChannels = membership.capabilities.includes("manage_channels");
+    const canManageOwnChannel = membership.capabilities.includes("manage_personal_channel");
+    if (!canManageAllChannels && !canManageOwnChannel) {
+      assertTenantCapability(membership, "manage_channels");
+    }
 
     const channel = await getWhatsAppChannelById(channelId);
     if (!channel || channel.tenantId !== tenantId) {
       return NextResponse.json({ error: "Canal WhatsApp nao encontrado." }, { status: 404 });
+    }
+    if (!canManageAllChannels && !canManagePersonalChannel(membership, user.uid, channel as unknown as Record<string, unknown>)) {
+      return NextResponse.json({ error: "Voce so pode consultar o proprio WhatsApp pessoal." }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);

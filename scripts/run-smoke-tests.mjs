@@ -12,7 +12,7 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-const child = spawn(process.execPath, ['--no-warnings', '--test', '--experimental-strip-types', '--experimental-specifier-resolution=node', ...files], {
+const child = spawn(process.execPath, ['--no-warnings', '--import', 'tsx', '--test', ...files], {
   stdio: 'inherit',
   shell: false,
 });

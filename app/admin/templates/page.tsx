@@ -224,6 +224,7 @@ export default function AdminTemplatesPage() {
       if (!response.ok) throw new Error(payload.error || "Falha ao sincronizar templates.");
       setSyncResult(payload);
       await loadTemplates(tenantId.trim() || AGENCY_TENANT_ID);
+      if (payload.ok === false || payload.failed?.length) setError("Sincronização  alguns templates não puderam ser criados. Confira o resultado abaixo.");
     } catch (syncError) {
       setSyncResult(null);
       setError(syncError instanceof Error ? syncError.message : "Falha ao sincronizar templates.");

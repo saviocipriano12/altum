@@ -318,8 +318,8 @@ export async function GET(
           const channelConfig = channelMap.get(channelId) || {};
           const contactPhone = cleanString(chat.contactPhone, 60);
           const leadId = cleanString(chat.leadId, 180);
-          const profile = contacts.byPhone.get(contactPhone) || contacts.byPhone.get(phoneKey(contactPhone)) || contacts.byLeadId.get(leadId);
-          const leadSignal =
+          const profile = chat.isGroup === true ? undefined : contacts.byPhone.get(contactPhone) || contacts.byPhone.get(phoneKey(contactPhone)) || contacts.byLeadId.get(leadId);
+          const leadSignal = chat.isGroup === true ? undefined :
             leadSignals.byLeadId.get(leadId) ||
             leadSignals.byPhone.get(contactPhone) ||
             leadSignals.byPhone.get(phoneKey(contactPhone));

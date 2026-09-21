@@ -310,52 +310,36 @@ export default function AdminIAPage() {
   );
 
   useEffect(() => {
+    const controller = new AbortController();
     async function loadSignals() {
       try {
         setSignalsLoading(true);
         setSignalsError(null);
 
-        const [signalsResponse, usageResponse, jobsResponse, learningResponse, notificationsResponse] = await Promise.all([
-          authedFetch("/api/admin/ai/signals"),
-          authedFetch("/api/admin/ai/usage-summary"),
-          authedFetch("/api/admin/ai/jobs/summary"),
-          authedFetch("/api/admin/ai/learning-summary"),
-          authedFetch("/api/admin/ai/internal-notifications"),
+        const read = async (url: string) => {
+          const response = await authedFetch(url, { signal: controller.signal });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || `Fonte indisponí ${url}`);
+          return payload;
+        };
+        const outcomes = await Promise.allSettled([
+          read("/api/admin/ai/signals").then(payload => { if (!controller.signal.aborted) setSignals(payload as AdminAiSignalsResponse); }),
+          read("/api/admin/ai/usage-summary").then(payload => { if (!controller.signal.aborted) setUsage(payload as AdminAiUsageSummaryResponse); }),
+          read("/api/admin/ai/jobs/summary").then(payload => { if (!controller.signal.aborted) setJobs(payload as AdminAiJobsSummaryResponse); }),
+          read("/api/admin/ai/learning-summary").then(payload => { if (!controller.signal.aborted) setLearning(payload as AdminAiLearningSummaryResponse); }),
+          read("/api/admin/ai/internal-notifications").then(payload => { if (!controller.signal.aborted) setInternalNotifications(payload as AdminAiInternalNotificationsResponse); }),
         ]);
-        const signalsData = (await signalsResponse.json().catch(() => ({}))) as AdminAiSignalsResponse & { error?: string };
-        const usageData = (await usageResponse.json().catch(() => ({}))) as AdminAiUsageSummaryResponse & { error?: string };
-        const jobsData = (await jobsResponse.json().catch(() => ({}))) as AdminAiJobsSummaryResponse & { error?: string };
-        const learningData = (await learningResponse.json().catch(() => ({}))) as AdminAiLearningSummaryResponse & { error?: string };
-        const notificationsData = (await notificationsResponse.json().catch(() => ({}))) as AdminAiInternalNotificationsResponse & { error?: string };
-        if (!signalsResponse.ok) {
-          throw new Error(signalsData.error || "Falha ao carregar sinais da IA.");
-        }
-        if (!usageResponse.ok) {
-          throw new Error(usageData.error || "Falha ao carregar custos da IA.");
-        }
-        if (!jobsResponse.ok) {
-          throw new Error(jobsData.error || "Falha ao carregar fila da IA.");
-        }
-        if (!learningResponse.ok) {
-          throw new Error(learningData.error || "Falha ao carregar aprendizado da IA.");
-        }
-        if (!notificationsResponse.ok) {
-          throw new Error(notificationsData.error || "Falha ao carregar notificacoes internas da IA.");
-        }
-
-        setSignals(signalsData);
-        setUsage(usageData);
-        setJobs(jobsData);
-        setLearning(learningData);
-        setInternalNotifications(notificationsData);
+        const failures = outcomes.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+        if (!controller.signal.aborted && failures.length) setSignalsError(`Cobertura  ${failures.map(result => result.reason instanceof Error ? result.reason.message : "Fonte indisponível").join(" · ")}`);
       } catch (error) {
-        setSignalsError(error instanceof Error ? error.message : "Falha ao carregar sinais da IA.");
+        if (!controller.signal.aborted) setSignalsError(error instanceof Error ? error.message : "Falha ao carregar sinais da IA.");
       } finally {
-        setSignalsLoading(false);
+        if (!controller.signal.aborted) setSignalsLoading(false);
       }
     }
 
     void loadSignals();
+    return () => controller.abort();
   }, []);
 
   const signalSummary = useMemo(() => signals.summary || {}, [signals.summary]);
@@ -534,22 +518,22 @@ export default function AdminIAPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#0d1117] via-[#0a0f13] to-black p-5 md:p-6">
+      <section className="rounded-2xl border border-slate-200 bg-white    p-5 md:p-6">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
-            <p className="text-[11px] uppercase tracking-widest text-blue-300/80">
+            <p className="text-[11px] uppercase tracking-widest text-blue-700">
               Assistente Operacional
             </p>
             <h1 className="text-2xl md:text-3xl font-semibold flex items-center gap-2">
-              <BrainCircuit className="h-7 w-7 text-blue-400" />
+              <BrainCircuit className="h-7 w-7 text-blue-700" />
               IA da ALTUM
             </h1>
-            <p className="text-sm text-white/60 max-w-3xl">
+            <p className="text-sm text-slate-500 max-w-3xl">
               Responde com dados da plataforma e pode executar acoes com confirmacao.
             </p>
           </div>
-          <div className="text-xs text-white/60 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-            Usuario: <span className="text-white/90">{profile?.name || "Operador"}</span>
+          <div className="text-xs text-slate-500 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            Usuario: <span className="text-slate-900">{profile?.name || "Operador"}</span>
           </div>
         </div>
       </section>
@@ -573,18 +557,18 @@ export default function AdminIAPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Worker health</p>
-              <h2 className="mt-1 text-lg font-semibold text-white">Saude do worker de IA</h2>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Worker health</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">Saude do worker de IA</h2>
             </div>
             <span className={`rounded-full border px-2.5 py-1 text-[11px] ${
               workerHealth.status === "healthy"
-                ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
+                ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-700"
                 : workerHealth.status === "degraded"
-                  ? "border-amber-400/25 bg-amber-500/10 text-amber-100"
-                  : "border-rose-400/25 bg-rose-500/10 text-rose-100"
+                  ? "border-amber-400/25 bg-amber-500/10 text-amber-700"
+                  : "border-rose-400/25 bg-rose-500/10 text-rose-700"
             }`}>
               {humanizeWorkerStatus(workerHealth.status)}
             </span>
@@ -598,41 +582,41 @@ export default function AdminIAPage() {
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/75">
-              <p>Ultimo heartbeat: <span className="text-white">{formatDateTime(workerHealth.lastHeartbeatAt)}</span></p>
-              <p className="mt-2">Ultimo sucesso: <span className="text-white">{formatDateTime(workerHealth.lastSuccessAt)}</span></p>
-              <p className="mt-2">Ultima falha: <span className="text-white">{formatDateTime(workerHealth.lastFailureAt)}</span></p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p>Ultimo heartbeat: <span className="text-slate-900">{formatDateTime(workerHealth.lastHeartbeatAt)}</span></p>
+              <p className="mt-2">Ultimo sucesso: <span className="text-slate-900">{formatDateTime(workerHealth.lastSuccessAt)}</span></p>
+              <p className="mt-2">Ultima falha: <span className="text-slate-900">{formatDateTime(workerHealth.lastFailureAt)}</span></p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/75">
-              <p>Ultima duracao: <span className="text-white">{formatDurationMs(workerHealth.lastDurationMs)}</span></p>
-              <p className="mt-2">Tenants stale: <span className="text-white">{jobOverview.staleTenants || 0}</span></p>
-              <p className="mt-2">Ultimo codigo: <span className="text-white">{workerHealth.lastErrorCode || "-"}</span></p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p>Ultima duracao: <span className="text-slate-900">{formatDurationMs(workerHealth.lastDurationMs)}</span></p>
+              <p className="mt-2">Tenants stale: <span className="text-slate-900">{jobOverview.staleTenants || 0}</span></p>
+              <p className="mt-2">Ultimo codigo: <span className="text-slate-900">{workerHealth.lastErrorCode || "-"}</span></p>
             </div>
           </div>
 
           {workerHealth.lastErrorMessage ? (
-            <div className="mt-4 rounded-xl border border-rose-400/20 bg-rose-500/10 p-3 text-sm text-rose-100">
+            <div className="mt-4 rounded-xl border border-rose-400/20 bg-rose-500/10 p-3 text-sm text-rose-700">
               {workerHealth.lastErrorMessage}
             </div>
           ) : null}
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-[#111] p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Risk cards</p>
-              <h2 className="mt-1 text-lg font-semibold text-white">Alertas operacionais acionaveis</h2>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Risk cards</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">Alertas operacionais acionaveis</h2>
             </div>
-            <div className="text-xs text-white/55">{filteredRiskCards.length} alerta(s)</div>
+            <div className="text-xs text-slate-500">{filteredRiskCards.length} alerta(s)</div>
           </div>
 
           <div className="mt-4 space-y-3">
             {filteredRiskCards.length ? filteredRiskCards.map((item) => (
-              <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-white">{item.title}</p>
-                    <p className="mt-1 text-xs text-white/55">
+                    <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                    <p className="mt-1 text-xs text-slate-500">
                       tenant {item.tenantId} · ultima ocorrencia {formatDateTime(item.lastOccurredAt)}
                     </p>
                   </div>
@@ -640,55 +624,55 @@ export default function AdminIAPage() {
                     {item.severity}
                   </span>
                 </div>
-                <p className="mt-2 text-sm text-white/75">{item.detail}</p>
-                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-white/55">
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                <p className="mt-2 text-sm text-slate-700">{item.detail}</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
                     ocorrencias: {item.occurrences || 1}
                   </span>
                   {item.errorCode ? (
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
                       error: {item.errorCode}
                     </span>
                   ) : null}
                   {item.reasonCode ? (
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
                       reason: {item.reasonCode}
                     </span>
                   ) : null}
                 </div>
               </div>
             )) : (
-              <p className="text-sm text-white/45">Nenhum alerta aberto no recorte atual.</p>
+              <p className="text-sm text-slate-500">Nenhum alerta aberto no recorte atual.</p>
             )}
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Tenants em risco</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">Backlog, throughput e falhas por tenant</h2>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Tenants em risco</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">Backlog, throughput e falhas por tenant</h2>
           </div>
-          <div className="text-xs text-white/55">{filteredRiskTenants.length} tenant(s) critico(s)</div>
+          <div className="text-xs text-slate-500">{filteredRiskTenants.length} tenant(s) critico(s)</div>
         </div>
 
         <div className="mt-4 space-y-3">
           {filteredRiskTenants.length ? filteredRiskTenants.slice(0, 8).map((tenant) => (
-            <div key={tenant.tenantId} className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <div key={tenant.tenantId} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-semibold text-white">{tenant.tenantName}</p>
+                    <p className="text-sm font-semibold text-slate-900">{tenant.tenantName}</p>
                     <span className={`rounded-full px-2 py-1 text-[11px] ${
                       tenant.riskLevel === "high"
-                        ? "border border-rose-400/25 bg-rose-500/10 text-rose-100"
-                        : "border border-amber-400/25 bg-amber-500/10 text-amber-100"
+                        ? "border border-rose-400/25 bg-rose-500/10 text-rose-700"
+                        : "border border-amber-400/25 bg-amber-500/10 text-amber-700"
                     }`}>
                       {tenant.riskLevel}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-white/55">
+                  <p className="mt-1 text-xs text-slate-500">
                     tenant {tenant.tenantId} · ultima ocorrencia {formatDateTime(tenant.lastOccurrenceAt)}
                   </p>
                 </div>
@@ -699,33 +683,33 @@ export default function AdminIAPage() {
                   <MiniPill label="dead letter" value={toPercentNumber(tenant.deadLetterRateToday)} tone="violet" />
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-white/65">
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-700">
                 {tenant.riskReasons.map((reason) => (
-                  <span key={`${tenant.tenantId}-${reason}`} className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                  <span key={`${tenant.tenantId}-${reason}`} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
                     {humanizeRiskReason(reason)}
                   </span>
                 ))}
                 {tenant.lastErrorCode ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
                     erro dominante: {tenant.lastErrorCode}
                   </span>
                 ) : null}
               </div>
             </div>
           )) : (
-            <p className="text-sm text-white/45">Nenhum tenant com risco operacional elevado agora.</p>
+            <p className="text-sm text-slate-500">Nenhum tenant com risco operacional elevado agora.</p>
           )}
         </div>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Learning loop</p>
-              <h2 className="mt-1 text-lg font-semibold text-white">O que a IA esta aprendendo</h2>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Learning loop</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">O que a IA esta aprendendo</h2>
             </div>
-            <div className="text-xs text-white/55">
+            <div className="text-xs text-slate-500">
               ultimos 14 dias
             </div>
           </div>
@@ -736,82 +720,82 @@ export default function AdminIAPage() {
             <MiniPill label="qualidade" value={learningSummary.avgQualityScore || 0} tone="violet" />
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-white/45">Objecoes dominantes</p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Objecoes dominantes</p>
               <div className="mt-3 space-y-2">
                 {topLearnedObjections.length ? topLearnedObjections.map((item) => (
-                  <div key={`obj-${item.key}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-white/75">
+                  <div key={`obj-${item.key}`} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                     <span>{item.key}</span>
-                    <span className="text-white/45">{item.count}</span>
+                    <span className="text-slate-500">{item.count}</span>
                   </div>
-                )) : <p className="text-sm text-white/45">Sem objecoes dominantes ainda.</p>}
+                )) : <p className="text-sm text-slate-500">Sem objecoes dominantes ainda.</p>}
               </div>
             </div>
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-white/45">Ofertas mais sugeridas</p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Ofertas mais sugeridas</p>
               <div className="mt-3 space-y-2">
                 {topLearnedOffers.length ? topLearnedOffers.map((item) => (
-                  <div key={`offer-${item.key}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-white/75">
+                  <div key={`offer-${item.key}`} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                     <span>{item.key}</span>
-                    <span className="text-white/45">{item.count}</span>
+                    <span className="text-slate-500">{item.count}</span>
                   </div>
-                )) : <p className="text-sm text-white/45">Sem ofertas dominantes ainda.</p>}
+                )) : <p className="text-sm text-slate-500">Sem ofertas dominantes ainda.</p>}
               </div>
             </div>
           </div>
         </div>
-        <div className="rounded-2xl border border-white/10 bg-[#111] p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Sinais internos</p>
-              <h2 className="mt-1 text-lg font-semibold text-white">O que a IA pediu para o time</h2>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Sinais internos</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">O que a IA pediu para o time</h2>
             </div>
-            <div className="text-xs text-white/55">tempo real operacional</div>
+            <div className="text-xs text-slate-500">tempo real operacional</div>
           </div>
           <div className="mt-4 space-y-3">
             {filteredInternalNotifications.length ? filteredInternalNotifications.slice(0, 8).map((item) => (
-              <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-white">{item.title}</p>
-                    <p className="mt-1 text-xs text-white/55">
+                    <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                    <p className="mt-1 text-xs text-slate-500">
                       tenant {item.tenantId} · lead {item.leadId || "-"} · chat {item.chatId || "-"}
                     </p>
                   </div>
                   <span className={`rounded-full px-2 py-1 text-[11px] ${
                     item.severity === "high"
-                      ? "border border-rose-400/25 bg-rose-500/10 text-rose-100"
+                      ? "border border-rose-400/25 bg-rose-500/10 text-rose-700"
                       : item.severity === "warning"
-                        ? "border border-amber-400/25 bg-amber-500/10 text-amber-100"
-                        : "border border-blue-400/25 bg-blue-500/10 text-blue-100"
+                        ? "border border-amber-400/25 bg-amber-500/10 text-amber-700"
+                        : "border border-blue-400/25 bg-blue-500/10 text-blue-700"
                   }`}>
                     {item.severity}
                   </span>
                 </div>
-                <p className="mt-2 text-sm text-white/75">{item.detail}</p>
-                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-white/40">
+                <p className="mt-2 text-sm text-slate-700">{item.detail}</p>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-400">
                   <span>{formatDateTime(item.lastOccurredAt || item.createdAt)}</span>
                   {item.errorCode ? <span>error {item.errorCode}</span> : null}
                   {item.reasonCode ? <span>reason {item.reasonCode}</span> : null}
                 </div>
               </div>
-            )) : <p className="text-sm text-white/45">Sem notificacoes internas recentes.</p>}
+            )) : <p className="text-sm text-slate-500">Sem notificacoes internas recentes.</p>}
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Supervisao da ALTUM</p>
-              <h2 className="mt-1 text-lg font-semibold text-white">Tenants com mais sinais da IA</h2>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Supervisao da ALTUM</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">Tenants com mais sinais da IA</h2>
             </div>
             <div className="flex items-center gap-2">
               <select
                 value={selectedTenantId}
                 onChange={(event) => setSelectedTenantId(event.target.value)}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/75 outline-none"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 outline-none"
               >
                 <option value="all">Todos os tenants</option>
                 {tenantOptions.map((tenant) => (
@@ -820,35 +804,35 @@ export default function AdminIAPage() {
                   </option>
                 ))}
               </select>
-              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/65">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700">
                 {signalsLoading ? "Atualizando..." : `${tenantOptions.length} tenant(s) no radar`}
               </div>
             </div>
           </div>
 
           {signalsError ? (
-            <p className="mt-4 text-sm text-rose-200">{signalsError}</p>
+            <p className="mt-4 text-sm text-rose-700">{signalsError}</p>
           ) : signalsLoading ? (
-            <div className="mt-6 inline-flex items-center gap-2 text-sm text-white/60">
+            <div className="mt-6 inline-flex items-center gap-2 text-sm text-slate-500">
               <Loader2 className="h-4 w-4 animate-spin" />
               Carregando sinais operacionais...
             </div>
           ) : tenantSignals.length === 0 ? (
-            <p className="mt-4 text-sm text-white/55">Nenhum sinal recente da IA no recorte atual.</p>
+            <p className="mt-4 text-sm text-slate-500">Nenhum sinal recente da IA no recorte atual.</p>
           ) : (
             <div className="mt-4 space-y-3">
               {(selectedTenant ? [selectedTenant] : tenantSignals).map((tenant) => {
                 const businessProfile = getBusinessProfile(normalizeBusinessProfileId(tenant.businessProfileId));
                 return (
-                <div key={tenant.tenantId} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <div key={tenant.tenantId} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{tenant.tenantName}</p>
-                      <p className="mt-1 text-xs text-white/50">
+                      <p className="text-sm font-semibold text-slate-900">{tenant.tenantName}</p>
+                      <p className="mt-1 text-xs text-slate-500">
                         Tenant {tenant.tenantId} Â· modo {businessProfile.label}
                       </p>
                     </div>
-                    <div className="text-right text-xs text-white/55">
+                    <div className="text-right text-xs text-slate-500">
                       <p>{tenant.totalSignals} sinais</p>
                       <p>{formatDateTime(tenant.lastSignalAt)}</p>
                     </div>
@@ -865,13 +849,13 @@ export default function AdminIAPage() {
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Link
                         href={`/admin/clientes/${tenant.legacyClientId}`}
-                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/75 transition hover:bg-white/10"
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 transition hover:bg-slate-50"
                       >
                         Abrir cliente
                       </Link>
                       <Link
                         href={`/admin/clientes/${tenant.legacyClientId}/portal`}
-                        className="rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-100 transition hover:bg-blue-500/15"
+                        className="rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-700 transition hover:bg-blue-500/15"
                       >
                         Abrir portal
                       </Link>
@@ -883,51 +867,51 @@ export default function AdminIAPage() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-[#111] p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Pulso da inteligencia</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">Ultimos sinais</h2>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Pulso da inteligencia</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">Ultimos sinais</h2>
           </div>
 
           <div className="mt-4 space-y-3">
             {filteredRecentSignals.length === 0 ? (
-              <p className="text-sm text-white/55">Sem sinais recentes para mostrar.</p>
+              <p className="text-sm text-slate-500">Sem sinais recentes para mostrar.</p>
             ) : (
               filteredRecentSignals.slice(0, 10).map((item) => {
                 const businessProfile = getBusinessProfile(normalizeBusinessProfileId(item.businessProfileId));
                 return (
-                <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{item.tenantName}</p>
-                      <p className="mt-1 text-xs text-white/55">
+                      <p className="text-sm font-semibold text-slate-900">{item.tenantName}</p>
+                      <p className="mt-1 text-xs text-slate-500">
                         {humanizeAiNextAction(item.nextAction)} Â· {humanizeDecision(item.decision)} Â· {businessProfile.label}
                       </p>
                     </div>
-                    <span className="text-[11px] text-white/45">{formatDateTime(item.createdAt)}</span>
+                    <span className="text-[11px] text-slate-500">{formatDateTime(item.createdAt)}</span>
                   </div>
-                  <p className="mt-2 text-xs text-white/50">
+                  <p className="mt-2 text-xs text-slate-500">
                     lead {item.leadId || "-"} Â· chat {item.chatId || "-"} Â· {item.provider || "provider"} / {item.model || "model"}
                   </p>
                   {item.plannerIntent || item.responseGoal || item.stateAfter || item.recommendedOffer || item.objectionType || item.commercialTemperature ? (
-                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-white/65">
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-700">
                       {item.plannerIntent ? (
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">intencao: {item.plannerIntent}</span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">intencao: {item.plannerIntent}</span>
                       ) : null}
                       {item.responseGoal ? (
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">objetivo: {item.responseGoal}</span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">objetivo: {item.responseGoal}</span>
                       ) : null}
                       {item.stateAfter ? (
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">estado: {item.stateAfter}</span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">estado: {item.stateAfter}</span>
                       ) : null}
                       {item.recommendedOffer ? (
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">oferta: {item.recommendedOffer}</span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">oferta: {item.recommendedOffer}</span>
                       ) : null}
                       {item.objectionType ? (
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">objecao: {item.objectionType}</span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">objecao: {item.objectionType}</span>
                       ) : null}
                       {item.commercialTemperature ? (
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">temperatura: {item.commercialTemperature}</span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">temperatura: {item.commercialTemperature}</span>
                       ) : null}
                     </div>
                   ) : null}
@@ -935,13 +919,13 @@ export default function AdminIAPage() {
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Link
                         href={`/admin/clientes/${item.legacyClientId}`}
-                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] text-white/75 transition hover:bg-white/10"
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-700 transition hover:bg-slate-50"
                       >
                         Cliente
                       </Link>
                       <Link
                         href={`/admin/clientes/${item.legacyClientId}/portal`}
-                        className="rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-1.5 text-[11px] text-blue-100 transition hover:bg-blue-500/15"
+                        className="rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-1.5 text-[11px] text-blue-700 transition hover:bg-blue-500/15"
                       >
                         Portal
                       </Link>
@@ -952,16 +936,16 @@ export default function AdminIAPage() {
             )}
           </div>
 
-          <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-3">
-            <p className="text-xs uppercase tracking-wide text-white/55">Acoes mais frequentes</p>
+          <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Acoes mais frequentes</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {topActions.length === 0 ? (
-                <span className="text-xs text-white/45">Sem recorrencia suficiente ainda.</span>
+                <span className="text-xs text-slate-500">Sem recorrencia suficiente ainda.</span>
               ) : (
                 topActions.map((action) => (
                   <span
                     key={action.key}
-                    className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/75"
+                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
                   >
                     {humanizeAiNextAction(action.key)} Â· {action.count}
                   </span>
@@ -973,61 +957,61 @@ export default function AdminIAPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Custos e provedores</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">O que esta gerando uso de IA</h2>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Custos e provedores</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">O que esta gerando uso de IA</h2>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {(usage.providers || []).slice(0, 6).map((item) => (
-              <div key={item.provider} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <p className="text-sm font-semibold text-white">{item.provider}</p>
-                <p className="mt-1 text-xs text-white/55">{item.runs} execucao(oes)</p>
-                <p className="mt-2 text-sm text-emerald-200">US$ {Number(item.estimatedCostUsd || 0).toFixed(4)}</p>
+              <div key={item.provider} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-slate-900">{item.provider}</p>
+                <p className="mt-1 text-xs text-slate-500">{item.runs} execucao(oes)</p>
+                <p className="mt-2 text-sm text-emerald-700">US$ {Number(item.estimatedCostUsd || 0).toFixed(4)}</p>
               </div>
             ))}
             {!(usage.providers || []).length ? (
-              <p className="text-sm text-white/55">Sem dados de custo suficientes ainda. As novas execucoes vao alimentar este painel.</p>
+              <p className="text-sm text-slate-500">Sem dados de custo suficientes ainda. As novas execucoes vao alimentar este painel.</p>
             ) : null}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-[#111] p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.14em] text-white/45">Tenants com maior consumo</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">Onde a IA esta pesando mais</h2>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Tenants com maior consumo</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">Onde a IA esta pesando mais</h2>
           </div>
           <div className="mt-4 space-y-3">
             {(usage.topTenants || []).slice(0, 8).map((item) => (
-              <div key={item.tenantId} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <p className="text-sm font-semibold text-white">{item.tenantName}</p>
-                <p className="mt-1 text-xs text-white/55">{item.runs} execucao(oes)</p>
-                <p className="mt-2 text-sm text-amber-200">US$ {Number(item.estimatedCostUsd || 0).toFixed(4)}</p>
+              <div key={item.tenantId} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-slate-900">{item.tenantName}</p>
+                <p className="mt-1 text-xs text-slate-500">{item.runs} execucao(oes)</p>
+                <p className="mt-2 text-sm text-amber-700">US$ {Number(item.estimatedCostUsd || 0).toFixed(4)}</p>
               </div>
             ))}
             {!(usage.topTenants || []).length ? (
-              <p className="text-sm text-white/55">Ainda nao ha volume suficiente para ranquear tenants por custo.</p>
+              <p className="text-sm text-slate-500">Ainda nao ha volume suficiente para ranquear tenants por custo.</p>
             ) : null}
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 rounded-2xl border border-white/10 bg-[#0f0f10] p-4 space-y-4">
+        <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 space-y-4">
           <div className="flex flex-wrap gap-2">
             {SUGGESTIONS.map((suggestion) => (
               <button
                 key={suggestion}
                 onClick={() => ask(suggestion)}
                 disabled={loading}
-                className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[11px] text-white/80 hover:bg-white/10 transition disabled:opacity-60"
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-900 hover:bg-slate-50 transition disabled:opacity-60"
               >
                 {suggestion}
               </button>
             ))}
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/30 p-3 h-[430px] overflow-y-auto space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 h-[430px] overflow-y-auto space-y-3">
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -1037,27 +1021,27 @@ export default function AdminIAPage() {
               >
                 {message.role === "assistant" && (
                   <div className="h-7 w-7 rounded-full bg-blue-500/20 border border-blue-400/30 flex items-center justify-center shrink-0">
-                    <Bot className="h-4 w-4 text-blue-300" />
+                    <Bot className="h-4 w-4 text-blue-700" />
                   </div>
                 )}
                 <div
                   className={`max-w-[85%] whitespace-pre-line rounded-xl px-3 py-2 text-sm ${
                     message.role === "assistant"
-                      ? "bg-white/5 border border-white/10 text-white/85"
-                      : "bg-blue-600/20 border border-blue-500/40 text-blue-100"
+                      ? "bg-slate-50 border border-slate-200 text-slate-900"
+                      : "bg-blue-600/20 border border-blue-500/40 text-blue-700"
                   }`}
                 >
                   {message.content}
                 </div>
                 {message.role === "user" && (
-                  <div className="h-7 w-7 rounded-full bg-white/10 border border-white/20 flex items-center justify-center shrink-0">
-                    <User className="h-4 w-4 text-white/70" />
+                  <div className="h-7 w-7 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+                    <User className="h-4 w-4 text-slate-700" />
                   </div>
                 )}
               </div>
             ))}
             {loading && (
-              <div className="inline-flex items-center gap-2 text-xs text-white/60">
+              <div className="inline-flex items-center gap-2 text-xs text-slate-500">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 IA consultando dados...
               </div>
@@ -1065,14 +1049,14 @@ export default function AdminIAPage() {
           </div>
 
           {pendingAction && (
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 space-y-2">
-              <p className="text-xs uppercase tracking-wide text-emerald-200">
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-50 p-3 space-y-2">
+              <p className="text-xs uppercase tracking-wide text-emerald-700">
                 Acao sugerida (requer confirmacao)
               </p>
-              <p className="text-sm text-emerald-100">
+              <p className="text-sm text-emerald-700">
                 {pendingAction.preview?.title || "Criar atividade"}
               </p>
-              <p className="text-xs text-emerald-100/80">
+              <p className="text-xs text-emerald-700">
                 {pendingAction.preview?.description || pendingAction.payload?.descricao || "-"}
               </p>
               <div className="flex gap-2">
@@ -1086,7 +1070,7 @@ export default function AdminIAPage() {
                 <button
                   onClick={() => setPendingAction(null)}
                   disabled={confirming}
-                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs text-white/75 hover:bg-white/10 transition"
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition"
                 >
                   Cancelar
                 </button>
@@ -1099,13 +1083,13 @@ export default function AdminIAPage() {
               event.preventDefault();
               if (canSend) void ask(input);
             }}
-            className="rounded-xl border border-white/10 bg-black/20 p-2 flex items-center gap-2"
+            className="rounded-xl border border-slate-200 bg-slate-50 p-2 flex items-center gap-2"
           >
             <input
               value={input}
               onChange={(event) => setInput(event.target.value)}
               placeholder="Pergunte sobre clientes, financeiro, projetos ou peca para criar follow-up..."
-              className="flex-1 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-white/35"
+              className="flex-1 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-slate-400"
             />
             <button
               type="submit"
@@ -1119,12 +1103,12 @@ export default function AdminIAPage() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-[#111] p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-blue-300" />
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-blue-700" />
               O que esta IA ja faz
             </h2>
-            <ul className="mt-3 space-y-2 text-xs text-white/75">
+            <ul className="mt-3 space-y-2 text-xs text-slate-700">
               {capabilities.map((item) => (
                 <li key={item} className="leading-relaxed">
                   - {item}
@@ -1133,12 +1117,12 @@ export default function AdminIAPage() {
             </ul>
           </div>
 
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/10 p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-100 flex items-center gap-2">
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-50 p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-700 flex items-center gap-2">
               <Lightbulb className="h-4 w-4" />
               Proximos upgrades
             </h2>
-            <ul className="mt-3 space-y-2 text-xs text-emerald-100/85">
+            <ul className="mt-3 space-y-2 text-xs text-emerald-700">
               <li>- Disparo de follow-up no WhatsApp com aprovacao.</li>
               <li>- Resumo diario automatico do CEO.</li>
               <li>- Alertas de risco de churn por cliente.</li>
@@ -1214,9 +1198,9 @@ function humanizeRiskReason(value: string) {
 }
 
 function severityBadgeClass(value?: string) {
-  if (value === "high") return "border border-rose-400/25 bg-rose-500/10 text-rose-100";
-  if (value === "warning") return "border border-amber-400/25 bg-amber-500/10 text-amber-100";
-  return "border border-blue-400/25 bg-blue-500/10 text-blue-100";
+  if (value === "high") return "border border-rose-400/25 bg-rose-500/10 text-rose-700";
+  if (value === "warning") return "border border-amber-400/25 bg-amber-500/10 text-amber-700";
+  return "border border-blue-400/25 bg-blue-500/10 text-blue-700";
 }
 
 function toPercentNumber(value?: number) {
@@ -1240,13 +1224,13 @@ function SignalMetric({
   icon: typeof Activity;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#0f0f10] p-4">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-white/45">{label}</p>
-          <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
         </div>
-        <div className="rounded-xl border border-blue-400/20 bg-blue-500/10 p-2 text-blue-200">
+        <div className="rounded-xl border border-blue-400/20 bg-blue-500/10 p-2 text-blue-700">
           <Icon className="h-4 w-4" />
         </div>
       </div>
@@ -1264,10 +1248,10 @@ function MiniPill({
   tone: "amber" | "blue" | "emerald" | "violet";
 }) {
   const tones: Record<typeof tone, string> = {
-    amber: "border-amber-400/20 bg-amber-500/10 text-amber-100",
-    blue: "border-blue-400/20 bg-blue-500/10 text-blue-100",
-    emerald: "border-emerald-400/20 bg-emerald-500/10 text-emerald-100",
-    violet: "border-violet-400/20 bg-violet-500/10 text-violet-100",
+    amber: "border-amber-400/20 bg-amber-500/10 text-amber-700",
+    blue: "border-blue-400/20 bg-blue-500/10 text-blue-700",
+    emerald: "border-emerald-400/20 bg-emerald-500/10 text-emerald-700",
+    violet: "border-violet-400/20 bg-violet-500/10 text-violet-700",
   };
 
   return (

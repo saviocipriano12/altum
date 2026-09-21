@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as Body;
     const clientId = String(body.clientId || "").trim();
 
-    if (!clientId) {
+    if (!/^[A-Za-z0-9_-]{1,180}$/.test(clientId)) {
       return NextResponse.json({ error: "Campo obrigatorio: clientId." }, { status: 400 });
     }
 
@@ -27,15 +27,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Sem permissao para excluir este cliente." }, { status: 403 });
     }
 
-    await clientRef.delete();
-
-    await adminDb.collection("audit_logs").add({
+    await adminDb.runTransaction(async transaction => {
+      const [current, directTenant, directContract, ...dependencies] = await Promise.all([
+        transaction.get(clientRef), transaction.get(adminDb.collection("tenants").doc(clientId)), transaction.get(adminDb.collection("client_contracts").doc(clientId)),
+        ...["projetos", "financeiro", "orcamentos", "ad_accounts", "client_contracts", "atividades"].map(collection => transaction.get(adminDb.collection(collection).where("clientId", "==", clientId).limit(1))),
+        transaction.get(adminDb.collection("tenants").where("legacyClientId", "==", clientId).limit(1)),
+      ]);
+      if (!current.exists) throw new RouteAuthError(404, "company_not_found", "Empresa não encontrada.");
+      if (!isAdmin(user) && current.data()?.ownerId !== user.uid) throw new RouteAuthError(403, "company_access_denied", "Empresa fora da sua carteira.");
+      if (directTenant.exists || directContract.exists || dependencies.some(snapshot => !snapshot.empty)) throw new RouteAuthError(409, "company_has_dependencies", "Esta empresa possui histórico, contrato ou workspace. Preserve o cadastro e encerre a operação pela ficha da empresa.");
+      transaction.delete(clientRef);
+      transaction.set(adminDb.collection("audit_logs").doc(), {
       type: "client_delete",
       actorId: user.uid,
       actorName: user.name,
       clientId,
       clientName: String(clientSnap.data()?.name || ""),
       createdAt: new Date(),
+      });
     });
 
     return NextResponse.json({ ok: true, clientId });

@@ -20,6 +20,7 @@ import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
 import { parseEvolutionWebhook, type EvolutionInbound } from "@/lib/server/messaging/evolution-webhook";
 import { cacheEvolutionProfilePicture, downloadEvolutionInboundMedia, fetchEvolutionProfilePicture } from "@/lib/server/messaging/evolution-provider";
 import { resolveCanonicalWhatsAppChat } from "@/lib/server/whatsapp-chat-identity";
+import { isEvolutionWhatsAppProvider } from "@/lib/server/messaging/registry";
 
 function sanitizeId(value: string, max = 220) {
   const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, "_").trim();
@@ -457,6 +458,7 @@ async function persistGenericWhatsAppInbound(input: {
   channel: NonNullable<Awaited<ReturnType<typeof getWhatsAppChannelById>>>;
   from: string;
   text: string;
+  group?: Pick<EvolutionInbound, "isGroup" | "groupJid" | "groupName" | "participantJid" | "participantName">;
   contactName?: string;
   messageId?: string;
   messageType?: string;
@@ -464,9 +466,10 @@ async function persistGenericWhatsAppInbound(input: {
 }) {
   const tenantId = input.channel.tenantId;
   const phoneNumberId = input.channel.phoneNumberId || input.channel.id;
-  const from = normalizePhone(input.from);
+  const isGroup = input.group?.isGroup === true && /@g\.us$/i.test(input.group.groupJid);
+  const from = isGroup ? input.group!.groupJid : normalizePhone(input.from);
   const text = cleanString(input.text, 4000);
-  const contactName = cleanString(input.contactName, 180) || from || "Contato";
+  const contactName = isGroup ? cleanString(input.group?.groupName, 180) || "Grupo do WhatsApp" : cleanString(input.contactName, 180) || from || "Contato";
   const inboundMessageId = cleanString(input.messageId, 260) || `generic_${Date.now()}_${from}`;
   const messageType = normalizeInboundMessageType(input.messageType || "text");
 
@@ -486,14 +489,14 @@ async function persistGenericWhatsAppInbound(input: {
     };
   }
 
-  const ownerFromLead = await resolveLeadOwner(from, tenantId);
+  const ownerFromLead = isGroup ? { leadId: "", ownerId: null } : await resolveLeadOwner(from, tenantId);
   let resolvedLeadId = ownerFromLead.leadId;
   let resolvedOwnerId = input.channel.channelScope === "personal" && input.channel.ownerUserId
     ? input.channel.ownerUserId
     : ownerFromLead.ownerId || input.channel.ownerUserId || null;
   let resolvedOwnerName = await resolveOwnerName(resolvedOwnerId);
 
-  if (!resolvedLeadId) {
+  if (!isGroup && !resolvedLeadId) {
     const inboundAssignee = input.channel.channelScope === "personal" && input.channel.ownerUserId
       ? { userId: input.channel.ownerUserId, name: input.channel.ownerUserName || await resolveOwnerName(input.channel.ownerUserId) || "Vendedor" }
       : input.channel.distributionEnabled !== false
@@ -524,6 +527,9 @@ async function persistGenericWhatsAppInbound(input: {
     channelId: input.channel.id,
     phone: from,
     createData: {
+      isGroup,
+      conversationType: isGroup ? "group" : "direct",
+      ...(isGroup ? { groupJid: from, groupName: contactName, aiEnabled: false } : {}),
       contactName,
       contactPhone: from,
       contactPhoneNormalized: from,
@@ -558,7 +564,10 @@ async function persistGenericWhatsAppInbound(input: {
       : chatData.ownerId || chatData.assignedTo || resolvedOwnerId;
     await canonicalChat.chatRef.set(
       {
-        contactName,
+        isGroup,
+        conversationType: isGroup ? "group" : "direct",
+        ...(isGroup ? { groupJid: from, groupName: contactName, aiEnabled: false } : {}),
+        contactName: isGroup && !input.group?.groupName ? chatDoc.data()?.contactName || contactName : contactName,
         channel: "whatsapp",
         channelId: input.channel.id,
         channelPhoneNumberId: phoneNumberId,
@@ -582,7 +591,7 @@ async function persistGenericWhatsAppInbound(input: {
     );
   }
 
-  await upsertContactProfile({
+  if (!isGroup) await upsertContactProfile({
     tenantId,
     phone: from,
     leadId: resolvedLeadId,
@@ -593,7 +602,7 @@ async function persistGenericWhatsAppInbound(input: {
   const existingPhotoSource = cleanString(chatDoc.data()?.contactPhotoSource, 80);
   // URLs da Evolution expiram. Enquanto a foto ainda não estiver armazenada
   // pela Altum, cada nova interação pode reparar uma URL antiga/quebrada.
-  if (input.channel.provider === "evolution" && existingPhotoSource !== "whatsapp_profile_cached") {
+  if (!isGroup && isEvolutionWhatsAppProvider(input.channel.provider) && existingPhotoSource !== "whatsapp_profile_cached") {
     after(async () => {
       try {
         const remotePhotoUrl = await fetchEvolutionProfilePicture(input.channel, from);
@@ -639,6 +648,7 @@ async function persistGenericWhatsAppInbound(input: {
       chatId,
       text,
       sender: "client",
+      ...(isGroup ? { participantJid: input.group?.participantJid || "", participantName: input.group?.participantName || "", senderName: input.group?.participantName || "Participante", isGroup: true } : {}),
       type: messageType,
       tenantId,
       channel: "whatsapp",
@@ -663,7 +673,7 @@ async function persistGenericWhatsAppInbound(input: {
       let filename = input.media.mediaName;
       // O webhook da Evolution pode trazer apenas a miniatura em `base64`.
       // Para exibir e analisar o arquivo real, sempre baixamos a midia original.
-      if (input.channel.provider === "evolution") {
+      if (isEvolutionWhatsAppProvider(input.channel.provider)) {
         const downloaded = await downloadEvolutionInboundMedia(input.channel, input.media.rawMessage);
         base64 = downloaded.base64;
         contentType = downloaded.contentType || contentType;
@@ -717,7 +727,7 @@ async function persistGenericWhatsAppInbound(input: {
     });
   }
 
-  const queue = await enqueueIncomingMessageJob({
+  const queue = isGroup ? null : await enqueueIncomingMessageJob({
     tenantId,
     chatId,
     messageId: incomingMessageRef.id,
@@ -725,8 +735,10 @@ async function persistGenericWhatsAppInbound(input: {
     dedupeKey: `${tenantId}_${incomingMessageRef.id}`,
   });
 
-  await processAiJobNow(queue.jobId);
-  triggerAiQueueWorker({ limit: 8, drain: true });
+  if (queue) {
+    await processAiJobNow(queue.jobId);
+    triggerAiQueueWorker({ limit: 8, drain: true });
+  }
 
   if (claim.eventRef) {
     await claim.eventRef.set(
@@ -749,8 +761,8 @@ async function persistGenericWhatsAppInbound(input: {
     tenantId,
     chatId,
     phoneNumberId,
-    queueJobId: queue.jobId,
-    queueCreated: queue.created,
+    queueJobId: queue?.jobId || null,
+    queueCreated: queue?.created || false,
   };
 }
 
@@ -776,7 +788,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Token do gateway invalido." }, { status: 401 });
       }
 
-      const evolutionEvent = channel.provider === "evolution" ? parseEvolutionWebhook(body) : null;
+      const evolutionEvent = isEvolutionWhatsAppProvider(channel.provider) ? parseEvolutionWebhook(body) : null;
       if (evolutionEvent?.kind === "delivery") {
         const result = await persistWhatsappStatusEvents({
           tenantId: channel.tenantId,
@@ -813,11 +825,12 @@ export async function POST(req: Request) {
         return NextResponse.json({ status: "ok_connection_update", tenantId: channel.tenantId, connectionStatus });
       }
       const evolutionInbound = evolutionEvent?.kind === "message" ? evolutionEvent : null;
-      if (channel.provider === "evolution" && !evolutionInbound) {
+      if (isEvolutionWhatsAppProvider(channel.provider) && !evolutionInbound) {
         return NextResponse.json({ status: "ignored_evolution_event" });
       }
       const result = await persistGenericWhatsAppInbound({
         channel,
+        group: evolutionInbound || undefined,
         from: evolutionInbound?.from ||
           cleanString(body.from, 80) ||
           cleanString(body.phone, 80) ||
@@ -1287,9 +1300,9 @@ export async function POST(req: Request) {
           chatId,
           tenantId,
           messageDocId: incomingMessageRef.id,
-          queueJobId: queue.jobId,
-          queueCreated: queue.created,
-          queueStatus: queue.status,
+          queueJobId: queue?.jobId || null,
+          queueCreated: queue?.created || false,
+          queueStatus: queue?.status || "group_ai_disabled",
           processedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -1302,8 +1315,8 @@ export async function POST(req: Request) {
       chatId,
       tenantId,
       phoneNumberId: channel.phoneNumberId,
-      queueJobId: queue.jobId,
-      queueCreated: queue.created,
+      queueJobId: queue?.jobId || null,
+      queueCreated: queue?.created || false,
     });
     } catch (error) {
     if (eventRef) {

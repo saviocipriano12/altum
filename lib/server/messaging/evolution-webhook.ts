@@ -63,6 +63,7 @@ function phoneJid(value: unknown) {
 
 function resolveInboundJid(body: Record<string, unknown>, data: Record<string, unknown>, key: Record<string, unknown>) {
   const remoteJid = clean(key.remoteJid, 180);
+  if (/@g\.us$/i.test(remoteJid)) return remoteJid;
   if (phoneJid(remoteJid)) return remoteJid;
 
   const candidates = [
@@ -77,6 +78,11 @@ function resolveInboundJid(body: Record<string, unknown>, data: Record<string, u
 
 export type EvolutionInbound = {
   kind: "message";
+  isGroup: boolean;
+  groupJid: string;
+  groupName: string;
+  participantJid: string;
+  participantName: string;
   from: string;
   text: string;
   contactName: string;
@@ -164,12 +170,18 @@ export function parseEvolutionWebhook(body: Record<string, unknown>): EvolutionW
   const type = selectedMedia?.[0] || "text";
   const media = selectedMedia?.[1] || {};
   const remoteJid = resolveInboundJid(body, data, key);
-  const from = remoteJid.split("@")[0].replace(/\D/g, "");
+  const isGroup = /@g\.us$/i.test(remoteJid);
+  const from = isGroup ? remoteJid : remoteJid.split("@")[0].replace(/\D/g, "");
   const fallback = type === "image" ? "[Imagem recebida]" : type === "video" ? "[Video recebido]" : type === "document" ? "[Arquivo recebido]" : type === "audio" ? "[Audio recebido]" : "";
   const text = clean(message.conversation) || clean(extended.text) || clean(media.caption) || fallback;
   if (!from || (!text && type === "text")) return null;
   return {
     kind: "message",
+    isGroup,
+    groupJid: isGroup ? remoteJid : "",
+    groupName: isGroup ? clean(data.groupSubject || data.subject || record(data.groupMetadata).subject, 180) : "",
+    participantJid: isGroup ? clean(key.participantAlt || key.participant, 180) : "",
+    participantName: isGroup ? clean(data.pushName, 180) : "",
     from,
     text,
     contactName: clean(data.pushName, 180) || from,

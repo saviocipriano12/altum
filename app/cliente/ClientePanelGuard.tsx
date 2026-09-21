@@ -15,9 +15,12 @@ import {
   type TenantLimitId,
   type TenantModuleId,
 } from "@/lib/tenant-entitlements";
+import { getClientBillingRedirect } from "@/lib/client-billing-redirect";
 import { getClientRouteAccessRule } from "@/lib/client-route-access";
+import { readClientPreference, writeClientPreference } from "@/lib/client-storage";
 
 type TenantSession = {
+  userId: string;
   tenantId: string;
   tenantName?: string;
   tenantRole?: string;
@@ -52,6 +55,7 @@ type MeResponse = {
   };
   error?: string;
   code?: string;
+  tenantId?: string;
   billing?: {
     status?: string;
     provider?: string | null;
@@ -105,6 +109,8 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(() => !cachedTenantSession);
   const [tenant, setTenant] = useState<TenantSession | null>(() => cachedTenantSession);
+  const [loadError, setLoadError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const requestedTenantId = String(searchParams.get("tenantId") || "").trim();
   const currentQuery = searchParams.toString();
   const isPublicClientRoute = PUBLIC_CLIENT_ROUTES.has(pathname);
@@ -130,6 +136,8 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
       return;
     }
 
+    let active = true;
+    const controller = new AbortController();
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         cachedTenantSession = null;
@@ -143,7 +151,7 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
       try {
         const storedTenantId =
           typeof window !== "undefined"
-            ? String(window.localStorage.getItem(ACTIVE_TENANT_STORAGE_KEY) || "").trim()
+            ? String(readClientPreference(ACTIVE_TENANT_STORAGE_KEY) || "").trim()
             : "";
         const tenantHint = requestedTenantId || storedTenantId;
         if (
@@ -157,15 +165,20 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
         }
 
         setLoading(true);
+        setLoadError(false);
         const endpoint = tenantHint
           ? `/api/client-portal/me?tenantId=${encodeURIComponent(tenantHint)}`
           : "/api/client-portal/me";
-        const res = await authedFetch(endpoint);
+        const res = await authedFetch(endpoint, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]) });
         const payload = (await res.json()) as MeResponse;
+        if (!active || auth.currentUser?.uid !== user.uid) return;
 
-        if (res.status === 402 && ["trial_expired", "billing_grace_expired", "subscription_ended"].includes(String(payload.code || ""))) {
+        const billingHref = getClientBillingRedirect(payload, res.status);
+        if (billingHref) {
+          cachedTenantSession = null;
+          cachedTenantUserId = "";
           setTenant(null);
-          router.replace(`/cliente/assinatura?reason=${encodeURIComponent(String(payload.code || "access_required"))}`);
+          router.replace(billingHref);
           return;
         }
         if (res.status === 403 && payload.code === "email_not_verified") {
@@ -183,11 +196,13 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
           cachedTenantSession = null;
           cachedTenantUserId = "";
           setTenant(null);
-          router.replace(loginHrefRef.current);
+          if (res.status === 401 || res.status === 403) router.replace(loginHrefRef.current);
+          else setLoadError(true);
           return;
         }
 
         const nextTenant: TenantSession = {
+          userId: user.uid,
           tenantId: payload.portalUser.tenantId,
           tenantName: payload.portalUser.tenantName,
           tenantRole: payload.portalUser.tenantRole,
@@ -212,27 +227,36 @@ export default function ClientePanelGuard({ children }: { children: React.ReactN
         cachedTenantUserId = user.uid;
         setTenant(nextTenant);
         if (typeof window !== "undefined" && nextTenant.tenantId) {
-          window.localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, nextTenant.tenantId);
+          writeClientPreference(ACTIVE_TENANT_STORAGE_KEY, nextTenant.tenantId);
         }
       } catch {
+        if (!active || auth.currentUser?.uid !== user.uid) return;
         cachedTenantSession = null;
         cachedTenantUserId = "";
         setTenant(null);
-        router.replace(loginHrefRef.current);
+        setLoadError(true);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     });
 
-    return () => unsub();
-  }, [isPublicClientRoute, requestedTenantId, router]);
+    return () => { active = false; controller.abort(); unsub(); };
+  }, [isPublicClientRoute, requestedTenantId, retryCount, router]);
 
+  if (isPublicClientRoute) return <>{children}</>;
   if (loading) {
     return <ClienteAppOpening />;
   }
 
-  if (isPublicClientRoute) return <>{children}</>;
-  if (!tenant) return null;
+  if (loadError) return <main className="grid min-h-[100dvh] place-items-center bg-[#f4f6f9] p-5 text-slate-950">
+    <section role="alert" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6">
+      <h1 className="text-xl font-bold">Não conseguimos carregar sua conta</h1>
+      <p className="mt-3 text-sm leading-6 text-slate-600">Confira sua conexão e tente novamente. Você não precisa digitar sua senha outra vez.</p>
+      <button onClick={() => { setLoading(true); setLoadError(false); setRetryCount(value => value + 1); }} className="mt-5 min-h-11 w-full rounded-xl bg-blue-600 px-4 font-semibold text-white">Tentar novamente</button>
+      <Link href="/cliente/login" className="mt-4 block py-2 text-center text-sm font-semibold text-blue-700">Voltar ao login</Link>
+    </section>
+  </main>;
+  if (!tenant) return <ClienteAppOpening />;
 
   const requiredModule = getTenantModuleForClientPath(pathname);
   const moduleAvailable = !requiredModule || Boolean(tenant.entitlements?.modules?.[requiredModule]);

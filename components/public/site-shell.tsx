@@ -52,9 +52,11 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <Link href="/contato?interest=demonstracao" className="inline-flex items-center gap-2 rounded-xl bg-[var(--altum-primary)] px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-[var(--altum-primary-hover)]">Agendar demonstração <ArrowRight className="h-4 w-4" /></Link>
           </div>
 
+          <Link href="/cliente/login" className="ml-auto mr-2 inline-flex min-h-11 items-center rounded-xl bg-blue-600 px-4 text-sm font-bold text-white md:hidden">Entrar</Link>
           <details className="relative md:hidden">
             <summary className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-lg border border-white/10 text-white" aria-label="Abrir menu"><Menu className="h-5 w-5" /></summary>
-            <div className="absolute right-0 top-13 w-72 rounded-2xl border border-white/10 bg-[var(--altum-public-panel)] p-3 shadow-2xl">
+            <div className="absolute right-0 top-13 max-h-[75dvh] w-[min(18rem,calc(100vw-3rem))] overflow-y-auto rounded-2xl border border-white/10 bg-[var(--altum-public-panel)] p-3 shadow-2xl">
+              <Link href="/cliente/login" className="block rounded-lg px-3 py-3 text-sm font-bold text-white">Entrar na minha conta</Link>
               {navigation.map((item) => <Link key={item.href} href={item.href} className="block rounded-lg px-3 py-3 text-sm font-semibold text-white/62 hover:bg-white/5 hover:text-white">{item.label}</Link>)}
               <Link href="/sobre" className="block rounded-lg px-3 py-3 text-sm font-semibold text-white/62 hover:bg-white/5 hover:text-white">Sobre a Altum</Link>
               <Link href="/contato?interest=demonstracao" className="mt-2 flex items-center justify-between rounded-xl bg-[var(--altum-primary)] px-4 py-3 text-sm font-bold text-white">Agendar demonstração <ArrowRight className="h-4 w-4" /></Link>

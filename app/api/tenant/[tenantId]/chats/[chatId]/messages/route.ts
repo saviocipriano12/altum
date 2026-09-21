@@ -202,6 +202,8 @@ export async function GET(
           id: doc.id,
           text: messageText(data),
           sender: normalizeSender(data.sender),
+          participantName: cleanText(data.participantName, 180) || null,
+          participantJid: cleanText(data.participantJid, 180) || null,
           senderName: cleanText(data.senderName, 180) || cleanText(data.agentName, 180) || null,
           status: cleanText(data.status, 40) || null,
           deliveryStatus: cleanText(data.deliveryStatus, 40) || null,

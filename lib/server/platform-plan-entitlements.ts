@@ -28,7 +28,7 @@ function hasSameTrialAccess(current: Pick<TenantEntitlementsSnapshot, "modules" 
 export async function applyPlatformPlanEntitlements(input: {
   tenantId: string;
   planId: unknown;
-  source: "trial" | "asaas_webhook" | "asaas_subscription_upgrade" | "admin";
+  source: "trial" | "asaas_webhook" | "asaas_subscription_upgrade" | "asaas_reconciliation" | "admin";
   actorId?: string;
   actorName?: string;
 }) {

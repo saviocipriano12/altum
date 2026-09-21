@@ -15,6 +15,10 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/pipeline",
   "/admin/prospeccao/gerar",
   "/admin/campanhas",
+  "/admin/midia",
+  "/admin/operacao",
+  "/admin/estrategias",
+  "/admin/mcp",
   "/admin/templates",
 ];
 
@@ -45,7 +49,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (loading) return;
 
     if (!user || !profile) {
-      router.push("/login");
+      const returnTo = ["/admin/mcp/autorizar", "/admin/midia"].includes(pathname)
+        ? `${pathname}${window.location.search}`
+        : null;
+      router.push(returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login");
       return;
     }
 
@@ -57,7 +64,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (needsAdmin && !isAdmin) {
       router.push("/admin/dashboard");
     }
-  }, [loading, user, profile, needsAdmin, isAdmin, router]);
+  }, [loading, user, profile, needsAdmin, isAdmin, router, pathname]);
 
   useEffect(() => {
     const saved = localStorage.getItem("altum_sidebar_collapsed");
@@ -81,7 +88,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (needsAdmin && !isAdmin) return null;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-100 text-slate-900">
+    <div className="flex h-dvh w-full overflow-hidden bg-slate-50 text-slate-900">
       <AdminSidebar
         collapsed={collapsed}
         setCollapsed={setCollapsed}
@@ -99,9 +106,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         <main
           data-altum-admin-main="true"
-          className="flex-1 overflow-y-auto bg-slate-100 px-5 py-5 md:px-7 md:py-6"
+          className={`flex-1 min-w-0 bg-slate-50 ${pathname.startsWith("/admin/chat") ? "overflow-hidden" : "overflow-y-auto px-4 py-6 md:px-8 md:py-8"}`}
         >
-          {children}
+          <div className={pathname.startsWith("/admin/chat") ? "h-full" : "mx-auto w-full max-w-[1440px]"}>{children}</div>
         </main>
       </div>
     </div>

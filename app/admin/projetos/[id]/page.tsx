@@ -150,12 +150,12 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
 
   const statusColor =
     projeto?.status === "Ativo"
-      ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/40"
+      ? "bg-emerald-500/10 text-emerald-700 border border-emerald-500/40"
       : projeto?.status === "Onboarding"
-      ? "bg-blue-500/10 text-blue-300 border border-blue-500/40"
+      ? "bg-blue-500/10 text-blue-700 border border-blue-500/40"
       : projeto?.status === "Pausado"
-      ? "bg-amber-500/10 text-amber-300 border border-amber-500/40"
-      : "bg-white/5 text-white/60 border border-white/20";
+      ? "bg-amber-500/10 text-amber-700 border border-amber-500/40"
+      : "bg-slate-50 text-slate-500 border border-slate-200";
 
   const servicosArray = useMemo(() => {
     if (!projeto?.servicos) return [];
@@ -257,7 +257,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-white/70">
+        <div className="flex items-center gap-2 text-sm text-slate-700">
           <Loader2 className="h-4 w-4 animate-spin" />
           Carregando projeto...
         </div>
@@ -270,13 +270,13 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
       <div className="space-y-4">
         <button
           onClick={() => router.push("/admin/projetos")}
-          className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition"
+          className="inline-flex items-center gap-2 text-xs text-slate-500 hover:text-slate-900 transition"
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar para lista de projetos
         </button>
 
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100">
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700">
           Projeto nao encontrado. Verifique se o link esta correto ou volte para a
           lista de projetos.
         </div>
@@ -291,7 +291,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
         <div className="space-y-2">
           <button
             onClick={() => router.push("/admin/projetos")}
-            className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition"
+            className="inline-flex items-center gap-2 text-xs text-slate-500 hover:text-slate-900 transition"
           >
             <ArrowLeft className="h-4 w-4" />
             Voltar para projetos
@@ -308,22 +308,22 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
             </span>
           </div>
 
-          <p className="text-sm text-white/60 flex flex-wrap items-center gap-2">
+          <p className="text-sm text-slate-500 flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1">
-              <UserCircle2 className="h-4 w-4 text-white/40" />
+              <UserCircle2 className="h-4 w-4 text-slate-400" />
               {projeto.clientName}
             </span>
             <span className="inline-flex items-center gap-1">
-              <Target className="h-4 w-4 text-white/40" />
+              <Target className="h-4 w-4 text-slate-400" />
               Canal principal: {projeto.canalPrincipal || "Nao informado"}
             </span>
           </p>
         </div>
 
-        <div className="flex flex-col items-start gap-2 text-xs text-white/70 md:items-end">
+        <div className="flex flex-col items-start gap-2 text-xs text-slate-700 md:items-end">
           {typeof projeto.valorMensal === "number" && (
-            <div className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-[11px]">
-              <DollarSign className="h-4 w-4 text-white/40" />
+            <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px]">
+              <DollarSign className="h-4 w-4 text-slate-400" />
               <span>
                 Retainer:{" "}
                 {projeto.valorMensal.toLocaleString("pt-BR", {
@@ -337,13 +337,13 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
           )}
 
           {createdAtFormatted && (
-            <div className="flex items-center gap-1 text-white/60">
-              <Calendar className="h-4 w-4 text-white/40" />
+            <div className="flex items-center gap-1 text-slate-500">
+              <Calendar className="h-4 w-4 text-slate-400" />
               <span>Inicio em {createdAtFormatted}</span>
             </div>
           )}
 
-          <div className="flex items-center gap-1 text-emerald-300">
+          <div className="flex items-center gap-1 text-emerald-700">
             <Layers className="h-4 w-4" />
             <span>Projeto da ALTUM</span>
           </div>
@@ -351,11 +351,11 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
       </div>
 
       {/* Acoes (status + edicao + atalhos) */}
-      <div className="rounded-xl border border-white/10 bg-[#0f0f0f] p-4">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           {/* Status */}
           <div className="space-y-2">
-            <p className="text-[11px] uppercase tracking-wide text-white/50">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">
               Status operacional
             </p>
 
@@ -369,7 +369,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                     ${
                       newStatus === s
                         ? "bg-blue-600 text-white"
-                        : "bg-white/5 text-white/70 border border-white/10 hover:bg-white/10"
+                        : "bg-slate-50 text-white/70 border border-slate-200 hover:bg-slate-50"
                     }`}
                 >
                   {s === "Onboarding" ? (
@@ -416,7 +416,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
 <button
   onClick={gerarCarneAnual}
   disabled={generatingRecurrence}
-  className=" mt-2 inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-250/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100 hover:bg-emerald-250/20 transition disabled:opacity-60"
+  className=" mt-2 inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-250/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-250/20 transition disabled:opacity-60"
 >
   {generatingRecurrence ? (
     <Loader2 size={14} className="animate-spin" />
@@ -429,25 +429,25 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
           <div className="flex flex-wrap gap-2 text-xs">
             <button
               onClick={() => setEditing((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] hover:bg-white/10 transition"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] hover:bg-slate-50 transition"
             >
-              <PencilLine className="h-4 w-4 text-white/70" />
+              <PencilLine className="h-4 w-4 text-slate-700" />
               {editing ? "Sair da edicao" : "Editar dados"}
             </button>
 
             <Link
               href="/admin/financeiro"
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] hover:bg-white/10 transition"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] hover:bg-slate-50 transition"
             >
-              <DollarSign className="h-4 w-4 text-white/70" />
+              <DollarSign className="h-4 w-4 text-slate-700" />
               Financeiro
             </Link>
 
             <Link
               href="/admin/orcamentos"
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] hover:bg-white/10 transition"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] hover:bg-slate-50 transition"
             >
-              <Layers className="h-4 w-4 text-white/70" />
+              <Layers className="h-4 w-4 text-slate-700" />
               Orcamentos
             </Link>
 
@@ -469,21 +469,21 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
         {/* Coluna grande */}
         <div className="space-y-4 lg:col-span-2">
           {/* Escopo / servicos + EDICAO */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
                 Escopo e servicos
               </h2>
-              <ListTodo className="h-4 w-4 text-white/40" />
+              <ListTodo className="h-4 w-4 text-slate-400" />
             </div>
 
             {/* Campos editaveis */}
             {editing ? (
               <div className="grid gap-2 md:grid-cols-2">
                 <div className="space-y-1 md:col-span-2">
-                  <p className="text-[11px] text-white/50">Titulo</p>
+                  <p className="text-[11px] text-slate-500">Titulo</p>
                   <input
-                    className="w-full rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
+                    className="w-full rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200"
                     value={form.titulo}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, titulo: e.target.value }))
@@ -492,9 +492,9 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-[11px] text-white/50">Canal principal</p>
+                  <p className="text-[11px] text-slate-500">Canal principal</p>
                   <input
-                    className="w-full rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
+                    className="w-full rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200"
                     value={form.canalPrincipal}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, canalPrincipal: e.target.value }))
@@ -503,11 +503,11 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-[11px] text-white/50">Valor mensal (R$)</p>
-                  <div className="flex items-center gap-2 rounded-lg bg-black/50 px-3 py-2 border border-white/10">
-                    <DollarSign size={14} className="text-white/40" />
+                  <p className="text-[11px] text-slate-500">Valor mensal (R$)</p>
+                  <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 border border-slate-200">
+                    <DollarSign size={14} className="text-slate-400" />
                     <input
-                      className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
+                      className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
                       placeholder="Ex: 1500"
                       value={form.valorMensal}
                       onChange={(e) =>
@@ -518,11 +518,11 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                 </div>
 
                 <div className="space-y-1 md:col-span-2">
-                  <p className="text-[11px] text-white/50">
+                  <p className="text-[11px] text-slate-500">
                     Servicos (separados por virgula)
                   </p>
                   <input
-                    className="w-full rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
+                    className="w-full rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200"
                     placeholder="Ex: Landing Page, Trafego Meta, CRM, Automacoes"
                     value={form.servicosText}
                     onChange={(e) =>
@@ -553,7 +553,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                   <button
                     disabled={saving}
                     onClick={cancelEdits}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs hover:bg-white/10 transition disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs hover:bg-slate-50 transition disabled:opacity-60"
                   >
                     <XCircle className="h-4 w-4" />
                     Cancelar
@@ -567,20 +567,20 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                     {servicosArray.map((s) => (
                       <span
                         key={s}
-                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/80"
+                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-900"
                       >
                         {s}
                       </span>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-white/60">
+                  <p className="text-xs text-slate-500">
                     Nenhum servico especificado ainda. Depois podemos editar o projeto
                     para detalhar escopo, entregaveis e SLA.
                   </p>
                 )}
 
-                <p className="mt-2 text-[11px] text-white/40">
+                <p className="mt-2 text-[11px] text-slate-400">
                   Area de escopo e anexos do projeto para proposta, onboarding e documentos operacionais.
                 </p>
               </>
@@ -588,33 +588,33 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
           </div>
 
           {/* Maquina de Prospeccao ligada a este projeto */}
-          <div className="rounded-xl border border-emerald-500/40 bg-gradient-to-br from-[#041610] via-[#050608] to-black p-4 space-y-3">
+          <div className="rounded-xl border border-emerald-500/40 bg-white    p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-100">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
                 Maquina de Prospeccao - visao deste projeto
               </h2>
-              <Zap className="h-4 w-4 text-emerald-300" />
+              <Zap className="h-4 w-4 text-emerald-700" />
             </div>
 
-            <p className="text-xs text-emerald-100/80">
+            <p className="text-xs text-emerald-700">
               Aqui sera a visao tatica da maquina para este projeto especifico:
               leads, oportunidades, reunioes e pipeline conectado ao CRM.
             </p>
 
-            <div className="grid gap-2 sm:grid-cols-3 text-[11px] text-emerald-100/80">
-              <div className="rounded-lg border border-emerald-500/30 bg-black/40 p-2">
+            <div className="grid gap-2 sm:grid-cols-3 text-[11px] text-emerald-700">
+              <div className="rounded-lg border border-emerald-500/30 bg-slate-50 p-2">
                 <p className="text-[10px] uppercase tracking-wide">
                   Leads gerados (30 dias)
                 </p>
                 <p className="mt-1 text-lg font-semibold">-</p>
               </div>
-              <div className="rounded-lg border border-emerald-500/30 bg-black/40 p-2">
+              <div className="rounded-lg border border-emerald-500/30 bg-slate-50 p-2">
                 <p className="text-[10px] uppercase tracking-wide">
                   Reunioes marcadas
                 </p>
                 <p className="mt-1 text-lg font-semibold">-</p>
               </div>
-              <div className="rounded-lg border border-emerald-500/30 bg-black/40 p-2">
+              <div className="rounded-lg border border-emerald-500/30 bg-slate-50 p-2">
                 <p className="text-[10px] uppercase tracking-wide">
                   Ultima atividade
                 </p>
@@ -627,29 +627,29 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
         {/* Coluna direita: resumo + status operacional */}
         <div className="space-y-4">
           {/* Resumo operacional */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
               Resumo operacional
             </h2>
 
-            <div className="space-y-2 text-xs text-white/70">
+            <div className="space-y-2 text-xs text-slate-700">
               <div className="flex items-start gap-2">
-                <UserCircle2 className="h-4 w-4 text-white/40 mt-0.5" />
+                <UserCircle2 className="h-4 w-4 text-slate-400 mt-0.5" />
                 <div>
-                  <p className="text-white/80">{projeto.clientName}</p>
-                  <p className="text-white/50">
+                  <p className="text-slate-900">{projeto.clientName}</p>
+                  <p className="text-slate-500">
                     Cliente vinculado a este projeto com acesso direto ao painel do cliente.
                   </p>
                 </div>
               </div>
 
               <div className="flex items-start gap-2">
-                <Target className="h-4 w-4 text-white/40 mt-0.5" />
+                <Target className="h-4 w-4 text-slate-400 mt-0.5" />
                 <div>
-                  <p className="text-white/80">
+                  <p className="text-slate-900">
                     Canal: {projeto.canalPrincipal || "Nao informado"}
                   </p>
-                  <p className="text-white/50">
+                  <p className="text-slate-500">
                     Podemos ligar isso ao modulo de midia (Meta, Google, LP, etc).
                   </p>
                 </div>
@@ -657,9 +657,9 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
 
               {typeof projeto.valorMensal === "number" && (
                 <div className="flex items-start gap-2">
-                  <DollarSign className="h-4 w-4 text-white/40 mt-0.5" />
+                  <DollarSign className="h-4 w-4 text-slate-400 mt-0.5" />
                   <div>
-                    <p className="text-white/80">
+                    <p className="text-slate-900">
                       {projeto.valorMensal.toLocaleString("pt-BR", {
                         style: "currency",
                         currency: "BRL",
@@ -667,7 +667,7 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
                       })}
                       /mes
                     </p>
-                    <p className="text-white/50">
+                    <p className="text-slate-500">
                       Conectado ao financeiro para recorrencia e previsao de receita.
                     </p>
                   </div>
@@ -677,12 +677,12 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
           </div>
 
           {/* Proximas acoes / roadmap */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
               Proximas acoes
             </h2>
 
-            <ul className="space-y-1 text-xs text-white/70">
+            <ul className="space-y-1 text-xs text-slate-700">
               <li>- Criar checklist de onboarding especifico deste projeto.</li>
               <li>- Conectar cards deste projeto ao CRM / funil.</li>
               <li>- Ligar a cobranca recorrente ao modulo financeiro.</li>
@@ -691,15 +691,15 @@ const [generatingRecurrence, setGeneratingRecurrence] = useState(false);
           </div>
 
           {/* Atividade geral */}
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
                 Atividade recente
               </h2>
-              <Activity className="h-4 w-4 text-white/40" />
+              <Activity className="h-4 w-4 text-slate-400" />
             </div>
 
-            <p className="text-xs text-white/60">
+            <p className="text-xs text-slate-500">
               Linha do tempo operacional deste projeto (reunioes, disparos, alteracoes de escopo e entregas).
             </p>
           </div>

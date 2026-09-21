@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Loader2, Save, Trash2, UsersRound } from "lucide-react";
+import { ArrowLeft, Gauge, Loader2, Save, Trash2, UserCheck, UsersRound } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
+import { inferClientAccessProfile } from "@/lib/client-access-profiles";
 
 type TeamConfig = {
   id: string;
@@ -39,6 +40,8 @@ type UsersPayload = {
     status?: string;
     allowedChannels?: string[];
     maxOpenChats?: number | null;
+    capabilities?: string[];
+    accessProfile?: string;
   }>;
   error?: string;
 };
@@ -74,6 +77,7 @@ export default function ClienteTimesPage() {
   const [defaultTeam, setDefaultTeam] = useState("comercial");
   const [userTeams, setUserTeams] = useState<string[]>([]);
   const [members, setMembers] = useState<TeamMemberConfig[]>([]);
+  const [savedMembers, setSavedMembers] = useState<TeamMemberConfig[]>([]);
   const canManage = hasCapability("manage_settings");
   const canManageUsers = hasCapability("manage_users");
 
@@ -109,6 +113,7 @@ export default function ClienteTimesPage() {
           )
         );
         setMembers(usersPayload.items || []);
+        setSavedMembers(usersPayload.items || []);
       } catch {
         if (!mounted) return;
         setError("Falha ao carregar times.");
@@ -131,6 +136,15 @@ export default function ClienteTimesPage() {
       missing,
     };
   }, [teams, userTeams]);
+  const teamOverview = useMemo(() => {
+    const activeMembers = members.filter((member) => member.status !== "blocked");
+    return {
+      active: activeMembers.length,
+      available: activeMembers.filter((member) => member.availability === "online").length,
+      capacity: activeMembers.reduce((total, member) => total + Number(member.maxOpenChats || 0), 0),
+      withoutTeam: activeMembers.filter((member) => !String(member.team || "").trim()).length,
+    };
+  }, [members]);
 
   function updateTeam(index: number, patch: Partial<TeamConfig>) {
     setTeams((current) => current.map((team, teamIndex) => (teamIndex === index ? { ...team, ...patch } : team)));
@@ -150,8 +164,23 @@ export default function ClienteTimesPage() {
   }
 
   function removeTeam(index: number) {
+    const team = teams[index];
+    if (members.some((member) => String(member.team || "") === team?.id)) {
+      setError("Mova as pessoas para outro time antes de remover este time.");
+      return;
+    }
+    if (team?.id === defaultTeam) {
+      setError("Escolha outro time padrão antes de remover este time.");
+      return;
+    }
     setTeams((current) => current.filter((_, teamIndex) => teamIndex !== index));
   }
+
+  const changedMembers = members.filter((member) => {
+    if (!member.userId || member.role === "client_owner") return false;
+    const saved = savedMembers.find((item) => item.userId === member.userId);
+    return JSON.stringify(member) !== JSON.stringify(saved);
+  });
 
   function toggleTeamChannel(index: number, channelId: string) {
     const current = teams[index]?.channels || [];
@@ -187,6 +216,20 @@ export default function ClienteTimesPage() {
       setSaving(true);
       setError(null);
       setNotice(null);
+
+      if (!teams.length || teams.some((team) => !team.name.trim())) {
+        setError("Defina pelo menos um time e preencha o nome de todos os times.");
+        return;
+      }
+      if (new Set(teams.map((team) => team.id)).size !== teams.length) {
+        setError("Os times precisam ter identificadores únicos.");
+        return;
+      }
+      const validTeamIds = new Set(teams.map((team) => team.id));
+      if (changedMembers.some((member) => member.team && !validTeamIds.has(member.team))) {
+        setError("Selecione um time existente para cada pessoa alterada.");
+        return;
+      }
 
       const seen = new Set<string>();
       const normalizedDefaultTeam = normalizeTeamId(defaultTeam);
@@ -229,26 +272,30 @@ export default function ClienteTimesPage() {
         setError(payload.error || "Falha ao salvar times.");
         return;
       }
+      setTeams(teamsWithDefault);
+      setDefaultTeam(nextDefaultTeam);
 
       if (canManageUsers) {
-        const editableMembers = members.filter((member) => member.userId && member.role !== "client_owner");
-        const memberResponses = await Promise.all(
+        const editableMembers = changedMembers;
+        const memberResponses = await Promise.allSettled(
           editableMembers.map((member) => authedFetch(
             `/api/tenant/${tenant.tenantId}/users/${encodeURIComponent(String(member.userId))}`,
             {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                team: normalizeTeamId(String(member.team || nextDefaultTeam)),
-                availability: member.availability || "online",
-                allowedChannels: member.allowedChannels || [],
-                maxOpenChats: member.maxOpenChats || null,
-              }),
+              body: JSON.stringify(Object.fromEntries(
+                (["team", "availability", "allowedChannels", "maxOpenChats"] as const)
+                  .filter((key) => JSON.stringify(member[key]) !== JSON.stringify(savedMembers.find((item) => item.userId === member.userId)?.[key]))
+                  .map((key) => [key, member[key] ?? (key === "team" ? "" : null)])
+              )),
             }
           ))
         );
-        if (memberResponses.some((response) => !response.ok)) {
-          setError("A estrutura foi salva, mas um ou mais membros nao puderam ser atualizados.");
+        const savedIds = new Set(memberResponses.flatMap((result, index) => result.status === "fulfilled" && result.value.ok ? [editableMembers[index].userId] : []));
+        setSavedMembers((current) => current.map((member) => savedIds.has(member.userId) ? members.find((item) => item.userId === member.userId) || member : member));
+        const failedNames = editableMembers.filter((member) => !savedIds.has(member.userId)).map((member) => member.name || member.email || "Membro");
+        if (failedNames.length) {
+          setError(`Os times foram salvos. Não foi possível salvar: ${failedNames.join(", ")}. Tente novamente para salvar apenas essas pessoas.`);
           return;
         }
       }
@@ -266,7 +313,7 @@ export default function ClienteTimesPage() {
     <div className="space-y-4">
       <SectionHeader
         title="Times"
-        subtitle="Ownership operacional, cobertura por canal e base para distribuicao do inbound."
+        subtitle="Organize responsáveis, capacidade e canais para distribuir cada nova conversa com clareza."
         action={
           <Link
             href="/cliente/painel/configuracoes"
@@ -278,10 +325,22 @@ export default function ClienteTimesPage() {
         }
       />
 
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Pessoas ativas", value: teamOverview.active, detail: "com acesso à operação", icon: UsersRound, tone: "text-blue-700 bg-blue-50 border-blue-200" },
+          { label: "Disponíveis agora", value: teamOverview.available, detail: "aptas para receber conversas", icon: UserCheck, tone: "text-emerald-700 bg-emerald-50 border-emerald-200" },
+          { label: "Capacidade declarada", value: teamOverview.capacity, detail: "conversas simultâneas", icon: Gauge, tone: "text-indigo-700 bg-indigo-50 border-indigo-200" },
+          { label: "Sem time definido", value: teamOverview.withoutTeam, detail: "precisam de organização", icon: UsersRound, tone: teamOverview.withoutTeam ? "text-amber-700 bg-amber-50 border-amber-200" : "text-slate-600 bg-slate-50 border-slate-200" },
+        ].map((metric) => {
+          const Icon = metric.icon;
+          return <div key={metric.label} className={`rounded-2xl border p-4 ${metric.tone}`}><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.12em] opacity-75">{metric.label}</p><p className="mt-2 text-3xl font-black tracking-tight">{metric.value}</p><p className="mt-1 text-xs opacity-70">{metric.detail}</p></div><span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/70"><Icon className="h-5 w-5" /></span></div></div>;
+        })}
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <PanelCard className="p-5">
-          <form onSubmit={onSubmit} className="space-y-4">
-            <CardTitle title="Estrutura de times" subtitle="Defina nomes, descricao, canais e o time padrao do workspace." />
+          <form id="team-settings" onSubmit={onSubmit} className="space-y-4">
+            <CardTitle title="Estrutura de times" subtitle="Defina a função de cada grupo, os canais atendidos e o destino padrão das novas conversas." />
             {!canManage ? (
               <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
                 Seu perfil pode consultar a estrutura, mas apenas admins podem alterar times e roteamento.
@@ -299,7 +358,7 @@ export default function ClienteTimesPage() {
                   <select
                     value={defaultTeam}
                     onChange={(event) => setDefaultTeam(event.target.value)}
-                    disabled={!canManage}
+                    disabled={!canManage || saving}
                     className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2.5 text-sm text-[var(--cliente-card-text)] outline-none disabled:cursor-not-allowed disabled:bg-[var(--cliente-surface-muted)] disabled:opacity-70"
                   >
                     {teams.length === 0 ? <option value="comercial">Comercial</option> : null}
@@ -318,26 +377,27 @@ export default function ClienteTimesPage() {
                         <Field
                           label="Nome"
                           value={team.name}
-                          disabled={!canManage}
-                          onChange={(value) => updateTeam(index, { name: value, id: normalizeTeamId(value || team.id) })}
+                          disabled={!canManage || saving}
+                          onChange={(value) => updateTeam(index, { name: value })}
                         />
                         <Field
-                          label="ID"
+                          label="Identificador do time"
                           value={team.id}
-                          disabled={!canManage}
-                          onChange={(value) => updateTeam(index, { id: normalizeTeamId(value) })}
+                          disabled
+                          onChange={() => {}}
                         />
                       </div>
                       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto]">
                         <Field
                           label="Descricao"
                           value={team.description || ""}
-                          disabled={!canManage}
+                          disabled={!canManage || saving}
                           onChange={(value) => updateTeam(index, { description: value })}
                         />
                         {canManage ? (
                           <button
                             type="button"
+                            disabled={saving}
                             onClick={() => removeTeam(index)}
                             className="self-end inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
                           >
@@ -355,7 +415,8 @@ export default function ClienteTimesPage() {
                               <button
                                 key={channel.id}
                                 type="button"
-                                disabled={!canManage}
+                                aria-pressed={active}
+                                disabled={!canManage || saving}
                                 onClick={() => toggleTeamChannel(index, channel.id)}
                                 className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${active ? "border-blue-200 bg-blue-50 text-blue-700" : "border-[var(--cliente-border)] bg-white text-[var(--cliente-card-text-muted)]"}`}
                               >
@@ -373,18 +434,11 @@ export default function ClienteTimesPage() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
+                      disabled={saving}
                       onClick={addTeam}
                       className="rounded-xl border border-[var(--cliente-border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)]"
                     >
                       Adicionar time
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="inline-flex items-center gap-2 rounded-xl bg-[var(--cliente-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--cliente-accent-strong)] disabled:opacity-60"
-                    >
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Salvar times
                     </button>
                   </div>
                 ) : null}
@@ -392,16 +446,16 @@ export default function ClienteTimesPage() {
             )}
           </form>
 
-          {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-          {notice ? <p className="mt-3 text-sm text-emerald-600">{notice}</p> : null}
+          {error ? <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+          {notice ? <p role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p> : null}
         </PanelCard>
 
         <div className="space-y-4">
           <PanelCard className="p-5">
-            <CardTitle title="Equipe e distribuicao" subtitle="Defina o time, disponibilidade, capacidade e canais de cada pessoa." />
+            <CardTitle title="Pessoas e capacidade" subtitle="Defina onde cada pessoa trabalha, quando pode receber contatos e seu limite simultâneo." />
             <div className="mt-4 space-y-3">
               {members.map((member, index) => {
-                const locked = member.role === "client_owner" || !canManageUsers;
+                const locked = saving || member.role === "client_owner" || !canManageUsers;
                 return (
                   <div key={member.userId || member.id || index} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -410,11 +464,14 @@ export default function ClienteTimesPage() {
                         <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{member.email || (member.role === "client_owner" ? "Dono da conta" : "Equipe")}</p>
                       </div>
                       <StateBadge label={member.role === "client_owner" ? "Dono" : member.status === "blocked" ? "Bloqueado" : "Ativo"} tone={member.status === "blocked" ? "warning" : "success"} />
+                      {member.role !== "client_owner" ? <StateBadge label={inferClientAccessProfile(member).label} tone="info" /> : null}
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       <label className="block space-y-1">
                         <span className="text-xs text-[var(--cliente-card-text-soft)]">Time</span>
-                        <select value={String(member.team || defaultTeam)} disabled={locked} onChange={(event) => updateMember(index, { team: event.target.value })} className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-sm disabled:opacity-60">
+                        <select value={String(member.team || "")} disabled={locked} onChange={(event) => updateMember(index, { team: event.target.value })} className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-sm disabled:opacity-60">
+                          <option value="">Sem time</option>
+                          {member.team && !teams.some((team) => team.id === member.team) ? <option value={member.team}>{member.team} (não configurado)</option> : null}
                           {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
                         </select>
                       </label>
@@ -426,7 +483,7 @@ export default function ClienteTimesPage() {
                       </label>
                       <label className="block space-y-1">
                         <span className="text-xs text-[var(--cliente-card-text-soft)]">Max. conversas abertas</span>
-                        <input type="number" min={1} max={200} value={member.maxOpenChats || 20} disabled={locked} onChange={(event) => updateMember(index, { maxOpenChats: Number(event.target.value) || null })} className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-sm disabled:opacity-60" />
+                        <input type="number" min={1} max={200} value={member.maxOpenChats ?? ""} placeholder="Sem limite" disabled={locked} onChange={(event) => updateMember(index, { maxOpenChats: event.target.value === "" ? null : Number(event.target.value) })} className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2 text-sm disabled:opacity-60" />
                       </label>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -435,6 +492,7 @@ export default function ClienteTimesPage() {
                         return <button key={channel.id} type="button" disabled={locked} onClick={() => toggleMemberChannel(index, channel.id)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-[var(--cliente-border)] bg-white text-[var(--cliente-card-text-soft)]"}`}>{channel.label}</button>;
                       })}
                     </div>
+                    <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">{(member.allowedChannels || []).length ? "Recebe distribuição nos canais selecionados." : "Sem seleção: pode receber distribuição em todos os canais."} Isso não amplia o acesso à carteira de outras pessoas.</p>
                   </div>
                 );
               })}
@@ -473,6 +531,13 @@ export default function ClienteTimesPage() {
           </PanelCard>
         </div>
       </section>
+      {canManage && !loading ? <div className="sticky bottom-24 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4 shadow-[var(--cliente-shadow-soft)] sm:bottom-4">
+        <p className="text-sm text-[var(--cliente-card-text-soft)]">{changedMembers.length ? `${changedMembers.length} pessoa(s) com alterações pendentes` : "Salve para aplicar a estrutura dos times"}</p>
+        <button form="team-settings" type="submit" disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {saving ? "Salvando" : "Salvar configurações"}
+        </button>
+      </div> : null}
     </div>
   );
 }
@@ -485,7 +550,7 @@ function Field({ label, value, onChange, disabled }: { label: string; value: str
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2.5 text-sm text-[var(--cliente-card-text)] outline-none disabled:cursor-not-allowed disabled:bg-[var(--cliente-surface-muted)] disabled:opacity-70 transition placeholder:text-white/35 focus:border-[var(--cliente-border-strong)] focus:bg-black/45 disabled:opacity-60"
+        className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2.5 text-sm text-[var(--cliente-card-text)] outline-none transition placeholder:text-[var(--cliente-card-text-soft)] focus:border-[var(--cliente-border-strong)] disabled:cursor-not-allowed disabled:bg-[var(--cliente-surface-muted)] disabled:opacity-60"
       />
     </label>
   );

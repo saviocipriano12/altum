@@ -1,3 +1,4 @@
+import { assertAgencyUserManagement } from "@/lib/server/admin/user-access";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
@@ -10,7 +11,7 @@ type BlockBody = {
 
 export async function POST(req: Request) {
   try {
-    const actor = await requireRequestUser(req, { roles: ["admin"] });
+    const actor = await requireRequestUser(req, { roles: ["agency_admin"] });
     const body = (await req.json()) as BlockBody;
     const uid = (body.uid || "").trim();
 
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Campo obrigatorio: uid." }, { status: 400 });
     }
 
+    await assertAgencyUserManagement(actor, uid);
     await adminDb.collection("users").doc(uid).set(
       {
         status: "blocked",

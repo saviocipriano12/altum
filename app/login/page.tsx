@@ -18,6 +18,19 @@ function isClientRole(role: unknown) {
   );
 }
 
+function adminLoginDestination() {
+  const requested = new URLSearchParams(window.location.search).get("returnTo");
+  if (requested) {
+    try {
+      const target = new URL(requested, window.location.origin);
+      if (target.origin === window.location.origin && ["/admin/mcp/autorizar", "/admin/midia"].includes(target.pathname)) {
+        return `${target.pathname}${target.search}`;
+      }
+    } catch { /* Invalid return addresses use the normal dashboard destination. */ }
+  }
+  return "/admin/dashboard";
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -58,7 +71,7 @@ export default function LoginPage() {
           router.push("/cliente/painel");
           return;
         }
-        router.push("/admin/dashboard");
+        router.push(adminLoginDestination());
       } finally {
         setCheckingAuth(false);
       }
@@ -88,7 +101,7 @@ export default function LoginPage() {
         }
       }
 
-      router.push("/admin/dashboard");
+      router.push(adminLoginDestination());
     } catch (err: unknown) {
       console.error(err);
       const code =

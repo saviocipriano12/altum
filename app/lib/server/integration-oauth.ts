@@ -40,7 +40,7 @@ function clean(value: unknown, max = 300) {
 
 function cleanPath(value: unknown) {
   const normalized = clean(value, 300);
-  if (!normalized.startsWith("/")) return "/cliente/painel/configuracoes/canais";
+  if (!normalized.startsWith("/") || normalized.startsWith("//") || normalized.includes("\\")) return "/cliente/painel/configuracoes/canais";
   return normalized;
 }
 

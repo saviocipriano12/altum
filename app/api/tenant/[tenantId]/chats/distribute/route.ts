@@ -1,9 +1,10 @@
+import { hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { buildManualQueuePatch } from "@/lib/server/chat-operations";
-import { listTenantOperators } from "@/lib/server/tenant-routing";
+import { filterEligibleOperators, getInboxRules, listTenantOperators } from "@/lib/server/tenant-routing";
 import {
   assertTenantAccess,
   getTenantSettings,
@@ -38,23 +39,6 @@ function getAssignmentMode(settings: Record<string, unknown> | null) {
   return mode === "round_robin" ? "round_robin" : "least_loaded";
 }
 
-function getInboxRoutingPolicy(settings: Record<string, unknown> | null) {
-  const rules =
-    settings?.rules && typeof settings.rules === "object"
-      ? (settings.rules as Record<string, unknown>)
-      : {};
-  const inbox =
-    rules.inbox && typeof rules.inbox === "object"
-      ? (rules.inbox as Record<string, unknown>)
-      : {};
-
-  return {
-    preferOnlineAgents: inbox.preferOnlineAgents !== false,
-    strictChannelRouting: inbox.strictChannelRouting === true,
-    fallbackToAnyAgent: inbox.fallbackToAnyAgent !== false,
-  };
-}
-
 function getLastAssignedUserId(settings: Record<string, unknown> | null) {
   const rules =
     settings?.rules && typeof settings.rules === "object"
@@ -67,49 +51,6 @@ function getLastAssignedUserId(settings: Record<string, unknown> | null) {
   return clean(inbox.lastAssignedUserId, 140);
 }
 
-function filterEligibleAssignees(input: {
-  assignees: Awaited<ReturnType<typeof listTenantOperators>>;
-  activeAssignedCounts: Map<string, number>;
-  channel?: string;
-  policy: ReturnType<typeof getInboxRoutingPolicy>;
-}) {
-  const channel = clean(input.channel, 40).toLowerCase();
-  let eligible = [...input.assignees];
-
-  if (input.policy.preferOnlineAgents) {
-    const online = eligible.filter((item) => item.availability === "online");
-    if (online.length > 0) {
-      eligible = online;
-    }
-  } else {
-    eligible = eligible.filter((item) => item.availability !== "offline");
-  }
-
-  if (channel) {
-    const channelMatched = eligible.filter(
-      (item) => item.allowedChannels.length === 0 || item.allowedChannels.includes(channel)
-    );
-
-    if (input.policy.strictChannelRouting) {
-      if (channelMatched.length > 0) {
-        eligible = channelMatched;
-      } else if (!input.policy.fallbackToAnyAgent) {
-        eligible = [];
-      }
-    } else if (channelMatched.length > 0) {
-      eligible = channelMatched;
-    }
-  }
-
-  eligible = eligible.filter((item) => {
-    const maxOpenChats = Number(item.maxOpenChats || 0);
-    if (!maxOpenChats) return true;
-    return (input.activeAssignedCounts.get(item.userId) || 0) < maxOpenChats;
-  });
-
-  return eligible;
-}
-
 export async function POST(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -119,7 +60,7 @@ export async function POST(
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
     await assertTenantModule(tenantId, "inbox");
-    if (!hasTenantCapability(membership, "manage_settings") && !hasTenantCapability(membership, "manage_users")) {
+    if (!hasTenantCapability(membership, "manage_settings") && !hasTenantCapability(membership, "manage_users") && !(hasTeamWideCommercialAccess(membership) && hasTenantCapability(membership, "respond_inbox"))) {
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para distribuir a fila.");
     }
 
@@ -131,7 +72,7 @@ export async function POST(
       return NextResponse.json({ error: "Nenhum usuario operacional ativo para distribuicao." }, { status: 400 });
     }
     const assignmentMode = getAssignmentMode((settings || null) as Record<string, unknown> | null);
-    const routingPolicy = getInboxRoutingPolicy((settings || null) as Record<string, unknown> | null);
+    const routingPolicy = getInboxRules((settings || null) as Record<string, unknown> | null);
     const lastAssignedUserId = getLastAssignedUserId((settings || null) as Record<string, unknown> | null);
 
     const chatsSnap = await adminDb
@@ -156,14 +97,14 @@ export async function POST(
       const status = clean(chat.status || "open", 40).toLowerCase();
       const assignedTo = clean(chat.assignedTo || chat.ownerId, 140);
       if (!assignedTo) continue;
-      if (status === "resolved" || status === "archived") continue;
+      if (["resolved", "archived", "closed", "merged"].includes(status)) continue;
       activeAssignedCounts.set(assignedTo, (activeAssignedCounts.get(assignedTo) || 0) + 1);
     }
 
     const candidates = chats
       .filter((chat) => {
         const status = clean(chat.status || "open", 40).toLowerCase();
-        if (status === "resolved" || status === "archived") return false;
+        if (["resolved", "archived", "closed", "merged"].includes(status)) return false;
         return !clean(chat.assignedTo || chat.ownerId, 140);
       })
       .slice(0, 40);
@@ -172,15 +113,24 @@ export async function POST(
       return NextResponse.json({ ok: true, tenantId, assigned: 0, message: "Nenhuma conversa sem responsavel." });
     }
 
+    const channelIds = [...new Set(candidates.map((chat) => clean(chat.channelId, 180)).filter(Boolean))];
+    const channelSnapshots = await Promise.all(channelIds.map((id) => adminDb.collection("tenant_channels").doc(id).get()));
+    const channels = new Map(channelSnapshots.map((snap) => [snap.id, snap.exists ? snap.data() as Record<string, unknown> : null]));
+
     const assignments: Array<{ chatId: string; userId: string; userName: string }> = [];
     let currentRoundRobinUserId = lastAssignedUserId;
 
     for (const chat of candidates) {
-      const eligibleAssignees = filterEligibleAssignees({
-        assignees,
-        activeAssignedCounts,
+      const channelId = clean(chat.channelId, 180);
+      const channel = channels.get(channelId);
+      if (channelId && (!channel || clean(channel.tenantId) !== tenantId)) continue;
+      const personalOwner = channel?.channelScope === "personal" ? clean(channel.ownerUserId) : "";
+      if (channel?.channelScope === "personal" && !personalOwner) continue;
+      const eligibleAssignees = filterEligibleOperators({
+        operators: personalOwner ? assignees.filter((item) => item.userId === personalOwner) : assignees,
+        activeLoads: activeAssignedCounts,
         channel: clean(chat.channel, 40).toLowerCase(),
-        policy: routingPolicy,
+        rules: personalOwner ? { ...routingPolicy, teams: [], defaultTeam: "", fallbackToAnyAgent: true } : routingPolicy,
       });
       if (eligibleAssignees.length === 0) continue;
 
@@ -212,13 +162,20 @@ export async function POST(
       activeAssignedCounts.set(nextAssignee.userId, (activeAssignedCounts.get(nextAssignee.userId) || 0) + 1);
     }
 
-    const batch = adminDb.batch();
+    const committedAssignments: typeof assignments = [];
     for (const assignment of assignments) {
       const chat = chats.find((item) => item.id === assignment.chatId);
       if (!chat) continue;
 
       const chatRef = adminDb.collection("chats").doc(assignment.chatId);
-      batch.set(
+      const committed = await adminDb.runTransaction(async (transaction) => {
+        const currentSnap = await transaction.get(chatRef);
+        const current = currentSnap.data();
+        if (!current || clean(current.tenantId) !== tenantId || clean(current.assignedTo || current.ownerId) || ["resolved", "archived", "closed", "merged"].includes(clean(current.status).toLowerCase())) return false;
+        const leadId = clean(current.leadId, 140);
+        const leadRef = leadId ? adminDb.collection("leads").doc(leadId) : null;
+        const leadSnap = leadRef ? await transaction.get(leadRef) : null;
+        transaction.set(
         chatRef,
         {
           assignedTo: assignment.userId,
@@ -240,24 +197,21 @@ export async function POST(
         { merge: true }
       );
 
-      const leadId = clean(chat.leadId, 140);
-      if (leadId) {
-        batch.set(
-          adminDb.collection("leads").doc(leadId),
-          {
+        if (leadRef && leadSnap?.exists && clean(leadSnap.data()?.tenantId) === tenantId) {
+          transaction.set(leadRef, {
             ownerId: assignment.userId,
             owner: assignment.userName,
             updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
+          }, { merge: true });
+        }
+        return true;
+      });
+      if (committed) committedAssignments.push(assignment);
     }
 
-    if (assignments.length > 0) {
-      const lastAssigned = assignments[assignments.length - 1];
-      batch.set(
-        adminDb.collection("tenant_settings").doc(tenantId),
+    if (committedAssignments.length > 0) {
+      const lastAssigned = committedAssignments[committedAssignments.length - 1];
+      await adminDb.collection("tenant_settings").doc(tenantId).set(
         {
           tenantId,
           rules: {
@@ -272,14 +226,12 @@ export async function POST(
       );
     }
 
-    await batch.commit();
-
     return NextResponse.json({
       ok: true,
       tenantId,
       mode: assignmentMode,
-      assigned: assignments.length,
-      items: assignments,
+      assigned: committedAssignments.length,
+      items: committedAssignments,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {

@@ -156,6 +156,7 @@ type AttributionGroup = {
 };
 
 type MetricsSummaryPayload = {
+  scope?: "team" | "own";
   metrics?: {
     conversionRate?: number;
     avgFirstResponseMinutes?: number;
@@ -182,6 +183,17 @@ type MetricsSummaryPayload = {
     cpl?: number;
   };
   operations?: {
+    teamPerformance?: Array<{
+      ownerId: string;
+      ownerName: string;
+      activeChats: number;
+      overdueChats: number;
+      awaitingReplyChats: number;
+      wonLeads: number;
+      totalLeads: number;
+      avgFirstResponseMinutes: number;
+      responseSamples: number;
+    }>;
     activeChats?: number;
     overdueChats?: number;
     unassignedChats?: number;
@@ -270,8 +282,6 @@ type LiveMetricItem = {
 };
 
 const ACTIVE_STAGES = new Set(["captado", "contato", "qualificacao", "proposta", "fechamento"]);
-const WON_STAGES = new Set(["ganho", "won", "closed_won"]);
-const QUALIFIED_STAGES = new Set(["qualificacao", "proposta", "fechamento", "ganho"]);
 
 function num(value: unknown) {
   const parsed = Number(value || 0);
@@ -297,6 +307,9 @@ function toDate(value: unknown) {
   if (typeof value === "number" || typeof value === "string") {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === "object" && value && "_seconds" in value) {
+    return new Date(Number((value as { _seconds: number })._seconds) * 1000);
   }
   if (
     typeof value === "object" &&
@@ -363,14 +376,16 @@ async function readJson<T>(url: string) {
 }
 
 export default function ClientePainelOverviewPage() {
-  const { tenant } = useClienteTenant();
+  const { tenant, hasCapability } = useClienteTenant();
+  const canViewTeam = hasCapability("view_team_records") || hasCapability("manage_users") || hasCapability("manage_settings");
+  const canConfigure = hasCapability("manage_settings");
   const tenantId = tenant?.tenantId;
   const [showDesktopCharts, setShowDesktopCharts] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dashboard, setDashboard] = useState<DashboardData>({});
+  const [unavailableSections, setUnavailableSections] = useState<string[]>([]);
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [followUps, setFollowUps] = useState<FollowUpsResponse>({});
@@ -392,22 +407,26 @@ export default function ClientePainelOverviewPage() {
       }
 
       const results = await Promise.allSettled([
-        readJson<DashboardData>("/api/client-portal/dashboard"),
+        canViewTeam ? readJson<DashboardData>("/api/client-portal/dashboard") : Promise.resolve({ ok: true, payload: {} as DashboardData }),
         readJson<{ items?: ChatItem[] }>(`/api/tenant/${tenantId}/chats`),
         readJson<FollowUpsResponse>(`/api/tenant/${tenantId}/follow-ups`),
         readJson<{ items?: AppointmentItem[] }>(`/api/tenant/${tenantId}/appointments`),
         readJson<{ items?: LeadItem[]; error?: string }>(`/api/tenant/${tenantId}/leads`),
         readJson<MetricsSummaryPayload>(`/api/tenant/${tenantId}/metrics-summary`),
-        readJson<AutomationSummaryPayload>(`/api/tenant/${tenantId}/automation-summary`),
-        readJson<ReadinessPayload>(`/api/tenant/${tenantId}/readiness`),
+        canConfigure ? readJson<AutomationSummaryPayload>(`/api/tenant/${tenantId}/automation-summary`) : Promise.resolve({ ok: true, payload: {} as AutomationSummaryPayload }),
+        canConfigure ? readJson<ReadinessPayload>(`/api/tenant/${tenantId}/readiness`) : Promise.resolve({ ok: true, payload: {} as ReadinessPayload }),
       ]);
 
       const [dashboardResult, chatsResult, followUpsResult, appointmentsResult, leadsResult, metricsResult, automationResult, readinessResult] =
         results;
+      setUnavailableSections([
+        ["Conversas", chatsResult], ["Retornos", followUpsResult], ["Agenda", appointmentsResult], ["Clientes", leadsResult], ["Indicadores", metricsResult],
+      ].filter(([, result]) => {
+        const item = result as PromiseSettledResult<{ ok: boolean }>;
+        return item.status !== "fulfilled" || !item.value.ok;
+      }).map(([label]) => String(label)));
 
-      if (dashboardResult.status === "fulfilled" && dashboardResult.value.ok) {
-        setDashboard(dashboardResult.value.payload || {});
-      } else if (!silent) {
+      if ((dashboardResult.status !== "fulfilled" || !dashboardResult.value.ok) && !silent) {
         setError(
           dashboardResult.status === "fulfilled" && "error" in dashboardResult.value.payload
             ? dashboardResult.value.payload.error || "Falha ao carregar o inicio."
@@ -427,7 +446,7 @@ export default function ClientePainelOverviewPage() {
       setLoading(false);
       setRefreshing(false);
     },
-    [tenantId]
+    [tenantId, canViewTeam, canConfigure]
   );
 
   useAdaptivePolling({
@@ -470,15 +489,14 @@ export default function ClientePainelOverviewPage() {
   );
 
   const wonLeads = useMemo(
-    () => num(metrics.wonLeads) || leads.filter((lead) => WON_STAGES.has(normalizeStage(lead.pipelineStage || lead.stage))).length,
-    [leads, metrics.wonLeads]
+    () => num(metrics.wonLeads),
+    [metrics.wonLeads]
   );
 
   const qualifiedLeads = useMemo(
     () =>
-      num(metrics.qualifiedLeads) ||
-      leads.filter((lead) => QUALIFIED_STAGES.has(normalizeStage(lead.pipelineStage || lead.stage))).length,
-    [leads, metrics.qualifiedLeads]
+      num(metrics.qualifiedLeads),
+    [metrics.qualifiedLeads]
   );
 
   const staleOpportunities = useMemo(() => {
@@ -530,12 +548,12 @@ export default function ClientePainelOverviewPage() {
     [leads]
   );
 
-  const spend = num(traffic.spend) || num(dashboard.kpis?.spend);
-  const totalLeads = num(metrics.totalLeads) || num(traffic.leads) || num(dashboard.kpis?.leads) || leads.length;
-  const paidRevenue = num(metrics.paidRevenue) || num(dashboard.kpis?.paid);
-  const cpl = num(traffic.cpl) || num(metrics.cpl) || num(dashboard.kpis?.cpl);
+  const spend = num(traffic.spend);
+  const totalLeads = num(metrics.totalLeads);
+  const paidRevenue = num(metrics.paidRevenue);
+  const cpl = num(traffic.cpl) || num(metrics.cpl);
   const meetings = num(metrics.meetings) || appointments.length;
-  const activeChats = num(operations.activeChats) || chats.length;
+  const activeChats = operations.activeChats == null ? chats.filter((chat) => !["closed", "resolved", "archived"].includes(String(chat.status || "").toLowerCase())).length : num(operations.activeChats);
   const pendingChats = num(operations.pendingChats) || num(queueBreakdown.assignedWaiting) || num(automation.waitingReplyBacklog);
   const overdueChats = num(operations.overdueChats) || num(queueBreakdown.slaBreached) || num(automation.slaBreached);
   const unassignedChats = num(operations.unassignedChats) || num(queueBreakdown.unassigned);
@@ -602,7 +620,7 @@ export default function ClientePainelOverviewPage() {
 
   const liveMetrics: LiveMetricItem[] = [
     {
-      label: "Gasto em anuncios",
+      label: "Investido em anúncios · 30 dias",
       value: brl(spend),
       detail: effectiveCampaignCount ? `${effectiveCampaignCount} campanha(s) com leitura` : "Campanhas ainda sem leitura",
       href: "/cliente/painel/campanhas",
@@ -610,7 +628,7 @@ export default function ClientePainelOverviewPage() {
       tone: "brand",
     },
     {
-      label: "Resultado vendido",
+      label: "Receita recebida · 30 dias",
       value: brl(paidRevenue),
       detail: `${wonLeads} venda(s) e ${meetings} reunioes`,
       href: "/cliente/painel/crm",
@@ -618,7 +636,7 @@ export default function ClientePainelOverviewPage() {
       tone: "success",
     },
     {
-      label: "Conversas geradas",
+      label: "Conversas ativas",
       value: String(activeChats),
       detail: `${totalLeads} contato(s), ${pendingChats} aguardando resposta`,
       href: "/cliente/painel/inbox",
@@ -677,6 +695,14 @@ export default function ClientePainelOverviewPage() {
       tone: "warning",
     },
   ];
+  const personalMetrics: LiveMetricItem[] = [
+    { label: "Aguardando resposta", value: String(pendingChats), detail: `${overdueChats} fora do prazo`, href: "/cliente/painel/inbox?queue=assigned_waiting", icon: MessageSquare, tone: pendingChats ? "warning" : "success" },
+    { label: "Minha carteira", value: String(activeLeads), detail: `${staleOpportunities.length} sem movimento há 7 dias`, href: "/cliente/painel/crm", icon: Target, tone: "brand" },
+    { label: "Retornos para hoje", value: String(followUpToday), detail: `${followUpOverdue} atrasados`, href: "/cliente/painel/agenda", icon: CalendarDays, tone: "warning" },
+    { label: "Vendas · 30 dias", value: String(num(metrics.wonLeads)), detail: "Oportunidades ganhas na sua carteira", href: "/cliente/painel/crm", icon: CheckCircle2, tone: "success" },
+  ];
+  const hasOperationalRisk = overdueChats > 0 || pendingChats > 0 || followUpOverdue > 0 || (canViewTeam && unassignedChats > 0);
+  const teamPerformance = operations.teamPerformance || [];
 
   const mobileQuickActions = [
     {
@@ -730,7 +756,7 @@ export default function ClientePainelOverviewPage() {
       });
     }
 
-    if (unassignedChats > 0) {
+    if (canViewTeam && unassignedChats > 0) {
       items.push({
         id: "unassigned",
         title: "Distribuir conversas sem responsavel",
@@ -763,7 +789,7 @@ export default function ClientePainelOverviewPage() {
       });
     }
 
-    if (campaigns.length === 0 && totalLeads > 0) {
+    if (canConfigure && campaigns.length === 0 && totalLeads > 0) {
       items.push({
         id: "attribution",
         title: "Organizar origem dos contatos",
@@ -775,7 +801,7 @@ export default function ClientePainelOverviewPage() {
     }
 
     const blocker = (readiness.blockers || [])[0];
-    if (blocker) {
+    if (canConfigure && blocker) {
       items.push({
         id: `blocker-${blocker.id}`,
         title: blocker.title,
@@ -829,22 +855,23 @@ export default function ClientePainelOverviewPage() {
 
   return (
     <div className="dashboard-refined client-daily-page space-y-4 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:pb-10">
+      {unavailableSections.length ? <PanelCard tone="warning" className="p-4"><p role="status" className="text-sm">Não foi possível atualizar: {unavailableSections.join(", ")}. Os dados dessas áreas podem estar incompletos. <button type="button" className="font-bold underline" onClick={() => void loadOverview({ silent: true })} disabled={refreshing}>Tentar novamente</button></p></PanelCard> : null}
       <section className="grid gap-3 sm:hidden">
         <PanelCard tone="spotlight" className="p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-white/18 bg-white/14 px-3 py-1 text-[11px] font-semibold text-white/88">
-                  Hoje
+                  {canViewTeam ? "Visão da empresa" : "Minha carteira"}
                 </span>
                 <span className="rounded-full border border-white/18 bg-white/14 px-3 py-1 text-[11px] font-semibold text-white/88">
                   {lastUpdatedLabel}
                 </span>
               </div>
-              <h1 className="mt-3 text-xl font-extrabold leading-tight text-white">{workspaceName}</h1>
+              <h1 className="mt-3 text-xl font-extrabold leading-tight text-white">{canViewTeam ? workspaceName : "Meu dia comercial"}</h1>
               <p className="mt-2 text-sm leading-5 text-white/76">Operacao comercial com foco no que precisa acontecer agora.</p>
             </div>
-            <ClientBadge label={priorityActions.length ? "agir" : "ok"} tone={priorityActions.length ? priorityActions[0]?.tone || "ai" : "success"} />
+            <ClientBadge label={hasOperationalRisk ? "atenção" : "em dia"} tone={hasOperationalRisk ? "warning" : "success"} />
           </div>
         </PanelCard>
 
@@ -873,24 +900,24 @@ export default function ClientePainelOverviewPage() {
             <div className="min-w-0 max-w-2xl">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-white/18 bg-white/14 px-3 py-1 text-xs font-semibold text-white/88">
-                  Hoje em tempo real
+                  {canViewTeam ? "Visão da empresa" : "Minha carteira"}
                 </span>
                 <span className="rounded-full border border-white/18 bg-white/14 px-3 py-1 text-xs font-semibold text-white/88">
                   atualizado {lastUpdatedLabel}
                 </span>
               </div>
               <h1 className="mt-3 text-2xl font-extrabold leading-tight text-white md:mt-4 md:text-[2.45rem]">
-                {workspaceName}
+                {canViewTeam ? workspaceName : "Meu dia comercial"}
               </h1>
               <p className="mt-2 max-w-xl text-sm leading-5 text-white/76 md:text-base">
-                O que a operacao gastou, gerou, respondeu e vendeu hoje.
+                {canViewTeam ? "Resultados dos últimos 30 dias e prioridades atuais da operação." : "Conversas, oportunidades e próximos passos atribuídos a você."}
               </p>
             </div>
 
             <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 xl:w-[520px]">
-              <HeroNumber label="Gasto" value={brl(spend)} />
-              <HeroNumber label="Receita" value={brl(paidRevenue)} />
-              <HeroNumber label="Campanhas" value={String(effectiveCampaignCount)} />
+              <HeroNumber label={canViewTeam ? "Investido · 30 dias" : "Para responder"} value={canViewTeam ? brl(spend) : String(pendingChats)} />
+              <HeroNumber label={canViewTeam ? "Recebido · 30 dias" : "Oportunidades"} value={canViewTeam ? brl(paidRevenue) : String(activeLeads)} />
+              <HeroNumber label={canViewTeam ? "Vendas · 30 dias" : "Retornos hoje"} value={String(canViewTeam ? num(metrics.wonLeads) : followUpToday)} />
               <HeroNumber label="Conversas" value={String(activeChats)} />
             </div>
           </div>
@@ -952,12 +979,12 @@ export default function ClientePainelOverviewPage() {
       </section>
 
       <section className="hidden gap-3 sm:grid md:grid-cols-2 xl:grid-cols-4">
-        {liveMetrics.map((item) => (
+        {(canViewTeam ? liveMetrics : personalMetrics).map((item) => (
           <LiveMetricCard key={item.label} item={item} />
         ))}
       </section>
 
-      {showDesktopCharts ? (
+      {showDesktopCharts && canViewTeam ? (
         <section className="client-advanced-layer grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
           <PanelCard className="p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1013,7 +1040,7 @@ export default function ClientePainelOverviewPage() {
             </div>
           </PanelCard>
         </section>
-      ) : (
+      ) : canViewTeam ? (
         <section className="client-advanced-layer grid gap-4 sm:hidden">
           <PanelCard className="p-4">
             <div className="flex items-start justify-between gap-3">
@@ -1049,31 +1076,68 @@ export default function ClientePainelOverviewPage() {
             </div>
           </PanelCard>
         </section>
-      )}
+      ) : null}
 
-      <PanelCard className="client-advanced-layer p-4 md:hidden">
+      {canViewTeam ? <PanelCard className="client-advanced-layer p-4 md:hidden">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-black text-[var(--cliente-card-text)]">Leitura rapida</p>
             <p className="mt-1 text-sm leading-5 text-[var(--cliente-card-text-soft)]">
-              A agencia investiu {brl(spend)}, gerou {totalLeads} contato(s), a IA respondeu {aiResponded} vez(es), humanos assumiram {handoffs} conversa(s) e o negocio registrou {brl(paidRevenue)} em receita.
+              Nos últimos 30 dias, a empresa investiu {brl(spend)}, registrou {totalLeads} contatos e recebeu {brl(paidRevenue)} em receita.
             </p>
           </div>
-          <ClientBadge label={pilotReady ? "online" : "setup"} tone={pilotReady ? "success" : "warning"} />
+          <ClientBadge label="30 dias" tone="info" />
         </div>
-      </PanelCard>
+      </PanelCard> : null}
 
-      <section className="client-advanced-layer grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className={`${canViewTeam ? "client-advanced-layer" : "hidden"} grid gap-4 md:grid-cols-2 xl:grid-cols-4`}>
         {cycle.map((item) => (
           <CycleCard key={item.id} item={item} />
         ))}
       </section>
 
-      <section className="client-overview-workspace grid gap-5 xl:grid-cols-[1.45fr_0.85fr]">
+      {canViewTeam ? (
+        <PanelCard className="p-5 md:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle title="Equipe e resultados" subtitle="Vendas dos últimos 30 dias e carga atual por responsável." />
+            <div className="flex flex-wrap gap-2">
+              <MiniLink href="/cliente/painel/metricas" label="Ver relatório completo" />
+              {hasCapability("manage_users") ? <MiniLink href="/cliente/painel/configuracoes/times" label="Gerenciar equipe" /> : null}
+            </div>
+          </div>
+          {teamPerformance.length ? (
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="text-xs text-[var(--cliente-card-text-soft)]">
+                  <tr className="border-b border-[var(--cliente-border)]">
+                    {["Responsável", "Vendas", "Contatos", "Conversas ativas", "Para responder", "Fora do prazo", "1ª resposta"].map((label) => <th key={label} className="px-3 py-3 font-semibold">{label}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...teamPerformance].sort((a, b) => b.wonLeads - a.wonLeads || b.overdueChats - a.overdueChats).map((person) => (
+                    <tr key={person.ownerId} className="border-b border-[var(--cliente-border)] last:border-0">
+                      <td className="px-3 py-4 font-semibold text-[var(--cliente-card-text)]">{person.ownerName}</td>
+                      <td className="px-3 py-4 font-bold text-[var(--cliente-success)]">{person.wonLeads}</td>
+                      <td className="px-3 py-4">{person.totalLeads}</td>
+                      <td className="px-3 py-4">{person.activeChats}</td>
+                      <td className="px-3 py-4">{person.awaitingReplyChats}</td>
+                      <td className="px-3 py-4"><ClientBadge label={String(person.overdueChats)} tone={person.overdueChats ? "danger" : "success"} /></td>
+                      <td className="px-3 py-4 text-[var(--cliente-card-text-soft)]">{person.responseSamples ? `${Math.round(person.avgFirstResponseMinutes)} min` : "Sem amostra"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="mt-4 text-sm text-[var(--cliente-card-text-soft)]">O acompanhamento aparece quando conversas e oportunidades têm responsáveis definidos.</p>}
+          {unassignedChats > 0 ? <div className="mt-4"><MiniLink href="/cliente/painel/inbox?queue=unassigned" label={`Distribuir ${unassignedChats} conversas sem responsável`} /></div> : null}
+        </PanelCard>
+      ) : null}
+
+      <section className={`client-overview-workspace grid gap-5 ${canViewTeam ? "xl:grid-cols-[1.45fr_0.85fr]" : ""}`}>
         <div className="space-y-5">
-          <PanelCard className="client-advanced-layer p-5 md:p-6">
+          <PanelCard className="p-5 md:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle title="Fila de dinheiro" subtitle="O que mexe no resultado antes do resto." />
+              <CardTitle title={canViewTeam ? "Decisões prioritárias" : "Meus próximos passos"} subtitle="Pendências reais com acesso direto à ação." />
               <ClientActionButton tone="secondary" onClick={() => void loadOverview({ silent: true })} disabled={refreshing}>
                 <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
                 Atualizar
@@ -1086,7 +1150,7 @@ export default function ClientePainelOverviewPage() {
             </div>
           </PanelCard>
 
-          <PanelCard className="p-5 md:p-6">
+          {canViewTeam ? <PanelCard className="p-5 md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <CardTitle title="Campanhas e impacto" subtitle="Leads, reunioes e vendas por origem comercial." />
               <Link
@@ -1114,7 +1178,7 @@ export default function ClientePainelOverviewPage() {
                 />
               )}
             </div>
-          </PanelCard>
+          </PanelCard> : null}
 
           <section className="grid gap-5 lg:grid-cols-3">
             <WorkPanel
@@ -1152,8 +1216,8 @@ export default function ClientePainelOverviewPage() {
           </section>
         </div>
 
-        <aside className="client-advanced-layer space-y-5 xl:sticky xl:top-24 xl:self-start">
-          <PanelCard tone="ai" className="p-5">
+        {canViewTeam ? <aside className="client-advanced-layer space-y-5 xl:sticky xl:top-24 xl:self-start">
+          {hasCapability("manage_ai") ? <PanelCard tone="ai" className="p-5">
             <CardTitle title="IA em operacao" subtitle="Automacao trabalhando no atendimento e no funil." />
             <div className="mt-5 grid gap-3">
               <SignalRow label="Respostas da IA" value={String(aiResponded)} tone="ai" icon={Bot} />
@@ -1165,7 +1229,7 @@ export default function ClientePainelOverviewPage() {
               <MiniLink href="/cliente/painel/ia" label="Ajustar Assistente Altum" />
               <MiniLink href="/cliente/painel/perguntar-altum" label="Perguntar sobre o negocio" />
             </div>
-          </PanelCard>
+          </PanelCard> : null}
 
           <PanelCard className="p-5">
             <CardTitle title="Retencao e retornos" subtitle="Clientes que precisam voltar para o ciclo." />
@@ -1186,7 +1250,7 @@ export default function ClientePainelOverviewPage() {
             </div>
           </PanelCard>
 
-          <PanelCard className="p-5">
+          {canConfigure ? <PanelCard className="p-5">
             <CardTitle title="Saude da operacao" subtitle="Pronto para rodar sem depender de tecnico." />
             <div className="mt-4 rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
               <div className="flex items-center justify-between gap-4">
@@ -1210,8 +1274,8 @@ export default function ClientePainelOverviewPage() {
               <MiniLink href="/cliente/painel/configuracoes/canais" label="Canais e pixels" />
               <MiniLink href="/cliente/painel/configuracoes/integracoes" label="Integracoes nativas" />
             </div>
-          </PanelCard>
-        </aside>
+          </PanelCard> : null}
+        </aside> : null}
       </section>
     </div>
   );

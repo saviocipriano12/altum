@@ -13,7 +13,7 @@ type Body = {
 
 export async function POST(req: Request) {
   try {
-    await requireRequestUser(req, { roles: ["admin"] });
+    await requireRequestUser(req, { roles: ["agency_admin"] });
     const body = (await req.json()) as Body;
 
     const id = (body.id || "").trim();

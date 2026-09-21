@@ -72,15 +72,15 @@ const STATUS_LABEL: Record<FinanceStatus, string> = {
 
 function statusClass(status: FinanceStatus) {
   if (status === "pago") {
-    return "bg-emerald-500/10 text-emerald-300 border border-emerald-500/40";
+    return "bg-emerald-500/10 text-emerald-700 border border-emerald-500/40";
   }
   if (status === "pendente") {
-    return "bg-amber-500/10 text-amber-300 border border-amber-500/40";
+    return "bg-amber-500/10 text-amber-700 border border-amber-500/40";
   }
   if (status === "atrasado") {
-    return "bg-red-500/10 text-red-300 border border-red-500/40";
+    return "bg-red-500/10 text-red-700 border border-red-500/40";
   }
-  return "bg-white/5 text-white/60 border border-white/20";
+  return "bg-slate-50 text-slate-500 border border-slate-200";
 }
 
 export default function FinanceiroDetalhePage() {
@@ -178,7 +178,7 @@ export default function FinanceiroDetalhePage() {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-white/70">
+        <div className="flex items-center gap-2 text-sm text-slate-700">
           <Loader2 className="h-4 w-4 animate-spin" />
           Carregando lancamento...
         </div>
@@ -191,13 +191,13 @@ export default function FinanceiroDetalhePage() {
       <div className="space-y-4">
         <button
           onClick={() => router.push("/admin/financeiro")}
-          className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition"
+          className="inline-flex items-center gap-2 text-xs text-slate-500 hover:text-slate-900 transition"
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar para financeiro
         </button>
 
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100">
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700">
           Lancamento nao encontrado.
         </div>
       </div>
@@ -210,7 +210,7 @@ export default function FinanceiroDetalhePage() {
         <div className="space-y-2">
           <button
             onClick={() => router.push("/admin/financeiro")}
-            className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition"
+            className="inline-flex items-center gap-2 text-xs text-slate-500 hover:text-slate-900 transition"
           >
             <ArrowLeft className="h-4 w-4" />
             Voltar para financeiro
@@ -227,21 +227,21 @@ export default function FinanceiroDetalhePage() {
               {STATUS_LABEL[normalizeStatus(record.status)]}
             </span>
 
-            <span className="rounded-full px-2 py-0.5 text-[10px] border border-white/10 bg-white/5 text-white/70">
+            <span className="rounded-full px-2 py-0.5 text-[10px] border border-slate-200 bg-slate-50 text-slate-700">
               {record.tipo}
             </span>
           </div>
 
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-slate-500">
             <span className="inline-flex items-center gap-1">
-              <UserCircle2 className="h-4 w-4 text-white/40" />
+              <UserCircle2 className="h-4 w-4 text-slate-400" />
               {record.clientName || "Cliente nao vinculado"}
             </span>
           </p>
         </div>
 
         <div className="flex flex-col gap-2 text-xs">
-          <p className="text-[11px] text-white/50">Atualizar status</p>
+          <p className="text-[11px] text-slate-500">Atualizar status</p>
 
           <div className="flex flex-wrap gap-2">
             {(["pago", "pendente", "atrasado", "cancelado"] as FinanceStatus[]).map(
@@ -253,7 +253,7 @@ export default function FinanceiroDetalhePage() {
                   className={`px-3 py-1 rounded-lg text-[11px] ${
                     nextStatus === status
                       ? "bg-blue-600 text-white"
-                      : "bg-white/5 text-white/70 border border-white/10"
+                      : "bg-slate-50 text-white/70 border border-slate-200"
                   }`}
                 >
                   {STATUS_LABEL[status]}
@@ -263,12 +263,12 @@ export default function FinanceiroDetalhePage() {
           </div>
 
           {nextStatus === "pago" && (
-            <label className="mt-1 inline-flex items-center gap-2 text-[11px] text-white/60">
+            <label className="mt-1 inline-flex items-center gap-2 text-[11px] text-slate-500">
               <input
                 type="checkbox"
                 checked={setPaymentDateNow}
                 onChange={(event) => setSetPaymentDateNow(event.target.checked)}
-                className="h-3 w-3 rounded border border-white/40 bg-black"
+                className="h-3 w-3 rounded border border-slate-200 bg-slate-50"
               />
               Registrar data de pagamento agora
             </label>
@@ -298,49 +298,49 @@ export default function FinanceiroDetalhePage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
               Detalhes financeiros
             </h2>
 
-            <div className="space-y-2 text-xs text-white/70">
+            <div className="space-y-2 text-xs text-slate-700">
               <div className="inline-flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-white/40" />
+                <DollarSign className="h-4 w-4 text-slate-400" />
                 <span>Valor: {asMoney(record.valor)}</span>
               </div>
 
               {record.projectTitle && (
                 <div className="inline-flex items-center gap-2">
-                  <Target className="h-4 w-4 text-white/40" />
+                  <Target className="h-4 w-4 text-slate-400" />
                   <span>Projeto vinculado: {record.projectTitle}</span>
                 </div>
               )}
 
               {record.vencimento && (
                 <div className="inline-flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-white/40" />
+                  <Calendar className="h-4 w-4 text-slate-400" />
                   <span>Vencimento: {record.vencimento}</span>
                 </div>
               )}
 
               {record.meioPagamento && (
                 <div className="inline-flex items-center gap-2">
-                  <CreditCard className="h-4 w-4 text-white/40" />
+                  <CreditCard className="h-4 w-4 text-slate-400" />
                   <span>Meio de pagamento: {record.meioPagamento}</span>
                 </div>
               )}
 
-              {createdAtFormatted && <p className="mt-1 text-white/50">Criado em {createdAtFormatted}</p>}
+              {createdAtFormatted && <p className="mt-1 text-slate-500">Criado em {createdAtFormatted}</p>}
 
               {paidAtFormatted && (
-                <p className="mt-1 text-emerald-300 inline-flex items-center gap-1 text-[11px]">
+                <p className="mt-1 text-emerald-700 inline-flex items-center gap-1 text-[11px]">
                   <CheckCircle2 className="h-3 w-3" />
                   Pago em {paidAtFormatted}
                 </p>
               )}
 
               {normalizeStatus(record.status) === "atrasado" && (
-                <p className="mt-1 text-red-300 inline-flex items-center gap-1 text-[11px]">
+                <p className="mt-1 text-red-700 inline-flex items-center gap-1 text-[11px]">
                   <AlertTriangle className="h-3 w-3" />
                   Este lancamento esta marcado como atrasado.
                 </p>
@@ -348,11 +348,11 @@ export default function FinanceiroDetalhePage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70 mb-2">
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700 mb-2">
               Integracao de cobranca
             </h2>
-            <p className="text-xs text-white/60">
+            <p className="text-xs text-slate-500">
               Este registro ja esta alinhado ao modulo financeiro principal. Proximo passo:
               conectar conciliacao automatica via gateway e regras de notificacao.
             </p>
@@ -360,40 +360,40 @@ export default function FinanceiroDetalhePage() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
               Relacoes
             </h2>
 
             {record.clientId ? (
               <Link
                 href={`/admin/clientes/${record.clientId}`}
-                className="inline-flex items-center gap-2 text-xs text-blue-300 hover:text-blue-200"
+                className="inline-flex items-center gap-2 text-xs text-blue-700 hover:text-blue-700"
               >
                 <UserCircle2 className="h-3 w-3" />
                 Abrir cliente
                 <ArrowRight className="h-3 w-3" />
               </Link>
             ) : (
-              <p className="text-xs text-white/60">Cliente sem vinculacao por id.</p>
+              <p className="text-xs text-slate-500">Cliente sem vinculacao por id.</p>
             )}
 
             {record.projectId ? (
               <Link
                 href={`/admin/projetos/${record.projectId}`}
-                className="inline-flex items-center gap-2 text-xs text-blue-300 hover:text-blue-200"
+                className="inline-flex items-center gap-2 text-xs text-blue-700 hover:text-blue-700"
               >
                 <Target className="h-3 w-3" />
                 Abrir projeto
                 <ArrowRight className="h-3 w-3" />
               </Link>
             ) : (
-              <p className="text-xs text-white/60">Projeto nao vinculado.</p>
+              <p className="text-xs text-slate-500">Projeto nao vinculado.</p>
             )}
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
               Acoes rapidas
             </h2>
 
@@ -408,7 +408,7 @@ export default function FinanceiroDetalhePage() {
 
               <button
                 onClick={() => setNextStatus("cancelado")}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-red-300 hover:bg-red-500/10 transition"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-red-700 hover:bg-red-500/10 transition"
               >
                 <XCircle size={14} />
                 Cancelar lancamento

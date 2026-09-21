@@ -195,19 +195,19 @@ export default function OrcamentosPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-wide">Orcamentos</h1>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-slate-500">
             Central de propostas enviadas pela ALTUM: clientes, projetos, valores e status.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 text-xs text-white/60">
+        <div className="flex flex-wrap gap-2 text-xs text-slate-500">
           <span className="px-3 py-1 rounded-full border border-blue-500/50 bg-blue-500/10">
             {enviados} enviados
           </span>
           <span className="px-3 py-1 rounded-full border border-emerald-500/50 bg-emerald-500/10">
             {aprovados} aprovados
           </span>
-          <span className="px-3 py-1 rounded-full border border-white/20 bg-white/5">
+          <span className="px-3 py-1 rounded-full border border-slate-200 bg-slate-50">
             {orcamentos.length} no total
           </span>
         </div>
@@ -216,15 +216,15 @@ export default function OrcamentosPage() {
       {/* Filtro + criacao rapida */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Busca */}
-        <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/60">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Buscar orcamento
           </p>
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-sm text-white/80">
-            <Search size={16} className="text-white/40" />
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900">
+            <Search size={16} className="text-slate-400" />
             <input
               placeholder="Titulo, cliente ou projeto"
-              className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
+              className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -234,13 +234,13 @@ export default function OrcamentosPage() {
         {/* Novo orcamento rapido */}
         <form
           onSubmit={handleCreateOrcamento}
-          className="rounded-xl border border-white/10 bg-[#111111] p-4"
+          className="rounded-xl border border-slate-200 bg-white p-4"
         >
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Novo orcamento rapido
             </p>
-            <span className="text-[11px] text-white/40">
+            <span className="text-[11px] text-slate-400">
               Cadastro rapido para montar e enviar a proposta completa
             </span>
           </div>
@@ -248,7 +248,7 @@ export default function OrcamentosPage() {
           <div className="grid gap-2 md:grid-cols-2">
             {/* Cliente */}
             <select
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200"
               value={form.clientId}
               onChange={(e) =>
                 setForm((f) => ({ ...f, clientId: e.target.value }))
@@ -264,7 +264,7 @@ export default function OrcamentosPage() {
 
             {/* Projeto opcional */}
             <select
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200"
               value={form.projectId}
               onChange={(e) =>
                 setForm((f) => ({ ...f, projectId: e.target.value }))
@@ -280,7 +280,7 @@ export default function OrcamentosPage() {
 
             {/* Titulo */}
             <input
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200 placeholder:text-slate-400"
               placeholder="Titulo do orcamento *"
               value={form.titulo}
               onChange={(e) =>
@@ -289,10 +289,10 @@ export default function OrcamentosPage() {
             />
 
             {/* Valor total */}
-            <div className="flex items-center gap-2 rounded-lg bg-black/50 px-3 py-2 border border-white/10">
-              <DollarSign size={14} className="text-white/40" />
+            <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 border border-slate-200">
+              <DollarSign size={14} className="text-slate-400" />
               <input
-                className="w-full bg-transparent text-xs outline-none placeholder:text-white/40"
+                className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
                 placeholder="Valor total (opcional)"
                 value={form.valorTotal}
                 onChange={(e) =>
@@ -303,7 +303,7 @@ export default function OrcamentosPage() {
 
             {/* Tipo */}
             <select
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200"
               value={form.tipo}
               onChange={(e) =>
                 setForm((f) => ({ ...f, tipo: e.target.value as OrcamentoTipo }))
@@ -318,7 +318,7 @@ export default function OrcamentosPage() {
 
             {/* Status */}
             <select
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200"
               value={form.status}
               onChange={(e) =>
                 setForm((f) => ({
@@ -336,7 +336,7 @@ export default function OrcamentosPage() {
 
             {/* Validade */}
             <input
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200 placeholder:text-slate-400"
               placeholder="Validade (ex: 7 dias, ate 10/01)"
               value={form.validade}
               onChange={(e) =>
@@ -346,7 +346,7 @@ export default function OrcamentosPage() {
 
             {/* Resumo */}
             <input
-              className="rounded-lg bg-black/50 px-3 py-2 text-xs outline-none border border-white/10 placeholder:text-white/40 md:col-span-2"
+              className="rounded-lg bg-slate-50 px-3 py-2 text-xs outline-none border border-slate-200 placeholder:text-slate-400 md:col-span-2"
               placeholder="Resumo rapido (ex: LP + Trafego + CRM)"
               value={form.resumo}
               onChange={(e) =>
@@ -378,14 +378,14 @@ export default function OrcamentosPage() {
       {/* Lista de orcamentos */}
       <div className="space-y-3">
         {loading && (
-          <div className="flex items-center gap-2 text-sm text-white/60">
+          <div className="flex items-center gap-2 text-sm text-slate-500">
             <Loader2 size={16} className="animate-spin" />
             Carregando orcamentos...
           </div>
         )}
 
         {!loading && filteredOrcamentos.length === 0 && (
-          <p className="text-sm text-white/50">
+          <p className="text-sm text-slate-500">
             Nenhum orcamento encontrado. Crie o primeiro usando o formulario acima.
           </p>
         )}
@@ -393,23 +393,23 @@ export default function OrcamentosPage() {
         {filteredOrcamentos.map((orc) => {
           const statusStyles =
             orc.status === "Aprovado"
-              ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/40"
+              ? "bg-emerald-500/10 text-emerald-700 border border-emerald-500/40"
               : orc.status === "Enviado"
-              ? "bg-blue-500/10 text-blue-300 border border-blue-500/40"
+              ? "bg-blue-500/10 text-blue-700 border border-blue-500/40"
               : orc.status === "Perdido"
-              ? "bg-red-500/10 text-red-300 border border-red-500/40"
-              : "bg-white/5 text-white/60 border border-white/20";
+              ? "bg-red-500/10 text-red-700 border border-red-500/40"
+              : "bg-slate-50 text-slate-500 border border-slate-200";
 
           return (
             <div
               key={orc.id}
-              className="rounded-xl border border-white/10 bg-[#101010] p-4 hover:border-blue-500/60 transition"
+              className="rounded-xl border border-slate-200 bg-white p-4 hover:border-blue-500/60 transition"
             >
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 {/* Esquerda */}
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-base font-semibold text-white/90">
+                    <h2 className="text-base font-semibold text-slate-900">
                       {orc.titulo}
                     </h2>
                     <span
@@ -417,25 +417,25 @@ export default function OrcamentosPage() {
                     >
                       {orc.status}
                     </span>
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide border border-white/15 bg-white/5 text-white/70">
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide border border-slate-200 bg-slate-50 text-slate-700">
                       {orc.tipo}
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-white/70">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
                     <span className="inline-flex items-center gap-1">
-                      <UserCircle2 size={14} className="text-white/40" />
+                      <UserCircle2 size={14} className="text-slate-400" />
                       {orc.clientName}
                     </span>
                     {orc.projectTitle && (
                       <span className="inline-flex items-center gap-1">
-                        <Target size={14} className="text-white/40" />
+                        <Target size={14} className="text-slate-400" />
                         {orc.projectTitle}
                       </span>
                     )}
                     {typeof orc.valorTotal === "number" && (
                       <span className="inline-flex items-center gap-1">
-                        <DollarSign size={14} className="text-white/40" />
+                        <DollarSign size={14} className="text-slate-400" />
                         {orc.valorTotal.toLocaleString("pt-BR", {
                           style: "currency",
                           currency: "BRL",
@@ -444,16 +444,16 @@ export default function OrcamentosPage() {
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60 mt-1">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mt-1">
                     {orc.validade && (
                       <span className="inline-flex items-center gap-1">
-                        <Calendar size={13} className="text-white/40" />
+                        <Calendar size={13} className="text-slate-400" />
                         Validade: {orc.validade}
                       </span>
                     )}
                     {orc.resumo && (
                       <span className="inline-flex items-center gap-1">
-                        <FileText size={13} className="text-white/40" />
+                        <FileText size={13} className="text-slate-400" />
                         {orc.resumo}
                       </span>
                     )}
@@ -461,14 +461,14 @@ export default function OrcamentosPage() {
                 </div>
 
                 {/* Direita */}
-                <div className="flex flex-col items-start gap-2 text-xs text-white/70 md:items-end">
-                  <span className="inline-flex items-center gap-1 text-[11px] text-white/50">
+                <div className="flex flex-col items-start gap-2 text-xs text-slate-700 md:items-end">
+                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                     ID: {orc.id.slice(0, 6)}...
                   </span>
 
                  <Link
   href={`/admin/orcamentos/${orc.id}`}
-  className="mt-2 inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] hover:bg-white/10 transition"
+  className="mt-2 inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] hover:bg-slate-50 transition"
 >
   <span>Ver detalhes do orcamento</span>
   <ArrowRight size={14} />

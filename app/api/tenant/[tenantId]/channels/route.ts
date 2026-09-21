@@ -13,6 +13,7 @@ import {
 import { assertTenantLimitAvailable, assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { countTenantWhatsAppChannels } from "@/lib/server/tenant-usage";
 import { hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
+import { canManagePersonalChannel } from "@/lib/server/commercial-access";
 import { getManagedEvolutionConfig } from "@/lib/server/messaging/evolution-config";
 
 type ChannelBody = {
@@ -564,7 +565,11 @@ export async function POST(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
-    assertTenantCapability(membership, "manage_channels");
+    const canManageAllChannels = membership.capabilities.includes("manage_channels");
+    const canManageOwnChannel = membership.capabilities.includes("manage_personal_channel");
+    if (!canManageAllChannels && !canManageOwnChannel) {
+      assertTenantCapability(membership, "manage_channels");
+    }
 
     const body = (await req.json()) as ChannelBody;
     const type = cleanType(body.type);
@@ -622,6 +627,12 @@ export async function POST(
     const currentChannelData = currentChannelSnap.exists
       ? (currentChannelSnap.data() as Record<string, unknown>)
       : {};
+    if (currentChannelSnap.exists && !canManageAllChannels) {
+      const canManageExistingChannel = canManagePersonalChannel(membership, user.uid, currentChannelData);
+      if (!canManageExistingChannel) {
+        return NextResponse.json({ error: "VocÃª sÃ³ pode alterar o seu prÃ³prio WhatsApp pessoal." }, { status: 403 });
+      }
+    }
     if (type === "whatsapp" && !currentChannelSnap.exists) {
       await assertTenantLimitAvailable({
         tenantId,
@@ -637,6 +648,9 @@ export async function POST(
     const appSecret = clean(metadata.appSecret, 400);
 
     const provider = type === "whatsapp" ? normalizeWhatsAppProvider(body.provider) : clean(body.provider, 80) || type;
+    if (!canManageAllChannels && provider !== "evolution") {
+      return NextResponse.json({ error: "Seu perfil pode conectar somente um WhatsApp pessoal por QR Code." }, { status: 403 });
+    }
     const managedEvolution = provider === "evolution" ? getManagedEvolutionConfig() : null;
     if (managedEvolution) {
       metadata.gatewayEndpoint = managedEvolution.baseUrl;
@@ -644,7 +658,12 @@ export async function POST(
     }
 
     const channelScope = type === "whatsapp" ? cleanChannelScope(body.channelScope) : "shared";
-    const ownerUserId = channelScope === "personal" ? clean(body.ownerUserId, 140) : "";
+    if (!canManageAllChannels && (type !== "whatsapp" || channelScope !== "personal")) {
+      return NextResponse.json({ error: "Seu perfil pode conectar somente o próprio WhatsApp pessoal." }, { status: 403 });
+    }
+    const ownerUserId = channelScope === "personal"
+      ? (canManageAllChannels ? clean(body.ownerUserId, 140) : user.uid)
+      : "";
     let ownerUserName = "";
     if (type === "whatsapp" && channelScope === "personal") {
       if (!ownerUserId) {
@@ -706,7 +725,7 @@ export async function POST(
 
     await Promise.all([
       channelRef.set(payload, { merge: true }),
-      ...(type === "whatsapp"
+      ...(type === "whatsapp" && channelScope === "shared"
         ? [
             adminDb.collection("tenant_settings").doc(tenantId).set(
               {
@@ -756,7 +775,11 @@ export async function DELETE(
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
-    assertTenantCapability(membership, "manage_channels");
+    const canManageAllChannels = membership.capabilities.includes("manage_channels");
+    const canManageOwnChannel = membership.capabilities.includes("manage_personal_channel");
+    if (!canManageAllChannels && !canManageOwnChannel) {
+      assertTenantCapability(membership, "manage_channels");
+    }
 
     const body = (await req.json().catch(() => ({}))) as { channelId?: unknown };
     const channelId = clean(body.channelId, 180);
@@ -776,6 +799,9 @@ export async function DELETE(
     const channelData = channelSnap.data() as Record<string, unknown>;
     if (String(channelData.tenantId || "").trim() !== tenantId) {
       return NextResponse.json({ error: "Canal nao pertence a este tenant." }, { status: 403 });
+    }
+    if (!canManageAllChannels && !canManagePersonalChannel(membership, user.uid, channelData)) {
+      return NextResponse.json({ error: "Voce so pode remover o proprio WhatsApp pessoal." }, { status: 403 });
     }
 
     const channelType = clean(channelData.type, 80) || "canal";

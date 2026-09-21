@@ -418,7 +418,7 @@ function Chip({
         ? "bg-red-600 text-white border-red-600"
         : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
       : active
-      ? "bg-slate-900 text-white border-slate-900"
+      ? "bg-white text-slate-900 border-slate-900"
       : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50";
 
   return (
@@ -652,7 +652,7 @@ export default function GerarLeadsPremiumPage() {
 
       if (!res.ok) {
         setError(data?.error || "Erro ao buscar leads.");
-        pushLog(`Erro: ${data?.error}`);
+        pushLog(` ${data?.error}`);
         return;
       }
 
@@ -796,7 +796,7 @@ export default function GerarLeadsPremiumPage() {
         pushLog(`Pesquisa IA: ${intelligenceOk} ok | ${intelligenceFail} falhas.`);
       }
 
-      pushLog(`Salvos: ${ok} | Falhas: ${fail}`);
+      pushLog(` ${ok} |  ${fail}`);
       if (ok > 0) showToast("ok", `Salvos no CRM: ${ok}`);
     } catch {
       setError("Falha ao salvar no Firestore.");
@@ -896,7 +896,7 @@ export default function GerarLeadsPremiumPage() {
       {/* STATS */}
       <div className="grid gap-3 lg:grid-cols-4">
         <StatCard label="Encontrados no Maps" value={stats.total} hint="Empresas retornadas pela busca" icon={<RefreshCcw className="h-5 w-5" />} />
-        <StatCard label="Aprovados" value={stats.approvedAll} hint={`Taxa: ${pct(stats.ratio)}`} icon={<BadgeCheck className="h-5 w-5" />} accent="blue" />
+        <StatCard label="Aprovados" value={stats.approvedAll} hint={` ${pct(stats.ratio)}`} icon={<BadgeCheck className="h-5 w-5" />} accent="blue" />
         <StatCard label="Prontos para salvar" value={stats.approved} hint={`Limitado em ${limitValid}`} icon={<Sparkles className="h-5 w-5" />} accent="green" />
         <StatCard label="Fora do perfil" value={stats.discarded} hint="Podem ser revisados manualmente" icon={<AlertTriangle className="h-5 w-5" />} accent="amber" />
       </div>
@@ -1014,7 +1014,7 @@ export default function GerarLeadsPremiumPage() {
           <div className={cx(panelClass, "space-y-3")}>
             <SectionHeader title="Selecao" icon={<BadgeCheck className="h-4 w-4" />} />
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => toggleSelectAll(true)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"><CheckCircle2 className="h-4 w-4" /> Todos</button>
+              <button onClick={() => toggleSelectAll(true)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-[11px] font-bold text-slate-900 shadow-sm transition hover:bg-white disabled:opacity-50"><CheckCircle2 className="h-4 w-4" /> Todos</button>
               <button onClick={() => toggleSelectAll(false)} disabled={qualified.length===0} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"><X className="h-4 w-4" /> Limpar selecao</button>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1081,7 +1081,7 @@ export default function GerarLeadsPremiumPage() {
                       <div className="mt-3 space-y-2 text-xs font-medium text-slate-600">
                         {l.endereco && <div className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 text-slate-400" /><p className="line-clamp-2">{l.endereco}</p></div>}
                         <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-slate-400" /><p className="font-bold text-slate-800">{formatPhoneBR(l.telefone) || "Sem telefone"}</p></div>
-                        {l.website ? <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-slate-400" /><a href={safeUrl(l.website)} target="_blank" className="truncate font-bold text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-800">{l.website}</a></div> : <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-slate-300" /><span className="text-slate-500">Sem site</span></div>}
+                        {l.website ? <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-slate-400" /><a href={safeUrl(l.website)} target="_blank" className="truncate font-bold text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-800">{l.website}</a></div> : <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-slate-700" /><span className="text-slate-500">Sem site</span></div>}
                       </div>
 
                       {/* Reasons */}

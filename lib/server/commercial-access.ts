@@ -2,7 +2,7 @@ import { TenantAccessError, type TenantMembership } from "@/lib/server/tenant";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { canAccessAssignedCommercialRecord } from "@/lib/commercial-record-access";
 
-export { canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/commercial-record-access";
+export { canAccessAssignedCommercialRecord, canManagePersonalChannel, hasTeamWideCommercialAccess } from "@/lib/commercial-record-access";
 
 function clean(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
@@ -41,6 +41,9 @@ export async function assertChatCommercialAccess(input: {
     if (channelId) {
       const channelSnap = await adminDb.collection("tenant_channels").doc(channelId).get();
       const channel = channelSnap.exists ? channelSnap.data() as Record<string, unknown> : {};
+      if (clean(channel.tenantId, 140) !== clean(input.tenantId, 140)) {
+        throw new TenantAccessError("chat_channel_tenant_mismatch", "O canal desta conversa não pertence a esta empresa.");
+      }
       const enriched = {
         ...chat,
         channelScope: channel.channelScope,

@@ -32,10 +32,25 @@ export async function asaasRequest<T = Record<string, unknown>>(
     },
     body: init?.body ? JSON.stringify(init.body) : undefined,
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
   const payload = (await response.json().catch(() => ({}))) as T;
   if (!response.ok) {
     throw new AsaasApiError("O Asaas recusou a operacao.", response.status, payload);
   }
   return payload;
+}
+
+export async function asaasList<T>(path: string) {
+  const data: T[] = [];
+  for (let offset = 0; offset < 10_000;) {
+    const separator = path.includes("?") ? "&" : "?";
+    const page = await asaasRequest<{ data?: T[]; hasMore?: boolean }>(`${path}${separator}limit=100&offset=${offset}`);
+    const rows = page.data || [];
+    data.push(...rows);
+    if (!page.hasMore) return data;
+    if (!rows.length) throw new AsaasApiError("Paginacao incompleta do Asaas.", 502, null);
+    offset += rows.length;
+  }
+  throw new AsaasApiError("Historico excede o limite de conciliacao.", 502, null);
 }

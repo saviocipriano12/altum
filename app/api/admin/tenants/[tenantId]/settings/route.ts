@@ -25,7 +25,7 @@ function clean(value: unknown, max = 200) {
 export async function PATCH(req: Request, context: Params) {
   try {
     const actor = await requireRequestUser(req, {
-      roles: ["agency_owner", "agency_admin", "agency_agent"],
+      roles: ["agency_owner", "agency_admin"],
     });
 
     const { tenantId } = await context.params;

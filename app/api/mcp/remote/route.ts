@@ -3,7 +3,7 @@ import { CommandCenter } from "@/lib/server/command-center/service";
 import { commandPorts } from "@/lib/server/command-center/repository";
 import { CommandError } from "@/lib/server/command-center/security";
 import { createServer } from "@/scripts/mcp/server";
-import { validateMcpAccessToken } from "@/lib/server/mcp/oauth";
+import { oauthMetadata, validateMcpAccessToken } from "@/lib/server/mcp/oauth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,14 +24,14 @@ function bearer(req: Request) {
   return match[1];
 }
 
-function unauthorizedResponse(error: CommandError) {
+function unauthorizedResponse(req: Request, error: CommandError) {
   return Response.json(
     { error: { code: error.code } },
     {
       status: error.status,
       headers: {
         ...corsHeaders,
-        "WWW-Authenticate": 'Bearer resource_metadata="/.well-known/oauth-protected-resource"',
+        "WWW-Authenticate": 'Bearer resource_metadata="' + oauthMetadata(req).issuer + '/.well-known/oauth-protected-resource"',
       },
     }
   );
@@ -62,7 +62,7 @@ async function handle(req: Request) {
     for (const [key, value] of Object.entries(corsHeaders)) headers.set(key, value);
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   } catch (error) {
-    if (error instanceof CommandError) return unauthorizedResponse(error);
+    if (error instanceof CommandError) return unauthorizedResponse(req, error);
     console.error("Erro no MCP remoto:", error);
     return Response.json({ error: { code: "UNAVAILABLE" } }, { status: 500, headers: corsHeaders });
   }

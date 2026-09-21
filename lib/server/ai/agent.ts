@@ -4552,6 +4552,10 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "chat_tenant_mismatch" };
   }
 
+  if (chatData.isGroup === true || /@g\.us$/i.test(String(chatData.groupJid || chatData.contactPhone || ""))) {
+    return { decision: "skip", reason: "whatsapp_group_ai_disabled" };
+  }
+
   const incomingMessage = messageSnap.data() as Record<string, unknown>;
   const incomingSender = String(incomingMessage.sender || "").toLowerCase();
   const leadId = sanitizeText(chatData.leadId, 160) || undefined;

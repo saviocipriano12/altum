@@ -34,9 +34,12 @@ export type AdminNavItem = {
 };
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
+  { label: "Operação da carteira", shortLabel: "Carteira", description: "Empresas, riscos e próximas ações da operação.", href: "/admin/operacao", icon: LayoutDashboard, adminOnly: true, section: "comando" },
+  { label: "Estratégias e aprendizado", shortLabel: "Estratégias", description: "Hipóteses, resultados e memória por empresa.", href: "/admin/estrategias", icon: BookOpen, adminOnly: true, section: "comando" },
+  { label: "ChatGPT e MCP", description: "Autorizações e empresas acessíveis pelo ChatGPT.", href: "/admin/mcp", icon: Bot, adminOnly: true, section: "gestao" },
   {
-    label: "Operacao SaaS",
-    shortLabel: "SaaS",
+    label: "Contratos e acessos",
+    shortLabel: "Contratos e acessos",
     description: "Empresas, contratos, receita, acessos e pendencias da plataforma.",
     href: "/admin/saas",
     icon: Boxes,
@@ -44,22 +47,22 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     section: "comando",
   },
   {
-    label: "Visao da agencia",
-    shortLabel: "Cockpit",
+    label: "Visão geral",
+    shortLabel: "Visão geral",
     description: "Prioridades, riscos e leitura geral da operacao Altum.",
     href: "/admin/dashboard",
     icon: LayoutDashboard,
     section: "comando",
   },
   {
-    label: "Prospeccao",
+    label: "Comercial",
     description: "CRM comercial da agencia e oportunidades captadas.",
     href: "/admin/prospeccao",
     icon: Target,
     section: "receita",
   },
   {
-    label: "Gerador Maps",
+    label: "Captar empresas",
     description: "Busca qualificada de leads no Google Maps.",
     href: "/admin/prospeccao/gerar",
     icon: Rocket,
@@ -75,7 +78,15 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     section: "receita",
   },
   {
-    label: "Midia paga",
+    label: "Central de mídia",
+    description: "Contas, campanhas e rastreamento de todas as empresas.",
+    href: "/admin/midia",
+    icon: BarChart3,
+    adminOnly: true,
+    section: "comando",
+  },
+  {
+    label: "Contas legadas",
     description: "Contas, sincronizacao e analise de campanhas de trafego.",
     href: "/admin/campanhas",
     icon: BarChart3,
@@ -91,7 +102,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     section: "receita",
   },
   {
-    label: "IA da plataforma",
+    label: "Assistente e IA",
     description: "Sinais, handoffs e saude da IA nos tenants.",
     href: "/admin/ia",
     icon: Bot,
@@ -126,7 +137,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     section: "entrega",
   },
   {
-    label: "Orcamentos",
+    label: "Propostas",
     description: "Propostas, valores e aprovacao comercial.",
     href: "/admin/orcamentos",
     icon: FileText,
@@ -141,7 +152,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   },
   {
     label: "Pipeline",
-    description: "Configuracao dos fluxos comerciais internos.",
+    description: "Kanban das oportunidades comerciais da agência.",
     href: "/admin/pipeline",
     icon: Activity,
     adminOnly: true,
@@ -156,7 +167,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     section: "gestao",
   },
   {
-    label: "Configuracoes",
+    label: "Configurações",
     description: "Controles avancados da agencia.",
     href: "/admin/config",
     icon: Settings,

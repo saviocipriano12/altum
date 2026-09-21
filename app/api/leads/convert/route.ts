@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { getTenantForCurrentUser } from "@/lib/server/tenant";
 
 type LeadDoc = {
   nome?: string;
@@ -17,6 +16,8 @@ type LeadDoc = {
   owner?: string;
   ownerId?: string;
   tenantId?: string;
+  convertedClientId?: string;
+  convertedProjectId?: string;
   offer?: {
     deliverables?: string[];
     priceFrom?: number;
@@ -31,34 +32,38 @@ export async function POST(req: Request) {
   try {
     const user = await requireRequestUser(req, { roles: ["agency_agent"] });
     const body = (await req.json()) as Body;
-    const leadId = (body.leadId || "").trim();
+    const leadId = typeof body.leadId === "string" ? body.leadId.trim() : "";
 
-    if (!leadId) {
+    if (!/^[A-Za-z0-9_-]{1,180}$/.test(leadId)) {
       return NextResponse.json({ error: "Campo obrigatorio: leadId." }, { status: 400 });
     }
 
     const leadRef = adminDb.collection("leads").doc(leadId);
-    const leadSnap = await leadRef.get();
+    const clientRef = adminDb.collection("clientes").doc();
+    const projectRef = adminDb.collection("projetos").doc();
+    const financeRef = adminDb.collection("financeiro").doc();
+    const eventRef = leadRef.collection("events").doc("commercial_conversion");
+    const result = await adminDb.runTransaction(async (batch) => {
+    const leadSnap = await batch.get(leadRef);
     if (!leadSnap.exists) {
-      return NextResponse.json({ error: "Lead nao encontrado." }, { status: 404 });
+      throw new RouteAuthError(404, "lead_not_found", "Lead não encontrado.");
     }
 
     const lead = leadSnap.data() as LeadDoc;
     const ownerId = lead.ownerId || null;
-    const tenantId = lead.tenantId || (await getTenantForCurrentUser(ownerId || user.uid)) || null;
+    const sourceTenantId = lead.tenantId || null;
     if (!isAdmin(user) && ownerId !== user.uid) {
-      return NextResponse.json({ error: "Sem permissao para converter este lead." }, { status: 403 });
+      throw new RouteAuthError(403, "lead_access_denied", "Sem permissão para converter este lead.");
     }
 
-    const clientRef = adminDb.collection("clientes").doc();
-    const projectRef = adminDb.collection("projetos").doc();
-    const financeRef = adminDb.collection("financeiro").doc();
-
-    const batch = adminDb.batch();
+    if (lead.convertedClientId) {
+      return { clientId: lead.convertedClientId, projectId: lead.convertedProjectId || null, reused: true };
+    }
 
     batch.set(clientRef, {
       name: lead.nome || "Cliente",
       telefone: lead.telefone || "",
+      phone: lead.telefone || "",
       email: lead.email || "",
       endereco: lead.endereco || "",
       origem: lead.origem || "crm",
@@ -70,7 +75,8 @@ export async function POST(req: Request) {
       leadIdOriginal: leadId,
       ownerId,
       owner: lead.owner || null,
-      tenantId,
+      sourceTenantId,
+      tenantId: null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -83,7 +89,8 @@ export async function POST(req: Request) {
       servicos: lead.offer?.deliverables || [],
       valorMensal: Number(lead.offer?.priceFrom || 0),
       ownerId,
-      tenantId,
+      sourceTenantId,
+      tenantId: null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -101,7 +108,9 @@ export async function POST(req: Request) {
         ownerId,
         vendedorId: ownerId,
         payoutStatus: "pendente",
-        tenantId,
+        sourceTenantId,
+        tenantId: null,
+        descricao: `Setup - ${lead.nome || "Cliente"}`,
         createdAt: FieldValue.serverTimestamp(),
       });
     }
@@ -112,15 +121,12 @@ export async function POST(req: Request) {
         status: "qualificado",
         convertedClientId: clientRef.id,
         convertedProjectId: projectRef.id,
-        tenantId,
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
 
-    await batch.commit();
-
-    await leadRef.collection("events").add({
+    batch.set(eventRef, {
       type: "conversion",
       title: "Lead convertido em cliente",
       detail: `Cliente ${clientRef.id} e projeto ${projectRef.id} criados.`,
@@ -128,12 +134,12 @@ export async function POST(req: Request) {
       actorId: user.uid,
       actorName: user.name,
     });
-
+    return { clientId: clientRef.id, projectId: projectRef.id, reused: false };
+    });
     return NextResponse.json({
       ok: true,
       leadId,
-      clientId: clientRef.id,
-      projectId: projectRef.id,
+      ...result,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {

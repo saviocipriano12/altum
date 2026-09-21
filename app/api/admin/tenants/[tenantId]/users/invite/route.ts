@@ -43,7 +43,7 @@ export async function POST(
 ) {
   try {
     const actor = await requireRequestUser(req, {
-      roles: ["agency_owner", "agency_admin", "agency_agent"],
+      roles: ["agency_owner", "agency_admin"],
     });
 
     const { tenantId: rawTenantId } = await context.params;

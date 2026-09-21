@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { readClientPreference, writeClientPreference } from "@/lib/client-storage";
 
 type ClienteTheme = "dark" | "light";
 type ClienteDensity = "comfortable" | "compact";
@@ -32,23 +33,23 @@ const ClienteShellContext = createContext<ClienteShellContextValue | null>(null)
 
 function readStoredTheme(): ClienteTheme {
   if (typeof window === "undefined") return "light";
-  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  const stored = readClientPreference(THEME_STORAGE_KEY);
   return stored === "dark" ? "dark" : "light";
 }
 
 function readStoredSidebarState(): boolean {
   if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
+  return readClientPreference(SIDEBAR_STORAGE_KEY) === "true";
 }
 
 function readStoredDensity(): ClienteDensity {
   if (typeof window === "undefined") return "comfortable";
-  return window.localStorage.getItem(DENSITY_STORAGE_KEY) === "compact" ? "compact" : "comfortable";
+  return readClientPreference(DENSITY_STORAGE_KEY) === "compact" ? "compact" : "comfortable";
 }
 
 function readStoredExperienceMode(): ClienteExperienceMode {
   if (typeof window === "undefined") return "essencial";
-  return window.localStorage.getItem(EXPERIENCE_STORAGE_KEY) === "completo" ? "completo" : "essencial";
+  return readClientPreference(EXPERIENCE_STORAGE_KEY) === "completo" ? "completo" : "essencial";
 }
 
 export function ClienteShellProvider({ children }: { children: ReactNode }) {
@@ -56,44 +57,46 @@ export function ClienteShellProvider({ children }: { children: ReactNode }) {
   const [density, setDensityState] = useState<ClienteDensity>("comfortable");
   const [experienceMode, setExperienceModeState] = useState<ClienteExperienceMode>("essencial");
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
+  const [preferencesReady, setPreferencesReady] = useState(false);
 
   useEffect(() => {
     setThemeState(readStoredTheme());
     setDensityState(readStoredDensity());
     setExperienceModeState(readStoredExperienceMode());
     setSidebarCollapsedState(readStoredSidebarState());
+    setPreferencesReady(true);
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const migrated = window.localStorage.getItem(THEME_MIGRATION_KEY);
+    const migrated = readClientPreference(THEME_MIGRATION_KEY);
     if (migrated === "true") return;
 
     // We are switching the visual direction to match the new light reference.
-    window.localStorage.setItem(THEME_STORAGE_KEY, "light");
-    window.localStorage.setItem(THEME_MIGRATION_KEY, "true");
+    writeClientPreference(THEME_STORAGE_KEY, "light");
+    writeClientPreference(THEME_MIGRATION_KEY, "true");
     setThemeState("light");
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme]);
+    if (preferencesReady) writeClientPreference(THEME_STORAGE_KEY, theme);
+  }, [preferencesReady, theme]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
-  }, [sidebarCollapsed]);
+    if (preferencesReady) writeClientPreference(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
+  }, [preferencesReady, sidebarCollapsed]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(DENSITY_STORAGE_KEY, density);
-  }, [density]);
+    if (preferencesReady) writeClientPreference(DENSITY_STORAGE_KEY, density);
+  }, [preferencesReady, density]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(EXPERIENCE_STORAGE_KEY, experienceMode);
-  }, [experienceMode]);
+    if (preferencesReady) writeClientPreference(EXPERIENCE_STORAGE_KEY, experienceMode);
+  }, [preferencesReady, experienceMode]);
 
   const value = useMemo<ClienteShellContextValue>(() => {
     const sidebarWidth = sidebarCollapsed ? 110 : 312;

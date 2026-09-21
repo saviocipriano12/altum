@@ -1,3 +1,4 @@
+import { assertAgencyUserManagement } from "@/lib/server/admin/user-access";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
@@ -27,7 +28,7 @@ function normalizeRole(role: unknown): UserRole {
 
 export async function POST(req: Request) {
   try {
-    const actor = await requireRequestUser(req, { roles: ["admin"] });
+    const actor = await requireRequestUser(req, { roles: ["agency_admin"] });
     const body = (await req.json()) as UpdateBody;
 
     const uid = (body.uid || "").trim();
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Usuario nao encontrado." }, { status: 404 });
     }
 
+    await assertAgencyUserManagement(actor, uid, role);
     await userRef.set(
       {
         name,

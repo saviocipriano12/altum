@@ -14,7 +14,7 @@ export function ClientePwaRegister() {
 
         for (const registration of registrations) {
           const scriptUrl = String(registration.active?.scriptURL || registration.waiting?.scriptURL || registration.installing?.scriptURL || "");
-          const isAltumWorker = scriptUrl.endsWith("/sw.js") && (registration.scope === rootScope || registration.scope === clientScope);
+          const isAltumWorker = scriptUrl.endsWith("/sw.js") && (registration.scope === rootScope || (process.env.NODE_ENV !== "production" && registration.scope === clientScope));
           if (isAltumWorker) {
             await registration.unregister();
           }
@@ -28,7 +28,8 @@ export function ClientePwaRegister() {
           return;
         }
 
-        await navigator.serviceWorker.register("/sw.js", { scope: "/cliente/" });
+        const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/cliente/", updateViaCache: "none" });
+        await registration.update();
       } catch (error) {
         console.warn("Falha ao registrar Service Worker do portal cliente:", error);
       }

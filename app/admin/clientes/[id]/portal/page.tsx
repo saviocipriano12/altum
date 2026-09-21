@@ -175,11 +175,11 @@ type TenantReadinessPayload = {
 };
 
 function badgeToneClass(tone: "neutral" | "success" | "warning" | "danger" | "info" = "neutral") {
-  if (tone === "success") return "border-emerald-400/20 bg-emerald-500/10 text-emerald-100";
-  if (tone === "warning") return "border-amber-400/20 bg-amber-500/10 text-amber-100";
-  if (tone === "danger") return "border-red-400/20 bg-red-500/10 text-red-100";
-  if (tone === "info") return "border-blue-400/20 bg-blue-500/10 text-blue-100";
-  return "border-white/10 bg-white/[0.04] text-white/70";
+  if (tone === "success") return "border-emerald-400/20 bg-emerald-500/10 text-emerald-700";
+  if (tone === "warning") return "border-amber-400/20 bg-amber-500/10 text-amber-700";
+  if (tone === "danger") return "border-red-400/20 bg-red-500/10 text-red-700";
+  if (tone === "info") return "border-blue-400/20 bg-blue-500/10 text-blue-700";
+  return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
 function money(value?: number) {
@@ -551,9 +551,9 @@ export default function ClientePortalAdminPage() {
 
       if (action === "send_reminder") {
         setBillingNotice(
-          `Lembrete executado. Status: ${data.reminderStatus || "processado"}. Enviados: ${Number(
+          `Lembrete executado. Status: ${data.reminderStatus || "processado"}.  ${Number(
             data.reminderSent || 0
-          )}. Falhas: ${Number(data.reminderFailed || 0)}.`
+          )}.  ${Number(data.reminderFailed || 0)}.`
         );
       } else if (action === "release_access") {
         setBillingNotice("Acesso do tenant liberado manualmente pelo admin.");
@@ -659,13 +659,13 @@ export default function ClientePortalAdminPage() {
         <div>
           <Link
             href={`/admin/clientes/${clientId}`}
-            className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white"
+            className="inline-flex items-center gap-2 text-xs text-slate-500 hover:text-slate-900"
           >
             <ArrowLeft className="h-4 w-4" />
             Voltar ao cliente
           </Link>
           <h1 className="mt-2 text-2xl font-semibold">Portal do Cliente</h1>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-slate-500">
             Configuracao de acesso e contrato do cliente: {clientName || "..." }
           </p>
         </div>
@@ -674,7 +674,7 @@ export default function ClientePortalAdminPage() {
             href={`/cliente/painel?tenantId=${encodeURIComponent(tenantSummary.tenantId)}`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-100 transition hover:bg-blue-500/20"
+            className="inline-flex items-center gap-2 rounded-xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-500/20"
           >
             <Rocket className="h-4 w-4" />
             Abrir painel como ALTUM
@@ -683,87 +683,87 @@ export default function ClientePortalAdminPage() {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
       {loading ? (
-        <div className="text-sm text-white/60 inline-flex items-center gap-2">
+        <div className="text-sm text-slate-500 inline-flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />
           Carregando portal...
         </div>
       ) : (
         <div className="space-y-4">
-          <form onSubmit={saveProvisioning} className="rounded-2xl border border-blue-500/20 bg-blue-950/10 p-4 space-y-4">
+          <form onSubmit={saveProvisioning} className="rounded-2xl border border-blue-500/20 bg-blue-50 p-4 space-y-4">
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
               <div>
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-blue-100">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-blue-700">
                   Provisionamento operacional do portal
                 </h2>
-                <p className="mt-1 text-sm text-white/65">
+                <p className="mt-1 text-sm text-slate-700">
                   Conecte o cliente ao tenant certo e defina o modo operacional que vai orientar IA, CRM, pipeline e captacao.
                 </p>
               </div>
-              <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-white/55">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-slate-500">
                 {tenantSummary ? `Tenant ${tenantSummary.tenantId}` : "Tenant pendente"}
               </span>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
               <div className="space-y-3">
-                <label className="block text-xs uppercase tracking-[0.16em] text-white/45">
+                <label className="block text-xs uppercase tracking-[0.16em] text-slate-500">
                   Modo do negocio
                   <select
                     value={selectedProfileId}
                     onChange={(e) => setSelectedProfileId(normalizeBusinessProfileId(e.target.value))}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none"
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none"
                   >
                     {Object.values(BUSINESS_PROFILES).map((profile) => (
-                      <option key={profile.id} value={profile.id} className="bg-[#111111] text-white">
+                      <option key={profile.id} value={profile.id} className="bg-white text-slate-900">
                         {profile.label}
                       </option>
                     ))}
                   </select>
                 </label>
 
-                <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-                  <p className="text-sm font-medium text-white">{selectedProfile.label}</p>
-                  <p className="mt-2 text-xs text-white/55">{selectedProfile.description}</p>
-                  <p className="mt-3 text-[11px] uppercase tracking-[0.16em] text-white/40">Movimento comercial</p>
-                  <p className="mt-1 text-sm text-white/78">{selectedProfile.commercialMotion}</p>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-medium text-slate-900">{selectedProfile.label}</p>
+                  <p className="mt-2 text-xs text-slate-500">{selectedProfile.description}</p>
+                  <p className="mt-3 text-[11px] uppercase tracking-[0.16em] text-slate-400">Movimento comercial</p>
+                  <p className="mt-1 text-sm text-slate-700">{selectedProfile.commercialMotion}</p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
                   {selectedProfile.metrics.slice(0, 4).map((metric) => (
-                    <span key={metric} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/70">
+                    <span key={metric} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
                       {metric}
                     </span>
                   ))}
                 </div>
 
-                <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                   <input
                     type="checkbox"
                     checked={applyStarterKit}
                     onChange={(event) => setApplyStarterKit(event.target.checked)}
-                    className="mt-1 h-4 w-4 rounded border-white/15 bg-black/50"
+                    className="mt-1 h-4 w-4 rounded border-slate-200 bg-slate-50"
                   />
                   <div>
-                    <p className="text-sm font-medium text-white">
+                    <p className="text-sm font-medium text-slate-900">
                       {tenantSummary ? "Reaplicar pacote inicial deste modo" : "Aplicar pacote inicial automaticamente"}
                     </p>
-                    <p className="mt-1 text-xs text-white/55">
+                    <p className="mt-1 text-xs text-slate-500">
                       Semear pipeline do perfil, {starterKit.automations.length} automacoes base e metadados do starter kit para acelerar o go-live.
                     </p>
                   </div>
                 </label>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/25 p-4 space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Estado atual</p>
-                  <p className="mt-1 text-sm text-white/84">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Estado atual</p>
+                  <p className="mt-1 text-sm text-slate-900">
                     {tenantSummary
                       ? `Tenant ativo com modo ${getBusinessProfile(tenantSummary.businessProfileId).label}.`
                       : "Cliente ainda sem tenant provisionado para o portal multi-tenant."}
@@ -771,10 +771,10 @@ export default function ClientePortalAdminPage() {
                 </div>
 
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Campos criticos do CRM</p>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Campos criticos do CRM</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {selectedProfile.crm.leadFields.slice(0, 6).map((field) => (
-                      <span key={field} className="rounded-full border border-blue-300/20 bg-blue-500/10 px-3 py-1 text-xs text-blue-100">
+                      <span key={field} className="rounded-full border border-blue-300/20 bg-blue-500/10 px-3 py-1 text-xs text-blue-700">
                         {field}
                       </span>
                     ))}
@@ -782,19 +782,19 @@ export default function ClientePortalAdminPage() {
                 </div>
 
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Pacote inicial deste modo</p>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Pacote inicial deste modo</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {starterKit.pipelineStages.slice(0, 4).map((stage) => (
-                      <span key={stage.id} className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-100">
+                      <span key={stage.id} className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-700">
                         {stage.label}
                       </span>
                     ))}
                   </div>
                   <div className="mt-3 space-y-2">
                     {starterKit.automations.slice(0, 5).map((automation) => (
-                      <div key={automation.key} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
-                        <p className="text-sm text-white/88">{automation.name}</p>
-                        <p className="mt-1 text-xs text-white/50">{automation.description}</p>
+                      <div key={automation.key} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-sm text-slate-900">{automation.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">{automation.description}</p>
                       </div>
                     ))}
                   </div>
@@ -826,13 +826,13 @@ export default function ClientePortalAdminPage() {
 
         {tenantSummary && (
           <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-            <div className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-white/72">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
                     Onboarding do cliente
                   </h2>
-                  <p className="mt-1 text-sm text-white/58">
+                  <p className="mt-1 text-sm text-slate-500">
                     O que falta fechar para este tenant entrar em piloto controlado sem depender de memoria operacional.
                   </p>
                 </div>
@@ -847,67 +847,67 @@ export default function ClientePortalAdminPage() {
               </div>
 
               <div className="grid gap-3 md:grid-cols-4">
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
-                  <div className="flex items-center gap-2 text-white/82">
-                    <Rocket className="h-4 w-4 text-blue-200" />
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center gap-2 text-slate-900">
+                    <Rocket className="h-4 w-4 text-blue-700" />
                     <p className="text-xs uppercase tracking-[0.16em]">Go-live</p>
                   </div>
-                  <p className="mt-3 text-2xl font-semibold text-white">{readinessScore}%</p>
-                  <p className="mt-2 text-xs text-white/52">score de prontidao atual</p>
+                  <p className="mt-3 text-2xl font-semibold text-slate-900">{readinessScore}%</p>
+                  <p className="mt-2 text-xs text-slate-500">score de prontidao atual</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
-                  <div className="flex items-center gap-2 text-white/82">
-                    <TriangleAlert className="h-4 w-4 text-amber-200" />
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center gap-2 text-slate-900">
+                    <TriangleAlert className="h-4 w-4 text-amber-700" />
                     <p className="text-xs uppercase tracking-[0.16em]">Bloqueios</p>
                   </div>
-                  <p className="mt-3 text-2xl font-semibold text-white">{blockers.length}</p>
-                  <p className="mt-2 text-xs text-white/52">itens antes do piloto</p>
+                  <p className="mt-3 text-2xl font-semibold text-slate-900">{blockers.length}</p>
+                  <p className="mt-2 text-xs text-slate-500">itens antes do piloto</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
-                  <div className="flex items-center gap-2 text-white/82">
-                    <ShieldCheck className="h-4 w-4 text-emerald-200" />
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center gap-2 text-slate-900">
+                    <ShieldCheck className="h-4 w-4 text-emerald-700" />
                     <p className="text-xs uppercase tracking-[0.16em]">Automacoes</p>
                   </div>
-                  <p className="mt-3 text-2xl font-semibold text-white">
+                  <p className="mt-3 text-2xl font-semibold text-slate-900">
                     {Number(readiness?.summary?.activeAutomations || 0)}
                   </p>
-                  <p className="mt-2 text-xs text-white/52">playbooks ativos no tenant</p>
+                  <p className="mt-2 text-xs text-slate-500">playbooks ativos no tenant</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
-                  <div className="flex items-center gap-2 text-white/82">
-                    <UserPlus className="h-4 w-4 text-blue-200" />
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center gap-2 text-slate-900">
+                    <UserPlus className="h-4 w-4 text-blue-700" />
                     <p className="text-xs uppercase tracking-[0.16em]">Acessos</p>
                   </div>
-                  <p className="mt-3 text-2xl font-semibold text-white">{portalUsers.length}</p>
-                  <p className="mt-2 text-xs text-white/52">usuarios convidados</p>
+                  <p className="mt-3 text-2xl font-semibold text-slate-900">{portalUsers.length}</p>
+                  <p className="mt-2 text-xs text-slate-500">usuarios convidados</p>
                 </div>
               </div>
 
               <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
                 <div className="space-y-3">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Checklist do onboarding</p>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Checklist do onboarding</p>
                   {onboardingChecklist.map((item, index) => (
                     <div
                       key={item.id}
                       className={`rounded-2xl border p-4 ${
                         item.done
                           ? "border-emerald-400/18 bg-emerald-500/10"
-                          : "border-white/10 bg-black/30"
+                          : "border-slate-200 bg-slate-50"
                       }`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5">
                           {item.done ? (
-                            <CheckCircle2 className="h-5 w-5 text-emerald-200" />
+                            <CheckCircle2 className="h-5 w-5 text-emerald-700" />
                           ) : (
-                            <div className="flex h-5 w-5 items-center justify-center rounded-full border border-white/15 text-[10px] text-white/55">
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 text-[10px] text-slate-500">
                               {index + 1}
                             </div>
                           )}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-white">{item.title}</p>
-                          <p className="mt-2 text-sm text-white/56">{item.description}</p>
+                          <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                          <p className="mt-2 text-sm text-slate-500">{item.description}</p>
                         </div>
                       </div>
                     </div>
@@ -915,9 +915,9 @@ export default function ClientePortalAdminPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Bloqueios e atalhos</p>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Bloqueios e atalhos</p>
                   {blockers.length === 0 ? (
-                    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-700">
                       Sem bloqueios criticos. Esse tenant ja pode entrar em piloto controlado.
                     </div>
                   ) : (
@@ -925,12 +925,12 @@ export default function ClientePortalAdminPage() {
                       <Link
                         key={blocker.id}
                         href={blocker.href}
-                        className="block rounded-2xl border border-white/10 bg-black/30 p-4 transition hover:bg-white/[0.04]"
+                        className="block rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:bg-slate-50"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-sm font-semibold text-white">{blocker.title}</p>
-                            <p className="mt-2 text-sm text-white/56">{blocker.description}</p>
+                            <p className="text-sm font-semibold text-slate-900">{blocker.title}</p>
+                            <p className="mt-2 text-sm text-slate-500">{blocker.description}</p>
                           </div>
                           <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.14em] ${badgeToneClass(blocker.tone)}`}>
                             {blocker.badge}
@@ -944,13 +944,13 @@ export default function ClientePortalAdminPage() {
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-white/72">
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
                       Saude das integracoes
                     </h2>
-                    <p className="mt-1 text-sm text-white/58">
+                    <p className="mt-1 text-sm text-slate-500">
                       Validacao real dos canais e lojas usados na operacao deste cliente.
                     </p>
                   </div>
@@ -968,7 +968,7 @@ export default function ClientePortalAdminPage() {
                 </div>
 
                 {integrationHealthItems.length === 0 ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/55">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
                     Nenhum canal ou ecommerce configurado para validar.
                   </div>
                 ) : (
@@ -976,13 +976,13 @@ export default function ClientePortalAdminPage() {
                     <Link
                       key={`${item.type}:${item.channelId}`}
                       href={item.actionHref || "/cliente/painel/configuracoes/canais"}
-                      className="block rounded-2xl border border-white/10 bg-black/30 p-4 transition hover:bg-white/[0.04]"
+                      className="block rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:bg-slate-50"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-white">{item.label || item.provider || item.type}</p>
-                          <p className="mt-1 text-xs text-white/48">{item.provider || item.type}</p>
-                          <p className="mt-2 text-sm text-white/58">{item.reason || (item.ok ? "Conexao pronta para operar." : "Conexao precisa de atencao.")}</p>
+                          <p className="text-sm font-semibold text-slate-900">{item.label || item.provider || item.type}</p>
+                          <p className="mt-1 text-xs text-slate-500">{item.provider || item.type}</p>
+                          <p className="mt-2 text-sm text-slate-500">{item.reason || (item.ok ? "Conexao pronta para operar." : "Conexao precisa de atencao.")}</p>
                         </div>
                         <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.14em] ${badgeToneClass(item.ok ? "success" : "warning")}`}>
                           {item.ok ? "operando" : "revisar"}
@@ -992,39 +992,39 @@ export default function ClientePortalAdminPage() {
                   ))
                 )}
                 {integrationHealth?.checkedAt ? (
-                  <p className="text-[11px] text-white/38">Ultima verificacao: {formatDateLabel(integrationHealth.checkedAt)}</p>
+                  <p className="text-[11px] text-slate-400">Ultima verificacao: {formatDateLabel(integrationHealth.checkedAt)}</p>
                 ) : null}
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                 <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-white/72">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
                     Leituras do tenant
                   </h2>
-                  <p className="mt-1 text-sm text-white/58">
+                  <p className="mt-1 text-sm text-slate-500">
                     Resumo operacional para a ALTUM saber se o cliente esta pronto para operar no dia 1.
                   </p>
                 </div>
                 {readinessInsights.length === 0 ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/55">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
                     Ainda sem leituras suficientes.
                   </div>
                 ) : (
                   readinessInsights.slice(0, 4).map((item) => (
-                    <div key={item.id} className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                      <p className="text-sm font-semibold text-white">{item.title}</p>
-                      <p className="mt-2 text-sm text-white/56">{item.description}</p>
+                    <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                      <p className="mt-2 text-sm text-slate-500">{item.description}</p>
                     </div>
                   ))
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                 <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-white/72">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
                     Mapa dos modulos
                   </h2>
-                  <p className="mt-1 text-sm text-white/58">
+                  <p className="mt-1 text-sm text-slate-500">
                     Onde o tenant ja esta pronto e onde ainda existe fechamento operacional.
                   </p>
                 </div>
@@ -1033,12 +1033,12 @@ export default function ClientePortalAdminPage() {
                     <Link
                       key={moduleItem.id}
                       href={moduleItem.href}
-                      className="block rounded-2xl border border-white/10 bg-black/30 p-3 transition hover:bg-white/[0.04]"
+                      className="block rounded-2xl border border-slate-200 bg-slate-50 p-3 transition hover:bg-slate-50"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-white">{moduleItem.title}</p>
-                          <p className="mt-1 text-xs text-white/54">{moduleItem.description}</p>
+                          <p className="text-sm font-semibold text-slate-900">{moduleItem.title}</p>
+                          <p className="mt-1 text-xs text-slate-500">{moduleItem.description}</p>
                         </div>
                         <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.14em] ${badgeToneClass(moduleItem.tone)}`}>
                           {moduleItem.badge}
@@ -1053,18 +1053,18 @@ export default function ClientePortalAdminPage() {
         )}
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <form onSubmit={invitePortalUser} className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70 flex items-center gap-2">
-              <UserPlus className="h-4 w-4 text-blue-300" />
+          <form onSubmit={invitePortalUser} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+              <UserPlus className="h-4 w-4 text-blue-700" />
               Convidar usuario do cliente
             </h2>
 
-            <p className="text-sm text-white/55">
-              O primeiro convite sai como <span className="font-medium text-white">client_admin</span>, para o cliente conseguir editar empresa, canais, operacao e usuarios sem depender da ALTUM.
+            <p className="text-sm text-slate-500">
+              O primeiro convite sai como <span className="font-medium text-slate-900">client_admin</span>, para o cliente conseguir editar empresa, canais, operacao e usuarios sem depender da ALTUM.
             </p>
 
             {!tenantSummary ? (
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
                 Provisione o tenant antes de gerar o primeiro convite.
               </div>
             ) : null}
@@ -1073,7 +1073,7 @@ export default function ClientePortalAdminPage() {
               required
               value={inviteName}
               onChange={(e) => setInviteName(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               placeholder="Nome do usuario cliente"
             />
             <input
@@ -1081,7 +1081,7 @@ export default function ClientePortalAdminPage() {
               type="email"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               placeholder="email@cliente.com"
             />
 
@@ -1096,29 +1096,29 @@ export default function ClientePortalAdminPage() {
 
             {inviteLink && (
               <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2">
-                <p className="text-xs text-emerald-100 mb-1">Link de ativacao:</p>
+                <p className="text-xs text-emerald-700 mb-1">Link de ativacao:</p>
                 <textarea
                   readOnly
                   value={inviteLink}
-                  className="w-full h-24 rounded border border-emerald-500/30 bg-black/40 p-2 text-xs text-emerald-100"
+                  className="w-full h-24 rounded border border-emerald-500/30 bg-slate-50 p-2 text-xs text-emerald-700"
                 />
               </div>
             )}
 
             <div className="space-y-2">
-              <p className="text-xs uppercase tracking-wide text-white/45">Acessos ativos</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Acessos ativos</p>
               {portalUsers.length === 0 ? (
-                <p className="text-sm text-white/55">Nenhum usuario convidado.</p>
+                <p className="text-sm text-slate-500">Nenhum usuario convidado.</p>
               ) : (
                 portalUsers.map((portalUser) => (
-                  <div key={portalUser.id} className="rounded-lg border border-white/10 bg-black/40 p-2">
+                  <div key={portalUser.id} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm text-white/90">{portalUser.name || "Usuario"}</p>
-                      <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-blue-100">
+                      <p className="text-sm text-slate-900">{portalUser.name || "Usuario"}</p>
+                      <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-blue-700">
                         {String(portalUser.role || "client_viewer").replace(/_/g, " ")}
                       </span>
                     </div>
-                    <p className="text-xs text-white/55">
+                    <p className="text-xs text-slate-500">
                       {portalUser.email || "-"} - {portalUser.status || "active"}
                     </p>
                   </div>
@@ -1127,25 +1127,25 @@ export default function ClientePortalAdminPage() {
             </div>
           </form>
 
-          <form onSubmit={saveContract} className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70 flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-emerald-300" />
+          <form onSubmit={saveContract} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-emerald-700" />
               Contrato do portal
             </h2>
 
-            <p className="text-sm text-white/55">
+            <p className="text-sm text-slate-500">
               Aqui o admin define como a plataforma entra na conta do cliente: assinatura propria, acesso incluso pela agencia ou liberacao manual com total governanca da Altum.
             </p>
 
             {billingNotice ? (
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
                 {billingNotice}
               </div>
             ) : null}
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Acesso atual</p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Acesso atual</p>
                 <div className="mt-2 flex items-center gap-2">
                   <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${financeStatusClass(billingOverview?.accessStatus || contract.platformAccessStatus || "active")}`}>
                     {billingOverview?.accessStatus || contract.platformAccessStatus || "active"}
@@ -1154,37 +1154,37 @@ export default function ClientePortalAdminPage() {
                     {contract.platformAccessMode || billingOverview?.accessMode || "manual_release"}
                   </span>
                 </div>
-                <p className="mt-3 text-xs text-white/55">
+                <p className="mt-3 text-xs text-slate-500">
                   Provider: {contract.billingProvider || billingOverview?.billingProvider || "manual"}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Financeiro aberto</p>
-                <p className="mt-2 text-xl font-semibold text-white">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Financeiro aberto</p>
+                <p className="mt-2 text-xl font-semibold text-slate-900">
                   {Number(billingOverview?.openFinanceCount || 0)}
                 </p>
-                <p className="mt-2 text-xs text-white/55">
+                <p className="mt-2 text-xs text-slate-500">
                   {Number(billingOverview?.overdueFinanceCount || 0)} em atraso
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Proximo vencimento</p>
-                <p className="mt-2 text-sm font-semibold text-white">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Proximo vencimento</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
                   {formatDateLabel(billingOverview?.latestOpenDueDate || contract.nextDueDate || null)}
                 </p>
-                <p className="mt-2 text-xs text-white/55">
+                <p className="mt-2 text-xs text-slate-500">
                   {money(billingOverview?.latestOpenAmount || contract.monthlyValue || 0)}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Ultimo pago</p>
-                <p className="mt-2 text-sm font-semibold text-white">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Ultimo pago</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
                   {billingOverview?.lastPaidAt ? formatDateLabel(billingOverview.lastPaidAt) : "Sem confirmacao"}
                 </p>
-                <p className="mt-2 text-xs text-white/55">
+                <p className="mt-2 text-xs text-slate-500">
                   {money(billingOverview?.lastPaidAmount || 0)}
                 </p>
               </div>
@@ -1195,7 +1195,7 @@ export default function ClientePortalAdminPage() {
                 type="button"
                 onClick={() => void runBillingAction("send_reminder")}
                 disabled={billingAction !== null}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-sm font-semibold text-blue-100 hover:bg-blue-500/20 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-500/20 disabled:opacity-60"
               >
                 {billingAction === "send_reminder" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Enviar lembrete agora
@@ -1204,7 +1204,7 @@ export default function ClientePortalAdminPage() {
                 type="button"
                 onClick={() => void runBillingAction("release_access")}
                 disabled={billingAction !== null || !tenantSummary?.tenantId}
-                className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-500/20 disabled:opacity-60"
               >
                 {billingAction === "release_access" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 Liberar acesso
@@ -1213,7 +1213,7 @@ export default function ClientePortalAdminPage() {
                 type="button"
                 onClick={() => void runBillingAction("block_access")}
                 disabled={billingAction !== null || !tenantSummary?.tenantId}
-                className="inline-flex items-center gap-2 rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-500/20 disabled:opacity-60"
               >
                 {billingAction === "block_access" ? <Loader2 className="h-4 w-4 animate-spin" /> : <TriangleAlert className="h-4 w-4" />}
                 Bloquear acesso
@@ -1222,7 +1222,7 @@ export default function ClientePortalAdminPage() {
                 type="button"
                 onClick={() => void runStripeAction("create_checkout")}
                 disabled={stripeAction !== null || !billingOverview?.stripeSetup?.resolvedPriceId}
-                className="inline-flex items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-100 hover:bg-violet-500/20 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-500/20 disabled:opacity-60"
               >
                 {stripeAction === "create_checkout" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
                 Gerar checkout Stripe
@@ -1231,24 +1231,24 @@ export default function ClientePortalAdminPage() {
                 type="button"
                 onClick={() => void runStripeAction("open_portal")}
                 disabled={stripeAction !== null || !contract.stripeCustomerId}
-                className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.05] px-3 py-2 text-sm font-semibold text-white/90 hover:bg-white/[0.08] disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-60"
               >
                 {stripeAction === "open_portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
                 Abrir portal Stripe
               </button>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-black/25 p-3 space-y-2">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Ultimos lancamentos</p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Ultimos lancamentos</p>
               {recentFinance.length === 0 ? (
-                <p className="text-sm text-white/55">Sem lancamentos recentes vinculados ao contrato.</p>
+                <p className="text-sm text-slate-500">Sem lancamentos recentes vinculados ao contrato.</p>
               ) : (
                 recentFinance.slice(0, 4).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3">
+                  <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-medium text-white">{item.descricao || "Lancamento"}</p>
-                        <p className="mt-1 text-xs text-white/55">
+                        <p className="text-sm font-medium text-slate-900">{item.descricao || "Lancamento"}</p>
+                        <p className="mt-1 text-xs text-slate-500">
                           {formatDateLabel(item.dueDate || null)} - {money(item.valor || 0)}
                         </p>
                       </div>
@@ -1261,11 +1261,11 @@ export default function ClientePortalAdminPage() {
               )}
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-black/25 p-3 space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Prontidao Stripe</p>
-                  <p className="mt-1 text-sm text-white/55">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Prontidao Stripe</p>
+                  <p className="mt-1 text-sm text-slate-500">
                     Estrutura preparada para assinatura da plataforma sem ativar cobranca real ainda.
                   </p>
                 </div>
@@ -1275,31 +1275,31 @@ export default function ClientePortalAdminPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Plano mapeado</p>
-                  <p className="mt-2 text-sm font-semibold text-white">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Plano mapeado</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">
                     {billingOverview?.stripeSetup?.planLabel || "Nao definido"}
                   </p>
-                  <p className="mt-1 text-xs text-white/55">
+                  <p className="mt-1 text-xs text-slate-500">
                     {billingOverview?.stripeSetup?.planPrice
                       ? money(billingOverview.stripeSetup.planPrice)
                       : "Sob diagnostico"}
                   </p>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Price ID do ambiente</p>
-                  <p className="mt-2 text-xs font-mono text-white/82 break-all">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Price ID do ambiente</p>
+                  <p className="mt-2 text-xs font-mono text-slate-900 break-all">
                     {billingOverview?.stripeSetup?.resolvedPriceId || "Nao encontrado"}
                   </p>
-                  <p className="mt-1 text-[11px] text-white/45">
+                  <p className="mt-1 text-[11px] text-slate-500">
                     {billingOverview?.stripeSetup?.stripeEnvKey || "Sem env padrao"}
                   </p>
                 </div>
               </div>
 
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">Proximo passo</p>
-                <p className="mt-2 text-sm text-white/78">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Proximo passo</p>
+                <p className="mt-2 text-sm text-slate-700">
                   {billingOverview?.stripeSetup?.nextStep || "Defina provider e plano para preparar a assinatura."}
                 </p>
                 {billingOverview?.stripeSetup?.missing?.length ? (
@@ -1319,7 +1319,7 @@ export default function ClientePortalAdminPage() {
                     href={contract.stripeCheckoutUrl || "#"}
                     target="_blank"
                     rel="noreferrer"
-                    className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm text-white/80 hover:bg-white/[0.05]"
+                    className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 hover:bg-slate-50"
                   >
                     Ultimo checkout Stripe
                   </a>
@@ -1327,7 +1327,7 @@ export default function ClientePortalAdminPage() {
                     href={contract.stripeCustomerPortalUrl || "#"}
                     target="_blank"
                     rel="noreferrer"
-                    className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm text-white/80 hover:bg-white/[0.05]"
+                    className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 hover:bg-slate-50"
                   >
                     Ultimo portal do cliente
                   </a>
@@ -1338,7 +1338,7 @@ export default function ClientePortalAdminPage() {
             <input
               value={contract.title || ""}
               onChange={(e) => setContract((prev) => ({ ...prev, title: e.target.value }))}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               placeholder="Titulo do contrato"
             />
 
@@ -1351,7 +1351,7 @@ export default function ClientePortalAdminPage() {
                     status: e.target.value as ContractDoc["status"],
                   }))
                 }
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
                 <option value="ativo">Ativo</option>
                 <option value="suspenso">Suspenso</option>
@@ -1362,7 +1362,7 @@ export default function ClientePortalAdminPage() {
                 min={0}
                 value={contract.monthlyValue || 0}
                 onChange={(e) => setContract((prev) => ({ ...prev, monthlyValue: Number(e.target.value || 0) }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 placeholder="Valor mensal"
               />
             </div>
@@ -1374,42 +1374,42 @@ export default function ClientePortalAdminPage() {
                 max={31}
                 value={contract.dueDay || 10}
                 onChange={(e) => setContract((prev) => ({ ...prev, dueDay: Number(e.target.value || 10) }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 placeholder="Dia venc."
               />
               <input
                 type="date"
                 value={contract.startDate || ""}
                 onChange={(e) => setContract((prev) => ({ ...prev, startDate: e.target.value }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               />
               <input
                 type="date"
                 value={contract.nextDueDate || ""}
                 onChange={(e) => setContract((prev) => ({ ...prev, nextDueDate: e.target.value }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               />
             </div>
 
             <div className="rounded-2xl border border-emerald-400/15 bg-emerald-500/[0.06] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-100">Custos mensais conhecidos</p>
-              <p className="mt-1 text-xs leading-5 text-white/55">Registre faturas externas para acompanhar a margem real desta conta. O custo de IA é medido automaticamente em dólar.</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Custos mensais conhecidos</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Registre faturas externas para acompanhar a margem real desta conta. O custo de IA é medido automaticamente em dólar.</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   WhatsApp / Meta (R$)
-                  <input type="number" min={0} step="0.01" value={contract.whatsappCostMonthlyBrl || 0} onChange={(e) => setContract((prev) => ({ ...prev, whatsappCostMonthlyBrl: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none" />
+                  <input type="number" min={0} step="0.01" value={contract.whatsappCostMonthlyBrl || 0} onChange={(e) => setContract((prev) => ({ ...prev, whatsappCostMonthlyBrl: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none" />
                 </label>
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   Telefonia (R$)
-                  <input type="number" min={0} step="0.01" value={contract.telephonyCostMonthlyBrl || 0} onChange={(e) => setContract((prev) => ({ ...prev, telephonyCostMonthlyBrl: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none" />
+                  <input type="number" min={0} step="0.01" value={contract.telephonyCostMonthlyBrl || 0} onChange={(e) => setContract((prev) => ({ ...prev, telephonyCostMonthlyBrl: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none" />
                 </label>
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   Outros custos (R$)
-                  <input type="number" min={0} step="0.01" value={contract.otherVariableCostMonthlyBrl || 0} onChange={(e) => setContract((prev) => ({ ...prev, otherVariableCostMonthlyBrl: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none" />
+                  <input type="number" min={0} step="0.01" value={contract.otherVariableCostMonthlyBrl || 0} onChange={(e) => setContract((prev) => ({ ...prev, otherVariableCostMonthlyBrl: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none" />
                 </label>
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   Cotação USD/BRL
-                  <input type="number" min={0} step="0.0001" value={contract.aiUsdBrlRate || 5.5} onChange={(e) => setContract((prev) => ({ ...prev, aiUsdBrlRate: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none" />
+                  <input type="number" min={0} step="0.0001" value={contract.aiUsdBrlRate || 5.5} onChange={(e) => setContract((prev) => ({ ...prev, aiUsdBrlRate: Number(e.target.value || 0) }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none" />
                 </label>
               </div>
             </div>
@@ -1417,7 +1417,7 @@ export default function ClientePortalAdminPage() {
             <input
               value={contract.paymentLink || ""}
               onChange={(e) => setContract((prev) => ({ ...prev, paymentLink: e.target.value }))}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               placeholder="Link de pagamento"
             />
 
@@ -1430,7 +1430,7 @@ export default function ClientePortalAdminPage() {
                     platformPlan: e.target.value,
                   }))
                 }
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
                 {PLATFORM_BILLING_PLANS.map((plan) => (
                   <option key={plan.id} value={plan.id}>
@@ -1446,7 +1446,7 @@ export default function ClientePortalAdminPage() {
                     billingProvider: e.target.value as ContractDoc["billingProvider"],
                   }))
                 }
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
                 <option value="manual">Manual</option>
                 <option value="stripe">Stripe</option>
@@ -1464,7 +1464,7 @@ export default function ClientePortalAdminPage() {
                     platformAccessMode: e.target.value as ContractDoc["platformAccessMode"],
                   }))
                 }
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
                 <option value="manual_release">Liberacao manual</option>
                 <option value="stripe_subscription">Assinatura da plataforma</option>
@@ -1479,7 +1479,7 @@ export default function ClientePortalAdminPage() {
                     platformAccessStatus: e.target.value as ContractDoc["platformAccessStatus"],
                   }))
                 }
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
                 <option value="active">Acesso ativo</option>
                 <option value="trial">Trial</option>
@@ -1492,13 +1492,13 @@ export default function ClientePortalAdminPage() {
               <input
                 value={contract.stripeCustomerId || ""}
                 onChange={(e) => setContract((prev) => ({ ...prev, stripeCustomerId: e.target.value }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 placeholder="Stripe customer ID"
               />
               <input
                 value={contract.stripeSubscriptionId || ""}
                 onChange={(e) => setContract((prev) => ({ ...prev, stripeSubscriptionId: e.target.value }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 placeholder="Stripe subscription ID"
               />
             </div>
@@ -1507,13 +1507,13 @@ export default function ClientePortalAdminPage() {
               <input
                 value={contract.stripePriceId || ""}
                 onChange={(e) => setContract((prev) => ({ ...prev, stripePriceId: e.target.value }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 placeholder="Stripe price ID"
               />
               <input
                 value={contract.stripeSubscriptionStatus || ""}
                 onChange={(e) => setContract((prev) => ({ ...prev, stripeSubscriptionStatus: e.target.value }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 placeholder="Status da subscription"
               />
             </div>
@@ -1523,32 +1523,32 @@ export default function ClientePortalAdminPage() {
                 type="date"
                 value={contract.stripeCurrentPeriodEnd || ""}
                 onChange={(e) => setContract((prev) => ({ ...prev, stripeCurrentPeriodEnd: e.target.value }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               />
               <input
                 value={contract.stripeCheckoutUrl || ""}
                 onChange={(e) => setContract((prev) => ({ ...prev, stripeCheckoutUrl: e.target.value }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 placeholder="URL de checkout Stripe"
               />
               <input
                 value={contract.stripeCustomerPortalUrl || ""}
                 onChange={(e) => setContract((prev) => ({ ...prev, stripeCustomerPortalUrl: e.target.value }))}
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 placeholder="URL do portal do cliente"
               />
             </div>
 
-            <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+            <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               <input
                 type="checkbox"
                 checked={contract.autoBillingEnabled === true}
                 onChange={(e) => setContract((prev) => ({ ...prev, autoBillingEnabled: e.target.checked }))}
-                className="mt-1 h-4 w-4 rounded border-white/20 bg-black/40"
+                className="mt-1 h-4 w-4 rounded border-slate-200 bg-slate-50"
               />
               <div>
-                <p className="text-sm text-white/90">Ativar cobranca automatica recorrente</p>
-                <p className="mt-1 text-xs text-white/55">
+                <p className="text-sm text-slate-900">Ativar cobranca automatica recorrente</p>
+                <p className="mt-1 text-xs text-slate-500">
                   Gera cobranca automaticamente no Asaas com antecedencia configurada antes do vencimento.
                 </p>
               </div>
@@ -1566,7 +1566,7 @@ export default function ClientePortalAdminPage() {
                     autoBillingAdvanceDays: Number(e.target.value || 5),
                   }))
                 }
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 placeholder="Antecedencia (dias)"
               />
               <select
@@ -1577,7 +1577,7 @@ export default function ClientePortalAdminPage() {
                     autoBillingBillingType: e.target.value as ContractDoc["autoBillingBillingType"],
                   }))
                 }
-                className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
                 <option value="PIX">PIX</option>
                 <option value="BOLETO">Boleto</option>
@@ -1585,16 +1585,16 @@ export default function ClientePortalAdminPage() {
               </select>
             </div>
 
-            <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+            <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               <input
                 type="checkbox"
                 checked={contract.autoSuspendEnabled !== false}
                 onChange={(e) => setContract((prev) => ({ ...prev, autoSuspendEnabled: e.target.checked }))}
-                className="mt-1 h-4 w-4 rounded border-white/20 bg-black/40"
+                className="mt-1 h-4 w-4 rounded border-slate-200 bg-slate-50"
               />
               <div>
-                <p className="text-sm text-white/90">Bloquear acesso automaticamente se atrasar</p>
-                <p className="mt-1 text-xs text-white/55">
+                <p className="text-sm text-slate-900">Bloquear acesso automaticamente se atrasar</p>
+                <p className="mt-1 text-xs text-slate-500">
                   Pausa o painel do cliente e a IA depois do prazo, sem apagar nenhum dado.
                 </p>
               </div>
@@ -1611,28 +1611,28 @@ export default function ClientePortalAdminPage() {
                   autoSuspendBusinessDays: Number(e.target.value || 2),
                 }))
               }
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               placeholder="Bloquear apos quantos dias uteis de atraso"
             />
 
             <textarea
               value={contract.reminderWhatsAppPhones || ""}
               onChange={(e) => setContract((prev) => ({ ...prev, reminderWhatsAppPhones: e.target.value }))}
-              className="w-full h-20 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="w-full h-20 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               placeholder="WhatsApps para aviso de cobranca (um por linha, ex: 5511999999999)"
             />
 
             <textarea
               value={contract.notes || ""}
               onChange={(e) => setContract((prev) => ({ ...prev, notes: e.target.value }))}
-              className="w-full h-24 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="w-full h-24 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               placeholder="Observacoes do contrato"
             />
 
             <textarea
               value={contract.billingNotes || ""}
               onChange={(e) => setContract((prev) => ({ ...prev, billingNotes: e.target.value }))}
-              className="w-full h-24 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="w-full h-24 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               placeholder="Notas internas de billing, liberacao manual, combinados com agencia ou observacoes para a operacao."
             />
 

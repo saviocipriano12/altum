@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { FieldValue, type DocumentReference, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 
@@ -20,6 +21,7 @@ function toMillis(value: unknown) {
 }
 
 export function whatsappChatIdentityId(input: { tenantId: string; channelId: string; phone: string }) {
+  if (/@g\.us$/i.test(input.phone)) return "whatsapp_group_" + createHash("sha256").update(JSON.stringify([input.tenantId, input.channelId, input.phone.toLowerCase()])).digest("hex");
   return safeId(`whatsapp_${clean(input.tenantId)}_${clean(input.channelId)}_${clean(input.phone, 40)}`);
 }
 

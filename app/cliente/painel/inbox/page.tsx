@@ -1,5 +1,7 @@
 "use client";
 
+import { requiresWhatsAppTemplate } from "@/lib/whatsapp-service-window";
+
 import Link from "next/link";
 import NextImage from "next/image";
 import { CSSProperties, FormEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -88,6 +90,9 @@ type ChatAiState = {
 } | null;
 
 type ChatItem = {
+  isGroup?: boolean;
+  groupJid?: string;
+  groupName?: string;
   id: string;
   contactName?: string;
   contactPhone?: string;
@@ -126,6 +131,8 @@ type ChatItem = {
 };
 
 type MessageItem = {
+  participantName?: string | null;
+  participantJid?: string | null;
   id: string;
   text?: string;
   sender?: "agent" | "client" | "system" | "bot";
@@ -759,6 +766,16 @@ function formatChannelLabel(channel?: string) {
   return channel.replaceAll("_", " ");
 }
 
+function getChannelAccessBadge(channel?: Pick<ChatItem, "channelScope" | "channelProvider" | "channel"> | null) {
+  if (channel?.channelScope === "personal") {
+    return { label: "Pessoal", tone: "neutral" as const };
+  }
+  if (channel?.channelScope === "shared" && channel?.channel === "whatsapp") {
+    return { label: "Oficial compartilhado", tone: "success" as const };
+  }
+  return { label: formatChannelLabel(channel?.channel), tone: "neutral" as const };
+}
+
 function formatPriorityLabel(priority?: string) {
   if (priority === "high") return "Alta";
   if (priority === "medium") return "Media";
@@ -843,11 +860,13 @@ function isPhoneLike(value?: string) {
 }
 
 function buildTelUrl(phone?: string) {
+  if (/@g\.us$/i.test(phone || "")) return "";
   const digits = String(phone || "").replace(/\D/g, "");
   return digits ? `tel:+${digits}` : "";
 }
 
 function buildWhatsAppUrl(phone?: string) {
+  if (/@g\.us$/i.test(phone || "")) return "";
   const digits = String(phone || "").replace(/\D/g, "");
   return digits ? `https://wa.me/${digits}` : "";
 }
@@ -876,17 +895,12 @@ function audioExtensionForMime(type: string) {
 
 function isWhatsAppServiceWindowClosed(chat?: ChatItem | null, provider?: string) {
   if (!chat) return false;
-  const channel = String(chat.channel || "whatsapp").toLowerCase();
-  if (channel !== "whatsapp") return false;
-  const normalizedProvider = String(provider || "").trim().toLowerCase();
-  const official = ["meta_whatsapp", "meta_cloud", "whatsapp_cloud", "whatsapp_cloud_api", "whatsapp_business_cloud_api"].includes(normalizedProvider);
-  // The 24-hour template rule belongs to Meta's official Cloud API. Personal
-  // WhatsApp sessions (Evolution/linked device) continue with free text.
-  if (!official) return false;
-  if (chat.requiresTemplate === true) return true;
-  const lastClientMessageAt = toDate(chat.lastClientMessageAt);
-  if (!lastClientMessageAt) return false;
-  return Date.now() - lastClientMessageAt.getTime() > 23.5 * 60 * 60 * 1000;
+  return requiresWhatsAppTemplate({
+    channel: chat.channel,
+    provider,
+    requiresTemplate: chat.requiresTemplate === true,
+    lastInboundAt: toDate(chat.lastClientMessageAt)?.getTime(),
+  });
 }
 
 function humanizeDeliveryError(value?: string | null) {
@@ -934,7 +948,7 @@ function normalizeReactionMap(value: unknown): Record<string, string[]> {
 function getMessageActorLabel(message: MessageItem) {
   if (message.sender === "agent") return message.senderName || "Time";
   if (message.sender === "system") return "Sistema";
-  return "Contato";
+  return message.participantName || message.senderName || message.participantJid || "Contato";
 }
 
 function getReplyPreviewLabel(message: MessageItem) {
@@ -954,7 +968,8 @@ function getTaskTone(task: LeadTask) {
   return "neutral" as const;
 }
 
-function isAiPaused(chat: Pick<ChatItem, "aiState"> | null | undefined) {
+function isAiPaused(chat: Pick<ChatItem, "aiState" | "isGroup"> | null | undefined) {
+  if (chat?.isGroup) return true;
   if (!chat?.aiState) return false;
   if (chat.aiState.aiEnabled === false) return true;
   const pausedUntil = toDate(chat.aiState.pausedUntil);
@@ -1033,7 +1048,7 @@ function getHandoffNotifyStatusHint(status: unknown) {
   return "";
 }
 
-function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefined) {
+function getAiStateDescription(chat: Pick<ChatItem, "aiState" | "isGroup"> | null | undefined) {
   if (!chat?.aiState) return "IA pronta para respostas automaticas nesta conversa.";
   const updatedByName = String(chat.aiState.updatedByName || "").trim();
   const pausedUntil = toDate(chat.aiState.pausedUntil);
@@ -1109,7 +1124,7 @@ function getAiStateDescription(chat: Pick<ChatItem, "aiState"> | null | undefine
   return "IA pronta para respostas automaticas nesta conversa.";
 }
 
-function shouldOfferAiRetry(chat: Pick<ChatItem, "aiState"> | null | undefined) {
+function shouldOfferAiRetry(chat: Pick<ChatItem, "aiState" | "isGroup"> | null | undefined) {
   const lastJobStatus = String(chat?.aiState?.lastJobStatus || "").trim().toLowerCase();
   const lastDecision = String(chat?.aiState?.lastDecision || "").trim().toLowerCase();
   return lastJobStatus === "retrying" || lastJobStatus === "dead_letter" || lastDecision === "skip";
@@ -1327,7 +1342,7 @@ function ConversationListItem({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">
-                  {chat.contactName || chat.contactPhone || "Contato sem nome"}
+                  {chat.isGroup ? "Grupo ? " : ""}{chat.contactName || chat.contactPhone || "Contato sem nome"}
                 </p>
                 {chat.priority === "high" ? (
                   <span className="h-2 w-2 rounded-full bg-[var(--cliente-accent)]" />
@@ -1375,7 +1390,10 @@ function ConversationListItem({
           </div>
 
           <div className="inbox-conversation-footer mt-3 flex items-center justify-between gap-3 text-[11px] text-[var(--cliente-card-text-soft)]">
-            <span>{formatChannelLabel(chat.channel)}</span>
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <StateBadge {...getChannelAccessBadge(chat)} />
+              {chat.channelPhoneNumber ? <span className="truncate">{chat.channelPhoneNumber}</span> : null}
+            </span>
             <span className="truncate text-right">{chat.tags?.slice(0, 1).join(" / ") || formatStatusLabel(chat.status)}</span>
           </div>
         </div>
@@ -1914,6 +1932,7 @@ function MessageBubble({
               : "inbox-message-in rounded-[18px] rounded-bl-[5px]"
           )}
         >
+          {message.participantName || message.participantJid ? <p className="mb-1 text-xs font-bold text-[#128C7E]">{getMessageActorLabel(message)}</p> : null}
           {(mediaLabel && MediaIcon) || replied ? (
             <div className="mb-2 space-y-2">
               {replied ? (
@@ -2061,6 +2080,8 @@ export default function ClienteInboxPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const messagesRef = useRef<MessageItem[]>([]);
+  const selectedChatContextRef = useRef<{ tenantId?: string; chatId: string | null }>({ chatId: null });
+  const selectedChatRequestRef = useRef(0);
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -2088,6 +2109,7 @@ export default function ClienteInboxPage() {
 
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [tenantChannels, setTenantChannels] = useState<TenantChannelItem[]>([]);
+  const [outboundChannelId, setOutboundChannelId] = useState("");
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [detail, setDetail] = useState<ChatDetailPayload | null>(null);
@@ -2106,8 +2128,9 @@ export default function ClienteInboxPage() {
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
   const [aiFilter, setAiFilter] = useState<AiFilter>("all");
+  const [conversationTypeFilter, setConversationTypeFilter] = useState("all");
   const [channelFilter, setChannelFilter] = useState("all");
-  const [channelInstanceFilter, setChannelInstanceFilter] = useState("all");
+  const [channelInstanceFilter, setChannelInstanceFilter] = useState(() => searchParams.get("channelAccount") || "all");
   const [assignedUserFilter, setAssignedUserFilter] = useState(() => searchParams.get("assignee") || "all");
   const [temperatureFilter, setTemperatureFilter] = useState("all");
   const [metaForm, setMetaForm] = useState({
@@ -2133,11 +2156,13 @@ export default function ClienteInboxPage() {
   const queueFromQuery = searchParams.get("queue");
   const aiFromQuery = searchParams.get("ai");
   const channelFromQuery = searchParams.get("channel");
+  const channelAccountFromQuery = searchParams.get("channelAccount");
   const assignedUserFromQuery = searchParams.get("assignedUser");
   const temperatureFromQuery = searchParams.get("temperature");
   const canOperate = hasCapability("respond_inbox");
   const canManageAi = hasCapability("manage_ai");
-  const canManageQueue = hasCapability("manage_settings") || hasCapability("manage_users");
+  const canViewTeamRecords = hasCapability("view_team_records") || hasCapability("manage_users") || hasCapability("manage_settings");
+  const canManageQueue = canViewTeamRecords;
   const allowAdvanced = experienceMode === "completo";
   const showContextPanel = Boolean(selectedChatId);
   const showDesktopContextPanel = Boolean(selectedChatId);
@@ -2218,14 +2243,22 @@ export default function ClienteInboxPage() {
 
       if (!res.ok) {
         setError(payload.error || "Falha ao carregar inbox.");
-        setChats([]);
+        if (res.status === 401 || res.status === 403) {
+          setChats([]);
+          setSelectedChatId(null);
+          setDetail(null);
+          setMessages([]);
+          messagesRef.current = [];
+        }
         return [];
       }
 
       const nextChats = payload.items || [];
       setChats(nextChats);
       setSelectedChatId((current) => {
-        if (current && nextChats.some((chat) => chat.id === current)) return current;
+        // A selected chat may be older than the newest limited page.
+        // Its detail endpoint remains responsible for access verification.
+        if (current) return current;
         if (initialChatId && nextChats.some((chat) => chat.id === initialChatId)) return initialChatId;
         if (leadIdFromQuery) {
           const leadChat = nextChats.find((chat) => chat.leadId === leadIdFromQuery);
@@ -2237,7 +2270,6 @@ export default function ClienteInboxPage() {
     } catch {
       if (!silent) {
         setError("Falha ao carregar conversas.");
-        setChats([]);
       }
       return [];
     } finally {
@@ -2307,6 +2339,9 @@ export default function ClienteInboxPage() {
   const loadSelectedChat = useCallback(
     async (chatId: string, options?: { withMessages?: boolean; silent?: boolean; incrementalMessages?: boolean }) => {
       if (!tenant?.tenantId) return;
+      if (selectedChatContextRef.current.chatId !== chatId || selectedChatContextRef.current.tenantId !== tenant.tenantId) return;
+      const requestId = ++selectedChatRequestRef.current;
+      const isCurrentRequest = () => selectedChatRequestRef.current === requestId && selectedChatContextRef.current.chatId === chatId && selectedChatContextRef.current.tenantId === tenant.tenantId;
       const withMessages = options?.withMessages ?? true;
       const silent = options?.silent ?? false;
 
@@ -2327,12 +2362,20 @@ export default function ClienteInboxPage() {
 
         const [detailRes, messagesRes] = await Promise.all(requests);
         const detailPayload = (await detailRes.json()) as ChatDetailPayload;
+        if (!isCurrentRequest()) return;
 
         if (!detailRes.ok) {
+          if (detailRes.status === 403 || detailRes.status === 404) {
+            setDetail(null);
+            setMessages([]);
+            messagesRef.current = [];
+            setSelectedChatId(null);
+            setError(detailPayload.error || "Você não tem mais acesso a esta conversa.");
+            return;
+          }
           if (!silent) {
             setError(detailPayload.error || "Falha ao carregar detalhe da conversa.");
             setDetail(null);
-            if (withMessages) setMessages([]);
           }
           return;
         }
@@ -2359,10 +2402,18 @@ export default function ClienteInboxPage() {
 
         if (withMessages && messagesRes) {
           const messagesPayload = (await messagesRes.json()) as MessageListPayload;
+          if (!isCurrentRequest()) return;
           if (!messagesRes.ok) {
+            if (messagesRes.status === 403 || messagesRes.status === 404) {
+              setDetail(null);
+              setMessages([]);
+              messagesRef.current = [];
+              setSelectedChatId(null);
+              setError(messagesPayload.error || "Você não tem mais acesso às mensagens desta conversa.");
+              return;
+            }
             if (!silent) {
               setError(messagesPayload.error || "Falha ao carregar mensagens.");
-              setMessages([]);
             }
             return;
           }
@@ -2370,9 +2421,9 @@ export default function ClienteInboxPage() {
           setMessages((current) => options?.incrementalMessages ? mergeChatMessages(current, nextMessages) : nextMessages);
         }
       } catch {
-        if (!silent) setError("Falha ao carregar detalhe da conversa.");
+        if (isCurrentRequest()) setError("Não foi possível atualizar a conversa. Tente novamente.");
       } finally {
-        if (!silent) {
+        if (isCurrentRequest()) {
           setLoadingDetail(false);
           if (withMessages) setLoadingMessages(false);
         }
@@ -2409,13 +2460,16 @@ export default function ClienteInboxPage() {
     if (channelFromQuery) {
       setChannelFilter(channelFromQuery);
     }
+    if (channelAccountFromQuery) {
+      setChannelInstanceFilter(channelAccountFromQuery);
+    }
     if (assignedUserFromQuery) {
       setAssignedUserFilter(assignedUserFromQuery);
     }
     if (["hot", "warm", "cold"].includes(String(temperatureFromQuery || "").toLowerCase())) {
       setTemperatureFilter(String(temperatureFromQuery).toLowerCase());
     }
-  }, [aiFromQuery, assignedUserFromQuery, channelFromQuery, priorityFromQuery, queueFromQuery, statusFromQuery, temperatureFromQuery]);
+  }, [aiFromQuery, assignedUserFromQuery, channelAccountFromQuery, channelFromQuery, priorityFromQuery, queueFromQuery, statusFromQuery, temperatureFromQuery]);
 
   useEffect(() => {
     const next = new URLSearchParams();
@@ -2426,6 +2480,7 @@ export default function ClienteInboxPage() {
     if (queueFilter !== "all") next.set("queue", queueFilter);
     if (aiFilter !== "all") next.set("ai", aiFilter);
     if (channelFilter !== "all") next.set("channel", channelFilter);
+    if (channelInstanceFilter !== "all") next.set("channelAccount", channelInstanceFilter);
     if (assignedUserFilter !== "all") next.set("assignedUser", assignedUserFilter);
     if (temperatureFilter !== "all") next.set("temperature", temperatureFilter);
     const nextQuery = next.toString();
@@ -2436,6 +2491,7 @@ export default function ClienteInboxPage() {
     aiFilter,
     assignedUserFilter,
     channelFilter,
+    channelInstanceFilter,
     leadIdFromQuery,
     priorityFilter,
     queueFilter,
@@ -2459,6 +2515,9 @@ export default function ClienteInboxPage() {
   }, [loadChats, loadTenantChannels, loadTenantAiSettings]);
 
   useEffect(() => {
+    selectedChatContextRef.current = { tenantId: tenant?.tenantId, chatId: selectedChatId };
+    selectedChatRequestRef.current += 1;
+    messagesRef.current = [];
     if (!selectedChatId) {
       setDetail(null);
       setMessages([]);
@@ -2468,7 +2527,8 @@ export default function ClienteInboxPage() {
     setDetail(null);
     setMessages([]);
     void loadSelectedChat(selectedChatId);
-  }, [selectedChatId, loadSelectedChat]);
+    return () => { selectedChatRequestRef.current += 1; };
+  }, [selectedChatId, loadSelectedChat, tenant?.tenantId]);
 
   useAdaptivePolling({
     enabled: Boolean(tenant?.tenantId && selectedChatId),
@@ -2535,6 +2595,8 @@ export default function ClienteInboxPage() {
 
   const filteredChats = useMemo(() => {
     return chats.filter((chat) => {
+      if (conversationTypeFilter === "groups" && !chat.isGroup) return false;
+      if (conversationTypeFilter === "contacts" && chat.isGroup) return false;
       if (statusFilter !== "all" && (chat.status || "open") !== statusFilter) return false;
       if (priorityFilter !== "all" && (chat.priority || "low") !== priorityFilter) return false;
       if (channelFilter !== "all" && (chat.channel || "whatsapp").toLowerCase() !== channelFilter.toLowerCase()) return false;
@@ -2576,7 +2638,7 @@ export default function ClienteInboxPage() {
 
       return haystack.includes(search.trim().toLowerCase());
     });
-  }, [aiFilter, assignedUserFilter, channelFilter, channelInstanceFilter, chats, leadIdFromQuery, priorityFilter, queueFilter, search, statusFilter, temperatureFilter]);
+  }, [conversationTypeFilter, aiFilter, assignedUserFilter, channelFilter, channelInstanceFilter, chats, leadIdFromQuery, priorityFilter, queueFilter, search, statusFilter, temperatureFilter]);
 
   const availableChannelInstances = useMemo(() => {
     const usedIds = new Set(chats.map((chat) => String(chat.channelId || "")).filter(Boolean));
@@ -2589,6 +2651,16 @@ export default function ClienteInboxPage() {
           .join(" · "),
       }));
   }, [chats, tenantChannels]);
+
+  const availableOutboundWhatsApps = useMemo(
+    () => tenantChannels.filter((channel) => channel.type === "whatsapp" && channel.status === "active"),
+    [tenantChannels]
+  );
+
+  useEffect(() => {
+    if (outboundChannelId && availableOutboundWhatsApps.some((channel) => channel.id === outboundChannelId)) return;
+    setOutboundChannelId(availableOutboundWhatsApps[0]?.id || "");
+  }, [availableOutboundWhatsApps, outboundChannelId]);
 
   const availableChannels = useMemo(() => {
     const configuredChannels = tenantChannels
@@ -2792,7 +2864,7 @@ export default function ClienteInboxPage() {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/whatsapp/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: leadIdFromQuery, text: messageText.trim() }),
+        body: JSON.stringify({ leadId: leadIdFromQuery, text: messageText.trim(), channelId: outboundChannelId || undefined }),
       });
       const payload = (await res.json()) as { chatId?: string | null; requiresTemplate?: boolean; error?: string };
       if (!res.ok || !payload.chatId) {
@@ -2966,6 +3038,7 @@ export default function ClienteInboxPage() {
   }
 
   async function handleToggleAi() {
+    if (activeChat?.isGroup) { setError("Respostas automaticas da IA ficam desativadas em grupos."); return; }
     if (!tenant?.tenantId || !selectedChatId || !canOperate) return;
 
     setUpdatingAi(true);
@@ -3748,7 +3821,7 @@ export default function ClienteInboxPage() {
             className="inbox-thread-action inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-50"
           >
             {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : aiPaused ? <PlayCircle className="h-3.5 w-3.5" /> : <PauseCircle className="h-3.5 w-3.5" />}
-            {aiPaused ? "Retomar assistente" : "Pausar assistente"}
+            {activeChat?.isGroup ? "IA desativada neste grupo" : aiPaused ? "Retomar assistente" : "Pausar assistente"}
           </button>
           {aiRetryAvailable ? (
             <button
@@ -4223,8 +4296,10 @@ export default function ClienteInboxPage() {
     <div className="inbox-refined client-daily-page space-y-4">
       <div className="hidden xl:block">
         <InboxHero
-          title="Atender para converter"
-          subtitle="Quem espera resposta, onde a IA atua e qual conversa pode virar venda."
+          title={canViewTeamRecords ? "Operação de conversas" : "Minha carteira de conversas"}
+          subtitle={canViewTeamRecords
+            ? "Acompanhe canais, responsáveis, prazos e onde a equipe precisa de ajuda."
+            : "Veja quem precisa de resposta e quais oportunidades exigem sua próxima ação."}
           action={
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -4415,6 +4490,13 @@ export default function ClienteInboxPage() {
             </div>
 
             <div className="mt-3 space-y-3 sm:mt-4">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-bold text-[var(--cliente-card-text)]">{canViewTeamRecords ? "Visão da empresa" : "Visão pessoal"}</p>
+                  <p className="truncate text-[11px] text-[var(--cliente-card-text-soft)]">{canViewTeamRecords ? "Todos os canais e responsáveis liberados" : "Somente conversas sob sua responsabilidade"}</p>
+                </div>
+                <StateBadge label={canViewTeamRecords ? "Gestão" : "Minha fila"} tone={canViewTeamRecords ? "info" : "success"} />
+              </div>
               <label className="client-input inbox-mobile-search flex items-center gap-2 rounded-full border px-3.5 py-3 text-sm text-[var(--cliente-card-text-muted)] sm:rounded-[20px]">
                 <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
                 <input
@@ -4476,6 +4558,14 @@ export default function ClienteInboxPage() {
                 </button>
               </div>
 
+              <label className="mb-2 block">
+                <span className="sr-only">Tipo de conversa</span>
+                <select value={conversationTypeFilter} onChange={(event) => setConversationTypeFilter(event.target.value)} className="client-input w-full rounded-xl border px-3 py-2 text-sm font-semibold">
+                  <option value="all">Contatos e grupos</option>
+                  <option value="contacts">Somente contatos</option>
+                  <option value="groups">Somente grupos</option>
+                </select>
+              </label>
               <div className={cn("grid-cols-1 gap-2 sm:grid-cols-2", showAdvancedFilters ? "grid" : "hidden", "sm:grid")}>
                 <label className="min-w-0">
                   <span className="sr-only">Filtrar por canal</span>
@@ -4505,7 +4595,7 @@ export default function ClienteInboxPage() {
                     ))}
                   </select>
                 </label>
-                <label className="min-w-0">
+                {canViewTeamRecords ? <label className="min-w-0">
                   <span className="sr-only">Filtrar por vendedor</span>
                   <select
                     value={assignedUserFilter}
@@ -4519,7 +4609,7 @@ export default function ClienteInboxPage() {
                       </option>
                     ))}
                   </select>
-                </label>
+                </label> : null}
                 <label className="min-w-0">
                   <span className="sr-only">Filtrar por temperatura</span>
                   <select
@@ -4602,23 +4692,34 @@ export default function ClienteInboxPage() {
                     ? "Envie a primeira mensagem por um WhatsApp conectado e continue todo o atendimento dentro da Altum."
                     : "Ajuste os filtros ou aguarde novas entradas nos canais conectados."}
                   action={leadIdFromQuery && canOperate ? (
-                    <form onSubmit={handleStartLeadConversation} className="mx-auto flex max-w-md flex-col gap-2 sm:flex-row">
-                      <input
-                        value={messageText}
-                        onChange={(event) => setMessageText(event.target.value)}
-                        placeholder="Escreva a primeira mensagem"
-                        className="client-input min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
-                        disabled={sending}
-                        autoFocus
-                      />
-                      <button
-                        type="submit"
-                        disabled={sending || !messageText.trim()}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-bold text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
-                      >
-                        {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        Iniciar conversa
-                      </button>
+                    <form onSubmit={handleStartLeadConversation} className="mx-auto max-w-md space-y-2 text-left">
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-bold text-[var(--cliente-card-text-soft)]">Enviar usando</span>
+                        <select value={outboundChannelId} onChange={(event) => setOutboundChannelId(event.target.value)} className="client-input w-full rounded-xl border px-3 py-2.5 text-sm font-semibold outline-none" disabled={sending || availableOutboundWhatsApps.length <= 1}>
+                          {availableOutboundWhatsApps.length === 0 ? <option value="">Nenhum WhatsApp disponível</option> : null}
+                          {availableOutboundWhatsApps.map((channel) => (
+                            <option key={channel.id} value={channel.id}>{[channel.displayName || "WhatsApp", channel.phoneNumber, channel.ownerUserName].filter(Boolean).join(" · ")}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <input
+                          value={messageText}
+                          onChange={(event) => setMessageText(event.target.value)}
+                          placeholder="Escreva a primeira mensagem"
+                          className="client-input min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
+                          disabled={sending || !outboundChannelId}
+                          autoFocus
+                        />
+                        <button
+                          type="submit"
+                          disabled={sending || !messageText.trim() || !outboundChannelId}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-bold text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
+                        >
+                          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          Iniciar conversa
+                        </button>
+                      </div>
                     </form>
                   ) : undefined}
                 />
@@ -4672,10 +4773,13 @@ export default function ClienteInboxPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2 sm:flex-wrap">
                     <h3 className="truncate text-[15px] font-semibold tracking-normal text-[var(--cliente-card-text)] sm:text-lg">
-                      {activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
+                      {activeChat?.isGroup ? "Grupo ? " : ""}{activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
                     </h3>
                     <span className="hidden sm:inline-flex">
                       <StateBadge label={activeChat?.channelDisplayName || formatChannelLabel(activeChat?.channel)} tone="neutral" />
+                    </span>
+                    <span className="hidden sm:inline-flex">
+                      <StateBadge {...getChannelAccessBadge(activeChat)} />
                     </span>
                     {activeChat?.channelPhoneNumber ? <span className="hidden text-xs font-semibold text-[var(--cliente-card-text-soft)] sm:inline">{activeChat.channelPhoneNumber}</span> : null}
                     <span className="hidden sm:inline-flex">

@@ -10,6 +10,7 @@ import { buildGrowthDailyBriefing } from "../growth/engine.ts";
 import { buildTrackingOverview } from "../growth/tracking.ts";
 import { buildRevenueGraph } from "../growth/revenue-graph.ts";
 import { hashAdportOperation } from "../growth/adport-connectors.ts";
+import { operatorCampaignTargets } from "../growth/operator-campaign-targets.ts";
 import { GoogleDraftError, prepareGoogleDraft, type GoogleDraftTool, type GoogleOperatorSnapshot } from "../growth/google-ads-actions.ts";
 import { MetaDraftError, prepareMetaDraft, type MetaDraftTool, type MetaOperatorSnapshot } from "../growth/meta-ads-actions.ts";
 import { CommandError, clean, digest, iso, millis, sign, verify } from "./security.ts";
@@ -506,11 +507,14 @@ export class CommandCenter {
       return { draftId: draft.id, status: "pending_review", href: draft.href, target: prepared.target, proposedChange: prepared.proposedChange, providerValidationRequired: true, message: "Rascunho criado. O Meta Ads será validado ao vivo somente depois da aprovação humana." };
     }
     if (tool === "draft_campaign_pause" || tool === "draft_campaign_budget_change") {
-      const snapshots = await this.ports.list(access.tenantId, "campaign_snapshots", 200);
+      const [snapshots, operatorReports] = await Promise.all([
+        this.ports.list(access.tenantId, "campaign_snapshots", 200),
+        this.ports.list(access.tenantId, input.platform === "meta_ads" ? "meta_ads_operator_reports" : "google_ads_operator_reports", 30),
+      ]);
       let target;
       try {
         target = resolveCampaignTarget(
-          snapshots.rows.filter((row) => row.tenantId === access.tenantId),
+          [...operatorCampaignTargets(operatorReports.rows, input.platform!), ...snapshots.rows].filter((row) => row.tenantId === access.tenantId),
           { platform: input.platform!, campaignId: input.campaignId!, adAccountId: input.adAccountId }
         );
       } catch (error) {

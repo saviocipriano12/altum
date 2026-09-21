@@ -1,5 +1,7 @@
 "use client";
 
+import { readClientPreference, writeClientPreference, removeClientPreference } from "@/lib/client-storage";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
@@ -69,7 +71,7 @@ function urlBase64ToUint8Array(base64String: string) {
 function readStoredSnapshot(tenantId: string): CriticalSnapshot | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(snapshotStorageKey(tenantId));
+    const raw = readClientPreference(snapshotStorageKey(tenantId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<CriticalSnapshot>;
     if (!parsed) return null;
@@ -89,16 +91,16 @@ function readStoredSnapshot(tenantId: string): CriticalSnapshot | null {
 
 function saveSnapshot(tenantId: string, snapshot: CriticalSnapshot) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(snapshotStorageKey(tenantId), JSON.stringify(snapshot));
+  writeClientPreference(snapshotStorageKey(tenantId), JSON.stringify(snapshot));
 }
 
 function canNotifyNow(tenantId: string, tag: string) {
   if (typeof window === "undefined") return false;
   const key = notifyCooldownKey(tenantId, tag);
-  const last = Number(window.localStorage.getItem(key) || 0);
+  const last = Number(readClientPreference(key) || 0);
   const now = Date.now();
   if (now - last < MIN_NOTIFY_INTERVAL_MS) return false;
-  window.localStorage.setItem(key, String(now));
+  writeClientPreference(key, String(now));
   return true;
 }
 
@@ -175,7 +177,7 @@ export function ClienteCriticalNotifications() {
     }
 
     setPermission(Notification.permission);
-    setPromptDismissed(window.localStorage.getItem(DISMISS_PROMPT_KEY) === "true");
+    setPromptDismissed(readClientPreference(DISMISS_PROMPT_KEY) === "true");
   }, []);
 
   useEffect(() => {
@@ -238,7 +240,7 @@ export function ClienteCriticalNotifications() {
       const endpoint = String(subscription.endpoint || "");
       if (!endpoint) return;
       const endpointKey = endpointStorageKey(tenantId);
-      const previousEndpoint = window.localStorage.getItem(endpointKey) || "";
+      const previousEndpoint = readClientPreference(endpointKey) || "";
 
       const shouldSync = endpointRef.current !== endpoint || !hasOwnServerSubscription;
       endpointRef.current = endpoint;
@@ -260,14 +262,14 @@ export function ClienteCriticalNotifications() {
         });
       }
 
-      window.localStorage.setItem(endpointKey, endpoint);
+      writeClientPreference(endpointKey, endpoint);
 
       const testKey = pushTestStorageKey(tenantId);
-      if (window.localStorage.getItem(testKey) !== endpoint) {
+      if (readClientPreference(testKey) !== endpoint) {
         await authedFetch("/api/client-portal/push/test", {
           method: "POST",
         });
-        window.localStorage.setItem(testKey, endpoint);
+        writeClientPreference(testKey, endpoint);
       }
     } catch (error) {
       console.warn("Falha ao sincronizar push do portal cliente:", error);
@@ -306,7 +308,7 @@ export function ClienteCriticalNotifications() {
         });
       }
 
-      window.localStorage.removeItem(endpointStorageKey(tenantId));
+      removeClientPreference(endpointStorageKey(tenantId));
       endpointRef.current = "";
       setHasOwnServerSubscription(false);
     } catch (error) {
@@ -413,7 +415,7 @@ export function ClienteCriticalNotifications() {
 
   function dismissPrompt() {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(DISMISS_PROMPT_KEY, "true");
+      writeClientPreference(DISMISS_PROMPT_KEY, "true");
     }
     setPromptDismissed(true);
   }

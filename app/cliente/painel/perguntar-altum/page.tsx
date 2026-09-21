@@ -125,7 +125,8 @@ export default function PerguntarAltumPage() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canAsk = hasCapability("view_metrics") || hasCapability("manage_ai") || hasCapability("manage_settings");
+  const canViewCompany = ["client_owner", "client_admin", "agency_owner", "agency_admin", "agency_agent"].includes(tenant?.tenantRole || "") || hasCapability("view_team_records") || hasCapability("manage_users") || hasCapability("manage_settings");
+  const canAsk = canViewCompany && (hasCapability("view_metrics") || hasCapability("manage_ai") || hasCapability("manage_settings"));
   const hydratedStorageKey = useRef<string | null>(null);
   const skipNextPersist = useRef(false);
   const conversationEndRef = useRef<HTMLDivElement | null>(null);

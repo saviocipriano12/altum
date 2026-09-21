@@ -273,10 +273,10 @@ export default function TeamPage() {
         const copied = await copyToClipboard(data.inviteLink);
         setNotice({
           type: "ok",
-          text: copied ? "Novo link de convite copiado." : "Convite reenviado.",
+          text: copied ? "Novo link de convite copiado. Compartilhe com o colaborador." : "Novo link gerado. O e-mail ainda não foi enviado.",
         });
       } else {
-        setNotice({ type: "ok", text: "Convite reenviado com sucesso." });
+        setNotice({ type: "ok", text: "Link de convite gerado. O e-mail ainda não foi enviado." });
       }
     } catch (error) {
       console.error("Erro ao reenviar convite:", error);
@@ -420,7 +420,7 @@ export default function TeamPage() {
       </section>
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white p-4">
           <div className="w-full max-w-lg space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-lg font-black text-slate-950">

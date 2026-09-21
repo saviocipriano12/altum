@@ -45,6 +45,7 @@ const CAPABILITY_OPTIONS = [
   { id: "manage_ai", label: "Gerir IA" },
   { id: "manage_automations", label: "Gerir fluxos" },
   { id: "manage_channels", label: "Gerir canais" },
+  { id: "manage_personal_channel", label: "Conectar próprio WhatsApp" },
   { id: "manage_users", label: "Gerir usuários" },
   { id: "manage_settings", label: "Gerir configurações" },
 ] as const;

@@ -398,7 +398,7 @@ export default function CampanhasPage() {
       if (!res.ok) throw new Error(data.error || "Falha ao sincronizar campanhas.");
 
       setSuccess(
-        `Sync concluido. Sucesso: ${Number(data.synced || 0)} | Falhas: ${Number(data.failed || 0)}`
+        `Sync concluido. Sucesso: ${Number(data.synced || 0)} |  ${Number(data.failed || 0)}`
       );
       await Promise.all([
         loadAccounts(accountForm.clientId),
@@ -439,15 +439,15 @@ export default function CampanhasPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-white/10 bg-[#101010] p-5">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-wider text-white/45">Growth Intelligence</p>
+            <p className="text-xs uppercase tracking-wider text-slate-500">Growth Intelligence</p>
             <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <LineChart className="h-6 w-6 text-blue-400" />
+              <LineChart className="h-6 w-6 text-blue-700" />
               Campanhas e Contas de Anuncio
             </h1>
-            <p className="text-sm text-white/60 mt-1">
+            <p className="text-sm text-slate-500 mt-1">
               Base robusta para Meta Ads, Google Ads e canais futuros com leitura continua e IA.
             </p>
           </div>
@@ -455,7 +455,7 @@ export default function CampanhasPage() {
             <button
               onClick={() => void runSync()}
               disabled={syncing}
-              className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-600/10 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-600/20 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-600/10 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-60"
             >
               {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Sync API
@@ -473,14 +473,14 @@ export default function CampanhasPage() {
       </section>
 
       {error && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-100">{error}</div>
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700">{error}</div>
       )}
       {success && (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100">{success}</div>
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-700">{success}</div>
       )}
       {integrations.length > 0 && (
-        <section className="rounded-2xl border border-white/10 bg-[#101010] p-4">
-          <h2 className="text-xs uppercase tracking-wide text-white/60">Saude das integracoes</h2>
+        <section className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h2 className="text-xs uppercase tracking-wide text-slate-500">Saude das integracoes</h2>
           <div className="mt-3 grid gap-2 md:grid-cols-3">
             {integrations.map((item) => (
               <div
@@ -493,14 +493,14 @@ export default function CampanhasPage() {
               >
                 <div className="flex items-center gap-2">
                   {item.status === "ok" ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+                    <CheckCircle2 className="h-4 w-4 text-emerald-700" />
                   ) : (
-                    <AlertTriangle className="h-4 w-4 text-amber-300" />
+                    <AlertTriangle className="h-4 w-4 text-amber-700" />
                   )}
-                  <p className="text-sm font-medium text-white/90">{item.label}</p>
+                  <p className="text-sm font-medium text-slate-900">{item.label}</p>
                 </div>
                 {item.status === "missing" && (
-                  <p className="mt-2 text-[11px] text-amber-100/90">
+                  <p className="mt-2 text-[11px] text-amber-700">
                     Faltando: {(item.missingEnvs || []).join(", ")}
                   </p>
                 )}
@@ -511,13 +511,13 @@ export default function CampanhasPage() {
       )}
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <form onSubmit={createAdAccount} className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70 flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-white/50" />
+        <form onSubmit={createAdAccount} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-slate-500" />
             Conectar nova conta
           </h2>
 
-          <label className="text-xs text-white/55">Cliente</label>
+          <label className="text-xs text-slate-500">Cliente</label>
           <select
             value={accountForm.clientId}
             onChange={(e) => {
@@ -526,7 +526,7 @@ export default function CampanhasPage() {
               void loadAccounts(value);
               void loadSnapshots(value, "");
             }}
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
           >
             <option value="">Selecione</option>
             {clients.map((client) => (
@@ -538,7 +538,7 @@ export default function CampanhasPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-white/55">Plataforma</label>
+              <label className="text-xs text-slate-500">Plataforma</label>
               <select
                 value={accountForm.platform}
                 onChange={(e) =>
@@ -547,7 +547,7 @@ export default function CampanhasPage() {
                     platform: e.target.value as CreateAccountForm["platform"],
                   }))
                 }
-                className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
                 <option value="meta_ads">Meta Ads</option>
                 <option value="google_ads">Google Ads</option>
@@ -556,7 +556,7 @@ export default function CampanhasPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-white/55">Modo de sync</label>
+              <label className="text-xs text-slate-500">Modo de sync</label>
               <select
                 value={accountForm.syncMode}
                 onChange={(e) =>
@@ -565,7 +565,7 @@ export default function CampanhasPage() {
                     syncMode: e.target.value as CreateAccountForm["syncMode"],
                   }))
                 }
-                className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
                 <option value="manual">Manual</option>
                 <option value="api">API direta</option>
@@ -577,19 +577,19 @@ export default function CampanhasPage() {
           <input
             value={accountForm.accountLabel}
             onChange={(e) => setAccountForm((prev) => ({ ...prev, accountLabel: e.target.value }))}
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
             placeholder="Nome interno da conta (ex: Cliente X - Meta Principal)"
           />
           <input
             value={accountForm.externalAccountId}
             onChange={(e) => setAccountForm((prev) => ({ ...prev, externalAccountId: e.target.value }))}
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
             placeholder="ID externo da conta na plataforma"
           />
           <input
             value={accountForm.credentialsRef}
             onChange={(e) => setAccountForm((prev) => ({ ...prev, credentialsRef: e.target.value }))}
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
             placeholder="Ref do segredo/token (Vault/Secret Manager)"
           />
 
@@ -603,16 +603,16 @@ export default function CampanhasPage() {
           </button>
         </form>
 
-        <form onSubmit={saveSnapshot} className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70 flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-white/50" />
+        <form onSubmit={saveSnapshot} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-slate-500" />
             Snapshot diario de metricas
           </h2>
 
           <select
             value={snapshotForm.adAccountId}
             onChange={(e) => setSnapshotForm((prev) => ({ ...prev, adAccountId: e.target.value }))}
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
           >
             <option value="">Selecione a conta</option>
             {filteredAccounts.map((account) => (
@@ -626,7 +626,7 @@ export default function CampanhasPage() {
             type="date"
             value={snapshotForm.dateRef}
             onChange={(e) => setSnapshotForm((prev) => ({ ...prev, dateRef: e.target.value }))}
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
           />
 
           <div className="grid grid-cols-2 gap-3">
@@ -634,25 +634,25 @@ export default function CampanhasPage() {
               value={snapshotForm.impressions}
               onChange={(e) => setSnapshotForm((prev) => ({ ...prev, impressions: e.target.value }))}
               placeholder="Impressoes"
-              className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
             />
             <input
               value={snapshotForm.clicks}
               onChange={(e) => setSnapshotForm((prev) => ({ ...prev, clicks: e.target.value }))}
               placeholder="Cliques"
-              className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
             />
             <input
               value={snapshotForm.spend}
               onChange={(e) => setSnapshotForm((prev) => ({ ...prev, spend: e.target.value }))}
               placeholder="Investimento (R$)"
-              className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
             />
             <input
               value={snapshotForm.leads}
               onChange={(e) => setSnapshotForm((prev) => ({ ...prev, leads: e.target.value }))}
               placeholder="Leads"
-              className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
             />
           </div>
 
@@ -660,7 +660,7 @@ export default function CampanhasPage() {
             value={snapshotForm.roas}
             onChange={(e) => setSnapshotForm((prev) => ({ ...prev, roas: e.target.value }))}
             placeholder="ROAS (opcional)"
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
           />
 
           <button
@@ -674,36 +674,36 @@ export default function CampanhasPage() {
         </form>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70 flex items-center gap-2">
-            <Target className="h-4 w-4 text-white/50" />
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+            <Target className="h-4 w-4 text-slate-500" />
             Contas de anuncio no escopo
           </h2>
           <button
             onClick={() => void loadAccounts()}
-            className="text-xs rounded-lg border border-white/10 bg-white/5 px-2 py-1 hover:bg-white/10"
+            className="text-xs rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 hover:bg-slate-50"
           >
             Atualizar
           </button>
         </div>
 
         {loading ? (
-          <div className="text-sm text-white/60 inline-flex items-center gap-2">
+          <div className="text-sm text-slate-500 inline-flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
             Carregando contas...
           </div>
         ) : accounts.length === 0 ? (
-          <p className="text-sm text-white/55">Nenhuma conta de anuncio cadastrada.</p>
+          <p className="text-sm text-slate-500">Nenhuma conta de anuncio cadastrada.</p>
         ) : (
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {accounts.map((item) => (
-              <div key={item.id} className="rounded-xl border border-white/10 bg-black/40 p-3">
-                <p className="text-sm font-medium text-white/90">{item.accountLabel}</p>
-                <p className="text-xs text-white/55 mt-1">
+              <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-medium text-slate-900">{item.accountLabel}</p>
+                <p className="text-xs text-slate-500 mt-1">
                   {item.platform} - Cliente: {item.clientName}
                 </p>
-                <p className="text-[11px] text-white/45 mt-1">
+                <p className="text-[11px] text-slate-500 mt-1">
                   Sync: {item.syncMode || "manual"} - Status: {item.status}
                 </p>
                 <div className="mt-3 flex items-center gap-2">
@@ -713,14 +713,14 @@ export default function CampanhasPage() {
                       void runSync(item.id);
                     }}
                     disabled={syncing}
-                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-600/10 px-2 py-1 text-[11px] text-emerald-100 hover:bg-emerald-600/20 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-600/10 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-50"
                   >
                     {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                     Sync conta
                   </button>
                   <button
                     onClick={() => setSnapshotForm((prev) => ({ ...prev, adAccountId: item.id }))}
-                    className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/80 hover:bg-white/10"
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-900 hover:bg-slate-50"
                   >
                     Selecionar
                   </button>
@@ -731,14 +731,14 @@ export default function CampanhasPage() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
             Snapshots recentes (30 dias)
           </h2>
           <button
             onClick={() => void loadSnapshots(accountForm.clientId, snapshotForm.adAccountId)}
-            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs hover:bg-white/10"
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs hover:bg-slate-50"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             Atualizar
@@ -746,11 +746,11 @@ export default function CampanhasPage() {
         </div>
 
         {snapshots.length === 0 ? (
-          <p className="text-sm text-white/55">Sem snapshots no período selecionado.</p>
+          <p className="text-sm text-slate-500">Sem snapshots no período selecionado.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="text-white/45 border-b border-white/10">
+              <thead className="text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="py-2 text-left font-medium">Data</th>
                   <th className="py-2 text-left font-medium">Conta</th>
@@ -765,7 +765,7 @@ export default function CampanhasPage() {
               </thead>
               <tbody>
                 {snapshots.slice(0, 25).map((item) => (
-                  <tr key={item.id} className="border-b border-white/5 text-white/80">
+                  <tr key={item.id} className="border-b border-slate-200 text-slate-900">
                     <td className="py-2">{item.dateRef || "-"}</td>
                     <td className="py-2">{item.adAccountId || "-"}</td>
                     <td className="py-2">{Math.round(Number(item.impressions || 0)).toLocaleString("pt-BR")}</td>
@@ -783,14 +783,14 @@ export default function CampanhasPage() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
             Logs de sincronizacao
           </h2>
           <button
             onClick={() => void loadSyncLogs(accountForm.clientId, snapshotForm.adAccountId)}
-            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs hover:bg-white/10"
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs hover:bg-slate-50"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             Atualizar
@@ -798,11 +798,11 @@ export default function CampanhasPage() {
         </div>
 
         {syncLogs.length === 0 ? (
-          <p className="text-sm text-white/55">Nenhum log de sincronizacao encontrado.</p>
+          <p className="text-sm text-slate-500">Nenhum log de sincronizacao encontrado.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="text-white/45 border-b border-white/10">
+              <thead className="text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="py-2 text-left font-medium">Data</th>
                   <th className="py-2 text-left font-medium">Conta</th>
@@ -816,15 +816,15 @@ export default function CampanhasPage() {
               </thead>
               <tbody>
                 {syncLogs.slice(0, 30).map((item) => (
-                  <tr key={item.id} className="border-b border-white/5 text-white/80">
+                  <tr key={item.id} className="border-b border-slate-200 text-slate-900">
                     <td className="py-2">{item.dateRef || "-"}</td>
                     <td className="py-2">{item.adAccountId || "-"}</td>
                     <td className="py-2">
                       <span
                         className={`rounded-full px-2 py-0.5 ${
                           item.ok
-                            ? "bg-emerald-500/20 text-emerald-200"
-                            : "bg-red-500/20 text-red-200"
+                            ? "bg-emerald-500/20 text-emerald-700"
+                            : "bg-red-500/20 text-red-700"
                         }`}
                       >
                         {item.ok ? "OK" : "ERRO"}
@@ -834,7 +834,7 @@ export default function CampanhasPage() {
                     <td className="py-2">{Math.round(Number(item.metrics?.clicks || 0)).toLocaleString("pt-BR")}</td>
                     <td className="py-2">{Math.round(Number(item.metrics?.leads || 0)).toLocaleString("pt-BR")}</td>
                     <td className="py-2">R$ {Number(item.metrics?.spend || 0).toFixed(2)}</td>
-                    <td className="py-2 text-red-200/90">{item.error || "-"}</td>
+                    <td className="py-2 text-red-700">{item.error || "-"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -843,19 +843,19 @@ export default function CampanhasPage() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-[#111] p-4 space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70 flex items-center gap-2">
-          <Gauge className="h-4 w-4 text-white/50" />
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+          <Gauge className="h-4 w-4 text-slate-500" />
           IA de performance de campanhas
         </h2>
 
         {!insights ? (
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-slate-500">
             Rode a analise para receber diagnostico de CTR, CPC, CPL e recomendacoes praticas.
           </p>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-white/85 leading-relaxed">{insights.summary}</p>
+            <p className="text-sm text-slate-900 leading-relaxed">{insights.summary}</p>
 
             {insights.metrics && (
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -867,8 +867,8 @@ export default function CampanhasPage() {
             )}
 
             <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3">
-              <p className="text-xs uppercase tracking-wide text-blue-100/80 mb-1">Recomendacoes da IA</p>
-              <ul className="space-y-1 text-sm text-blue-100/90">
+              <p className="text-xs uppercase tracking-wide text-blue-700 mb-1">Recomendacoes da IA</p>
+              <ul className="space-y-1 text-sm text-blue-700">
                 {(insights.recommendations || []).map((item) => (
                   <li key={item}>- {item}</li>
                 ))}
@@ -883,9 +883,9 @@ export default function CampanhasPage() {
 
 function Kpi({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/40 p-3">
-      <p className="text-[11px] uppercase tracking-wide text-white/45">{label}</p>
-      <p className="text-xl font-semibold text-white mt-1">{value}</p>
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-xl font-semibold text-slate-900 mt-1">{value}</p>
     </div>
   );
 }

@@ -93,6 +93,15 @@ type AssistedMeeting = {
   createdAt?: string | null;
 };
 
+type MeetingBotSession = {
+  id: string;
+  meetingUrl?: string;
+  platform?: string;
+  status?: string;
+  transcript?: string;
+  createdAt?: string | null;
+};
+
 type LiveMeetingCoach = {
   nextBestAction: string;
   sellerPrompts: string[];
@@ -169,6 +178,52 @@ function buildMeetingDocumentText(session: AssistedMeeting) {
 }
 
 export default function AssistedMeetingsPage() {
+  const { tenant } = useClienteTenant();
+  const isAltumAdmin = tenant?.tenantRole === "agency_owner" || tenant?.tenantRole === "agency_admin";
+
+  if (!isAltumAdmin) return <AssistedMeetingsComingSoon />;
+  return <AssistedMeetingsWorkspace />;
+}
+
+function AssistedMeetingsComingSoon() {
+  return (
+    <CrmWorkspace className="assisted-meetings-coming-soon">
+      <section className="relative isolate overflow-hidden rounded-[28px] border border-indigo-200/70 bg-[linear-gradient(135deg,#eef2ff_0%,#ffffff_52%,#f5f3ff_100%)] px-5 py-12 shadow-[0_28px_80px_-54px_rgba(79,70,229,0.65)] sm:px-8 sm:py-16 lg:px-12">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-indigo-300/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-1/4 h-64 w-64 rounded-full bg-violet-300/20 blur-3xl" />
+        <div className="relative mx-auto max-w-3xl text-center">
+          <span className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-[22px] bg-[linear-gradient(135deg,#4f46e5,#7c3aed)] text-white shadow-[0_22px_45px_-22px_rgba(79,70,229,0.9)]">
+            <Video className="h-7 w-7" />
+          </span>
+          <span className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-indigo-700">
+            <Sparkles className="h-3.5 w-3.5" />
+            Em breve
+          </span>
+          <h1 className="mt-5 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+            Reuniões com IA estão chegando à Altum.
+          </h1>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
+            Em breve, a Altum poderá acompanhar suas reuniões, organizar os pontos importantes e transformar cada conversa em próximos passos claros para sua equipe comercial.
+          </p>
+          <div className="mx-auto mt-8 grid max-w-2xl gap-3 text-left sm:grid-cols-3">
+            {[
+              "Resumo automático",
+              "Próximas ações",
+              "Histórico no CRM",
+            ].map((item) => (
+              <div key={item} className="flex items-center gap-2 rounded-2xl border border-white/80 bg-white/70 px-4 py-3 text-sm font-bold text-slate-700 shadow-sm backdrop-blur">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-indigo-600" />
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </CrmWorkspace>
+  );
+}
+
+function AssistedMeetingsWorkspace() {
   const searchParams = useSearchParams();
   const { tenant, hasCapability } = useClienteTenant();
   const canOperate = hasCapability("edit_leads");
@@ -508,6 +563,16 @@ export default function AssistedMeetingsPage() {
       {error ? <CrmNotice tone="red">{error}</CrmNotice> : null}
       {notice ? <CrmNotice tone="green">{notice}</CrmNotice> : null}
 
+      <InternalMeetingBotPanel
+        tenantId={tenant?.tenantId || ""}
+        meetingUrl={form.meetingUrl || selectedAppointment?.meetingUrl || ""}
+        language={form.language}
+        onTranscript={(transcript) => {
+          setForm((current) => ({ ...current, transcript }));
+          setNotice("Transcrição do bot importada. Selecione o lead e gere a análise para atualizar o CRM.");
+        }}
+      />
+
       <div id="sala-ao-vivo" className="scroll-mt-24">
         <LiveMeetingRoom
           listening={listening}
@@ -720,6 +785,158 @@ export default function AssistedMeetingsPage() {
         </div>
       </div>
     </CrmWorkspace>
+  );
+}
+
+function InternalMeetingBotPanel({
+  tenantId,
+  meetingUrl,
+  language,
+  onTranscript,
+}: {
+  tenantId: string;
+  meetingUrl: string;
+  language: string;
+  onTranscript: (transcript: string) => void;
+}) {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [session, setSession] = useState<MeetingBotSession | null>(null);
+  const [busy, setBusy] = useState<"start" | "refresh" | "stop" | "finalize" | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const loadSessions = useCallback(async () => {
+    if (!tenantId) return;
+    const response = await authedFetch(`/api/tenant/${tenantId}/assisted-meetings/bot`);
+    const payload = (await response.json().catch(() => ({}))) as { configured?: boolean; items?: MeetingBotSession[]; error?: string };
+    if (!response.ok) throw new Error(payload.error || "Falha ao consultar a infraestrutura de reuniões.");
+    setConfigured(Boolean(payload.configured));
+    setSession(payload.items?.[0] || null);
+  }, [tenantId]);
+
+  useEffect(() => {
+    void loadSessions().catch((loadError) => setMessage(loadError instanceof Error ? loadError.message : "Falha ao consultar reuniões."));
+  }, [loadSessions]);
+
+  async function startBot() {
+    if (!meetingUrl.trim() || busy) {
+      setMessage("Informe primeiro o link do Google Meet ou Zoom no formulário abaixo.");
+      return;
+    }
+    setBusy("start");
+    setMessage(null);
+    try {
+      const response = await authedFetch(`/api/tenant/${tenantId}/assisted-meetings/bot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meetingUrl, language }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { item?: MeetingBotSession; error?: string; detail?: string };
+      if (!response.ok || !payload.item) throw new Error(payload.error || payload.detail || "Falha ao enviar o bot.");
+      setSession(payload.item);
+      setMessage("Bot Altum enviado. Autorize a entrada dele na sala.");
+    } catch (startError) {
+      setMessage(startError instanceof Error ? startError.message : "Falha ao enviar o bot.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function refreshBot() {
+    if (!session?.id || busy) return;
+    setBusy("refresh");
+    setMessage(null);
+    try {
+      const response = await authedFetch(`/api/tenant/${tenantId}/assisted-meetings/bot/${session.id}`);
+      const payload = (await response.json().catch(() => ({}))) as { item?: MeetingBotSession; error?: string };
+      if (!response.ok || !payload.item) throw new Error(payload.error || "Falha ao atualizar o bot.");
+      setSession({ ...session, ...payload.item });
+    } catch (refreshError) {
+      setMessage(refreshError instanceof Error ? refreshError.message : "Falha ao atualizar o bot.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function stopBot() {
+    if (!session?.id || busy) return;
+    setBusy("stop");
+    setMessage(null);
+    try {
+      const response = await authedFetch(`/api/tenant/${tenantId}/assisted-meetings/bot/${session.id}`, { method: "DELETE" });
+      const payload = (await response.json().catch(() => ({}))) as { item?: MeetingBotSession; error?: string };
+      if (!response.ok || !payload.item) throw new Error(payload.error || "Falha ao encerrar o bot.");
+      setSession({ ...session, ...payload.item });
+      setMessage("Saída solicitada. Aguarde a gravação ser concluída antes de processar.");
+    } catch (stopError) {
+      setMessage(stopError instanceof Error ? stopError.message : "Falha ao encerrar o bot.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function finalizeBot() {
+    if (!session?.id || busy) return;
+    setBusy("finalize");
+    setMessage(null);
+    try {
+      const response = await authedFetch(`/api/tenant/${tenantId}/assisted-meetings/bot/${session.id}/finalize`, { method: "POST" });
+      const payload = (await response.json().catch(() => ({}))) as { item?: MeetingBotSession; error?: string };
+      if (!response.ok || !payload.item?.transcript) throw new Error(payload.error || "A transcrição ainda não está pronta.");
+      setSession({ ...session, ...payload.item });
+      onTranscript(payload.item.transcript);
+      setMessage("Gravação transcrita pela OpenAI e pronta para análise.");
+    } catch (finalizeError) {
+      setMessage(finalizeError instanceof Error ? finalizeError.message : "Falha ao processar a gravação.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const running = session && !["completed", "failed", "processed"].includes(String(session.status || ""));
+
+  return (
+    <CrmPanel className="border-indigo-200/80 bg-[linear-gradient(135deg,var(--cliente-card),var(--cliente-ai-soft))]">
+      <CrmSectionTitle
+        eyebrow="Teste interno"
+        title="Bot Altum para Google Meet e Zoom"
+        description="O bot entra como participante, grava o áudio na infraestrutura da Altum e usa a OpenAI apenas para transcrever depois da reunião."
+        action={<CrmBadge tone={configured ? "green" : "orange"}>{configured ? "infraestrutura conectada" : "aguardando configuração"}</CrmBadge>}
+      />
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-black text-[var(--cliente-card-text)]">{session?.meetingUrl || meetingUrl || "Informe um link do Meet ou Zoom"}</p>
+          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+            {session ? `Status: ${session.status || "solicitado"}` : "Disponível somente para testes da equipe Altum durante o lançamento."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {!running ? (
+            <CrmButton type="button" tone="purple" disabled={!configured || Boolean(busy)} onClick={() => void startBot()}>
+              {busy === "start" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+              Enviar bot
+            </CrmButton>
+          ) : (
+            <CrmButton type="button" tone="danger" disabled={Boolean(busy)} onClick={() => void stopBot()}>
+              {busy === "stop" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MicOff className="h-4 w-4" />}
+              Encerrar captura
+            </CrmButton>
+          )}
+          {session ? (
+            <CrmButton type="button" disabled={Boolean(busy)} onClick={() => void refreshBot()}>
+              {busy === "refresh" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Atualizar status
+            </CrmButton>
+          ) : null}
+          {session && ["completed", "failed", "stopping"].includes(String(session.status || "")) ? (
+            <CrmButton type="button" tone="green" disabled={Boolean(busy)} onClick={() => void finalizeBot()}>
+              {busy === "finalize" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+              Processar gravação
+            </CrmButton>
+          ) : null}
+        </div>
+      </div>
+      {message ? <p className="mt-3 text-sm font-semibold text-[var(--cliente-card-text-soft)]">{message}</p> : null}
+    </CrmPanel>
   );
 }
 

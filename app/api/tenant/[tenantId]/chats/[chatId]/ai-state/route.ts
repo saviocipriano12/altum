@@ -17,6 +17,7 @@ type Body = {
 };
 
 type TenantChatRecord = {
+  isGroup?: boolean;
   tenantId?: string;
   leadId?: unknown;
   status?: unknown;
@@ -243,6 +244,9 @@ export async function POST(
 
     const body = (await req.json()) as Body;
     const action = body.action || "pause";
+    if (chat.isGroup && (action === "resume" || action === "retry")) {
+      throw new RouteAuthError(409, "group_ai_disabled", "Respostas automaticas da IA ficam desativadas em grupos.");
+    }
     if (action !== "pause" && action !== "resume" && action !== "takeover" && action !== "retry") {
       return NextResponse.json({ error: "Acao invalida. Use pause, resume, takeover ou retry." }, { status: 400 });
     }

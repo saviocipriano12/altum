@@ -201,6 +201,15 @@ const PRIMARY_NAV: NavItem[] = [
     group: "system",
   },
   {
+    href: "/cliente/painel/configuracoes/meu-whatsapp",
+    label: "Meu WhatsApp",
+    icon: MessageCircle,
+    description: "Conecte e acompanhe somente o seu numero pessoal.",
+    capability: "manage_personal_channel",
+    tone: "success",
+    group: "system",
+  },
+  {
     href: "/cliente/painel/configuracoes/faturamento",
     label: "Faturamento",
     icon: CreditCard,
@@ -256,6 +265,15 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
   const compactMode = isDesktop && sidebarCollapsed;
 
   useEffect(() => {
+    if (!isOpen || isDesktop) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", onKey); };
+  }, [isOpen, isDesktop, onClose]);
+
+  useEffect(() => {
     const media = window.matchMedia("(min-width: 1024px)");
     const sync = () => setIsDesktop(media.matches);
     sync();
@@ -295,6 +313,7 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
   return (
     <>
       <div
+        aria-hidden={!isOpen && !isDesktop}
         className={`fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm transition-opacity lg:hidden ${
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
@@ -303,7 +322,9 @@ export function ClienteSidebar({ isOpen, onClose }: Props) {
 
       <aside
         data-client-nav="sidebar"
-        className={`client-glass fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-[var(--cliente-border)] bg-[var(--cliente-sidebar)] shadow-[var(--cliente-shadow-hard)] transition-[width,transform] duration-300 lg:bottom-5 lg:left-5 lg:top-5 lg:h-[calc(100dvh-2.5rem)] lg:rounded-[24px] lg:border lg:translate-x-0 ${
+        aria-hidden={!isOpen && !isDesktop}
+        inert={!isOpen && !isDesktop ? true : undefined}
+        className={`client-glass fixed inset-y-0 left-0 z-50 flex h-[100dvh] flex-col max-lg:pt-[env(safe-area-inset-top)] max-lg:pb-[env(safe-area-inset-bottom)] border-r border-[var(--cliente-border)] bg-[var(--cliente-sidebar)] shadow-[var(--cliente-shadow-hard)] transition-[width,transform] duration-300 lg:bottom-5 lg:left-5 lg:top-5 lg:h-[calc(100dvh-2.5rem)] lg:rounded-[24px] lg:border lg:translate-x-0 ${
           compactMode ? "w-[292px] lg:w-[82px]" : "w-[292px]"
         } ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
       >

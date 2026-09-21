@@ -1,3 +1,4 @@
+import { hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
@@ -213,6 +214,9 @@ export async function POST(
       throw new TenantAccessError("tenant_capability_denied", "Perfil sem permissao para consultar a operacao.");
     }
 
+    if (!hasTeamWideCommercialAccess(membership)) {
+      throw new TenantAccessError("team_records_required", "A analise da empresa exige acesso aos dados da equipe.");
+    }
     const body = (await req.json()) as AskBody;
     const question = clean(body.question, 500);
     const q = normalize(question);

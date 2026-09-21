@@ -41,3 +41,13 @@ export function canAccessAssignedCommercialRecord(
 
   return Boolean(currentUserId && ownerId === currentUserId);
 }
+
+export function canManagePersonalChannel(
+  membership: TenantMembership,
+  userId: string,
+  channel: Record<string, unknown>
+) {
+  if (hasTeamWideCommercialAccess(membership)) return true;
+  if (!membership.capabilities.includes("manage_personal_channel")) return false;
+  return clean(channel.channelScope, 40).toLowerCase() === "personal" && clean(channel.ownerUserId, 140) === clean(userId, 140);
+}

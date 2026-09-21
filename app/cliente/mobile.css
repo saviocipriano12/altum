@@ -1,0 +1,53 @@
+/* Client-only rules: public pages and the admin retain their own styling. */
+.client-portal {
+  min-height: 100dvh;
+  background: var(--cliente-bg, #f4f6f9);
+  color: var(--cliente-text, #0f172a);
+}
+.client-install-prompt {
+  background: #ffffff;
+  color: #0f172a;
+  isolation: isolate;
+}
+@media (display-mode: standalone) {
+  .client-install-prompt,
+  [data-client-install-prompt] { display: none !important; }
+}
+.client-mobile-login {
+  min-height: 100dvh;
+  background: #f4f6f9;
+  color: #0f172a;
+  padding-top: max(1.5rem, env(safe-area-inset-top));
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+}
+@media (max-width: 1023px) {
+  .client-portal { overflow-x: clip; }
+  .client-portal .client-topbar {
+    padding-top: env(safe-area-inset-top);
+    background: var(--cliente-panel-solid, #ffffff);
+    backdrop-filter: none;
+  }
+  .client-portal [data-client-area="daily"] #client-main,
+  .client-portal [data-client-area="assistant"] #client-main {
+    padding-top: calc(76px + env(safe-area-inset-top));
+  }
+  .client-portal .client-bottom-nav {
+    background: var(--cliente-panel-solid, #ffffff);
+    backdrop-filter: none;
+  }
+  .client-portal :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    font-size: max(16px, 1em);
+  }
+  .client-portal .client-route-stage,
+  .client-portal .client-route-stage .client-panel-card {
+    animation: none !important;
+    transform: none;
+  }
+  .client-portal .inbox-thread-shell { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .client-portal *, .client-install-prompt * { scroll-behavior: auto !important; }
+}
+@media (max-width: 1279px) {
+  .client-portal .inbox-thread-shell { height: var(--cliente-viewport-height, 100dvh); }
+}

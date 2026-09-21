@@ -259,9 +259,6 @@ export async function POST(
     let createdAuthUser = false;
     try {
       authUser = await adminAuth.getUserByEmail(email);
-      if (name && authUser.displayName !== name) {
-        await adminAuth.updateUser(authUser.uid, { displayName: name });
-      }
     } catch (error) {
       if (getErrorCode(error) !== AUTH_USER_NOT_FOUND_CODE) {
         throw error;
@@ -283,6 +280,10 @@ export async function POST(
       return NextResponse.json({ error: "O dono da conta nao pode ser sobrescrito por convite." }, { status: 403 });
     }
 
+    if (existingMembership) {
+      return NextResponse.json({ error: "Esta pessoa ja faz parte da equipe. Altere o perfil ou acesso na lista de usuarios.", code: "tenant_user_already_exists" }, { status: 409 });
+    }
+
     const existingUserSnap = await adminDb.collection("users").doc(uid).get();
     const existingUser = existingUserSnap.exists
       ? (existingUserSnap.data() as { role?: string; defaultTenantId?: string; status?: string })
@@ -299,7 +300,7 @@ export async function POST(
         name: name || authUser.displayName || tenantName,
         role,
         status: "active",
-        isDefault: existingMembership?.isDefault === true,
+        isDefault: false,
         team,
         availability,
         allowedChannels,
@@ -308,7 +309,7 @@ export async function POST(
         accessProfile,
         invitedBy: actor.uid,
         invitedByName: actor.name,
-        ...(existingMembership ? {} : { createdAt: FieldValue.serverTimestamp() }),
+        createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -323,7 +324,7 @@ export async function POST(
           role: nextGlobalRole,
           status: existingUser?.status === "blocked" ? "blocked" : "active",
           defaultTenantId:
-            shouldPreserveGlobalRole(existingUser?.role) && existingUser?.defaultTenantId
+            existingUser?.defaultTenantId
               ? existingUser.defaultTenantId
               : tenantId,
           updatedAt: FieldValue.serverTimestamp(),
@@ -345,7 +346,7 @@ export async function POST(
           invitedBy: actor.uid,
           invitedByName: actor.name,
           updatedAt: FieldValue.serverTimestamp(),
-          ...(existingMembership ? {} : { createdAt: FieldValue.serverTimestamp() }),
+          createdAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
       ),

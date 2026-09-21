@@ -1,3 +1,4 @@
+import { BILLING_TERMS_VERSION } from "@/lib/subscription-lifecycle";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
@@ -5,7 +6,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { getDefaultTenantMembershipForUser, getTenantMembershipForUser } from "@/lib/server/tenant";
 import { getPlatformPlan } from "@/lib/server/platform-plans";
 import { requireFirebaseUser, SelfServiceAuthError, timestampToMillis } from "@/lib/server/self-service-auth";
-import { buildAsaasRecurringCheckoutPayload } from "@/lib/asaas-checkout";
+import { buildAsaasCheckoutUrl, buildAsaasRecurringCheckoutPayload } from "@/lib/asaas-checkout";
 import { isValidBrazilianDocument, normalizeBrazilianDocument } from "@/lib/brazilian-document";
 import { PLATFORM_CATALOG_VERSION } from "@/lib/platform-plans";
 import { canReuseAsaasCheckout, hasManagedAsaasSubscription } from "@/lib/asaas-checkout-state";
@@ -17,7 +18,7 @@ function clean(value: unknown, max = 300) {
 export async function POST(req: Request) {
   try {
     const actor = await requireFirebaseUser(req);
-    const body = (await req.json()) as { planId?: unknown; cpfCnpj?: unknown; tenantId?: unknown };
+    const body = (await req.json()) as { planId?: unknown; cpfCnpj?: unknown; tenantId?: unknown; termsVersion?: unknown };
     const requestedTenantId = clean(body.tenantId, 180);
     const membership = requestedTenantId
       ? await getTenantMembershipForUser(actor.uid, requestedTenantId)
@@ -29,8 +30,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Apenas o responsavel pela conta pode contratar um plano." }, { status: 403 });
     }
 
+    if (body.termsVersion !== BILLING_TERMS_VERSION) {
+      return NextResponse.json({ error: "Leia e aceite os termos da assinatura antes de continuar. Atualize a pagina se necessario." }, { status: 400 });
+    }
     const cpfCnpj = normalizeBrazilianDocument(body.cpfCnpj);
-    if (!isValidBrazilianDocument(cpfCnpj)) {
+    if (cpfCnpj && !isValidBrazilianDocument(cpfCnpj)) {
       return NextResponse.json({ error: "Informe um CPF ou CNPJ valido para o checkout seguro." }, { status: 400 });
     }
     const plan = await getPlatformPlan(body.planId);
@@ -53,9 +57,13 @@ export async function POST(req: Request) {
     const tenantRef = adminDb.collection("tenants").doc(membership.tenantId);
     const tenantSnap = await tenantRef.get();
     const tenant = (tenantSnap.data() || {}) as Record<string, unknown>;
+    if (tenant.billingOperationPending) {
+      return NextResponse.json({ error: "Existe uma solicitacao financeira em conciliacao. Fale com a Altum." }, { status: 409 });
+    }
+    const endedCancellation = tenant.billingStatus === "cancel_scheduled" && Boolean(timestampToMillis(tenant.accessEndsAt) && timestampToMillis(tenant.accessEndsAt)! <= Date.now());
     if (hasManagedAsaasSubscription({
       subscriptionId: tenant.asaasSubscriptionId,
-      billingStatus: tenant.billingStatus,
+      billingStatus: endedCancellation ? "cancelled" : tenant.billingStatus,
     })) {
       return NextResponse.json(
         { error: "Esta empresa ja possui uma assinatura gerenciada. Use a central de faturamento para alterar o plano.", code: "subscription_already_exists" },
@@ -87,11 +95,6 @@ export async function POST(req: Request) {
       },
       siteUrl,
       externalReference,
-      customerData: {
-        name: clean(actor.name, 120) || clean(tenant.responsibleName, 120) || "Cliente Altum",
-        email: clean(actor.email, 180) || clean(tenant.responsibleEmail, 180),
-        cpfCnpj,
-      },
     });
 
     const response = await fetch(`${apiUrl}/checkouts`, {
@@ -103,6 +106,7 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify(checkoutPayload),
       cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
     });
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {
@@ -118,8 +122,8 @@ export async function POST(req: Request) {
         : "O Asaas recusou os dados do checkout. Tente novamente ou fale com a Altum.";
       return NextResponse.json({ error: errorMessage, code: "asaas_checkout_rejected" }, { status: 502 });
     }
-    const checkoutUrl = clean(payload.link, 800) || clean(payload.url, 800);
-    const checkoutId = clean(payload.id, 180) || checkoutRef;
+    const checkoutId = clean(payload.id, 180);
+    const checkoutUrl = buildAsaasCheckoutUrl(checkoutId, apiUrl);
     if (!checkoutUrl) {
       console.error("Checkout Asaas sem URL:", { checkoutId, keys: Object.keys(payload) });
       return NextResponse.json({ error: "O provedor nao retornou o link de pagamento." }, { status: 502 });
@@ -131,7 +135,8 @@ export async function POST(req: Request) {
         userId: actor.uid, planId: plan.id, monthlyPrice: plan.monthlyPrice,
         setupFee: plan.setupFee, setupMode: plan.setupMode,
         catalogVersion: PLATFORM_CATALOG_VERSION,
-        billingDocumentLast4: cpfCnpj.slice(-4),
+        ...(cpfCnpj ? { billingDocumentLast4: cpfCnpj.slice(-4) } : {}),
+        termsVersion: BILLING_TERMS_VERSION, termsAcceptedBy: actor.uid, termsAcceptedAt: FieldValue.serverTimestamp(),
         status: "pending", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true }),
       tenantRef.set({
@@ -141,7 +146,7 @@ export async function POST(req: Request) {
         platformCatalogVersion: PLATFORM_CATALOG_VERSION,
         asaasCheckoutId: checkoutId, asaasCheckoutUrl: checkoutUrl,
         asaasCheckoutCreatedAt: FieldValue.serverTimestamp(),
-        billingDocumentLast4: cpfCnpj.slice(-4),
+        ...(cpfCnpj ? { billingDocumentLast4: cpfCnpj.slice(-4) } : {}),
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true }),
     ]);

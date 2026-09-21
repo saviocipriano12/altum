@@ -101,7 +101,7 @@ function parseReminderPhones(value: unknown) {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireRequestUser(req, { roles: ["admin"] });
+    const user = await requireRequestUser(req, { roles: ["agency_admin"] });
     const body = (await req.json()) as Body;
 
     const clientId = clean(body.clientId, 120);

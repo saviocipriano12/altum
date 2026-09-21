@@ -27,6 +27,7 @@ export default function AtividadesPage() {
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [descricao, setDescricao] = useState("");
@@ -43,6 +44,8 @@ export default function AtividadesPage() {
     }
 
     let active = true;
+    setLoading(true);
+    setLoadError(null);
     void authedFetch("/api/admin/dashboard?include=atividades")
       .then(async (response) => {
         const payload = (await response.json().catch(() => ({}))) as { atividades?: Atividade[]; error?: string };
@@ -51,7 +54,7 @@ export default function AtividadesPage() {
           setAtividades((payload.atividades || []).sort((a, b) => String(a.data || "").localeCompare(String(b.data || ""))));
         }
       })
-      .catch((error) => console.error("Erro ao carregar atividades:", error))
+      .catch((error) => { if (active) setLoadError(error instanceof Error ? error.message : "Falha ao carregar atividades."); })
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -138,14 +141,15 @@ export default function AtividadesPage() {
 
   return (
     <div className="space-y-6">
+      {loadError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError} Os dados podem estar desatualizados.</p>}
       {/* HEADER */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-wide flex items-center gap-2">
-            <Activity className="h-5 w-5 text-blue-400" />
+            <Activity className="h-5 w-5 text-blue-700" />
             Atividades & Agenda
           </h1>
-          <p className="text-sm text-white/60 max-w-xl">
+          <p className="text-sm text-slate-500 max-w-xl">
             Organize follow-ups de leads, tarefas internas, reuniões e tudo que
             precisa ser feito dentro da ALTUM.
           </p>
@@ -153,7 +157,7 @@ export default function AtividadesPage() {
 
         <Link
           href="/admin/dashboard"
-          className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white"
+          className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
         >
           Voltar ao dashboard
           <ArrowRight className="h-3 w-3" />
@@ -161,28 +165,18 @@ export default function AtividadesPage() {
       </div>
 
       {/* FORMULÁRIO NOVA ATIVIDADE */}
-      <section className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Plus className="h-4 w-4 text-white/70" />
-          <div>
-            <h2 className="text-sm font-semibold">Nova atividade rápida</h2>
-            <p className="text-xs text-white/60">
-              Crie uma tarefa em poucos segundos e ela já aparece no painel e no
-              dashboard.
-            </p>
-          </div>
-        </div>
-
+      <details className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+        <summary className="cursor-pointer text-sm font-semibold text-indigo-700">Nova atividade</summary>
         <form
           onSubmit={criarAtividade}
           className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 items-end"
         >
           <div className="md:col-span-2 space-y-1">
-            <label className="text-xs text-white/60">
+            <label className="text-xs text-slate-500">
               Descrição da atividade *
             </label>
             <input
-              className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
               placeholder="Ex: Ligar para o restaurante X para alinhar proposta"
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
@@ -190,22 +184,22 @@ export default function AtividadesPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-white/60 flex items-center gap-1">
+            <label className="text-xs text-slate-500 flex items-center gap-1">
               <Calendar className="h-3 w-3" />
               Data / hora
             </label>
             <input
               type="datetime-local"
-              className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               value={data}
               onChange={(e) => setData(e.target.value)}
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-white/60">Tipo</label>
+            <label className="text-xs text-slate-500">Tipo</label>
             <select
-              className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               value={tipo}
               onChange={(e) => setTipo(e.target.value)}
             >
@@ -217,11 +211,11 @@ export default function AtividadesPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-white/60">
+            <label className="text-xs text-slate-500">
               Lead / Cliente (opcional)
             </label>
             <input
-              className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
               placeholder="Nome do cliente ou referência do lead"
               value={clienteNome}
               onChange={(e) => setClienteNome(e.target.value)}
@@ -229,11 +223,11 @@ export default function AtividadesPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-white/60">
+            <label className="text-xs text-slate-500">
               ID do lead (opcional)
             </label>
             <input
-              className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
               placeholder="Se quiser relacionar com um lead específico"
               value={leadId}
               onChange={(e) => setLeadId(e.target.value)}
@@ -244,7 +238,7 @@ export default function AtividadesPage() {
             <button
               type="submit"
               disabled={saving}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 transition disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 transition disabled:opacity-60"
             >
               {saving ? (
                 <>
@@ -260,24 +254,24 @@ export default function AtividadesPage() {
             </button>
           </div>
         </form>
-      </section>
+      </details>
 
       {/* LISTAS: PENDENTES / CONCLUÍDAS */}
       <section className="grid gap-4 lg:grid-cols-2">
         {/* Pendentes */}
-        <div className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-amber-300" />
+              <Clock className="h-4 w-4 text-amber-700" />
               <h2 className="text-sm font-semibold">Pendentes</h2>
             </div>
-            <span className="text-[11px] rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-amber-200">
+            <span className="text-[11px] rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-amber-700">
               {pendentes.length} em aberto
             </span>
           </div>
 
           {pendentes.length === 0 && (
-            <p className="text-xs text-white/50">
+            <p className="text-xs text-slate-500">
               Nenhuma atividade pendente. Ótimo sinal — operação em dia.
             </p>
           )}
@@ -286,11 +280,11 @@ export default function AtividadesPage() {
             {pendentes.map((a) => (
               <div
                 key={a.id}
-                className="rounded-xl border border-white/10 bg-black/40 p-3 flex items-center justify-between gap-3"
+                className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3"
               >
                 <div className="space-y-1">
                   <p className="text-sm font-medium">{a.descricao}</p>
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/50">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                     {a.data && (
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
@@ -298,7 +292,7 @@ export default function AtividadesPage() {
                       </span>
                     )}
                     {a.tipo && (
-                      <span className="rounded-full border border-white/10 px-2 py-0.5">
+                      <span className="rounded-full border border-slate-200 px-2 py-0.5">
                         {a.tipo}
                       </span>
                     )}
@@ -313,14 +307,14 @@ export default function AtividadesPage() {
                 <div className="flex flex-col items-end gap-1">
                   <button
                     onClick={() => alternarStatus(a.id, a.status)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-200 hover:bg-emerald-500/20 transition"
+                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-500/20 transition"
                   >
                     <CheckCircle2 className="h-3 w-3" />
                     Concluir
                   </button>
                   <button
                     onClick={() => removerAtividade(a.id)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] text-red-200 hover:bg-red-500/20 transition"
+                    className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] text-red-700 hover:bg-red-500/20 transition"
                   >
                     <Trash2 className="h-3 w-3" />
                     Apagar
@@ -332,19 +326,19 @@ export default function AtividadesPage() {
         </div>
 
         {/* Concluídas */}
-        <div className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+              <CheckCircle2 className="h-4 w-4 text-emerald-700" />
               <h2 className="text-sm font-semibold">Concluídas</h2>
             </div>
-            <span className="text-[11px] rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200">
+            <span className="text-[11px] rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-700">
               {concluidas.length} finalizadas
             </span>
           </div>
 
           {concluidas.length === 0 && (
-            <p className="text-xs text-white/50">
+            <p className="text-xs text-slate-500">
               Assim que você começar a marcar tarefas como concluídas, elas
               aparecem aqui.
             </p>
@@ -354,13 +348,13 @@ export default function AtividadesPage() {
             {concluidas.map((a) => (
               <div
                 key={a.id}
-                className="rounded-xl border border-white/10 bg-black/40 p-3 flex items-center justify-between gap-3"
+                className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3"
               >
                 <div className="space-y-1">
-                  <p className="text-sm font-medium line-through text-white/70">
+                  <p className="text-sm font-medium line-through text-slate-700">
                     {a.descricao}
                   </p>
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/50">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                     {a.data && (
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
@@ -368,7 +362,7 @@ export default function AtividadesPage() {
                       </span>
                     )}
                     {a.tipo && (
-                      <span className="rounded-full border border-white/10 px-2 py-0.5">
+                      <span className="rounded-full border border-slate-200 px-2 py-0.5">
                         {a.tipo}
                       </span>
                     )}
@@ -382,7 +376,7 @@ export default function AtividadesPage() {
 
                 <button
                   onClick={() => alternarStatus(a.id, a.status)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-white/20 bg-white/5 px-2 py-1 text-[11px] text-white/70 hover:bg-white/10 transition"
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50 transition"
                 >
                   Reabrir
                 </button>
@@ -393,7 +387,7 @@ export default function AtividadesPage() {
       </section>
 
       {loading && (
-        <p className="text-xs text-white/40">Carregando atividades…</p>
+        <p className="text-xs text-slate-400">Carregando atividades…</p>
       )}
     </div>
   );

@@ -29,21 +29,23 @@ export async function PATCH(
     if (status === "pending_review") return NextResponse.json({ error: "Acao invalida." }, { status: 400 });
 
     const ref = adminDb.collection("mcp_action_drafts").doc(safeDraftId);
-    const snap = await ref.get();
-    if (!snap.exists) return NextResponse.json({ error: "Rascunho nao encontrado." }, { status: 404 });
-    const data = snap.data() as Record<string, unknown>;
-    if (data.tenantId !== tenantId) return NextResponse.json({ error: "Sem permissao para este rascunho." }, { status: 403 });
-
-    await Promise.all([
-      ref.set({
+    await adminDb.runTransaction(async transaction => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists) throw new RouteAuthError(404, "draft_not_found", "Rascunho não encontrado.");
+      const data = snap.data() as Record<string, unknown>;
+      if (data.tenantId !== tenantId) throw new RouteAuthError(403, "draft_company_mismatch", "Sem permissão para este rascunho.");
+      if (!["pending_review", "approved_pending_apply"].includes(String(data.status)) || data.appliedAt) {
+        throw new RouteAuthError(409, "draft_not_reviewable", "Este rascunho já foi encerrado ou está em execução. Crie uma nova recomendação.");
+      }
+      transaction.set(ref, {
         status,
         reviewNotes: clean(body.notes, 800),
         reviewedAt: FieldValue.serverTimestamp(),
         reviewedBy: user.uid,
         reviewedByName: user.name,
         updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true }),
-      adminDb.collection("audit_logs").add({
+      }, { merge: true });
+      transaction.set(adminDb.collection("audit_logs").doc(), {
         type: "mcp_action_draft_review",
         actorId: user.uid,
         actorName: user.name,
@@ -51,8 +53,8 @@ export async function PATCH(
         draftId: safeDraftId,
         status,
         createdAt: FieldValue.serverTimestamp(),
-      }),
-    ]);
+      });
+    });
 
     return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status }, {
       headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },

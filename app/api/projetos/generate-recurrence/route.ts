@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
+import { recurringPeriods, existingRecurringPeriods } from "@/lib/admin-finance";
 
 type Body = {
   projectId?: string;
@@ -14,24 +15,21 @@ function clean(value: unknown, max = 120) {
   return value.trim().slice(0, max);
 }
 
-function ymd(date: Date) {
-  return date.toISOString().split("T")[0];
-}
-
 export async function POST(req: Request) {
   try {
-    await requireRequestUser(req, { roles: ["admin"] });
+    await requireRequestUser(req, { roles: ["agency_admin"] });
     const body = (await req.json()) as Body;
 
     const projectId = clean(body.projectId);
-    if (!projectId) {
+    if (!/^[A-Za-z0-9_-]{1,120}$/.test(projectId) || (body.months !== undefined && !Number.isFinite(body.months)) || (body.dueDay !== undefined && !Number.isFinite(body.dueDay))) {
       return NextResponse.json({ error: "Campo obrigatorio: projectId." }, { status: 400 });
     }
 
     const projectRef = adminDb.collection("projetos").doc(projectId);
-    const projectSnap = await projectRef.get();
+    const result = await adminDb.runTransaction(async (batch) => {
+    const projectSnap = await batch.get(projectRef);
     if (!projectSnap.exists) {
-      return NextResponse.json({ error: "Projeto nao encontrado." }, { status: 404 });
+      throw new RouteAuthError(404, "project_not_found", "Projeto não encontrado.");
     }
 
     const project = projectSnap.data() as {
@@ -43,21 +41,21 @@ export async function POST(req: Request) {
     };
 
     const valorMensal = Number(project.valorMensal || 0);
-    if (!valorMensal || Number.isNaN(valorMensal) || valorMensal <= 0) {
-      return NextResponse.json(
-        { error: "Projeto sem valor mensal valido para recorrencia." },
-        { status: 400 }
-      );
+    if (!Number.isFinite(valorMensal) || valorMensal <= 0) {
+      throw new RouteAuthError(400, "invalid_monthly_value", "Projeto sem valor mensal válido para recorrência.");
     }
 
     const months = Math.max(1, Math.min(24, Number(body.months) || 12));
     const dueDay = Math.max(1, Math.min(28, Number(body.dueDay) || 10));
     const now = new Date();
-    const batch = adminDb.batch();
-
-    for (let i = 1; i <= months; i++) {
-      const due = new Date(now.getFullYear(), now.getMonth() + i, dueDay);
-      const ref = adminDb.collection("financeiro").doc();
+    const existing = await batch.get(adminDb.collection("financeiro").where("projectId", "==", projectId).limit(1001));
+    if (existing.size > 1000) throw new RouteAuthError(409, "financial_history_limit", "Revise o histórico financeiro deste projeto antes de gerar recorrência.");
+    const occupied = existingRecurringPeriods(existing.docs.map(doc => doc.data()));
+    const periods = recurringPeriods(now, months, dueDay);
+    let generated = 0;
+    for (const [index, period] of periods.entries()) {
+      if (occupied.has(period.competence)) continue;
+      const ref = adminDb.collection("financeiro").doc(`${projectId}_monthly_${period.competence}`);
       batch.set(ref, {
         clientId: project.clientId || null,
         clientName: project.clientName || "Cliente",
@@ -66,20 +64,23 @@ export async function POST(req: Request) {
         tipo: "Receita",
         categoria: "Mensalidade",
         status: "pendente",
-        descricao: `Mensalidade ${i}/${months} - ${project.titulo || "Projeto"}`,
+        descricao: `Mensalidade ${period.competence} - ${project.titulo || "Projeto"}`,
         valor: valorMensal,
-        referencia: `Mensalidade ${i}/${months}`,
-        vencimento: ymd(due),
+        referencia: `Mensalidade ${index + 1}/${periods.length}`,
+        competence: period.competence,
+        vencimento: period.dueDate,
         ownerId: project.ownerId || null,
         vendedorId: project.ownerId || null,
         payoutStatus: "pendente",
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      generated += 1;
     }
 
-    await batch.commit();
-    return NextResponse.json({ ok: true, generated: months });
+    return { generated, skipped: periods.length - generated };
+    });
+    return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json(

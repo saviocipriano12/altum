@@ -159,7 +159,7 @@ export function TenantEntitlementsCard({
   }
 
   return (
-    <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-[#F8FAFC] text-slate-950 shadow-[0_24px_70px_-40px_rgba(15,23,42,0.45)]">
+    <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white text-slate-950 shadow-[0_24px_70px_-40px_rgba(15,23,42,0.45)]">
       <div className="border-b border-slate-200 bg-white px-5 py-5 md:px-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">

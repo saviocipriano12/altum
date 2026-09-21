@@ -174,10 +174,10 @@ export default function ConfigPage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-wide flex items-center gap-2">
-            <Settings className="h-5 w-5 text-blue-400" />
+            <Settings className="h-5 w-5 text-blue-700" />
             Configuracoes da ALTUM
           </h1>
-          <p className="text-sm text-white/60 max-w-xl">
+          <p className="text-sm text-slate-500 max-w-xl">
             Central onde voce define identidade da agencia, mensagens padrao da
             SDR e integracoes da Maquina de Prospeccao.
           </p>
@@ -203,7 +203,7 @@ export default function ConfigPage() {
       </div>
 
       {loading && (
-        <p className="text-xs text-white/40">Carregando configuracoes...</p>
+        <p className="text-xs text-slate-400">Carregando configuracoes...</p>
       )}
 
       {!loading && (
@@ -214,19 +214,19 @@ export default function ConfigPage() {
           }}
           className="space-y-6"
         >
-          <section className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
             <div className="flex items-center gap-2">
-              <Settings className="h-4 w-4 text-white/70" />
+              <Settings className="h-4 w-4 text-slate-700" />
               <div>
                 <h2 className="text-sm font-semibold">Saude das integracoes</h2>
-                <p className="text-xs text-white/60">
+                <p className="text-xs text-slate-500">
                   Verificacao em tempo real dos segredos obrigatorios no servidor.
                 </p>
               </div>
             </div>
 
             {integrations.length === 0 ? (
-              <p className="text-xs text-white/50">Sem dados de integracao no momento.</p>
+              <p className="text-xs text-slate-500">Sem dados de integracao no momento.</p>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 {integrations.map((item) => (
@@ -238,16 +238,16 @@ export default function ConfigPage() {
                         : "border-amber-500/30 bg-amber-500/10"
                     }`}
                   >
-                    <p className="text-sm font-medium text-white/90">{item.label}</p>
-                    <p className="text-[11px] text-white/65 mt-1">{item.details}</p>
+                    <p className="text-sm font-medium text-slate-900">{item.label}</p>
+                    <p className="text-[11px] text-slate-700 mt-1">{item.details}</p>
                     <p
                       className={`text-[11px] mt-2 ${
-                        item.status === "ok" ? "text-emerald-200" : "text-amber-200"
+                        item.status === "ok" ? "text-emerald-700" : "text-amber-700"
                       }`}
                     >
                       {item.status === "ok"
                         ? "Pronto para uso"
-                        : `Faltando: ${item.missingEnvs.join(", ")}`}
+                        : ` ${item.missingEnvs.join(", ")}`}
                     </p>
                   </div>
                 ))}
@@ -256,12 +256,12 @@ export default function ConfigPage() {
           </section>
 
           {/* BLOCO: DADOS DA AGENCIA */}
-          <section className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
             <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-white/70" />
+              <Building2 className="h-4 w-4 text-slate-700" />
               <div>
                 <h2 className="text-sm font-semibold">Dados da agencia</h2>
-                <p className="text-xs text-white/60">
+                <p className="text-xs text-slate-500">
                   Informacoes basicas da ALTUM, usadas em propostas, contratos
                   e comunicacoes.
                 </p>
@@ -270,67 +270,67 @@ export default function ConfigPage() {
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1">
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   Nome da agencia
                 </label>
                 <input
-                  className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
                   value={agencyName}
                   onChange={(e) => setAgencyName(e.target.value)}
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   Responsavel principal
                 </label>
                 <input
-                  className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
                   value={responsavel}
                   onChange={(e) => setResponsavel(e.target.value)}
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-white/60">CNPJ (opcional)</label>
+                <label className="text-xs text-slate-500">CNPJ (opcional)</label>
                 <input
-                  className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
                   value={cnpj}
                   onChange={(e) => setCnpj(e.target.value)}
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-white/60 flex items-center gap-1">
+                <label className="text-xs text-slate-500 flex items-center gap-1">
                   <Mail className="h-3 w-3" />
                   E-mail principal
                 </label>
                 <input
-                  className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-white/60 flex items-center gap-1">
+                <label className="text-xs text-slate-500 flex items-center gap-1">
                   <Phone className="h-3 w-3" />
                   WhatsApp comercial
                 </label>
                 <input
-                  className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-white/60 flex items-center gap-1">
+                <label className="text-xs text-slate-500 flex items-center gap-1">
                   <Globe2 className="h-3 w-3" />
                   Site / dominio principal
                 </label>
                 <input
-                  className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
                   value={siteBase}
                   onChange={(e) => setSiteBase(e.target.value)}
                 />
@@ -339,14 +339,14 @@ export default function ConfigPage() {
           </section>
 
           {/* BLOCO: BRANDING */}
-          <section className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
             <div className="flex items-center gap-2">
-              <Palette className="h-4 w-4 text-white/70" />
+              <Palette className="h-4 w-4 text-slate-700" />
               <div>
                 <h2 className="text-sm font-semibold">
                   Identidade visual basica
                 </h2>
-                <p className="text-xs text-white/60">
+                <p className="text-xs text-slate-500">
                   Paleta que pode ser usada nos proximos modulos (sites, LPs,
                   propostas).
                 </p>
@@ -355,16 +355,16 @@ export default function ConfigPage() {
 
             <div className="grid gap-3 md:grid-cols-3">
               <div className="space-y-1">
-                <label className="text-xs text-white/60">Cor primaria</label>
+                <label className="text-xs text-slate-500">Cor primaria</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    className="h-8 w-10 rounded-md border border-white/10 bg-transparent"
+                    className="h-8 w-10 rounded-md border border-slate-200 bg-transparent"
                     value={corPrimaria}
                     onChange={(e) => setCorPrimaria(e.target.value)}
                   />
                   <input
-                    className="flex-1 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none"
+                    className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                     value={corPrimaria}
                     onChange={(e) => setCorPrimaria(e.target.value)}
                   />
@@ -372,16 +372,16 @@ export default function ConfigPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-white/60">Cor secundaria</label>
+                <label className="text-xs text-slate-500">Cor secundaria</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    className="h-8 w-10 rounded-md border border-white/10 bg-transparent"
+                    className="h-8 w-10 rounded-md border border-slate-200 bg-transparent"
                     value={corSecundaria}
                     onChange={(e) => setCorSecundaria(e.target.value)}
                   />
                   <input
-                    className="flex-1 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none"
+                    className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                     value={corSecundaria}
                     onChange={(e) => setCorSecundaria(e.target.value)}
                   />
@@ -389,18 +389,18 @@ export default function ConfigPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   Cor de destaque
                 </label>
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    className="h-8 w-10 rounded-md border border-white/10 bg-transparent"
+                    className="h-8 w-10 rounded-md border border-slate-200 bg-transparent"
                     value={corDestaque}
                     onChange={(e) => setCorDestaque(e.target.value)}
                   />
                   <input
-                    className="flex-1 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none"
+                    className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                     value={corDestaque}
                     onChange={(e) => setCorDestaque(e.target.value)}
                   />
@@ -410,14 +410,14 @@ export default function ConfigPage() {
           </section>
 
           {/* BLOCO: PROSPECCAO / SDR */}
-          <section className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
             <div className="flex items-center gap-2">
-              <MessageCircle className="h-4 w-4 text-white/70" />
+              <MessageCircle className="h-4 w-4 text-slate-700" />
               <div>
                 <h2 className="text-sm font-semibold">
                   Maquina de Prospeccao & SDR
                 </h2>
-                <p className="text-xs text-white/60">
+                <p className="text-xs text-slate-500">
                   Mensagens padrao que a IA / SDR pode usar para abordar os
                   leads.
                 </p>
@@ -426,30 +426,30 @@ export default function ConfigPage() {
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1">
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   Mensagem inicial de boas-vindas
                 </label>
                 <textarea
-                  className="min-h-[120px] w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+                  className="min-h-[120px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
                   value={mensagemBoasVindas}
                   onChange={(e) => setMensagemBoasVindas(e.target.value)}
                 />
-                <p className="text-[11px] text-white/40">
+                <p className="text-[11px] text-slate-400">
                   Essa e a mensagem base que o SDR (humano ou IA) usa no
                   primeiro contato.
                 </p>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   Roteiro de perguntas (diagnostico)
                 </label>
                 <textarea
-                  className="min-h-[120px] w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+                  className="min-h-[120px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
                   value={scriptPrimeiroContato}
                   onChange={(e) => setScriptPrimeiroContato(e.target.value)}
                 />
-                <p className="text-[11px] text-white/40">
+                <p className="text-[11px] text-slate-400">
                   Perguntas que ajudam a entender o cenario do cliente antes de
                   montar proposta.
                 </p>
@@ -457,17 +457,17 @@ export default function ConfigPage() {
             </div>
 
             <div className="space-y-1 max-w-xs">
-              <label className="text-xs text-white/60">
+              <label className="text-xs text-slate-500">
                 Dias padrao para primeiro follow-up
               </label>
               <input
                 type="number"
                 min={0}
-                className="w-24 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none"
+                className="w-24 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 value={diasFollowUp}
                 onChange={(e) => setDiasFollowUp(Number(e.target.value))}
               />
-              <p className="text-[11px] text-white/40">
+              <p className="text-[11px] text-slate-400">
                 Esse valor pode ser usado nos fluxos automaticos de follow-up
                 (n8n).
               </p>
@@ -475,12 +475,12 @@ export default function ConfigPage() {
           </section>
 
           {/* BLOCO: INTEGRACOES */}
-          <section className="rounded-2xl border border-white/10 bg-[#101010] p-5 space-y-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
             <div className="flex items-center gap-2">
-              <Link2 className="h-4 w-4 text-white/70" />
+              <Link2 className="h-4 w-4 text-slate-700" />
               <div>
                 <h2 className="text-sm font-semibold">Integracoes</h2>
-                <p className="text-xs text-white/60">
+                <p className="text-xs text-slate-500">
                   Endpoints e tokens usados pela maquina de prospeccao, n8n e
                   WhatsApp Business.
                 </p>
@@ -489,35 +489,35 @@ export default function ConfigPage() {
 
             <div className="space-y-3">
               <div className="space-y-1">
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   Webhook de entrada de leads (n8n / prospeccao)
                 </label>
                 <input
-                  className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm outline-none placeholder:text-white/40"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none placeholder:text-slate-400"
                   value={webhookProspeccao}
                   onChange={(e) => setWebhookProspeccao(e.target.value)}
                   placeholder="https://seu-n8n.com/webhook/altum-leads"
                 />
-                <p className="text-[11px] text-white/40">
+                <p className="text-[11px] text-slate-400">
                   URL que recebe os leads captados (Google Places, formularios,
                   etc).
                 </p>
               </div>
 
               <div className="space-y-1 max-w-md">
-                <label className="text-xs text-white/60">
+                <label className="text-xs text-slate-500">
                   Meta WhatsApp Business API - Token (armazenado apenas no
                   Firestore)
                 </label>
                 <input
                   disabled
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white/40 outline-none"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 outline-none"
                   value={metaWabaTokenPlaceholder}
                   onChange={(e) =>
                     setMetaWabaTokenPlaceholder(e.target.value)
                   }
                 />
-                <p className="text-[11px] text-white/40">
+                <p className="text-[11px] text-slate-400">
                   Por seguranca, o token real e melhor ser colado diretamente
                   no Firestore ou em variavel de ambiente. Aqui fica apenas o
                   registro conceitual.

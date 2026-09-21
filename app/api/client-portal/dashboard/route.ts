@@ -47,6 +47,9 @@ async function queryByTenantOrClient(collectionName: string, tenantId: string, c
 export async function GET(req: Request) {
   try {
     const portalUser = await requirePortalRequestUser(req);
+    if (!["client_owner", "client_admin", "agency_owner", "agency_admin", "agency_agent"].includes(portalUser.tenantRole) && !portalUser.capabilities.some((capability) => ["view_team_records", "manage_settings", "manage_users"].includes(capability))) {
+      throw new PortalAuthError(403, "team_records_required", "A visao financeira da empresa exige acesso de gestao.");
+    }
     const tenantId = portalUser.tenantId;
     const scopedClientId = portalUser.clientId || portalUser.tenantId;
 

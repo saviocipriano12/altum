@@ -25,7 +25,6 @@ import {
   Briefcase,
   Receipt,
   Wallet,
-  CheckCircle2,
   Clock3,
   ArrowRight,
 } from "lucide-react";
@@ -108,12 +107,12 @@ function sortByCreatedAtDesc<T extends { createdAt?: TimestampLike | number | nu
 function statusChip(clientStatus?: string) {
   const raw = (clientStatus || "").toLowerCase();
   if (raw.includes("ativo")) {
-    return "bg-emerald-500/10 text-emerald-300 border border-emerald-500/40";
+    return "bg-emerald-500/10 text-emerald-700 border border-emerald-500/40";
   }
   if (raw.includes("implanta")) {
-    return "bg-amber-500/10 text-amber-300 border border-amber-500/40";
+    return "bg-amber-500/10 text-amber-700 border border-amber-500/40";
   }
-  return "bg-blue-500/10 text-blue-300 border border-blue-500/40";
+  return "bg-blue-500/10 text-blue-700 border border-blue-500/40";
 }
 
 export default function ClienteDetalhePage() {
@@ -413,7 +412,7 @@ export default function ClienteDetalhePage() {
   if (loadingClient) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-white/70">
+        <div className="flex items-center gap-2 text-sm text-slate-700">
           <Loader2 className="h-4 w-4 animate-spin" />
           Carregando cliente...
         </div>
@@ -426,13 +425,13 @@ export default function ClienteDetalhePage() {
       <div className="space-y-4">
         <button
           onClick={() => router.push("/admin/clientes")}
-          className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition"
+          className="inline-flex items-center gap-2 text-xs text-slate-500 hover:text-slate-900 transition"
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar para lista de clientes
         </button>
 
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100">
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700">
           Cliente nao encontrado. Verifique o link e tente novamente.
         </div>
       </div>
@@ -445,7 +444,7 @@ export default function ClienteDetalhePage() {
         <div className="space-y-2">
           <button
             onClick={() => router.push("/admin/clientes")}
-            className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition"
+            className="inline-flex items-center gap-2 text-xs text-slate-500 hover:text-slate-900 transition"
           >
             <ArrowLeft className="h-4 w-4" />
             Voltar para clientes
@@ -462,80 +461,144 @@ export default function ClienteDetalhePage() {
             </span>
           </div>
 
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-slate-500">
             {(client.niche || "Nicho nao informado") + " • " + (client.city || "Cidade nao informada")}
           </p>
         </div>
 
-        <div className="flex flex-col items-start gap-2 text-xs text-white/70 md:items-end">
+        <div className="flex flex-col items-start gap-2 text-xs text-slate-700 md:items-end">
           <Link
             href={`/admin/clientes/${client.id}/portal`}
-            className="inline-flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-blue-100 hover:bg-blue-500/20"
+            className="inline-flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-blue-700 hover:bg-blue-500/20"
           >
-            Portal do cliente
+            Contratos e acessos
             <ArrowRight className="h-3 w-3" />
           </Link>
           {clientCreatedAt && (
             <div className="flex items-center gap-1">
-              <Calendar className="h-4 w-4 text-white/40" />
+              <Calendar className="h-4 w-4 text-slate-400" />
               <span>Cliente criado em {clientCreatedAt}</span>
             </div>
           )}
-          <div className="flex items-center gap-1 text-emerald-300">
-            <BadgeCheck className="h-4 w-4" />
-            <span>Conta ativa na ALTUM</span>
-          </div>
+          {tenantSummary && <Link href={`/admin/clientes/${client.id}/portal`} className="text-xs text-slate-500">Gerenciar contrato e acessos</Link>}
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-xl border border-white/10 bg-[#101010] p-4 space-y-1">
-          <p className="text-[11px] text-white/50 uppercase tracking-wide">Projetos ativos</p>
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 xl:grid-cols-5">
+        <div className="bg-white p-4 space-y-1">
+          <p className="text-[11px] text-slate-500 uppercase tracking-wide">Projetos ativos</p>
           <p className="text-2xl font-semibold">{kpis.activeProjects}</p>
         </div>
-        <div className="rounded-xl border border-white/10 bg-[#101010] p-4 space-y-1">
-          <p className="text-[11px] text-white/50 uppercase tracking-wide">Orcamentos aprovados</p>
+        <div className="bg-white p-4 space-y-1">
+          <p className="text-[11px] text-slate-500 uppercase tracking-wide">Orcamentos aprovados</p>
           <p className="text-2xl font-semibold">{kpis.approvedBudgets}</p>
         </div>
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 space-y-1">
-          <p className="text-[11px] text-emerald-200/70 uppercase tracking-wide">Receita paga</p>
-          <p className="text-2xl font-semibold text-emerald-200">{asMoney(kpis.paidRevenue)}</p>
+        <div className="bg-white p-4 space-y-1">
+          <p className="text-[11px] text-emerald-700 uppercase tracking-wide">Receita paga</p>
+          <p className="text-2xl font-semibold text-emerald-700">{asMoney(kpis.paidRevenue)}</p>
         </div>
-        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 space-y-1">
-          <p className="text-[11px] text-amber-200/70 uppercase tracking-wide">Financeiro pendente</p>
-          <p className="text-2xl font-semibold text-amber-200">{asMoney(kpis.pendingAmount)}</p>
+        <div className="bg-white p-4 space-y-1">
+          <p className="text-[11px] text-amber-700 uppercase tracking-wide">Financeiro pendente</p>
+          <p className="text-2xl font-semibold text-amber-700">{asMoney(kpis.pendingAmount)}</p>
         </div>
-        <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-4 space-y-1">
-          <p className="text-[11px] text-blue-200/70 uppercase tracking-wide">Atividades abertas</p>
-          <p className="text-2xl font-semibold text-blue-200">{kpis.pendingActivities}</p>
+        <div className="bg-white p-4 space-y-1">
+          <p className="text-[11px] text-blue-700 uppercase tracking-wide">Atividades abertas</p>
+          <p className="text-2xl font-semibold text-blue-700">{kpis.pendingActivities}</p>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
+                Projetos e propostas
+              </h2>
+              <Zap className="h-4 w-4 text-emerald-700" />
+            </div>
+
+            {loadingRelated ? (
+              <div className="text-xs text-emerald-700 inline-flex items-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Carregando modulos conectados...
+              </div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] uppercase tracking-wide text-emerald-700">
+                      Projetos recentes
+                    </p>
+                    <Briefcase className="h-4 w-4 text-emerald-700" />
+                  </div>
+                  {projects.slice(0, 3).map((project) => (
+                    <Link
+                      key={project.id}
+                      href={`/admin/projetos/${project.id}`}
+                      className="text-xs flex items-center justify-between text-slate-900 hover:text-slate-900"
+                    >
+                      <span className="truncate pr-2">{project.titulo}</span>
+                      <ArrowRight className="h-3 w-3 shrink-0" />
+                    </Link>
+                  ))}
+                  {projects.length === 0 && (
+                    <p className="text-xs text-emerald-700">
+                      Nenhum projeto vinculado.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] uppercase tracking-wide text-emerald-700">
+                      Propostas recentes
+                    </p>
+                    <Receipt className="h-4 w-4 text-emerald-700" />
+                  </div>
+                  {budgets.slice(0, 3).map((budget) => (
+                    <Link
+                      key={budget.id}
+                      href={`/admin/orcamentos/${budget.id}`}
+                      className="text-xs flex items-center justify-between text-slate-900 hover:text-slate-900"
+                    >
+                      <span className="truncate pr-2">
+                        {budget.title || budget.titulo || "Orcamento"}
+                      </span>
+                      <ArrowRight className="h-3 w-3 shrink-0" />
+                    </Link>
+                  ))}
+                  {budgets.length === 0 && (
+                    <p className="text-xs text-emerald-700">
+                      Nenhum orcamento vinculado.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
               Informacoes de contato
             </h2>
 
-            <p className="text-xs text-white/60">
+            <p className="text-xs text-slate-500">
               Contato principal:{" "}
-              <span className="text-white/90 font-medium">
+              <span className="text-slate-900 font-medium">
                 {client.contactName || "Nao informado"}
               </span>
             </p>
 
-            <div className="flex flex-wrap gap-3 text-xs text-white/80">
+            <div className="flex flex-wrap gap-3 text-xs text-slate-900">
               {client.email && (
-                <div className="inline-flex items-center gap-2 rounded-lg bg-black/50 px-3 py-1.5 border border-white/10">
-                  <Mail className="h-4 w-4 text-white/40" />
+                <div className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 border border-slate-200">
+                  <Mail className="h-4 w-4 text-slate-400" />
                   <span>{client.email}</span>
                 </div>
               )}
 
               {client.phone && (
-                <div className="inline-flex items-center gap-2 rounded-lg bg-black/50 px-3 py-1.5 border border-white/10">
-                  <Phone className="h-4 w-4 text-white/40" />
+                <div className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 border border-slate-200">
+                  <Phone className="h-4 w-4 text-slate-400" />
                   <span>{client.phone}</span>
                 </div>
               )}
@@ -545,7 +608,7 @@ export default function ClienteDetalhePage() {
                   href={client.site.startsWith("http") ? client.site : `https://${client.site}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-lg bg-black/50 px-3 py-1.5 border border-white/10 text-blue-300 hover:text-blue-200"
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 border border-slate-200 text-blue-700 hover:text-blue-700"
                 >
                   <Globe2 className="h-4 w-4" />
                   <span>{client.site}</span>
@@ -554,12 +617,12 @@ export default function ClienteDetalhePage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
                 Servicos e escopo
               </h2>
-              <FileText className="h-4 w-4 text-white/40" />
+              <FileText className="h-4 w-4 text-slate-400" />
             </div>
 
             {client.services && client.services.length > 0 ? (
@@ -567,174 +630,105 @@ export default function ClienteDetalhePage() {
                 {client.services.map((service) => (
                   <span
                     key={service}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/80"
+                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-900"
                   >
                     {service}
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-white/50">
+              <p className="text-xs text-slate-500">
                 Nenhum servico especificado. Defina o escopo para alinhar projetos e financeiro.
               </p>
             )}
           </div>
 
-          <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-[#071A14] via-[#050809] to-black p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-100">
-                Operacao conectada do cliente
-              </h2>
-              <Zap className="h-4 w-4 text-emerald-300" />
-            </div>
-
-            {loadingRelated ? (
-              <div className="text-xs text-emerald-100/70 inline-flex items-center gap-2">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Carregando modulos conectados...
-              </div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-lg border border-emerald-500/30 bg-black/40 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] uppercase tracking-wide text-emerald-100/80">
-                      Projetos recentes
-                    </p>
-                    <Briefcase className="h-4 w-4 text-emerald-200/80" />
-                  </div>
-                  {projects.slice(0, 3).map((project) => (
-                    <Link
-                      key={project.id}
-                      href={`/admin/projetos/${project.id}`}
-                      className="text-xs flex items-center justify-between text-white/80 hover:text-white"
-                    >
-                      <span className="truncate pr-2">{project.titulo}</span>
-                      <ArrowRight className="h-3 w-3 shrink-0" />
-                    </Link>
-                  ))}
-                  {projects.length === 0 && (
-                    <p className="text-xs text-emerald-100/60">
-                      Nenhum projeto vinculado.
-                    </p>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-emerald-500/30 bg-black/40 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] uppercase tracking-wide text-emerald-100/80">
-                      Orcamentos recentes
-                    </p>
-                    <Receipt className="h-4 w-4 text-emerald-200/80" />
-                  </div>
-                  {budgets.slice(0, 3).map((budget) => (
-                    <Link
-                      key={budget.id}
-                      href={`/admin/orcamentos/${budget.id}`}
-                      className="text-xs flex items-center justify-between text-white/80 hover:text-white"
-                    >
-                      <span className="truncate pr-2">
-                        {budget.title || budget.titulo || "Orcamento"}
-                      </span>
-                      <ArrowRight className="h-3 w-3 shrink-0" />
-                    </Link>
-                  ))}
-                  {budgets.length === 0 && (
-                    <p className="text-xs text-emerald-100/60">
-                      Nenhum orcamento vinculado.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
               Financeiro recente
             </h2>
 
             {transactions.slice(0, 4).map((item) => (
-              <div key={item.id} className="rounded-lg border border-white/10 bg-black/40 p-2">
-                <p className="text-xs text-white/90 truncate">{item.descricao || item.referencia || "Lancamento"}</p>
-                <p className="text-[11px] text-white/60">
+              <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                <p className="text-xs text-slate-900 truncate">{item.descricao || item.referencia || "Lancamento"}</p>
+                <p className="text-[11px] text-slate-500">
                   {(item.tipo || "Receita") + " • " + (item.status || "pendente")}
                 </p>
-                <p className="text-xs text-white/80">{asMoney(item.valor || 0)}</p>
+                <p className="text-xs text-slate-900">{asMoney(item.valor || 0)}</p>
               </div>
             ))}
 
             {transactions.length === 0 && (
-              <p className="text-xs text-white/60">
+              <p className="text-xs text-slate-500">
                 Sem lancamentos financeiros vinculados a este cliente.
               </p>
             )}
 
             <Link
               href="/admin/financeiro"
-              className="inline-flex items-center gap-2 text-xs text-blue-300 hover:text-blue-200"
+              className="inline-flex items-center gap-2 text-xs text-blue-700 hover:text-blue-700"
             >
               <Wallet className="h-3 w-3" />
               Abrir modulo financeiro
             </Link>
           </div>
 
-          <div className="rounded-xl border border-blue-500/20 bg-blue-950/10 p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-blue-100">
-              Tenant e modo operacional
-            </h2>
+          <details className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-700">Configuração da operação</summary>
 
             {tenantSummary && businessProfile ? (
               <>
-                <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-white/45">Tenant</p>
-                  <p className="mt-1 text-sm font-medium text-white">{tenantSummary.tenantId}</p>
-                  <p className="mt-1 text-xs text-white/55">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Tenant</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{tenantSummary.tenantId}</p>
+                  <p className="mt-1 text-xs text-slate-500">
                     {tenantSummary.status} · {tenantSummary.niche || "nicho nao informado"}
                   </p>
                 </div>
 
-                <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-white/45">Modo do negocio</p>
-                  <p className="mt-1 text-sm font-medium text-white">{businessProfile.label}</p>
-                  <p className="mt-1 text-xs text-white/55">{businessProfile.description}</p>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Modo do negocio</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{businessProfile.label}</p>
+                  <p className="mt-1 text-xs text-slate-500">{businessProfile.description}</p>
                 </div>
 
-                <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-white/45">Foco comercial</p>
-                  <p className="mt-1 text-xs text-white/75">{businessProfile.commercialMotion}</p>
-                  <p className="mt-2 text-[11px] text-white/55">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Foco comercial</p>
+                  <p className="mt-1 text-xs text-slate-700">{businessProfile.commercialMotion}</p>
+                  <p className="mt-2 text-[11px] text-slate-500">
                     Métricas naturais: {businessProfile.metrics.join(" · ")}
                   </p>
                 </div>
 
                 <Link
                   href={`/admin/clientes/${client.id}/portal`}
-                  className="inline-flex items-center gap-2 text-xs text-blue-300 hover:text-blue-200"
+                  className="inline-flex items-center gap-2 text-xs text-blue-700 hover:text-blue-700"
                 >
                   <BadgeCheck className="h-3 w-3" />
                   Abrir portal e continuar provisionamento
                 </Link>
               </>
             ) : (
-              <p className="text-xs text-white/60">
+              <p className="text-xs text-slate-500">
                 Este cliente ainda nao tem tenant/profil de negocio claramente vinculado. Vale revisar o provisionamento do portal.
               </p>
             )}
-          </div>
+          </details>
 
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
               Atividades do cliente
             </h2>
 
             {activities.slice(0, 5).map((activity) => {
               const date = activity.data ? formatDate(activity.data) : formatDate(activity.createdAt);
               return (
-                <div key={activity.id} className="rounded-lg border border-white/10 bg-black/40 p-2">
-                  <p className="text-xs text-white/90">{activity.descricao}</p>
-                  <p className="text-[11px] text-white/60">
+                <div key={activity.id} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                  <p className="text-xs text-slate-900">{activity.descricao}</p>
+                  <p className="text-[11px] text-slate-500">
                     {(activity.status === "concluida" ? "Concluida" : "Pendente") +
                       (date ? ` • ${date}` : "")}
                   </p>
@@ -743,39 +737,21 @@ export default function ClienteDetalhePage() {
             })}
 
             {activities.length === 0 && (
-              <p className="text-xs text-white/60">
+              <p className="text-xs text-slate-500">
                 Nenhuma atividade associada com o nome deste cliente.
               </p>
             )}
 
             <Link
               href="/admin/atividades"
-              className="inline-flex items-center gap-2 text-xs text-blue-300 hover:text-blue-200"
+              className="inline-flex items-center gap-2 text-xs text-blue-700 hover:text-blue-700"
             >
               <Clock3 className="h-3 w-3" />
               Abrir agenda de atividades
             </Link>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-[#111111] p-4 space-y-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/70">
-              Proximas acoes
-            </h2>
-            <ul className="space-y-1 text-xs text-white/70">
-              <li className="inline-flex items-center gap-2">
-                <CheckCircle2 className="h-3 w-3 text-emerald-300" />
-                Conferir escopo e servicos ativos do cliente
-              </li>
-              <li className="inline-flex items-center gap-2">
-                <CheckCircle2 className="h-3 w-3 text-emerald-300" />
-                Validar ultimo orcamento e status comercial
-              </li>
-              <li className="inline-flex items-center gap-2">
-                <CheckCircle2 className="h-3 w-3 text-emerald-300" />
-                Atualizar financeiro pendente e follow-up
-              </li>
-            </ul>
-          </div>
+
         </div>
       </div>
     </div>

@@ -14,7 +14,8 @@ import { buildManualQueuePatch } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { deleteTenantChat, recordDeletionAudit } from "@/lib/server/tenant-data-deletion";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
-import { assertAssignedCommercialRecordAccess, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
+import { assertChatCommercialAccess, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
+import { listTenantOperators } from "@/lib/server/tenant-routing";
 import { deriveSalesJourney } from "@/lib/sales-journey";
 
 type ChatDoc = Record<string, unknown> & {
@@ -182,6 +183,7 @@ async function getChatSnapshot(chatId: string, tenantId: string) {
 }
 
 async function resolveLead(chat: ChatDoc, tenantId: string) {
+  if (chat.isGroup === true) return null;
   let leadSnap: DocumentSnapshot | null = null;
 
   if (typeof chat.leadId === "string" && chat.leadId.trim()) {
@@ -281,6 +283,7 @@ async function resolveLead(chat: ChatDoc, tenantId: string) {
 }
 
 async function resolveContactProfile(chat: ChatDoc, tenantId: string) {
+  if (chat.isGroup === true) return null;
   const phone = cleanString(chat.contactPhone, 60);
   const leadId = cleanString(chat.leadId, 180);
 
@@ -497,7 +500,7 @@ export async function GET(
     assertTenantRole(membership, "client_viewer");
 
     const { chat } = await getChatSnapshot(chatId, tenantId);
-    assertAssignedCommercialRecordAccess(membership, user.uid, chat);
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
     const [lead, aiState, notes, teamMembers, settings, contactProfile] = await Promise.all([
       resolveLead(chat, tenantId),
       getChatState(tenantId, chatId),
@@ -580,7 +583,7 @@ export async function PATCH(
     assertTenantCapability(membership, "respond_inbox");
 
     const { chatRef, chat } = await getChatSnapshot(chatId, tenantId);
-    assertAssignedCommercialRecordAccess(membership, user.uid, chat);
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
     const body = (await req.json()) as Body;
 
     const nextStatus = cleanString(body.status, 40).toLowerCase();
@@ -639,10 +642,14 @@ export async function PATCH(
       }
       if (assignedUserId) {
         const membershipSnap = await adminDb.collection("tenant_users").doc(`${tenantId}_${assignedUserId}`).get();
-        if (!membershipSnap.exists) {
+        if (!membershipSnap.exists || membershipSnap.data()?.status !== "active") {
           return NextResponse.json({ error: "Usuario informado nao pertence a este tenant." }, { status: 400 });
         }
 
+        const operators = await listTenantOperators(tenantId);
+        if (!operators.some((operator) => operator.userId === assignedUserId)) {
+          return NextResponse.json({ error: "O responsavel precisa ter acesso ativo para responder conversas." }, { status: 400 });
+        }
         const userSnap = await adminDb.collection("users").doc(assignedUserId).get();
         assignedUserName = userSnap.exists
           ? String((userSnap.data() as { name?: string }).name || "Usuario")
@@ -655,6 +662,8 @@ export async function PATCH(
         changes.push(`responsavel: ${assignedUserName}`);
       } else {
         patch.assignedTo = null;
+        patch.ownerId = null;
+        patch.ownerName = null;
         patch.assignedUserName = null;
         changes.push("responsavel: sem atribuicao");
       }
@@ -721,12 +730,12 @@ export async function PATCH(
         })
       );
 
-      if (assignedUserId) {
+      if (Object.prototype.hasOwnProperty.call(patch, "assignedTo")) {
         writes.push(
           leadRef.set(
             {
-              ownerId: assignedUserId,
-              owner: assignedUserName || user.name,
+              ownerId: assignedUserId || null,
+              owner: assignedUserId ? assignedUserName || user.name : null,
               updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true }
@@ -760,8 +769,7 @@ export async function DELETE(
     const membership = await assertTenantAccess(user.uid, tenantId);
     await assertTenantModule(tenantId, "inbox");
     assertTenantCapability(membership, "respond_inbox");
-    const { chat } = await getChatSnapshot(chatId, tenantId);
-    assertAssignedCommercialRecordAccess(membership, user.uid, chat);
+    await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
     const result = await deleteTenantChat({ tenantId, chatId });
     await recordDeletionAudit({
       tenantId,

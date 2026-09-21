@@ -214,7 +214,7 @@ export async function POST(
         return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", preview: application.preview, result: application.result });
       } catch (error) {
         const providerError = clean(error instanceof Error ? error.message : "Falha no provedor.", 800);
-        await draftRef.set({ status: "approved_pending_apply", lastApplyError: providerError, lastApplyAttemptAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        await draftRef.set({ status: "apply_failed_requires_review", lastApplyError: providerError, lastApplyAttemptAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
         throw error;
       }
     }
@@ -246,7 +246,7 @@ export async function POST(
         return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", preview: application.preview, result: application.result });
       } catch (error) {
         const providerError = clean(error instanceof Error ? error.message : "Falha no provedor.", 800);
-        await draftRef.set({ status: "approved_pending_apply", lastApplyError: providerError, lastApplyAttemptAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        await draftRef.set({ status: "apply_failed_requires_review", lastApplyError: providerError, lastApplyAttemptAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
         throw error;
       }
     }
@@ -344,7 +344,7 @@ export async function POST(
       } catch (error) {
         const providerError = clean(error instanceof Error ? error.message : "Falha no provedor.", 800);
         await Promise.all([
-          draftRef.set({ status: "approved_pending_apply", lastApplyError: providerError, lastApplyAttemptAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+          draftRef.set({ status: "apply_failed_requires_review", lastApplyError: providerError, lastApplyAttemptAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
           adminDb.collection("audit_logs").add({ type: "mcp_campaign_draft_apply_failed", actorId: user.uid, actorName: user.name, tenantId, draftId: safeDraftId, error: providerError, createdAt: FieldValue.serverTimestamp() }),
         ]);
         throw error;

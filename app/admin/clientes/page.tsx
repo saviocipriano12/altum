@@ -5,10 +5,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowRight,
-  Globe2,
   Loader2,
-  Mail,
-  Phone,
   Plus,
   Search,
   Trash2,
@@ -30,6 +27,7 @@ interface Client {
   site?: string;
   status: ClientStatus | string;
   services: string[];
+  companyKind?: "platform" | "commercial";
   createdAt?: TimestampLike | number | null;
 }
 
@@ -40,7 +38,7 @@ const inputClass =
 
 function statusClass(status: string) {
   const lowered = status.toLowerCase();
-  if (lowered.includes("ativo")) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (["ativo", "active"].includes(lowered)) return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (lowered.includes("implanta")) return "border-amber-200 bg-amber-50 text-amber-700";
   return "border-blue-200 bg-blue-50 text-blue-700";
 }
@@ -54,6 +52,9 @@ export default function ClientesPage() {
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [formError, setFormError] = useState("");
 
   const [form, setForm] = useState({
     name: "",
@@ -77,11 +78,11 @@ export default function ClientesPage() {
     let active = true;
     void authedFetch("/api/clientes")
       .then(async (response) => {
-        const payload = (await response.json().catch(() => ({}))) as { items?: Client[]; error?: string };
+        const payload = (await response.json().catch(() => ({}))) as { items?: Client[]; error?: string; partial?: boolean };
         if (!response.ok) throw new Error(payload.error || "Falha ao carregar empresas.");
         if (active) {
           setClients(payload.items || []);
-          setLoadError(null);
+          setLoadError(payload.partial ? "Cobertura  a lista atingiu o limite de leitura. A operação da carteira apresenta a cobertura por fonte." : null);
         }
       })
       .catch((error) => {
@@ -148,8 +149,9 @@ export default function ClientesPage() {
 
   const filteredClients = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return clients;
-    return clients.filter((client) => {
+    const matchingStatus = clients.filter(client => !statusFilter || (statusFilter === "active" ? ["ativo", "active"].includes((client.status || "").toLowerCase()) : !["ativo", "active"].includes((client.status || "").toLowerCase())));
+    if (!term) return matchingStatus;
+    return matchingStatus.filter((client) => {
       return (
         client.name.toLowerCase().includes(term) ||
         (client.niche || "").toLowerCase().includes(term) ||
@@ -157,20 +159,21 @@ export default function ClientesPage() {
         (client.contactName || "").toLowerCase().includes(term)
       );
     });
-  }, [clients, search]);
+  }, [clients, search, statusFilter]);
 
   const activeCount = clients.filter((client) =>
-    (client.status || "").toLowerCase().includes("ativo")
+    ["ativo", "active"].includes((client.status || "").toLowerCase())
   ).length;
 
   async function handleCreateClient(event: React.FormEvent) {
     event.preventDefault();
     if (!form.name.trim() || !form.email.trim()) {
-      alert("Preencha nome da empresa e email.");
+      setFormError("Preencha nome da empresa e e-mail.");
       return;
     }
 
     try {
+      setFormError("");
       setCreating(true);
       const services = form.servicesText
         .split(",")
@@ -207,9 +210,10 @@ export default function ClientesPage() {
         servicesText: "",
       });
       setClientsRefreshKey((value) => value + 1);
+      setShowCreate(false);
     } catch (error) {
       console.error("Erro ao criar cliente:", error);
-      alert(error instanceof Error ? error.message : "Nao foi possivel criar o cliente.");
+      setFormError(error instanceof Error ? error.message : "Nao foi possivel criar o cliente.");
     } finally {
       setCreating(false);
     }
@@ -240,190 +244,27 @@ export default function ClientesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1480px] space-y-5 pb-10 text-slate-900">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-700">Operação SaaS</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Empresas</h1>
-          <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600">
-            Base de empresas atendidas pela Altum, com acesso rapido a contratos, projetos e operacao.
-          </p>
+    <div className="space-y-6 pb-8">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div><h1 className="text-2xl font-semibold tracking-tight">Empresas</h1><p className="mt-1 text-sm text-slate-500">{clients.length} empresas na carteira · {activeCount} ativas</p></div>
+        <button onClick={() => { setShowCreate(!showCreate); setFormError(""); }} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700" aria-expanded={showCreate}><Plus size={16} />Nova empresa</button>
+      </header>
+      {showCreate && <form onSubmit={handleCreateClient} className="rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="mb-4 font-semibold">Cadastrar empresa</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{([
+          ["name", "Nome da empresa", true], ["email", "E-mail", true], ["contactName", "Contato principal", false], ["phone", "Telefone", false], ["niche", "Segmento", false], ["city", "Cidade / UF", false], ["site", "Site", false],
+        ] as const).map(([key, label, required]) => <label key={key} className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">{label}{required ? " *" : ""}<input className={inputClass} required={required} type={key === "email" ? "email" : key === "phone" ? "tel" : "text"} value={form[key]} onChange={event => setForm(previous => ({ ...previous, [key]: event.target.value }))} /></label>)}
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">Situação<select className={inputClass} value={form.status} onChange={event => setForm(previous => ({ ...previous, status: event.target.value as ClientStatus }))}>{STATUS_OPTIONS.map(status => <option key={status}>{status}</option>)}</select></label>
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">Serviços<input className={inputClass} placeholder="Separados por vírgula" value={form.servicesText} onChange={event => setForm(previous => ({ ...previous, servicesText: event.target.value }))} /></label>
         </div>
-        <span className="inline-flex w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-          {activeCount} ativos - {clients.length} no total
-        </span>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-600">
-            Buscar cliente
-          </p>
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-            <Search size={16} className="text-slate-400" />
-            <input
-              placeholder="Nome, nicho, cidade ou contato"
-              className="w-full bg-transparent text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
-        </section>
-
-        <form onSubmit={handleCreateClient} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-600">
-              Novo cliente rapido
-            </p>
-            <span className="text-[11px] font-medium text-slate-500">
-              Conecta com projetos, propostas e financeiro
-            </span>
-          </div>
-
-          <div className="grid gap-2 md:grid-cols-2">
-            <input className={inputClass} placeholder="Nome da empresa *" value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
-            <input className={inputClass} placeholder="Nicho / segmento" value={form.niche} onChange={(event) => setForm((prev) => ({ ...prev, niche: event.target.value }))} />
-            <input className={inputClass} placeholder="Cidade / UF" value={form.city} onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))} />
-            <input className={inputClass} placeholder="Contato principal" value={form.contactName} onChange={(event) => setForm((prev) => ({ ...prev, contactName: event.target.value }))} />
-            <input className={inputClass} placeholder="E-mail *" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} />
-            <input className={inputClass} placeholder="WhatsApp / telefone" value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} />
-            <input className={inputClass} placeholder="Site (opcional)" value={form.site} onChange={(event) => setForm((prev) => ({ ...prev, site: event.target.value }))} />
-            <select className={inputClass} value={form.status} onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as ClientStatus }))}>
-              {STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <textarea
-            className={`${inputClass} mt-2 w-full`}
-            rows={2}
-            placeholder="Servicos separados por virgula - Trafego, LP, Consultoria"
-            value={form.servicesText}
-            onChange={(event) => setForm((prev) => ({ ...prev, servicesText: event.target.value }))}
-          />
-
-          <button
-            type="submit"
-            disabled={creating}
-            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-            {creating ? "Salvando..." : "Salvar cliente"}
-          </button>
-        </form>
-      </div>
-
-      <section className="space-y-3">
-        {loadError ? (
-          <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-            <AlertTriangle className="h-5 w-5 shrink-0" /> {loadError}
-          </div>
-        ) : null}
-        {loading ? (
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-sm font-medium text-slate-600 shadow-sm">
-            <Loader2 size={16} className="animate-spin" />
-            Carregando clientes...
-          </div>
-        ) : null}
-
-        {!loading && filteredClients.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm font-medium text-slate-500">
-            Nenhum cliente encontrado. Cadastre o primeiro usando o formulario acima.
-          </p>
-        ) : null}
-
-        {filteredClients.map((client) => (
-          <article
-            key={client.id}
-            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
-          >
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0 space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base font-black text-slate-950">{client.name}</h2>
-                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusClass(client.status || "")}`}>
-                    {client.status || "Prospeccao"}
-                  </span>
-                </div>
-
-                <p className="text-xs font-medium text-slate-600">
-                  {(client.niche || "Nicho nao informado") + " - " + (client.city || "Cidade nao informada")}
-                </p>
-                <p className="text-[11px] font-medium text-slate-500">
-                  Contato principal: <span className="font-bold text-slate-700">{client.contactName || "Nao informado"}</span>
-                </p>
-
-                {client.services?.length ? (
-                  <div className="flex flex-wrap gap-1">
-                    {client.services.map((service) => (
-                      <span key={service} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                        {service}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="flex flex-col items-start gap-2 text-xs font-medium text-slate-600 md:items-end">
-                <div className="flex flex-wrap gap-2 md:justify-end">
-                  {client.email ? (
-                    <span className="flex items-center gap-1">
-                      <Mail size={14} className="text-slate-400" />
-                      {client.email}
-                    </span>
-                  ) : null}
-                  {client.phone ? (
-                    <span className="flex items-center gap-1">
-                      <Phone size={14} className="text-slate-400" />
-                      {client.phone}
-                    </span>
-                  ) : null}
-                </div>
-
-                {client.site ? (
-                  <a
-                    href={client.site.startsWith("http") ? client.site : `https://${client.site}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:text-blue-800"
-                  >
-                    <Globe2 size={14} />
-                    {client.site}
-                  </a>
-                ) : null}
-
-                <div className="mt-2 flex flex-wrap justify-end gap-2">
-                  <Link
-                    href={`/admin/clientes/${client.id}/portal`}
-                    className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-[11px] font-bold text-white shadow-sm transition hover:bg-blue-700"
-                  >
-                    Gerenciar SaaS
-                    <ArrowRight size={14} />
-                  </Link>
-                  <Link
-                    href={`/admin/clientes/${client.id}`}
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                  >
-                    Ver detalhes
-                    <ArrowRight size={14} />
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteClient(client)}
-                    disabled={deletingId === client.id}
-                    className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
-                  >
-                    {deletingId === client.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                    Excluir
-                  </button>
-                </div>
-              </div>
-            </div>
-          </article>
-        ))}
+        {formError && <p role="alert" className="mt-4 text-sm text-red-700">{formError}</p>}
+        <div className="mt-5 flex items-center gap-3"><button disabled={creating} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{creating ? "Salvando..." : "Cadastrar empresa"}</button><button type="button" disabled={creating} onClick={() => setShowCreate(false)} className="px-3 py-2 text-sm text-slate-600">Cancelar</button></div>
+      </form>}
+      {loadError && <div role="alert" className="flex gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"><AlertTriangle size={18} />{loadError}</div>}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4"><label className="flex min-w-48 flex-1 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2"><Search size={16} className="text-slate-400" /><input aria-label="Buscar empresa" placeholder="Buscar por empresa, contato ou segmento" className="w-full bg-transparent text-sm outline-none" value={search} onChange={event => setSearch(event.target.value)} /></label><select aria-label="Filtrar situação" className={inputClass} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="">Todas as situações</option><option value="active">Ativas</option><option value="other">Outras situações</option></select></div>
+        {loading ? <p className="flex items-center gap-2 p-8 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" />Carregando empresas...</p> : !filteredClients.length ? <div className="p-10 text-center"><p className="font-medium">{search || statusFilter ? "Nenhuma empresa encontrada" : "Sua carteira ainda está vazia"}</p><p className="mt-1 text-sm text-slate-500">{search || statusFilter ? "Ajuste a busca ou os filtros." : "Cadastre uma empresa para organizar sua operação."}</p></div> : <><div className="hidden overflow-x-auto md:block"><table className="w-full text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500"><tr><th className="px-5 py-3 font-medium">Empresa</th><th className="px-5 py-3 font-medium">Situação</th><th className="px-5 py-3 font-medium">Contato</th><th className="px-5 py-3 font-medium">Serviços</th><th className="px-5 py-3 font-medium">Ações</th></tr></thead><tbody className="divide-y divide-slate-100">{filteredClients.map(client => <tr key={client.id} className="hover:bg-slate-50/70"><td className="px-5 py-4"><Link href={`/admin/clientes/${client.id}`} className="font-semibold text-slate-900 hover:text-indigo-600">{client.name}</Link><p className="mt-1 text-xs text-slate-500">{[client.niche, client.city].filter(Boolean).join(" · ") || "Segmento e cidade não informados"}</p></td><td className="px-5 py-4"><span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-xs ${statusClass(client.status || "")}`}>{client.status === "active" ? "Ativo" : client.status || "Prospeccao"}</span></td><td className="px-5 py-4"><p>{client.contactName || "Sem contato"}</p>{client.email && <a href={`mailto:${client.email}`} className="text-xs text-slate-500 hover:text-indigo-600">{client.email}</a>}{client.phone && <p className="text-xs text-slate-500">{client.phone}</p>}</td><td className="max-w-48 px-5 py-4 text-xs text-slate-500">{client.services?.join(", ") || "Sem serviços definidos"}</td><td className="px-5 py-4"><div className="flex items-center gap-4 whitespace-nowrap"><Link href={`/admin/clientes/${client.id}`} aria-label={`Abrir ${client.name}`} className="inline-flex items-center gap-1 font-medium text-indigo-600">Abrir<ArrowRight size={14} /></Link><details className="relative"><summary className="cursor-pointer text-xs text-slate-500">Mais</summary><div className="mt-2 min-w-44 rounded-lg border border-slate-200 bg-slate-50 p-2"><Link href={`/admin/clientes/${client.id}/portal`} className="block rounded px-3 py-2 text-xs hover:bg-slate-50">Contratos e acessos</Link><button onClick={() => void handleDeleteClient(client)} disabled={deletingId === client.id || client.companyKind === "platform"} className="flex w-full items-center gap-2 rounded px-3 py-2 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"><Trash2 size={14} />{deletingId === client.id ? "Excluindo..." : "Excluir empresa"}</button></div></details></div></td></tr>)}</tbody></table></div><div className="divide-y divide-slate-100 md:hidden">{filteredClients.map(client => <article key={client.id} className="p-4"><div className="flex items-start justify-between gap-3"><Link href={`/admin/clientes/${client.id}`} className="font-semibold hover:text-indigo-600">{client.name}</Link><span className={`shrink-0 rounded-full border px-2 py-1 text-xs ${statusClass(client.status || "")}`}>{client.status === "active" ? "Ativo" : client.status || "Prospeccao"}</span></div><p className="mt-1 text-xs text-slate-500">{[client.niche, client.city].filter(Boolean).join(" · ") || "Segmento e cidade não informados"}</p>{client.email && <a href={`mailto:${client.email}`} className="mt-2 block break-all text-xs text-slate-500">{client.email}</a>}{client.phone && <p className="mt-1 text-xs text-slate-500">{client.phone}</p>}<div className="mt-4 flex items-center justify-between gap-3"><Link href={`/admin/clientes/${client.id}`} aria-label={`Abrir ${client.name}`} className="inline-flex items-center gap-1 font-medium text-indigo-600">Abrir empresa<ArrowRight size={14} /></Link><details className="text-xs text-slate-500"><summary className="cursor-pointer">Mais ações</summary><Link href={`/admin/clientes/${client.id}/portal`} className="mt-2 block py-2 text-indigo-600">Contratos e acessos</Link><button disabled={deletingId === client.id || client.companyKind === "platform"} onClick={() => void handleDeleteClient(client)} className="py-2 text-red-700 disabled:opacity-40">{deletingId === client.id ? "Excluindo..." : "Excluir empresa"}</button></details></div></article>)}</div></>}
+        {!loading && <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">{filteredClients.length} empresas exibidas</p>}
       </section>
     </div>
   );
