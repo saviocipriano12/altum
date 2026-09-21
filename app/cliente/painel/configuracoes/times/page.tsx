@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Gauge, Loader2, Save, Trash2, UserCheck, UsersRound } from "lucide-react";
+import { ArrowLeft, Gauge, Loader2, MailPlus, Save, Trash2, UserCheck, UserPlus, UsersRound } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
-import { inferClientAccessProfile } from "@/lib/client-access-profiles";
+import { CLIENT_ACCESS_PROFILES, getClientAccessProfile, inferClientAccessProfile, type ClientAccessProfileId } from "@/lib/client-access-profiles";
 
 type TeamConfig = {
   id: string;
@@ -48,6 +48,15 @@ type UsersPayload = {
 
 type TeamMemberConfig = NonNullable<UsersPayload["items"]>[number];
 
+type QuickMemberForm = {
+  name: string;
+  email: string;
+  accessProfile: ClientAccessProfileId;
+  team: string;
+  allowedChannels: string;
+  maxOpenChats: string;
+};
+
 const OPERATION_CHANNELS = [
   { id: "whatsapp", label: "WhatsApp" },
   { id: "instagram", label: "Instagram" },
@@ -78,6 +87,16 @@ export default function ClienteTimesPage() {
   const [userTeams, setUserTeams] = useState<string[]>([]);
   const [members, setMembers] = useState<TeamMemberConfig[]>([]);
   const [savedMembers, setSavedMembers] = useState<TeamMemberConfig[]>([]);
+  const [quickTeam, setQuickTeam] = useState({ name: "", description: "", channels: ["whatsapp"] });
+  const [quickMember, setQuickMember] = useState<QuickMemberForm>({
+    name: "",
+    email: "",
+    accessProfile: "seller",
+    team: "",
+    allowedChannels: "whatsapp",
+    maxOpenChats: "12",
+  });
+  const [quickSaving, setQuickSaving] = useState(false);
   const canManage = hasCapability("manage_settings");
   const canManageUsers = hasCapability("manage_users");
 
@@ -204,6 +223,79 @@ export default function ClienteTimesPage() {
     });
   }
 
+  function toggleQuickTeamChannel(channelId: string) {
+    setQuickTeam((current) => ({
+      ...current,
+      channels: current.channels.includes(channelId)
+        ? current.channels.filter((item) => item !== channelId)
+        : [...current.channels, channelId],
+    }));
+  }
+
+  async function createTeamAndMember(event: FormEvent) {
+    event.preventDefault();
+    if (!tenant?.tenantId || !canManage || !canManageUsers) return;
+    const teamName = quickTeam.name.trim();
+    const memberEmail = quickMember.email.trim();
+    if (!teamName || !memberEmail) {
+      setError("Informe o nome da equipe e o e-mail da primeira pessoa.");
+      return;
+    }
+
+    try {
+      setQuickSaving(true);
+      setError(null);
+      setNotice(null);
+      const teamId = normalizeTeamId(teamName);
+      const nextTeams = [
+        ...teams.filter((item) => item.id !== teamId),
+        { id: teamId, name: teamName, description: quickTeam.description.trim(), channels: quickTeam.channels, isDefault: teams.length === 0 },
+      ];
+      const settingsResponse = await authedFetch(`/api/tenant/${tenant.tenantId}/settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rules: { inbox: { defaultTeam: teams.length === 0 ? teamId : defaultTeam || teamId, teams: nextTeams } } }),
+      });
+      const settingsPayload = (await settingsResponse.json().catch(() => ({}))) as { error?: string };
+      if (!settingsResponse.ok) throw new Error(settingsPayload.error || "Não foi possível criar a equipe.");
+
+      const profile = getClientAccessProfile(quickMember.accessProfile);
+      const userResponse = await authedFetch(`/api/tenant/${tenant.tenantId}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: quickMember.name.trim(),
+          email: memberEmail,
+          team: teamId,
+          role: profile.role,
+          accessProfile: profile.id,
+          availability: "online",
+          allowedChannels: quickMember.allowedChannels,
+          maxOpenChats: Number(quickMember.maxOpenChats || 0),
+          capabilities: profile.capabilities,
+        }),
+      });
+      const userPayload = (await userResponse.json().catch(() => ({}))) as { error?: string; emailDelivery?: string; inviteLink?: string };
+      if (!userResponse.ok) throw new Error(userPayload.error || "Equipe criada, mas não foi possível adicionar a pessoa.");
+
+      setTeams(nextTeams);
+      setDefaultTeam(teams.length === 0 ? teamId : defaultTeam || teamId);
+      setQuickTeam({ name: "", description: "", channels: ["whatsapp"] });
+      setQuickMember({ name: "", email: "", accessProfile: "seller", team: teamId, allowedChannels: "whatsapp", maxOpenChats: "12" });
+      setNotice(userPayload.emailDelivery === "sent" ? "Equipe criada e convite enviado por e-mail." : "Equipe criada e primeira pessoa adicionada. O convite pode ser copiado na tela de Usuários.");
+      const usersResponse = await authedFetch(`/api/tenant/${tenant.tenantId}/users`);
+      const usersPayload = (await usersResponse.json().catch(() => ({}))) as UsersPayload;
+      if (usersResponse.ok) {
+        setMembers(usersPayload.items || []);
+        setSavedMembers(usersPayload.items || []);
+      }
+    } catch (currentError) {
+      setError(currentError instanceof Error ? currentError.message : "Falha ao montar a equipe.");
+    } finally {
+      setQuickSaving(false);
+    }
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (!tenant?.tenantId) return;
@@ -324,6 +416,43 @@ export default function ClienteTimesPage() {
           </Link>
         }
       />
+
+      {canManage && canManageUsers ? (
+        <PanelCard className="border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-emerald-50 p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-white shadow-sm"><UsersRound className="h-5 w-5" /></span>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-700">Montar operação</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-950">Crie uma equipe e coloque a primeira pessoa para trabalhar</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">A equipe define a fila. O perfil define o que a pessoa pode acessar. Os canais definem de onde ela pode receber conversas.</p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700"><UserPlus className="h-3.5 w-3.5" />Fluxo guiado</span>
+          </div>
+          <form onSubmit={createTeamAndMember} className="mt-6 grid gap-5 xl:grid-cols-[1fr_auto_1fr] xl:items-stretch">
+            <div className="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-indigo-100 text-xs font-black text-indigo-700">1</span><p className="font-bold text-slate-900">Defina a equipe</p></div>
+              <div className="mt-4 space-y-3">
+                <QuickField label="Nome da equipe" value={quickTeam.name} placeholder="Ex.: Vendas São Paulo" onChange={(value) => setQuickTeam((current) => ({ ...current, name: value }))} />
+                <QuickField label="Objetivo da equipe" value={quickTeam.description} placeholder="Ex.: Leads de campanhas e WhatsApp" onChange={(value) => setQuickTeam((current) => ({ ...current, description: value }))} />
+                <div><p className="text-xs font-semibold text-slate-500">Canais da fila</p><div className="mt-2 flex flex-wrap gap-2">{OPERATION_CHANNELS.map((channel) => <button key={channel.id} type="button" aria-pressed={quickTeam.channels.includes(channel.id)} onClick={() => toggleQuickTeamChannel(channel.id)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${quickTeam.channels.includes(channel.id) ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-500"}`}>{channel.label}</button>)}</div></div>
+              </div>
+            </div>
+            <div className="hidden items-center justify-center xl:flex"><span className="text-2xl text-slate-300">→</span></div>
+            <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700">2</span><p className="font-bold text-slate-900">Adicione a primeira pessoa</p></div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <QuickField label="Nome" value={quickMember.name} placeholder="Nome completo" onChange={(value) => setQuickMember((current) => ({ ...current, name: value }))} />
+                <QuickField label="E-mail de acesso" value={quickMember.email} placeholder="pessoa@empresa.com" type="email" onChange={(value) => setQuickMember((current) => ({ ...current, email: value }))} />
+                <label className="block space-y-1.5"><span className="text-xs font-semibold text-slate-500">Perfil</span><select value={quickMember.accessProfile} onChange={(event) => setQuickMember((current) => ({ ...current, accessProfile: event.target.value as ClientAccessProfileId }))} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none"><option value="seller">Vendedor</option>{CLIENT_ACCESS_PROFILES.filter((profile) => ["manager", "support", "analyst"].includes(profile.id)).map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}</select></label>
+                <QuickField label="Limite de conversas" value={quickMember.maxOpenChats} type="number" placeholder="12" onChange={(value) => setQuickMember((current) => ({ ...current, maxOpenChats: value }))} />
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-3 py-2.5"><p className="text-xs leading-5 text-emerald-800">A pessoa entra como membro desta equipe e recebe apenas as permissões do perfil escolhido.</p><button type="submit" disabled={quickSaving} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-3.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60">{quickSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <MailPlus className="h-4 w-4" />}{quickSaving ? "Criando" : "Criar equipe"}</button></div>
+            </div>
+          </form>
+        </PanelCard>
+      ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
@@ -552,6 +681,27 @@ function Field({ label, value, onChange, disabled }: { label: string; value: str
         onChange={(event) => onChange(event.target.value)}
         className="w-full rounded-xl border border-[var(--cliente-border)] bg-white px-3 py-2.5 text-sm text-[var(--cliente-card-text)] outline-none transition placeholder:text-[var(--cliente-card-text-soft)] focus:border-[var(--cliente-border-strong)] disabled:cursor-not-allowed disabled:bg-[var(--cliente-surface-muted)] disabled:opacity-60"
       />
+    </label>
+  );
+}
+
+function QuickField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-xs font-semibold text-slate-500">{label}</span>
+      <input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" />
     </label>
   );
 }

@@ -25,6 +25,14 @@ function hasSameTrialAccess(current: Pick<TenantEntitlementsSnapshot, "modules" 
     && Object.entries(expected.limits).every(([key, value]) => current.limits[key as keyof typeof current.limits] === value);
 }
 
+function isAdminManagedAccess(current: Pick<TenantEntitlementsSnapshot, "mode" | "entitlementSource"> | null | undefined) {
+  const source = String(current?.entitlementSource || "");
+  // Registros criados antes de entitlementSource também usavam mode custom
+  // na área administrativa. Trials self-service sempre foram gravados com
+  // source "trial", portanto mantemos a compatibilidade sem reabrir módulos.
+  return source.startsWith("admin_") || (current?.mode === "custom" && source !== "trial");
+}
+
 export async function applyPlatformPlanEntitlements(input: {
   tenantId: string;
   planId: unknown;
@@ -53,7 +61,7 @@ export async function applyPlatformPlanEntitlements(input: {
 export async function ensureActiveTrialFullAccess(input: {
   tenantId: string;
   tenantData?: Record<string, unknown>;
-  currentEntitlements?: Pick<TenantEntitlementsSnapshot, "modules" | "limits"> | null;
+  currentEntitlements?: Pick<TenantEntitlementsSnapshot, "modules" | "limits" | "mode" | "entitlementSource" | "isLegacyFallback"> | null;
   actorId?: string;
 }) {
   const tenantId = String(input.tenantId || "").trim();
@@ -65,6 +73,19 @@ export async function ensureActiveTrialFullAccess(input: {
   const activeTrial = String(tenantData.billingStatus || "").toLowerCase() === "trial"
     && timestampToMillis(tenantData.trialEndsAt) > Date.now();
   if (!activeTrial) return { activeTrial: false, changed: false, entitlements: null };
+
+  // Um trial dá acesso integral até que a Altum monte uma oferta específica.
+  // A partir desse momento, a oferta comercial sempre vence a regra de trial.
+  if (input.currentEntitlements && isAdminManagedAccess(input.currentEntitlements)) {
+    return { activeTrial: true, changed: false, entitlements: null };
+  }
+
+  // Uma leitura de sessão nunca deve reabrir módulos de um contrato já
+  // existente. O trial é criado no cadastro; esta reconciliação fica somente
+  // para tenants legados que ainda não têm registro de entitlement.
+  if (input.currentEntitlements && !input.currentEntitlements.isLegacyFallback) {
+    return { activeTrial: true, changed: false, entitlements: null };
+  }
 
   const entitlements = PLATFORM_TRIAL_ENTITLEMENTS;
   if (hasSameTrialAccess(input.currentEntitlements)) {
