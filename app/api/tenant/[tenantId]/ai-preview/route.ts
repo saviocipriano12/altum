@@ -330,6 +330,11 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       .filter((item) => item.content && item.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 8);
+    const tenantContextConfigured = Boolean(
+      clean(ai.businessSummary, 360) ||
+      businessProfileId !== "generic" ||
+      kbDocs.length > 0
+    );
 
     const history = (body.history || []).map((item, index) => ({
       id: `preview_${index + 1}`,
@@ -355,6 +360,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
               inboundText,
               channel: "whatsapp",
               agentName: clean(ai.agentName, 80) || `Agente ${clean(settings?.name, 80) || businessProfile.label}`,
+              tenantContextConfigured,
               contactName: typeof body.contactName === "string" ? body.contactName : undefined,
               runtimeStateSummary: clean(body.runtimeStateSummary, 320) || undefined,
               leadMemorySummary: summarizeLeadMemoryForPreview(body.leadMemory || null) || undefined,
@@ -433,20 +439,32 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     );
     const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields);
 
-    const fallbackChoice = buildPreviewFallbackChoice({
-      inboundText,
-      responseText: llmResult?.responseText || null,
-    });
-    const choice = resolveConversationalChoice({
-      fallbackChoice,
-      llmDecision: llmResult?.decision,
-      llmReason: llmResult?.reason || null,
-      llmConfidence: llmResult?.confidence ?? null,
-      llmNextAction: llmResult?.nextAction || null,
-      llmResponseText: llmResult?.responseText || null,
-      llmTurnGoal: llmResult?.turnGoal || null,
-      inboundText,
-    });
+    const fallbackChoice = tenantContextConfigured
+      ? buildPreviewFallbackChoice({
+          inboundText,
+          responseText: llmResult?.responseText || null,
+        })
+      : {
+          decision: "respond" as const,
+          reason: "tenant_context_not_configured",
+          confidence: 0.98,
+          nextAction: "configurar_contexto_da_empresa",
+          ledBy: "fallback" as const,
+          responseText:
+            "Olá! Ainda estou conhecendo esta empresa e não tenho informações confiáveis sobre produtos, serviços ou atendimento. Antes de orientar um cliente, configure a descrição do negócio e a base de conhecimento da empresa.",
+        };
+    const choice = tenantContextConfigured
+      ? resolveConversationalChoice({
+          fallbackChoice,
+          llmDecision: llmResult?.decision,
+          llmReason: llmResult?.reason || null,
+          llmConfidence: llmResult?.confidence ?? null,
+          llmNextAction: llmResult?.nextAction || null,
+          llmResponseText: llmResult?.responseText || null,
+          llmTurnGoal: llmResult?.turnGoal || null,
+          inboundText,
+        })
+      : { ...fallbackChoice, ledBy: "fallback" as const };
     const plannerDecision = deriveOperationalPlan({
       inboundText,
       messageType: clean(body.messageType, 40) || "text",

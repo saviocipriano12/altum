@@ -142,6 +142,7 @@ type ConversationMessage = {
 type TenantAiConfig = {
   enabled: boolean;
   responsePaused: boolean;
+  tenantContextConfigured: boolean;
   businessProfileId: BusinessProfileId;
   businessProfileLabel: string;
   salesMotion: SalesMotion;
@@ -1121,10 +1122,20 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
   const salesMotion = ["consultative", "appointment", "store_visit", "assisted_purchase", "direct_checkout", "digital_delivery"].includes(blueprintMotion)
     ? blueprintMotion as SalesMotion
     : inferSalesMotion({ lead: {}, settings: settings as Record<string, unknown> });
+  const explicitBusinessSummary = sanitizeText(ai.businessSummary, 360);
+  const explicitBlueprintSummary = sanitizeText(activeBlueprint.description || activeBlueprint.summary, 360);
+  const hasCommercialBrain = Object.values(commercialBrain).some((value) => sanitizeText(value, 240));
+  const tenantContextConfigured = Boolean(
+    explicitBusinessSummary ||
+    explicitBlueprintSummary ||
+    hasCommercialBrain ||
+    businessProfileId !== "generic"
+  );
 
   return {
     enabled: ai.enabled !== false,
     responsePaused: ai.responsePaused === true,
+    tenantContextConfigured,
     businessProfileId,
     businessProfileLabel: businessProfile.label,
     salesMotion,
@@ -4722,6 +4733,7 @@ export async function handleIncomingMessage(
     leadId ? getLeadMemory(tenantId, leadId) : Promise.resolve(null),
     getTenantLearningHints(tenantId),
   ]);
+  const tenantContextConfigured = aiConfig.tenantContextConfigured || kbDocs.length > 0;
   const tenantAiWithLearning: TenantAiConfig = {
     ...aiConfig,
     learningHints,
@@ -4781,6 +4793,7 @@ export async function handleIncomingMessage(
           conversation,
           kbDocs,
           preferredProviders: aiConfig.preferredProviders,
+          tenantContextConfigured,
         },
         aiConfig.runtimePolicy
       );
@@ -4792,17 +4805,34 @@ export async function handleIncomingMessage(
   const llmResult = llmRun?.result || null;
   const providerChainError = llmRun?.providerChainError || unexpectedProviderError || null;
   const providerFallbackTriggered = Boolean(llmRun?.providerFallbackTriggered || llmResult?.fallbackUsed);
-  const fallbackChoice = decide({ inboundText, kbDocs, tenantAi: aiConfig });
-  const choice = resolveConversationalChoice({
-    fallbackChoice,
-    llmDecision: llmResult?.decision,
-    llmReason: llmResult?.reason || null,
-    llmConfidence: llmResult?.confidence ?? null,
-    llmNextAction: llmResult?.nextAction || null,
-    llmResponseText: llmResult?.responseText || null,
-    llmTurnGoal: llmResult?.turnGoal || null,
-    inboundText,
-  });
+  const fallbackChoice = tenantContextConfigured
+    ? decide({ inboundText, kbDocs, tenantAi: aiConfig })
+    : {
+        decision: "respond" as const,
+        reason: "tenant_context_not_configured",
+        confidence: 0.98,
+        nextAction: "configurar_contexto_da_empresa",
+        ledBy: "fallback" as const,
+        responseText:
+          "Olá! Ainda estou conhecendo esta empresa e não tenho informações confiáveis sobre produtos, serviços ou atendimento. Antes de orientar um cliente, configure a descrição do negócio e a base de conhecimento da empresa.",
+      };
+  const choice = tenantContextConfigured
+    ? resolveConversationalChoice({
+        fallbackChoice,
+        llmDecision: llmResult?.decision,
+        llmReason: llmResult?.reason || null,
+        llmConfidence: llmResult?.confidence ?? null,
+        llmNextAction: llmResult?.nextAction || null,
+        llmResponseText: llmResult?.responseText || null,
+        llmTurnGoal: llmResult?.turnGoal || null,
+        inboundText,
+      })
+    : {
+        ...fallbackChoice,
+        ledBy: "fallback" as const,
+        nextAction: fallbackChoice.nextAction || "aprofundar_oportunidade",
+        responseText: fallbackChoice.responseText || null,
+      };
   const heuristicExtractedFields = extractBusinessFields(inboundText, aiConfig) || null;
   const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields) || null;
   const plannerDecision = deriveOperationalPlan({

@@ -30,6 +30,7 @@ export type ConversationAgentInput = {
   messageType?: string;
   channel: string;
   agentName?: string;
+  tenantContextConfigured?: boolean;
   contactName?: string;
   runtimeStateSummary?: string;
   leadMemorySummary?: string;
@@ -295,6 +296,9 @@ function buildPrompt(input: ConversationAgentInput) {
   const systemPrompt = [
     `Voce e ${sanitizeText(input.agentName, 80) || "um agente conversacional comercial"} do negocio configurado.`,
     "Converse em portugues do Brasil como uma pessoa atenta, clara e natural no WhatsApp.",
+    input.tenantContextConfigured === false
+      ? "A empresa ainda nao forneceu contexto confiavel. Nao invente o que ela vende, nao assuma que ela oferece servicos de marketing ou gestao de leads e nao fale como se conhecesse o negocio. Explique brevemente que a configuracao ainda esta pendente e peca apenas os dados necessarios para entender a empresa."
+      : "",
     "Entenda o que o lead acabou de dizer e responda isso primeiro.",
     "Responda de forma humana, curta e sempre com progressao comercial.",
     "Em saudacoes ou turnos relacionais, acolha em uma frase e conduza com uma pergunta util sobre contexto de negocio.",
@@ -340,7 +344,7 @@ function buildPrompt(input: ConversationAgentInput) {
   ].join(" ");
 
   const userPrompt = [
-    `Negocio: ${sanitizeText(input.businessSummary, 240) || "empresa cliente configurada"}.`,
+    `Negocio: ${sanitizeText(input.businessSummary, 240) || (input.tenantContextConfigured === false ? "contexto da empresa ainda nao configurado" : "empresa cliente configurada")}.`,
     `Nome do agente: ${sanitizeText(input.agentName, 80) || "nao informado"}.`,
     `Objetivo da IA: ${sanitizeText(input.objective, 140) || "entender o lead, orientar bem e avancar a conversa"}.`,
     `Tom esperado: ${sanitizeText(input.toneOfVoice, 80) || "claro e humano"}.`,
