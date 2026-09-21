@@ -407,7 +407,9 @@ export default function ClientePainelOverviewPage() {
       }
 
       const results = await Promise.allSettled([
-        canViewTeam ? readJson<DashboardData>("/api/client-portal/dashboard") : Promise.resolve({ ok: true, payload: {} as DashboardData }),
+        canViewTeam
+          ? readJson<DashboardData>(`/api/client-portal/dashboard?tenantId=${encodeURIComponent(tenantId)}`)
+          : Promise.resolve({ ok: true, payload: {} as DashboardData }),
         readJson<{ items?: ChatItem[] }>(`/api/tenant/${tenantId}/chats`),
         readJson<FollowUpsResponse>(`/api/tenant/${tenantId}/follow-ups`),
         readJson<{ items?: AppointmentItem[] }>(`/api/tenant/${tenantId}/appointments`),

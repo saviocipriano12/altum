@@ -3,6 +3,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
+import { getPlatformPlanEntitlements } from "@/lib/platform-plan-entitlements";
+import { isPlatformPlanId } from "@/lib/platform-plans";
+import { normalizePlatformBillingPlanId } from "@/lib/platform-billing";
 
 type Body = {
   clientId?: string;
@@ -21,6 +24,8 @@ type Body = {
   autoSuspendEnabled?: boolean;
   autoSuspendBusinessDays?: number;
   platformPlan?: string;
+  customPlanName?: string;
+  applyPlanEntitlements?: boolean;
   platformAccessMode?: "stripe_subscription" | "agency_included" | "manual_release" | "disabled" | string;
   platformAccessStatus?: "active" | "trial" | "blocked" | "pending" | string;
   billingProvider?: "stripe" | "asaas" | "manual" | "included" | string;
@@ -117,6 +122,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Cliente nao encontrado." }, { status: 404 });
     }
 
+    const legacyTenantSnap = directTenantSnap.exists
+      ? null
+      : await adminDb.collection("tenants").where("legacyClientId", "==", clientId).limit(1).get();
+    const tenantId = directTenantSnap.exists ? directTenantSnap.id : legacyTenantSnap?.docs[0]?.id || "";
     const clientData = (clientSnap.exists ? clientSnap.data() : directTenantSnap.data()) as { name?: string };
     const contractRef = adminDb.collection("client_contracts").doc(clientId);
     const previousContractSnap = await contractRef.get();
@@ -125,6 +134,8 @@ export async function POST(req: Request) {
       : {};
     const platformAccessMode = normalizeAccessMode(body.platformAccessMode);
     const billingProvider = normalizeBillingProvider(body.billingProvider);
+    const platformPlan = normalizePlatformBillingPlanId(body.platformPlan);
+    const applyPlanEntitlements = body.applyPlanEntitlements === true && isPlatformPlanId(platformPlan) && Boolean(tenantId);
     const autoBillingEnabled =
       body.autoBillingEnabled === true &&
       billingProvider === "asaas" &&
@@ -149,7 +160,8 @@ export async function POST(req: Request) {
       reminderWhatsAppPhones: parseReminderPhones(body.reminderWhatsAppPhones),
       autoSuspendEnabled: body.autoSuspendEnabled !== false,
       autoSuspendBusinessDays: Math.min(10, Math.max(1, Math.round(toNumber(body.autoSuspendBusinessDays, 2)))),
-      platformPlan: clean(body.platformPlan, 120) || null,
+      platformPlan,
+      customPlanName: clean(body.customPlanName, 120) || null,
       platformAccessMode,
       platformAccessStatus: normalizeAccessStatus(body.platformAccessStatus),
       billingProvider,
@@ -168,12 +180,14 @@ export async function POST(req: Request) {
       updatedBy: user.uid,
       updatedByName: user.name,
       updatedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
     };
 
-    await Promise.all([
-      contractRef.set(payload, { merge: true }),
-      adminDb.collection("audit_logs").add({
+    const batch = adminDb.batch();
+    batch.set(contractRef, {
+      ...payload,
+      ...(previousContractSnap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+    }, { merge: true });
+    batch.set(adminDb.collection("audit_logs").doc(), {
         type: "client_portal_contract_upsert",
         actorId: user.uid,
         actorName: user.name,
@@ -197,10 +211,40 @@ export async function POST(req: Request) {
           otherVariableCostMonthlyBrl: payload.otherVariableCostMonthlyBrl,
         },
         createdAt: FieldValue.serverTimestamp(),
-      }),
-    ]);
+    });
 
-    return NextResponse.json({ ok: true, clientId });
+    if (applyPlanEntitlements) {
+      const entitlements = getPlatformPlanEntitlements(platformPlan);
+      batch.set(adminDb.collection("tenant_entitlements").doc(tenantId), {
+        version: 1,
+        tenantId,
+        mode: "custom",
+        modules: entitlements.modules,
+        limits: entitlements.limits,
+        entitlementSource: "admin_plan_template",
+        platformPlan,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: user.uid,
+        updatedByName: user.name,
+      }, { merge: true });
+      batch.set(adminDb.collection("tenants").doc(tenantId), {
+        platformPlan,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      batch.set(adminDb.collection("audit_logs").doc(), {
+        type: "tenant_entitlements_applied_from_contract_plan",
+        tenantId,
+        clientId,
+        actorId: user.uid,
+        actorName: user.name,
+        platformPlan,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+
+    return NextResponse.json({ ok: true, clientId, tenantId: tenantId || null, planApplied: applyPlanEntitlements });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json(

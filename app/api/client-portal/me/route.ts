@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { PortalAuthError, requirePortalRequestUser } from "@/app/lib/server/portal-auth";
 import { getTenantSettings } from "@/lib/server/tenant";
-import { ensureActiveTrialFullAccess } from "@/lib/server/platform-plan-entitlements";
 
 function cleanDocId(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
@@ -53,20 +52,6 @@ export async function GET(req: Request) {
       safeGetDoc("tenants", portalUser.tenantId),
       safeGetTenantSettings(portalUser.tenantId),
     ]);
-    const trialAccess = await ensureActiveTrialFullAccess({
-      tenantId: portalUser.tenantId,
-      tenantData,
-      currentEntitlements: portalUser.entitlements,
-      actorId: portalUser.uid,
-    });
-    const effectiveEntitlements = trialAccess.entitlements
-      ? {
-          ...portalUser.entitlements,
-          modules: trialAccess.entitlements.modules,
-          limits: trialAccess.entitlements.limits,
-        }
-      : portalUser.entitlements;
-
     const legacyClientId =
       cleanDocId(portalUser.clientId) ||
       cleanDocId(tenantData.legacyClientId) ||
@@ -93,7 +78,10 @@ export async function GET(req: Request) {
         clientId: portalUser.clientId,
         clientName: portalUser.clientName,
         capabilities: portalUser.capabilities,
-        entitlements: effectiveEntitlements,
+        // Esta rota é somente leitura. A oferta efetiva já foi resolvida em
+        // requirePortalRequestUser; abrir o painel nunca pode regravar ou
+        // substituir a configuração comercial feita pelo admin.
+        entitlements: portalUser.entitlements,
       },
       client: clientData,
       billing: {

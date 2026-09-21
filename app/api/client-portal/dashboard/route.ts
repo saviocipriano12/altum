@@ -46,7 +46,10 @@ async function queryByTenantOrClient(collectionName: string, tenantId: string, c
 
 export async function GET(req: Request) {
   try {
-    const portalUser = await requirePortalRequestUser(req);
+    // A Altum pode abrir o painel para um cliente especifico. Esta API deve
+    // manter a mesma selecao para nunca carregar o tenant padrao da agencia.
+    const requestedTenantId = new URL(req.url).searchParams.get("tenantId") || undefined;
+    const portalUser = await requirePortalRequestUser(req, { tenantId: requestedTenantId });
     if (!["client_owner", "client_admin", "agency_owner", "agency_admin", "agency_agent"].includes(portalUser.tenantRole) && !portalUser.capabilities.some((capability) => ["view_team_records", "manage_settings", "manage_users"].includes(capability))) {
       throw new PortalAuthError(403, "team_records_required", "A visao financeira da empresa exige acesso de gestao.");
     }

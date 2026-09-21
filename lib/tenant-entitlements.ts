@@ -145,6 +145,7 @@ export type TenantEntitlementsSnapshot = {
   modules: TenantModuleMap;
   limits: TenantLimitMap;
   isLegacyFallback: boolean;
+  entitlementSource?: string | null;
   updatedAt?: string | null;
   updatedBy?: string | null;
   updatedByName?: string | null;
@@ -256,6 +257,7 @@ export function buildLegacyTenantEntitlements(tenantId: string): TenantEntitleme
     modules: allTenantModules(true),
     limits: { ...DEFAULT_TENANT_LIMITS },
     isLegacyFallback: true,
+    entitlementSource: null,
     updatedAt: null,
     updatedBy: null,
     updatedByName: null,
@@ -280,6 +282,7 @@ export function normalizeTenantEntitlements(
     modules: normalizeTenantModules(source.modules, fallbackModules),
     limits: normalizeTenantLimits(source.limits),
     isLegacyFallback: legacyFallback,
+    entitlementSource: typeof source.entitlementSource === "string" ? source.entitlementSource : null,
     updatedAt: typeof source.updatedAt === "string" ? source.updatedAt : null,
     updatedBy: typeof source.updatedBy === "string" ? source.updatedBy : null,
     updatedByName: typeof source.updatedByName === "string" ? source.updatedByName : null,

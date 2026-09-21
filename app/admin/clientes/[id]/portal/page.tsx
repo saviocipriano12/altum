@@ -7,7 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { BUSINESS_PROFILES, getBusinessProfile, normalizeBusinessProfileId, type BusinessProfileId } from "@/lib/business-profiles";
 import { getBusinessProfileStarterKit } from "@/lib/business-profile-starter-kit";
-import { PLATFORM_BILLING_PLANS, type PlatformBillingPlanId } from "@/lib/platform-billing";
+import { normalizePlatformBillingPlanId, PLATFORM_BILLING_PLANS, type PlatformBillingPlanId } from "@/lib/platform-billing";
 import { TenantEntitlementsCard } from "@/app/admin/clientes/[id]/portal/tenant-entitlements-card";
 import {
   ArrowLeft,
@@ -39,6 +39,7 @@ type ContractDoc = {
   autoSuspendEnabled?: boolean;
   autoSuspendBusinessDays?: number;
   platformPlan?: string;
+  customPlanName?: string;
   platformAccessMode?: "stripe_subscription" | "agency_included" | "manual_release" | "disabled";
   platformAccessStatus?: "active" | "trial" | "blocked" | "pending";
   billingProvider?: "stripe" | "asaas" | "manual" | "included";
@@ -231,6 +232,7 @@ export default function ClientePortalAdminPage() {
   const [recentFinance, setRecentFinance] = useState<FinanceBrief[]>([]);
   const [billingAction, setBillingAction] = useState<"release_access" | "block_access" | "send_reminder" | null>(null);
   const [stripeAction, setStripeAction] = useState<"create_checkout" | "open_portal" | null>(null);
+  const [applyPlanTemplate, setApplyPlanTemplate] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
@@ -250,7 +252,8 @@ export default function ClientePortalAdminPage() {
     reminderWhatsAppPhones: "",
     autoSuspendEnabled: true,
     autoSuspendBusinessDays: 2,
-    platformPlan: "Operacao",
+    platformPlan: "operacao",
+    customPlanName: "",
     platformAccessMode: "manual_release",
     platformAccessStatus: "active",
     billingProvider: "manual",
@@ -434,7 +437,8 @@ export default function ClientePortalAdminPage() {
             : "",
           autoSuspendEnabled: contractData.contract.autoSuspendEnabled !== false,
           autoSuspendBusinessDays: Number(contractData.contract.autoSuspendBusinessDays || 2),
-          platformPlan: contractData.contract.platformPlan || "Operacao",
+          platformPlan: normalizePlatformBillingPlanId(contractData.contract.platformPlan),
+          customPlanName: contractData.contract.customPlanName || "",
           platformAccessMode: contractData.contract.platformAccessMode || "manual_release",
           platformAccessStatus: contractData.contract.platformAccessStatus || "active",
           billingProvider: contractData.contract.billingProvider || "manual",
@@ -513,10 +517,17 @@ export default function ClientePortalAdminPage() {
         body: JSON.stringify({
           clientId,
           ...contract,
+          applyPlanEntitlements: applyPlanTemplate && contract.platformPlan !== "custom",
         }),
       });
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as { error?: string; planApplied?: boolean };
       if (!res.ok) throw new Error(data.error || "Falha ao salvar contrato.");
+      setBillingNotice(
+        data.planApplied
+          ? "Contrato salvo e conteúdo do plano padrão aplicado a este cliente."
+          : "Contrato salvo. Ajuste módulos e limites em Produto contratado para fechar a oferta personalizada."
+      );
+      setApplyPlanTemplate(false);
       await loadData();
     } catch (err) {
       console.error(err);
@@ -626,6 +637,7 @@ export default function ClientePortalAdminPage() {
             legacyClientId: clientId,
             businessProfileId: selectedProfileId,
             applyStarterKit,
+            platformPlan: contract.platformPlan || "operacao",
           }),
         });
         const data = (await res.json()) as { error?: string };
@@ -1342,7 +1354,9 @@ export default function ClientePortalAdminPage() {
               placeholder="Titulo do contrato"
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-semibold text-slate-600">
+                Situação do contrato
               <select
                 value={contract.status || "ativo"}
                 onChange={(e) =>
@@ -1357,14 +1371,19 @@ export default function ClientePortalAdminPage() {
                 <option value="suspenso">Suspenso</option>
                 <option value="encerrado">Encerrado</option>
               </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600">
+                Mensalidade personalizada (R$)
               <input
                 type="number"
                 min={0}
+                step="0.01"
                 value={contract.monthlyValue || 0}
                 onChange={(e) => setContract((prev) => ({ ...prev, monthlyValue: Number(e.target.value || 0) }))}
                 className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
                 placeholder="Valor mensal"
               />
+              </label>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
@@ -1421,14 +1440,26 @@ export default function ClientePortalAdminPage() {
               placeholder="Link de pagamento"
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-bold text-slate-900">Oferta deste cliente</p>
+                <p className="text-xs leading-5 text-slate-600">O preço é exclusivo desta conta. O plano padrão serve como ponto de partida; módulos e limites podem ser ajustados logo acima em Produto contratado.</p>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-semibold text-slate-600">
+                Plano-base
               <select
                 value={contract.platformPlan || "operacao"}
                 onChange={(e) =>
-                  setContract((prev) => ({
+                  {
+                    const platformPlan = e.target.value;
+                    setContract((prev) => ({
                     ...prev,
-                    platformPlan: e.target.value,
-                  }))
+                    platformPlan,
+                    customPlanName: platformPlan === "custom" ? prev.customPlanName : "",
+                    }));
+                    setApplyPlanTemplate(platformPlan !== "custom");
+                  }
                 }
                 className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
@@ -1438,6 +1469,9 @@ export default function ClientePortalAdminPage() {
                   </option>
                 ))}
               </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600">
+                Forma de cobrança
               <select
                 value={contract.billingProvider || "manual"}
                 onChange={(e) =>
@@ -1453,6 +1487,33 @@ export default function ClientePortalAdminPage() {
                 <option value="asaas">Asaas</option>
                 <option value="included">Incluso na agencia</option>
               </select>
+              </label>
+              </div>
+
+              {contract.platformPlan === "custom" ? (
+                <label className="mt-3 block text-xs font-semibold text-slate-600">
+                  Nome da oferta personalizada
+                  <input
+                    value={contract.customPlanName || ""}
+                    onChange={(e) => setContract((prev) => ({ ...prev, customPlanName: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                    placeholder="Ex.: Operação Premium — Clínica X"
+                  />
+                </label>
+              ) : (
+                <label className="mt-3 flex items-start gap-3 rounded-xl border border-blue-200 bg-white px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={applyPlanTemplate}
+                    onChange={(e) => setApplyPlanTemplate(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-900">Aplicar conteúdo do plano-base a este cliente</span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-600">Atualiza módulos e limites para o padrão escolhido. Deixe desmarcado para preservar a oferta personalizada que já foi configurada.</span>
+                  </span>
+                </label>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

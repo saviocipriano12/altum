@@ -111,6 +111,69 @@ test("contract stores external provider costs with before and after audit", () =
   assert.equal(contract.includes("after:"), true);
 });
 
+test("commercial plan, price and contracted capabilities stay connected", () => {
+  const contract = readFileSync(
+    resolve(process.cwd(), "app/api/admin/client-portal/contracts/upsert/route.ts"),
+    "utf8"
+  );
+  const createTenant = readFileSync(
+    resolve(process.cwd(), "app/api/admin/tenants/create/route.ts"),
+    "utf8"
+  );
+  const portal = readFileSync(
+    resolve(process.cwd(), "app/admin/clientes/[id]/portal/page.tsx"),
+    "utf8"
+  );
+
+  assert.equal(contract.includes("customPlanName"), true);
+  assert.equal(contract.includes("applyPlanEntitlements"), true);
+  assert.equal(contract.includes("getPlatformPlanEntitlements(platformPlan)"), true);
+  assert.equal(createTenant.includes("getPlatformPlanEntitlements(platformPlan)"), true);
+  assert.equal(portal.includes("Mensalidade personalizada (R$)"), true);
+  assert.equal(portal.includes("Aplicar conteúdo do plano-base a este cliente"), true);
+});
+
+test("an admin offer takes precedence over trial access in the client panel", () => {
+  const trial = readFileSync(
+    resolve(process.cwd(), "lib/server/platform-plan-entitlements.ts"),
+    "utf8"
+  );
+  const adminEntitlements = readFileSync(
+    resolve(process.cwd(), "app/api/admin/tenants/[tenantId]/entitlements/route.ts"),
+    "utf8"
+  );
+  const clientMe = readFileSync(resolve(process.cwd(), "app/api/client-portal/me/route.ts"), "utf8");
+  const bottomNav = readFileSync(
+    resolve(process.cwd(), "app/cliente/painel/components/cliente-bottom-nav.tsx"),
+    "utf8"
+  );
+
+  assert.equal(trial.includes("isAdminManagedAccess(input.currentEntitlements)"), true);
+  assert.equal(adminEntitlements.includes('entitlementSource: "admin_custom"'), true);
+  assert.equal(clientMe.includes("entitlements: portalUser.entitlements"), true);
+  assert.equal(clientMe.includes("ensureActiveTrialFullAccess"), false);
+  assert.equal(bottomNav.includes("hasModule(item.module)"), true);
+});
+
+test("opening the client panel is read-only for the commercial offer", () => {
+  const trial = readFileSync(
+    resolve(process.cwd(), "lib/server/platform-plan-entitlements.ts"),
+    "utf8"
+  );
+  assert.equal(trial.includes("!input.currentEntitlements.isLegacyFallback"), true);
+  assert.equal(trial.includes("Uma leitura de sessão nunca deve reabrir módulos"), true);
+});
+
+test("Altum administrators can open a specific customer tenant without an individual membership", () => {
+  const portalAuth = readFileSync(resolve(process.cwd(), "app/lib/server/portal-auth.ts"), "utf8");
+  const dashboard = readFileSync(resolve(process.cwd(), "app/api/client-portal/dashboard/route.ts"), "utf8");
+  const overview = readFileSync(resolve(process.cwd(), "app/cliente/painel/page.tsx"), "utf8");
+  assert.equal(portalAuth.includes("assertTenantAccess(decoded.uid, requestedTenantId)"), true);
+  assert.equal(portalAuth.includes("administradores globais da agência"), true);
+  assert.equal(dashboard.includes('requirePortalRequestUser(req, { tenantId: requestedTenantId })'), true);
+  assert.equal(overview.includes('/api/client-portal/dashboard?tenantId=${encodeURIComponent(tenantId)}'), true);
+});
+
 test("new knowledge and conversation media respect contracted storage", () => {
   const usage = readFileSync(resolve(process.cwd(), "lib/server/tenant-usage.ts"), "utf8");
   const dispatch = readFileSync(resolve(process.cwd(), "lib/server/chat-dispatch.ts"), "utf8");

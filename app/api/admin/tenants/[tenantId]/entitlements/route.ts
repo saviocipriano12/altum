@@ -70,6 +70,7 @@ export async function PATCH(req: Request, context: Params) {
       mode: "custom",
       modules: next.modules,
       limits: next.limits,
+      entitlementSource: "admin_custom",
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: actor.uid,
       updatedByName: actor.name,

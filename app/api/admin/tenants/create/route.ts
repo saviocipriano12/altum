@@ -4,7 +4,8 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { getBusinessProfile, normalizeBusinessProfileId, type BusinessProfileId } from "@/lib/business-profiles";
 import { applyBusinessProfileStarterKit } from "@/lib/server/business-profile-provisioning";
-import { allTenantModules, DEFAULT_TENANT_LIMITS } from "@/lib/tenant-entitlements";
+import { getPlatformPlanEntitlements } from "@/lib/platform-plan-entitlements";
+import { isPlatformPlanId } from "@/lib/platform-plans";
 
 type Body = {
   name?: string;
@@ -17,6 +18,7 @@ type Body = {
   legacyClientId?: string;
   businessProfileId?: BusinessProfileId | string;
   applyStarterKit?: boolean;
+  platformPlan?: string;
 };
 
 function clean(value: unknown, max = 200) {
@@ -40,6 +42,9 @@ export async function POST(req: Request) {
     const tenantId = tenantRef.id;
     const businessProfileId = normalizeBusinessProfileId(body.businessProfileId);
     const businessProfile = getBusinessProfile(businessProfileId);
+    const requestedPlan = clean(body.platformPlan, 120).toLowerCase();
+    const platformPlan = isPlatformPlanId(requestedPlan) ? requestedPlan : "operacao";
+    const planEntitlements = getPlatformPlanEntitlements(platformPlan);
 
     const payload = {
       name,
@@ -48,6 +53,7 @@ export async function POST(req: Request) {
       responsibleEmail: clean(body.responsibleEmail, 180).toLowerCase() || actor.email || "",
       status: "active",
       businessProfileId,
+      platformPlan,
       legacyClientId: clean(body.legacyClientId, 120) || tenantId,
       createdBy: actor.uid,
       createdByName: actor.name,
@@ -87,16 +93,18 @@ export async function POST(req: Request) {
       { merge: true }
     );
 
-    // Novos tenants nascem com acesso compativel com a plataforma atual.
-    // O admin converte esse conjunto em uma oferta personalizada na ficha comercial.
+    // O tenant nasce com o plano escolhido na ficha comercial. Depois, o
+    // admin pode personalizar módulos e limites sem alterar outros clientes.
     batch.set(
       adminDb.collection("tenant_entitlements").doc(tenantId),
       {
         version: 1,
         tenantId,
         mode: "custom",
-        modules: allTenantModules(true),
-        limits: DEFAULT_TENANT_LIMITS,
+        modules: planEntitlements.modules,
+        limits: planEntitlements.limits,
+        entitlementSource: "admin_plan_template",
+        platformPlan,
         createdAt: FieldValue.serverTimestamp(),
         createdBy: actor.uid,
         createdByName: actor.name,

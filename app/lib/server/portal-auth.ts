@@ -2,7 +2,8 @@ import { getTenantBillingAccessDenial } from "@/lib/tenant-billing-access";
 import { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
 import {
-  getTenantMembershipForUser,
+  TenantAccessError,
+  assertTenantAccess,
   getDefaultTenantMembershipForUser,
   getTenantCapabilities,
   getTenantSettings,
@@ -226,14 +227,19 @@ export async function requirePortalRequestUser(
   const requestedTenantId = String(options?.tenantId || "").trim();
   if (requestedTenantId) {
     try {
-      const requestedMembership = await getTenantMembershipForUser(decoded.uid, requestedTenantId);
+      // A abertura "como Altum" usa um tenant específico. assertTenantAccess
+      // inclui administradores globais da agência, sem exigir que o admin tenha
+      // um vínculo individual gravado para cada cliente.
+      const requestedMembership = await assertTenantAccess(decoded.uid, requestedTenantId);
       const requestedPortalUser = await buildPortalUserFromMembership(decoded, requestedMembership);
       if (requestedPortalUser) {
         return requestedPortalUser;
       }
     } catch (error) {
       if (isResourceExhausted(error)) throw quotaExceededError();
-      throw error;
+      // Usuários sem vínculo explícito seguem para a compatibilidade do portal
+      // legado, preservando a abertura para clientes cadastrados antes do tenant.
+      if (!(error instanceof TenantAccessError) || error.code !== "tenant_access_denied") throw error;
     }
   }
 
