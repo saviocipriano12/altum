@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Loader2, MailPlus, ShieldCheck, UserCog } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
@@ -69,6 +70,10 @@ function userStatusLabel(value?: string) {
 }
 
 export default function ClienteUsuariosPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/cliente/painel/configuracoes/times?view=people");
+  }, [router]);
   const { tenant, hasCapability } = useClienteTenant();
   const [loading, setLoading] = useState(true);
   const [savingInvite, setSavingInvite] = useState(false);
