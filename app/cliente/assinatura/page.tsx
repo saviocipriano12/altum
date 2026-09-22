@@ -279,20 +279,23 @@ export default function AssinaturaPage({ tenantId: suppliedTenantId }: { tenantI
 
         {billing && hasSubscription ? <SubscriptionOverview planName={activePlan?.name || billing.planId} value={billing.value || activePlan?.monthlyPrice || null} nextDueDate={billing.nextDueDate} accessEndsAt={billing.accessEndsAt} cancelled={billing.cancelAtPeriodEnd || billing.status === "cancelled"} providerAvailable={billing.providerAvailable} operationPending={billing.operationPending} fiscalStatus={billing.fiscalStatus} payments={payments} invoices={invoices} invoicesAvailable={invoicesAvailable} activity={activity} onRefresh={() => void refreshBilling()} refreshing={refreshing} /> : null}
         {hasSubscription ? <div className="mt-3 flex justify-end"><button onClick={() => void downloadBilling()} disabled={Boolean(submitting)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">Exportar dados da assinatura</button></div> : null}
-        <details className="mt-7" open={canSubscribe}>
-          <summary className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 font-bold text-slate-900">{hasSubscription ? "Comparar planos e fazer upgrade" : "Escolher seu plano"}</summary>
+        <details className="mt-8" open={canSubscribe}>
+          <summary className="flex cursor-pointer items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 font-bold text-slate-900 shadow-sm transition hover:border-blue-300 hover:shadow-md">
+            <span>{hasSubscription ? "Comparar planos e fazer upgrade" : "Escolher seu plano"}</span>
+            <span className="text-xs font-semibold text-slate-500">{plans.length} opções</span>
+          </summary>
         {loading ? <Loader2 className="mx-auto mt-14 h-7 w-7 animate-spin text-blue-600" /> : (
-          <section className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="mt-6 grid items-stretch gap-5 md:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => {
               const current = !canSubscribe && billing?.planId === plan.id && (billing.status === "active" || billing.status === "paid" || billing.status === "past_due" || billing.status === "cancel_scheduled");
               const upgrade = hasSubscription && (billing?.status === "active" || billing?.status === "paid") && isPlanUpgrade(billing?.planId, plan.id);
               return (
-                <article key={plan.id} className={`flex flex-col rounded-[26px] border bg-white p-6 shadow-sm ${current ? "border-emerald-300 ring-4 ring-emerald-100" : plan.featured ? "border-blue-300 ring-4 ring-blue-100" : "border-slate-200"}`}>
+                <article key={plan.id} className={`flex min-h-[530px] flex-col rounded-[26px] border bg-white p-6 text-slate-900 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg ${current ? "border-emerald-300 ring-4 ring-emerald-100" : plan.featured ? "border-blue-300 ring-4 ring-blue-100" : "border-slate-200"}`}>
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs font-black uppercase tracking-wider text-blue-700">{plan.name}</p>
                     {current ? <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-700">Plano atual</span> : null}
                   </div>
-                  <p className="mt-4 text-3xl font-black">{plan.monthlyPrice ? plan.monthlyPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "Sob consulta"}<span className="text-sm font-semibold text-slate-400">{plan.monthlyPrice ? "/mes" : ""}</span></p>
+                  <p className="mt-4 whitespace-nowrap text-[2rem] font-black leading-none tracking-tight text-slate-950 sm:text-[2.15rem]">{plan.monthlyPrice ? plan.monthlyPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "Sob consulta"}<span className="ml-1 text-sm font-bold tracking-normal text-slate-500">{plan.monthlyPrice ? "/mês" : ""}</span></p>
                   <p className="mt-3 text-sm font-bold leading-6 text-slate-900">{plan.promise}</p>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{plan.description}</p>
                   <ul className="my-5 space-y-2 text-sm text-slate-700">{plan.features.map((feature) => <li key={feature} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> {feature}</li>)}</ul>
