@@ -19,24 +19,24 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   title: {
-    default: "ALTUM | Engenharia de Vendas High-Ticket",
+    default: "ALTUM | Plataforma de Vendas e Relacionamento com IA",
     template: "%s • ALTUM",
   },
   description:
-    "Instalamos a máquina que filtra curiosos e agenda reuniões reais. Método ALTUM para escalar vendas de Alto Ticket com IA.",
-  keywords: ["Engenharia de Vendas", "High Ticket", "Trafego Pago", "Inteligencia Artificial", "Vendas B2B"],
+    "Centralize CRM, WhatsApp, Instagram, atendimento, IA, automações, pipeline, campanhas e métricas em uma operação comercial conectada.",
+  keywords: ["CRM", "WhatsApp", "Instagram", "Automação de Vendas", "Inteligência Artificial", "Atendimento", "Vendas B2B"],
   openGraph: {
-    title: "ALTUM | Engenharia de Vendas High-Ticket",
+    title: "ALTUM | Plataforma de Vendas e Relacionamento com IA",
     description:
-      "Pare de perder tempo com curiosos. Atraia, filtre e agende reuniões apenas com quem tem orçamento.",
-    url: "https://altum.ag",
+      "Centralize CRM, canais de atendimento, IA e automações para operar vendas e relacionamento em um só lugar.",
+    url: "https://www.altumia.com.br",
     siteName: "ALTUM",
     images: [
       {
         url: "/og-altum.jpg", // Certifique-se de que essa imagem existe na pasta public
         width: 1200,
         height: 630,
-        alt: "ALTUM - Engenharia de Vendas",
+        alt: "ALTUM - Plataforma de Vendas e Relacionamento com IA",
       },
     ],
     locale: "pt_BR",
@@ -44,8 +44,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "ALTUM | Engenharia de Vendas High-Ticket",
-    description: "Instalamos a máquina que filtra curiosos e agenda reuniões reais.",
+    title: "ALTUM | Plataforma de Vendas e Relacionamento com IA",
+    description: "CRM, canais, IA e automações conectados para sua operação comercial.",
     images: ["/og-altum.jpg"],
   },
   icons: {
