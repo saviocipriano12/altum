@@ -296,6 +296,18 @@ async function listEcommerceOrders(tenantId: string, leadId: string, lead: Recor
     .slice(0, 20);
 }
 
+async function listEcommerceActions(tenantId: string, leadId: string) {
+  const snap = await adminDb
+    .collection("ecommerce_commercial_actions")
+    .where("tenantId", "==", tenantId)
+    .where("leadId", "==", leadId)
+    .limit(30)
+    .get();
+  return snap.docs
+    .map((doc): Record<string, unknown> & { id: string } => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }))
+    .sort((a, b) => toSeconds(b.updatedAt || b.createdAt) - toSeconds(a.updatedAt || a.createdAt));
+}
+
 function buildConversationSummary(chats: Array<Record<string, unknown>>) {
   const open = chats.filter((item) => String(item.status || "open").toLowerCase() === "open").length;
   const pending = chats.filter((item) => String(item.status || "").toLowerCase() === "pending").length;
@@ -330,7 +342,7 @@ export async function GET(
 
     const { lead } = await getLeadRef(tenantId, leadId);
     assertAssignedCommercialRecordAccess(membership, user.uid, lead);
-    const [notes, tasks, timeline, documents, relatedChats, appointments, orders, commercial] = await Promise.all([
+    const [notes, tasks, timeline, documents, relatedChats, appointments, orders, ecommerceActions, commercial] = await Promise.all([
       listNotes(tenantId, leadId),
       listTasks(tenantId, leadId),
       listTimeline(leadId),
@@ -338,6 +350,7 @@ export async function GET(
       listRelatedChats(tenantId, leadId, lead.telefone || ""),
       listAppointments(tenantId, leadId),
       listEcommerceOrders(tenantId, leadId, lead),
+      listEcommerceActions(tenantId, leadId),
       analyzeLeadCommercialState({
         tenantId,
         leadId,
@@ -372,6 +385,7 @@ export async function GET(
       tasks,
       appointments,
       orders,
+      ecommerceActions,
       timeline,
       documents,
       relatedChats,

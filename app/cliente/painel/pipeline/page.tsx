@@ -169,6 +169,7 @@ export default function ClientePipelinePage() {
   const [boardCanScroll, setBoardCanScroll] = useState(false);
   const [boardAtStart, setBoardAtStart] = useState(true);
   const [boardAtEnd, setBoardAtEnd] = useState(false);
+  const [isDesktopPipelineViewport, setIsDesktopPipelineViewport] = useState(false);
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
 
   const loadPipeline = useCallback(async () => {
@@ -332,6 +333,14 @@ export default function ClientePipelinePage() {
     return () => window.removeEventListener("resize", onResize);
   }, [columns.length, loading]);
 
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1280px)");
+    const sync = () => setIsDesktopPipelineViewport(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
   return (
     <CrmWorkspace>
       <div className="pipeline-refined space-y-5">
@@ -364,7 +373,7 @@ export default function ClientePipelinePage() {
             </>
           }
         >
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <CrmMetric label="Oportunidades abertas" value={String(openCount)} detail="em todo o funil" icon={UsersRound} tone="blue" />
             <CrmMetric label="Valor acompanhado" value={formatCrmMoney(totalValue)} detail="previsao comercial" icon={TrendingUp} tone="green" />
             <CrmMetric label="Quentes pela IA" value={String(hotAiCount)} detail="prioridade comercial" icon={Bot} tone={hotAiCount ? "purple" : "neutral"} />
@@ -487,14 +496,14 @@ export default function ClientePipelinePage() {
               description="Board comercial com leitura direta: poucas informacoes por card, valor visivel e movimento rapido entre etapas."
               action={
                 <div className="flex flex-wrap items-center gap-2">
-                  {boardCanScroll ? <CrmBadge tone="neutral">role horizontalmente</CrmBadge> : null}
+                  {boardCanScroll ? <CrmBadge tone="neutral">deslize para ver etapas</CrmBadge> : null}
                   {boardCanScroll ? (
                     <>
                       <button
                         type="button"
                         onClick={() => scrollBoard("left")}
                         disabled={boardAtStart}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)] disabled:cursor-not-allowed disabled:opacity-45"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)] disabled:cursor-not-allowed disabled:opacity-45"
                         aria-label="Rolar funil para a esquerda"
                       >
                         <ChevronLeft className="h-4 w-4" />
@@ -503,7 +512,7 @@ export default function ClientePipelinePage() {
                         type="button"
                         onClick={() => scrollBoard("right")}
                         disabled={boardAtEnd}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)] disabled:cursor-not-allowed disabled:opacity-45"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)] disabled:cursor-not-allowed disabled:opacity-45"
                         aria-label="Rolar funil para a direita"
                       >
                         <ChevronRight className="h-4 w-4" />
@@ -529,7 +538,7 @@ export default function ClientePipelinePage() {
               return (
                 <section
                   key={column.stage.id}
-                  className={`pipeline-column-shell flex max-h-[calc(100vh-18rem)] w-[320px] shrink-0 flex-col rounded-[18px] border transition ${isDropTarget ? "border-[var(--cliente-primary)] ring-2 ring-[var(--cliente-primary-soft)]" : "border-[var(--cliente-border)]"}`}
+                  className={`pipeline-column-shell flex max-h-[calc(100vh-18rem)] w-[min(320px,calc(100vw-2rem))] shrink-0 flex-col rounded-[18px] border transition ${isDropTarget ? "border-[var(--cliente-primary)] ring-2 ring-[var(--cliente-primary-soft)]" : "border-[var(--cliente-border)]"}`}
                   onDragOver={(event) => {
                     event.preventDefault();
                     setDropStageId(column.stage.id);
@@ -587,10 +596,10 @@ export default function ClientePipelinePage() {
                               </p>
                             ) : null}
                             <div className="mt-4 grid grid-cols-2 gap-2">
-                              <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`} className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
+                              <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
                                 Abrir
                               </Link>
-                              <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(lead.id)}`} className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
+                              <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(lead.id)}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
                                 <MessageSquareText className="h-3.5 w-3.5" />
                                 Conversa
                               </Link>
@@ -599,7 +608,7 @@ export default function ClientePipelinePage() {
                               value={column.stage.id}
                               onChange={(event) => moveLead(lead.id, event.target.value)}
                               disabled={!canOperate || movingLeadId === lead.id}
-                              className="mt-3 h-10 w-full text-xs"
+                              className="mt-3 h-11 w-full text-xs"
                             >
                               {stages.map((stage) => (
                                 <option key={stage.id} value={stage.id}>{stage.label || getPipelineStageLabel(stage.id)}</option>
@@ -618,7 +627,7 @@ export default function ClientePipelinePage() {
           </div>
           </CrmPanel>
 
-          <aside className="space-y-4 xl:sticky xl:top-[132px] xl:self-start">
+          {isDesktopPipelineViewport ? <aside className="space-y-4 xl:sticky xl:top-[132px] xl:self-start">
           <CrmPanel>
             <CrmSectionTitle eyebrow="Foco" title="Detalhes da oportunidade" description="Contexto rapido para o gestor ou atendente decidir o proximo passo." />
             {selectedLead ? (
@@ -664,7 +673,7 @@ export default function ClientePipelinePage() {
               </div>
             )}
           </CrmPanel>
-          </aside>
+          </aside> : null}
         </section>
       </div>
     </CrmWorkspace>

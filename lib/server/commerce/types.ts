@@ -1,7 +1,24 @@
-export const COMMERCE_PROVIDER_IDS = ["shopify", "nuvemshop", "woocommerce", "vtex", "tray", "loja_integrada"] as const;
+export const COMMERCE_PROVIDER_IDS = ["shopify", "nuvemshop", "woocommerce", "vtex", "tray", "loja_integrada", "checkout_externo"] as const;
 
 export type CommerceProviderId = (typeof COMMERCE_PROVIDER_IDS)[number];
 export type CommerceResource = "products" | "orders" | "carts" | "tracking";
+export type CommerceCapability =
+  | "catalog_products"
+  | "product_variants"
+  | "inventory_aggregate"
+  | "inventory_by_location"
+  | "customers"
+  | "orders"
+  | "payments"
+  | "fulfillments"
+  | "tracking"
+  | "refunds"
+  | "returns"
+  | "abandoned_checkouts"
+  | "webhooks"
+  | "api_sync";
+export type CommerceCapabilityLevel = "available" | "partial" | "planned" | "unsupported";
+export type CommerceCapabilityMatrix = Readonly<Record<CommerceCapability, CommerceCapabilityLevel>>;
 
 export type CommerceConnectionConfig = {
   id: string;
@@ -42,6 +59,7 @@ export interface CommerceProvider {
   id: CommerceProviderId;
   label: string;
   capabilities: readonly CommerceResource[];
+  capabilityMatrix: CommerceCapabilityMatrix;
   credentialFields: readonly (keyof CommerceCredentials)[];
   testConnection(input: { connection: CommerceConnectionConfig; credentials: CommerceCredentials }): Promise<CommerceConnectionTest>;
   sync(input: { connection: CommerceConnectionConfig; credentials: CommerceCredentials; limit: number }): Promise<CommerceSyncResult>;
@@ -79,6 +97,15 @@ export type NormalizedCommerceOrder = {
   purchasedProductNames: string[];
   items: Array<{ name: string; quantity: number; sku: string; productId: string; price: number | null }>;
   orderedAt: string | null;
+  attribution?: {
+    source?: string;
+    medium?: string;
+    campaign?: string;
+    content?: string;
+    term?: string;
+    landingPage?: string;
+    referrer?: string;
+  };
 };
 
 export type NormalizedCommerceCart = {

@@ -4,6 +4,7 @@ import { normalizePhone } from "@/app/lib/server/phone";
 import { buildOutgoingChatOperationalPatch } from "@/lib/server/chat-operations";
 import {
   buildAiRuntimePolicy,
+  canAutonomouslyAdvanceCommercialWorkflow,
   normalizeTenantAiOperatingProfile,
   type AltumAiAutonomyMode,
   type AltumAiProvider,
@@ -21,7 +22,7 @@ import {
 } from "@/lib/server/ai/learning-outcomes";
 import { getTenantLearningHints, type AltumTenantLearningHints } from "@/lib/server/ai/tenant-learning";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
-import { enrichInboundMessageForAgent } from "@/lib/server/ai/multimodal";
+import { enrichInboundMessageForAgent, matchInboundImageToCatalog } from "@/lib/server/ai/multimodal";
 import { scoreAltumConversationQuality } from "@/lib/server/ai/quality-score";
 import { sendAltumVoiceReply } from "@/lib/server/ai/voice";
 import {
@@ -35,6 +36,7 @@ import { deriveOperationalPlan } from "@/lib/server/ai/operational-plan";
 import {
   getMetaChannelForTenant,
   isMetaConversationChannelType,
+  sendMetaConversationMedia,
   sendMetaConversationText,
 } from "@/app/lib/server/meta-channel";
 import {
@@ -45,7 +47,6 @@ import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 import { getTenantSettings, isTenantBillingBlocked } from "@/lib/server/tenant";
 import {
   getBusinessProfile,
-  getBusinessProfilePlaybookPreset,
   getBusinessProfilePipelineStages,
   normalizeBusinessProfileId,
   type BusinessProfileId,
@@ -60,14 +61,52 @@ import type { AltumConversationRuntimeState } from "@/lib/server/ai/runtime-stat
 import { buildAiTaskPreset, suggestPipelineStageForAiAction } from "@/lib/ai-next-actions";
 import { inferSalesMotion, type SalesMotion } from "@/lib/sales-journey";
 import { getTenantEntitlements } from "@/lib/server/tenant-entitlements";
+import {
+  shouldPlanAudioResponse,
+  shouldProactivelySendVoiceReply,
+} from "@/lib/ai-voice-policy";
+import {
+  normalizeCommercialOffer,
+  normalizeCommercialOfferUrl,
+  resolveCommercialCheckoutAction,
+  type CommercialOffer,
+  type CommercialOfferKind,
+} from "@/lib/commercial-offer";
+import {
+  commercialVisualMatchBoost,
+  decideCommercialVisualMatches,
+} from "@/lib/commercial-visual-match";
+import { recordCommercialAgentAction } from "@/lib/server/commercial-agent-actions";
+import {
+  classifyConversationTurn,
+  detectVerifiedCommercialFactRequest,
+  enforceConversationTurnPolicy,
+  knowledgeScoreThreshold,
+  type ConversationTurnPolicy,
+} from "@/lib/server/ai/conversation-policy";
+import {
+  assistantRoleAllowsProactiveClosing,
+  normalizeAltumAssistantRole,
+  type AltumAssistantRole,
+} from "@/lib/ai-assistant-role";
+import {
+  compileTenantAiContext,
+  deriveHandoffTopicsFromCommercialCriteria,
+  resolveConfiguredFollowUpDelayHours,
+} from "@/lib/server/ai/tenant-context";
+import {
+  decideAiConversationRollout,
+  normalizeAiConversationRollout,
+  type AiConversationRollout,
+} from "@/lib/ai-conversation-rollout";
 
 const MAX_CONTEXT_MESSAGES = 24;
-const MAX_KB_DOCS = 50;
+const MAX_KB_DOCS = 200;
 
-const DEFAULT_GUARDRAILS = [
+export const DEFAULT_GUARDRAILS = [
   "Nao compartilhe dados sensiveis ou segredos internos.",
   "Nao confirme pagamentos, descontos ou prazos que nao estejam documentados.",
-  "Mantenha o foco em qualificar o lead e avancar para proximo passo.",
+  "Responda primeiro ao que a pessoa trouxe; conduza a proxima etapa somente quando fizer sentido para o papel e para o contexto.",
 ];
 
 type ChatStateDoc = {
@@ -100,10 +139,11 @@ type ChatStateDoc = {
   responseFormatPreferenceAskCount?: number | null;
 };
 
-type KbDoc = {
+export type KbDoc = {
   id: string;
   type: "faq" | "catalog" | "policy";
   content: string;
+  retrievalContent?: string;
   tags: string[];
   score: number;
   mediaUrl?: string | null;
@@ -112,16 +152,55 @@ type KbDoc = {
   mediaStoragePath?: string | null;
   mediaMimeType?: string | null;
   mediaSize?: number | null;
+  mediaItems?: Array<{
+    mediaUrl: string;
+    mediaType: "image" | "video" | "document";
+    mediaTitle?: string | null;
+    mediaStoragePath?: string | null;
+    mediaMimeType?: string | null;
+    mediaSize?: number | null;
+    usage?: "auto" | "suggest" | "blocked";
+  }>;
   serviceKey?: string | null;
+  kind?: CommercialOfferKind;
+  sku?: string | null;
+  checkoutUrl?: string | null;
   productName?: string | null;
   productCategory?: string | null;
   targetProfile?: string | null;
   priceFrom?: number | null;
   priceTo?: number | null;
+  currency?: string | null;
+  inventoryQuantity?: number | null;
   upsellKeys?: string[];
   crossSellKeys?: string[];
+  upsellOfferIds?: string[];
+  crossSellOfferIds?: string[];
+  downsellOfferIds?: string[];
+  incompatibleOfferIds?: string[];
+  nextOfferId?: string | null;
   priority?: number | null;
   availability?: "active" | "seasonal" | "paused";
+  availabilityConfigured?: boolean;
+  useInAi?: boolean;
+  description?: string | null;
+  benefits?: string | null;
+  commonQuestions?: string | null;
+  objections?: string | null;
+  whenRecommend?: string | null;
+  whenNotRecommend?: string | null;
+  whenHuman?: string | null;
+  productSpecs?: string | null;
+  stockDelivery?: string | null;
+  warranty?: string | null;
+  serviceScope?: string | null;
+  duration?: string | null;
+  schedulingRules?: string | null;
+  deliverables?: string | null;
+  proofAndCases?: string | null;
+  demonstration?: string | null;
+  paymentConditions?: string | null;
+  supportAndSla?: string | null;
 };
 
 type ConversationMessage = {
@@ -147,6 +226,7 @@ type TenantAiConfig = {
   businessProfileLabel: string;
   salesMotion: SalesMotion;
   agentName: string;
+  assistantRole: AltumAssistantRole;
   toneOfVoice: string;
   businessSummary: string;
   objective: string;
@@ -184,8 +264,11 @@ type TenantAiConfig = {
   responseStyle: AltumAiResponseStyle;
   allowPremiumModels: boolean;
   preferredProviders: AltumAiProvider[];
+  conversationModelOverride?: string;
+  extractionModelOverride?: string;
   monthlyBudgetUsd: number;
   monthlyUsageCap: number;
+  rollout: AiConversationRollout;
   runtimePolicy: ReturnType<typeof buildAiRuntimePolicy>;
 };
 
@@ -205,7 +288,7 @@ function classifyLeadTurn(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-  const isGreeting = /^(oi|ola|olá|bom dia|boa tarde|boa noite)\b/.test(normalized);
+  const isGreeting = /^(oi|ola|olá|opa|e ai|eai|bom dia|boa tarde|boa noite)\b/.test(normalized);
   const isWellbeing =
     /\b(como voce esta|como voce ta|como c[eê] esta|como vai|tudo bem|tudo certo|como estao voces)\b/.test(
       normalized
@@ -220,8 +303,22 @@ function classifyLeadTurn(value: string) {
     );
   const isPureRelational = (isWellbeing || isThanks || isLightSmallTalk) && !hasBusinessTerms;
   const isDirectQuestion = normalized.includes("?");
+  const asksToTalkFirst =
+    /\b(conversar primeiro|podemos conversar|pode conversar|quero conversar|so conversar|só conversar)\b/.test(normalized);
+  const isCorrection =
+    /\b(nao pedi|não pedi|nao falei|não falei|nao perguntei|não perguntei|entendeu errado|nao foi isso|não foi isso|nada a ver|eu quis dizer)\b/.test(
+      normalized
+    );
 
-  return { isGreeting, isPureRelational, isDirectQuestion, hasBusinessTerms, isLightSmallTalk };
+  return {
+    isGreeting,
+    isPureRelational,
+    isDirectQuestion,
+    hasBusinessTerms,
+    isLightSmallTalk,
+    asksToTalkFirst,
+    isCorrection,
+  };
 }
 
 function chooseConversationalReply(input: {
@@ -545,6 +642,28 @@ function extractPhoneCandidates(record?: Record<string, unknown> | null) {
   ).slice(0, 4);
 }
 
+function extractHandoffOwnerPhoneCandidates(record?: Record<string, unknown> | null) {
+  if (!record) return [] as string[];
+  const rawCandidates = [
+    record.responsiblePhone,
+    record.responsible_phone,
+    record.ownerPhone,
+    record.owner_phone,
+    record.adminPhone,
+    record.admin_phone,
+    record.handoffPhone,
+    record.handoff_phone,
+  ];
+
+  return Array.from(
+    new Set(
+      rawCandidates
+        .map((value) => normalizePhone(String(value || "")))
+        .filter(Boolean)
+    )
+  ).slice(0, 4);
+}
+
 export type HandleIncomingMessageInput = {
   tenantId: string;
   chatId: string;
@@ -648,6 +767,8 @@ function hasLeadFacingInternalLeak(value: unknown) {
     /\binstrucao interna\b/,
     /\bcontrole interno\b/,
     /\bdiagnostico interno\b/,
+    /\bcatalog[_\s-]*struct\b/,
+    /\b(?:produto|categoria|perfil|sku|estoque|preco|price|inventory)[_\s-]*(?:struct|field)\b/,
   ].some((pattern) => pattern.test(normalized));
 }
 
@@ -722,6 +843,39 @@ function sanitizeLeadFacingAiText(input: {
     inboundText: input.inboundText,
     leadMemory: input.leadMemory,
   });
+}
+
+export function enforceCommercialOutboundRestrictions(input: {
+  text: string;
+  forbiddenSalesMoves?: string | null;
+}) {
+  const text = sanitizeText(input.text, 1800);
+  const policy = sanitizeText(input.forbiddenSalesMoves, 700)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (!text || !policy) return { text, blockedReasons: [] as string[] };
+
+  const restrictionLanguage = /\b(nao|nunca|sem|proibid|evit)/.test(policy);
+  const forbidsDiscount = restrictionLanguage && /desconto|abatimento|cortesia/.test(policy);
+  const forbidsGuarantee = restrictionLanguage && /garant|promet.*resultado|resultado.*promet/.test(policy);
+  const normalizedText = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const blockedReasons: string[] = [];
+  if (forbidsDiscount && /\b(desconto|abatimento|cortesia|condicao especial)\b/.test(normalizedText)) {
+    blockedReasons.push("configured_discount_restriction");
+  }
+  if (forbidsGuarantee && /\b(garanto|garantimos|garantia de resultado|resultado garantido|100% garantido)\b/.test(normalizedText)) {
+    blockedReasons.push("configured_guarantee_restriction");
+  }
+  if (!blockedReasons.length) return { text, blockedReasons };
+
+  return {
+    text: "Quero te passar isso com responsabilidade. Vou pedir para a equipe confirmar as condicoes aplicaveis ao seu caso e seguir com voce.",
+    blockedReasons,
+  };
 }
 
 function normalizeWords(value: string) {
@@ -804,6 +958,10 @@ function shouldOfferResponseFormatChoice(input: {
   if (input.chatState.responseFormatPreference) return false;
   const normalizedType = sanitizeText(input.messageType, 40).toLowerCase();
   if (!["text", "audio"].includes(normalizedType || "text")) return false;
+  // Do not interrupt the opening of every text conversation with an audio
+  // preference survey. Audio is inferred from an inbound audio or an explicit
+  // request; the conversation should come first.
+  if (normalizedType !== "audio") return false;
   const recentlyAsked =
     Boolean(input.chatState.responseFormatPreferenceAskedAt) &&
     Date.now() - (input.chatState.responseFormatPreferenceAskedAt?.getTime() || 0) <= 12 * 60 * 60 * 1000;
@@ -812,54 +970,6 @@ function shouldOfferResponseFormatChoice(input: {
 
   const clientTurns = input.conversation.filter((item) => item.sender === "client").length;
   return clientTurns <= 3;
-}
-
-function shouldProactivelySendVoiceReply(input: {
-  preference: ResponseFormatPreference | null;
-  voiceReplyEnabled: boolean;
-  voiceReplyMode?: "audio_only" | "smart" | "always";
-  shouldUseWhatsApp: boolean;
-  serviceWindowClosed: boolean;
-  hasChannel: boolean;
-  hasLeadPhone: boolean;
-  inboundMessageType?: string | null;
-  plannerIntent?: string | null;
-  responseGoal?: string | null;
-  commercialTemperature?: string | null;
-  recommendedOffer?: string | null;
-}) {
-  if (
-    !input.voiceReplyEnabled ||
-    !input.shouldUseWhatsApp ||
-    input.serviceWindowClosed ||
-    !input.hasChannel ||
-    !input.hasLeadPhone
-  ) {
-    return { shouldSend: false, reason: "voice_not_available" };
-  }
-
-  const inboundType = sanitizeText(input.inboundMessageType, 40).toLowerCase();
-  if (input.preference === "text") return { shouldSend: false, reason: "lead_prefers_text" };
-  if (input.preference === "audio") return { shouldSend: true, reason: "lead_prefers_audio" };
-  if (inboundType === "audio") return { shouldSend: true, reason: "inbound_audio" };
-  if (input.voiceReplyMode === "audio_only") return { shouldSend: false, reason: "voice_audio_only_mode" };
-  if (input.voiceReplyMode === "always") return { shouldSend: false, reason: "voice_always_requires_explicit_signal" };
-
-  return { shouldSend: false, reason: "smart_requires_audio_signal" };
-}
-
-function shouldPlanAudioResponse(input: {
-  preference: ResponseFormatPreference | null;
-  voiceReplyEnabled: boolean;
-  voiceReplyMode?: "audio_only" | "smart" | "always";
-  inboundMessageType?: string | null;
-}) {
-  if (!input.voiceReplyEnabled) return false;
-  const inboundType = sanitizeText(input.inboundMessageType, 40).toLowerCase();
-  if (input.preference === "text") return false;
-  if (input.preference === "audio") return true;
-  if (inboundType === "audio") return true;
-  return false;
 }
 
 function prepareOutboundTextForAudioDelivery(text: string, inboundText: string) {
@@ -939,13 +1049,6 @@ function parseCatalogStringList(value: unknown, maxItems = 12) {
       .slice(0, maxItems);
   }
   return [] as string[];
-}
-
-function normalizeCatalogAvailability(value: unknown): KbDoc["availability"] {
-  const normalized = sanitizeText(value, 30).toLowerCase();
-  if (normalized === "seasonal") return "seasonal";
-  if (normalized === "paused") return "paused";
-  return "active";
 }
 
 function summarizeMessageForAgent(data: Record<string, unknown>) {
@@ -1041,6 +1144,20 @@ function isWhatsAppServiceWindowClosed(value: unknown) {
   return Date.now() - lastClientMessageAt.getTime() > 23.5 * 60 * 60 * 1000;
 }
 
+async function isLatestCoordinatedConversationTurn(input: {
+  tenantId: string;
+  chatId: string;
+  messageId: string;
+}) {
+  const turnId = `${input.tenantId.trim()}_${input.chatId.trim()}`
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 440);
+  const snap = await adminDb.collection("ai_conversation_turns").doc(turnId).get();
+  if (!snap.exists) return true;
+  const latestMessageId = sanitizeText(snap.data()?.latestMessageId, 220);
+  return !latestMessageId || latestMessageId === input.messageId;
+}
+
 function resolveFollowUpTemplateParams(
   baseParams: string[],
   context: { contactName?: unknown; contactPhone?: unknown; tenantName?: unknown }
@@ -1105,15 +1222,15 @@ function salesMotionInstruction(motion: SalesMotion) {
   return "Conduza a venda consultiva para uma decisão clara, usando proposta ou reunião somente quando elas forem necessárias.";
 }
 
-function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>): TenantAiConfig {
+export function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>): TenantAiConfig {
   const ai =
     settings && typeof settings.ai === "object" && settings.ai
       ? (settings.ai as Record<string, unknown>)
       : {};
   const businessProfileId = normalizeBusinessProfileId(settings?.businessProfileId);
   const businessProfile = getBusinessProfile(businessProfileId);
-  const playbookPreset = getBusinessProfilePlaybookPreset(businessProfileId);
   const operatingProfile = normalizeTenantAiOperatingProfile(ai.operatingProfile);
+  const rollout = normalizeAiConversationRollout(ai.rollout);
   const commercialBrain = normalizeCommercialBrain(ai.commercialBrain);
   const blueprintRoot = settings?.businessBlueprint && typeof settings.businessBlueprint === "object" ? settings.businessBlueprint as Record<string, unknown> : {};
   const activeBlueprint = blueprintRoot.active && typeof blueprintRoot.active === "object" ? blueprintRoot.active as Record<string, unknown> : {};
@@ -1122,8 +1239,8 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
   const salesMotion = ["consultative", "appointment", "store_visit", "assisted_purchase", "direct_checkout", "digital_delivery"].includes(blueprintMotion)
     ? blueprintMotion as SalesMotion
     : inferSalesMotion({ lead: {}, settings: settings as Record<string, unknown> });
-  const explicitBusinessSummary = sanitizeText(ai.businessSummary, 360);
-  const explicitBlueprintSummary = sanitizeText(activeBlueprint.description || activeBlueprint.summary, 360);
+  const explicitBusinessSummary = sanitizeText(ai.businessSummary, 2000);
+  const explicitBlueprintSummary = sanitizeText(activeBlueprint.description || activeBlueprint.summary, 2000);
   const hasCommercialBrain = Object.values(commercialBrain).some((value) => sanitizeText(value, 240));
   const tenantContextConfigured = Boolean(
     explicitBusinessSummary ||
@@ -1142,15 +1259,23 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
     agentName:
       sanitizeText(ai.agentName, 80) ||
       `Agente ${sanitizeText(settings?.name, 80) || businessProfile.label}`,
+    assistantRole: normalizeAltumAssistantRole(ai.assistantRole),
     toneOfVoice: sanitizeText(ai.toneOfVoice, 120) || sanitizeText(blueprintAiPolicy.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
     businessSummary:
-      sanitizeText(ai.businessSummary, 360) ||
+      sanitizeText(ai.businessSummary, 2000) ||
+      explicitBlueprintSummary ||
       sanitizeText(settings?.name, 120) ||
       businessProfile.description,
-    objective: sanitizeText(ai.objective, 200) || businessProfile.ai.objective,
+    objective: sanitizeText(ai.objective, 800) || businessProfile.ai.objective,
     commercialBrain,
     responsiblePhone: normalizePhone(
-      String(ai.responsiblePhone || settings?.contactPhone || settings?.ownerPhone || settings?.phone || "")
+      String(
+        ai.responsiblePhone ||
+          settings?.responsiblePhone ||
+          settings?.ownerPhone ||
+          settings?.adminPhone ||
+          ""
+      )
     ),
     handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
     handoffNotifyPhones: parsePhoneLines(ai.handoffNotifyPhones, 8),
@@ -1159,17 +1284,33 @@ function parseAiConfig(settings: Awaited<ReturnType<typeof getTenantSettings>>):
     voiceReplyMode: ["audio_only", "smart", "always"].includes(sanitizeText(ai.voiceReplyMode, 40))
       ? (sanitizeText(ai.voiceReplyMode, 40) as "audio_only" | "smart" | "always")
       : "smart",
-    voiceReplyMaxChars: Math.max(260, Math.min(1400, Number(ai.voiceReplyMaxChars || 760) || 760)),
+    voiceReplyMaxChars: Math.max(260, Math.min(1400, Number(ai.voiceReplyMaxChars || 460) || 460)),
     whatsappTemplateFollowUpEnabled: ai.whatsappTemplateFollowUpEnabled !== false,
     whatsappTemplateFollowUpName: sanitizeText(ai.whatsappTemplateFollowUpName, 120) || "follow_up_geral",
     whatsappTemplateFollowUpLanguage: sanitizeText(ai.whatsappTemplateFollowUpLanguage, 24) || "pt_BR",
     whatsappTemplateFollowUpParams: parseLines(ai.whatsappTemplateFollowUpParams, 12),
-    guardrails: Array.from(new Set([...DEFAULT_GUARDRAILS, ...businessProfile.ai.guardrails, ...parseGuardrails(blueprintAiPolicy.guardrails), ...parseGuardrails(ai.guardrails)])).slice(0, 24),
-    mandatoryQuestions: Array.from(new Set([...businessProfile.ai.mandatoryQuestions, ...parseLines(ai.mandatoryQuestions, 12)])).slice(0, 12),
-    escalationTopics: Array.from(new Set([...businessProfile.ai.escalationTopics, ...parseLines(blueprintAiPolicy.handoffWhen, 12), ...parseLines(ai.escalationTopics, 12)])).slice(0, 12),
-    playbookOffers: playbookPreset.offers.slice(0, 6),
-    playbookScripts: playbookPreset.scripts.slice(0, 6),
+    guardrails: Array.from(new Set([
+      ...DEFAULT_GUARDRAILS,
+      ...parseGuardrails(blueprintAiPolicy.guardrails),
+      ...parseGuardrails(commercialBrain.forbiddenSalesMoves),
+      ...(parseGuardrails(ai.guardrails).length ? parseGuardrails(ai.guardrails) : businessProfile.ai.guardrails),
+    ])).slice(0, 40),
+    mandatoryQuestions: (parseLines(ai.mandatoryQuestions, 20).length
+      ? parseLines(ai.mandatoryQuestions, 20)
+      : businessProfile.ai.mandatoryQuestions).slice(0, 20),
+    escalationTopics: Array.from(new Set([
+      ...parseLines(blueprintAiPolicy.handoffWhen, 20),
+      ...deriveHandoffTopicsFromCommercialCriteria(commercialBrain.handoffCriteria),
+      ...(parseLines(ai.escalationTopics, 20).length
+        ? parseLines(ai.escalationTopics, 20)
+        : businessProfile.ai.escalationTopics),
+    ])).slice(0, 20),
+    // Presets de segmento servem para orientar a implantacao. Eles nao sao
+    // ofertas verificadas do tenant e nao podem chegar a uma conversa real.
+    playbookOffers: [],
+    playbookScripts: [],
     ...operatingProfile,
+    rollout,
     runtimePolicy: buildAiRuntimePolicy(operatingProfile),
   };
 }
@@ -1202,7 +1343,7 @@ function shouldAskMore(text: string) {
   const words = normalizeWords(normalized);
   if (words.length <= 1) return true;
 
-  const genericOpeners = ["oi", "ola", "bom dia", "boa tarde", "boa noite"];
+  const genericOpeners = ["oi", "ola", "opa", "e ai", "bom dia", "boa tarde", "boa noite"];
   if (textHasAny(normalized, genericOpeners) && words.length < 5) {
     return true;
   }
@@ -1215,7 +1356,7 @@ function isGreetingLike(text: string) {
   if (!normalized) return false;
   const words = normalizeWords(normalized);
   if (words.length > 4) return false;
-  return textHasAny(normalized, ["oi", "ola", "bom dia", "boa tarde", "boa noite", "tudo bem"]);
+  return textHasAny(normalized, ["oi", "ola", "opa", "e ai", "bom dia", "boa tarde", "boa noite", "tudo bem"]);
 }
 
 function isClarificationRequest(text: string) {
@@ -1298,7 +1439,10 @@ function pickNextMandatoryQuestion(messages: ConversationMessage[], questions: s
     }
   }
 
-  return questions[0] || "";
+  // Every configured question was already answered in the conversation.
+  // Returning the first one here restarted qualification and made the agent
+  // feel like a form instead of a person who remembers the conversation.
+  return "";
 }
 
 const SEMANTIC_KEYWORD_GROUPS = [
@@ -1330,13 +1474,14 @@ function scoreKbDoc(input: {
   const { inboundText, messageWords, retrievalMode, doc } = input;
   if (messageWords.length === 0) return 0;
 
+  const retrievalContent = doc.retrievalContent || doc.content;
   const docWords = new Set<string>([
-    ...normalizeWords(doc.content),
+    ...normalizeWords(retrievalContent),
     ...doc.tags.flatMap((tag) => normalizeWords(tag)),
     ...normalizeWords(doc.type),
   ]);
   const normalizedInbound = normalizeComparable(inboundText);
-  const normalizedDoc = normalizeComparable(doc.content);
+  const normalizedDoc = normalizeComparable(retrievalContent);
 
   let lexicalHits = 0;
   for (const word of messageWords) {
@@ -1402,12 +1547,13 @@ function makeLeadFacingReply(input: {
     !knownFirstName && !hasAskedName && input.conversation.filter((item) => item.sender === "client").length >= 2;
   const nextMandatoryQuestion =
     pickNextMandatoryQuestion(input.conversation, input.tenantAi.mandatoryQuestions) ||
-    "Hoje o foco maior está em gerar demanda, organizar atendimento ou converter melhor?";
+    "O que seria mais importante resolver agora?";
   const leadFacingKbDocs = input.kbDocs.filter((doc) => doc.type !== "policy");
   const primaryKbDoc = leadFacingKbDocs[0] || input.kbDocs[0] || null;
   const primaryKbSnippet = primaryKbDoc
     ? sanitizeText(
         primaryKbDoc.content
+          .replace(/^catalog[_\s-]*struct\s*:\s*/i, "")
           .replace(/^faq:\s*/i, "")
           .replace(/^oferta:\s*/i, "")
           .replace(/^politica:\s*/i, "")
@@ -1416,6 +1562,14 @@ function makeLeadFacingReply(input: {
         220
       )
     : "";
+
+  if (turn.isCorrection) {
+    return "Você tem razão — eu me adiantei e entendi errado. Vamos recomeçar sem presumir nada: sobre o que você gostaria de conversar?";
+  }
+
+  if (turn.asksToTalkFirst) {
+    return "Claro. Podemos conversar primeiro, sem pressa e sem eu tentar te vender algo. O que você gostaria de me contar?";
+  }
 
   if (asksIdentity) {
     const agentName = sanitizeText(input.tenantAi.agentName, 80) || "assistente comercial";
@@ -1453,25 +1607,27 @@ function makeLeadFacingReply(input: {
   }
 
   if (asksWellbeing && !turn.hasBusinessTerms) {
-    return "Tudo certo por aqui. Pra eu te direcionar certo: qual resultado voce quer destravar no comercial agora?";
+    return "Tudo certo por aqui 😊 E com você?";
   }
 
   if (thanks && !turn.hasBusinessTerms) {
-    return "Perfeito. Antes de avancar, me conta: hoje seu foco e gerar demanda ou melhorar conversao?";
+    return "Imagina! Se precisar, estou por aqui.";
   }
 
   if (turn.isLightSmallTalk && !turn.hasBusinessTerms) {
-    return "Fechou. Bora usar isso a seu favor: qual e o principal gargalo do seu atendimento hoje?";
+    return "Que bom 😊 Pode falar, estou te ouvindo.";
   }
 
   if (isGreetingLike(input.inboundText)) {
     return knownFirstName
-      ? `Oi, ${knownFirstName}! Tudo bem? Pra eu te direcionar certo, hoje o foco e gerar mais leads, organizar atendimento ou converter melhor?`
-      : "Oi! Tudo bem? Pra te direcionar certo, hoje o foco e gerar mais leads, organizar atendimento ou converter melhor?";
+      ? `Oi, ${knownFirstName}! Tudo bem? Pode falar — como eu posso te ajudar?`
+      : "Oi! Tudo bem? Pode falar — como eu posso te ajudar?";
   }
 
   if (isClarificationRequest(input.inboundText)) {
-    return "Claro. A gente estrutura captacao, atendimento e conversao para vender com mais previsibilidade. Se quiser, te explico pelo seu caso real em 1 minuto.";
+    return primaryKbSnippet
+      ? `Claro. ${primaryKbSnippet}`
+      : "Claro. Você quer entender como funciona o atendimento ou algum produto ou serviço específico?";
   }
 
   if (input.decision === "ask_more") {
@@ -1484,7 +1640,9 @@ function makeLeadFacingReply(input: {
     return base;
   }
 
-  if (primaryKbSnippet) {
+  // Knowledge supports the answer; it is not itself a customer-facing
+  // template. Broad statements require discovery before catalog content.
+  if (primaryKbSnippet && (turn.isDirectQuestion || inboundHasPriceSignal)) {
     const base = `Entendi. ${primaryKbSnippet}`;
     if (shouldAskNameLater && !base.includes("?")) {
       return `${base} Posso te chamar de como?`;
@@ -1493,52 +1651,18 @@ function makeLeadFacingReply(input: {
   }
 
   if (inboundHasPriceSignal) {
-    const base =
-      "Entendi. Consigo te orientar nisso, sim. Se quiser, eu te explico o formato que tende a fazer mais sentido para o seu momento.";
+    const base = "Ainda não encontrei um valor confirmado para te passar com segurança. Posso pedir essa confirmação à equipe.";
     if (shouldAskNameLater && !base.includes("?")) {
       return `${base} Posso te chamar de como?`;
     }
     return base;
   }
 
-  const defaultReply = "Entendi. Me conta um pouco melhor o teu momento hoje.";
+  const defaultReply = "Entendi. Me conta um pouco mais sobre o que você precisa?";
   if (shouldAskNameLater && !defaultReply.includes("?")) {
     return `${defaultReply} Posso te chamar de como?`;
   }
   return defaultReply;
-}
-
-function buildSecondaryCommercialNudge(input: {
-  inboundText: string;
-  responseText: string;
-  messageType?: string | null;
-  decision: Exclude<Decision, "skip" | "handoff">;
-  conversation: ConversationMessage[];
-  mandatoryQuestions: string[];
-}) {
-  const normalizedType = sanitizeText(input.messageType, 40).toLowerCase();
-  if (normalizedType && normalizedType !== "text") return null;
-  if (input.decision !== "respond") return null;
-
-  const turn = classifyLeadTurn(input.inboundText);
-  if (!turn.isGreeting && !turn.isPureRelational) return null;
-  if (sanitizeText(input.responseText, 300).includes("?")) return null;
-
-  const question = sanitizeText(
-    pickNextMandatoryQuestion(input.conversation, input.mandatoryQuestions) ||
-      "Pra te direcionar com precisao: qual e o principal objetivo comercial agora?",
-    220
-  );
-  if (!question || question.length < 12) return null;
-
-  const prefixed = question.endsWith("?")
-    ? `Pra te direcionar com precisao: ${question}`
-    : `Pra te direcionar com precisao: ${question}?`;
-  const normalizedPrefix = normalizeComparable(prefixed);
-  const normalizedPrimary = normalizeComparable(input.responseText);
-  if (!normalizedPrefix || normalizedPrefix === normalizedPrimary) return null;
-
-  return sanitizeText(prefixed, 260);
 }
 
 function buildOutboundCampaignContinuation(input: {
@@ -1829,8 +1953,11 @@ function summarizeForResponsible(messages: ConversationMessage[]) {
 async function fetchKbDocs(
   tenantId: string,
   inboundText: string,
-  retrievalMode: "keyword" | "hybrid" | "semantic" = "keyword"
+  retrievalMode: "keyword" | "hybrid" | "semantic" = "keyword",
+  includeCatalogFallback = false,
+  turnPolicy?: ConversationTurnPolicy
 ) {
+  if (turnPolicy && !turnPolicy.shouldRetrieveKnowledge) return [];
   const snap = await adminDb
     .collection("kb_docs")
     .where("tenantId", "==", tenantId)
@@ -1849,12 +1976,38 @@ async function fetchKbDocs(
             .map((tag) => sanitizeText(tag, 80))
             .filter(Boolean)
         : [];
-      const productName = sanitizeText(data.productName, 160) || null;
-      const productCategory = sanitizeText(data.productCategory, 120) || null;
-      const targetProfile = sanitizeText(data.targetProfile, 180) || null;
-      const priceFrom = numericValue(data.priceFrom);
-      const priceTo = numericValue(data.priceTo);
-      const availability = normalizeCatalogAvailability(data.availability);
+      const mediaItems = Array.isArray(data.mediaItems)
+        ? data.mediaItems
+            .map((item) => {
+              if (!item || typeof item !== "object") return null;
+              const media = item as Record<string, unknown>;
+              const mediaUrl = sanitizeText(media.mediaUrl, 1200);
+              const mediaType = sanitizeText(media.mediaType, 40);
+              if (!mediaUrl || !["image", "video", "document"].includes(mediaType)) return null;
+              const usage = sanitizeText(media.usage, 40);
+              return {
+                mediaUrl,
+                mediaType: mediaType as "image" | "video" | "document",
+                mediaTitle: sanitizeText(media.mediaTitle, 160) || null,
+                mediaStoragePath: sanitizeText(media.mediaStoragePath, 600) || null,
+                mediaMimeType: sanitizeText(media.mediaMimeType, 120) || null,
+                mediaSize: numericValue(media.mediaSize),
+                usage: ["auto", "suggest", "blocked"].includes(usage)
+                  ? (usage as "auto" | "suggest" | "blocked")
+                  : "suggest",
+              };
+            })
+            .filter((item): item is NonNullable<typeof item> => Boolean(item))
+            .slice(0, 12)
+        : [];
+      const commercial = normalizeCommercialOffer({ ...data, mediaItems });
+      const primaryMediaUrl = normalizeCommercialOfferUrl(data.mediaUrl);
+      const productName = commercial.productName;
+      const productCategory = commercial.productCategory;
+      const targetProfile = commercial.targetProfile;
+      const priceFrom = commercial.priceFrom;
+      const priceTo = commercial.priceTo;
+      const availability = commercial.availability;
       const structuredCatalogHeader =
         type === "catalog"
           ? [
@@ -1869,18 +2022,49 @@ async function fetchKbDocs(
               .filter(Boolean)
               .join(" | ")
           : "";
-      const contentBase = sanitizeText(data.content, 600);
+      const contentBase = sanitizeText(data.content, 8000);
       const content =
         type === "catalog" && structuredCatalogHeader
           ? sanitizeText(`catalog_struct: ${structuredCatalogHeader}. ${contentBase}`, 900)
           : contentBase;
+      const retrievalContent =
+        type === "catalog"
+          ? sanitizeText(
+              [
+                structuredCatalogHeader,
+                contentBase,
+                data.description,
+                data.benefits,
+                data.commonQuestions,
+                data.objections,
+                data.whenRecommend,
+                data.whenNotRecommend,
+                data.whenHuman,
+                data.productSpecs,
+                data.stockDelivery,
+                data.warranty,
+                data.serviceScope,
+                data.duration,
+                data.schedulingRules,
+                data.deliverables,
+                data.proofAndCases,
+                data.demonstration,
+                data.paymentConditions,
+                data.supportAndSla,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+              8000
+            )
+          : content;
 
       return {
         id: doc.id,
         type,
         content,
+        retrievalContent,
         tags,
-        mediaUrl: sanitizeText(data.mediaUrl, 1200) || null,
+        mediaUrl: primaryMediaUrl,
         mediaType: ["image", "video", "document"].includes(sanitizeText(data.mediaType, 40))
           ? (sanitizeText(data.mediaType, 40) as KbDoc["mediaType"])
           : null,
@@ -1888,23 +2072,56 @@ async function fetchKbDocs(
         mediaStoragePath: sanitizeText(data.mediaStoragePath, 600) || null,
         mediaMimeType: sanitizeText(data.mediaMimeType, 120) || null,
         mediaSize: typeof data.mediaSize === "number" && Number.isFinite(data.mediaSize) ? data.mediaSize : null,
+        mediaItems: commercial.mediaItems,
         serviceKey: sanitizeText(data.serviceKey, 120) || null,
+        kind: commercial.kind,
+        sku: commercial.sku,
+        checkoutUrl: commercial.checkoutUrl,
         productName,
         productCategory,
         targetProfile,
         priceFrom,
         priceTo,
+        currency: commercial.currency,
+        inventoryQuantity: commercial.inventoryQuantity,
         upsellKeys: parseCatalogStringList(data.upsellKeys, 12),
         crossSellKeys: parseCatalogStringList(data.crossSellKeys, 12),
+        upsellOfferIds: parseCatalogStringList(data.upsellOfferIds, 20),
+        crossSellOfferIds: parseCatalogStringList(data.crossSellOfferIds, 20),
+        downsellOfferIds: parseCatalogStringList(data.downsellOfferIds, 20),
+        incompatibleOfferIds: parseCatalogStringList(data.incompatibleOfferIds, 20),
+        nextOfferId: sanitizeText(data.nextOfferId, 180) || null,
         priority: numericValue(data.priority),
         availability,
+        availabilityConfigured: commercial.availabilityConfigured,
+        useInAi: data.useInAi !== false,
+        description: sanitizeText(data.description, 8000) || null,
+        benefits: sanitizeText(data.benefits, 8000) || null,
+        commonQuestions: sanitizeText(data.commonQuestions, 8000) || null,
+        objections: sanitizeText(data.objections, 8000) || null,
+        whenRecommend: sanitizeText(data.whenRecommend, 8000) || null,
+        whenNotRecommend: sanitizeText(data.whenNotRecommend, 8000) || null,
+        whenHuman: sanitizeText(data.whenHuman, 8000) || null,
+        productSpecs: sanitizeText(data.productSpecs, 8000) || null,
+        stockDelivery: sanitizeText(data.stockDelivery, 8000) || null,
+        warranty: sanitizeText(data.warranty, 8000) || null,
+        serviceScope: sanitizeText(data.serviceScope, 8000) || null,
+        duration: sanitizeText(data.duration, 2000) || null,
+        schedulingRules: sanitizeText(data.schedulingRules, 4000) || null,
+        deliverables: sanitizeText(data.deliverables, 8000) || null,
+        proofAndCases: sanitizeText(data.proofAndCases, 8000) || null,
+        demonstration: sanitizeText(data.demonstration, 4000) || null,
+        paymentConditions: sanitizeText(data.paymentConditions, 4000) || null,
+        supportAndSla: sanitizeText(data.supportAndSla, 4000) || null,
         score: 0,
       };
     })
-    .filter((item) => item.content);
+    .filter((item) => item.content || item.retrievalContent);
 
   const messageWords = normalizeWords(inboundText);
-  const candidateDocs = baseDocs.filter((doc) => doc.availability !== "paused");
+  const candidateDocs = baseDocs.filter(
+    (doc) => doc.useInAi !== false && doc.availability !== "paused" && !(doc.type === "catalog" && doc.inventoryQuantity === 0)
+  );
 
   const scored = candidateDocs
     .map((doc) => ({
@@ -1918,7 +2135,20 @@ async function fetchKbDocs(
     }))
     .sort((a, b) => b.score - a.score);
 
-  return scored.filter((doc) => doc.score > 0);
+  const minimumScore = knowledgeScoreThreshold(retrievalMode);
+  const matched = scored.filter(
+    (doc) => doc.score >= minimumScore && (doc.type !== "catalog" || turnPolicy?.allowCatalog === true)
+  );
+  if (!includeCatalogFallback) return matched.slice(0, 40);
+  const fallbackCatalog = scored.filter(
+    (doc) =>
+      doc.type === "catalog" &&
+      (Boolean(doc.mediaUrl && doc.mediaType === "image") ||
+        Boolean(doc.mediaItems?.some((item) => item.mediaType === "image" && item.usage !== "blocked")))
+  );
+  const merged = new Map<string, KbDoc>();
+  for (const doc of [...matched, ...fallbackCatalog]) merged.set(doc.id, doc);
+  return Array.from(merged.values()).slice(0, 60);
 }
 
 async function fetchConversation(chatId: string, tenantId: string) {
@@ -2186,9 +2416,16 @@ async function saveAiLog(input: {
   toolCalls: string[];
   confidence?: number;
   matchedKbDocIds?: string[];
+  groundingSources?: Array<{
+    kind: "knowledge" | "catalog" | "campaign";
+    id: string;
+    label: string;
+    detail?: string | null;
+  }>;
   extractedFields?: Record<string, string> | null;
   nextAction?: string | null;
   latencyMs?: number;
+  inboundToStartLatencyMs?: number | null;
   provider?: AltumAiProvider;
   model?: string;
   tier?: AltumAiTier;
@@ -2209,6 +2446,20 @@ async function saveAiLog(input: {
   qualityNotes?: string[] | null;
   qualityGateApplied?: boolean;
   qualityGateReason?: string | null;
+  tenantContextFingerprint?: string | null;
+  tenantContextDiagnostics?: {
+    guardrailCount: number;
+    mandatoryQuestionCount: number;
+    escalationTopicCount: number;
+    configuredCommercialBrainFields: number;
+  } | null;
+  rollout?: {
+    mode: AiConversationRollout["mode"];
+    percent: number;
+    bucket: number;
+    agentVersion: string;
+    reason: string;
+  } | null;
 }) {
   await adminDb.collection("ai_logs").doc(input.logDocId).set(
     {
@@ -2223,9 +2474,11 @@ async function saveAiLog(input: {
       reason: input.reason,
       confidence: input.confidence ?? null,
       matchedKbDocIds: input.matchedKbDocIds || [],
+      groundingSources: (input.groundingSources || []).slice(0, 8),
       extractedFields: input.extractedFields || null,
       nextAction: input.nextAction || null,
       latencyMs: input.latencyMs ?? null,
+      inboundToStartLatencyMs: input.inboundToStartLatencyMs ?? null,
       provider: input.provider || "altum_rules",
       model: input.model || "altum_rules_v1",
       tier: input.tier || null,
@@ -2246,6 +2499,9 @@ async function saveAiLog(input: {
       qualityNotes: input.qualityNotes || [],
       qualityGateApplied: input.qualityGateApplied === true,
       qualityGateReason: input.qualityGateReason || null,
+      tenantContextFingerprint: input.tenantContextFingerprint || null,
+      tenantContextDiagnostics: input.tenantContextDiagnostics || null,
+      rollout: input.rollout || null,
       createdAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
@@ -2553,7 +2809,7 @@ async function createAiAppointmentDraft(input: {
     leadCompany: sanitizeText(input.leadCompany, 180) || null,
     title: `Diagnostico comercial com ${sanitizeText(input.leadName, 120) || "lead"}`,
     type: "reuniao",
-    status: "scheduled",
+    status: "draft",
     startAt: slot.startAt,
     endAt: slot.endAt,
     location: null,
@@ -2572,7 +2828,7 @@ async function createAiAppointmentDraft(input: {
     tenantId: input.tenantId,
     leadId: input.leadId,
     appointmentId: ref.id,
-    status: "scheduled",
+    status: "draft",
   });
 
   return ref.id;
@@ -2642,15 +2898,63 @@ async function executeAltumAgentActions(input: {
   leadName?: string | null;
   leadOwnerId?: string | null;
   leadOwnerName?: string | null;
+  autonomyMode: AltumAiAutonomyMode;
+  followUpStrategy?: string | null;
+  proposalStyle?: string | null;
 }) {
   const leadId = sanitizeText(input.leadId, 160);
   if (!leadId) return [] as string[];
+  const isCopilot = input.autonomyMode === "copilot";
+  const canAdvanceCommercialWorkflow = canAutonomouslyAdvanceCommercialWorkflow(input.autonomyMode);
 
   const actions: string[] = [];
   const leadRef = adminDb.collection("leads").doc(leadId);
+  const now = new Date();
+
+  // Copilot never updates commercial memory or advances the workflow. A handoff
+  // is the one safety exception: without a task, pausing the bot can leave the
+  // customer waiting with no accountable human owner.
+  if (isCopilot) {
+    if (input.plan.decision !== "handoff") return ["copilot_actions_suppressed"];
+
+    const handoffTaskId = await ensureAiLeadTask({
+      tenantId: input.tenantId,
+      leadId,
+      title: "Assumir handoff solicitado pela IA",
+      type: "handoff",
+      priority: "high",
+      dueAt: addHours(now, 1),
+      reasonCode: "ai_handoff_requested",
+      taskKey: buildAiTaskKey("ai_handoff_requested", input.chatId),
+    });
+
+    if (!handoffTaskId) return ["copilot_actions_suppressed", "handoff_task_already_pending"];
+
+    await Promise.all([
+      leadRef.collection("events").add({
+        type: "ai_handoff_requested",
+        title: "IA solicitou handoff",
+        detail: sanitizeText(input.plan.reason, 220),
+        actorId: "ai_sales_agent",
+        actorName: "AI Sales Agent",
+        createdAt: FieldValue.serverTimestamp(),
+      }),
+      createAiInternalNotification({
+        tenantId: input.tenantId,
+        chatId: input.chatId,
+        leadId,
+        type: "handoff",
+        severity: "high",
+        title: "IA pediu handoff humano",
+        detail: sanitizeText(input.plan.reason, 220),
+      }),
+    ]);
+
+    return ["copilot_actions_suppressed", "handoff_to_human", "notify_internal_team"];
+  }
+
   const leadSnap = await leadRef.get();
   const leadData = leadSnap.exists ? (leadSnap.data() as Record<string, unknown>) : {};
-  const now = new Date();
   const plannerConfidence = Number.isFinite(input.plan.confidence) ? Math.max(0, Math.min(1, input.plan.confidence)) : 0;
   const canWriteIdentity = plannerConfidence >= 0.66;
   const canWriteCompany = plannerConfidence >= 0.7;
@@ -3022,7 +3326,7 @@ async function executeAltumAgentActions(input: {
   const previousStage = sanitizeText(leadData.pipelineStage || leadData.stage, 80) || null;
   let appliedStage = previousStage;
   let aiMovedStage = false;
-  if (canAdvanceStage && suggestedStage && suggestedStage !== previousStage) {
+  if (canAdvanceCommercialWorkflow && canAdvanceStage && suggestedStage && suggestedStage !== previousStage) {
     const previousIndex = previousStage ? pipelineStages.indexOf(previousStage) : -1;
     const suggestedIndex = pipelineStages.indexOf(suggestedStage);
     const shouldAdvance = suggestedIndex >= 0 && (previousIndex < 0 || suggestedIndex >= previousIndex);
@@ -3039,7 +3343,7 @@ async function executeAltumAgentActions(input: {
   const qualificationPatch = leadPatch.qualification as Record<string, unknown>;
   qualificationPatch.recommendedStage = appliedStage || pipelineStages[0] || null;
 
-  if (canFlagHotLead && input.plan.stateAfter === "recommendation") {
+  if (canAdvanceCommercialWorkflow && canFlagHotLead && input.plan.stateAfter === "recommendation") {
     leadPatch.priority = "high";
     leadPatch.heat = "quente";
     leadPatch.aiSignalStrength = "high";
@@ -3147,6 +3451,7 @@ async function executeAltumAgentActions(input: {
   }
 
   if (
+    canAdvanceCommercialWorkflow &&
     nextActionChanged &&
     input.plan.nextAction &&
     (
@@ -3211,18 +3516,36 @@ async function executeAltumAgentActions(input: {
     } else {
     const taskPreset = buildAiTaskPreset(input.plan.nextAction, input.leadName);
     const followupReasonCode = normalizeReasonCode(`ai_next_action_${input.plan.nextAction}`, "ai_next_action");
+    const defaultDueHours = getAiTaskDueHours(input.plan.nextAction, input.plan.commercialTemperature || null);
+    const dueHours = resolveConfiguredFollowUpDelayHours(input.followUpStrategy, defaultDueHours);
     const followupTaskId = await ensureAiLeadTask({
       tenantId: input.tenantId,
       leadId,
       title: taskPreset.title,
       type: taskPreset.type,
       priority: taskPreset.priority,
-      dueAt: addHours(now, getAiTaskDueHours(input.plan.nextAction, input.plan.commercialTemperature || null)),
+      dueAt: addHours(now, dueHours),
       reasonCode: followupReasonCode,
       taskKey: buildAiTaskKey(followupReasonCode, input.plan.stateAfter || "conversation"),
     });
 
     if (followupTaskId) {
+      await recordCommercialAgentAction({
+        tenantId: input.tenantId,
+        leadId,
+        chatId: input.chatId,
+        type: "follow_up_task",
+        title: taskPreset.title,
+        detail: input.plan.nextAction,
+        referenceCollection: "lead_tasks",
+        referenceId: followupTaskId,
+        dedupeKey: buildAiTaskKey(followupReasonCode, input.plan.stateAfter || "conversation"),
+        payload: {
+          priority: taskPreset.priority,
+          dueHours,
+        },
+        executed: true,
+      });
       await Promise.all([
         leadRef.collection("events").add({
           type: "ai_followup_task_created",
@@ -3250,14 +3573,30 @@ async function executeAltumAgentActions(input: {
     }
   }
 
-  if (nextActionChanged && input.plan.nextAction === "preparar_proposta_comercial" && shouldSeedDraft) {
+  if (canAdvanceCommercialWorkflow && nextActionChanged && input.plan.nextAction === "preparar_proposta_comercial" && shouldSeedDraft) {
     const proposalId = await createAiProposalDraft({
       tenantId: input.tenantId,
       leadId,
       leadName: input.leadName || sanitizeText(leadData.nome, 180) || null,
       leadCompany: sanitizeText(leadData.empresa, 180) || null,
       recommendedOffer: input.plan.recommendedOffer || aiMemory.serviceInterest,
-      summary: leadPatch.aiLeadSummary as string,
+      summary: [
+        leadPatch.aiLeadSummary as string,
+        sanitizeText(input.proposalStyle, 420) ? `Estrutura comercial configurada: ${sanitizeText(input.proposalStyle, 420)}` : "",
+      ].filter(Boolean).join("\n\n"),
+    });
+
+    await recordCommercialAgentAction({
+      tenantId: input.tenantId,
+      leadId,
+      chatId: input.chatId,
+      type: "review_proposal",
+      title: "Revisar proposta preparada pela IA",
+      detail: input.plan.recommendedOffer || leadPatch.aiLeadSummary as string,
+      referenceCollection: "orcamentos",
+      referenceId: proposalId,
+      dedupeKey: `proposal:${proposalId}`,
+      payload: { recommendedOffer: input.plan.recommendedOffer || null },
     });
 
     await upsertLeadCommercialDossier({
@@ -3297,7 +3636,7 @@ async function executeAltumAgentActions(input: {
     actions.push("notify_internal_team");
   }
 
-  if (nextActionChanged && input.plan.nextAction === "agendar_proximo_passo" && shouldSeedDraft) {
+  if (canAdvanceCommercialWorkflow && nextActionChanged && input.plan.nextAction === "agendar_proximo_passo" && shouldSeedDraft) {
     const appointmentId = await createAiAppointmentDraft({
       tenantId: input.tenantId,
       leadId,
@@ -3305,6 +3644,19 @@ async function executeAltumAgentActions(input: {
       leadCompany: sanitizeText(leadData.empresa, 180) || null,
       summary: leadPatch.aiLeadSummary as string,
       ownerUserId: input.leadOwnerId || sanitizeText(leadData.ownerId, 160) || null,
+    });
+
+    await recordCommercialAgentAction({
+      tenantId: input.tenantId,
+      leadId,
+      chatId: input.chatId,
+      type: "review_appointment",
+      title: "Confirmar horario sugerido pela IA",
+      detail: "Revise o horario e confirme com o cliente antes de tratar o compromisso como definitivo.",
+      referenceCollection: "appointments",
+      referenceId: appointmentId,
+      dedupeKey: `appointment:${appointmentId}`,
+      payload: { requiresCustomerConfirmation: true },
     });
 
     await upsertLeadCommercialDossier({
@@ -3346,6 +3698,7 @@ async function executeAltumAgentActions(input: {
   }
 
   if (
+    canAdvanceCommercialWorkflow &&
     nextActionChanged &&
     (input.plan.nextAction === "preparar_proposta_comercial" || input.plan.nextAction === "agendar_proximo_passo") &&
     !shouldSeedDraft
@@ -3473,7 +3826,7 @@ async function executeAltumAgentActions(input: {
     leadId,
     actorId: "ai_sales_agent",
     actorName: "AI Sales Agent",
-    allowStageAdvance: canAdvanceStage,
+    allowStageAdvance: canAdvanceCommercialWorkflow && canAdvanceStage,
     preserveManualScore: true,
   });
   actions.push("sync_crm_state");
@@ -3632,7 +3985,95 @@ function decide(input: {
   };
 }
 
-function selectMediaDocForLead(input: {
+export type CommercialFactSource = Pick<
+  KbDoc,
+  | "type"
+  | "content"
+  | "kind"
+  | "priceFrom"
+  | "priceTo"
+  | "inventoryQuantity"
+  | "availability"
+  | "availabilityConfigured"
+  | "checkoutUrl"
+  | "paymentConditions"
+  | "stockDelivery"
+  | "warranty"
+>;
+
+export function hasVerifiedCommercialFactSource(
+  factKind: ReturnType<typeof detectVerifiedCommercialFactRequest>,
+  kbDocs: CommercialFactSource[]
+) {
+  if (!factKind) return true;
+  if (kbDocs.length === 0) return false;
+  const sourceText = (doc: CommercialFactSource) =>
+    doc.content.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+  if (factKind === "price") {
+    return kbDocs.some(
+      (doc) =>
+        (doc.type === "catalog" && (typeof doc.priceFrom === "number" || typeof doc.priceTo === "number")) ||
+        /(?:r\$|brl)\s*\d/.test(sourceText(doc))
+    );
+  }
+  if (factKind === "inventory") {
+    return kbDocs.some(
+      (doc) =>
+        doc.type === "catalog" &&
+        (["servico", "plano"].includes(doc.kind || "")
+          ? doc.availabilityConfigured === true && doc.availability !== "paused"
+          : typeof doc.inventoryQuantity === "number" && doc.inventoryQuantity > 0)
+    );
+  }
+  if (factKind === "payment") {
+    return kbDocs.some((doc) => Boolean(doc.checkoutUrl || sanitizeText(doc.paymentConditions, 500)));
+  }
+  if (factKind === "delivery") {
+    return kbDocs.some((doc) => Boolean(sanitizeText(doc.stockDelivery, 600)));
+  }
+  return kbDocs.some(
+    (doc) =>
+      Boolean(sanitizeText(doc.warranty, 600)) ||
+      (doc.type === "policy" && /\b(garantia|troca|devolucao|cancelamento|reembolso|politica)\b/.test(sourceText(doc)))
+  );
+}
+
+type CommercialOfferReferenceSource = Pick<KbDoc, "productName" | "serviceKey" | "mediaTitle">;
+
+export function hasSpecificCommercialOfferReference(input: {
+  inboundText: string;
+  kbDocs: CommercialOfferReferenceSource[];
+  contextOffers?: Array<string | null | undefined>;
+}) {
+  const inbound = normalizeComparable(sanitizeText(input.inboundText, 1200));
+  if (!inbound) return false;
+  const inboundWords = new Set(normalizeWords(inbound));
+  const contextOffers = (input.contextOffers || [])
+    .map((value) => sanitizeText(value, 180))
+    .filter(Boolean);
+  // Uma oferta de campanha ou recomendacao guardada na memoria e o contexto
+  // ativo da conversa; nesse caso "e o prazo?" pode ser respondido sem o
+  // cliente repetir o nome a cada turno.
+  if (contextOffers.length) return true;
+  const namedOffers = input.kbDocs
+    .flatMap((doc) => [doc.productName, doc.serviceKey, doc.mediaTitle])
+    .map((value) => sanitizeText(value, 180))
+    .filter(Boolean);
+
+  return namedOffers.some((offer) => {
+    const normalizedOffer = normalizeComparable(offer);
+    if (!normalizedOffer) return false;
+    if (normalizedOffer.length >= 4 && inbound.includes(normalizedOffer)) return true;
+    // Permite "quanto custa o Premium?" para uma oferta chamada "Plano
+    // Premium", mas ignora termos genericos como produto, plano e servico.
+    return normalizeWords(normalizedOffer).some(
+      (word) => word.length >= 4 && !["produto", "produtos", "servico", "servicos", "plano", "pacote", "oferta"].includes(word) && inboundWords.has(word)
+    );
+  });
+}
+
+export function selectMediaDocForLead(input: {
   inboundText: string;
   kbDocs: KbDoc[];
   conversation: ConversationMessage[];
@@ -3671,9 +4112,14 @@ function selectMediaDocForLead(input: {
     "site",
   ]);
   const normalizedOffer = normalizeComparable(sanitizeText(input.recommendedOffer, 160));
-  const commercialTemperature = sanitizeText(input.commercialTemperature, 40).toLowerCase();
-  const proactiveCommercialSend = Boolean(normalizedOffer || commercialTemperature === "hot");
+  // "Lead quente" sozinho nunca e motivo para disparar material. Sem uma
+  // oferta especifica, isso costuma transformar uma conversa normal em spam
+  // (e pode mandar o catalogo errado).
+  const proactiveCommercialSend = Boolean(normalizedOffer);
   if (!asksForMedia && !proactiveCommercialSend) return null;
+  const wantsVideo = textHasAny(input.inboundText, ["video", "videos", "vídeo", "vídeos"]);
+  const wantsImage = textHasAny(input.inboundText, ["foto", "fotos", "imagem", "imagens", "modelo", "mostra"]);
+  const wantsDocument = textHasAny(input.inboundText, ["pdf", "documento", "arquivo", "catalogo", "catálogo"]);
 
   const alreadySent = new Set(
     input.conversation
@@ -3683,11 +4129,28 @@ function selectMediaDocForLead(input: {
   );
   const inboundWords = new Set(normalizeWords(input.inboundText));
 
+  const mediaCandidates = input.kbDocs.flatMap((doc) => {
+    const explicit = doc.mediaUrl && doc.mediaType
+      ? [{
+          mediaUrl: doc.mediaUrl,
+          mediaType: doc.mediaType,
+          mediaTitle: doc.mediaTitle,
+          mediaStoragePath: doc.mediaStoragePath,
+          mediaMimeType: doc.mediaMimeType,
+          mediaSize: doc.mediaSize,
+          usage: "auto" as const,
+        }]
+      : [];
+    const items = (doc.mediaItems || []).filter((item) => item.usage !== "blocked");
+    return [...explicit, ...items].map((media) => ({ ...doc, ...media }));
+  });
+
   return (
-    input.kbDocs
+    mediaCandidates
       .filter((doc) => {
         if (!doc.mediaUrl || !doc.mediaType || alreadySent.has(doc.mediaUrl)) return false;
-        return doc.availability !== "paused";
+        if (doc.usage === "suggest" && !asksForMedia) return false;
+        return doc.availability !== "paused" && doc.inventoryQuantity !== 0;
       })
       .map((doc) => {
         const productWords = normalizeWords(
@@ -3711,14 +4174,27 @@ function selectMediaDocForLead(input: {
         const catalogBoost = asksForMedia ? 0 : proactiveCommercialSend ? 1.25 : 0;
         return {
           doc,
+          offerMatch,
+          productOverlap,
           score:
             doc.score +
             overlap * 0.4 +
             productOverlap * 0.5 +
             (offerMatch ? 2 : 0) +
+            (wantsVideo && doc.mediaType === "video" ? 3 : 0) +
+            (wantsImage && doc.mediaType === "image" ? 3 : 0) +
+            (wantsDocument && doc.mediaType === "document" ? 3 : 0) +
             catalogPriority * 0.08 +
             catalogBoost,
         };
+      })
+      .filter(({ doc, offerMatch, productOverlap }) => {
+        // Em pedido generico ("me manda um video"), primeiro a IA precisa
+        // descobrir de qual oferta o cliente esta falando. Nunca escolhemos
+        // um item arbitrario apenas porque ele tem uma midia cadastrada.
+        if (asksForMedia) return offerMatch || productOverlap > 0;
+        // Envios proativos exigem a oferta ja confirmada no contexto atual.
+        return Boolean(normalizedOffer && offerMatch);
       })
       .sort((a, b) => b.score - a.score)[0]?.doc || null
   );
@@ -3885,13 +4361,7 @@ export function groundRecommendedOffer(input: {
   );
 
   if (!allowedOffers.length) {
-    return sanitizeText(
-      input.recommendedOffer ||
-        input.extractedFields?.serviceInterest ||
-        input.extractedFields?.offer ||
-        input.leadMemory?.recommendedOffer,
-      160
-    );
+    return null;
   }
 
   const candidates = [
@@ -3917,6 +4387,7 @@ type CommercialOfferBundle = {
   upsellOffer: string | null;
   crossSellOffer: string | null;
   primaryDocId: string | null;
+  primaryOfferData: CommercialOffer | null;
   rationale: string[];
 };
 
@@ -3940,7 +4411,7 @@ function parseBudgetMaxSignal(value: string) {
   return maxValue > 0 ? maxValue : null;
 }
 
-function recommendCommercialOffers(input: {
+export function recommendCommercialOffers(input: {
   kbDocs: KbDoc[];
   inboundText: string;
   extractedFields?: Record<string, string> | null;
@@ -3956,6 +4427,7 @@ function recommendCommercialOffers(input: {
       upsellOffer: null,
       crossSellOffer: null,
       primaryDocId: null,
+      primaryOfferData: null,
       rationale: ["outbound_campaign_offer_locked"],
     } satisfies CommercialOfferBundle;
   }
@@ -3963,10 +4435,11 @@ function recommendCommercialOffers(input: {
   const catalogDocs = input.kbDocs.filter((doc) => doc.type === "catalog" && doc.availability !== "paused");
   if (!catalogDocs.length) {
     return {
-      primaryOffer: sanitizeText(input.plannerRecommendedOffer, 160) || null,
+      primaryOffer: null,
       upsellOffer: null,
       crossSellOffer: null,
       primaryDocId: null,
+      primaryOfferData: null,
       rationale: ["no_catalog_docs"],
     } satisfies CommercialOfferBundle;
   }
@@ -4035,10 +4508,11 @@ function recommendCommercialOffers(input: {
   const primary = ranked[0]?.doc || null;
   if (!primary) {
     return {
-      primaryOffer: sanitizeText(input.plannerRecommendedOffer, 160) || null,
+      primaryOffer: null,
       upsellOffer: null,
       crossSellOffer: null,
       primaryDocId: null,
+      primaryOfferData: null,
       rationale: ["catalog_rank_empty"],
     } satisfies CommercialOfferBundle;
   }
@@ -4059,48 +4533,25 @@ function recommendCommercialOffers(input: {
       if (!key) continue;
       const direct = docsByKey.get(key);
       if (direct) return direct;
-      const fuzzy = catalogDocs.find((doc) => {
-        const corpus = normalizeComparable([doc.serviceKey, doc.productName, doc.mediaTitle].join(" "));
-        if (!corpus) return false;
-        return corpus.includes(key) || key.includes(corpus);
-      });
-      if (fuzzy) return fuzzy;
     }
     return null;
   };
 
-  const higherPriced = ranked
-    .map((item) => item.doc)
-    .filter(
-      (doc) =>
-        doc.id !== primary.id &&
-        typeof doc.priceFrom === "number" &&
-        typeof primary.priceFrom === "number" &&
-        doc.priceFrom > primary.priceFrom
-    );
-  const adjacent = ranked
-    .map((item) => item.doc)
-    .filter((doc) => doc.id !== primary.id)
-    .slice(0, 5);
-
+  const incompatibleIds = new Set(primary.incompatibleOfferIds || []);
+  // Related offers are commercial policy. Never infer an upsell from price,
+  // category or retrieval proximity: that turns unrelated catalog entries into
+  // a sales recommendation. Legacy text keys remain exact-match only.
   const upsellDoc =
-    resolveByKeys(primary.upsellKeys) || (isHot || budgetMax ? higherPriced[0] || null : null) || adjacent[0] || null;
+    resolveByKeys(primary.upsellOfferIds) || resolveByKeys(primary.upsellKeys) || resolveByKeys(primary.nextOfferId ? [primary.nextOfferId] : []) || null;
   const crossSellDoc =
-    resolveByKeys(primary.crossSellKeys) ||
-    adjacent.find(
-      (doc) =>
-        doc.id !== upsellDoc?.id &&
-        normalizeComparable(String(doc.productCategory || "")) !==
-          normalizeComparable(String(primary.productCategory || ""))
-    ) ||
-    adjacent.find((doc) => doc.id !== upsellDoc?.id) ||
-    null;
+    resolveByKeys(primary.crossSellOfferIds) || resolveByKeys(primary.crossSellKeys) || null;
 
   return {
     primaryOffer: describeDoc(primary),
     upsellOffer: upsellDoc ? describeDoc(upsellDoc) : null,
     crossSellOffer: crossSellDoc ? describeDoc(crossSellDoc) : null,
     primaryDocId: primary.id,
+    primaryOfferData: normalizeCommercialOffer(primary),
     rationale: [
       preferenceSignal ? "matched_preference_signal" : "no_preference_signal",
       isHot ? "hot_lead_boost" : "default_temperature",
@@ -4148,6 +4599,12 @@ export function hardenPlannerDecision(input: {
     input.plannerDecision.responseGoal === "recommend" ||
     input.plannerDecision.responseGoal === "move_to_next_step" ||
     /proposta|reuniao|diagnostico|agendar/i.test(String(input.plannerDecision.nextAction || ""));
+  const isProactiveClosing =
+    input.plannerDecision.responseGoal === "move_to_next_step" ||
+    /proposta|reuniao|agendar/i.test(String(input.plannerDecision.nextAction || ""));
+  const explicitClosingRequest = ["proposal_interest", "scheduling_interest"].includes(
+    String(input.plannerDecision.intent || "")
+  );
   const shouldKeepConversationalFreedom = [
     "greeting",
     "ask_agent_identity",
@@ -4162,6 +4619,27 @@ export function hardenPlannerDecision(input: {
     "send_image",
     "send_document",
   ].includes(String(input.plannerDecision.intent || ""));
+
+  if (
+    !assistantRoleAllowsProactiveClosing(input.tenantAi.assistantRole) &&
+    isProactiveClosing &&
+    !explicitClosingRequest
+  ) {
+    return {
+      ...input.plannerDecision,
+      decision: "respond" as const,
+      reason: "assistant_role_blocks_proactive_closing",
+      stateAfter:
+        input.plannerDecision.stateBefore === "greeting"
+          ? ("discovery" as const)
+          : input.plannerDecision.stateBefore,
+      responseGoal: "clarify" as const,
+      nextAction: "responder_necessidade_atual",
+      nextQuestion: null,
+      recommendedOffer: groundedOffer || null,
+      confidence: Math.min(input.plannerDecision.confidence, 0.82),
+    };
+  }
 
   if (!hasCommercialContext && isClosingPush && !shouldKeepConversationalFreedom) {
     return {
@@ -4461,14 +4939,14 @@ async function resolveHandoffNotifyRecipients(input: {
       ? (input.tenantSettings as Record<string, unknown>)
       : null;
 
-  for (const phone of extractPhoneCandidates(tenantSettingsRecord)) {
+  for (const phone of extractHandoffOwnerPhoneCandidates(tenantSettingsRecord)) {
     addRecipient(phone, "tenant_settings");
   }
 
   const ownerIds = new Set<string>();
   const chatOwnerId = sanitizeText(input.chatData.ownerId || input.chatData.assignedUserId, 160);
   if (chatOwnerId) ownerIds.add(chatOwnerId);
-  for (const phone of extractPhoneCandidates(input.chatData)) {
+  for (const phone of extractHandoffOwnerPhoneCandidates(input.chatData)) {
     addRecipient(phone, "chat_owner");
   }
 
@@ -4477,7 +4955,7 @@ async function resolveHandoffNotifyRecipients(input: {
     if (leadSnap.exists) {
       const leadData = leadSnap.data() as Record<string, unknown>;
       if (String(leadData.tenantId || "") === input.tenantId) {
-        for (const phone of extractPhoneCandidates(leadData)) {
+        for (const phone of extractHandoffOwnerPhoneCandidates(leadData)) {
           addRecipient(phone, "lead_owner");
         }
         const leadOwnerId = sanitizeText(
@@ -4568,6 +5046,10 @@ export async function handleIncomingMessage(
   }
 
   const incomingMessage = messageSnap.data() as Record<string, unknown>;
+  const inboundReceivedAt = toDate(incomingMessage.createdAt || incomingMessage.receivedAt || incomingMessage.timestamp);
+  const inboundToStartLatencyMs = inboundReceivedAt
+    ? Math.max(0, startedAt - inboundReceivedAt.getTime())
+    : null;
   const incomingSender = String(incomingMessage.sender || "").toLowerCase();
   const leadId = sanitizeText(chatData.leadId, 160) || undefined;
 
@@ -4657,6 +5139,41 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "tenant_ai_disabled" };
   }
 
+  const rolloutDecision = decideAiConversationRollout({
+    rollout: aiConfig.rollout,
+    tenantId,
+    chatId,
+  });
+  if (!rolloutDecision.shouldRespond && rolloutDecision.reason !== "shadow_only") {
+    await saveAiLog({
+      logDocId,
+      tenantId,
+      chatId,
+      messageId,
+      leadId,
+      decision: "skip",
+      reason: `conversation_rollout_${rolloutDecision.reason}`,
+      inboundText,
+      outboundText: "",
+      toolCalls: ["tenant_settings.ai.rollout"],
+      provider: runtimeProvider,
+      model: runtimeModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+      rollout: {
+        mode: aiConfig.rollout.mode,
+        percent: aiConfig.rollout.rolloutPercent,
+        bucket: rolloutDecision.bucket,
+        agentVersion: rolloutDecision.assignedVersion,
+        reason: rolloutDecision.reason,
+      },
+      latencyMs: Date.now() - startedAt,
+    });
+    return { decision: "skip", reason: `conversation_rollout_${rolloutDecision.reason}` };
+  }
+
   if (chatState.aiEnabled === false) {
     await saveAiLog({
       logDocId,
@@ -4726,22 +5243,80 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "human_takeover_active" };
   }
 
+  const turnPolicy = classifyConversationTurn(inboundText, messageType);
   const [conversation, kbDocs, runtimeState, leadMemory, learningHints] = await Promise.all([
     fetchConversation(chatId, tenantId),
-    fetchKbDocs(tenantId, inboundText, aiConfig.runtimePolicy.retrievalMode),
+    fetchKbDocs(
+      tenantId,
+      inboundText,
+      aiConfig.runtimePolicy.retrievalMode,
+      messageType.toLowerCase() === "image",
+      turnPolicy
+    ),
     getConversationRuntimeState(tenantId, chatId),
     leadId ? getLeadMemory(tenantId, leadId) : Promise.resolve(null),
     getTenantLearningHints(tenantId),
   ]);
+  let visualCatalogDecision = decideCommercialVisualMatches([], []);
+  if (messageType.toLowerCase() === "image" && kbDocs.some((doc) => doc.type === "catalog")) {
+    try {
+      const rawVisualMatches = await matchInboundImageToCatalog({
+        tenantId,
+        message: incomingMessage,
+        candidates: kbDocs
+          .filter((doc) => doc.type === "catalog")
+          .map((doc) => ({
+            id: doc.id,
+            name: doc.productName,
+            category: doc.productCategory,
+            description: doc.content,
+            imageUrl:
+              doc.mediaType === "image"
+                ? doc.mediaUrl
+                : doc.mediaItems?.find((item) => item.mediaType === "image" && item.usage !== "blocked")?.mediaUrl,
+          })),
+      });
+      visualCatalogDecision = decideCommercialVisualMatches(
+        rawVisualMatches,
+        kbDocs.filter((doc) => doc.type === "catalog").map((doc) => doc.id)
+      );
+      const visualScores = new Map(visualCatalogDecision.matches.map((item) => [item.id, item.confidence]));
+      for (const doc of kbDocs) doc.score += commercialVisualMatchBoost(visualScores.get(doc.id) || 0);
+      kbDocs.sort((a, b) => b.score - a.score);
+    } catch (error) {
+      console.warn(
+        "Comparacao visual do catalogo indisponivel; seguindo com atributos visuais:",
+        error instanceof Error ? error.message : "visual_catalog_match_failed"
+      );
+    }
+  }
   const tenantContextConfigured = aiConfig.tenantContextConfigured || kbDocs.length > 0;
+  const multimodalSummaryForAgent = [
+    multimodal.summary,
+    messageType.toLowerCase() === "image" ? visualCatalogDecision.customerGuidance : "",
+  ].filter(Boolean).join(" ");
   const tenantAiWithLearning: TenantAiConfig = {
     ...aiConfig,
     learningHints,
   };
 
-  const runtimeStateSummary = summarizeRuntimeStateForAgent(runtimeState);
-  const leadMemorySummary = summarizeLeadMemoryForAgent(leadMemory);
+  const effectiveLeadMemory = turnPolicy.resetCommercialTopic ? null : leadMemory;
+  const runtimeStateSummary = turnPolicy.resetCommercialTopic ? "" : summarizeRuntimeStateForAgent(runtimeState);
+  const leadMemorySummary = summarizeLeadMemoryForAgent(effectiveLeadMemory);
   const commercialBrainSummary = summarizeCommercialBrainForAgent(aiConfig.commercialBrain);
+  const tenantContext = compileTenantAiContext({
+    tenantId,
+    agentName: aiConfig.agentName,
+    assistantRole: aiConfig.assistantRole,
+    businessSummary: aiConfig.businessSummary,
+    objective: aiConfig.objective,
+    toneOfVoice: aiConfig.toneOfVoice,
+    commercialBrain: aiConfig.commercialBrain,
+    guardrails: aiConfig.guardrails,
+    mandatoryQuestions: aiConfig.mandatoryQuestions,
+    escalationTopics: aiConfig.escalationTopics,
+    salesMotionInstruction: salesMotionInstruction(aiConfig.salesMotion),
+  });
   const preferredContactName =
     sanitizeText(leadMemory?.preferredName, 80) ||
     sanitizeText(runtimeState?.preferredName, 80) ||
@@ -4768,10 +5343,12 @@ export async function handleIncomingMessage(
           tenantId,
           chatId,
           inboundText,
-          multimodalSummary: multimodal.summary || undefined,
+          multimodalSummary: multimodalSummaryForAgent || undefined,
           messageType,
           channel: chatChannel,
           agentName: aiConfig.agentName,
+          assistantRole: aiConfig.assistantRole,
+          tenantContext,
           contactName: preferredContactName,
           runtimeStateSummary: runtimeStateSummary || undefined,
           leadMemorySummary: leadMemorySummary || undefined,
@@ -4816,7 +5393,7 @@ export async function handleIncomingMessage(
         responseText:
           "Olá! Ainda estou conhecendo esta empresa e não tenho informações confiáveis sobre produtos, serviços ou atendimento. Antes de orientar um cliente, configure a descrição do negócio e a base de conhecimento da empresa.",
       };
-  const choice = tenantContextConfigured
+  const conversationalChoice = tenantContextConfigured
     ? resolveConversationalChoice({
         fallbackChoice,
         llmDecision: llmResult?.decision,
@@ -4832,7 +5409,41 @@ export async function handleIncomingMessage(
         ledBy: "fallback" as const,
         nextAction: fallbackChoice.nextAction || "aprofundar_oportunidade",
         responseText: fallbackChoice.responseText || null,
-      };
+  };
+  const verifiedFactKind = detectVerifiedCommercialFactRequest(inboundText);
+  const needsOfferSelection =
+    Boolean(verifiedFactKind) &&
+    ["price", "inventory", "payment", "delivery"].includes(verifiedFactKind || "") &&
+    !hasSpecificCommercialOfferReference({
+      inboundText,
+      kbDocs,
+      contextOffers: [
+        effectiveLeadMemory?.campaignOfferName,
+        effectiveLeadMemory?.lastOutboundCampaignName,
+        effectiveLeadMemory?.recommendedOffer,
+      ],
+    });
+  const missingVerifiedCommercialFact =
+    Boolean(verifiedFactKind) && !hasVerifiedCommercialFactSource(verifiedFactKind, kbDocs);
+  const choice = needsOfferSelection
+    ? {
+        decision: "ask_more" as const,
+        reason: `offer_selection_required_${verifiedFactKind}`,
+        confidence: 0.99,
+        nextAction: "identificar_oferta_consultada",
+        ledBy: "fallback" as const,
+        responseText: "Claro. De qual produto ou serviço você quer saber?",
+      }
+    : missingVerifiedCommercialFact
+    ? {
+        decision: "handoff" as const,
+        reason: `missing_verified_${verifiedFactKind}`,
+        confidence: 0.99,
+        nextAction: "confirmar_informacao_com_equipe",
+        ledBy: "fallback" as const,
+        responseText: null,
+      }
+    : conversationalChoice;
   const heuristicExtractedFields = extractBusinessFields(inboundText, aiConfig) || null;
   const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields) || null;
   const plannerDecision = deriveOperationalPlan({
@@ -4844,7 +5455,7 @@ export async function handleIncomingMessage(
     llmConfidence: choice.confidence ?? llmResult?.confidence ?? null,
     llmTurnGoal: llmResult?.turnGoal || null,
     runtimeState,
-    leadMemory,
+    leadMemory: effectiveLeadMemory,
     extractedFields,
     conversation,
     kbDocs,
@@ -4853,18 +5464,25 @@ export async function handleIncomingMessage(
       playbookOffers: aiConfig.playbookOffers,
       learningHints: tenantAiWithLearning.learningHints,
       salesMotion: aiConfig.salesMotion,
+      assistantRole: aiConfig.assistantRole,
     },
   });
   const commercialOfferBundle = recommendCommercialOffers({
     kbDocs,
     inboundText,
     extractedFields,
-    leadMemory,
+    leadMemory: effectiveLeadMemory,
     plannerRecommendedOffer: plannerDecision.recommendedOffer || null,
     commercialTemperature: plannerDecision.commercialTemperature || null,
     stageAfter: plannerDecision.stateAfter || null,
   });
-  const recommendedOfferResolved = commercialOfferBundle.primaryOffer || plannerDecision.recommendedOffer || null;
+  const recommendedOfferResolved = turnPolicy.resetCommercialTopic
+    ? null
+    : commercialOfferBundle.primaryOffer;
+  const checkoutAction = resolveCommercialCheckoutAction({
+    offer: commercialOfferBundle.primaryOfferData,
+    inboundText,
+  });
   const nextAction = plannerDecision.nextAction || choice.nextAction;
   const effectiveProvider = llmResult?.provider || runtimeProvider;
   const effectiveModel = llmResult?.model || runtimeModel;
@@ -4874,10 +5492,117 @@ export async function handleIncomingMessage(
       : providerChainError && choice.reason
       ? `provider_fallback_contingency:${sanitizeText(choice.reason, 140)}`
       : choice.reason;
+  const controlledReply = choice.reason.startsWith("offer_selection_required_")
+    ? choice.responseText || ""
+    : "";
   const providerFallbackToolCalls = [
     ...(usageGuardTriggered ? ["usage_cap_contingency"] : []),
     ...(providerChainError ? ["provider_fallback_contingency"] : []),
   ];
+
+  // Shadow mode is deliberately evaluated after retrieval and model routing, but
+  // before every notification, channel lookup, CRM write, automation or outbound
+  // message. It gives managers a real candidate response without touching a lead.
+  if (rolloutDecision.reason === "shadow_only") {
+    const shadowOutboundText =
+      sanitizeLeadFacingAiText({
+        text: controlledReply || llmResult?.responseText || choice.responseText || "",
+        inboundText,
+        leadMemory,
+      }) || "Sem resposta candidata gerada para este turno.";
+    const shadowQuality = scoreAltumConversationQuality({
+      inboundText,
+      outboundText: shadowOutboundText,
+      plan: plannerDecision,
+      runtimeState,
+    });
+    await saveAiLog({
+      logDocId,
+      tenantId,
+      chatId,
+      messageId,
+      leadId,
+      decision: "skip",
+      reason: "conversation_rollout_shadow_only",
+      inboundText,
+      outboundText: shadowOutboundText,
+      toolCalls: ["kb_docs", "offer_engine", "tenant_settings.ai.rollout_shadow", ...providerFallbackToolCalls],
+      confidence: choice.confidence,
+      matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+      extractedFields,
+      nextAction,
+      latencyMs: Date.now() - startedAt,
+      inboundToStartLatencyMs,
+      provider: effectiveProvider,
+      model: effectiveModel,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+      plannerIntent: plannerDecision.intent,
+      stateBefore: plannerDecision.stateBefore,
+      stateAfter: plannerDecision.stateAfter,
+      responseGoal: plannerDecision.responseGoal,
+      recommendedOffer: recommendedOfferResolved,
+      objectionType: plannerDecision.objectionType || null,
+      commercialTemperature: plannerDecision.commercialTemperature || null,
+      llmTurnGoal: llmResult?.turnGoal || null,
+      llmMemorySummary: llmResult?.memorySummary || null,
+      conversationLedBy: choice.ledBy,
+      qualityScore: shadowQuality.score,
+      qualityNotes: ["Modo sombra: resposta calculada, sem envio ou acao externa.", ...shadowQuality.notes],
+      tenantContextFingerprint: tenantContext.fingerprint,
+      tenantContextDiagnostics: tenantContext.diagnostics,
+      rollout: {
+        mode: aiConfig.rollout.mode,
+        percent: aiConfig.rollout.rolloutPercent,
+        bucket: rolloutDecision.bucket,
+        agentVersion: rolloutDecision.assignedVersion,
+        reason: rolloutDecision.reason,
+      },
+    });
+    await logAiUsage({
+      tenantId,
+      scope: "conversation",
+      provider: effectiveProvider,
+      model: effectiveModel,
+      agentId: "sales_autopilot_v1",
+      chatId,
+      leadId,
+      messageId,
+      aiLogId: logDocId,
+      decision: "skip",
+      confidence: choice.confidence,
+      latencyMs: Date.now() - startedAt,
+      inputTokens: llmResult?.inputTokens ?? 0,
+      outputTokens: llmResult?.outputTokens ?? 0,
+      estimatedCostUsd: llmResult?.estimatedCostUsd ?? 0,
+      tier: aiConfig.tier,
+      autonomyMode: aiConfig.autonomyMode,
+      reasoningLevel: aiConfig.reasoningLevel,
+      responseStyle: aiConfig.responseStyle,
+      status: "success",
+      metadata: {
+        reason: "conversation_rollout_shadow_only",
+        shadowMode: true,
+        runtimePolicy: aiConfig.runtimePolicy,
+        fallbackUsed: providerFallbackTriggered,
+        providerChainError,
+        matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+        qualityScore: shadowQuality.score,
+        qualityNotes: shadowQuality.notes,
+        tenantContextFingerprint: tenantContext.fingerprint,
+        tenantContextDiagnostics: tenantContext.diagnostics,
+        rollout: {
+          mode: aiConfig.rollout.mode,
+          percent: aiConfig.rollout.rolloutPercent,
+          bucket: rolloutDecision.bucket,
+          agentVersion: rolloutDecision.assignedVersion,
+        },
+      },
+    });
+    return { decision: "skip", reason: "conversation_rollout_shadow_only" };
+  }
 
   if (providerChainError && leadId) {
     await createAiInternalNotificationOnce({
@@ -4923,6 +5648,7 @@ export async function handleIncomingMessage(
       extractedFields,
       nextAction,
       latencyMs: Date.now() - startedAt,
+      inboundToStartLatencyMs,
       provider: effectiveProvider,
       model: effectiveModel,
       tier: aiConfig.tier,
@@ -4954,6 +5680,7 @@ export async function handleIncomingMessage(
       confidence: choice.confidence,
       matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
       latencyMs: Date.now() - startedAt,
+      inboundToStartLatencyMs,
       provider: effectiveProvider,
       model: effectiveModel,
       tier: aiConfig.tier,
@@ -5051,20 +5778,7 @@ export async function handleIncomingMessage(
       plan: plannerDecision,
       runtimeState,
     });
-    const executedActions = await executeAltumAgentActions({
-      tenantId,
-      chatId,
-      leadId,
-      plan: plannerDecision,
-      runtimeState,
-      extractedFields,
-      conversation,
-      inboundText,
-      businessProfileId: aiConfig.businessProfileId,
-      leadName: sanitizeText(chatData.contactName, 120) || null,
-      leadOwnerId: sanitizeText(chatData.ownerId || chatData.assignedUserId, 160) || null,
-      leadOwnerName: sanitizeText(chatData.ownerName || chatData.assignedUserName, 120) || null,
-    });
+    const executedActions = ["response_paused_actions_suppressed"];
     const pausedSummary = buildPersistentConversationSummary({
       llmMemorySummary: llmResult?.memorySummary || null,
       preferredName: preferredContactName || null,
@@ -5219,11 +5933,15 @@ export async function handleIncomingMessage(
   }
 
   if (choice.decision === "handoff" || plannerDecision.decision === "handoff") {
+    if (!(await isLatestCoordinatedConversationTurn({ tenantId, chatId, messageId }))) {
+      return { decision: "skip", reason: "superseded_before_handoff" };
+    }
     const conversationLink = buildConversationLink(tenantId, chatId);
     const summaryBullets = summarizeForResponsible(conversation);
 
-    const leadAck =
-      "Perfeito, vou acionar um especialista humano agora e priorizar seu atendimento.";
+    const leadAck = choice.reason.startsWith("missing_verified_")
+      ? "Quero te passar essa informaÃ§Ã£o com seguranÃ§a. NÃ£o encontrei uma confirmaÃ§Ã£o atualizada agora, entÃ£o vou pedir para uma pessoa da equipe validar e continuar com vocÃª."
+      : "Perfeito, vou acionar um especialista humano agora e priorizar seu atendimento.";
     const quality = scoreAltumConversationQuality({
       inboundText,
       outboundText: leadAck,
@@ -5438,7 +6156,12 @@ export async function handleIncomingMessage(
       tenantId,
       chatId,
       leadId,
-      plan: plannerDecision,
+      plan: {
+        ...plannerDecision,
+        decision: "handoff",
+        stateAfter: "handoff",
+        reason: plannerDecision.reason || choice.reason,
+      },
       runtimeState,
       extractedFields,
       conversation,
@@ -5447,6 +6170,9 @@ export async function handleIncomingMessage(
       leadName: sanitizeText(chatData.contactName, 120) || null,
       leadOwnerId: sanitizeText(chatData.ownerId || chatData.assignedUserId, 160) || null,
       leadOwnerName: sanitizeText(chatData.ownerName || chatData.assignedUserName, 120) || null,
+      autonomyMode: aiConfig.autonomyMode,
+      followUpStrategy: aiConfig.commercialBrain.followUpStrategy,
+      proposalStyle: aiConfig.commercialBrain.proposalStyle,
     });
 
     await saveAiLog({
@@ -5641,7 +6367,7 @@ export async function handleIncomingMessage(
 
   let responseText =
     chooseConversationalReply({
-      llmResponseText: llmResult?.responseText || choice.responseText || "",
+      llmResponseText: controlledReply || llmResult?.responseText || choice.responseText || "",
       previousOutboundText: runtimeState?.lastOutboundText || null,
       fallbackWriterText: makeLeadFacingReply({
         tenantAi: aiConfig,
@@ -5679,24 +6405,10 @@ export async function handleIncomingMessage(
       inboundText,
       leadMemory,
     }) || "Entendi. Me conta em uma frase o que voce quer resolver agora que eu te direciono melhor.";
-  let secondaryResponseText = buildSecondaryCommercialNudge({
-    inboundText,
-    responseText,
-    messageType: sanitizeText(incomingMessage.type, 40) || null,
-    decision: choice.decision,
-    conversation,
-    mandatoryQuestions: aiConfig.mandatoryQuestions,
-  });
-  if (outboundCampaignContinuation || forcedCampaignContextReply) {
-    secondaryResponseText = null;
-  }
-  if (secondaryResponseText) {
-    secondaryResponseText = sanitizeLeadFacingAiText({
-      text: secondaryResponseText,
-      inboundText,
-      leadMemory,
-    });
-  }
+  // Nunca acrescentar uma segunda pergunta de qualificação de forma automática.
+  // Mensagens adicionais continuam restritas a situações operacionais explícitas
+  // (por exemplo, checkout ou formato de resposta), tratadas mais abaixo.
+  let secondaryResponseText: string | null = null;
   const whatsappServiceWindowClosed = shouldUseWhatsApp && whatsappChannel && isOfficialWhatsAppProvider(whatsappChannel.provider)
     ? isWhatsAppServiceWindowClosed(chatData.lastClientMessageAt)
     : false;
@@ -5709,10 +6421,6 @@ export async function handleIncomingMessage(
     hasChannel: Boolean(whatsappChannel),
     hasLeadPhone: Boolean(leadPhone),
     inboundMessageType: incomingMessage.type as string | null,
-    plannerIntent: plannerDecision.intent,
-    responseGoal: plannerDecision.responseGoal,
-    commercialTemperature: plannerDecision.commercialTemperature,
-    recommendedOffer: recommendedOfferResolved,
   });
   const inboundMessageType = sanitizeText(incomingMessage.type, 40).toLowerCase();
   const leadPrefersText = resolvedResponsePreference === "text";
@@ -5730,7 +6438,9 @@ export async function handleIncomingMessage(
     : shouldSendVoiceReply
       ? "explicit_voice_request"
       : voiceReplyDecision.reason;
-  const shouldAskResponseFormatNow = !shouldSendVoiceReply && shouldOfferResponseFormatChoice({
+  const shouldAskResponseFormatNow =
+    !["greeting", "relational", "correction", "conversation_request"].includes(turnPolicy.kind) &&
+    !checkoutAction.shouldSend && !shouldSendVoiceReply && shouldOfferResponseFormatChoice({
     chatState,
     messageType,
     inboundText,
@@ -5846,12 +6556,24 @@ export async function handleIncomingMessage(
       });
     }
   }
-  const openQuestionForMemory = finalOutboundText;
+  const configuredRestriction = enforceCommercialOutboundRestrictions({
+    text: finalOutboundText,
+    forbiddenSalesMoves: aiConfig.commercialBrain.forbiddenSalesMoves,
+  });
+  if (configuredRestriction.blockedReasons.length) {
+    finalOutboundText = configuredRestriction.text;
+    secondaryResponseText = "";
+    qualityGateApplied = true;
+    qualityGateReason = [qualityGateReason, ...configuredRestriction.blockedReasons].filter(Boolean).join(",");
+  }
+  const openQuestionForMemory = finalOutboundText.includes("?") ? finalOutboundText : "";
   const conversationSummary = buildPersistentConversationSummary({
     llmMemorySummary: llmResult?.memorySummary || null,
     preferredName: preferredContactName || null,
     leadTone: extractedFields?.leadTone || runtimeState?.leadTone || leadMemory?.leadTone || null,
-    activeTopic: extractedFields?.activeTopic || runtimeState?.activeTopic || leadMemory?.activeTopic || null,
+    activeTopic: turnPolicy.resetCommercialTopic
+      ? null
+      : extractedFields?.activeTopic || runtimeState?.activeTopic || leadMemory?.activeTopic || null,
     conversationMaturity: plannerDecision.stateAfter,
     businessType: extractedFields?.businessType || extractedFields?.niche || leadMemory?.businessType || null,
     primaryGoal: extractedFields?.primaryGoal || extractedFields?.goal || leadMemory?.primaryGoal || null,
@@ -5861,6 +6583,44 @@ export async function handleIncomingMessage(
     recommendedOffer: recommendedOfferResolved,
     nextAction,
   });
+  const checkoutFollowUpText = checkoutAction.shouldSend && checkoutAction.url
+    ? `Para concluir com seguranca, use o link oficial desta oferta: ${checkoutAction.url}`
+    : "";
+  let checkoutStandaloneText = "";
+  if (checkoutFollowUpText) {
+    if (shouldSendVoiceReply) checkoutStandaloneText = checkoutFollowUpText;
+    else {
+      secondaryResponseText = secondaryResponseText
+        ? `${secondaryResponseText}\n${checkoutFollowUpText}`
+        : checkoutFollowUpText;
+    }
+  }
+  const beforeTurnPolicyText = finalOutboundText;
+  finalOutboundText = enforceConversationTurnPolicy({
+    inboundText,
+    outboundText: finalOutboundText,
+    messageType,
+  });
+  if (["greeting", "relational", "correction", "conversation_request"].includes(turnPolicy.kind)) {
+    secondaryResponseText = "";
+  }
+  if (secondaryResponseText) {
+    responseText = finalOutboundText;
+    secondaryResponseText = checkoutFollowUpText || "";
+  }
+  if (normalizeComparable(beforeTurnPolicyText) !== normalizeComparable(finalOutboundText)) {
+    qualityGateApplied = true;
+    qualityGateReason = [qualityGateReason, `turn_policy:${turnPolicy.kind}`].filter(Boolean).join(",");
+  }
+  quality = scoreAltumConversationQuality({
+    inboundText,
+    outboundText: finalOutboundText,
+    plan: plannerDecision,
+    runtimeState,
+  });
+  if (!(await isLatestCoordinatedConversationTurn({ tenantId, chatId, messageId }))) {
+    return { decision: "skip", reason: "superseded_before_send" };
+  }
   const primaryTextToSend = secondaryResponseText ? responseText : finalOutboundText;
 
   let sentAsTemplate = false;
@@ -5871,6 +6631,8 @@ export async function handleIncomingMessage(
   let sentOutboundMessageId: string | null = null;
   let voiceReplySent = false;
   let voiceReplyError: string | null = null;
+  let voiceReplyDurationMs: number | null = null;
+  let voiceReplyDurationSource: "measured_wav" | "estimated_text" | null = null;
 
   if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
     if (whatsappServiceWindowClosed) {
@@ -5956,6 +6718,8 @@ export async function handleIncomingMessage(
             voiceReplyTranscript: voiceSent.text,
           });
           voiceReplySent = true;
+          voiceReplyDurationMs = voiceSent.durationMs;
+          voiceReplyDurationSource = voiceSent.durationSource;
         } catch (error) {
           voiceReplyError =
             error instanceof Error ? sanitizeText(error.message, 220) : "voice_reply_send_failed";
@@ -6037,6 +6801,34 @@ export async function handleIncomingMessage(
     });
   }
 
+  if (checkoutStandaloneText && !sentAsTemplate && !whatsappServiceWindowClosed) {
+    let checkoutMessageId: string | null = null;
+    if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
+      const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendText({
+        to: leadPhone,
+        text: checkoutStandaloneText,
+      });
+      checkoutMessageId = sent.externalMessageId;
+    } else if (isMetaConversation && metaChannel && metaRecipientId) {
+      await sendMetaConversationText({
+        channel: metaChannel,
+        recipientId: metaRecipientId,
+        text: checkoutStandaloneText,
+      });
+    }
+
+    await addMessage({
+      chatId,
+      tenantId,
+      text: checkoutStandaloneText,
+      sender: "agent",
+      channel: chatChannel,
+      channelPhoneNumberId: whatsappChannel?.phoneNumberId,
+      senderName: agentDisplayName,
+      metaMessageId: checkoutMessageId,
+    });
+  }
+
   const mediaDoc = selectMediaDocForLead({
     inboundText,
     kbDocs,
@@ -6045,6 +6837,7 @@ export async function handleIncomingMessage(
     commercialTemperature: plannerDecision.commercialTemperature || null,
   });
   let mediaAssetSent = false;
+  let mediaAssetError: string | null = null;
   if (mediaDoc?.mediaUrl && mediaDoc.mediaType && !whatsappServiceWindowClosed) {
     const mediaCaption =
       sanitizeText(mediaDoc.mediaTitle, 180) ||
@@ -6065,8 +6858,15 @@ export async function handleIncomingMessage(
         await sendMetaConversationText({
           channel: metaChannel,
           recipientId: metaRecipientId,
-          text: `${mediaCaption}\n${mediaDoc.mediaUrl}`,
+          text: mediaCaption,
         });
+        const sent = await sendMetaConversationMedia({
+          channel: metaChannel,
+          recipientId: metaRecipientId,
+          mediaUrl: mediaDoc.mediaUrl,
+          mediaType: mediaDoc.mediaType,
+        });
+        mediaMessageId = sanitizeText(sent?.message_id, 240) || null;
       }
 
       await addMessage({
@@ -6086,7 +6886,49 @@ export async function handleIncomingMessage(
       });
       mediaAssetSent = true;
     } catch (error) {
+      mediaAssetError = error instanceof Error ? sanitizeText(error.message, 220) : "media_send_failed";
       console.error("Falha ao enviar midia da base pela IA:", error);
+      const mediaFailureText = "Nao consegui carregar esse material agora. Vou deixar a equipe avisada para te enviar a opcao correta sem voce precisar repetir o pedido.";
+      try {
+        let failureMessageId: string | null = null;
+        if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
+          const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendText({
+            to: leadPhone,
+            text: mediaFailureText,
+          });
+          failureMessageId = sent.externalMessageId;
+        } else if (isMetaConversation && metaChannel && metaRecipientId) {
+          await sendMetaConversationText({
+            channel: metaChannel,
+            recipientId: metaRecipientId,
+            text: mediaFailureText,
+          });
+        }
+        await addMessage({
+          chatId,
+          tenantId,
+          text: mediaFailureText,
+          sender: "agent",
+          channel: chatChannel,
+          channelPhoneNumberId: whatsappChannel?.phoneNumberId,
+          senderName: agentDisplayName,
+          metaMessageId: failureMessageId,
+        });
+      } catch (fallbackError) {
+        console.error("Falha ao avisar o cliente sobre a midia indisponivel:", fallbackError);
+      }
+      if (leadId) {
+        await createAiInternalNotificationOnce({
+          tenantId,
+          chatId,
+          leadId,
+          type: "ai_catalog_media_send_failed",
+          severity: "high",
+          title: "Material solicitado nao foi enviado",
+          detail: `A IA tentou enviar ${mediaDoc.mediaTitle || mediaDoc.productName || "um material do catalogo"} e falhou: ${mediaAssetError}.`,
+          dedupeWindowMinutes: 180,
+        });
+      }
     }
   }
 
@@ -6119,6 +6961,9 @@ export async function handleIncomingMessage(
     leadName: sanitizeText(chatData.contactName, 120) || null,
     leadOwnerId: sanitizeText(chatData.ownerId || chatData.assignedUserId, 160) || null,
     leadOwnerName: sanitizeText(chatData.ownerName || chatData.assignedUserName, 120) || null,
+    autonomyMode: aiConfig.autonomyMode,
+    followUpStrategy: aiConfig.commercialBrain.followUpStrategy,
+    proposalStyle: aiConfig.commercialBrain.proposalStyle,
   });
 
   await saveAiLog({
@@ -6137,13 +6982,35 @@ export async function handleIncomingMessage(
       "chat_state",
       "tenant_settings.ai",
       shouldUseWhatsApp ? "whatsapp_send" : isMetaConversation ? "meta_send" : "site_chat_reply",
+      ...(checkoutAction.shouldSend ? ["catalog_checkout"] : []),
+      ...(messageType.toLowerCase() === "image" ? ["catalog_visual_match"] : []),
       ...providerFallbackToolCalls,
     ],
     confidence: choice.confidence,
     matchedKbDocIds: kbDocs.slice(0, 5).map((doc) => doc.id),
+    groundingSources: [
+      ...kbDocs.slice(0, 5).map((doc) => ({
+        kind: doc.type === "catalog" ? ("catalog" as const) : ("knowledge" as const),
+        id: doc.id,
+        label:
+          sanitizeText(doc.productName || doc.mediaTitle, 100) ||
+          sanitizeText(doc.content, 100) ||
+          (doc.type === "catalog" ? "Item do catalogo" : "Documento da base"),
+        detail: `${doc.type} · relevancia ${Number(doc.score || 0).toFixed(2)}`,
+      })),
+      ...(cleanLeadFacingCampaignText(leadMemory?.campaignOfferName, 160)
+        ? [{
+            kind: "campaign" as const,
+            id: sanitizeText(leadMemory?.attributionCampaignId || leadMemory?.lastOutboundCampaignId, 160) || "campaign_context",
+            label: cleanLeadFacingCampaignText(leadMemory?.campaignOfferName, 160),
+            detail: "Contexto da campanha que originou a conversa",
+          }]
+        : []),
+    ],
     extractedFields,
     nextAction,
     latencyMs: Date.now() - startedAt,
+    inboundToStartLatencyMs,
     provider: effectiveProvider,
     model: effectiveModel,
     tier: aiConfig.tier,
@@ -6164,6 +7031,15 @@ export async function handleIncomingMessage(
     qualityNotes: quality.notes,
     qualityGateApplied,
     qualityGateReason,
+    tenantContextFingerprint: tenantContext.fingerprint,
+    tenantContextDiagnostics: tenantContext.diagnostics,
+    rollout: {
+      mode: aiConfig.rollout.mode,
+      percent: aiConfig.rollout.rolloutPercent,
+      bucket: rolloutDecision.bucket,
+      agentVersion: rolloutDecision.assignedVersion,
+      reason: rolloutDecision.reason,
+    },
   });
   await logAiUsage({
     tenantId,
@@ -6210,6 +7086,11 @@ export async function handleIncomingMessage(
       offerBundleCrossSell: commercialOfferBundle.crossSellOffer,
       offerBundlePrimaryDocId: commercialOfferBundle.primaryDocId,
       offerBundleRationale: commercialOfferBundle.rationale,
+      checkoutActionReason: checkoutAction.reason,
+      checkoutLinkSent: checkoutAction.shouldSend,
+      visualCatalogMatchStatus: visualCatalogDecision.status,
+      visualCatalogTopConfidence: visualCatalogDecision.topConfidence,
+      visualCatalogMatchIds: visualCatalogDecision.matches.map((item) => item.id),
       objectionType: plannerDecision.objectionType || null,
       commercialTemperature: plannerDecision.commercialTemperature || null,
       conversationLedBy: choice.ledBy,
@@ -6217,10 +7098,20 @@ export async function handleIncomingMessage(
       qualityNotes: quality.notes,
       qualityGateApplied,
       qualityGateReason,
+      tenantContextFingerprint: tenantContext.fingerprint,
+      tenantContextDiagnostics: tenantContext.diagnostics,
+      rollout: {
+        mode: aiConfig.rollout.mode,
+        percent: aiConfig.rollout.rolloutPercent,
+        bucket: rolloutDecision.bucket,
+        agentVersion: rolloutDecision.assignedVersion,
+        reason: rolloutDecision.reason,
+      },
       secondaryResponseSent: Boolean(secondaryResponseText),
       secondaryResponseText: secondaryResponseText || null,
       executedActions,
       mediaAssetSent,
+      mediaAssetError,
       voiceReplySent,
       voiceReplyError,
       voiceReplyDecisionReason,
@@ -6228,6 +7119,8 @@ export async function handleIncomingMessage(
       voiceAvailableThisTurn,
       voiceReplyMode: aiConfig.voiceReplyMode,
       voiceReplyMaxChars: aiConfig.voiceReplyMaxChars,
+      voiceReplyDurationMs,
+      voiceReplyDurationSource,
       responseFormatPreference: resolvedResponsePreference || null,
       inferredResponsePreferenceReason: inferredResponsePreference.reason,
       responseFormatPromptSent,

@@ -46,6 +46,13 @@ function money(value: unknown) {
 }
 
 function mapWebhookStatus(event: string, payment: Record<string, unknown>): FinanceWebhookStatus | null {
+  if (event === "PAYMENT_CREATED" || event === "PAYMENT_AWAITING_RISK_ANALYSIS") {
+    return {
+      status: "pendente",
+      title: "Cobrança criada",
+      detail: `Cobrança via ${clean(payment.billingType, 40) || "Asaas"} no valor de ${money(payment.value)} disponível para pagamento.`,
+    };
+  }
   if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
     return {
       status: "pago",
@@ -262,6 +269,11 @@ export async function POST(req: Request) {
       const tenantRef = adminDb.collection("tenants").doc(selfService.tenantId);
       const currentTenantSnap = await tenantRef.get();
       const currentTenant = (currentTenantSnap.data() || {}) as Record<string, unknown>;
+      const entitlementSnap = await adminDb.collection("tenant_entitlements").doc(selfService.tenantId).get();
+      const entitlement = (entitlementSnap.data() || {}) as Record<string, unknown>;
+      const entitlementSource = clean(entitlement.entitlementSource, 80);
+      const adminManagedEntitlements = entitlementSource.startsWith("admin_") || (entitlement.mode === "custom" && entitlementSource !== "trial");
+      const contractId = clean(currentTenant.legacyClientId, 180) || selfService.tenantId;
       if (subscriptionId && currentTenant.asaasSubscriptionId && currentTenant.asaasSubscriptionId !== subscriptionId) {
         await eventLedgerRef.set({ status: "completed", ignored: "previous_subscription", completedAt: FieldValue.serverTimestamp() }, { merge: true });
         return NextResponse.json({ received: true, ignored: true });
@@ -311,7 +323,7 @@ export async function POST(req: Request) {
       }
       await Promise.all([
         tenantRef.set(tenantPatch, { merge: true }),
-        adminDb.collection("client_contracts").doc(selfService.tenantId).set({
+        adminDb.collection("client_contracts").doc(contractId).set({
           billingProvider: "asaas",
           platformAccessMode: "asaas_subscription",
           platformPlan: selfService.planId,
@@ -320,7 +332,7 @@ export async function POST(req: Request) {
           asaasLastPaymentId: chargeId,
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true }),
-        ...(mapped.isPaid && !currentTenant.cancelAtPeriodEnd && !currentTenant.billingOperationPending && !["cancelled", "refund_pending"].includes(String(currentTenant.billingStatus)) ? [applyPlatformPlanEntitlements({
+        ...(mapped.isPaid && !adminManagedEntitlements && !currentTenant.cancelAtPeriodEnd && !currentTenant.billingOperationPending && !["cancelled", "refund_pending"].includes(String(currentTenant.billingStatus)) ? [applyPlatformPlanEntitlements({
           tenantId: selfService.tenantId,
           planId: selfService.planId,
           source: "asaas_webhook",
@@ -333,6 +345,24 @@ export async function POST(req: Request) {
       .where("asaasChargeId", "==", chargeId)
       .limit(20)
       .get();
+
+    if (financeSnap.empty && selfService?.tenantId && subscriptionId) {
+      const tenant = await adminDb.collection("tenants").doc(selfService.tenantId).get();
+      const tenantData = (tenant.data() || {}) as Record<string, unknown>;
+      const contractId = clean(tenantData.legacyClientId, 180) || selfService.tenantId;
+      const dueDate = clean(payment.dueDate, 20) || null;
+      const invoiceUrl = clean(payment.invoiceUrl, 500) || null;
+      await adminDb.collection("financeiro").doc(`asaas_subscription_${chargeId}`).set({
+        tenantId: selfService.tenantId, clientId: contractId, contractId,
+        descricao: "Assinatura Altum", valor: Number(payment.value || 0) || 0,
+        status: mapped.status, dueDate, vencimento: dueDate, contractDueDate: dueDate,
+        billingType: clean(payment.billingType, 40) || "PIX",
+        asaasChargeId: chargeId, asaasSubscriptionId: subscriptionId,
+        invoiceUrl, paymentLink: invoiceUrl, contractAutoBilling: true,
+        asaasEvent: event, asaasStatus: clean(payment.status, 80) || null,
+        createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
 
     const automationQueue: Array<{ tenantId: string; leadId: string }> = [];
     const saleQueue: Array<{ tenantId: string; leadId: string; sourceId: string }> = [];

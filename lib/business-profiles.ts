@@ -579,47 +579,24 @@ export function getBusinessProfilePlaybookPreset(profileId?: unknown): {
   }
 
   return {
-    offers: [
-      {
-        title: "Atendimento consultivo inicial",
-        category: "Entrada",
-        targetProfile: "Lead com dor ou demanda comercial em validacao",
-        whenToOffer: "Quando o lead demonstra interesse real e precisa de orientacao para o proximo passo.",
-        priceFrom: 500,
-        priceTo: 2500,
-      },
-      {
-        title: "Proposta comercial principal",
-        category: "Comercial",
-        targetProfile: "Lead qualificado e pronto para avancar",
-        whenToOffer: "Depois de entender contexto, urgencia, fit e investimento.",
-        priceFrom: 2500,
-        priceTo: 8000,
-      },
-      {
-        title: "Onboarding ou acompanhamento",
-        category: "Pos-venda",
-        targetProfile: "Cliente convertido",
-        whenToOffer: "Apos fechamento, para consolidar a entrega ou recorrencia.",
-        priceFrom: 900,
-        priceTo: 3000,
-      },
-    ],
+    // Um tenant generico nao possui oferta nem preco verificavel. A IA so pode
+    // vender itens realmente cadastrados pelo cliente na base da operacao.
+    offers: [],
     scripts: [
       {
-        situation: "Lead ainda sem contexto suficiente",
-        goal: "Qualificar sem travar a conversa",
-        script: "Perfeito. Para eu te orientar melhor, me conta qual e o principal objetivo hoje, qual o prazo ideal para resolver isso e se ja existe alguma faixa de investimento pensada.",
+        situation: "Inicio de conversa",
+        goal: "Acolher antes de qualificar",
+        script: "Oi! Tudo bem? Pode falar. Como posso te ajudar?",
       },
       {
-        situation: "Lead pronto para proximo passo",
-        goal: "Conduzir para reuniao, proposta ou atendimento humano",
-        script: "Faz sentido avancarmos. Com o que voce trouxe, o melhor proximo passo agora e alinhar os detalhes finais para eu te encaminhar com a pessoa ou proposta certa.",
+        situation: "Cliente trouxe uma pergunta ou necessidade",
+        goal: "Responder primeiro e entender o contexto sem interrogatorio",
+        script: "Entendi. Vou responder exatamente esse ponto e, se faltar algum contexto importante, te faco uma pergunta por vez.",
       },
       {
-        situation: "Lead levantou objecao",
-        goal: "Responder com seguranca e manter o interesse",
-        script: "Entendo totalmente. Antes de tentar te responder no escuro, prefiro alinhar melhor seu contexto para te orientar com clareza e sem prometer algo fora do que realmente faz sentido para voce.",
+        situation: "Informacao nao cadastrada ou duvidosa",
+        goal: "Nao inventar produto, preco, prazo ou condicao",
+        script: "Nao encontrei essa informacao confirmada por aqui. Posso chamar uma pessoa da equipe para te responder com seguranca.",
       },
     ],
   };

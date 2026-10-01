@@ -488,7 +488,7 @@ export default function ClienteConfiguracoesPage() {
     if (summary.activeUsers === 0) {
       items.push({
         id: "users",
-        href: "/cliente/painel/configuracoes/usuarios",
+        href: "/cliente/painel/configuracoes/times",
         title: "Adicionar equipe",
         description: "Sem usuarios ativos, a operacao nao consegue responder e distribuir conversas direito.",
         badge: "equipe",
@@ -497,7 +497,7 @@ export default function ClienteConfiguracoesPage() {
     } else if (summary.onlineUsers === 0) {
       items.push({
         id: "availability",
-        href: "/cliente/painel/configuracoes/usuarios",
+        href: "/cliente/painel/configuracoes/times",
         title: "Ninguem esta online para atendimento",
         description: "Revise disponibilidade da equipe para evitar conversas paradas.",
         badge: "escala",
@@ -628,24 +628,14 @@ export default function ClienteConfiguracoesPage() {
       badge: summary.hasCompanyProfile ? "perfil pronto" : "pendente",
       tone: summary.hasCompanyProfile ? ("success" as const) : ("warning" as const),
     },
-    ...(hasCapability("manage_users")
-      ? [{
-      href: "/cliente/painel/configuracoes/usuarios",
-      title: "Usuarios e permissoes",
-      description: `${summary.activeUsers} membro(s) com acesso a esta conta.`,
-      icon: Users2,
-      badge: `${summary.activeUsers} ativos`,
-      tone: summary.activeUsers > 0 ? ("info" as const) : ("warning" as const),
-    }]
-      : []),
-    ...(hasCapability("manage_settings")
+    ...(hasCapability("manage_users") || hasCapability("manage_settings")
       ? [{
       href: "/cliente/painel/configuracoes/times",
-      title: "Times e responsaveis",
-      description: `${summary.managedTeams} time(s) configurado(s) para distribuir atendimento e vendas.`,
+      title: "Equipe e acessos",
+      description: `${summary.activeUsers} pessoa(s) em ${summary.managedTeams} time(s). Perfis, permissões e canais no mesmo lugar.`,
       icon: UsersRound,
-      badge: `${summary.managedTeams} times`,
-      tone: summary.managedTeams > 0 ? ("info" as const) : ("warning" as const),
+      badge: `${summary.activeUsers} pessoas`,
+      tone: summary.activeUsers > 0 ? ("info" as const) : ("warning" as const),
     }]
       : []),
     {
@@ -720,6 +710,22 @@ export default function ClienteConfiguracoesPage() {
     },
    ];
 
+  const primarySettingsOrder = [
+    "/cliente/painel/configuracoes/empresa",
+    "/cliente/painel/configuracoes/times",
+    "/cliente/painel/configuracoes/canais",
+    "/cliente/painel/configuracoes/operacao",
+    "/cliente/painel/ia",
+    "/cliente/painel/configuracoes/integracoes",
+    "/cliente/painel/produtos-servicos",
+    "/cliente/painel/conhecimento",
+    "/cliente/painel/configuracoes/social",
+    "/cliente/painel/configuracoes/faturamento",
+  ];
+  const primarySettings = primarySettingsOrder
+    .map((href) => links.find((item) => item.href === href))
+    .filter((item): item is SettingsLink => Boolean(item));
+
   return (
     <div className="settings-refined client-daily-page space-y-6">
       <SectionHeader
@@ -741,7 +747,74 @@ export default function ClienteConfiguracoesPage() {
       ) : null}
 
       {!loading ? (
-        <>
+        <PanelCard className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--cliente-accent)]">Acessos principais</p>
+              <h2 className="mt-1 text-lg font-semibold text-[var(--cliente-card-text)]">Escolha o que você quer configurar</h2>
+            </div>
+            <p className="text-xs text-[var(--cliente-card-text-soft)]">Configuração do negócio primeiro. Diagnósticos ficam no avançado.</p>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {primarySettings.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="group flex min-w-0 items-center gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3 transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]"
+                >
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-[var(--cliente-card-text)]">{item.title}</span>
+                    <span className="mt-0.5 block truncate text-xs text-[var(--cliente-card-text-soft)]">{item.badge}</span>
+                  </span>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-[var(--cliente-card-text-soft)] transition group-hover:translate-x-0.5 group-hover:text-[var(--cliente-accent)]" />
+                </Link>
+              );
+            })}
+          </div>
+        </PanelCard>
+      ) : null}
+
+      {!loading && topBlockers.length ? (
+        <PanelCard className="border-amber-200 bg-amber-50/70 p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-amber-700">Precisa de atenção</p>
+              <h2 className="mt-1 text-base font-semibold text-amber-950">Resolva o que pode impedir a operação</h2>
+            </div>
+            <StateBadge label={`${topBlockers.length} pendência(s)`} tone="warning" />
+          </div>
+          <div className="mt-3 grid gap-2 lg:grid-cols-2">
+            {topBlockers.slice(0, 2).map((item) => (
+              <Link key={item.id} href={item.href} className="group flex items-center gap-3 rounded-2xl border border-amber-200 bg-white px-4 py-3 transition hover:border-amber-300">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-slate-900">{item.title}</span>
+                  <span className="mt-0.5 block truncate text-xs text-slate-500">{item.description}</span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-amber-600 transition group-hover:translate-x-0.5" />
+              </Link>
+            ))}
+          </div>
+        </PanelCard>
+      ) : null}
+
+      <details className="group rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-[var(--cliente-card-text)]">
+          <span>
+            Diagnóstico técnico e implantação
+            <span className="ml-2 font-normal text-[var(--cliente-card-text-soft)]">saúde, checklist, alertas e validação</span>
+          </span>
+          <span className="text-xs font-semibold text-[var(--cliente-accent)] group-open:hidden">Abrir</span>
+          <span className="hidden text-xs font-semibold text-[var(--cliente-accent)] group-open:inline">Recolher</span>
+        </summary>
+        <div className="mt-4 space-y-6 border-t border-[var(--cliente-border)] pt-4">
+          {!loading ? (
+            <>
           <section className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
             <PanelCard tone="spotlight" className="p-5 md:p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1232,8 +1305,10 @@ export default function ClienteConfiguracoesPage() {
               );
             })}
           </section>
-        </>
-      ) : null}
+            </>
+          ) : null}
+        </div>
+      </details>
     </div>
   );
 }

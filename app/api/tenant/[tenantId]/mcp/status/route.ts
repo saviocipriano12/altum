@@ -3,12 +3,13 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { grantSchema, scopes, tools as mcpTools } from "@/lib/mcp/contracts";
+import { MCP_WRITE_SCOPES } from "@/lib/mcp/scope-catalog";
 import { endpoint, listMcpConnections, MCP_AUTHORIZE_PATH, MCP_REMOTE_PATH, MCP_TOKEN_PATH } from "@/lib/server/mcp/oauth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError, getTenantSettings } from "@/lib/server/tenant";
 
 type McpBody = {
   enabled?: boolean;
-  writeMode?: "disabled" | "draft_only" | "approval_required";
+  writeMode?: "disabled" | "approval_required" | "autonomous";
   allowedClients?: string[];
   notes?: string;
 };
@@ -37,10 +38,9 @@ function parseMcpSettings(value: unknown) {
     : [];
   return {
     enabled: raw.enabled === true,
-    writeMode:
-      writeMode === "draft_only" || writeMode === "approval_required" || writeMode === "disabled"
-        ? writeMode
-        : "disabled",
+    writeMode: writeMode === "draft_only" ? "approval_required"
+      : writeMode === "approval_required" || writeMode === "autonomous" || writeMode === "disabled" ? writeMode
+      : "disabled",
     allowedClients,
     notes: clean(raw.notes, 800),
     updatedAt: raw.updatedAt || null,
@@ -126,11 +126,18 @@ export async function GET(
         totalTools: definitions.length,
         readTools,
         draftTools,
-        writeTools: tenantMcp.writeMode === "approval_required" ? "supervised_with_approval" : "disabled",
+        writeTools: tenantMcp.writeMode === "autonomous" ? "autonomous" : tenantMcp.writeMode === "approval_required" ? "supervised_with_approval" : "disabled",
         remoteMcp: routeEnabled && secretReady && tenantMcp.enabled ? "ready_for_oauth_clients" : "configure_environment",
       },
       commands: commands(origin),
-      connections,
+      connections: connections.map((connection) => {
+        const missingWriteScopes = MCP_WRITE_SCOPES.filter((scope) => !connection.scopes.includes(scope));
+        return {
+          ...connection,
+          writeReady: connection.status === "active" && missingWriteScopes.length === 0,
+          missingWriteScopes,
+        };
+      }),
       nextSteps: [
         routeEnabled ? "Rota interna MCP ligada." : "Ative ALTUM_MCP_ENABLED=true no ambiente.",
         secretReady ? "Segredo MCP configurado." : "Configure MCP_CONTEXT_SECRET com pelo menos 32 caracteres.",
@@ -163,7 +170,7 @@ export async function POST(
 
     const body = (await req.json().catch(() => ({}))) as McpBody;
     const writeMode =
-      body.writeMode === "draft_only" || body.writeMode === "approval_required" || body.writeMode === "disabled"
+      body.writeMode === "approval_required" || body.writeMode === "autonomous" || body.writeMode === "disabled"
         ? body.writeMode
         : "disabled";
     const allowedClients = Array.isArray(body.allowedClients)

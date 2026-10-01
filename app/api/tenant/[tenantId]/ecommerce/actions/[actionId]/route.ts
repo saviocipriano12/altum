@@ -47,6 +47,12 @@ export async function PATCH(
         resolvedAt: status === "done" || status === "dismissed" ? FieldValue.serverTimestamp() : null,
         resolvedBy: status === "done" || status === "dismissed" ? user.uid : null,
         resolvedByName: status === "done" || status === "dismissed" ? user.name : null,
+        ...(status === "pending" ? {
+          sendAttempts: 0,
+          nextAttemptAt: null,
+          lastSendError: "",
+          processingRunId: null,
+        } : {}),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }

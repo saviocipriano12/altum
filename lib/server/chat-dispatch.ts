@@ -17,6 +17,7 @@ import {
   sendMetaConversationText,
 } from "@/app/lib/server/meta-channel";
 import { getChatStateDocId } from "@/lib/server/ai/agent";
+import { observeConversationCommercialState } from "@/lib/server/crm/conversation-intelligence";
 import { assertTenantStorageAvailable } from "@/lib/server/tenant-usage";
 import { saveChatMediaBuffer } from "@/lib/server/firebase-storage";
 
@@ -266,6 +267,7 @@ export async function sendTenantChatText(input: {
     }
   }
 
+  const messageRef = adminDb.collection("messages").doc();
   const writes: Promise<unknown>[] = [
     chatRef.set(
       {
@@ -282,7 +284,7 @@ export async function sendTenantChatText(input: {
       },
       { merge: true }
     ),
-    adminDb.collection("messages").add({
+    messageRef.set({
       chatId,
       tenantId,
       text: persistedText,
@@ -324,6 +326,18 @@ export async function sendTenantChatText(input: {
   }
 
   await Promise.all(writes);
+
+  // A resposta humana pausa somente a resposta automatica. O observador segue
+  // registrando compromissos comerciais, proximo passo e evidencia no CRM.
+  await observeConversationCommercialState({
+    tenantId,
+    chatId,
+    messageId: messageRef.id,
+    actorId: input.actor.id,
+    actorName: input.actor.name,
+  }).catch((error) => {
+    console.error("Falha ao observar resposta humana para CRM:", error);
+  });
 
   return {
     tenantId,

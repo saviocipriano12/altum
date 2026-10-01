@@ -302,7 +302,7 @@ export default function ClienteFollowUpsPage() {
           </>
         }
       >
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <CrmMetric label="Pendentes" value={String(summary?.pending ?? 0)} detail="retornos abertos" icon={Clock3} tone="blue" />
           <CrmMetric label="Vencidos" value={String(summary?.overdue ?? 0)} detail="precisam resposta" icon={AlertTriangle} tone={(summary?.overdue || 0) > 0 ? "red" : "neutral"} />
           <CrmMetric label="Hoje" value={String(summary?.dueToday ?? 0)} detail="na agenda do time" icon={CalendarCheck} tone="orange" />

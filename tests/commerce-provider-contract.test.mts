@@ -6,7 +6,7 @@ import { assertSafeCommerceUrl } from "../lib/server/commerce/http.ts";
 import { COMMERCE_PROVIDER_IDS } from "../lib/server/commerce/types.ts";
 
 test("commerce provider catalog preserves every advertised platform", () => {
-  assert.deepEqual(COMMERCE_PROVIDER_IDS, ["shopify", "nuvemshop", "woocommerce", "vtex", "tray", "loja_integrada"]);
+  assert.deepEqual(COMMERCE_PROVIDER_IDS, ["shopify", "nuvemshop", "woocommerce", "vtex", "tray", "loja_integrada", "checkout_externo"]);
   assert.equal(new Set(COMMERCE_PROVIDER_IDS).size, COMMERCE_PROVIDER_IDS.length);
 });
 

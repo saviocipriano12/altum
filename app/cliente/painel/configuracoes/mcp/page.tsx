@@ -25,7 +25,7 @@ import { CardTitle, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/p
 type McpStatus = {
   mcp?: {
     enabled?: boolean;
-    writeMode?: "disabled" | "draft_only" | "approval_required";
+    writeMode?: "disabled" | "approval_required" | "autonomous";
     allowedClients?: string[];
     notes?: string;
   };
@@ -67,6 +67,8 @@ type McpStatus = {
     createdAt: string | null;
     expiresAt: string | null;
     revokedAt: string | null;
+    writeReady?: boolean;
+    missingWriteScopes?: string[];
   }>;
   nextSteps?: string[];
   error?: string;
@@ -132,8 +134,8 @@ const DEFAULT_ALLOWED_CLIENTS = CLIENTS.map((client) => client.id);
 
 const WRITE_MODES = [
   { id: "disabled", label: "Somente leitura", detail: "Consulta dados autorizados e nunca muda a plataforma." },
-  { id: "draft_only", label: "Rascunhos", detail: "Prepara alteracoes para revisao, sem aplicar." },
-  { id: "approval_required", label: "Aprovacao obrigatoria", detail: "Base para escrita real com previa, aprovacao e auditoria." },
+  { id: "approval_required", label: "Aprovar antes", detail: "O ChatGPT prepara a acao e um administrador revisa antes de executar." },
+  { id: "autonomous", label: "Acesso autonomo", detail: "O ChatGPT pode executar sem aprovacao na Altum, sempre limitado ao tenant e as permissoes do usuario." },
 ] as const;
 
 export default function ClienteMcpSettingsPage() {
@@ -376,7 +378,7 @@ export default function ClienteMcpSettingsPage() {
               <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
                 <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Escopo atual</p>
                 <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
-                  {status?.capabilities?.totalTools || 35} ferramentas no total: {status?.capabilities?.readTools || 20} de leitura e {status?.capabilities?.draftTools || 15} de rascunho supervisionado. Acoes reais exigem previa, aprovacao independente e auditoria.
+                  {status?.capabilities?.totalTools || 45} ferramentas no total: {status?.capabilities?.readTools || 20} de leitura e {status?.capabilities?.draftTools || 25} de acao. O cliente escolhe entre aprovacao previa e execucao autonoma auditada.
                 </p>
               </div>
             </PanelCard>
@@ -518,6 +520,12 @@ export default function ClienteMcpSettingsPage() {
                               label={connection.status === "active" ? "ativa" : connection.status === "revoked" ? "revogada" : "expirada"}
                               tone={connection.status === "active" ? "success" : connection.status === "revoked" ? "danger" : "warning"}
                             />
+                            {connection.status === "active" ? (
+                              <StateBadge
+                                label={connection.writeReady ? "escrita pronta" : "somente leitura"}
+                                tone={connection.writeReady ? "success" : "warning"}
+                              />
+                            ) : null}
                           </div>
                           <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">
                             Expira em {formatDate(connection.expiresAt)} · {connection.scopes.length} escopos
@@ -569,7 +577,7 @@ export default function ClienteMcpSettingsPage() {
           </section>
 
           <PanelCard className="p-5 md:p-6">
-            <CardTitle title="Rascunhos para aprovacao" subtitle="Mudancas preparadas pelo chat para IA e campanhas. Todo rascunho exige revisao humana e mantem a evidencia usada na decisao." />
+            <CardTitle title="Historico de acoes MCP" subtitle={writeMode === "autonomous" ? "No modo autonomo, as acoes aparecem aqui ja executadas e auditadas." : "No modo com aprovacao, revise cada acao antes de executar."} />
             <div className="mt-4 space-y-3">
               {drafts.length === 0 ? (
                 <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 text-sm text-[var(--cliente-card-text-muted)]">

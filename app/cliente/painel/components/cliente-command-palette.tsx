@@ -64,7 +64,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Package className="h-4 w-4" />,
     capability: "manage_ai", module: "commerce",
   },
-  { key: "campanhas", label: "Campanhas", href: "/cliente/painel/campanhas", icon: <TrendingUp className="h-4 w-4" />, module: "marketing" },
+  { key: "campanhas", label: "Campanhas", href: "/cliente/painel/campanhas", icon: <TrendingUp className="h-4 w-4" />, module: "marketing", capability: "view_team_records" },
   { key: "captacao", label: "Campanhas - captacao", href: "/cliente/painel/captacao", icon: <Megaphone className="h-4 w-4" />, module: "marketing" },
   {
     key: "disparos",
@@ -81,7 +81,7 @@ const NAV_ITEMS: NavItem[] = [
     capability: "manage_automations",
     module: "social_automation",
   },
-  { key: "relatorios", label: "Relatorios", href: "/cliente/painel/metricas", icon: <BarChart3 className="h-4 w-4" />, module: "reports" },
+  { key: "relatorios", label: "Relatorios", href: "/cliente/painel/metricas", icon: <BarChart3 className="h-4 w-4" />, module: "reports", capability: "view_metrics" },
   {
     key: "perguntar_altum",
     label: "Perguntar a Altum",

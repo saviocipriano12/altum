@@ -60,6 +60,11 @@ function orderPayload(order: Record<string, unknown>) {
   const money = record(record(order.totalPriceSet).shopMoney);
   const fulfillment = nodes(order.fulfillments)[0] || {};
   const tracking = nodes(fulfillment.trackingInfo)[0] || {};
+  const journey = record(order.customerJourneySummary);
+  const lastVisit = record(journey.lastVisit);
+  const firstVisit = record(journey.firstVisit);
+  const visit = Object.keys(lastVisit).length ? lastVisit : firstVisit;
+  const utm = record(visit.utmParameters);
   const items = nodes(order.lineItems).map((item) => ({
     id: record(item.product).id,
     product_id: record(item.product).id,
@@ -76,10 +81,19 @@ function orderPayload(order: Record<string, unknown>) {
     fulfillment_status: order.displayFulfillmentStatus,
     total_price: money.amount,
     currency: money.currencyCode,
-    customer: { name: customer.displayName, email: customer.email, phone: customer.phone || shipping.phone },
+    customer: { id: customer.id, name: customer.displayName, email: customer.email, phone: customer.phone || shipping.phone },
     line_items: items,
     tracking_number: tracking.number,
     tracking_url: tracking.url,
+    attribution: {
+      source: visit.source || "",
+      medium: utm.medium || "",
+      campaign: utm.campaign || "",
+      content: utm.content || "",
+      term: utm.term || "",
+      landing_page: visit.landingPage || "",
+      referrer: visit.referrerUrl || "",
+    },
   };
 }
 
@@ -87,6 +101,25 @@ export const shopifyProvider: CommerceProvider = {
   id: "shopify",
   label: "Shopify",
   capabilities: ["products", "orders", "tracking"],
+  capabilityMatrix: {
+    catalog_products: "available",
+    product_variants: "partial",
+    inventory_aggregate: "partial",
+    inventory_by_location: "planned",
+    customers: "partial",
+    orders: "partial",
+    payments: "partial",
+    fulfillments: "partial",
+    tracking: "available",
+    // A refund is emitted by REFUNDS_CREATE and is normalized into the order
+    // lifecycle. Returns remain separate because Shopify return workflows are
+    // merchant- and app-specific.
+    refunds: "partial",
+    returns: "planned",
+    abandoned_checkouts: "planned",
+    webhooks: "available",
+    api_sync: "available",
+  },
   credentialFields: ["accessToken"],
   async testConnection({ connection, credentials }) {
     const data = await shopifyRequest(connection, credentials.accessToken || "", "query AltumShop { shop { name } }");
@@ -99,7 +132,7 @@ export const shopifyProvider: CommerceProvider = {
         nodes { id title descriptionHtml productType tags status featuredMedia { preview { image { url } } } variants(first: 50) { nodes { id sku price inventoryQuantity } } }
       }
       orders(first: ${Math.min(pageSize, 30)}, sortKey: UPDATED_AT, reverse: true) {
-        nodes { id name createdAt displayFinancialStatus displayFulfillmentStatus totalPriceSet { shopMoney { amount currencyCode } } customer { displayName email phone } shippingAddress { phone } fulfillments(first: 10) { trackingInfo(first: 10) { number url } } lineItems(first: 50) { nodes { name quantity sku product { id } originalUnitPriceSet { shopMoney { amount } } } } }
+        nodes { id name createdAt displayFinancialStatus displayFulfillmentStatus totalPriceSet { shopMoney { amount currencyCode } } customer { id displayName email phone } shippingAddress { phone } customerJourneySummary { firstVisit { source landingPage referrerUrl utmParameters { source medium campaign content term } } lastVisit { source landingPage referrerUrl utmParameters { source medium campaign content term } } } fulfillments(first: 10) { trackingInfo(first: 10) { number url } } lineItems(first: 50) { nodes { name quantity sku product { id } originalUnitPriceSet { shopMoney { amount } } } } }
       }
     }`);
     const products = nodes(data.products);

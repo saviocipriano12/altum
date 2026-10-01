@@ -2,14 +2,22 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { LifeBuoy, ListFilter, LogOut, Menu, MoonStar, MoreHorizontal, Rocket, Search, SunMedium } from "lucide-react";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
-import { ClienteGlobalSearch } from "@/app/cliente/painel/components/cliente-global-search";
-import { ClienteNotifications } from "@/app/cliente/painel/components/cliente-notifications";
 import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { auth } from "@/firebaseConfig";
+
+const ClienteGlobalSearch = dynamic(
+  () => import("@/app/cliente/painel/components/cliente-global-search").then((mod) => mod.ClienteGlobalSearch),
+  { ssr: false, loading: () => null }
+);
+const ClienteNotifications = dynamic(
+  () => import("@/app/cliente/painel/components/cliente-notifications").then((mod) => mod.ClienteNotifications),
+  { ssr: false, loading: () => null }
+);
 
 type Props = {
   onOpenMenu: () => void;
@@ -21,6 +29,7 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchPlacement, setSearchPlacement] = useState<"none" | "inline">("none");
 
   const supportUrl =
     process.env.NEXT_PUBLIC_ALTUM_SUPPORT_URL ||
@@ -29,12 +38,24 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
   const operatorName = tenant?.userName || "Operador";
   const pageMeta = getPageMeta(pathname || "/cliente/painel");
   const initials = operatorName.slice(0, 2).toUpperCase();
+  const canRenderGlobalSearch = searchPlacement === "inline" && !pathname.includes("/inbox");
+  const canRenderNotifications = searchPlacement === "inline" && !pathname.includes("/inbox");
   const actionButtonClass =
     "inline-flex h-10 items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 text-sm font-medium text-[var(--cliente-text-muted)] transition hover:-translate-y-0.5 hover:border-[var(--cliente-primary)]/25 hover:bg-[var(--cliente-surface-hover)] hover:text-[var(--cliente-text)]";
 
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1280px)");
+    const sync = () => setSearchPlacement(desktop.matches ? "inline" : "none");
+    sync();
+    desktop.addEventListener("change", sync);
+    return () => {
+      desktop.removeEventListener("change", sync);
+    };
+  }, []);
 
   async function handleSignOut() {
     try {
@@ -75,9 +96,7 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
           >
             <Search className="h-4 w-4 text-[var(--cliente-primary)]" />
           </button>
-          <div className="hidden xl:flex">
-            <ClienteGlobalSearch />
-          </div>
+          {canRenderGlobalSearch && searchPlacement === "inline" ? <div className="flex"><ClienteGlobalSearch /></div> : null}
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event("altum:cliente-command-open"))}
@@ -88,7 +107,7 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
             Buscar
           </button>
 
-          <ClienteNotifications />
+          {canRenderNotifications ? <ClienteNotifications /> : null}
 
           <button
             type="button"
@@ -160,7 +179,10 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
       </div>
 
       {mobileMenuOpen ? (
-        <div className="border-t border-[var(--cliente-border)] px-3 pb-3 pt-2 lg:hidden">
+        <div
+          className="max-h-[calc(100dvh-60px)] overflow-y-auto overscroll-contain border-t border-[var(--cliente-border)] px-3 pb-[calc(env(safe-area-inset-bottom)+6.25rem)] pt-2 lg:hidden"
+          aria-label="Mais opcoes da conta"
+        >
           <div className="grid gap-2">
             <button type="button" onClick={() => { window.dispatchEvent(new Event("altum:cliente-install-open")); setMobileMenuOpen(false); }} className="min-h-11 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 text-left text-sm font-semibold text-[var(--cliente-text)]">Instalar Altum no celular</button>
             <button
@@ -221,9 +243,6 @@ export function ClienteTopbar({ onOpenMenu }: Props) {
         </div>
       ) : null}
 
-      <div className="hidden px-4 pb-4 sm:block xl:hidden">
-        <ClienteGlobalSearch />
-      </div>
     </header>
   );
 }

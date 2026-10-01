@@ -6,6 +6,7 @@ import { normalizePhone } from "@/app/lib/server/phone";
 import { getTenantForCurrentUser } from "@/lib/server/tenant";
 import { AGENCY_TENANT_ID, getWhatsAppChannelForTenant } from "@/app/lib/server/whatsapp-channel";
 import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
+import { observeConversationCommercialState } from "@/lib/server/crm/conversation-intelligence";
 
 type Body = {
   chatId?: string;
@@ -175,6 +176,7 @@ export async function POST(req: Request) {
     });
 
     if (destination.chatId && destination.chatRef) {
+      const messageRef = adminDb.collection("messages").doc();
       await Promise.all([
         destination.chatRef.update({
           ownerId: destination.ownerId,
@@ -186,7 +188,7 @@ export async function POST(req: Request) {
           status: "open",
           updatedAt: FieldValue.serverTimestamp(),
         }),
-        adminDb.collection("messages").add({
+        messageRef.set({
           chatId: destination.chatId,
           text: destination.text,
           sender: "agent",
@@ -200,6 +202,15 @@ export async function POST(req: Request) {
           createdAt: FieldValue.serverTimestamp(),
         }),
       ]);
+      if (destination.tenantId) {
+        await observeConversationCommercialState({
+          tenantId: destination.tenantId,
+          chatId: destination.chatId,
+          messageId: messageRef.id,
+          actorId: user.uid,
+          actorName: user.name,
+        }).catch((error) => console.error("Falha ao observar resposta humana para CRM:", error));
+      }
     }
 
     return NextResponse.json({

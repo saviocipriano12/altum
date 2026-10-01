@@ -17,7 +17,7 @@ function clean(value: unknown, max = 500) {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const page = new URL(MCP_AUTHORIZE_PAGE_PATH, url.origin);
-  for (const key of ["client_id", "client_name", "redirect_uri", "state", "scope", "code_challenge", "code_challenge_method", "response_type", "tenantId"]) {
+  for (const key of ["client_id", "client_name", "redirect_uri", "state", "scope", "code_challenge", "code_challenge_method", "response_type", "resource", "tenantId"]) {
     const value = url.searchParams.get(key);
     if (value) page.searchParams.set(key, value);
   }
@@ -35,12 +35,13 @@ export async function POST(req: Request) {
       userId: user.uid,
       userName: user.name,
       tenantId: clean(body.tenantId, 180),
-      clientId: clean(body.client_id, 180) || "mcp-client",
+      clientId: clean(body.client_id, 500) || "mcp-client",
       clientName: clean(body.client_name, 180),
       redirectUri: clean(body.redirect_uri, 500),
       state: clean(body.state, 1000),
       codeChallenge: clean(body.code_challenge, 180),
       scope: clean(body.scope, 1000),
+      resource: clean(body.resource, 500),
     });
     return NextResponse.json({ ok: true, redirectTo }, { headers });
   } catch (error) {

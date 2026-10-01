@@ -26,16 +26,9 @@ type Body = {
   platformPlan?: string;
   customPlanName?: string;
   applyPlanEntitlements?: boolean;
-  platformAccessMode?: "stripe_subscription" | "agency_included" | "manual_release" | "disabled" | string;
+  platformAccessMode?: "asaas_subscription" | "agency_included" | "manual_release" | "disabled" | string;
   platformAccessStatus?: "active" | "trial" | "blocked" | "pending" | string;
-  billingProvider?: "stripe" | "asaas" | "manual" | "included" | string;
-  stripeCustomerId?: string;
-  stripeSubscriptionId?: string;
-  stripePriceId?: string;
-  stripeSubscriptionStatus?: string;
-  stripeCurrentPeriodEnd?: string;
-  stripeCheckoutUrl?: string;
-  stripeCustomerPortalUrl?: string;
+  billingProvider?: "asaas" | "manual" | "included" | string;
   billingNotes?: string;
   whatsappCostMonthlyBrl?: number;
   telephonyCostMonthlyBrl?: number;
@@ -62,7 +55,7 @@ function normalizeBillingType(value: unknown) {
 function normalizeAccessMode(value: unknown) {
   const normalized = clean(value, 60).toLowerCase();
   if (
-    normalized === "stripe_subscription" ||
+    normalized === "asaas_subscription" ||
     normalized === "agency_included" ||
     normalized === "manual_release" ||
     normalized === "disabled"
@@ -82,7 +75,7 @@ function normalizeAccessStatus(value: unknown) {
 
 function normalizeBillingProvider(value: unknown) {
   const normalized = clean(value, 40).toLowerCase();
-  if (normalized === "stripe" || normalized === "asaas" || normalized === "included") {
+  if (normalized === "asaas" || normalized === "included") {
     return normalized;
   }
   return "manual";
@@ -140,7 +133,7 @@ export async function POST(req: Request) {
       body.autoBillingEnabled === true &&
       billingProvider === "asaas" &&
       platformAccessMode !== "agency_included" &&
-      platformAccessMode !== "stripe_subscription" &&
+      platformAccessMode !== "asaas_subscription" &&
       platformAccessMode !== "disabled";
 
     const payload = {
@@ -165,13 +158,6 @@ export async function POST(req: Request) {
       platformAccessMode,
       platformAccessStatus: normalizeAccessStatus(body.platformAccessStatus),
       billingProvider,
-      stripeCustomerId: clean(body.stripeCustomerId, 180) || null,
-      stripeSubscriptionId: clean(body.stripeSubscriptionId, 180) || null,
-      stripePriceId: clean(body.stripePriceId, 180) || null,
-      stripeSubscriptionStatus: clean(body.stripeSubscriptionStatus, 80) || null,
-      stripeCurrentPeriodEnd: clean(body.stripeCurrentPeriodEnd, 40) || null,
-      stripeCheckoutUrl: clean(body.stripeCheckoutUrl, 800) || null,
-      stripeCustomerPortalUrl: clean(body.stripeCustomerPortalUrl, 800) || null,
       billingNotes: clean(body.billingNotes, 4000) || null,
       whatsappCostMonthlyBrl: Math.max(0, Number(toNumber(body.whatsappCostMonthlyBrl).toFixed(2))),
       telephonyCostMonthlyBrl: Math.max(0, Number(toNumber(body.telephonyCostMonthlyBrl).toFixed(2))),

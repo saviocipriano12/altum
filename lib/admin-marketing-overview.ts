@@ -109,6 +109,7 @@ export function buildAdminMarketingOverview(input: AdminMarketingInput, now = Da
     consentMode: row.consentMode === "implicit" ? "implicit" : "required",
     lastEventAt: date(row.lastEventAt), lastEventName: text(row.lastEventName),
   }));
+  const trackingByTenant = new Map(tracking.filter(row => row.tenantId).map(row => [row.tenantId!, row]));
   const companies = input.tenants.map(row => ({ id: row.id, name: text(row.name) || row.id }));
   const drafts = input.drafts.map(row => {
     const target = object(row.target); const change = object(row.proposedChange);
@@ -122,8 +123,21 @@ export function buildAdminMarketingOverview(input: AdminMarketingInput, now = Da
       createdAt: date(row.createdAt), reviewedAt: date(row.reviewedAt), appliedAt: date(row.appliedAt),
     };
   }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const pixels = input.pixels.map(row => ({ id: row.id, ...company(row), provider: text(row.provider), name: text(row.name), externalId: text(row.externalId),
-    domains: Array.isArray(row.domains) ? row.domains.map(text).filter(Boolean) : [], verificationStatus: text(row.verificationStatus) || "unverified", createdAt: date(row.createdAt) }));
+  const pixels = input.pixels.map(row => {
+    const companyInfo = company(row);
+    const trackingSignal = companyInfo.tenantId ? trackingByTenant.get(companyInfo.tenantId) : null;
+    const lastEventAt = trackingSignal?.lastEventAt || null;
+    const eventAge = lastEventAt ? now - Date.parse(lastEventAt) : null;
+    const tenantDeliveryStatus = !trackingSignal?.enabled ? "tracking_not_enabled"
+      : !lastEventAt ? "no_tenant_event"
+      : eventAge !== null && eventAge > 7 * 86400_000 ? "stale_tenant_event"
+      : "recent_tenant_event";
+    return {
+      id: row.id, ...companyInfo, provider: text(row.provider), name: text(row.name), externalId: text(row.externalId),
+      domains: Array.isArray(row.domains) ? row.domains.map(text).filter(Boolean) : [], verificationStatus: text(row.verificationStatus) || "unverified", createdAt: date(row.createdAt),
+      tenantDeliveryStatus, tenantLastEventAt: lastEventAt, tenantLastEventName: trackingSignal?.lastEventName || null,
+    };
+  });
   return {
     companies, accounts, campaigns, tracking, drafts, pixels,
     summary: {

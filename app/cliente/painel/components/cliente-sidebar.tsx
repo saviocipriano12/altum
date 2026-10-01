@@ -123,6 +123,7 @@ const PRIMARY_NAV: NavItem[] = [
     icon: TrendingUp,
     description: "Trafego, captacao, UTMs e resultado comercial.",
     module: "marketing",
+    capability: "view_team_records",
     tone: "brand",
     aliases: [
       { href: "/cliente/painel/campanhas", label: "Campanhas" },
@@ -158,6 +159,7 @@ const PRIMARY_NAV: NavItem[] = [
     icon: BarChart3,
     description: "O que gerou dinheiro, onde travou e qual decisao tomar.",
     module: "reports",
+    capability: "view_metrics",
     aliases: [{ href: "/cliente/painel/relatorios", label: "Relatorios detalhados" }],
     group: "grow",
   },
@@ -214,6 +216,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Faturamento",
     icon: CreditCard,
     description: "Plano, cobrancas, pagamentos, upgrade e cancelamento.",
+    capability: "manage_settings",
     group: "system",
   },
 ];

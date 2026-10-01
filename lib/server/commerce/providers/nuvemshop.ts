@@ -79,6 +79,22 @@ export const nuvemshopProvider: CommerceProvider = {
   id: "nuvemshop",
   label: "Nuvemshop",
   capabilities: ["products", "orders", "tracking"],
+  capabilityMatrix: {
+    catalog_products: "available",
+    product_variants: "partial",
+    inventory_aggregate: "partial",
+    inventory_by_location: "unsupported",
+    customers: "partial",
+    orders: "partial",
+    payments: "partial",
+    fulfillments: "partial",
+    tracking: "available",
+    refunds: "planned",
+    returns: "planned",
+    abandoned_checkouts: "planned",
+    webhooks: "available",
+    api_sync: "available",
+  },
   credentialFields: ["accessToken"],
   async testConnection({ connection, credentials }) {
     await commerceFetchJson<unknown[]>(endpoint(connection.storeId, "products", 1), { headers: headers(credentials.accessToken || "") });

@@ -2,7 +2,7 @@
 
 Atualizado em 2026-09-15.
 
-Este MCP e o command center da Altum para uso local e remoto. O catalogo atual expoe 35 ferramentas para leitura operacional, inteligencia de crescimento e rascunhos supervisionados. Mudancas reais so podem ocorrer depois de previa, aprovacao humana, validacao no provedor e auditoria.
+Este MCP e o command center da Altum para uso local e remoto. O catalogo atual expoe 45 ferramentas para leitura operacional, inteligencia de crescimento e operacao. Cada cliente escolhe entre somente leitura, aprovacao humana antes de executar ou acesso autonomo auditado. Validacoes de tenant, usuario, permissao, modulo e provedor continuam obrigatorias em todos os modos.
 
 No portal do cliente, a entrada fica em `Configuracoes > MCP`. A tela mostra o status do ambiente, os comandos de conexao local, a configuracao para Claude Desktop, a URL remota para ChatGPT web e a politica desejada do tenant para evoluir de leitura para acoes supervisionadas.
 
@@ -13,8 +13,9 @@ No portal do cliente, a entrada fica em `Configuracoes > MCP`. A tela mostra o s
 - Google Ads: relatorio operacional e rascunhos para campanha, grupo, anuncio responsivo, palavra negativa, pausa de palavra-chave e estrategia de lance.
 - Meta Ads: relatorio operacional e rascunhos para campanha, conjunto, status de conjunto, criativo e anuncio.
 - Altum: rascunho de comportamento da IA, segmento comercial e campanha WhatsApp pausada.
+- Operacao supervisionada: editar funil, cliente e responsavel; criar reuniao; configurar campos, empresa, canal, automacao e base de conhecimento; preparar e enviar respostas apos confirmacao humana.
 
-Todos os retornos de leitura declaram cobertura quando usam amostra. Conteudo de conversas e documentos e tratado como dado nao confiavel. Rascunhos ficam em `mcp_action_drafts` e exigem aprovacao; campanhas e anuncios novos nascem pausados.
+Todos os retornos de leitura declaram cobertura quando usam amostra. Conteudo de conversas e documentos e tratado como dado nao confiavel. Acoes ficam registradas em `mcp_action_drafts`. No modo `approval_required`, exigem aprovacao na Altum; no modo `autonomous`, sao aplicadas na mesma chamada e auditadas. Campanhas e anuncios novos continuam nascendo pausados quando essa e a politica do provedor.
 
 ## Variaveis
 
@@ -96,7 +97,15 @@ Fluxo esperado:
 4. A Altum retorna um authorization code com PKCE.
 5. O cliente troca o code em `/api/mcp/oauth/token` e passa a chamar `/api/mcp/remote` com `Authorization: Bearer`.
 
-O token remoto e opaco, salvo por hash no Firestore e limitado ao usuario, tenant e escopos autorizados. A descoberta anuncia `offline_access`, e a Altum emite `refresh_token` para o cliente renovar a conexao sem exigir novo login a cada expiracao.
+O token remoto e opaco, salvo por hash no Firestore e limitado ao usuario, tenant, audiencia e escopos autorizados. A descoberta anuncia Client ID Metadata Documents para o ChatGPT e `offline_access`; quando solicitado, a Altum emite refresh token rotativo para renovar a conexao sem exigir novo login a cada expiracao.
+
+## Modos de operacao escolhidos pelo cliente
+
+- `disabled`: somente leitura; nenhuma ferramenta de acao cria ou aplica mudancas.
+- `approval_required`: o ChatGPT prepara a acao e um administrador aprova e aplica na Altum.
+- `autonomous`: o ChatGPT executa na mesma chamada, sem aprovacao adicional na Altum. O ChatGPT ainda pode pedir confirmacao conforme suas configuracoes, e a Altum continua revalidando tenant, usuario, capacidades, modulos e limites.
+
+O modo autonomo nao libera exclusoes irreversiveis, acesso a credenciais, troca de tenant ou elevacao de privilegios. Ele da liberdade apenas as ferramentas publicadas no catalogo MCP e autorizadas para aquele usuario.
 
 ## Governanca e rascunhos
 

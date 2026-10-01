@@ -30,6 +30,10 @@ test('business profile normalizes and returns expected defaults', () => {
   const agenciaPlaybook = getBusinessProfilePlaybookPreset('agencia');
   assert.ok(agenciaPlaybook.offers.length >= 3);
   assert.ok(agenciaPlaybook.scripts.some((item) => item.goal.toLowerCase().includes('diagnostico')));
+
+  const genericPlaybook = getBusinessProfilePlaybookPreset('generic');
+  assert.deepEqual(genericPlaybook.offers, []);
+  assert.ok(genericPlaybook.scripts.some((item) => item.goal.toLowerCase().includes('nao inventar')));
 });
 
 test('ai operating layer normalizes tenant profile and builds runtime policy', () => {
@@ -67,6 +71,13 @@ test('ai operating layer falls back safely when profile is invalid', () => {
   assert.equal(policy.primaryProvider, 'openai');
   assert.equal(policy.conversationModel, 'gpt-4.1-mini');
   assert.equal(policy.supportsToolCalling, true);
+});
+
+test('ai operating layer preserves zero as an explicit unlimited setting', () => {
+  const profile = normalizeTenantAiOperatingProfile({ monthlyBudgetUsd: 0, monthlyUsageCap: 0 });
+
+  assert.equal(profile.monthlyBudgetUsd, 0);
+  assert.equal(profile.monthlyUsageCap, 0);
 });
 
 test('ai operating layer clamps premium openai models when premium is disabled', () => {

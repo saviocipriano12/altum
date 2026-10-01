@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Altum AI 10/10 — plano de produto e estratégia 10x</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #14213d;
+        --muted: #64748b;
+        --line: #dbe3f0;
+        --paper: #ffffff;
+        --wash: #f3f6fb;
+        --blue: #2457e6;
+        --indigo: #4f46e5;
+        --violet: #7c3aed;
+        --green: #059669;
+        --amber: #d97706;
+        --red: #dc2626;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 8% 2%, rgba(79, 70, 229, .12), transparent 28rem),
+          radial-gradient(circle at 92% 8%, rgba(5, 150, 105, .08), transparent 26rem),
+          var(--wash);
+        font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 72px; }
+      header, section { background: rgba(255,255,255,.96); border: 1px solid var(--line); border-radius: 20px; }
+      header { padding: 34px; box-shadow: 0 22px 60px rgba(30, 41, 59, .08); }
+      section { margin-top: 18px; padding: 26px; }
+      h1 { max-width: 900px; margin: 8px 0 12px; font-size: clamp(34px, 5vw, 58px); line-height: 1.03; letter-spacing: -.045em; }
+      h2 { margin: 0 0 14px; font-size: 25px; letter-spacing: -.025em; }
+      h3 { margin: 0 0 8px; font-size: 16px; }
+      p { margin: 7px 0; }
+      a { color: var(--blue); }
+      .kicker { color: var(--indigo); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+      .lead { max-width: 900px; color: #334155; font-size: 18px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+      .chip, .badge { display: inline-flex; align-items: center; border-radius: 999px; font-size: 12px; font-weight: 750; }
+      .chip { padding: 7px 11px; background: #eef2ff; color: #3730a3; }
+      .badge { padding: 4px 8px; background: #ecfdf5; color: #047857; }
+      .badge.warn { background: #fff7ed; color: #b45309; }
+      .badge.risk { background: #fef2f2; color: #b91c1c; }
+      .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 13px; }
+      .card { grid-column: span 4; padding: 18px; background: #f8fafc; border: 1px solid var(--line); border-radius: 15px; }
+      .half { grid-column: span 6; }
+      .wide { grid-column: span 8; }
+      .full { grid-column: 1 / -1; }
+      .hero-card { background: linear-gradient(135deg, #eef2ff, #f5f3ff 62%, #ecfdf5); border-color: #c7d2fe; }
+      .metric { font-size: 30px; line-height: 1; font-weight: 850; letter-spacing: -.04em; }
+      .muted { color: var(--muted); }
+      table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; }
+      th, td { padding: 12px 13px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+      th { color: #475569; background: #f8fafc; font-size: 11px; letter-spacing: .07em; text-transform: uppercase; }
+      tr:last-child td { border-bottom: 0; }
+      ol, ul { margin: 9px 0; padding-left: 21px; }
+      li { margin: 7px 0; }
+      .phase { position: relative; padding-left: 46px; }
+      .phase::before {
+        content: attr(data-step);
+        position: absolute; left: 0; top: 0;
+        display: grid; place-items: center; width: 32px; height: 32px;
+        border-radius: 10px; color: white; background: linear-gradient(135deg, var(--blue), var(--violet)); font-weight: 800;
+      }
+      .callout { border-left: 4px solid var(--violet); background: #f5f3ff; padding: 14px 16px; border-radius: 0 12px 12px 0; }
+      .decision { border: 2px solid #a5b4fc; background: linear-gradient(135deg, #ffffff, #eef2ff); }
+      .source-list { color: #475569; font-size: 13px; }
+      footer { padding: 24px 8px 0; color: var(--muted); font-size: 12px; }
+      @media (max-width: 820px) {
+        header, section { padding: 21px; }
+        .card, .half, .wide { grid-column: 1 / -1; }
+        table { display: block; overflow-x: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="kicker">Estratégia de produto · 25/09/2026</div>
+        <h1>Da IA que responde ao sistema que opera receita</h1>
+        <p class="lead">
+          A Altum já tem um motor comercial relevante. O caminho para 10/10 não é acrescentar outro chatbot:
+          é tornar conhecimento, voz, visão, ações, memória e governança confiáveis de ponta a ponta — e depois
+          transformar essa base em um novo produto: um sistema operacional comercial autônomo, nativo de WhatsApp e do mercado brasileiro.
+        </p>
+        <div class="chips">
+          <span class="chip">IA atual: completar e medir</span>
+          <span class="chip">Próxima etapa: decidir antes de construir</span>
+          <span class="chip">Norte: receita e experiência, não volume de respostas</span>
+        </div>
+      </header>
+
+      <section>
+        <h2>1. Onde a IA está hoje</h2>
+        <p class="muted">Avaliação de engenharia do produto atual; não representa ainda KPI comprovado em produção.</p>
+        <div class="grid">
+          <article class="card">
+            <span class="badge">Forte</span>
+            <h3>Atendimento comercial</h3>
+            <p>Planeja resposta, qualifica, extrai dados, move CRM, cria tarefas, propostas e handoff, com modos copiloto, híbrido e autônomo.</p>
+          </article>
+          <article class="card">
+            <span class="badge">Evoluiu</span>
+            <h3>Catálogo e mídia</h3>
+            <p>Lê produtos estruturados, preço, moeda, estoque e múltiplas mídias; envia imagem, vídeo ou documento pelo canal quando adequado.</p>
+          </article>
+          <article class="card">
+            <span class="badge">Evoluiu</span>
+            <h3>Visão computacional</h3>
+            <p>Analisa a imagem do cliente e compara visualmente com candidatos reais do catálogo, sem afirmar estoque ou identidade sem evidência.</p>
+          </article>
+          <article class="card">
+            <span class="badge warn">Parcial</span>
+            <h3>Voz</h3>
+            <p>Transcreve e gera áudio com personalidade brasileira, mas ainda é um fluxo assíncrono; não é uma conversa full-duplex com interrupção natural.</p>
+          </article>
+          <article class="card">
+            <span class="badge warn">Parcial</span>
+            <h3>Memória</h3>
+            <p>Há memória resumida do lead e estado operacional, mas falta um perfil longitudinal confiável com preferências, consentimentos e fatos versionados.</p>
+          </article>
+          <article class="card">
+            <span class="badge risk">Lacuna decisiva</span>
+            <h3>Prova de qualidade</h3>
+            <p>Existem score e observabilidade, porém ainda falta uma suíte de avaliações por cliente, regressão antes de publicar e aprendizado por resultado real.</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>2. O que “10/10” precisa significar</h2>
+        <table>
+          <thead><tr><th>Dimensão</th><th>Gate proposto</th><th>Como provar</th></tr></thead>
+          <tbody>
+            <tr><td>Verdade comercial</td><td>Zero preço ou estoque inventado na suíte crítica; ≥98% de precisão factual no catálogo.</td><td>Conversas douradas versionadas, respostas com evidência e testes por tenant.</td></tr>
+            <tr><td>Recomendação visual</td><td>Top-3 útil em ≥90% do conjunto rotulado de cada vertical.</td><td>Imagens reais, variantes, atributos e avaliação humana amostrada.</td></tr>
+            <tr><td>Ações</td><td>≥99% de execução correta; zero ação duplicada; confirmação nas ações irreversíveis.</td><td>Idempotência, simulação, replay, trilha de auditoria e testes de integração.</td></tr>
+            <tr><td>Handoff</td><td>Humano recebe contexto, motivo, resumo e próxima ação sem o cliente repetir a história.</td><td>Teste ponta a ponta em WhatsApp, Instagram e voz.</td></tr>
+            <tr><td>Velocidade</td><td>Meta inicial: texto p95 &lt;4 s e primeiro áudio p95 &lt;1,2 s.</td><td>Telemetria por etapa e por provedor; metas recalibradas com dados reais.</td></tr>
+            <tr><td>Humanidade da voz</td><td>Nota média ≥4,5/5 em naturalidade, clareza, empatia e adequação à marca.</td><td>Teste cego com clientes e chamadas reais consentidas.</td></tr>
+            <tr><td>Resultado</td><td>Melhora mensurável em resolução, qualificação, reunião, proposta e receita.</td><td>A/B test e atribuição; não usar apenas “mensagens respondidas”.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>3. Plano para completar a IA atual</h2>
+        <div class="grid">
+          <article class="card half phase" data-step="1">
+            <h3>Fundação de qualidade</h3>
+            <p>Criar datasets dourados por vertical, simulador de conversas, shadow mode, avaliação automática + humana e bloqueio de release por regressão.</p>
+          </article>
+          <article class="card half phase" data-step="2">
+            <h3>Cérebro confiável de produto</h3>
+            <p>Unificar produto, variante, disponibilidade, preço, política, imagem, vídeo e documento; medir atualização da fonte e mostrar de onde veio cada fato.</p>
+          </article>
+          <article class="card half phase" data-step="3">
+            <h3>Vendedor que fecha o ciclo</h3>
+            <p>Descobrir necessidade, comparar, recomendar, montar proposta ou carrinho, obter aprovação, cobrar, acompanhar pedido, trocar, recomprar e fazer upsell.</p>
+          </article>
+          <article class="card half phase" data-step="4">
+            <h3>Voz realmente conversacional</h3>
+            <p>Fazer um bake-off controlado entre OpenAI Realtime e GPT-Live: interrupção, turn-taking, prosódia, sotaque, ruído, latência, custo e fidelidade à marca.</p>
+          </article>
+          <article class="card half phase" data-step="5">
+            <h3>Memória comercial segura</h3>
+            <p>Criar o Customer Graph: fatos com origem, preferências, objeções, compras, consentimentos, validade e separação rigorosa por empresa e usuário.</p>
+          </article>
+          <article class="card half phase" data-step="6">
+            <h3>Autonomia governada</h3>
+            <p>Políticas por ação: observar, sugerir, pedir aprovação ou executar; limites financeiros, identidade do responsável, auditoria, rollback e kill switch.</p>
+          </article>
+          <article class="card full phase" data-step="7">
+            <h3>Motor de melhoria contínua</h3>
+            <p>Cada falha vira caso de teste; cada objeção vira insight; cada fechamento realimenta recomendações. A IA propõe mudanças, mas publicação crítica exige revisão humana.</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>4. O que os líderes estão fazendo</h2>
+        <table>
+          <thead><tr><th>Referência</th><th>Movimento observado</th><th>Leitura para a Altum</th></tr></thead>
+          <tbody>
+            <tr><td>Sierra</td><td>Um agente em voz, chat, WhatsApp, e-mail e ChatGPT; memória, ações longas, guardrails, observabilidade e preço por resultado.</td><td>Unificar a identidade do agente e medir desfecho, não canal.</td></tr>
+            <tr><td>Decagon</td><td>Memória cross-channel, voz ativa, contato proativo, testes e experimentação contínua.</td><td>A Altum deve lembrar, antecipar e iniciar a próxima melhor ação.</td></tr>
+            <tr><td>Intercom / Zendesk</td><td>Agentes especializados sobre uma plataforma única, continuidade omnicanal, handoff completo e cobrança por resolução.</td><td>Uma experiência para o cliente; especialização deve ficar sob o capô.</td></tr>
+            <tr><td>Gorgias</td><td>Agente de ecommerce com conhecimento de produto, recomendação, ações reais e confirmação do cliente em operações irreversíveis.</td><td>Transformar o catálogo Altum em uma ferramenta transacional, não apenas informacional.</td></tr>
+            <tr><td>HubSpot / Salesforce</td><td>Agentes em todo o ciclo de receita: prospecção, priorização, coaching, risco de negócio, reunião e follow-up.</td><td>O gerente de IA é tão importante quanto o vendedor de IA.</td></tr>
+            <tr><td>Shopify / UCP</td><td>Descoberta, carrinho, checkout, pedido e pós-venda passam a acontecer dentro de agentes e canais de IA.</td><td>A Altum precisa ser compatível com commerce agentic e preservar atribuição e dono do cliente.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>5. A nova categoria que eu criaria</h2>
+        <div class="grid">
+          <article class="card wide hero-card">
+            <div class="kicker">Recomendação</div>
+            <h3 class="metric">Altum Revenue OS</h3>
+            <p><strong>Um gêmeo comercial vivo da empresa.</strong> Ele entende o negócio, acompanha cada cliente, conversa em qualquer canal, executa o próximo passo e mostra ao gestor por que a receita avançou ou travou.</p>
+            <p>Por fora, uma única Altum. Por dentro, especialistas de atendimento, venda, pós-venda, growth e gestão, todos usando a mesma memória e as mesmas políticas.</p>
+          </article>
+          <article class="card">
+            <span class="badge">Entrada no mercado</span>
+            <h3>Vendedor Altum</h3>
+            <p>WhatsApp-first: texto, voz e imagem até produto, proposta, Pix/checkout e acompanhamento. É a demonstração mais clara de valor imediato.</p>
+          </article>
+          <article class="card">
+            <h3>Gerente Altum</h3>
+            <p>Briefing diário, leads esquecidos, negócios em risco, SLA, coaching de vendedores, previsão e plano de recuperação.</p>
+          </article>
+          <article class="card">
+            <h3>Growth Autopilot</h3>
+            <p>Detecta sinais de abandono, recompra e oportunidade; cria segmentos e jornadas; aprende com venda e margem, dentro das permissões.</p>
+          </article>
+          <article class="card">
+            <h3>Cliente Vivo</h3>
+            <p>Uma memória longitudinal une anúncio, conversa, preferência, imagem enviada, proposta, compra, suporte e próxima oportunidade.</p>
+          </article>
+          <article class="card">
+            <h3>Skills por vertical</h3>
+            <p>Pacotes prontos para varejo, serviços, clínica, imobiliária e educação, com linguagem, regras, dados, ações e avaliações próprias.</p>
+          </article>
+          <article class="card">
+            <h3>Mercado de agentes</h3>
+            <p>Além de vender nos canais atuais, a Altum prepara catálogos e operações para serem descobertos e acionados por agentes externos.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="decision">
+        <h2>6. Decisão recomendada antes da nova construção</h2>
+        <div class="callout">
+          <strong>Norte de produto:</strong> Altum Revenue OS.<br />
+          <strong>Primeira cunha comercial:</strong> Vendedor Altum, que fecha vendas dentro da conversa.<br />
+          <strong>Segundo diferencial:</strong> Gerente Altum, que melhora o time e recupera receita esquecida.
+        </div>
+        <p>
+          Essa sequência evita tentar lançar cinco agentes ao mesmo tempo. Primeiro provamos que a Altum vende de ponta a ponta;
+          depois usamos a mesma memória e telemetria para gerenciar a operação inteira.
+        </p>
+        <h3>O que não construir</h3>
+        <ul>
+          <li>Outro construtor genérico de chatbot ou uma tela cheia de prompts técnicos.</li>
+          <li>Vários “agentes” desconectados, cada um com memória e regras diferentes.</li>
+          <li>Autonomia sem confirmação, auditoria, avaliação e limites financeiros.</li>
+          <li>Uma demonstração bonita que não fecha pagamento, pedido, handoff e pós-venda.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>7. Próximo marco de execução</h2>
+        <ol>
+          <li>Congelar a arquitetura nova até validar o posicionamento acima.</li>
+          <li>Mapear 100 conversas reais anonimizadas e 30 tarefas críticas por vertical.</li>
+          <li>Implantar a fundação de avaliações e registrar a linha de base da IA atual.</li>
+          <li>Escolher 3 clientes-piloto: ecommerce, serviço consultivo e operação com equipe.</li>
+          <li>Completar um fluxo “mensagem → recomendação → proposta/carrinho → pagamento → pós-venda”.</li>
+          <li>Somente então liberar autonomia gradual e iniciar o Gerente Altum.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Fontes</h2>
+        <ul class="source-list">
+          <li><a href="https://developers.openai.com/api/docs/guides/realtime">OpenAI — Realtime API</a>: voz de baixa latência, interrupção, turn-taking e uso de ferramentas.</li>
+          <li><a href="https://developers.openai.com/api/docs/guides/agents">OpenAI — Agents</a>: orquestração, sessões duráveis, contexto e ferramentas.</li>
+          <li><a href="https://openai.com/index/advancing-voice-intelligence-with-new-models-in-the-api/">OpenAI — avanços em voz</a>: modelos realtime e transcrição apresentados em 2026.</li>
+          <li><a href="https://sierra.ai/">Sierra</a> e <a href="https://sierra.ai/product">visão do produto</a>: resultado, memória, long-horizon planning, canais e observabilidade.</li>
+          <li><a href="https://decagon.ai/blog/spring26-product-launch">Decagon — Proactive Agents</a>: memória, outbound voice e relacionamento contínuo.</li>
+          <li><a href="https://www.intercom.com/help/en/articles/7120684-fin-ai-agent-explained">Intercom — Fin</a>: papéis de serviço, vendas e ecommerce, conhecimento, handoff e canais.</li>
+          <li><a href="https://docs.gorgias.com/en-US/ai-agent-explained-497772">Gorgias — AI Agent</a> e <a href="https://docs.gorgias.com/en-US/create-an-action-for-ai-agent-567325">ações</a>: produto, skills, integrações e confirmação.</li>
+          <li><a href="https://www.hubspot.com/products/artificial-intelligence/ai-customer-service-agent">HubSpot — Customer Agent</a>: conhecimento aprovado, handoff e operação multicanal.</li>
+          <li><a href="https://www.salesforce.com/blog/sales/sales-cloud-product-release/">Salesforce — Agentforce Sales</a>: prospecção, pipeline, risco, coaching e melhoria por feedback.</li>
+          <li><a href="https://www.shopify.com/ucp">Shopify — Universal Commerce Protocol</a> e <a href="https://www.shopify.com/news/ai-commerce-at-scale">Agentic Commerce</a>: descoberta, checkout, pedidos e pós-venda via agentes.</li>
+          <li><a href="https://www.zendesk.com/newsroom/press-releases/relate-2026/">Zendesk — Autonomous Service Workforce</a>: contexto compartilhado, agentes especializados e preço por resultado.</li>
+        </ul>
+      </section>
+
+      <footer>
+        Este documento separa fatos observados no código da Altum, metas propostas e alegações públicas de fornecedores. Números publicados por fornecedores são referências de direção, não garantias de resultado para a Altum.
+      </footer>
+    </main>
+  </body>
+</html>

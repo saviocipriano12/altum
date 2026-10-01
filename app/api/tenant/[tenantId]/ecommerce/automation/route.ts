@@ -39,16 +39,30 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
 
     const body = await req.json();
     const ecommerceAutomation = normalizeEcommerceAutomationSettings(body?.ecommerceAutomation || body);
-    await adminDb.collection("tenant_settings").doc(tenantId).set(
-      {
+    const settingsRef = adminDb.collection("tenant_settings").doc(tenantId);
+    const previousSnap = await settingsRef.get();
+    const previous = normalizeEcommerceAutomationSettings(previousSnap.data()?.ecommerceAutomation);
+    await Promise.all([
+      settingsRef.set(
+        {
+          tenantId,
+          ecommerceAutomation,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: user.uid,
+          updatedByName: user.name,
+        },
+        { merge: true }
+      ),
+      adminDb.collection("audit_logs").add({
         tenantId,
-        ecommerceAutomation,
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: user.uid,
-        updatedByName: user.name,
-      },
-      { merge: true }
-    );
+        type: "ecommerce_agent_settings_updated",
+        actorId: user.uid,
+        actorName: user.name,
+        before: previous.agent,
+        after: ecommerceAutomation.agent,
+        createdAt: FieldValue.serverTimestamp(),
+      }),
+    ]);
 
     return NextResponse.json({ ok: true, tenantId, ecommerceAutomation });
   } catch (error) {

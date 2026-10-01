@@ -24,3 +24,23 @@ Esta etapa prepara o caminho público do cliente para uso em telas pequenas:
 ## Validação que ainda depende de dispositivo
 
 É necessário abrir o preview de produção em um Android/Chrome e iPhone/Safari reais para confirmar a instalação, o teclado e as áreas de toque. A instalação não deve ser simulada em código: o navegador precisa emitir o prompt nativo. Também é recomendável testar uma conversa longa com rede intermitente antes da publicação.
+
+## Atualizacao: operacao comercial mobile (2026-09-30)
+
+Escopo: somente `app/cliente/painel`; nenhuma API, autenticacao, rota antiga ou area `app/admin` foi alterada.
+
+- Inbox: lista preserva o formato das conversas enquanto carrega, filtros ativos podem ser limpos na propria faixa mobile, e lista/conteudo fora da viewport usam trabalho de renderizacao reduzido.
+- Conversa: viewport acompanha `visualViewport`, compositor e acoes principais preservam area segura e alvo de toque de pelo menos 44px; a navegacao inferior nao aparece quando uma conversa esta aberta.
+- CRM: a linha de contato deixa explicito que abre a ficha; a ficha mobile funciona como dialogo, com foco inicial, ciclo de Tab, Escape, bloqueio de rolagem de fundo e retorno de foco ao fechar.
+- Agenda e Funil: atalhos para ficha/conversa e mudanca de etapa usam alvo de toque de pelo menos 44px. O Funil deixa explicito que ha etapas horizontais e oferece botoes para avancar ou voltar.
+- Componentes compartilhados: botoes, links, campos e seletores de CRM receberam foco visivel consistente. Erros usam anuncio assertivo para leitor de tela; confirmacoes usam anuncio discreto.
+- Carregamento percebido: graficos e ferramentas secundarias sao carregados sob demanda; o Inicio libera a operacao diaria sem esperar resumos de automacao e implantacao.
+
+Verificacoes desta atualizacao:
+
+- ESLint dos arquivos alterados: passou.
+- `tsc -p tsconfig.release.json --noEmit --incremental false`: passou.
+- `node --experimental-strip-types --test tests/client-pwa.test.mts`: 6 de 6 passou.
+- `npm run build`: passou, com 336 paginas estaticas geradas.
+
+Risco conhecido: a validacao visual autenticada em dispositivo real ainda depende de navegador/sessao do cliente. Nesta sessao nao havia navegador conectado para executar esse smoke test; nenhuma tentativa foi feita contra dados de producao.

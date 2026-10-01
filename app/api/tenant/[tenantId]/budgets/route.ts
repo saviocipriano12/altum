@@ -11,6 +11,7 @@ import {
 } from "@/lib/server/tenant";
 import { trackLeadStageOutcome, trackProposalOutcome } from "@/lib/server/ai/learning-outcomes";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertLeadCommercialAccess, canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   leadId?: string;
@@ -79,12 +80,18 @@ export async function GET(
       .limit(200)
       .get();
 
-    const items: BudgetItem[] = snap.docs
+    const allItems: BudgetItem[] = snap.docs
       .map((doc): BudgetItem => ({
         id: doc.id,
         ...(doc.data() as Record<string, unknown>),
       }))
       .sort((a, b) => toTime(b.updatedAt || b.createdAt) - toTime(a.updatedAt || a.createdAt));
+    let items = allItems;
+    if (!hasTeamWideCommercialAccess(membership)) {
+      const leadsSnap = await adminDb.collection("leads").where("tenantId", "==", tenantId).limit(1000).get();
+      const visibleLeadIds = new Set(leadsSnap.docs.filter((doc) => canAccessAssignedCommercialRecord(membership, user.uid, doc.data() as Record<string, unknown>)).map((doc) => doc.id));
+      items = allItems.filter((item) => visibleLeadIds.has(clean(item.leadId, 160)));
+    }
 
     return NextResponse.json({ ok: true, tenantId, items });
   } catch (error) {
@@ -116,6 +123,7 @@ export async function POST(
     if (!leadId || !titulo) {
       return NextResponse.json({ error: "Campos obrigatorios: leadId e titulo." }, { status: 400 });
     }
+    await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId });
 
     const leadSnap = await adminDb.collection("leads").doc(leadId).get();
     if (!leadSnap.exists) {

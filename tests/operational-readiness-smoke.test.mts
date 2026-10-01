@@ -46,6 +46,16 @@ test("operational schedulers point to real internal route handlers", () => {
   assert.match(readFileSync(installerPath, "utf8"), /altum-job-chat\.timer/);
 });
 
+test("AI queue recovery runs every minute instead of waiting for the daily backstop", () => {
+  const timer = readFileSync(join(process.cwd(), "infra/jobs/altum-job-ai.timer"), "utf8");
+  const jobsReadme = readFileSync(join(process.cwd(), "infra/jobs/README.md"), "utf8");
+
+  assert.match(timer, /OnUnitActiveSec=60s/);
+  assert.match(timer, /AccuracySec=5s/);
+  assert.doesNotMatch(timer, /OnCalendar=/);
+  assert.match(jobsReadme, /`ai`: a cada minuto/);
+});
+
 test("package.json exposes critical validation and onboarding commands", () => {
   const pkg = readJson<{ scripts?: Record<string, string> }>("package.json");
   const scripts = pkg.scripts || {};
@@ -103,6 +113,28 @@ test("product onboarding persists nested state and recognizes commerce connectio
   assert.match(route, /commerceConnections:/);
 });
 
+test("guided onboarding distinguishes operational readiness from form completion", () => {
+  const page = readFileSync(
+    join(process.cwd(), "app/cliente/painel/onboarding/page.tsx"),
+    "utf8"
+  );
+
+  assert.match(page, /setOperationalProgress\(payload\.onboarding \|\| null\)/);
+  assert.match(page, /operationalProgress\?\.progressPct \?\? formProgress/);
+  assert.match(page, /Prontidao operacional/);
+  assert.match(page, /Roteiro atual: etapa/);
+});
+
+test("dashboard labels unassigned chat work without presenting it as the CRM owner backlog", () => {
+  const dashboard = readFileSync(
+    join(process.cwd(), "app/cliente/painel/page.tsx"),
+    "utf8"
+  );
+
+  assert.match(dashboard, /conversa\$\{unassignedChats === 1 \? "" : "s"\} sem responsavel na fila de atendimento/);
+  assert.doesNotMatch(dashboard, /contato\$\{unassignedChats === 1 \? "" : "s"\} sem dono comercial/);
+});
+
 test("product onboarding builds one organizational memory for CRM and AI", () => {
   const route = readFileSync(
     join(process.cwd(), "app/api/tenant/[tenantId]/onboarding/route.ts"),
@@ -121,6 +153,17 @@ test("product onboarding builds one organizational memory for CRM and AI", () =>
   assert.match(page, /Perguntas e respostas frequentes/);
   assert.match(page, /Regras especiais/);
   assert.match(page, /Formas de pagamento/);
+});
+
+test("product onboarding does not let a legacy generic profile mask the active AI profile", () => {
+  const route = readFileSync(
+    join(process.cwd(), "app/api/tenant/[tenantId]/onboarding/route.ts"),
+    "utf8"
+  );
+
+  assert.match(route, /function resolveOnboardingBusinessProfile/);
+  assert.match(route, /storedProfileId === "generic" && configuredProfileId !== "generic"/);
+  assert.match(route, /resolveOnboardingBusinessProfile\(stored\.company\.businessProfileId, settings\?\.businessProfileId\)/);
 });
 
 test("new WhatsApp conversations preserve CRM linkage and Meta template rules", () => {

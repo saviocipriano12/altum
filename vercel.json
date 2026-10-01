@@ -1,3 +1,8 @@
 {
-  "crons": [{ "path": "/api/internal/jobs/finance/subscriptions", "schedule": "30 8 * * *" }]
+  "crons": [
+    { "path": "/api/internal/jobs/ai/process?limit=30&drain=1", "schedule": "20 9 * * *" },
+    { "path": "/api/internal/jobs/finance/subscriptions", "schedule": "30 8 * * *" },
+    { "path": "/api/internal/jobs/commerce/actions", "schedule": "0 9 * * *" },
+    { "path": "/api/internal/jobs/commercial-agent/actions", "schedule": "10 9 * * *" }
+  ]
 }

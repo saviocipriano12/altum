@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 test("Shopify OAuth provisions realtime commercial topics idempotently", () => {
   const source = readFileSync(resolve(process.cwd(), "lib/server/commerce/shopify-webhooks.ts"), "utf8");
   const callback = readFileSync(resolve(process.cwd(), "app/api/integrations/commerce/shopify/callback/route.ts"), "utf8");
-  for (const topic of ["PRODUCTS_CREATE", "PRODUCTS_UPDATE", "ORDERS_CREATE", "ORDERS_UPDATED", "FULFILLMENTS_CREATE", "FULFILLMENTS_UPDATE"]) {
+  for (const topic of ["PRODUCTS_CREATE", "PRODUCTS_UPDATE", "ORDERS_CREATE", "ORDERS_PAID", "ORDERS_CANCELLED", "ORDERS_UPDATED", "FULFILLMENTS_CREATE", "FULFILLMENTS_UPDATE", "REFUNDS_CREATE"]) {
     assert.match(source, new RegExp(`"${topic}"`));
   }
   assert.match(source, /webhookSubscriptions\(first: 100, topics: \$topics\)/);

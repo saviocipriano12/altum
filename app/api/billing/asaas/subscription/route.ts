@@ -77,6 +77,8 @@ export async function GET(req: Request) {
     const subscription: Record<string, unknown> = subscriptionResult?.status === "fulfilled" ? subscriptionResult.value : {};
     const paymentsPayload = paymentsResult?.status === "fulfilled" ? paymentsResult.value as { data?: Array<Record<string, unknown>> } : null;
     const payments = paymentsPayload?.data || (Array.isArray(tenant.billingPaymentsSnapshot) ? tenant.billingPaymentsSnapshot as Array<Record<string, unknown>> : []);
+    const pixPayment = payments.find((payment) => clean(payment.billingType, 40).toUpperCase() === "PIX" && !["RECEIVED", "CONFIRMED", "DELETED", "REFUNDED"].includes(clean(payment.status, 40).toUpperCase()));
+    const pixCode = pixPayment ? await asaasRequest<Record<string, unknown>>(`/payments/${encodeURIComponent(clean(pixPayment.id, 180))}/pixQrCode`).catch(() => null) : null;
     const invoicesPayload = invoicesResult?.status === "fulfilled" ? invoicesResult.value as { data?: AsaasInvoice[] } : null;
     const invoices = invoicesPayload?.data || [];
     const invoicesAvailable = Boolean(invoicesPayload);
@@ -121,6 +123,8 @@ export async function GET(req: Request) {
         billingType: clean(payment.billingType, 40) || null,
         invoiceUrl: billingLink(payment.invoiceUrl),
         bankSlipUrl: billingLink(payment.bankSlipUrl),
+        pixPayload: payment === pixPayment ? clean(pixCode?.payload, 2_000) || null : null,
+        pixQrCode: payment === pixPayment ? clean(pixCode?.encodedImage, 500_000) || null : null,
       })),
       usage,
       limits: entitlements.limits,

@@ -109,7 +109,7 @@ async function resolveLead(input: {
     };
   }
 
-  const assignee = await resolveInboundAssignment(input.tenantId, { channel: "messenger", priority: "medium" });
+  const assignee = await resolveInboundAssignment(input.tenantId, { channel: "messenger", priority: "medium", responsibility: "lead" });
   const lead = await recordInboundLead({
     tenantId: input.tenantId,
     sourceType: "facebook_messenger",

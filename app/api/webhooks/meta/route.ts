@@ -14,7 +14,7 @@ import {
 } from "@/app/lib/server/meta-channel";
 import { verifyMetaSignature } from "@/app/lib/server/whatsapp-channel";
 import { getMetaEnv } from "@/app/lib/server/integration-oauth";
-import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+import { enqueueIncomingMessageJob, processAiJobAfterSettle, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { cacheInboundMessageMedia } from "@/lib/server/ai/multimodal";
 import { upsertAiOperationalAlert } from "@/lib/server/ai/observability";
 import { runLeadAutomations } from "@/lib/server/automations";
@@ -545,7 +545,7 @@ async function ensureLead(input: {
   }
 
   const leadRef = adminDb.collection("leads").doc();
-  const inboundAssignee = await resolveInboundAssignment(input.tenantId, { channel: input.channelType, priority: "medium" });
+  const inboundAssignee = await resolveInboundAssignment(input.tenantId, { channel: input.channelType, priority: "medium", responsibility: "lead" });
   await leadRef.set({
     tenantId: input.tenantId,
     nome: input.contactName,
@@ -870,7 +870,7 @@ export async function POST(req: Request) {
         contactName,
       });
       if (lead.leadId && !lead.ownerId) {
-        const inboundAssignee = await resolveInboundAssignment(channel.tenantId, { channel: channel.type, priority: "medium" });
+        const inboundAssignee = await resolveInboundAssignment(channel.tenantId, { channel: channel.type, priority: "medium", responsibility: "lead" });
         if (inboundAssignee) {
           lead.ownerId = inboundAssignee.userId;
           await adminDb.collection("leads").doc(lead.leadId).set(
@@ -1057,8 +1057,6 @@ export async function POST(req: Request) {
         dedupeKey: `${channel.tenantId}_${messageRef.id}`,
       });
 
-      await processAiJobNow(queue.jobId);
-      await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
       triggerAiQueueWorker({ limit: 8, drain: true });
       after(async () => {
         if (["audio", "image", "video", "document"].includes(String(event.messageType || "").toLowerCase())) {
@@ -1080,9 +1078,7 @@ export async function POST(req: Request) {
             console.error("Falha ao cachear midia inbound da Meta:", error);
           });
         }
-        await processAiJobNow(queue.jobId);
-        await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
-        triggerAiQueueWorker({ limit: 8, drain: true });
+        await processAiJobAfterSettle(queue.jobId, { source: `webhook_${channel.type}` });
       });
 
       await claim.eventRef.set(

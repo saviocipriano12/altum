@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Altum — Open Source e Salto Estratégico</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #dce3ef;
+      --surface: #ffffff;
+      --canvas: #f4f7fb;
+      --blue: #315eea;
+      --indigo: #5138d8;
+      --green: #087f5b;
+      --amber: #b54708;
+      --red: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1120px, calc(100% - 32px)); margin: 40px auto 72px; }
+    .hero, section {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 14px 40px rgba(29, 48, 84, .07);
+    }
+    .hero { padding: 42px; background: linear-gradient(135deg, #fff 20%, #edf2ff 100%); }
+    .eyebrow { color: var(--blue); font-weight: 750; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+    h1 { max-width: 850px; margin: 10px 0 14px; font-size: clamp(34px, 5vw, 58px); line-height: 1.04; letter-spacing: -.035em; }
+    .lead { max-width: 830px; margin: 0; color: #43506a; font-size: 19px; }
+    section { margin-top: 18px; padding: 30px; }
+    h2 { margin: 0 0 16px; font-size: 27px; letter-spacing: -.02em; }
+    h3 { margin: 22px 0 8px; font-size: 18px; }
+    p { margin: 8px 0 14px; }
+    ul, ol { padding-left: 22px; }
+    li + li { margin-top: 7px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .two { grid-template-columns: repeat(2, 1fr); }
+    .card { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcff; }
+    .card h3 { margin-top: 0; }
+    .tag { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 750; }
+    .green { color: var(--green); background: #dff7ee; }
+    .amber { color: var(--amber); background: #fff0d5; }
+    .red { color: var(--red); background: #fee4e2; }
+    .blue { color: var(--blue); background: #e7edff; }
+    .statement { border-left: 4px solid var(--indigo); padding: 4px 0 4px 18px; margin: 22px 0; font-size: 21px; font-weight: 680; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: #344054; background: #f7f9fc; }
+    code { padding: 2px 6px; border-radius: 6px; background: #eef2f8; }
+    a { color: var(--blue); }
+    .small { color: var(--muted); font-size: 13px; }
+    .sequence { counter-reset: step; display: grid; gap: 12px; }
+    .step { position: relative; padding: 17px 18px 17px 58px; border: 1px solid var(--line); border-radius: 14px; }
+    .step::before { counter-increment: step; content: counter(step); position: absolute; left: 17px; top: 15px; width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; background: var(--blue); color: white; font-weight: 800; }
+    @media (max-width: 800px) { .grid, .two { grid-template-columns: 1fr; } .hero, section { padding: 24px; } table { display: block; overflow-x: auto; } }
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <div class="eyebrow">Estratégia de produto · 25 de setembro de 2026</div>
+    <h1>De CRM com IA para infraestrutura comercial inteligente</h1>
+    <p class="lead">A Altum deve usar open source para acelerar a base, mas preservar como propriedade o que realmente cria vantagem: entendimento comercial brasileiro, memória temporal, aprendizado por resultado e uma rede capaz de vender também para agentes de compra.</p>
+  </header>
+
+  <section id="overview">
+    <h2>Overview</h2>
+    <p>A ambição correta não é construir “mais um CRM completo”. CRM, inbox, automação e copilotos já estão virando commodities. O salto é fazer a Altum ser o sistema que entende uma empresa, representa seus interesses comerciais, executa sua operação e aprende continuamente com os resultados.</p>
+    <div class="statement">A categoria: Altum Revenue OS. O diferencial central: Gêmeo Comercial Altum. A expansão: Altum Revenue Network.</div>
+    <div class="grid">
+      <article class="card">
+        <span class="tag blue">Camada 1</span>
+        <h3>Operação unificada</h3>
+        <p>Conversas, CRM, agenda, catálogo, campanhas, propostas, pagamentos e relatórios. É a fundação confiável e simples para pessoas e equipes.</p>
+      </article>
+      <article class="card">
+        <span class="tag blue">Camada 2</span>
+        <h3>Gêmeo Comercial</h3>
+        <p>Uma representação viva da empresa e de cada cliente, com fatos temporais, preferências, políticas, estoque, margem, histórico e próxima melhor ação.</p>
+      </article>
+      <article class="card">
+        <span class="tag blue">Camada 3</span>
+        <h3>Revenue Network</h3>
+        <p>Produtos e serviços dos clientes Altum descobertos, negociados e comprados por pessoas ou agentes de IA em canais próprios e externos.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="moonshot">
+    <h2>O salto que muda a categoria</h2>
+    <h3>1. Gêmeo da empresa</h3>
+    <p>Não é apenas uma base de documentos. É um modelo operacional da empresa: o que vende, para quem, por qual margem, em qual região, com quais restrições, tom de voz, estoque, agenda, prazos, políticas e poderes de aprovação.</p>
+    <h3>2. Gêmeo do cliente</h3>
+    <p>Cada lead ganha uma memória temporal e verificável: origem, intenção, preferências, objeções, orçamento, pessoas envolvidas, produtos vistos, promessas feitas, consentimentos e validade de cada informação. A IA sabe o que mudou e por que acredita em cada fato.</p>
+    <h3>3. Simulador de receita</h3>
+    <p>Antes de alterar uma campanha, abordagem, oferta ou agente, a Altum executa em modo sombra contra cenários sintéticos e históricos. Compara campeão versus desafiante, mede risco, estima impacto e só libera a mudança dentro de limites definidos.</p>
+    <h3>4. Aprendizado por resultado</h3>
+    <p>O sistema deixa de otimizar apenas “respostas bonitas”. Aprende quais decisões geram reunião, proposta, venda, margem, retenção e satisfação para cada contexto — sem misturar dados entre empresas e sem treinar com dados do cliente por padrão.</p>
+    <h3>5. Comércio entre agentes</h3>
+    <p>A Altum prepara os negócios brasileiros para um mundo em que o comprador pode ser outra IA. Cada empresa poderá publicar catálogo, disponibilidade, orçamento, checkout, pedido e pós-venda em protocolos abertos; o vendedor Altum poderá conversar com agentes compradores com limites e aprovação humana.</p>
+  </section>
+
+  <section id="repositories">
+    <h2>Repositories: como acelerar sem perder a Altum</h2>
+    <p>A política deve ser “colher, não fazer fork”: importar componentes pequenos e permissivos, integrar produtos maduros quando fizer sentido e usar soluções restritas apenas como referência arquitetural. Permissão do negócio não substitui a licença do autor.</p>
+    <table>
+      <thead><tr><th>Referência</th><th>Uso recomendado</th><th>Licença / decisão</th></tr></thead>
+      <tbody>
+        <tr><td>Chatwoot</td><td>Referência e módulos isolados para ownership, colaboração, SLA e inbox.</td><td><span class="tag green">Aproveitável</span> MIT fora da área enterprise; manter avisos e validar arquivo a arquivo.</td></tr>
+        <tr><td>LangGraph</td><td>Máquina de estados durável para jornadas, handoffs, retomadas e aprovação.</td><td><span class="tag green">Aproveitável</span> MIT. Avaliar SDK JavaScript e aderência operacional.</td></tr>
+        <tr><td>Langfuse</td><td>Tracing, prompts, datasets e avaliação da IA.</td><td><span class="tag green">Aproveitável</span> MIT fora de <code>ee/</code>.</td></tr>
+        <tr><td>Promptfoo</td><td>Testes de regressão, segurança e red team no CI.</td><td><span class="tag green">Aproveitável</span> MIT; executar plugins/configurações em ambiente isolado.</td></tr>
+        <tr><td>Graphiti / Mem0</td><td>Referência ou base para memória temporal e personalizada.</td><td><span class="tag green">Aproveitável</span> Apache 2.0; comparar custo e encaixe com o modelo atual.</td></tr>
+        <tr><td>LiveKit Agents</td><td>Infraestrutura de voz em tempo real, interrupção e telefonia.</td><td><span class="tag green">Aproveitável</span> Framework Apache 2.0; modelos possuem licença própria.</td></tr>
+        <tr><td>Activepieces</td><td>Conectores e padrões de automação.</td><td><span class="tag green">Parcial</span> Community MIT; não copiar <code>packages/ee</code>.</td></tr>
+        <tr><td>PostHog</td><td>Eventos, experimentação e métricas do funil.</td><td><span class="tag green">Parcial</span> MIT fora de <code>ee/</code>.</td></tr>
+        <tr><td>Twenty</td><td>Referência de modelo CRM e UX; SDK/UI permissivos quando aplicável.</td><td><span class="tag amber">Cuidado</span> Núcleo AGPL; evitar incorporar o core ao SaaS proprietário.</td></tr>
+        <tr><td>Dify</td><td>Referência para Agent Studio, workflows e RAG.</td><td><span class="tag red">Não copiar core</span> Licença modificada restringe serviço multi-tenant e frontend.</td></tr>
+        <tr><td>n8n</td><td>Integração externa ou referência para nós e workflows.</td><td><span class="tag amber">Integrar</span> Sustainable Use License; não incorporar o core ao produto.</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recomendação técnica, não parecer jurídico. Toda importação deve registrar origem, commit, arquivo, licença, alterações e avisos obrigatórios em um inventário de terceiros/SBOM.</p>
+  </section>
+
+  <section id="brazil">
+    <h2>A vantagem que estrangeiros terão dificuldade de copiar</h2>
+    <div class="grid two">
+      <article class="card"><h3>Brasil-native</h3><p>WhatsApp no centro; Pix, boleto, NF-e/NFS-e, LGPD, português regional, telefonia local, Meta, Google e ecossistema de ecommerce brasileiro.</p></article>
+      <article class="card"><h3>Pacotes verticais reais</h3><p>Clínicas, imobiliárias, educação, ecommerce e serviços B2B com ontologia, métricas, integrações, guardrails, avaliações e playbooks próprios — não somente prompts.</p></article>
+      <article class="card"><h3>Benchmark coletivo privado</h3><p>Com consentimento e anonimização, mostrar o que empresas semelhantes fazem melhor sem expor dados ou treinar modelos entre tenants.</p></article>
+      <article class="card"><h3>Autonomia governada</h3><p>Cada ação possui limite, explicação, aprovação, trilha, reversão e orçamento. A interface mostra resultado e exceção, não uma confusão de agentes internos.</p></article>
+    </div>
+  </section>
+
+  <section id="guidance">
+    <h2>Guidance: ordem para transformar visão em vantagem</h2>
+    <div class="sequence">
+      <div class="step"><strong>Blindar a fundação.</strong> Testes de qualidade e segurança da IA, observabilidade, isolamento por tenant, permissões, auditoria e rollout progressivo.</div>
+      <div class="step"><strong>Entregar o Vendedor Altum 10/10.</strong> Produto, estoque, mídia, visão, voz, proposta, pagamento, agenda, pós-venda e handoff funcionando de ponta a ponta nos canais atuais.</div>
+      <div class="step"><strong>Criar o Gêmeo Comercial.</strong> Business Graph + Customer Graph temporal, fatos com proveniência, memória e motor de próxima melhor ação.</div>
+      <div class="step"><strong>Ativar o laboratório de receita.</strong> Cenários, evals, shadow mode, champion/challenger, experimentos e rollback automático.</div>
+      <div class="step"><strong>Lançar o Gerente Altum.</strong> Diagnóstico diário, coaching, previsão, riscos, ações recomendadas e execução aprovada.</div>
+      <div class="step"><strong>Abrir a Revenue Network.</strong> UCP para comércio, MCP para ferramentas e A2A para colaboração entre agentes, começando por catálogo e orçamento.</div>
+      <div class="step"><strong>Criar o ecossistema.</strong> Agent Studio, marketplace de skills/conectores e pacotes verticais certificados.</div>
+    </div>
+    <h3>O que não fazer</h3>
+    <ul>
+      <li>Montar um mosaico de plataformas open source e herdar cinco modelos de dados.</li>
+      <li>Expor uma “equipe de agentes” complexa para o cliente; internamente podem existir especialistas, externamente existe uma Altum coerente.</li>
+      <li>Confundir autonomia com liberdade irrestrita ou publicar mudanças sem avaliação e rollback.</li>
+      <li>Competir por quantidade de features antes de fechar jornadas de venda completas.</li>
+    </ul>
+    <h3>Métrica norte</h3>
+    <p><strong>Receita incremental confiável por cliente Altum.</strong> Métricas auxiliares: tempo até primeiro valor, taxa de resolução/venda sem intervenção, conversão por etapa, margem preservada, retenção, precisão factual, incidentes e custo por resultado.</p>
+  </section>
+
+  <section id="sources">
+    <h2>Sources</h2>
+    <ul>
+      <li><a href="https://github.com/twentyhq/twenty/blob/main/LICENSE">Twenty — licença</a></li>
+      <li><a href="https://github.com/langgenius/dify/blob/main/LICENSE">Dify — licença</a></li>
+      <li><a href="https://github.com/chatwoot/chatwoot/blob/develop/LICENSE">Chatwoot — licença</a></li>
+      <li><a href="https://github.com/langchain-ai/langgraph/blob/main/libs/langgraph/pyproject.toml">LangGraph — pacote e licença</a></li>
+      <li><a href="https://github.com/langfuse/langfuse">Langfuse — repositório</a></li>
+      <li><a href="https://github.com/promptfoo/promptfoo/blob/main/README.md?plain=1">Promptfoo — repositório</a> e <a href="https://github.com/promptfoo/promptfoo/blob/main/SECURITY.md">orientação de segurança</a></li>
+      <li><a href="https://github.com/getzep/graphiti">Graphiti — repositório</a></li>
+      <li><a href="https://github.com/livekit/agents/blob/main/livekit-agents/pyproject.toml">LiveKit Agents — licença do framework</a> e <a href="https://github.com/livekit/agents/blob/main/MODEL_LICENSE">licença dos modelos</a></li>
+      <li><a href="https://github.com/activepieces/activepieces">Activepieces — repositório</a> e <a href="https://github.com/activepieces/activepieces/blob/main/packages/ee/LICENSE">licença enterprise</a></li>
+      <li><a href="https://github.com/PostHog/posthog/blob/master/LICENSE">PostHog — licença</a></li>
+      <li><a href="https://github.com/n8n-io/n8n/blob/master/security/sca/README.md">n8n — postura de licenciamento</a></li>
+      <li><a href="https://github.com/universal-commerce-protocol/ucp">Universal Commerce Protocol</a> e <a href="https://github.com/universal-commerce-protocol">SDKs oficiais</a></li>
+      <li><a href="https://github.com/a2aproject/A2A/blob/main/docs/index.md">Agent2Agent Protocol</a></li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

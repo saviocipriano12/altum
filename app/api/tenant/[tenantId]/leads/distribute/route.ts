@@ -2,313 +2,211 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import {
-  assertTenantAccess,
-  getTenantSettings,
-  hasTenantCapability,
-  TenantAccessError,
-} from "@/lib/server/tenant";
-import { listTenantOperators } from "@/lib/server/tenant-routing";
+import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { balanceLeadAssignments, eligibleLeadSellers, randomLeadAssignments, type LeadAssignmentMember } from "@/lib/lead-assignment";
 
-type Body = {
-  leadIds?: unknown;
-  onlyUnassigned?: boolean;
-};
-
-type LeadRow = {
-  id: string;
-  owner?: unknown;
-  ownerId?: unknown;
-  channel?: unknown;
-  sourceType?: unknown;
-  origem?: unknown;
-  utmSource?: unknown;
-  pipelineStage?: unknown;
-  stage?: unknown;
-  status?: unknown;
-  priority?: unknown;
-};
-
+type AssignmentMode = "balanced" | "random" | "specific" | "unassign";
+type Body = { leadIds?: unknown; onlyUnassigned?: boolean; mode?: AssignmentMode; assigneeUserId?: unknown; teamId?: unknown };
+type LeadRow = Record<string, unknown> & { id: string };
+type Assignment = { leadId: string; userId: string | null; userName: string | null };
 const CLOSED_STAGES = new Set(["ganho", "perdido", "won", "lost", "closed_won", "closed_lost"]);
 
-function clean(value: unknown, max = 140) {
-  if (typeof value !== "string") return "";
-  return value.trim().slice(0, max);
-}
-
-function getInboxRules(settings: Record<string, unknown> | null) {
-  const rules =
-    settings?.rules && typeof settings.rules === "object"
-      ? (settings.rules as Record<string, unknown>)
-      : {};
-  const inbox =
-    rules.inbox && typeof rules.inbox === "object"
-      ? (rules.inbox as Record<string, unknown>)
-      : {};
-  const mode = clean(inbox.assignmentMode || "least_loaded", 40).toLowerCase();
-
-  return {
-    assignmentMode: mode === "round_robin" ? "round_robin" : "least_loaded",
-    preferOnlineAgents: inbox.preferOnlineAgents !== false,
-    strictChannelRouting: inbox.strictChannelRouting === true,
-    fallbackToAnyAgent: inbox.fallbackToAnyAgent !== false,
-    prioritizeHighPriority: inbox.prioritizeHighPriority !== false,
-    lastAssignedUserId: clean(inbox.lastAssignedUserId, 140),
-  };
-}
-
-function leadChannel(lead: LeadRow) {
-  return (
-    clean(lead.channel, 40) ||
-    clean(lead.sourceType, 40) ||
-    clean(lead.utmSource, 40) ||
-    clean(lead.origem, 40)
-  ).toLowerCase();
+function clean(value: unknown, max = 180) {
+  return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
 function isClosedLead(lead: LeadRow) {
   const stage = normalizePipelineStageId(lead.pipelineStage || lead.stage || "");
   const status = clean(lead.status, 40).toLowerCase();
-  return CLOSED_STAGES.has(stage) || status === "archived" || status === "deleted";
+  return CLOSED_STAGES.has(stage) || ["archived", "deleted"].includes(status);
 }
 
-function filterEligibleOperators(input: {
-  operators: Awaited<ReturnType<typeof listTenantOperators>>;
-  activeLoads: Map<string, number>;
-  channel: string;
-  rules: ReturnType<typeof getInboxRules>;
-}) {
-  let eligible = [...input.operators];
-
-  if (input.rules.preferOnlineAgents) {
-    const online = eligible.filter((item) => item.availability === "online");
-    if (online.length > 0) eligible = online;
-  } else {
-    eligible = eligible.filter((item) => item.availability !== "offline");
-  }
-
-  if (input.channel) {
-    const channelMatched = eligible.filter(
-      (item) => item.allowedChannels.length === 0 || item.allowedChannels.includes(input.channel)
-    );
-
-    if (input.rules.strictChannelRouting) {
-      if (channelMatched.length > 0) eligible = channelMatched;
-      else if (!input.rules.fallbackToAnyAgent) eligible = [];
-    } else if (channelMatched.length > 0) {
-      eligible = channelMatched;
-    }
-  }
-
-  eligible = eligible.filter((item) => {
-    const maxOpenChats = Number(item.maxOpenChats || 0);
-    if (!maxOpenChats) return true;
-    return (input.activeLoads.get(item.userId) || 0) < maxOpenChats;
-  });
-
-  return eligible;
+function currentOwnerId(lead: LeadRow) {
+  return clean(lead.ownerId || lead.ownerUserId || lead.assignedTo || lead.assignedUserId, 140);
 }
 
-export async function POST(
-  req: Request,
-  context: { params: Promise<{ tenantId: string }> }
-) {
+async function listEligibleSellers(tenantId: string) {
+  const membershipSnap = await adminDb.collection("tenant_users").where("tenantId", "==", tenantId).limit(100).get();
+  const members = await Promise.all(membershipSnap.docs.map(async (doc): Promise<LeadAssignmentMember | null> => {
+    const data = doc.data() as Record<string, unknown>;
+    const userId = clean(data.userId, 140);
+    if (!userId) return null;
+    const userSnap = await adminDb.collection("users").doc(userId).get();
+    const userData = userSnap.exists ? userSnap.data() as Record<string, unknown> : {};
+    const inactive = ["blocked", "inactive"].includes(clean(data.status, 40).toLowerCase()) ||
+      ["blocked", "inactive"].includes(clean(userData.status, 40).toLowerCase());
+    return {
+      userId,
+      name: clean(userData.name || data.name || data.email, 140) || "Vendedor",
+      role: clean(data.role, 40),
+      status: inactive ? "blocked" : "active",
+      accessProfile: clean(data.accessProfile, 40),
+      capabilities: Array.isArray(data.capabilities) ? data.capabilities.map((item) => clean(item, 60)).filter(Boolean) : [],
+      availability: clean(data.availability, 40),
+      presenceState: clean(data.presenceState, 40),
+      teamId: clean(data.teamId || data.team, 140),
+      maxOpenChats: typeof data.maxOpenChats === "number" ? data.maxOpenChats : null,
+    };
+  }));
+  return eligibleLeadSellers(members.filter((item): item is LeadAssignmentMember => Boolean(item)));
+}
+
+export async function POST(req: Request, context: { params: Promise<{ tenantId: string }> }) {
   try {
     const user = await requireRequestUser(req);
     const { tenantId } = await context.params;
     const membership = await assertTenantAccess(user.uid, tenantId);
     await assertTenantModule(tenantId, "crm");
-    if (
-      !hasTenantCapability(membership, "edit_leads") &&
-      !hasTenantCapability(membership, "manage_users") &&
-      !hasTenantCapability(membership, "manage_settings")
-    ) {
-      throw new TenantAccessError("tenant_capability_denied", "Perfil sem capacidade para distribuir oportunidades.");
-    }
+    const canManageAssignments = hasTenantCapability(membership, "view_team_records") || hasTenantCapability(membership, "manage_users") || hasTenantCapability(membership, "manage_settings");
+    if (!canManageAssignments) throw new TenantAccessError("tenant_capability_denied", "Somente dono ou gestor pode distribuir oportunidades.");
 
-    const body = (await req.json().catch(() => ({}))) as Body;
+    const body = await req.json().catch(() => ({})) as Body;
     const requestedLeadIds = Array.isArray(body.leadIds)
-      ? Array.from(new Set(body.leadIds.map((id) => clean(id, 140)).filter(Boolean))).slice(0, 80)
+      ? Array.from(new Set(body.leadIds.map((id) => clean(id, 140)).filter(Boolean))).slice(0, 100)
       : [];
-    const onlyUnassigned = body.onlyUnassigned !== false;
+    const mode: AssignmentMode = ["random", "specific", "unassign"].includes(String(body.mode))
+      ? body.mode as AssignmentMode
+      : "balanced";
+    const assigneeUserId = clean(body.assigneeUserId, 140);
+    const teamId = clean(body.teamId, 140);
+    const onlyUnassigned = mode === "unassign" ? false : body.onlyUnassigned !== false;
+    if (mode === "unassign" && requestedLeadIds.length === 0) {
+      return NextResponse.json({ error: "Selecione ao menos uma oportunidade para remover o responsavel." }, { status: 400 });
+    }
 
-    const [operators, settings, leadsSnap] = await Promise.all([
-      listTenantOperators(tenantId),
-      getTenantSettings(tenantId),
-      adminDb.collection("leads").where("tenantId", "==", tenantId).limit(300).get(),
+    const [sellers, leadsSnap] = await Promise.all([
+      listEligibleSellers(tenantId),
+      adminDb.collection("leads").where("tenantId", "==", tenantId).limit(500).get(),
     ]);
-
-    if (operators.length === 0) {
-      return NextResponse.json({ error: "Nenhum vendedor ativo para receber oportunidades." }, { status: 400 });
+    if (mode !== "unassign" && !sellers.length) {
+      return NextResponse.json({ error: "Nenhum vendedor ativo esta disponivel para receber oportunidades." }, { status: 400 });
+    }
+    const selectedSeller = mode === "specific" ? sellers.find((seller) => seller.userId === assigneeUserId) : null;
+    if (mode === "specific" && !selectedSeller) {
+      return NextResponse.json({ error: "Escolha um vendedor ativo. Gestores e administradores nao recebem leads." }, { status: 400 });
     }
 
-    const rules = getInboxRules((settings || null) as Record<string, unknown> | null);
     const requestedSet = new Set(requestedLeadIds);
-    const leads = leadsSnap.docs.map(
-      (doc): LeadRow => ({
-        id: doc.id,
-        ...(doc.data() as Record<string, unknown>),
-      })
-    );
+    const leads = leadsSnap.docs.map((doc): LeadRow => ({ id: doc.id, ...doc.data() }));
+    const candidates = leads.filter((lead) => {
+      if (requestedSet.size && !requestedSet.has(lead.id)) return false;
+      if (isClosedLead(lead)) return false;
+      if (onlyUnassigned && currentOwnerId(lead)) return false;
+      return true;
+    }).slice(0, 100);
+    if (!candidates.length) {
+      return NextResponse.json({ ok: true, tenantId, assigned: 0, message: requestedSet.size ? "Nenhuma oportunidade selecionada esta elegivel." : "Nenhuma oportunidade sem responsavel." });
+    }
 
-    const activeLoads = new Map<string, number>();
-    for (const operator of operators) activeLoads.set(operator.userId, 0);
-
+    const candidateIds = new Set(candidates.map((lead) => lead.id));
+    const currentLoads = new Map(sellers.map((seller) => [seller.userId, 0]));
     for (const lead of leads) {
-      if (isClosedLead(lead)) continue;
-      const ownerId = clean(lead.ownerId, 140);
-      if (!ownerId || !activeLoads.has(ownerId)) continue;
-      activeLoads.set(ownerId, (activeLoads.get(ownerId) || 0) + 1);
+      if (isClosedLead(lead) || candidateIds.has(lead.id)) continue;
+      const ownerId = currentOwnerId(lead);
+      if (currentLoads.has(ownerId)) currentLoads.set(ownerId, (currentLoads.get(ownerId) || 0) + 1);
     }
+    const assignments: Assignment[] = mode === "unassign"
+      ? candidates.map((lead) => ({ leadId: lead.id, userId: null, userName: null }))
+      : selectedSeller
+        ? candidates.map((lead) => ({ leadId: lead.id, userId: selectedSeller.userId, userName: selectedSeller.name }))
+        : mode === "random"
+          ? randomLeadAssignments({ leadIds: candidates.map((lead) => lead.id), sellers, currentLoads, teamId })
+          : balanceLeadAssignments({ leadIds: candidates.map((lead) => lead.id), sellers, currentLoads, teamId });
+    const previousAssignments = candidates.map((lead) => ({
+      leadId: lead.id,
+      userId: currentOwnerId(lead) || null,
+      userName: clean(lead.ownerName || lead.owner || lead.assignedUserName, 140) || null,
+    }));
 
-    const candidates = leads
-      .filter((lead) => {
-        if (requestedSet.size > 0 && !requestedSet.has(lead.id)) return false;
-        if (isClosedLead(lead)) return false;
-        if (onlyUnassigned && (clean(lead.ownerId, 140) || clean(lead.owner, 140))) return false;
-        return true;
-      })
-      .slice(0, 80);
-
-    if (candidates.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        tenantId,
-        assigned: 0,
-        message: requestedSet.size ? "Nenhuma oportunidade selecionada elegivel." : "Nenhuma oportunidade sem responsavel.",
-      });
-    }
-
-    const assignments: Array<{ leadId: string; userId: string; userName: string }> = [];
-    let currentRoundRobinUserId = rules.lastAssignedUserId;
-
-    for (const lead of candidates) {
-      const eligible = filterEligibleOperators({
-        operators,
-        activeLoads,
-        channel: leadChannel(lead),
-        rules,
-      });
-      if (!eligible.length) continue;
-
-      const nextAssignee =
-        rules.assignmentMode === "round_robin"
-          ? (() => {
-              const ordered = [...eligible].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-              const currentIndex = ordered.findIndex((item) => item.userId === currentRoundRobinUserId);
-              const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % ordered.length;
-              currentRoundRobinUserId = ordered[nextIndex]?.userId || currentRoundRobinUserId;
-              return ordered[nextIndex];
-            })()
-          : [...eligible].sort((a, b) => {
-              const aLoad = activeLoads.get(a.userId) || 0;
-              const bLoad = activeLoads.get(b.userId) || 0;
-              if (aLoad !== bLoad) return aLoad - bLoad;
-              if (rules.prioritizeHighPriority && clean(lead.priority, 20).toLowerCase() === "high") {
-                if (a.availability !== b.availability) {
-                  if (a.availability === "online") return -1;
-                  if (b.availability === "online") return 1;
-                }
-              }
-              return a.name.localeCompare(b.name, "pt-BR");
-            })[0];
-
-      if (!nextAssignee) continue;
-
-      assignments.push({
-        leadId: lead.id,
-        userId: nextAssignee.userId,
-        userName: nextAssignee.name,
-      });
-      activeLoads.set(nextAssignee.userId, (activeLoads.get(nextAssignee.userId) || 0) + 1);
-    }
-
-    // Uma distribuicao pode atualizar o lead e varias conversas vinculadas.
-    // WriteBatch aceita no maximo 500 operacoes; BulkWriter fragmenta o
-    // trabalho com seguranca e evita que uma equipe maior fique sem fila.
+    const assignedByLead = new Map(assignments.map((item) => [item.leadId, item]));
+    const [chatsSnap, appointmentsSnap, budgetsSnap, financeSnap] = await Promise.all([
+      adminDb.collection("chats").where("tenantId", "==", tenantId).limit(800).get(),
+      adminDb.collection("appointments").where("tenantId", "==", tenantId).limit(1000).get(),
+      adminDb.collection("orcamentos").where("tenantId", "==", tenantId).limit(1000).get(),
+      adminDb.collection("financeiro").where("tenantId", "==", tenantId).limit(1000).get(),
+    ]);
     const writer = adminDb.bulkWriter();
     for (const assignment of assignments) {
-      writer.set(
-        adminDb.collection("leads").doc(assignment.leadId),
-        {
-          ownerId: assignment.userId,
-          owner: assignment.userName,
-          distributedAt: FieldValue.serverTimestamp(),
-          distributedBy: user.uid,
-          distributedByName: user.name,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+      const leadRef = adminDb.collection("leads").doc(assignment.leadId);
+      writer.set(leadRef, {
+        ownerId: assignment.userId,
+        ownerUserId: assignment.userId,
+        assignedTo: assignment.userId,
+        owner: assignment.userName,
+        ownerName: assignment.userName,
+        assignedUserName: assignment.userName,
+        assignedAt: assignment.userId ? FieldValue.serverTimestamp() : null,
+        assignedBy: user.uid,
+        assignedByName: user.name,
+        assignmentMode: mode,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      writer.set(leadRef.collection("events").doc(), {
+        type: "lead_assignment",
+        title: mode === "unassign" ? "Responsavel removido" : mode === "specific" ? "Responsavel alterado" : "Lead distribuido",
+        detail: assignment.userName ? `Responsavel: ${assignment.userName}` : "Oportunidade deixada sem responsavel",
+        ownerUserId: assignment.userId,
+        actorId: user.uid,
+        actorName: user.name,
+        createdAt: FieldValue.serverTimestamp(),
+      });
     }
-
-    if (assignments.length > 0) {
-      const assignedByLead = new Map(assignments.map((item) => [item.leadId, item]));
-      const chatsSnap = await adminDb
-        .collection("chats")
-        .where("tenantId", "==", tenantId)
-        .limit(500)
-        .get();
-
-      for (const doc of chatsSnap.docs) {
+    for (const doc of chatsSnap.docs) {
+      const data = doc.data() as Record<string, unknown>;
+      const assignment = assignedByLead.get(clean(data.leadId, 140));
+      if (!assignment || ["resolved", "archived", "closed", "merged"].includes(clean(data.status, 40).toLowerCase())) continue;
+      writer.set(doc.ref, {
+        assignedTo: assignment.userId,
+        assignedUserName: assignment.userName,
+        ownerId: assignment.userId,
+        ownerName: assignment.userName,
+        assignedAt: assignment.userId ? FieldValue.serverTimestamp() : null,
+        assignedBy: user.uid,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+    let relatedRecordsUpdated = 0;
+    for (const snap of [appointmentsSnap, budgetsSnap, financeSnap]) {
+      for (const doc of snap.docs) {
         const data = doc.data() as Record<string, unknown>;
-        const leadId = clean(data.leadId, 140);
-        const assignment = assignedByLead.get(leadId);
+        const assignment = assignedByLead.get(clean(data.leadId, 140));
         if (!assignment) continue;
-        const status = clean(data.status || "open", 40).toLowerCase();
-        if (status === "resolved" || status === "archived") continue;
-        writer.set(
-          doc.ref,
-          {
-            assignedTo: assignment.userId,
-            assignedUserName: assignment.userName,
-            ownerId: assignment.userId,
-            ownerName: assignment.userName,
-            distributedAt: FieldValue.serverTimestamp(),
-            distributedBy: user.uid,
-            distributedByName: user.name,
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      const lastAssigned = assignments[assignments.length - 1];
-      writer.set(
-        adminDb.collection("tenant_settings").doc(tenantId),
-        {
-          tenantId,
-          rules: {
-            inbox: {
-              lastAssignedUserId: lastAssigned.userId,
-              lastAssignedAt: FieldValue.serverTimestamp(),
-            },
-          },
+        writer.set(doc.ref, {
+          ownerId: assignment.userId,
+          ownerUserId: assignment.userId,
+          ownerName: assignment.userName,
+          assignedTo: assignment.userId,
+          assignedUserName: assignment.userName,
+          assignmentMode: mode,
+          assignedBy: user.uid,
           updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+        }, { merge: true });
+        relatedRecordsUpdated += 1;
+      }
     }
-
+    const auditRef = adminDb.collection("audit_logs").doc();
+    writer.set(auditRef, {
+      tenantId,
+      action: "lead_assignment",
+      mode,
+      leadIds: assignments.map((item) => item.leadId),
+      assignments,
+      previousAssignments,
+      assigneeUserId: selectedSeller?.userId || null,
+      assigneeName: selectedSeller?.name || null,
+      relatedRecordsUpdated,
+      actorId: user.uid,
+      actorName: user.name,
+      createdAt: FieldValue.serverTimestamp(),
+    });
     await writer.close();
 
-    return NextResponse.json({
-      ok: true,
-      tenantId,
-      mode: rules.assignmentMode,
-      assigned: assignments.length,
-      items: assignments,
-    });
+    return NextResponse.json({ ok: true, tenantId, mode, assigned: assignments.length, relatedRecordsUpdated, auditId: auditRef.id, undoAvailable: assignments.length > 0, items: assignments });
   } catch (error) {
-    if (error instanceof RouteAuthError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
-    }
-    if (error instanceof TenantAccessError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
-    }
-
+    if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
     console.error("Erro ao distribuir oportunidades do tenant:", error);
     return NextResponse.json({ error: "Falha ao distribuir oportunidades." }, { status: 500 });
   }

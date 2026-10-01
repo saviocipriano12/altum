@@ -369,7 +369,7 @@ async function sendMetaConversion(input: {
     fn: firstName ? [sha256(firstName)] : undefined,
     external_id: input.leadId ? [sha256(`${input.tenantId}:${input.leadId}`)] : undefined,
     fbp: clean(lastTouchRecord.fbp || input.lead.fbp, 240) || undefined,
-    fbc: buildFbc(lastTouch.fbclid || clean(input.lead.fbclid, 240), lastTouch.occurredAt || input.lead.updatedAt),
+    fbc: clean(lastTouchRecord.fbc || input.lead.fbc, 300) || buildFbc(lastTouch.fbclid || clean(input.lead.fbclid, 240), lastTouch.occurredAt || input.lead.updatedAt),
   };
   const qualification =
     input.lead.qualification && typeof input.lead.qualification === "object"

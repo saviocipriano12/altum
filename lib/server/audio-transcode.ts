@@ -57,11 +57,12 @@ export async function createMobileAudioRenditions(input: {
     await writeFile(sourcePath, input.source);
     await runFfmpeg([
       "-hide_banner", "-loglevel", "error", "-y", "-i", sourcePath,
-      "-vn", "-ac", "1", "-ar", "48000", "-c:a", "libopus", "-b:a", "48k", voicePath,
+      "-vn", "-map_metadata", "-1", "-ac", "1", "-ar", "48000",
+      "-c:a", "libopus", "-application", "voip", "-vbr", "on", "-compression_level", "10", "-b:a", "48k", voicePath,
     ]);
     await runFfmpeg([
       "-hide_banner", "-loglevel", "error", "-y", "-i", sourcePath,
-      "-vn", "-ac", "1", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "96k", playbackPath,
+      "-vn", "-map_metadata", "-1", "-ac", "1", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "112k", playbackPath,
     ]);
     const [whatsappVoice, playback] = await Promise.all([readFile(voicePath), readFile(playbackPath)]);
     if (!whatsappVoice.length || !playback.length) throw new Error("A conversao gerou um audio vazio.");

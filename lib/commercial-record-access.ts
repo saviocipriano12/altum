@@ -33,7 +33,9 @@ export function canAccessAssignedCommercialRecord(
   const currentUserId = clean(userId, 140);
   const channelScope = clean(record.channelScope, 40).toLowerCase();
   const channelOwnerUserId = clean(record.channelOwnerUserId, 140);
-  if (channelScope === "personal" && channelOwnerUserId === currentUserId) return true;
+  if (channelScope === "personal") {
+    return Boolean(currentUserId && channelOwnerUserId === currentUserId);
+  }
   const ownerId = clean(
     record.assignedTo || record.ownerId || record.ownerUserId || record.assignedUserId || record.responsavelId,
     140

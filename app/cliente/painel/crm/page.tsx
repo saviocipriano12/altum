@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   CheckCircle2,
+  ChevronRight,
   ClipboardList,
   Copy,
   DollarSign,
@@ -45,6 +46,50 @@ import {
 } from "@/app/cliente/painel/components/crm-workspace";
 import { getPipelineStageLabel, normalizePipelineStageId, type PipelineStageDefinition } from "@/lib/pipeline";
 import type { SalesJourneyRecommendation } from "@/lib/sales-journey";
+import { deriveEcommerceOrderJourney, type EcommerceOrderJourneyState } from "@/lib/ecommerce-journey";
+import { inferClientAccessProfile } from "@/lib/client-access-profiles";
+
+const ECOMMERCE_JOURNEY_LABELS: Record<EcommerceOrderJourneyState, string> = {
+  order_created: "Aguardando pagamento",
+  payment_confirmed: "Pagamento confirmado",
+  fulfillment_pending: "Preparando envio",
+  shipped: "Pedido enviado",
+  delivered: "Pedido entregue",
+  partially_refunded: "Reembolso parcial",
+  cancelled: "Pedido cancelado",
+  refunded: "Pedido estornado",
+};
+
+const ECOMMERCE_ACTION_LABELS: Record<string, string> = {
+  purchase_confirmation: "Confirmar compra",
+  tracking_available: "Enviar rastreio",
+  abandoned_cart_recovery: "Recuperar carrinho",
+  post_purchase_upsell: "Pos-venda e recompra",
+};
+
+function ecommerceActionLabel(value: unknown) {
+  const key = String(value || "");
+  return ECOMMERCE_ACTION_LABELS[key] || "Acao de ecommerce";
+}
+
+function ecommerceJourneyState(value: unknown, paymentStatus?: unknown, fulfillmentStatus?: unknown) {
+  const saved = String(value || "") as EcommerceOrderJourneyState;
+  return ECOMMERCE_JOURNEY_LABELS[saved]
+    ? saved
+    : deriveEcommerceOrderJourney({ paymentStatus, fulfillmentStatus }).state;
+}
+
+function ecommerceJourneyLabel(value: unknown, paymentStatus?: unknown, fulfillmentStatus?: unknown) {
+  const state = ecommerceJourneyState(value, paymentStatus, fulfillmentStatus);
+  return ECOMMERCE_JOURNEY_LABELS[state] || "Pedido em andamento";
+}
+
+function ecommerceJourneyTone(value: unknown, paymentStatus?: unknown, fulfillmentStatus?: unknown): "red" | "green" | "orange" {
+  const state = ecommerceJourneyState(value, paymentStatus, fulfillmentStatus);
+  if (state === "cancelled" || state === "refunded") return "red";
+  if (state === "delivered" || state === "payment_confirmed") return "green";
+  return "orange";
+}
 
 type LeadTask = {
   id: string;
@@ -200,6 +245,16 @@ type LeadItem = {
   aiCommercialTemperature?: string;
   aiLeadSummary?: string;
   aiPlannerConfidence?: number | null;
+  commercialState?: {
+    ecommerceCustomerId?: string | null;
+    ecommerceCustomerOrders?: number | null;
+    ecommerceCustomerLifetimeValue?: number | null;
+    ecommerceCustomerRecentProducts?: string[];
+    ecommerceRecommendedOfferId?: string | null;
+    ecommerceRecommendedOfferName?: string | null;
+    ecommerceRecommendedOfferCheckoutUrl?: string | null;
+    ecommerceRecommendationRelation?: "cross_sell" | "upsell" | "next_offer" | null;
+  };
   commercialDossier?: LeadCommercialDossier | null;
   commercialDossierUpdatedAt?: unknown;
   salesJourney?: SalesJourneyRecommendation | null;
@@ -255,10 +310,22 @@ type LeadDetailPayload = {
     status?: string;
     paymentStatus?: string;
     fulfillmentStatus?: string;
+    journeyState?: EcommerceOrderJourneyState;
     trackingCode?: string;
     trackingUrl?: string;
+    checkoutUrl?: string;
     purchasedProductNames?: string[];
     orderedAt?: unknown;
+    updatedAt?: unknown;
+    createdAt?: unknown;
+  }>;
+  ecommerceActions?: Array<{
+    id: string;
+    type?: "purchase_confirmation" | "tracking_available" | "abandoned_cart_recovery" | "post_purchase_upsell";
+    title?: string;
+    detail?: string;
+    status?: "pending" | "sent" | "done" | "dismissed" | string;
+    customerName?: string;
     updatedAt?: unknown;
     createdAt?: unknown;
   }>;
@@ -299,6 +366,34 @@ type MetricsSummaryPayload = {
     }>;
   };
 };
+
+type TenantUserOption = {
+  userId?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+  status?: string;
+  accessProfile?: string;
+  capabilities?: string[];
+  presenceState?: string;
+  lastSeenAt?: unknown;
+};
+
+type SellerPresence = "online" | "away" | "offline";
+
+function sellerPresence(item: TenantUserOption): SellerPresence {
+  const lastSeenAt = toCrmDate(item.lastSeenAt)?.getTime() || 0;
+  const age = Date.now() - lastSeenAt;
+  if (item.presenceState === "online" && age <= 90_000) return "online";
+  if (age <= 5 * 60_000 && item.presenceState !== "offline") return "away";
+  return "offline";
+}
+
+function presenceLabel(value: SellerPresence) {
+  if (value === "online") return "online agora";
+  if (value === "away") return "ausente";
+  return "offline";
+}
 
 type ViewKey = "list" | "pipeline" | "analytics";
 const CRM_PAGE_SIZE = 80;
@@ -542,6 +637,7 @@ export default function ClienteCrmPage() {
   const viewFromQuery = (searchParams.get("view") || "list") as ViewKey;
   const { tenant, hasCapability } = useClienteTenant();
   const canOperate = hasCapability("edit_leads");
+  const canManageAssignments = hasCapability("view_team_records") || hasCapability("manage_users") || hasCapability("manage_settings");
 
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [totalLeadCount, setTotalLeadCount] = useState(0);
@@ -552,6 +648,7 @@ export default function ClienteCrmPage() {
   const [detail, setDetail] = useState<LeadDetailPayload | null>(null);
   const [view, setView] = useState<ViewKey>(viewFromQuery === "pipeline" ? "pipeline" : viewFromQuery === "analytics" ? "analytics" : "list");
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [stageFilter, setStageFilter] = useState("all");
   const [heatFilter, setHeatFilter] = useState("all");
   const [ownerFilter, setOwnerFilter] = useState("all");
@@ -565,13 +662,18 @@ export default function ClienteCrmPage() {
   const [savingNote, setSavingNote] = useState(false);
   const [savingLead, setSavingLead] = useState(false);
   const [savingNewLead, setSavingNewLead] = useState(false);
+  const [updatingEcommerceActionId, setUpdatingEcommerceActionId] = useState<string | null>(null);
   const [deletingLeads, setDeletingLeads] = useState(false);
   const [distributingLeads, setDistributingLeads] = useState(false);
+  const [sellerOptions, setSellerOptions] = useState<Array<{ id: string; name: string; presence: SellerPresence; lastSeenAt?: unknown }>>([]);
+  const [assignmentSellerId, setAssignmentSellerId] = useState("");
   const [showLeadDrawer, setShowLeadDrawer] = useState(false);
+  const [isDesktopCrmViewport, setIsDesktopCrmViewport] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [lastAssignmentAuditId, setLastAssignmentAuditId] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [nextStage, setNextStage] = useState("captado");
   const [taskTitle, setTaskTitle] = useState("");
@@ -618,6 +720,32 @@ export default function ClienteCrmPage() {
       setLoading(false);
     }
   }, [leadFromQuery, tenant?.tenantId]);
+
+  const loadSellerOptions = useCallback(async () => {
+    if (!tenant?.tenantId || !canManageAssignments) {
+      setSellerOptions([]);
+      return;
+    }
+    try {
+      const response = await authedFetch(`/api/tenant/${tenant.tenantId}/users`);
+      const payload = await response.json().catch(() => ({})) as { items?: TenantUserOption[] };
+      if (!response.ok) return;
+      const sellers = (payload.items || [])
+        .filter((item) => item.status !== "blocked" && inferClientAccessProfile(item).id === "seller")
+        .map((item) => ({
+          id: String(item.userId || "").trim(),
+          name: String(item.name || item.email || "Vendedor").trim(),
+          presence: sellerPresence(item),
+          lastSeenAt: item.lastSeenAt,
+        }))
+        .filter((item) => item.id)
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      setSellerOptions(sellers);
+      setAssignmentSellerId((current) => current && sellers.some((seller) => seller.id === current) ? current : sellers[0]?.id || "");
+    } catch {
+      setSellerOptions([]);
+    }
+  }, [canManageAssignments, tenant?.tenantId]);
 
   const loadMoreLeads = useCallback(async () => {
     if (!tenant?.tenantId || nextLeadOffset === null || loadingMore) return;
@@ -673,8 +801,25 @@ export default function ClienteCrmPage() {
   }, [load]);
 
   useEffect(() => {
+    void loadSellerOptions();
+    if (!canManageAssignments) return;
+    const refreshPresence = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadSellerOptions();
+    }, 45_000);
+    return () => window.clearInterval(refreshPresence);
+  }, [canManageAssignments, loadSellerOptions]);
+
+  useEffect(() => {
     if (leadFromQuery) setSelectedLeadId(leadFromQuery);
   }, [leadFromQuery]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1280px)");
+    const sync = () => setIsDesktopCrmViewport(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     if (!selectedLeadId) setShowLeadDrawer(false);
@@ -711,7 +856,7 @@ export default function ClienteCrmPage() {
   }, [leads, stages]);
 
   const filteredLeads = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = deferredSearch.trim().toLowerCase();
     return leads.filter((lead) => {
       const stage = normalizeStage(lead);
       if (stageFilter !== "all" && stage !== stageFilter) return false;
@@ -726,7 +871,7 @@ export default function ClienteCrmPage() {
       if (!term) return true;
       return `${lead.nome || ""} ${lead.empresa || ""} ${lead.email || ""} ${lead.telefone || ""} ${lead.owner || ""} ${lead.origem || ""} ${lead.sourceLabel || ""} ${lead.campaignName || ""}`.toLowerCase().includes(term);
     });
-  }, [channelFilter, focusFilter, heatFilter, leads, ownerFilter, search, stageFilter]);
+  }, [channelFilter, deferredSearch, focusFilter, heatFilter, leads, ownerFilter, stageFilter]);
 
   const availableOwners = useMemo(() => {
     const owners = new Map<string, string>();
@@ -862,6 +1007,7 @@ export default function ClienteCrmPage() {
 
   function selectLead(leadId: string) {
     setSelectedLeadId(leadId);
+    if (window.matchMedia("(max-width: 1279px)").matches) setShowLeadDrawer(true);
     const next = new URLSearchParams(searchParams.toString());
     next.set("leadId", leadId);
     if (view !== "list") next.set("view", view);
@@ -977,6 +1123,27 @@ export default function ClienteCrmPage() {
     }
   }
 
+  async function updateEcommerceAction(actionId: string, status: "done" | "dismissed") {
+    if (!tenant?.tenantId || !selectedLeadId || !canOperate) return;
+    setUpdatingEcommerceActionId(actionId);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/ecommerce/actions/${actionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao atualizar a acao de ecommerce.");
+      setNotice(status === "done" ? "Acao de ecommerce concluida." : "Acao de ecommerce ignorada.");
+      await loadDetail(selectedLeadId);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Falha ao atualizar a acao de ecommerce.");
+    } finally {
+      setUpdatingEcommerceActionId(null);
+    }
+  }
+
   async function importLeadBase(event: FormEvent) {
     event.preventDefault();
     if (!tenant?.tenantId || !importFile || !canOperate) return;
@@ -1057,7 +1224,20 @@ export default function ClienteCrmPage() {
   const selectedAppointments = detail?.appointments || [];
   const selectedDocuments = detail?.documents || [];
   const selectedOrders = detail?.orders || [];
+  const selectedEcommerceActions = detail?.ecommerceActions || [];
   const selectedRevenue = selectedOrders.reduce((total, order) => total + Number(order.totalPrice || 0), 0);
+  const selectedEcommerceState = selectedLead?.commercialState || {};
+  const selectedCustomerOrders = Math.max(selectedOrders.length, Number(selectedEcommerceState.ecommerceCustomerOrders || 0));
+  const selectedCustomerLtv = Number(selectedEcommerceState.ecommerceCustomerLifetimeValue || selectedRevenue || 0);
+  const selectedRecommendedOffer = cleanCrmText(selectedEcommerceState.ecommerceRecommendedOfferName);
+  const selectedRecommendedOfferUrl = cleanCrmText(selectedEcommerceState.ecommerceRecommendedOfferCheckoutUrl);
+  const selectedRecommendationRelation = selectedEcommerceState.ecommerceRecommendationRelation === "cross_sell"
+    ? "complemento configurado"
+    : selectedEcommerceState.ecommerceRecommendationRelation === "upsell"
+      ? "evolucao configurada"
+      : selectedEcommerceState.ecommerceRecommendationRelation === "next_offer"
+        ? "proxima oferta configurada"
+        : "oferta configurada";
 
   async function copyLeadDocument(document: LeadDocument) {
     try {
@@ -1116,11 +1296,16 @@ export default function ClienteCrmPage() {
     }
   }
 
-  async function distributeLeads() {
-    if (!tenant?.tenantId || !canOperate) return;
-    const targetIds = selectedLeadIds.length ? selectedLeadIds : visibleUnassignedLeadIds;
+  async function distributeLeads(mode: "balanced" | "random" | "specific" | "unassign" = "balanced", explicitLeadIds?: string[], assigneeIdOverride?: string) {
+    if (!tenant?.tenantId || !canManageAssignments) return;
+    const targetIds = explicitLeadIds?.length ? explicitLeadIds : selectedLeadIds.length ? selectedLeadIds : visibleUnassignedLeadIds;
     if (!targetIds.length) {
       setNotice("Nao ha oportunidades visiveis sem responsavel para distribuir.");
+      return;
+    }
+    const targetSellerId = assigneeIdOverride || assignmentSellerId;
+    if (mode === "specific" && !targetSellerId) {
+      setError("Escolha o vendedor que recebera as oportunidades.");
       return;
     }
 
@@ -1133,20 +1318,51 @@ export default function ClienteCrmPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           leadIds: targetIds,
-          onlyUnassigned: selectedLeadIds.length === 0,
+          onlyUnassigned: !explicitLeadIds?.length && selectedLeadIds.length === 0,
+          mode,
+          assigneeUserId: mode === "specific" ? targetSellerId : undefined,
         }),
       });
-      const payload = (await res.json().catch(() => ({}))) as { assigned?: number; error?: string; message?: string };
+      const payload = (await res.json().catch(() => ({}))) as { assigned?: number; error?: string; message?: string; auditId?: string; undoAvailable?: boolean };
       if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao distribuir oportunidades.");
       setSelectedLeadIds([]);
+      setLastAssignmentAuditId(payload.undoAvailable && payload.auditId ? payload.auditId : null);
       setNotice(
         payload.assigned
-          ? `${payload.assigned} oportunidade(s) distribuida(s) entre vendedores.`
+          ? mode === "unassign"
+            ? `${payload.assigned} oportunidade(s) ficaram sem responsavel.`
+            : mode === "specific"
+              ? `${payload.assigned} oportunidade(s) atribuida(s) ao vendedor selecionado.`
+              : mode === "random"
+                ? `${payload.assigned} oportunidade(s) distribuidas aleatoriamente entre vendedores elegiveis.`
+                : `${payload.assigned} oportunidade(s) distribuidas igualmente entre vendedores.`
           : payload.message || "Nenhuma oportunidade elegivel para distribuicao."
       );
       await load();
+      if (explicitLeadIds?.length === 1) await loadDetail(explicitLeadIds[0]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao distribuir oportunidades.");
+    } finally {
+      setDistributingLeads(false);
+    }
+  }
+
+  async function undoLastDistribution() {
+    if (!tenant?.tenantId || !lastAssignmentAuditId || !canManageAssignments) return;
+    setDistributingLeads(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/distribute/${lastAssignmentAuditId}/undo`, {
+        method: "POST",
+      });
+      const payload = (await res.json().catch(() => ({}))) as { restored?: number; error?: string };
+      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao desfazer distribuicao.");
+      setLastAssignmentAuditId(null);
+      setNotice(`${payload.restored || 0} oportunidade(s) voltaram ao responsavel anterior.`);
+      await load();
+      if (selectedLeadId) await loadDetail(selectedLeadId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao desfazer distribuicao.");
     } finally {
       setDistributingLeads(false);
     }
@@ -1163,18 +1379,18 @@ export default function ClienteCrmPage() {
         assistantText="A Altum ajuda a puxar quem entrou hoje, quem precisa de resposta, o que esta em proposta e o que ficou sem responsavel."
         action={
           <>
-            <CrmButton type="button" onClick={load} className="min-w-max">
+            <CrmButton type="button" onClick={load} className="hidden min-w-max sm:inline-flex">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Atualizar
             </CrmButton>
-            <CrmLinkButton href="/cliente/painel/inbox?status=pending" tone="green" className="min-w-max">
+            <CrmLinkButton href="/cliente/painel/inbox?status=pending" tone="green" className="hidden min-w-max sm:inline-flex">
               Precisa resposta
             </CrmLinkButton>
-            <CrmButton type="button" tone={view === "list" ? "primary" : "secondary"} onClick={() => setViewAndUrl("list")} className="min-w-max">
+            <CrmButton type="button" tone={view === "list" ? "primary" : "secondary"} onClick={() => setViewAndUrl("list")} className="hidden min-w-max sm:inline-flex">
               Lista
             </CrmButton>
-            <CrmButton type="button" tone={view === "pipeline" ? "primary" : "secondary"} onClick={() => setViewAndUrl("pipeline")} className="min-w-max">
-              Kanban
+            <CrmButton type="button" tone="primary" onClick={() => setViewAndUrl(view === "list" ? "pipeline" : "list")} className="min-w-max max-sm:col-span-2">
+              {view === "list" ? "Abrir funil" : "Ver lista"}
             </CrmButton>
             <CrmLinkButton href="/cliente/painel/agenda" className="hidden min-w-max sm:inline-flex">
               Agenda
@@ -1194,7 +1410,52 @@ export default function ClienteCrmPage() {
       </CrmHero>
 
       {error ? <CrmNotice tone="red">{error}</CrmNotice> : null}
-      {notice ? <CrmNotice tone="green">{notice}</CrmNotice> : null}
+      {notice ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1"><CrmNotice tone="green">{notice}</CrmNotice></div>
+          {lastAssignmentAuditId ? (
+            <button
+              type="button"
+              onClick={() => void undoLastDistribution()}
+              disabled={distributingLeads}
+              className="shrink-0 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-black text-[var(--cliente-card-text)] disabled:opacity-55"
+            >
+              Desfazer distribuicao
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {canManageAssignments ? (
+        <section className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-[var(--cliente-card-text-soft)]">Equipe agora</p>
+              <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
+                {sellerOptions.filter((seller) => seller.presence === "online").length} online de {sellerOptions.length} vendedor(es)
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {sellerOptions.length ? sellerOptions.map((seller) => (
+                <button
+                  key={seller.id}
+                  type="button"
+                  onClick={() => setOwnerFilter(seller.id)}
+                  title={`Filtrar carteira de ${seller.name}`}
+                  className="inline-flex items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:border-[var(--cliente-primary)]"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`h-2.5 w-2.5 rounded-full ${seller.presence === "online" ? "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" : seller.presence === "away" ? "bg-amber-400" : "bg-slate-300"}`}
+                  />
+                  {seller.name}
+                  <span className="font-medium text-[var(--cliente-card-text-muted)]">{presenceLabel(seller.presence)}</span>
+                </button>
+              )) : <span className="text-xs text-[var(--cliente-card-text-muted)]">Nenhum vendedor ativo cadastrado.</span>}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-[repeat(4,minmax(0,1fr))_220px]">
         {[
@@ -1312,6 +1573,31 @@ export default function ClienteCrmPage() {
                   Limpar filtros
                 </button>
               ) : null}
+              {canManageAssignments && selectedLeadIds.length ? (
+                <>
+                  <CrmSelect value={assignmentSellerId} onChange={(event) => setAssignmentSellerId(event.target.value)} className="min-w-[190px]">
+                    <option value="">Escolha um vendedor</option>
+                    {sellerOptions.map((seller) => <option key={seller.id} value={seller.id}>{seller.name} • {presenceLabel(seller.presence)}</option>)}
+                  </CrmSelect>
+                  <button
+                    type="button"
+                    onClick={() => void distributeLeads("specific")}
+                    disabled={distributingLeads || !assignmentSellerId}
+                    className="inline-flex items-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-3 py-2 text-xs font-black text-white transition hover:brightness-95 disabled:opacity-55"
+                  >
+                    {distributingLeads ? <Loader2 className="h-4 w-4 animate-spin" /> : <UsersRound className="h-4 w-4" />}
+                    Atribuir {selectedLeadIds.length}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void distributeLeads("unassign")}
+                    disabled={distributingLeads}
+                    className="inline-flex items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-black text-[var(--cliente-card-text-soft)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-55"
+                  >
+                    Deixar sem responsavel
+                  </button>
+                </>
+              ) : null}
               {canOperate && selectedLeadIds.length ? (
                 <button
                   type="button"
@@ -1323,16 +1609,28 @@ export default function ClienteCrmPage() {
                   Apagar {selectedLeadIds.length}
                 </button>
               ) : null}
-              {canOperate ? (
-                <button
-                  type="button"
-                  onClick={() => void distributeLeads()}
-                  disabled={distributingLeads || (!selectedLeadIds.length && !visibleUnassignedLeadIds.length)}
-                  className={`${selectedLeadIds.length ? "" : "sm:ml-auto"} inline-flex items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-black text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-55`}
-                >
-                  {distributingLeads ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />}
-                  {selectedLeadIds.length ? `Distribuir ${selectedLeadIds.length}` : `Distribuir ${visibleUnassignedLeadIds.length} sem responsavel`}
-                </button>
+              {canManageAssignments ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void distributeLeads("balanced")}
+                    disabled={distributingLeads || (!selectedLeadIds.length && !visibleUnassignedLeadIds.length)}
+                    className={`${selectedLeadIds.length ? "" : "sm:ml-auto"} inline-flex items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-black text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-55`}
+                  >
+                    {distributingLeads ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />}
+                    {selectedLeadIds.length ? `Equilibrar ${selectedLeadIds.length}` : `Distribuir igualmente ${visibleUnassignedLeadIds.length} sem responsavel`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void distributeLeads("random")}
+                    disabled={distributingLeads || (!selectedLeadIds.length && !visibleUnassignedLeadIds.length)}
+                    className="inline-flex items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-black text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-55"
+                    title="Distribui aleatoriamente apenas entre vendedores disponiveis e com capacidade"
+                  >
+                    <Shuffle className="h-4 w-4" />
+                    Aleatorio
+                  </button>
+                </>
               ) : null}
             </div>
           </div>
@@ -1366,9 +1664,12 @@ export default function ClienteCrmPage() {
                     role="button"
                     tabIndex={0}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") selectLead(lead.id);
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        selectLead(lead.id);
+                      }
                     }}
-                    className={`flex w-full cursor-pointer items-start gap-3 px-5 py-4 text-left transition hover:bg-[var(--cliente-surface-muted)] lg:grid lg:grid-cols-[36px_minmax(0,1fr)_140px_120px_140px_130px_140px] lg:items-center lg:gap-4 ${selectedLeadId === lead.id ? "bg-[var(--cliente-primary-soft)] shadow-[inset_4px_0_0_var(--cliente-primary)]" : ""}`}
+                    className={`flex w-full cursor-pointer items-start gap-3 px-5 py-4 text-left transition hover:bg-[var(--cliente-surface-muted)] focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--cliente-primary)] lg:grid lg:grid-cols-[36px_minmax(0,1fr)_140px_120px_140px_130px_140px] lg:items-center lg:gap-4 ${selectedLeadId === lead.id ? "bg-[var(--cliente-primary-soft)] shadow-[inset_4px_0_0_var(--cliente-primary)]" : ""}`}
                   >
                     <input
                       type="checkbox"
@@ -1400,6 +1701,7 @@ export default function ClienteCrmPage() {
                       <p className="mt-2 text-sm font-black text-[var(--cliente-card-text)] lg:mt-0">{formatCrmMoney(lead.potentialValue)}</p>
                       <p className="mt-1 truncate text-xs font-bold text-[var(--cliente-card-text-soft)] lg:mt-0">{lead.owner || "Sem responsavel"}</p>
                     </div>
+                    <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-[var(--cliente-card-text-soft)] lg:hidden" aria-hidden="true" />
                   </div>
                 );
               })}
@@ -1446,21 +1748,21 @@ export default function ClienteCrmPage() {
                           value={column.stage}
                           onChange={(event) => updateStage(lead.id, event.target.value)}
                           disabled={!canOperate || savingStage}
-                          className="mt-3 h-10 w-full text-xs"
+                          className="mt-3 h-11 w-full text-xs"
                         >
                           {stageOptions.map((stage) => <option key={stage} value={stage}>{getPipelineStageLabel(stage)}</option>)}
                         </CrmSelect>
                         <div className="mt-3 grid grid-cols-2 gap-2">
                           <Link
                             href={`/cliente/painel/inbox?leadId=${encodeURIComponent(lead.id)}`}
-                            className="inline-flex items-center justify-center rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+                            className="inline-flex min-h-11 items-center justify-center rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
                           >
                             Conversa
                           </Link>
                           <button
                             type="button"
                             onClick={() => selectLead(lead.id)}
-                            className="inline-flex items-center justify-center rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
+                            className="inline-flex min-h-11 items-center justify-center rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]"
                           >
                             Detalhes
                           </button>
@@ -1503,7 +1805,7 @@ export default function ClienteCrmPage() {
           ) : null}
         </CrmPanel>
 
-        <aside className="hidden space-y-4 xl:sticky xl:top-[132px] xl:block xl:self-start">
+        {isDesktopCrmViewport ? <aside className="space-y-4 xl:sticky xl:top-[132px] xl:self-start">
           {view === "analytics" ? (
             <CrmPanel>
               <CrmSectionTitle eyebrow="Gestao" title="Ranking de vendedores" description="Vendas, carteira, pendencias e tempo de primeira resposta por responsavel." />
@@ -1564,6 +1866,42 @@ export default function ClienteCrmPage() {
                     <SalesFact label="Origem" value={selectedOrigin} />
                   </div>
 
+                  {canManageAssignments ? (
+                    <div className="mt-4 rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+                      <label className="text-[11px] font-black uppercase text-[var(--cliente-card-text-soft)]" htmlFor="lead-owner-select">
+                        Trocar responsável
+                      </label>
+                      <div className="mt-2 flex gap-2">
+                        <CrmSelect
+                          id="lead-owner-select"
+                          value={sellerOptions.some((seller) => seller.id === selectedLead.ownerId) ? selectedLead.ownerId : ""}
+                          onChange={(event) => {
+                            const sellerId = event.target.value;
+                            if (sellerId) void distributeLeads("specific", [selectedLead.id], sellerId);
+                          }}
+                          disabled={distributingLeads || !sellerOptions.length}
+                        >
+                          <option value="">{sellerOptions.length ? "Selecione o vendedor" : "Nenhum vendedor ativo"}</option>
+                          {sellerOptions.map((seller) => <option key={seller.id} value={seller.id}>{seller.name} • {presenceLabel(seller.presence)}</option>)}
+                        </CrmSelect>
+                        {selectedLead.ownerId || selectedLead.owner ? (
+                          <button
+                            type="button"
+                            onClick={() => void distributeLeads("unassign", [selectedLead.id])}
+                            disabled={distributingLeads}
+                            className="shrink-0 rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-soft)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-55"
+                          >
+                            Remover
+                          </button>
+                        ) : null}
+                        {distributingLeads ? <Loader2 className="mt-3 h-4 w-4 shrink-0 animate-spin text-[var(--cliente-primary)]" /> : null}
+                      </div>
+                      <p className="mt-2 text-[11px] leading-4 text-[var(--cliente-card-text-soft)]">
+                        Apenas vendedores ativos aparecem aqui. A conversa vinculada acompanha a alteração.
+                      </p>
+                    </div>
+                  ) : null}
+
                   <div className="mt-4 grid gap-2 sm:grid-cols-2">
                     <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`} className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-3 text-xs font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]">
                       Conversa
@@ -1585,17 +1923,20 @@ export default function ClienteCrmPage() {
                   ) : null}
                 </div>
 
-                {selectedOrders.length ? (
+                {selectedOrders.length || selectedCustomerOrders ? (
                   <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-success)_24%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-success)_8%,var(--cliente-card)),var(--cliente-card))] p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-black uppercase text-[var(--cliente-success)]">Compras e receita</p>
                         <p className="mt-2 text-sm font-bold text-[var(--cliente-card-text)]">
-                          {selectedOrders.length} pedido(s) vinculados a este cliente
+                          {selectedCustomerOrders} pedido(s) no historico deste cliente
                         </p>
                       </div>
-                      <CrmBadge tone="green">{formatCrmMoney(selectedRevenue)}</CrmBadge>
+                      <CrmBadge tone="green">LTV {formatCrmMoney(selectedCustomerLtv)}</CrmBadge>
                     </div>
+                    <p className="mt-2 text-[11px] leading-4 text-[var(--cliente-card-text-soft)]">
+                      Receita confirmada na loja. Pedidos pendentes e estornos integrais nao entram no LTV.
+                    </p>
                     <div className="mt-4 space-y-2">
                       {selectedOrders.slice(0, 3).map((order) => (
                         <div key={order.id} className="rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
@@ -1611,8 +1952,8 @@ export default function ClienteCrmPage() {
                             <span className="shrink-0 text-xs font-black text-[var(--cliente-card-text)]">{formatCrmMoney(order.totalPrice)}</span>
                           </div>
                           <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <CrmBadge tone={String(order.paymentStatus || "").toLowerCase().includes("paid") ? "green" : "orange"}>
-                              {order.paymentStatus || order.status || "em andamento"}
+                            <CrmBadge tone={ecommerceJourneyTone(order.journeyState, order.paymentStatus, order.fulfillmentStatus)}>
+                              {ecommerceJourneyLabel(order.journeyState, order.paymentStatus, order.fulfillmentStatus)}
                             </CrmBadge>
                             {order.trackingCode ? <CrmBadge tone="blue">rastreio {order.trackingCode}</CrmBadge> : null}
                             <span className="text-[11px] text-[var(--cliente-card-text-muted)]">
@@ -1629,8 +1970,92 @@ export default function ClienteCrmPage() {
                               Acompanhar entrega
                             </a>
                           ) : null}
+                          {ecommerceJourneyState(order.journeyState, order.paymentStatus, order.fulfillmentStatus) === "order_created" && order.checkoutUrl?.startsWith("https://") ? (
+                            <a
+                              href={order.checkoutUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-3 inline-flex text-xs font-black text-[var(--cliente-primary)] hover:underline"
+                            >
+                              Abrir checkout do pedido
+                            </a>
+                          ) : null}
                         </div>
                       ))}
+                    </div>
+                    {selectedRecommendedOffer ? (
+                      <div className="mt-3 rounded-[14px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_26%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-wide text-[var(--cliente-ai)]">Proxima oferta</p>
+                            <p className="mt-1 text-sm font-black text-[var(--cliente-card-text)]">{selectedRecommendedOffer}</p>
+                            <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">{selectedRecommendationRelation}. A IA e o vendedor recebem esta sugestao apenas apos a entrega.</p>
+                          </div>
+                          <CrmBadge tone="purple">catalogo</CrmBadge>
+                        </div>
+                        {selectedRecommendedOfferUrl.startsWith("https://") ? (
+                          <a
+                            href={selectedRecommendedOfferUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-3 inline-flex text-xs font-black text-[var(--cliente-ai)] hover:underline"
+                          >
+                            Abrir oferta recomendada
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {selectedEcommerceActions.some((action) => action.status === "pending" || action.status === "sent") ? (
+                  <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_24%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_7%,var(--cliente-card)),var(--cliente-card))] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase text-[var(--cliente-primary)]">Fila de pos-venda</p>
+                        <p className="mt-2 text-sm font-bold text-[var(--cliente-card-text)]">Acoes prontas para esta relacao</p>
+                      </div>
+                      <CrmBadge tone="blue">{selectedEcommerceActions.filter((action) => action.status === "pending" || action.status === "sent").length} pendente(s)</CrmBadge>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {selectedEcommerceActions
+                        .filter((action) => action.status === "pending" || action.status === "sent")
+                        .slice(0, 4)
+                        .map((action) => (
+                          <div key={action.id} className="rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs font-black text-[var(--cliente-card-text)]">{action.title || ecommerceActionLabel(action.type)}</p>
+                                <p className="mt-1 text-[11px] leading-4 text-[var(--cliente-card-text-soft)]">{action.detail || "Revise o contexto antes de concluir a acao."}</p>
+                              </div>
+                              <CrmBadge tone={action.status === "sent" ? "green" : "orange"}>{action.status === "sent" ? "enviado" : "aguardando"}</CrmBadge>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Link
+                                href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`}
+                                className="inline-flex items-center rounded-lg border border-[var(--cliente-border)] px-2.5 py-1.5 text-[11px] font-black text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]"
+                              >
+                                Abrir conversa
+                              </Link>
+                              <button
+                                type="button"
+                                disabled={!canOperate || updatingEcommerceActionId === action.id}
+                                onClick={() => void updateEcommerceAction(action.id, "done")}
+                                className="inline-flex items-center rounded-lg bg-[var(--cliente-success)] px-2.5 py-1.5 text-[11px] font-black text-white disabled:opacity-55"
+                              >
+                                {updatingEcommerceActionId === action.id ? "Salvando..." : "Concluir"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canOperate || updatingEcommerceActionId === action.id}
+                                onClick={() => void updateEcommerceAction(action.id, "dismissed")}
+                                className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)] disabled:opacity-55"
+                              >
+                                Ignorar
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                     </div>
                   </div>
                 ) : null}
@@ -1944,27 +2369,8 @@ export default function ClienteCrmPage() {
               </CrmButton>
             </form>
           </CrmPanel>
-        </aside>
+        </aside> : null}
       </section>
-
-      {selectedLead ? (
-        <div className="xl:hidden">
-          <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-30">
-            <button
-              type="button"
-              onClick={() => setShowLeadDrawer(true)}
-              className="flex w-full items-center justify-between gap-3 rounded-[22px] border border-[var(--cliente-border)] bg-[color:color-mix(in_srgb,var(--cliente-card)_94%,white)] px-4 py-3 text-left shadow-[var(--cliente-shadow-hard)] backdrop-blur"
-            >
-              <div className="min-w-0">
-                <p className="text-[11px] font-black uppercase tracking-[0.08em] text-[var(--cliente-primary)]">Ficha do cliente</p>
-                <p className="truncate text-sm font-black text-[var(--cliente-card-text)]">{selectedLead.nome || "Contato selecionado"}</p>
-                <p className="truncate text-xs text-[var(--cliente-card-text-soft)]">{selectedNextAction}</p>
-              </div>
-              <CrmBadge tone="blue">{getPipelineStageLabel(normalizeStage(selectedLead))}</CrmBadge>
-            </button>
-          </div>
-        </div>
-      ) : null}
 
       <CustomerProfileDrawer
         open={creatingLead}
@@ -2076,7 +2482,7 @@ export default function ClienteCrmPage() {
           ) : null
         }
       >
-        {selectedLead ? (
+        {showLeadDrawer && selectedLead ? (
           <div className="space-y-4">
             <div className="grid gap-2 sm:grid-cols-2">
               <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`} className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-3 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]">

@@ -11,11 +11,13 @@ import {
   resolveChargeMethodForAsaas,
 } from "@/lib/server/commercial-charge";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertLeadCommercialAccess } from "@/lib/server/commercial-access";
 
 const ASAAS_API_URL = process.env.ASAAS_API_URL || "https://api.asaas.com/v3";
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
 
 type Body = {
+  approvalActionId?: string;
   amount?: number;
   dueDate?: string;
   billingType?: "PIX" | "BOLETO" | "CREDIT_CARD" | string;
@@ -33,6 +35,20 @@ type Body = {
 function clean(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+async function findAsaasChargeByExternalReference(externalReference: string) {
+  const response = await fetch(
+    `${ASAAS_API_URL}/payments?externalReference=${encodeURIComponent(externalReference)}&limit=1`,
+    { headers: { access_token: ASAAS_API_KEY as string } }
+  );
+  if (!response.ok) return null;
+  const payload = await response.json() as { data?: Array<Record<string, unknown>> };
+  return payload.data?.[0] || null;
+}
+
+function sameMoney(left: unknown, right: unknown) {
+  return Math.round(Number(left) * 100) === Math.round(Number(right) * 100);
 }
 
 async function ensureAsaasCustomer(input: {
@@ -87,10 +103,63 @@ export async function POST(
     const billingType = normalizeChargeBillingType(body.billingType);
     const leadId = clean(body.leadId, 140);
     const budgetId = clean(body.budgetId, 140);
+    const approvalActionId = clean(body.approvalActionId, 180);
     const explicitDescription = clean(body.description, 180);
+    const dueDate = resolveChargeDueDate(body.dueDate);
 
-    if (!amount || !leadId) {
-      return NextResponse.json({ error: "Campos obrigatorios: leadId e amount." }, { status: 400 });
+    if (!amount || !leadId || !approvalActionId) {
+      return NextResponse.json({ error: "A cobranca precisa de cliente, valor e aprovacao humana valida." }, { status: 400 });
+    }
+    await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId });
+
+    const actionRef = adminDb.collection("commercial_agent_actions").doc(approvalActionId);
+    const actionSnap = await actionRef.get();
+    if (!actionSnap.exists) {
+      return NextResponse.json({ error: "Aprovacao de cobranca nao encontrada." }, { status: 404 });
+    }
+    const action = actionSnap.data() as Record<string, unknown>;
+    const actionPayload = action.payload && typeof action.payload === "object"
+      ? action.payload as Record<string, unknown>
+      : {};
+    const actionBudgetId = clean(actionPayload.budgetId, 140);
+    const actionStatus = clean(action.status, 40);
+    if (
+      clean(action.tenantId, 180) !== tenantId ||
+      clean(action.leadId, 140) !== leadId ||
+      clean(action.type, 60) !== "review_charge"
+    ) {
+      return NextResponse.json({ error: "Aprovacao nao pertence a esta cobranca." }, { status: 403 });
+    }
+    if (!sameMoney(action.amount, amount)) {
+      return NextResponse.json({ error: "O valor mudou depois da aprovacao. Prepare uma nova solicitacao." }, { status: 409 });
+    }
+    if (actionBudgetId !== budgetId) {
+      return NextResponse.json({ error: "A proposta vinculada mudou depois da aprovacao." }, { status: 409 });
+    }
+    if (normalizeChargeBillingType(actionPayload.billingType) !== billingType) {
+      return NextResponse.json({ error: "O meio de pagamento mudou depois da aprovacao." }, { status: 409 });
+    }
+    if (resolveChargeDueDate(actionPayload.dueDate as string | undefined) !== dueDate) {
+      return NextResponse.json({ error: "O vencimento mudou depois da aprovacao." }, { status: 409 });
+    }
+
+    const financeRef = adminDb.collection("financeiro").doc(`agent_charge_${approvalActionId}`);
+    if (actionStatus === "executed") {
+      const existingFinance = await financeRef.get();
+      const existing = existingFinance.exists ? existingFinance.data() as Record<string, unknown> : {};
+      return NextResponse.json({
+        ok: true,
+        tenantId,
+        financeId: financeRef.id,
+        chargeId: clean(existing.asaasChargeId, 180),
+        invoiceUrl: clean(existing.invoiceUrl, 600) || undefined,
+        bankSlipUrl: clean(existing.bankSlipUrl, 600) || undefined,
+        billingType: clean(existing.billingType, 40) || billingType,
+        reused: true,
+      });
+    }
+    if (!["approved", "execution_failed"].includes(actionStatus)) {
+      return NextResponse.json({ error: actionStatus === "executing" ? "A cobranca ja esta sendo processada." : "A cobranca ainda nao foi aprovada." }, { status: 409 });
     }
 
     const leadSnap = await adminDb.collection("leads").doc(leadId).get();
@@ -108,6 +177,9 @@ export async function POST(
       if (budgetSnap.exists && String((budgetSnap.data() as Record<string, unknown>).tenantId || "") === tenantId) {
         budget = budgetSnap.data() as Record<string, unknown>;
       }
+      if (!budget) {
+        return NextResponse.json({ error: "A proposta aprovada nao esta mais disponivel." }, { status: 409 });
+      }
     }
 
     const customerName = clean(body.customerInfo?.name, 180) || clean(lead.nome, 180);
@@ -119,14 +191,6 @@ export async function POST(
       return NextResponse.json({ error: "Lead precisa ter nome e email para gerar cobranca." }, { status: 400 });
     }
 
-    const customerId = await ensureAsaasCustomer({
-      name: customerName,
-      email: customerEmail,
-      cpfCnpj: customerCpfCnpj || undefined,
-      phone: customerPhone || undefined,
-    });
-
-    const dueDate = resolveChargeDueDate(body.dueDate);
     const method = resolveChargeMethodForAsaas(billingType);
     const description = resolveChargeDescription({
       explicitDescription,
@@ -134,25 +198,61 @@ export async function POST(
       customerName,
     });
 
-    const chargeRes = await fetch(`${ASAAS_API_URL}/payments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", access_token: ASAAS_API_KEY },
-      body: JSON.stringify({
-        customer: customerId,
-        billingType: method,
-        value: amount,
-        dueDate,
-        description,
-      }),
+    const externalReference = `altum:${approvalActionId}`;
+    await adminDb.runTransaction(async (transaction) => {
+      const freshSnap = await transaction.get(actionRef);
+      const freshStatus = clean(freshSnap.data()?.status, 40);
+      if (!["approved", "execution_failed"].includes(freshStatus)) {
+        throw new TenantAccessError("charge_action_not_ready", "Esta cobranca ja foi processada ou nao esta aprovada.");
+      }
+      transaction.set(actionRef, {
+        status: "executing",
+        executionStartedAt: FieldValue.serverTimestamp(),
+        executionStartedBy: user.uid,
+        externalReference,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
     });
-    const chargeData = await chargeRes.json();
 
-    if (chargeData.errors) {
-      return NextResponse.json({ error: chargeData.errors[0]?.description || "Falha ao gerar cobranca." }, { status: 400 });
+    let chargeData: Record<string, unknown> | null = null;
+    try {
+      chargeData = await findAsaasChargeByExternalReference(externalReference);
+      if (!chargeData) {
+        const customerId = await ensureAsaasCustomer({
+          name: customerName,
+          email: customerEmail,
+          cpfCnpj: customerCpfCnpj || undefined,
+          phone: customerPhone || undefined,
+        });
+        const chargeRes = await fetch(`${ASAAS_API_URL}/payments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", access_token: ASAAS_API_KEY },
+          body: JSON.stringify({
+            customer: customerId,
+            billingType: method,
+            value: amount,
+            dueDate,
+            description,
+            externalReference,
+          }),
+        });
+        chargeData = await chargeRes.json() as Record<string, unknown>;
+        const errors = Array.isArray(chargeData.errors) ? chargeData.errors as Array<{ description?: string }> : [];
+        if (errors.length) {
+          await actionRef.set({ status: "approved", lastExecutionError: errors[0]?.description || "Falha no Asaas.", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+          return NextResponse.json({ error: errors[0]?.description || "Falha ao gerar cobranca." }, { status: 400 });
+        }
+      }
+    } catch (error) {
+      chargeData = await findAsaasChargeByExternalReference(externalReference).catch(() => null);
+      if (!chargeData) {
+        await actionRef.set({ status: "execution_failed", lastExecutionError: error instanceof Error ? error.message : "Retorno inconclusivo do Asaas.", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        return NextResponse.json({ error: "O retorno do Asaas foi inconclusivo. A Altum bloqueou nova emissao ate reconciliar a referencia." }, { status: 502 });
+      }
     }
 
     const settings = await getTenantSettings(tenantId);
-    const financeiroRef = await adminDb.collection("financeiro").add({
+    await financeRef.set({
       tenantId,
       clientId: tenantId,
       clientName: clean(settings?.name, 180) || "Cliente",
@@ -172,6 +272,8 @@ export async function POST(
       orcamentoId: budgetId || null,
       referencia: budgetId ? `budget:${budgetId}` : "Asaas Checkout",
       asaasChargeId: String(chargeData.id || ""),
+      commercialAgentActionId: approvalActionId,
+      externalReference,
       billingType,
       invoiceUrl: chargeData.invoiceUrl || null,
       bankSlipUrl: chargeData.bankSlipUrl || null,
@@ -181,7 +283,7 @@ export async function POST(
       createdByName: user.name,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    });
+    }, { merge: true });
 
     await Promise.all([
       leadSnap.ref.set(
@@ -193,16 +295,27 @@ export async function POST(
         },
         { merge: true }
       ),
-      leadSnap.ref.collection("events").add({
+      leadSnap.ref.collection("events").doc(`charge_${approvalActionId}`).set({
         type: "finance_charge_created",
         title: "Cobranca criada",
         detail: `${description} gerada via Asaas.`,
-        financeId: financeiroRef.id,
+        financeId: financeRef.id,
         asaasChargeId: String(chargeData.id || ""),
         actorId: user.uid,
         actorName: user.name,
         createdAt: FieldValue.serverTimestamp(),
-      }),
+      }, { merge: true }),
+      actionRef.set({
+        status: "executed",
+        executedAt: FieldValue.serverTimestamp(),
+        executedBy: user.uid,
+        executionResult: {
+          financeId: financeRef.id,
+          asaasChargeId: String(chargeData.id || ""),
+          invoiceUrl: chargeData.invoiceUrl || null,
+        },
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true }),
     ]);
 
     const responseData: {
@@ -217,10 +330,10 @@ export async function POST(
     } = {
       ok: true,
       tenantId,
-      financeId: financeiroRef.id,
+      financeId: financeRef.id,
       chargeId: String(chargeData.id || ""),
-      invoiceUrl: chargeData.invoiceUrl || undefined,
-      billingType: chargeData.billingType || billingType,
+      invoiceUrl: clean(chargeData.invoiceUrl, 600) || undefined,
+      billingType: clean(chargeData.billingType, 40) || billingType,
     };
 
     if (billingType === "PIX") {
@@ -232,7 +345,7 @@ export async function POST(
     }
 
     if (billingType === "BOLETO") {
-      responseData.bankSlipUrl = chargeData.bankSlipUrl || undefined;
+      responseData.bankSlipUrl = clean(chargeData.bankSlipUrl, 600) || undefined;
     }
 
     return NextResponse.json(responseData);

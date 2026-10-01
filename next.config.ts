@@ -2,11 +2,22 @@ const projectRoot = process.cwd().replaceAll("\\", "/");
 
 const nextConfig = {
   poweredByHeader: false,
+  // O servidor de desenvolvimento gera tipos em .next/dev enquanto esta
+  // aberto. Builds de producao usam o contrato isolado para nao consumir um
+  // arquivo parcialmente escrito pelo dev server.
+  typescript: {
+    tsconfigPath: process.env.NODE_ENV === "production" ? "tsconfig.release.json" : "tsconfig.json",
+  },
   turbopack: {
     root: projectRoot,
   },
   outputFileTracingIncludes: {
+    "/api/internal/jobs/ai/process": ["./node_modules/ffmpeg-static/ffmpeg*"],
     "/api/internal/jobs/chat-outbound/process": ["./node_modules/ffmpeg-static/ffmpeg*"],
+    "/api/webhooks/meta": ["./node_modules/ffmpeg-static/ffmpeg*"],
+    "/api/webhooks/whatsapp": ["./node_modules/ffmpeg-static/ffmpeg*"],
+    "/api/tenant/*/ai-voice/preview": ["./node_modules/ffmpeg-static/ffmpeg*"],
+    "/api/tenant/*/chats/*/ai-state": ["./node_modules/ffmpeg-static/ffmpeg*"],
     "/api/tenant/*/chats/*/send-media": ["./node_modules/ffmpeg-static/ffmpeg*"],
     "/api/tenant/*/chats/*/send-stored-media": ["./node_modules/ffmpeg-static/ffmpeg*"],
     "/api/tenant/*/chats/*/messages/*/media": ["./node_modules/ffmpeg-static/ffmpeg*"],

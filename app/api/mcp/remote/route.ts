@@ -4,6 +4,9 @@ import { commandPorts } from "@/lib/server/command-center/repository";
 import { CommandError } from "@/lib/server/command-center/security";
 import { createServer } from "@/scripts/mcp/server";
 import { oauthMetadata, validateMcpAccessToken } from "@/lib/server/mcp/oauth";
+import { getTenantSettings } from "@/lib/server/tenant";
+import { tools, type ToolName } from "@/lib/mcp/contracts";
+import { autonomousApplyError } from "@/lib/mcp/apply-error";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,11 +42,32 @@ function unauthorizedResponse(req: Request, error: CommandError) {
 
 async function handle(req: Request) {
   try {
-    const token = await validateMcpAccessToken(bearer(req));
+    const rawToken = bearer(req);
+    const token = await validateMcpAccessToken(req, rawToken);
     const secret = process.env.MCP_CONTEXT_SECRET || "";
     if (secret.length < 32) throw new CommandError("UNAVAILABLE", 503);
+    const settings = await getTenantSettings(token.tenantId);
+    const mcp = settings?.mcp && typeof settings.mcp === "object" ? settings.mcp as Record<string, unknown> : {};
+    const autonomous = mcp.writeMode === "autonomous";
     const commandCenter = new CommandCenter(commandPorts, [token.grant], secret);
-    const server = createServer((tool, args) => commandCenter.execute(token.userId, { tool, arguments: args }), false);
+    const execute = async (tool: ToolName, args: Record<string, unknown>) => {
+      const result = await commandCenter.execute(token.userId, { tool, arguments: args });
+      const data = result.data && typeof result.data === "object" ? result.data as Record<string, unknown> : {};
+      const draftId = typeof data.draftId === "string" ? data.draftId : "";
+      if (!autonomous || tools[tool].risk === "READ" || !draftId) return result;
+      const applyUrl = new URL(`/api/tenant/${encodeURIComponent(token.tenantId)}/mcp/drafts/${encodeURIComponent(draftId)}/apply`, req.url);
+      const applyModule = await import("@/app/api/tenant/[tenantId]/mcp/drafts/[draftId]/apply/route");
+      const response = await applyModule.POST(new Request(applyUrl, { method: "POST", headers: { Authorization: `Bearer ${rawToken}` } }), {
+        params: Promise.resolve({ tenantId: token.tenantId, draftId }),
+      });
+      const application = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (!response.ok) throw autonomousApplyError(response.status, application);
+      return { ...result, data: { ...data, status: "applied", autonomous: true, application } };
+    };
+    const server = createServer(execute, false, autonomous, {
+      grantedScopes: token.grant.scopes,
+      resourceMetadataUrl: oauthMetadata(req).issuer + "/.well-known/oauth-protected-resource",
+    });
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

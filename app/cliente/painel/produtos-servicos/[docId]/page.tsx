@@ -8,6 +8,7 @@ import {
   Bot,
   CheckCircle2,
   Edit3,
+  ExternalLink,
   FileText,
   ImageIcon,
   Loader2,
@@ -52,8 +53,14 @@ type CatalogDoc = {
   targetProfile?: string | null;
   priceFrom?: number | null;
   priceTo?: number | null;
+  currency?: string | null;
+  sku?: string | null;
+  inventoryQuantity?: number | null;
+  checkoutUrl?: string | null;
   upsellKeys?: string[];
   crossSellKeys?: string[];
+  upsellOfferIds?: string[];
+  crossSellOfferIds?: string[];
   priority?: number | null;
   availability?: Availability;
 };
@@ -69,17 +76,17 @@ function kindFromDoc(item: CatalogDoc): CatalogKind {
   return "produto";
 }
 
-function money(value?: number | null) {
+function money(value?: number | null, currency = "BRL") {
   if (typeof value !== "number") return "Sem preco";
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return value.toLocaleString("pt-BR", { style: "currency", currency: currency || "BRL" });
 }
 
 function priceLabel(item: CatalogDoc) {
   if (typeof item.priceFrom !== "number" && typeof item.priceTo !== "number") return "Sem preco";
   if (typeof item.priceFrom === "number" && typeof item.priceTo === "number" && item.priceFrom !== item.priceTo) {
-    return `${money(item.priceFrom)} a ${money(item.priceTo)}`;
+    return `${money(item.priceFrom, item.currency || "BRL")} a ${money(item.priceTo, item.currency || "BRL")}`;
   }
-  return money(item.priceFrom ?? item.priceTo ?? null);
+  return money(item.priceFrom ?? item.priceTo ?? null, item.currency || "BRL");
 }
 
 function mediaLabel(type?: MediaType | null) {
@@ -121,25 +128,9 @@ function qualityChecks(item: CatalogDoc) {
     { label: "Descricao comercial", done: item.content.length > 160 },
     { label: "Material de apoio", done: materials.length > 0 },
     { label: "Pode enviar material", done: materials.some((media) => media.usage === "auto") },
-    { label: "Venda adicional", done: Boolean((item.upsellKeys || []).length || (item.crossSellKeys || []).length) },
+    { label: "Estoque confirmado", done: kindFromDoc(item) !== "produto" || typeof item.inventoryQuantity === "number" },
+    { label: "Venda adicional", done: Boolean((item.upsellOfferIds || []).length || (item.crossSellOfferIds || []).length || (item.upsellKeys || []).length || (item.crossSellKeys || []).length) },
   ];
-}
-
-function simulateAnswer(item: CatalogDoc, prompt: string) {
-  const kind = kindFromDoc(item);
-  const materials = mediaItemsFromDoc(item);
-  const sendable = materials.find((media) => media.usage === "auto") || materials.find((media) => media.usage !== "blocked");
-  const question = prompt.trim() || "cliente pediu mais detalhes";
-
-  return [
-    `Entendi. Para esse caso eu recomendaria ${item.productName || "este item"} como ${kind === "produto" ? "produto" : "solucao"} principal.`,
-    item.targetProfile ? `Ele costuma fazer sentido para ${item.targetProfile}.` : "",
-    item.content ? item.content.replace(/\n+/g, " ").slice(0, 260) : "",
-    sendable ? `Eu tambem ${sendable.usage === "auto" ? "poderia enviar" : "sugeriria ao atendente enviar"} o material "${sendable.mediaTitle || mediaLabel(sendable.mediaType)}".` : "Eu responderia sem anexo porque ainda nao ha material liberado.",
-    `Contexto testado: ${question}.`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
 }
 
 export default function ProdutoServicoDetalhePage() {
@@ -148,8 +139,10 @@ export default function ProdutoServicoDetalhePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [item, setItem] = useState<CatalogDoc | null>(null);
+  const [catalogItems, setCatalogItems] = useState<CatalogDoc[]>([]);
   const [testPrompt, setTestPrompt] = useState("Cliente perguntou preco e pediu uma foto antes de decidir.");
   const [testAnswer, setTestAnswer] = useState("");
+  const [runningTest, setRunningTest] = useState(false);
 
   const canManage = hasCapability("manage_ai");
   const docId = String(params?.docId || "");
@@ -163,10 +156,11 @@ export default function ProdutoServicoDetalhePage() {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`);
       const payload = (await res.json()) as { items?: CatalogDoc[]; error?: string };
       if (!res.ok) throw new Error(payload.error || "Falha ao carregar ficha.");
-      const found = (payload.items || []).find((doc) => doc.id === docId && doc.type === "catalog");
+      const items = payload.items || [];
+      setCatalogItems(items.filter((doc) => doc.type === "catalog"));
+      const found = items.find((doc) => doc.id === docId && doc.type === "catalog");
       if (!found) throw new Error("Item nao encontrado no catalogo.");
       setItem(found);
-      setTestAnswer(simulateAnswer(found, "Cliente perguntou preco e pediu uma foto antes de decidir."));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Falha ao carregar ficha.");
     } finally {
@@ -180,6 +174,7 @@ export default function ProdutoServicoDetalhePage() {
 
   const mediaItems = useMemo(() => (item ? mediaItemsFromDoc(item) : []), [item]);
   const checks = useMemo(() => (item ? qualityChecks(item) : []), [item]);
+  const offerNameById = useMemo(() => new Map(catalogItems.map((offer) => [offer.id, offer.productName || "Oferta sem nome"])), [catalogItems]);
   const score = checks.length ? Math.round((checks.filter((check) => check.done).length / checks.length) * 100) : 0;
 
   if (loading) {
@@ -199,6 +194,28 @@ export default function ProdutoServicoDetalhePage() {
   }
 
   const kind = kindFromDoc(item);
+  const upsellItems = (item.upsellOfferIds || []).map((id) => offerNameById.get(id)).filter((name): name is string => Boolean(name));
+  const crossSellItems = (item.crossSellOfferIds || []).map((id) => offerNameById.get(id)).filter((name): name is string => Boolean(name));
+
+  async function runRealPreview() {
+    if (!tenant?.tenantId || !testPrompt.trim()) return;
+    setRunningTest(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/ai-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: testPrompt.trim() }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { error?: string; preview?: { responseText?: string } };
+      if (!res.ok || !payload.preview?.responseText) throw new Error(payload.error || "A IA nao gerou uma resposta para este teste.");
+      setTestAnswer(payload.preview.responseText);
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : "Falha ao testar a resposta da IA.");
+    } finally {
+      setRunningTest(false);
+    }
+  }
 
   return (
     <div className="produtos-refined client-daily-page space-y-4">
@@ -248,6 +265,21 @@ export default function ProdutoServicoDetalhePage() {
             <div className="mt-4 whitespace-pre-line rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 text-sm leading-7 text-[var(--cliente-card-text-muted)]">
               {item.content || "Sem descricao comercial cadastrada."}
             </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <FactBox label="Preco" value={priceLabel(item)} />
+              <FactBox label="SKU" value={item.sku || "Nao informado"} />
+              <FactBox
+                label="Estoque"
+                value={kind === "produto" ? (typeof item.inventoryQuantity === "number" ? `${item.inventoryQuantity} unidade(s)` : "Confirmar antes de vender") : "Nao se aplica"}
+              />
+              <FactBox label="Conclusao" value={item.checkoutUrl ? "Link de compra pronto" : "Conducao manual"} />
+            </div>
+            {item.checkoutUrl ? (
+              <a href={item.checkoutUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-[14px] border border-[color:color-mix(in_srgb,var(--cliente-success)_24%,var(--cliente-border))] bg-[var(--cliente-success-soft)] px-3 py-2 text-sm font-bold text-[var(--cliente-success)]">
+                Abrir link de compra ou contratacao
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            ) : null}
           </PanelCard>
 
           <PanelCard className="p-5 md:p-6">
@@ -270,7 +302,7 @@ export default function ProdutoServicoDetalhePage() {
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]">
                 <Bot className="h-5 w-5" />
               </span>
-              <CardTitle title="Testar resposta da Altum" subtitle="Simule uma pergunta comum antes de liberar a ficha para operacao." />
+              <CardTitle title="Testar resposta da Altum" subtitle="Executa o mesmo motor da IA, sem enviar mensagem ao cliente." />
             </div>
             <textarea
               value={testPrompt}
@@ -279,20 +311,20 @@ export default function ProdutoServicoDetalhePage() {
               className="client-input mt-4 w-full resize-y rounded-[18px] border px-3 py-3 text-sm leading-6 outline-none"
               placeholder="Ex: cliente pediu preco, garantia e uma foto"
             />
-            <ClientActionButton type="button" tone="ai" className="mt-3 w-full" onClick={() => setTestAnswer(simulateAnswer(item, testPrompt))}>
-              <Send className="h-4 w-4" />
-              Gerar previa
+            <ClientActionButton type="button" tone="ai" className="mt-3 w-full" disabled={runningTest || !testPrompt.trim()} onClick={() => void runRealPreview()}>
+              {runningTest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {runningTest ? "Testando motor real" : "Testar motor real"}
             </ClientActionButton>
             <div className="mt-4 whitespace-pre-line rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_18%,var(--cliente-border))] bg-[var(--cliente-card)] p-4 text-sm leading-6 text-[var(--cliente-card-text-muted)]">
-              {testAnswer}
+              {testAnswer || "Escreva uma pergunta e rode o teste. O resultado usa as configuracoes e a base real desta empresa."}
             </div>
           </PanelCard>
 
           <PanelCard className="p-5">
             <CardTitle title="Venda adicional" subtitle="Caminhos para aumentar ticket sem forcar a conversa." />
             <div className="mt-4 space-y-3">
-              <OfferBox label="Upsell" items={item.upsellKeys || []} />
-              <OfferBox label="Complementos" items={item.crossSellKeys || []} />
+              <OfferBox label="Upsell" items={upsellItems.length ? upsellItems : item.upsellKeys || []} />
+              <OfferBox label="Complementos" items={crossSellItems.length ? crossSellItems : item.crossSellKeys || []} />
             </div>
           </PanelCard>
         </aside>
@@ -308,6 +340,15 @@ function QualityRow({ done, label }: { done: boolean; label: string }) {
         <CheckCircle2 className="h-3.5 w-3.5" />
       </span>
       <p className="text-sm font-semibold text-[var(--cliente-card-text-muted)]">{label}</p>
+    </div>
+  );
+}
+
+function FactBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[16px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">{label}</p>
+      <p className="mt-1 text-sm font-bold text-[var(--cliente-card-text)]">{value}</p>
     </div>
   );
 }

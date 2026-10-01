@@ -15,6 +15,12 @@ import {
   updateAiWorkerHealth,
   upsertAiOperationalAlert,
 } from "@/lib/server/ai/observability";
+import {
+  getConversationTurnDocId,
+  isSupersededConversationTurn,
+  resolveConversationDebounceMs,
+} from "@/lib/server/ai/turn-coordinator";
+import { observeConversationCommercialState } from "@/lib/server/crm/conversation-intelligence";
 
 const JOB_TYPE = "ai_incoming_message";
 const DEFAULT_MAX_ATTEMPTS = 6;
@@ -40,6 +46,13 @@ type AiJobDoc = {
   lockedAt?: unknown;
   lastErrorCode?: string;
   lastReasonCode?: string;
+};
+
+type AiConversationTurnDoc = {
+  latestMessageId?: string;
+  settleAt?: unknown;
+  lockJobId?: string;
+  lockedAt?: unknown;
 };
 
 type ClaimedJob = {
@@ -101,6 +114,7 @@ export type EnqueueIncomingMessageJobInput = {
   dedupeKey?: string;
   maxAttempts?: number;
   priority?: number;
+  debounceMs?: number;
 };
 
 export type EnqueueIncomingMessageJobResult = {
@@ -236,11 +250,14 @@ async function recordQueueMetrics(input: {
 }
 
 async function syncDeadLetterAlert(tenantId: string) {
-  const snap = await adminDb.collection("jobs").where("tenantId", "==", tenantId).limit(300).get();
-  const deadLetterCount = snap.docs.filter((doc) => {
-    const data = doc.data() as AiJobDoc;
-    return data.type === JOB_TYPE && normalizeStatus(data.status) === "dead_letter";
-  }).length;
+  const aggregate = await adminDb
+    .collection("jobs")
+    .where("tenantId", "==", tenantId)
+    .where("type", "==", JOB_TYPE)
+    .where("status", "==", "dead_letter")
+    .count()
+    .get();
+  const deadLetterCount = aggregate.data().count;
 
   if (deadLetterCount >= AI_QUEUE_DEAD_LETTER_ALERT_THRESHOLD) {
     await upsertAiOperationalAlert({
@@ -317,8 +334,15 @@ export async function enqueueIncomingMessageJob(
   const jobId = sanitizeId(`${JOB_TYPE}_${dedupeKey}`);
   const maxAttempts = Math.min(10, Math.max(1, input.maxAttempts || DEFAULT_MAX_ATTEMPTS));
   const priority = Math.min(100, Math.max(0, input.priority || 50));
+  const debounceMs = resolveConversationDebounceMs({
+    source: input.source,
+    overrideMs: input.debounceMs,
+    configuredMs: process.env.ALTUM_AI_CONVERSATION_DEBOUNCE_MS,
+  });
+  const settleAt = new Date(Date.now() + debounceMs);
 
   const jobRef = adminDb.collection("jobs").doc(jobId);
+  const turnRef = adminDb.collection("ai_conversation_turns").doc(getConversationTurnDocId(tenantId, chatId));
   const result = await adminDb.runTransaction(async (tx) => {
     const snap = await tx.get(jobRef);
     if (snap.exists) {
@@ -341,9 +365,20 @@ export async function enqueueIncomingMessageJob(
         attempts: 0,
         maxAttempts,
         priority,
-        availableAt: new Date(),
+        availableAt: settleAt,
         lockedAt: null,
         createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    tx.set(
+      turnRef,
+      {
+        tenantId,
+        chatId,
+        latestMessageId: messageId,
+        settleAt,
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -376,7 +411,11 @@ async function listClaimableJobs(limit: number) {
         .orderBy("priority", "asc")
         .limit(rawLimit)
         .get();
-    } catch {
+    } catch (error) {
+      // This fallback keeps the worker available while an index is building, but
+      // lacks database ordering. The declared composite index is required for
+      // normal operation so pending jobs are not sampled arbitrarily.
+      console.warn("Indice da fila de IA indisponivel; usando leitura de contingencia sem ordenacao:", error);
       return await adminDb
         .collection("jobs")
         .where("type", "==", JOB_TYPE)
@@ -427,13 +466,6 @@ async function claimJob(jobId: string): Promise<ClaimedJob | null> {
     const status = normalizeStatus(data.status);
     if (!canClaimStatus(status)) return null;
 
-    const now = Date.now();
-    const availableAt = toDate(data.availableAt)?.getTime() || 0;
-    const lockedAt = toDate(data.lockedAt)?.getTime() || 0;
-
-    if (availableAt > now) return null;
-    if (lockedAt && now - lockedAt <= LOCK_TTL_MS) return null;
-
     const tenantId = String(data.tenantId || "").trim();
     const chatId = String(data.chatId || "").trim();
     const messageId = String(data.messageId || "").trim();
@@ -457,6 +489,44 @@ async function claimJob(jobId: string): Promise<ClaimedJob | null> {
       return null;
     }
 
+    const now = Date.now();
+    const availableAt = toDate(data.availableAt)?.getTime() || 0;
+    const lockedAt = toDate(data.lockedAt)?.getTime() || 0;
+    if (availableAt > now) return null;
+    if (lockedAt && now - lockedAt <= LOCK_TTL_MS) return null;
+
+    const turnRef = adminDb.collection("ai_conversation_turns").doc(getConversationTurnDocId(tenantId, chatId));
+    const turnSnap = await tx.get(turnRef);
+    const turn = (turnSnap.data() || {}) as AiConversationTurnDoc;
+    const turnSettleAt = toDate(turn.settleAt)?.getTime() || 0;
+    const turnLockedAt = toDate(turn.lockedAt)?.getTime() || 0;
+
+    if (isSupersededConversationTurn({ jobMessageId: messageId, latestMessageId: turn.latestMessageId })) {
+      tx.set(
+        jobRef,
+        {
+          status: "done",
+          decision: "skip",
+          decisionReason: "superseded_by_newer_inbound",
+          lastReasonCode: "superseded_by_newer_inbound",
+          lockedAt: null,
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return null;
+    }
+
+    if (turnSettleAt > now) {
+      tx.set(jobRef, { status: "pending", availableAt: new Date(turnSettleAt), lockedAt: null }, { merge: true });
+      return null;
+    }
+
+    if (turn.lockJobId && turn.lockJobId !== jobId && turnLockedAt && now - turnLockedAt <= LOCK_TTL_MS) {
+      return null;
+    }
+
     tx.set(
       jobRef,
       {
@@ -464,6 +534,15 @@ async function claimJob(jobId: string): Promise<ClaimedJob | null> {
         attempts,
         lockedAt: new Date(),
         startedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    tx.set(
+      turnRef,
+      {
+        lockJobId: jobId,
+        lockedAt: new Date(),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -477,6 +556,27 @@ async function claimJob(jobId: string): Promise<ClaimedJob | null> {
       attempts,
       maxAttempts,
     } satisfies ClaimedJob;
+  });
+}
+
+async function releaseConversationTurnLock(job: ClaimedJob) {
+  const turnRef = adminDb
+    .collection("ai_conversation_turns")
+    .doc(getConversationTurnDocId(job.tenantId, job.chatId));
+
+  await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(turnRef);
+    const turn = (snap.data() || {}) as AiConversationTurnDoc;
+    if (turn.lockJobId !== job.id) return;
+    tx.set(
+      turnRef,
+      {
+        lockJobId: FieldValue.delete(),
+        lockedAt: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
   });
 }
 
@@ -526,6 +626,7 @@ async function finalizeSuccessfulJob(
       lastError: null,
       lastErrorCode: null,
     }),
+    releaseConversationTurnLock(job),
   ]);
 }
 
@@ -572,6 +673,7 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
       lastError: message,
       lastErrorCode: classification.errorCode,
     }),
+    releaseConversationTurnLock(job),
   ]);
 
   await Promise.all([
@@ -588,6 +690,17 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
 async function processOneClaimedJob(job: ClaimedJob) {
   const startedAt = Date.now();
   try {
+    // CRM intelligence is independent from automatic replies. This preserves
+    // commercial facts even when the tenant has the response agent paused.
+    await observeConversationCommercialState({
+      tenantId: job.tenantId,
+      chatId: job.chatId,
+      messageId: job.messageId,
+      actorId: "crm_conversation_observer",
+      actorName: "Inteligencia Comercial Altum",
+    }).catch((error) => {
+      console.error("Falha ao observar mensagem para CRM:", error);
+    });
     const result = await handleIncomingMessage({
       tenantId: job.tenantId,
       chatId: job.chatId,
@@ -663,6 +776,27 @@ export async function processAiJobNow(jobId: string) {
     });
     return null;
   }
+}
+
+export async function processAiJobAfterSettle(
+  jobId: string,
+  options?: { source?: string; debounceMs?: number; safetyMarginMs?: number }
+) {
+  const debounceMs = resolveConversationDebounceMs({
+    source: options?.source,
+    overrideMs: options?.debounceMs,
+    configuredMs: process.env.ALTUM_AI_CONVERSATION_DEBOUNCE_MS,
+  });
+  const safetyMarginMs = Math.min(2_000, Math.max(100, options?.safetyMarginMs ?? 350));
+  const waitMs = debounceMs + safetyMarginMs;
+  if (waitMs > 0) {
+    await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+  }
+
+  const direct = await processAiJobNow(jobId);
+  if (direct) return direct;
+  await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 4, timeoutMs: 18_000 });
+  return null;
 }
 
 export async function processAiQueue(options?: {

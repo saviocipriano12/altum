@@ -25,7 +25,7 @@ type Body = {
   ownerUserId?: string | null;
 };
 
-const VALID_STATUSES = new Set(["scheduled", "confirmed", "completed", "canceled", "no_show"]);
+const VALID_STATUSES = new Set(["draft", "scheduled", "confirmed", "completed", "canceled", "no_show"]);
 
 function clean(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
@@ -218,6 +218,25 @@ export async function PATCH(
     }
 
     await ref.set(patch, { merge: true });
+
+    if (clean(current.status, 40) === "draft" && ["scheduled", "canceled"].includes(nextStatus)) {
+      const actionSnap = await adminDb.collection("commercial_agent_actions").where("tenantId", "==", tenantId).limit(200).get();
+      const linkedAction = actionSnap.docs.find((doc) => {
+        const data = doc.data();
+        return clean(data.referenceId, 180) === appointmentId &&
+          clean(data.type, 60) === "review_appointment" &&
+          clean(data.status, 40) === "pending_approval";
+      });
+      if (linkedAction) {
+        await linkedAction.ref.set({
+          status: nextStatus === "scheduled" ? "approved" : "rejected",
+          reviewedBy: user.uid,
+          reviewedByName: user.name,
+          reviewedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+    }
 
     if (leadId) {
       await adminDb.collection("leads").doc(leadId).collection("events").add({

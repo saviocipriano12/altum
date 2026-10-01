@@ -9,7 +9,7 @@ import {
   verifyMetaSignature,
 } from "@/app/lib/server/whatsapp-channel";
 import { normalizePhone } from "@/app/lib/server/phone";
-import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+import { enqueueIncomingMessageJob, processAiJobAfterSettle, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { cacheInboundMessageMedia } from "@/lib/server/ai/multimodal";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
@@ -500,7 +500,7 @@ async function persistGenericWhatsAppInbound(input: {
     const inboundAssignee = input.channel.channelScope === "personal" && input.channel.ownerUserId
       ? { userId: input.channel.ownerUserId, name: input.channel.ownerUserName || await resolveOwnerName(input.channel.ownerUserId) || "Vendedor" }
       : input.channel.distributionEnabled !== false
-        ? await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium" })
+        ? await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium", responsibility: "lead" })
         : null;
     const intake = await recordInboundLead({
       tenantId,
@@ -736,8 +736,8 @@ async function persistGenericWhatsAppInbound(input: {
   });
 
   if (queue) {
-    await processAiJobNow(queue.jobId);
     triggerAiQueueWorker({ limit: 8, drain: true });
+    after(() => processAiJobAfterSettle(queue.jobId, { source: "webhook_whatsapp" }));
   }
 
   if (claim.eventRef) {
@@ -975,7 +975,7 @@ export async function POST(req: Request) {
     let resolvedOwnerName = await resolveOwnerName(resolvedOwnerId);
 
     if (!resolvedLeadId) {
-      const inboundAssignee = await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium" });
+      const inboundAssignee = await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium", responsibility: "lead" });
       const intake = await recordInboundLead({
         tenantId,
         sourceType: "whatsapp_inbound",
@@ -996,7 +996,7 @@ export async function POST(req: Request) {
       resolvedOwnerId = inboundAssignee?.userId || null;
       resolvedOwnerName = inboundAssignee?.name || null;
     } else if (!resolvedOwnerId) {
-      const inboundAssignee = await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium" });
+      const inboundAssignee = await resolveInboundAssignment(tenantId, { channel: "whatsapp", priority: "medium", responsibility: "lead" });
       if (inboundAssignee) {
         resolvedOwnerId = inboundAssignee.userId;
         resolvedOwnerName = inboundAssignee.name;
@@ -1267,8 +1267,6 @@ export async function POST(req: Request) {
       dedupeKey: `${tenantId}_${incomingMessageRef.id}`,
     });
 
-    await processAiJobNow(queue.jobId);
-    await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
     triggerAiQueueWorker({ limit: 8, drain: true });
     after(async () => {
       if (["audio", "image", "video", "document"].includes(String(mediaMeta.type || "").toLowerCase())) {
@@ -1288,9 +1286,7 @@ export async function POST(req: Request) {
           console.error("Falha ao cachear midia inbound do WhatsApp:", error);
         });
       }
-      await processAiJobNow(queue.jobId);
-      await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
-      triggerAiQueueWorker({ limit: 8, drain: true });
+      await processAiJobAfterSettle(queue.jobId, { source: "webhook_whatsapp" });
     });
 
     if (eventRef) {

@@ -221,16 +221,21 @@ export default function ClientesPage() {
 
   async function handleDeleteClient(client: Client) {
     const confirmed = window.confirm(
-      `Excluir o cliente "${client.name}"? Projetos, propostas e historico vinculados nao serao apagados automaticamente.`
+      `Excluir definitivamente a empresa "${client.name}"? A assinatura Asaas sera cancelada e os dados vinculados serao apagados da Altum.`
     );
     if (!confirmed) return;
+    const confirmation = window.prompt(`Para confirmar, digite exatamente: ${client.name}`);
+    if (confirmation !== client.name) {
+      setLoadError("A exclusao foi cancelada: o nome da empresa nao foi confirmado.");
+      return;
+    }
 
     try {
       setDeletingId(client.id);
       const res = await authedFetch("/api/clientes/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: client.id }),
+        body: JSON.stringify({ clientId: client.id, confirmation }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao excluir cliente.");

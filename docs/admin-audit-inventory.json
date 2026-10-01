@@ -2,7 +2,7 @@
   {
     "file": "app/admin/atividades/page.tsx",
     "route": "/admin/atividades",
-    "lines": 401,
+    "lines": 395,
     "draft": false,
     "dependencies": [
       "app/lib/authed-fetch.ts",
@@ -14,7 +14,7 @@
     "directRequests": [
       {
         "file": "app/admin/atividades/page.tsx",
-        "line": 46,
+        "line": 49,
         "callee": "authedFetch",
         "expression": "\"/api/admin/dashboard?include=atividades\"",
         "reference": "/api/admin/dashboard?include=atividades",
@@ -42,7 +42,7 @@
       },
       {
         "file": "app/admin/atividades/page.tsx",
-        "line": 69,
+        "line": 72,
         "callee": "authedFetch",
         "expression": "\"/api/atividades/create\"",
         "reference": "/api/atividades/create",
@@ -73,7 +73,7 @@
       },
       {
         "file": "app/admin/atividades/page.tsx",
-        "line": 100,
+        "line": 103,
         "callee": "authedFetch",
         "expression": "\"/api/atividades/update\"",
         "reference": "/api/atividades/update",
@@ -103,7 +103,7 @@
       },
       {
         "file": "app/admin/atividades/page.tsx",
-        "line": 122,
+        "line": 125,
         "callee": "authedFetch",
         "expression": "\"/api/atividades/delete\"",
         "reference": "/api/atividades/delete",
@@ -135,7 +135,7 @@
     "transitiveRequests": [
       {
         "file": "app/admin/atividades/page.tsx",
-        "line": 46,
+        "line": 49,
         "callee": "authedFetch",
         "expression": "\"/api/admin/dashboard?include=atividades\"",
         "reference": "/api/admin/dashboard?include=atividades",
@@ -163,7 +163,7 @@
       },
       {
         "file": "app/admin/atividades/page.tsx",
-        "line": 69,
+        "line": 72,
         "callee": "authedFetch",
         "expression": "\"/api/atividades/create\"",
         "reference": "/api/atividades/create",
@@ -194,7 +194,7 @@
       },
       {
         "file": "app/admin/atividades/page.tsx",
-        "line": 100,
+        "line": 103,
         "callee": "authedFetch",
         "expression": "\"/api/atividades/update\"",
         "reference": "/api/atividades/update",
@@ -224,7 +224,7 @@
       },
       {
         "file": "app/admin/atividades/page.tsx",
-        "line": 122,
+        "line": 125,
         "callee": "authedFetch",
         "expression": "\"/api/atividades/delete\"",
         "reference": "/api/atividades/delete",
@@ -293,12 +293,13 @@
               "GET"
             ],
             "collections": [
-              "clientes"
+              "clientes",
+              "tenants"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 7,
+                "line": 8,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -403,14 +404,13 @@
               "POST"
             ],
             "collections": [
-              "clientes",
               "ad_accounts",
               "audit_logs"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 37,
+                "line": 38,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -528,12 +528,13 @@
               "GET"
             ],
             "collections": [
-              "clientes"
+              "clientes",
+              "tenants"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 7,
+                "line": 8,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -638,14 +639,13 @@
               "POST"
             ],
             "collections": [
-              "clientes",
               "ad_accounts",
               "audit_logs"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 37,
+                "line": 38,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -806,7 +806,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 156,
+                "line": 157,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -963,7 +963,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 156,
+                "line": 157,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -1059,7 +1059,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 156,
+                "line": 157,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -1103,7 +1103,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 156,
+                "line": 157,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -1260,7 +1260,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 156,
+                "line": 157,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -1356,7 +1356,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 156,
+                "line": 157,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -1382,7 +1382,7 @@
   {
     "file": "app/admin/clientes/page.tsx",
     "route": "/admin/clientes",
-    "lines": 431,
+    "lines": 277,
     "draft": false,
     "dependencies": [
       "app/lib/authed-fetch.ts",
@@ -1394,7 +1394,7 @@
     "directRequests": [
       {
         "file": "app/admin/clientes/page.tsx",
-        "line": 78,
+        "line": 79,
         "callee": "authedFetch",
         "expression": "\"/api/clientes\"",
         "reference": "/api/clientes",
@@ -1407,12 +1407,13 @@
               "GET"
             ],
             "collections": [
-              "clientes"
+              "clientes",
+              "tenants"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 7,
+                "line": 8,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -1424,7 +1425,7 @@
       },
       {
         "file": "app/admin/clientes/page.tsx",
-        "line": 180,
+        "line": 183,
         "callee": "authedFetch",
         "expression": "\"/api/clientes/create\"",
         "reference": "/api/clientes/create",
@@ -1455,7 +1456,7 @@
       },
       {
         "file": "app/admin/clientes/page.tsx",
-        "line": 226,
+        "line": 235,
         "callee": "authedFetch",
         "expression": "\"/api/clientes/delete\"",
         "reference": "/api/clientes/delete",
@@ -1469,12 +1470,17 @@
             ],
             "collections": [
               "clientes",
+              "tenants",
+              "tenant_settings",
+              "tenant_entitlements",
+              "tenant_usage",
+              "client_contracts",
               "audit_logs"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 11,
+                "line": 26,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -1488,7 +1494,7 @@
     "transitiveRequests": [
       {
         "file": "app/admin/clientes/page.tsx",
-        "line": 78,
+        "line": 79,
         "callee": "authedFetch",
         "expression": "\"/api/clientes\"",
         "reference": "/api/clientes",
@@ -1501,12 +1507,13 @@
               "GET"
             ],
             "collections": [
-              "clientes"
+              "clientes",
+              "tenants"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 7,
+                "line": 8,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -1518,7 +1525,7 @@
       },
       {
         "file": "app/admin/clientes/page.tsx",
-        "line": 180,
+        "line": 183,
         "callee": "authedFetch",
         "expression": "\"/api/clientes/create\"",
         "reference": "/api/clientes/create",
@@ -1549,7 +1556,7 @@
       },
       {
         "file": "app/admin/clientes/page.tsx",
-        "line": 226,
+        "line": 235,
         "callee": "authedFetch",
         "expression": "\"/api/clientes/delete\"",
         "reference": "/api/clientes/delete",
@@ -1563,12 +1570,17 @@
             ],
             "collections": [
               "clientes",
+              "tenants",
+              "tenant_settings",
+              "tenant_entitlements",
+              "tenant_usage",
+              "client_contracts",
               "audit_logs"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 11,
+                "line": 26,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -1594,7 +1606,7 @@
   {
     "file": "app/admin/clientes/[id]/page.tsx",
     "route": "/admin/clientes/[id]",
-    "lines": 784,
+    "lines": 760,
     "draft": false,
     "dependencies": [
       "app/lib/authed-fetch.ts",
@@ -1605,7 +1617,7 @@
     "directRequests": [
       {
         "file": "app/admin/clientes/[id]/page.tsx",
-        "line": 318,
+        "line": 317,
         "callee": "authedFetch",
         "expression": "`/api/admin/clientes/${encodeURIComponent(params.id)}/summary`",
         "reference": "/api/admin/clientes/{dynamic}/summary",
@@ -1643,7 +1655,7 @@
     "transitiveRequests": [
       {
         "file": "app/admin/clientes/[id]/page.tsx",
-        "line": 318,
+        "line": 317,
         "callee": "authedFetch",
         "expression": "`/api/admin/clientes/${encodeURIComponent(params.id)}/summary`",
         "reference": "/api/admin/clientes/{dynamic}/summary",
@@ -1693,7 +1705,7 @@
   {
     "file": "app/admin/clientes/[id]/portal/page.tsx",
     "route": "/admin/clientes/[id]/portal",
-    "lines": 1654,
+    "lines": 1574,
     "draft": false,
     "dependencies": [
       "app/lib/authed-fetch.ts",
@@ -1717,7 +1729,7 @@
     "directRequests": [
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 334,
+        "line": 319,
         "callee": "authedFetch",
         "expression": "`/api/admin/clientes/${encodeURIComponent(clientId)}/summary`",
         "reference": "/api/admin/clientes/{dynamic}/summary",
@@ -1753,7 +1765,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 335,
+        "line": 320,
         "callee": "authedFetch",
         "expression": "`/api/admin/client-portal/users/list?clientId=${encodeURIComponent(clientId)}`",
         "reference": "/api/admin/client-portal/users/list?clientId={dynamic}",
@@ -1786,7 +1798,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 336,
+        "line": 321,
         "callee": "authedFetch",
         "expression": "`/api/admin/client-portal/contracts/get?clientId=${encodeURIComponent(clientId)}`",
         "reference": "/api/admin/client-portal/contracts/get?clientId={dynamic}",
@@ -1806,10 +1818,10 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 60,
+                "line": 59,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -1818,7 +1830,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 394,
+        "line": 379,
         "callee": "authedFetch",
         "expression": "`/api/admin/tenants/${tenantData.id}/readiness`",
         "reference": "/api/admin/tenants/{dynamic}/readiness",
@@ -1846,7 +1858,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 481,
+        "line": 460,
         "callee": "authedFetch",
         "expression": "`/api/admin/tenants/${tenantSummary.tenantId}/users/invite`",
         "reference": "/api/admin/tenants/{dynamic}/users/invite",
@@ -1871,7 +1883,7 @@
                 "line": 45,
                 "arguments": [
                   "req",
-                  "{\r\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\r\n    }"
+                  "{\r\n      roles: [\"agency_owner\", \"agency_admin\"],\r\n    }"
                 ]
               }
             ]
@@ -1880,7 +1892,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 510,
+        "line": 489,
         "callee": "authedFetch",
         "expression": "\"/api/admin/client-portal/contracts/upsert\"",
         "reference": "/api/admin/client-portal/contracts/upsert",
@@ -1896,15 +1908,16 @@
               "clientes",
               "tenants",
               "client_contracts",
-              "audit_logs"
+              "audit_logs",
+              "tenant_entitlements"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 104,
+                "line": 102,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -1913,7 +1926,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 534,
+        "line": 520,
         "callee": "authedFetch",
         "expression": "\"/api/admin/client-portal/contracts/control\"",
         "reference": "/api/admin/client-portal/contracts/control",
@@ -1927,15 +1940,16 @@
             ],
             "collections": [
               "tenants",
-              "client_contracts"
+              "client_contracts",
+              "audit_logs"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 40,
+                "line": 42,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -1944,30 +1958,32 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 578,
+        "line": 568,
         "callee": "authedFetch",
-        "expression": "\"/api/admin/client-portal/contracts/stripe\"",
-        "reference": "/api/admin/client-portal/contracts/stripe",
+        "expression": "\"/api/admin/client-portal/contracts/asaas\"",
+        "reference": "/api/admin/client-portal/contracts/asaas",
         "method": "POST",
         "status": "route_exists_static_only",
         "routes": [
           {
-            "file": "app/api/admin/client-portal/contracts/stripe/route.ts",
+            "file": "app/api/admin/client-portal/contracts/asaas/route.ts",
             "methods": [
               "POST"
             ],
             "collections": [
+              "financeiro",
               "tenants",
               "client_contracts",
-              "clientes"
+              "clientes",
+              "audit_logs"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 35,
+                "line": 72,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -1976,7 +1992,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 620,
+        "line": 606,
         "callee": "authedFetch",
         "expression": "\"/api/admin/tenants/create\"",
         "reference": "/api/admin/tenants/create",
@@ -1998,7 +2014,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 29,
+                "line": 31,
                 "arguments": [
                   "req",
                   "{\r\n      roles: [\"agency_owner\", \"agency_admin\"],\r\n    }"
@@ -2010,7 +2026,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 634,
+        "line": 621,
         "callee": "authedFetch",
         "expression": "`/api/admin/tenants/${tenantSummary.tenantId}/settings`",
         "reference": "/api/admin/tenants/{dynamic}/settings",
@@ -2032,7 +2048,7 @@
                 "line": 27,
                 "arguments": [
                   "req",
-                  "{\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\n    }"
+                  "{\r\n      roles: [\"agency_owner\", \"agency_admin\"],\r\n    }"
                 ]
               }
             ]
@@ -2043,7 +2059,7 @@
     "transitiveRequests": [
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 334,
+        "line": 319,
         "callee": "authedFetch",
         "expression": "`/api/admin/clientes/${encodeURIComponent(clientId)}/summary`",
         "reference": "/api/admin/clientes/{dynamic}/summary",
@@ -2079,7 +2095,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 335,
+        "line": 320,
         "callee": "authedFetch",
         "expression": "`/api/admin/client-portal/users/list?clientId=${encodeURIComponent(clientId)}`",
         "reference": "/api/admin/client-portal/users/list?clientId={dynamic}",
@@ -2112,7 +2128,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 336,
+        "line": 321,
         "callee": "authedFetch",
         "expression": "`/api/admin/client-portal/contracts/get?clientId=${encodeURIComponent(clientId)}`",
         "reference": "/api/admin/client-portal/contracts/get?clientId={dynamic}",
@@ -2132,10 +2148,10 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 60,
+                "line": 59,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -2144,7 +2160,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 394,
+        "line": 379,
         "callee": "authedFetch",
         "expression": "`/api/admin/tenants/${tenantData.id}/readiness`",
         "reference": "/api/admin/tenants/{dynamic}/readiness",
@@ -2172,7 +2188,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 481,
+        "line": 460,
         "callee": "authedFetch",
         "expression": "`/api/admin/tenants/${tenantSummary.tenantId}/users/invite`",
         "reference": "/api/admin/tenants/{dynamic}/users/invite",
@@ -2197,7 +2213,7 @@
                 "line": 45,
                 "arguments": [
                   "req",
-                  "{\r\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\r\n    }"
+                  "{\r\n      roles: [\"agency_owner\", \"agency_admin\"],\r\n    }"
                 ]
               }
             ]
@@ -2206,7 +2222,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 510,
+        "line": 489,
         "callee": "authedFetch",
         "expression": "\"/api/admin/client-portal/contracts/upsert\"",
         "reference": "/api/admin/client-portal/contracts/upsert",
@@ -2222,15 +2238,16 @@
               "clientes",
               "tenants",
               "client_contracts",
-              "audit_logs"
+              "audit_logs",
+              "tenant_entitlements"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 104,
+                "line": 102,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -2239,7 +2256,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 534,
+        "line": 520,
         "callee": "authedFetch",
         "expression": "\"/api/admin/client-portal/contracts/control\"",
         "reference": "/api/admin/client-portal/contracts/control",
@@ -2253,15 +2270,16 @@
             ],
             "collections": [
               "tenants",
-              "client_contracts"
+              "client_contracts",
+              "audit_logs"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 40,
+                "line": 42,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -2270,30 +2288,32 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 578,
+        "line": 568,
         "callee": "authedFetch",
-        "expression": "\"/api/admin/client-portal/contracts/stripe\"",
-        "reference": "/api/admin/client-portal/contracts/stripe",
+        "expression": "\"/api/admin/client-portal/contracts/asaas\"",
+        "reference": "/api/admin/client-portal/contracts/asaas",
         "method": "POST",
         "status": "route_exists_static_only",
         "routes": [
           {
-            "file": "app/api/admin/client-portal/contracts/stripe/route.ts",
+            "file": "app/api/admin/client-portal/contracts/asaas/route.ts",
             "methods": [
               "POST"
             ],
             "collections": [
+              "financeiro",
               "tenants",
               "client_contracts",
-              "clientes"
+              "clientes",
+              "audit_logs"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 35,
+                "line": 72,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -2302,7 +2322,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 620,
+        "line": 606,
         "callee": "authedFetch",
         "expression": "\"/api/admin/tenants/create\"",
         "reference": "/api/admin/tenants/create",
@@ -2324,7 +2344,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 29,
+                "line": 31,
                 "arguments": [
                   "req",
                   "{\r\n      roles: [\"agency_owner\", \"agency_admin\"],\r\n    }"
@@ -2336,7 +2356,7 @@
       },
       {
         "file": "app/admin/clientes/[id]/portal/page.tsx",
-        "line": 634,
+        "line": 621,
         "callee": "authedFetch",
         "expression": "`/api/admin/tenants/${tenantSummary.tenantId}/settings`",
         "reference": "/api/admin/tenants/{dynamic}/settings",
@@ -2358,7 +2378,7 @@
                 "line": 27,
                 "arguments": [
                   "req",
-                  "{\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\n    }"
+                  "{\r\n      roles: [\"agency_owner\", \"agency_admin\"],\r\n    }"
                 ]
               }
             ]
@@ -2700,7 +2720,7 @@
   {
     "file": "app/admin/dashboard/page.tsx",
     "route": "/admin/dashboard",
-    "lines": 840,
+    "lines": 680,
     "draft": false,
     "dependencies": [
       "app/lib/authed-fetch.ts",
@@ -2712,7 +2732,7 @@
     "directRequests": [
       {
         "file": "app/admin/dashboard/page.tsx",
-        "line": 190,
+        "line": 182,
         "callee": "authedFetch",
         "expression": "\"/api/admin/dashboard\"",
         "reference": "/api/admin/dashboard",
@@ -2740,7 +2760,7 @@
       },
       {
         "file": "app/admin/dashboard/page.tsx",
-        "line": 226,
+        "line": 215,
         "callee": "authedFetch",
         "expression": "\"/api/admin/ai/signals?limit=120\"",
         "reference": "/api/admin/ai/signals?limit=120",
@@ -2774,7 +2794,7 @@
     "transitiveRequests": [
       {
         "file": "app/admin/dashboard/page.tsx",
-        "line": 190,
+        "line": 182,
         "callee": "authedFetch",
         "expression": "\"/api/admin/dashboard\"",
         "reference": "/api/admin/dashboard",
@@ -2802,7 +2822,7 @@
       },
       {
         "file": "app/admin/dashboard/page.tsx",
-        "line": 226,
+        "line": 215,
         "callee": "authedFetch",
         "expression": "\"/api/admin/ai/signals?limit=120\"",
         "reference": "/api/admin/ai/signals?limit=120",
@@ -2918,10 +2938,10 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 30,
+                "line": 31,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -2949,10 +2969,10 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 35,
+                "line": 36,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3000,10 +3020,10 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 12,
+                "line": 13,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3073,10 +3093,10 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 30,
+                "line": 31,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3104,10 +3124,10 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 35,
+                "line": 36,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3155,10 +3175,10 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 12,
+                "line": 13,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3179,9 +3199,209 @@
     "note": "Static inventory: existence is not runtime validation; computed URLs and HTTP methods need review."
   },
   {
+    "file": "app/admin/estrategias/page.tsx",
+    "route": "/admin/estrategias",
+    "lines": 45,
+    "draft": false,
+    "dependencies": [
+      "app/lib/authed-fetch.ts",
+      "firebaseConfig.ts",
+      "lib/admin-marketing-overview.ts"
+    ],
+    "directRequests": [
+      {
+        "file": "app/admin/estrategias/page.tsx",
+        "line": 18,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/marketing/overview\"",
+        "reference": "/api/admin/marketing/overview",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/marketing/overview/route.ts",
+            "methods": [
+              "GET"
+            ],
+            "collections": [],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 15,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/estrategias/page.tsx",
+        "line": 18,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/strategies\"",
+        "reference": "/api/admin/strategies",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/strategies/route.ts",
+            "methods": [
+              "GET",
+              "POST",
+              "PATCH"
+            ],
+            "collections": [
+              "admin_growth_strategies",
+              "audit_logs"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 10,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 20,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 32,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/estrategias/page.tsx",
+        "line": 34,
+        "callee": "authedFetch",
+        "expression": "action === \"suggest\" ? \"/api/admin/strategies/suggest\" : \"/api/admin/strategies\"",
+        "reference": null,
+        "method": "GET",
+        "status": "manual_review_computed_or_external",
+        "routes": []
+      }
+    ],
+    "transitiveRequests": [
+      {
+        "file": "app/admin/estrategias/page.tsx",
+        "line": 18,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/marketing/overview\"",
+        "reference": "/api/admin/marketing/overview",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/marketing/overview/route.ts",
+            "methods": [
+              "GET"
+            ],
+            "collections": [],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 15,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/estrategias/page.tsx",
+        "line": 18,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/strategies\"",
+        "reference": "/api/admin/strategies",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/strategies/route.ts",
+            "methods": [
+              "GET",
+              "POST",
+              "PATCH"
+            ],
+            "collections": [
+              "admin_growth_strategies",
+              "audit_logs"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 10,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 20,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 32,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/estrategias/page.tsx",
+        "line": 34,
+        "callee": "authedFetch",
+        "expression": "action === \"suggest\" ? \"/api/admin/strategies/suggest\" : \"/api/admin/strategies\"",
+        "reference": null,
+        "method": "GET",
+        "status": "manual_review_computed_or_external",
+        "routes": []
+      },
+      {
+        "file": "app/lib/authed-fetch.ts",
+        "line": 14,
+        "callee": "fetch",
+        "expression": "input",
+        "reference": null,
+        "method": "GET",
+        "status": "manual_review_computed_or_external",
+        "routes": []
+      }
+    ],
+    "note": "Static inventory: existence is not runtime validation; computed URLs and HTTP methods need review."
+  },
+  {
     "file": "app/admin/financeiro/page.tsx",
     "route": "/admin/financeiro",
-    "lines": 873,
+    "lines": 877,
     "draft": false,
     "dependencies": [
       "context/AuthContext.tsx",
@@ -3193,7 +3413,7 @@
     "directRequests": [
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 187,
+        "line": 195,
         "callee": "authedFetch",
         "expression": "\"/api/admin/dashboard?include=financeiro\"",
         "reference": "/api/admin/dashboard?include=financeiro",
@@ -3221,7 +3441,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 188,
+        "line": 196,
         "callee": "authedFetch",
         "expression": "\"/api/admin/users?detailed=true\"",
         "reference": "/api/admin/users?detailed=true",
@@ -3251,7 +3471,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 235,
+        "line": 243,
         "callee": "authedFetch",
         "expression": "\"/api/admin/billing/overview\"",
         "reference": "/api/admin/billing/overview",
@@ -3271,7 +3491,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 43,
+                "line": 42,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_admin\"] }"
@@ -3283,7 +3503,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 302,
+        "line": 310,
         "callee": "authedFetch",
         "expression": "\"/api/finance/transactions/create\"",
         "reference": "/api/finance/transactions/create",
@@ -3296,15 +3516,16 @@
               "POST"
             ],
             "collections": [
-              "financeiro"
+              "financeiro",
+              "orcamentos"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 35,
+                "line": 36,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3313,7 +3534,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 329,
+        "line": 337,
         "callee": "authedFetch",
         "expression": "\"/api/finance/transactions/update\"",
         "reference": "/api/finance/transactions/update",
@@ -3334,7 +3555,7 @@
                 "line": 16,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3343,7 +3564,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 343,
+        "line": 351,
         "callee": "authedFetch",
         "expression": "\"/api/finance/transactions/update\"",
         "reference": "/api/finance/transactions/update",
@@ -3364,7 +3585,7 @@
                 "line": 16,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3373,7 +3594,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 361,
+        "line": 369,
         "callee": "authedFetch",
         "expression": "\"/api/finance/transactions/delete\"",
         "reference": "/api/finance/transactions/delete",
@@ -3394,7 +3615,7 @@
                 "line": 11,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3405,7 +3626,7 @@
     "transitiveRequests": [
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 187,
+        "line": 195,
         "callee": "authedFetch",
         "expression": "\"/api/admin/dashboard?include=financeiro\"",
         "reference": "/api/admin/dashboard?include=financeiro",
@@ -3433,7 +3654,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 188,
+        "line": 196,
         "callee": "authedFetch",
         "expression": "\"/api/admin/users?detailed=true\"",
         "reference": "/api/admin/users?detailed=true",
@@ -3463,7 +3684,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 235,
+        "line": 243,
         "callee": "authedFetch",
         "expression": "\"/api/admin/billing/overview\"",
         "reference": "/api/admin/billing/overview",
@@ -3483,7 +3704,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 43,
+                "line": 42,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_admin\"] }"
@@ -3495,7 +3716,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 302,
+        "line": 310,
         "callee": "authedFetch",
         "expression": "\"/api/finance/transactions/create\"",
         "reference": "/api/finance/transactions/create",
@@ -3508,15 +3729,16 @@
               "POST"
             ],
             "collections": [
-              "financeiro"
+              "financeiro",
+              "orcamentos"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 35,
+                "line": 36,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3525,7 +3747,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 329,
+        "line": 337,
         "callee": "authedFetch",
         "expression": "\"/api/finance/transactions/update\"",
         "reference": "/api/finance/transactions/update",
@@ -3546,7 +3768,7 @@
                 "line": 16,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3555,7 +3777,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 343,
+        "line": 351,
         "callee": "authedFetch",
         "expression": "\"/api/finance/transactions/update\"",
         "reference": "/api/finance/transactions/update",
@@ -3576,7 +3798,7 @@
                 "line": 16,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3585,7 +3807,7 @@
       },
       {
         "file": "app/admin/financeiro/page.tsx",
-        "line": 361,
+        "line": 369,
         "callee": "authedFetch",
         "expression": "\"/api/finance/transactions/delete\"",
         "reference": "/api/finance/transactions/delete",
@@ -3606,7 +3828,7 @@
                 "line": 11,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3688,7 +3910,7 @@
                 "line": 16,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3748,7 +3970,7 @@
                 "line": 16,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -3771,7 +3993,7 @@
   {
     "file": "app/admin/ia/page.tsx",
     "route": "/admin/ia",
-    "lines": 1282,
+    "lines": 1266,
     "draft": false,
     "dependencies": [
       "context/AuthContext.tsx",
@@ -3784,164 +4006,17 @@
     "directRequests": [
       {
         "file": "app/admin/ia/page.tsx",
-        "line": 319,
-        "callee": "authedFetch",
-        "expression": "\"/api/admin/ai/signals\"",
-        "reference": "/api/admin/ai/signals",
-        "method": "GET",
-        "status": "route_exists_static_only",
-        "routes": [
-          {
-            "file": "app/api/admin/ai/signals/route.ts",
-            "methods": [
-              "GET"
-            ],
-            "collections": [
-              "ai_logs",
-              "tenant_settings",
-              "tenants"
-            ],
-            "auth": [
-              {
-                "guard": "requireRequestUser",
-                "line": 131,
-                "arguments": [
-                  "req",
-                  "{\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\n    }"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file": "app/admin/ia/page.tsx",
         "line": 320,
         "callee": "authedFetch",
-        "expression": "\"/api/admin/ai/usage-summary\"",
-        "reference": "/api/admin/ai/usage-summary",
+        "expression": "url",
+        "reference": null,
         "method": "GET",
-        "status": "route_exists_static_only",
-        "routes": [
-          {
-            "file": "app/api/admin/ai/usage-summary/route.ts",
-            "methods": [
-              "GET"
-            ],
-            "collections": [
-              "ai_usage_ledger",
-              "tenants",
-              "tenant_settings"
-            ],
-            "auth": [
-              {
-                "guard": "requireRequestUser",
-                "line": 47,
-                "arguments": [
-                  "req",
-                  "{\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\n    }"
-                ]
-              }
-            ]
-          }
-        ]
+        "status": "manual_review_computed_or_external",
+        "routes": []
       },
       {
         "file": "app/admin/ia/page.tsx",
-        "line": 321,
-        "callee": "authedFetch",
-        "expression": "\"/api/admin/ai/jobs/summary\"",
-        "reference": "/api/admin/ai/jobs/summary",
-        "method": "GET",
-        "status": "route_exists_static_only",
-        "routes": [
-          {
-            "file": "app/api/admin/ai/jobs/summary/route.ts",
-            "methods": [
-              "GET"
-            ],
-            "collections": [
-              "tenants",
-              "tenant_settings",
-              "jobs",
-              "metrics"
-            ],
-            "auth": [
-              {
-                "guard": "requireRequestUser",
-                "line": 54,
-                "arguments": [
-                  "req",
-                  "{\r\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\r\n    }"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file": "app/admin/ia/page.tsx",
-        "line": 322,
-        "callee": "authedFetch",
-        "expression": "\"/api/admin/ai/learning-summary\"",
-        "reference": "/api/admin/ai/learning-summary",
-        "method": "GET",
-        "status": "route_exists_static_only",
-        "routes": [
-          {
-            "file": "app/api/admin/ai/learning-summary/route.ts",
-            "methods": [
-              "GET"
-            ],
-            "collections": [
-              "ai_tenant_learning_daily"
-            ],
-            "auth": [
-              {
-                "guard": "requireRequestUser",
-                "line": 40,
-                "arguments": [
-                  "req",
-                  "{\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\n    }"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file": "app/admin/ia/page.tsx",
-        "line": 323,
-        "callee": "authedFetch",
-        "expression": "\"/api/admin/ai/internal-notifications\"",
-        "reference": "/api/admin/ai/internal-notifications",
-        "method": "GET",
-        "status": "route_exists_static_only",
-        "routes": [
-          {
-            "file": "app/api/admin/ai/internal-notifications/route.ts",
-            "methods": [
-              "GET"
-            ],
-            "collections": [
-              "ai_internal_notifications"
-            ],
-            "auth": [
-              {
-                "guard": "requireRequestUser",
-                "line": 14,
-                "arguments": [
-                  "req",
-                  "{\r\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\r\n    }"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file": "app/admin/ia/page.tsx",
-        "line": 449,
+        "line": 433,
         "callee": "authedFetch",
         "expression": "\"/api/ai/ask\"",
         "reference": "/api/ai/ask",
@@ -3977,7 +4052,7 @@
       },
       {
         "file": "app/admin/ia/page.tsx",
-        "line": 491,
+        "line": 475,
         "callee": "authedFetch",
         "expression": "\"/api/ai/ask\"",
         "reference": "/api/ai/ask",
@@ -4015,164 +4090,17 @@
     "transitiveRequests": [
       {
         "file": "app/admin/ia/page.tsx",
-        "line": 319,
-        "callee": "authedFetch",
-        "expression": "\"/api/admin/ai/signals\"",
-        "reference": "/api/admin/ai/signals",
-        "method": "GET",
-        "status": "route_exists_static_only",
-        "routes": [
-          {
-            "file": "app/api/admin/ai/signals/route.ts",
-            "methods": [
-              "GET"
-            ],
-            "collections": [
-              "ai_logs",
-              "tenant_settings",
-              "tenants"
-            ],
-            "auth": [
-              {
-                "guard": "requireRequestUser",
-                "line": 131,
-                "arguments": [
-                  "req",
-                  "{\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\n    }"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file": "app/admin/ia/page.tsx",
         "line": 320,
         "callee": "authedFetch",
-        "expression": "\"/api/admin/ai/usage-summary\"",
-        "reference": "/api/admin/ai/usage-summary",
+        "expression": "url",
+        "reference": null,
         "method": "GET",
-        "status": "route_exists_static_only",
-        "routes": [
-          {
-            "file": "app/api/admin/ai/usage-summary/route.ts",
-            "methods": [
-              "GET"
-            ],
-            "collections": [
-              "ai_usage_ledger",
-              "tenants",
-              "tenant_settings"
-            ],
-            "auth": [
-              {
-                "guard": "requireRequestUser",
-                "line": 47,
-                "arguments": [
-                  "req",
-                  "{\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\n    }"
-                ]
-              }
-            ]
-          }
-        ]
+        "status": "manual_review_computed_or_external",
+        "routes": []
       },
       {
         "file": "app/admin/ia/page.tsx",
-        "line": 321,
-        "callee": "authedFetch",
-        "expression": "\"/api/admin/ai/jobs/summary\"",
-        "reference": "/api/admin/ai/jobs/summary",
-        "method": "GET",
-        "status": "route_exists_static_only",
-        "routes": [
-          {
-            "file": "app/api/admin/ai/jobs/summary/route.ts",
-            "methods": [
-              "GET"
-            ],
-            "collections": [
-              "tenants",
-              "tenant_settings",
-              "jobs",
-              "metrics"
-            ],
-            "auth": [
-              {
-                "guard": "requireRequestUser",
-                "line": 54,
-                "arguments": [
-                  "req",
-                  "{\r\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\r\n    }"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file": "app/admin/ia/page.tsx",
-        "line": 322,
-        "callee": "authedFetch",
-        "expression": "\"/api/admin/ai/learning-summary\"",
-        "reference": "/api/admin/ai/learning-summary",
-        "method": "GET",
-        "status": "route_exists_static_only",
-        "routes": [
-          {
-            "file": "app/api/admin/ai/learning-summary/route.ts",
-            "methods": [
-              "GET"
-            ],
-            "collections": [
-              "ai_tenant_learning_daily"
-            ],
-            "auth": [
-              {
-                "guard": "requireRequestUser",
-                "line": 40,
-                "arguments": [
-                  "req",
-                  "{\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\n    }"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file": "app/admin/ia/page.tsx",
-        "line": 323,
-        "callee": "authedFetch",
-        "expression": "\"/api/admin/ai/internal-notifications\"",
-        "reference": "/api/admin/ai/internal-notifications",
-        "method": "GET",
-        "status": "route_exists_static_only",
-        "routes": [
-          {
-            "file": "app/api/admin/ai/internal-notifications/route.ts",
-            "methods": [
-              "GET"
-            ],
-            "collections": [
-              "ai_internal_notifications"
-            ],
-            "auth": [
-              {
-                "guard": "requireRequestUser",
-                "line": 14,
-                "arguments": [
-                  "req",
-                  "{\r\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\r\n    }"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file": "app/admin/ia/page.tsx",
-        "line": 449,
+        "line": 433,
         "callee": "authedFetch",
         "expression": "\"/api/ai/ask\"",
         "reference": "/api/ai/ask",
@@ -4208,7 +4136,7 @@
       },
       {
         "file": "app/admin/ia/page.tsx",
-        "line": 491,
+        "line": 475,
         "callee": "authedFetch",
         "expression": "\"/api/ai/ask\"",
         "reference": "/api/ai/ask",
@@ -4256,19 +4184,21 @@
     "note": "Static inventory: existence is not runtime validation; computed URLs and HTTP methods need review."
   },
   {
-    "file": "app/admin/midia/page.tsx",
-    "route": "/admin/midia",
-    "lines": 81,
-    "draft": true,
+    "file": "app/admin/mcp/autorizar/page.tsx",
+    "route": "/admin/mcp/autorizar",
+    "lines": 17,
+    "draft": false,
     "dependencies": [
       "app/lib/authed-fetch.ts",
       "firebaseConfig.ts",
-      "lib/admin-marketing-overview.ts"
+      "lib/admin-mcp.ts",
+      "lib/mcp/contracts.ts",
+      "lib/mcp/scope-catalog.ts"
     ],
     "directRequests": [
       {
-        "file": "app/admin/midia/page.tsx",
-        "line": 33,
+        "file": "app/admin/mcp/autorizar/page.tsx",
+        "line": 12,
         "callee": "authedFetch",
         "expression": "\"/api/admin/marketing/overview\"",
         "reference": "/api/admin/marketing/overview",
@@ -4284,7 +4214,486 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 14,
+                "line": 15,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/mcp/autorizar/page.tsx",
+        "line": 13,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/mcp/authorize\"",
+        "reference": "/api/admin/mcp/authorize",
+        "method": "POST",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/mcp/authorize/route.ts",
+            "methods": [
+              "GET",
+              "POST"
+            ],
+            "collections": [],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 11,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "transitiveRequests": [
+      {
+        "file": "app/admin/mcp/autorizar/page.tsx",
+        "line": 12,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/marketing/overview\"",
+        "reference": "/api/admin/marketing/overview",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/marketing/overview/route.ts",
+            "methods": [
+              "GET"
+            ],
+            "collections": [],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 15,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/mcp/autorizar/page.tsx",
+        "line": 13,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/mcp/authorize\"",
+        "reference": "/api/admin/mcp/authorize",
+        "method": "POST",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/mcp/authorize/route.ts",
+            "methods": [
+              "GET",
+              "POST"
+            ],
+            "collections": [],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 11,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/lib/authed-fetch.ts",
+        "line": 14,
+        "callee": "fetch",
+        "expression": "input",
+        "reference": null,
+        "method": "GET",
+        "status": "manual_review_computed_or_external",
+        "routes": []
+      }
+    ],
+    "note": "Static inventory: existence is not runtime validation; computed URLs and HTTP methods need review."
+  },
+  {
+    "file": "app/admin/mcp/page.tsx",
+    "route": "/admin/mcp",
+    "lines": 14,
+    "draft": false,
+    "dependencies": [
+      "app/lib/authed-fetch.ts",
+      "firebaseConfig.ts"
+    ],
+    "directRequests": [
+      {
+        "file": "app/admin/mcp/page.tsx",
+        "line": 9,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/mcp/connections\"",
+        "reference": "/api/admin/mcp/connections",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/mcp/connections/route.ts",
+            "methods": [
+              "GET",
+              "PATCH",
+              "DELETE"
+            ],
+            "collections": [
+              "platform_settings",
+              "admin_mcp_connections",
+              "audit_logs"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 8,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 12,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 16,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/mcp/page.tsx",
+        "line": 11,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/mcp/connections\"",
+        "reference": "/api/admin/mcp/connections",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/mcp/connections/route.ts",
+            "methods": [
+              "GET",
+              "PATCH",
+              "DELETE"
+            ],
+            "collections": [
+              "platform_settings",
+              "admin_mcp_connections",
+              "audit_logs"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 8,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 12,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 16,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "transitiveRequests": [
+      {
+        "file": "app/admin/mcp/page.tsx",
+        "line": 9,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/mcp/connections\"",
+        "reference": "/api/admin/mcp/connections",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/mcp/connections/route.ts",
+            "methods": [
+              "GET",
+              "PATCH",
+              "DELETE"
+            ],
+            "collections": [
+              "platform_settings",
+              "admin_mcp_connections",
+              "audit_logs"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 8,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 12,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 16,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/mcp/page.tsx",
+        "line": 11,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/mcp/connections\"",
+        "reference": "/api/admin/mcp/connections",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/mcp/connections/route.ts",
+            "methods": [
+              "GET",
+              "PATCH",
+              "DELETE"
+            ],
+            "collections": [
+              "platform_settings",
+              "admin_mcp_connections",
+              "audit_logs"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 8,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 12,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 16,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/lib/authed-fetch.ts",
+        "line": 14,
+        "callee": "fetch",
+        "expression": "input",
+        "reference": null,
+        "method": "GET",
+        "status": "manual_review_computed_or_external",
+        "routes": []
+      }
+    ],
+    "note": "Static inventory: existence is not runtime validation; computed URLs and HTTP methods need review."
+  },
+  {
+    "file": "app/admin/midia/page.tsx",
+    "route": "/admin/midia",
+    "lines": 115,
+    "draft": true,
+    "dependencies": [
+      "components/admin/AdminMediaConnections.tsx",
+      "app/lib/authed-fetch.ts",
+      "firebaseConfig.ts",
+      "lib/admin-marketing-overview.ts",
+      "lib/admin-batch.ts"
+    ],
+    "directRequests": [
+      {
+        "file": "app/admin/midia/page.tsx",
+        "line": 44,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/marketing/overview\"",
+        "reference": "/api/admin/marketing/overview",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/marketing/overview/route.ts",
+            "methods": [
+              "GET"
+            ],
+            "collections": [],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 15,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/midia/page.tsx",
+        "line": 52,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/marketing/batch\"",
+        "reference": "/api/admin/marketing/batch",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/marketing/batch/route.ts",
+            "methods": [
+              "GET",
+              "POST"
+            ],
+            "collections": [
+              "admin_marketing_batches",
+              "mcp_action_drafts"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 20,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 32,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/midia/page.tsx",
+        "line": 81,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/marketing/batch\"",
+        "reference": "/api/admin/marketing/batch",
+        "method": "POST",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/marketing/batch/route.ts",
+            "methods": [
+              "GET",
+              "POST"
+            ],
+            "collections": [
+              "admin_marketing_batches",
+              "mcp_action_drafts"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 20,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 32,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/midia/page.tsx",
+        "line": 87,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/marketing/pixels\"",
+        "reference": "/api/admin/marketing/pixels",
+        "method": "POST",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/marketing/pixels/route.ts",
+            "methods": [
+              "POST"
+            ],
+            "collections": [
+              "tenants",
+              "admin_growth_pixels",
+              "audit_logs"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 15,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_admin\"] }"
@@ -4298,7 +4707,7 @@
     "transitiveRequests": [
       {
         "file": "app/admin/midia/page.tsx",
-        "line": 33,
+        "line": 44,
         "callee": "authedFetch",
         "expression": "\"/api/admin/marketing/overview\"",
         "reference": "/api/admin/marketing/overview",
@@ -4314,7 +4723,298 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 14,
+                "line": 15,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/midia/page.tsx",
+        "line": 52,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/marketing/batch\"",
+        "reference": "/api/admin/marketing/batch",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/marketing/batch/route.ts",
+            "methods": [
+              "GET",
+              "POST"
+            ],
+            "collections": [
+              "admin_marketing_batches",
+              "mcp_action_drafts"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 20,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 32,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/midia/page.tsx",
+        "line": 81,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/marketing/batch\"",
+        "reference": "/api/admin/marketing/batch",
+        "method": "POST",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/marketing/batch/route.ts",
+            "methods": [
+              "GET",
+              "POST"
+            ],
+            "collections": [
+              "admin_marketing_batches",
+              "mcp_action_drafts"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 20,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 32,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/admin/midia/page.tsx",
+        "line": 87,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/marketing/pixels\"",
+        "reference": "/api/admin/marketing/pixels",
+        "method": "POST",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/marketing/pixels/route.ts",
+            "methods": [
+              "POST"
+            ],
+            "collections": [
+              "tenants",
+              "admin_growth_pixels",
+              "audit_logs"
+            ],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 15,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "components/admin/AdminMediaConnections.tsx",
+        "line": 18,
+        "callee": "authedFetch",
+        "expression": "`/api/integrations/pending/${encodeURIComponent(id)}`",
+        "reference": "/api/integrations/pending/{dynamic}",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/integrations/pending/[pendingId]/route.ts",
+            "methods": [
+              "GET"
+            ],
+            "collections": [],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 8,
+                "arguments": [
+                  "req"
+                ]
+              },
+              {
+                "guard": "assertTenantAccess",
+                "line": 17,
+                "arguments": [
+                  "user.uid",
+                  "pending.tenantId"
+                ]
+              },
+              {
+                "guard": "assertTenantCapability",
+                "line": 18,
+                "arguments": [
+                  "membership",
+                  "\"manage_channels\""
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "components/admin/AdminMediaConnections.tsx",
+        "line": 35,
+        "callee": "authedFetch",
+        "expression": "`/api/integrations/${provider}/start`",
+        "reference": "/api/integrations/{dynamic}/start",
+        "method": "POST",
+        "status": "manual_review_unresolved",
+        "routes": []
+      },
+      {
+        "file": "components/admin/AdminMediaConnections.tsx",
+        "line": 50,
+        "callee": "authedFetch",
+        "expression": "`/api/integrations/pending/${encodeURIComponent(pending.pendingId)}/complete`",
+        "reference": "/api/integrations/pending/{dynamic}/complete",
+        "method": "POST",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/integrations/pending/[pendingId]/complete/route.ts",
+            "methods": [
+              "POST"
+            ],
+            "collections": [],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 26,
+                "arguments": [
+                  "req"
+                ]
+              },
+              {
+                "guard": "assertTenantAccess",
+                "line": 41,
+                "arguments": [
+                  "user.uid",
+                  "pending.tenantId"
+                ]
+              },
+              {
+                "guard": "assertTenantCapability",
+                "line": 42,
+                "arguments": [
+                  "membership",
+                  "\"manage_channels\""
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "file": "app/lib/authed-fetch.ts",
+        "line": 14,
+        "callee": "fetch",
+        "expression": "input",
+        "reference": null,
+        "method": "GET",
+        "status": "manual_review_computed_or_external",
+        "routes": []
+      }
+    ],
+    "note": "Static inventory: existence is not runtime validation; computed URLs and HTTP methods need review."
+  },
+  {
+    "file": "app/admin/operacao/page.tsx",
+    "route": "/admin/operacao",
+    "lines": 27,
+    "draft": false,
+    "dependencies": [
+      "app/lib/authed-fetch.ts",
+      "firebaseConfig.ts",
+      "lib/admin-portfolio.ts",
+      "lib/admin-companies.ts"
+    ],
+    "directRequests": [
+      {
+        "file": "app/admin/operacao/page.tsx",
+        "line": 9,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/portfolio\"",
+        "reference": "/api/admin/portfolio",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/portfolio/route.ts",
+            "methods": [
+              "GET"
+            ],
+            "collections": [],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 7,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "transitiveRequests": [
+      {
+        "file": "app/admin/operacao/page.tsx",
+        "line": 9,
+        "callee": "authedFetch",
+        "expression": "\"/api/admin/portfolio\"",
+        "reference": "/api/admin/portfolio",
+        "method": "GET",
+        "status": "route_exists_static_only",
+        "routes": [
+          {
+            "file": "app/api/admin/portfolio/route.ts",
+            "methods": [
+              "GET"
+            ],
+            "collections": [],
+            "auth": [
+              {
+                "guard": "requireRequestUser",
+                "line": 7,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_admin\"] }"
@@ -4365,12 +5065,13 @@
               "GET"
             ],
             "collections": [
-              "clientes"
+              "clientes",
+              "tenants"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 7,
+                "line": 8,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -4423,7 +5124,6 @@
               "POST"
             ],
             "collections": [
-              "clientes",
               "projetos",
               "users",
               "orcamentos"
@@ -4431,7 +5131,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 25,
+                "line": 26,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -4458,12 +5158,13 @@
               "GET"
             ],
             "collections": [
-              "clientes"
+              "clientes",
+              "tenants"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 7,
+                "line": 8,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -4516,7 +5217,6 @@
               "POST"
             ],
             "collections": [
-              "clientes",
               "projetos",
               "users",
               "orcamentos"
@@ -4524,7 +5224,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 25,
+                "line": 26,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -4550,7 +5250,7 @@
   {
     "file": "app/admin/orcamentos/[id]/page.tsx",
     "route": "/admin/orcamentos/[id]",
-    "lines": 724,
+    "lines": 725,
     "draft": false,
     "dependencies": [
       "app/lib/authed-fetch.ts",
@@ -4661,15 +5361,16 @@
               "POST"
             ],
             "collections": [
-              "financeiro"
+              "financeiro",
+              "orcamentos"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 35,
+                "line": 36,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -4781,15 +5482,16 @@
               "POST"
             ],
             "collections": [
-              "financeiro"
+              "financeiro",
+              "orcamentos"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 35,
+                "line": 36,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -5332,7 +6034,7 @@
   {
     "file": "app/admin/projetos/page.tsx",
     "route": "/admin/projetos",
-    "lines": 422,
+    "lines": 426,
     "draft": false,
     "dependencies": [
       "app/lib/authed-fetch.ts",
@@ -5344,7 +6046,7 @@
     "directRequests": [
       {
         "file": "app/admin/projetos/page.tsx",
-        "line": 73,
+        "line": 75,
         "callee": "authedFetch",
         "expression": "\"/api/clientes\"",
         "reference": "/api/clientes",
@@ -5357,12 +6059,13 @@
               "GET"
             ],
             "collections": [
-              "clientes"
+              "clientes",
+              "tenants"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 7,
+                "line": 8,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -5374,7 +6077,7 @@
       },
       {
         "file": "app/admin/projetos/page.tsx",
-        "line": 74,
+        "line": 76,
         "callee": "authedFetch",
         "expression": "\"/api/admin/dashboard?include=projetos\"",
         "reference": "/api/admin/dashboard?include=projetos",
@@ -5402,7 +6105,7 @@
       },
       {
         "file": "app/admin/projetos/page.tsx",
-        "line": 134,
+        "line": 135,
         "callee": "authedFetch",
         "expression": "\"/api/projetos/create\"",
         "reference": "/api/projetos/create",
@@ -5415,14 +6118,13 @@
               "POST"
             ],
             "collections": [
-              "clientes",
               "users",
               "projetos"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 23,
+                "line": 24,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -5436,7 +6138,7 @@
     "transitiveRequests": [
       {
         "file": "app/admin/projetos/page.tsx",
-        "line": 73,
+        "line": 75,
         "callee": "authedFetch",
         "expression": "\"/api/clientes\"",
         "reference": "/api/clientes",
@@ -5449,12 +6151,13 @@
               "GET"
             ],
             "collections": [
-              "clientes"
+              "clientes",
+              "tenants"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 7,
+                "line": 8,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -5466,7 +6169,7 @@
       },
       {
         "file": "app/admin/projetos/page.tsx",
-        "line": 74,
+        "line": 76,
         "callee": "authedFetch",
         "expression": "\"/api/admin/dashboard?include=projetos\"",
         "reference": "/api/admin/dashboard?include=projetos",
@@ -5494,7 +6197,7 @@
       },
       {
         "file": "app/admin/projetos/page.tsx",
-        "line": 134,
+        "line": 135,
         "callee": "authedFetch",
         "expression": "\"/api/projetos/create\"",
         "reference": "/api/projetos/create",
@@ -5507,14 +6210,13 @@
               "POST"
             ],
             "collections": [
-              "clientes",
               "users",
               "projetos"
             ],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 23,
+                "line": 24,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -5597,10 +6299,10 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 23,
+                "line": 20,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -5718,10 +6420,10 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 23,
+                "line": 20,
                 "arguments": [
                   "req",
-                  "{ roles: [\"admin\"] }"
+                  "{ roles: [\"agency_admin\"] }"
                 ]
               }
             ]
@@ -6101,13 +6803,22 @@
           {
             "file": "app/api/admin/whatsapp/templates/route.ts",
             "methods": [
+              "POST",
               "GET"
             ],
             "collections": [],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 27,
+                "line": 17,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 44,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -6427,13 +7138,22 @@
           {
             "file": "app/api/admin/whatsapp/templates/route.ts",
             "methods": [
+              "POST",
               "GET"
             ],
             "collections": [],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 27,
+                "line": 17,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 44,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -7039,7 +7759,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 156,
+                "line": 157,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -7073,7 +7793,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 32,
+                "line": 33,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -7422,7 +8142,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 156,
+                "line": 157,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -7456,7 +8176,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 32,
+                "line": 33,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -7513,7 +8233,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 43,
+                "line": 42,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_admin\"] }"
@@ -7653,7 +8373,7 @@
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 43,
+                "line": 42,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_admin\"] }"
@@ -7785,7 +8505,7 @@
   {
     "file": "app/admin/templates/page.tsx",
     "route": "/admin/templates",
-    "lines": 500,
+    "lines": 501,
     "draft": false,
     "dependencies": [
       "app/lib/authed-fetch.ts",
@@ -7804,13 +8524,22 @@
           {
             "file": "app/api/admin/whatsapp/templates/route.ts",
             "methods": [
+              "POST",
               "GET"
             ],
             "collections": [],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 27,
+                "line": 17,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 44,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -7827,18 +8556,27 @@
         "expression": "\"/api/admin/whatsapp/templates\"",
         "reference": "/api/admin/whatsapp/templates",
         "method": "POST",
-        "status": "http_method_missing_static",
+        "status": "route_exists_static_only",
         "routes": [
           {
             "file": "app/api/admin/whatsapp/templates/route.ts",
             "methods": [
+              "POST",
               "GET"
             ],
             "collections": [],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 27,
+                "line": 17,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 44,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -7862,13 +8600,22 @@
           {
             "file": "app/api/admin/whatsapp/templates/route.ts",
             "methods": [
+              "POST",
               "GET"
             ],
             "collections": [],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 27,
+                "line": 17,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 44,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"
@@ -7885,18 +8632,27 @@
         "expression": "\"/api/admin/whatsapp/templates\"",
         "reference": "/api/admin/whatsapp/templates",
         "method": "POST",
-        "status": "http_method_missing_static",
+        "status": "route_exists_static_only",
         "routes": [
           {
             "file": "app/api/admin/whatsapp/templates/route.ts",
             "methods": [
+              "POST",
               "GET"
             ],
             "collections": [],
             "auth": [
               {
                 "guard": "requireRequestUser",
-                "line": 27,
+                "line": 17,
+                "arguments": [
+                  "req",
+                  "{ roles: [\"agency_admin\"] }"
+                ]
+              },
+              {
+                "guard": "requireRequestUser",
+                "line": 44,
                 "arguments": [
                   "req",
                   "{ roles: [\"agency_agent\"] }"

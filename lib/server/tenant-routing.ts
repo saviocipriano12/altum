@@ -1,8 +1,9 @@
-import { filterEligibleOperators, type TenantOperator } from "@/lib/inbox-routing-policy";
+import { filterEligibleOperators, filterLeadOwners, type TenantOperator } from "@/lib/inbox-routing-policy";
 export { filterEligibleOperators } from "@/lib/inbox-routing-policy";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { getTenantCapabilities, getTenantSettings, type TenantMembership } from "@/lib/server/tenant";
+import { inferClientAccessProfile } from "@/lib/client-access-profiles";
 
 function clean(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
@@ -113,7 +114,7 @@ function isClosedChatStatus(value: unknown) {
   return ["resolved", "archived", "closed", "merged"].includes(status);
 }
 
-export async function listTenantOperators(tenantId: string) {
+export async function listTenantOperators(tenantId: string): Promise<TenantOperator[]> {
   const snap = await adminDb
     .collection("tenant_users")
     .where("tenantId", "==", tenantId)
@@ -121,8 +122,8 @@ export async function listTenantOperators(tenantId: string) {
     .limit(80)
     .get();
 
-  const items = await Promise.all(
-    snap.docs.map(async (doc) => {
+  const items: Array<TenantOperator | null> = await Promise.all(
+    snap.docs.map(async (doc): Promise<TenantOperator | null> => {
       const data = doc.data() as Record<string, unknown>;
       const role = clean(data.role, 40).toLowerCase();
       if (!["client_owner", "client_admin", "client_agent"].includes(role)) return null;
@@ -153,6 +154,11 @@ export async function listTenantOperators(tenantId: string) {
           const parsed = Number(data.maxOpenChats);
           return Number.isFinite(parsed) && parsed > 0 ? Math.min(200, Math.round(parsed)) : null;
         })(),
+        isSeller: inferClientAccessProfile({
+          role,
+          accessProfile: clean(data.accessProfile, 40),
+          capabilities,
+        }).id === "seller",
       } satisfies TenantOperator;
     })
   );
@@ -188,7 +194,7 @@ async function getActiveLoadMap(tenantId: string, operators: TenantOperator[]) {
 
 export async function resolveInboundAssignment(
   tenantId: string,
-  input?: { channel?: string | null; priority?: string | null }
+  input?: { channel?: string | null; priority?: string | null; responsibility?: "conversation" | "lead" }
 ) {
   const settings = await getTenantSettings(tenantId);
   const rules = getInboxRules((settings || null) as Record<string, unknown> | null);
@@ -200,7 +206,10 @@ export async function resolveInboundAssignment(
     return null;
   }
 
-  const operators = await listTenantOperators(tenantId);
+  const allOperators = await listTenantOperators(tenantId);
+  const operators = input?.responsibility === "lead"
+    ? filterLeadOwners(allOperators)
+    : allOperators;
   if (operators.length === 0) return null;
   const activeLoads = await getActiveLoadMap(tenantId, operators);
   const eligibleOperators = filterEligibleOperators({

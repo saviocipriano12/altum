@@ -174,6 +174,55 @@ test("Altum administrators can open a specific customer tenant without an indivi
   assert.equal(overview.includes('/api/client-portal/dashboard?tenantId=${encodeURIComponent(tenantId)}'), true);
 });
 
+test("company management uses Asaas for custom subscriptions and trial extensions", () => {
+  const companyPage = readFileSync(resolve(process.cwd(), "app/admin/clientes/[id]/portal/page.tsx"), "utf8");
+  const asaas = readFileSync(resolve(process.cwd(), "app/api/admin/client-portal/contracts/asaas/route.ts"), "utf8");
+  const control = readFileSync(resolve(process.cwd(), "app/api/admin/client-portal/contracts/control/route.ts"), "utf8");
+
+  assert.equal(companyPage.includes("Criar assinatura Asaas"), true);
+  assert.equal(companyPage.includes("Estender teste"), true);
+  assert.equal(companyPage.includes("Gerar checkout Stripe"), false);
+  assert.equal(asaas.includes('"/subscriptions"'), true);
+  assert.equal(asaas.includes('action === "update_subscription"'), true);
+  assert.equal(asaas.includes('action === "cancel_subscription"'), true);
+  assert.equal(asaas.includes("monthlyValue"), true);
+  assert.equal(control.includes('action === "extend_trial"'), true);
+  assert.equal(control.includes("trialEndsAt"), true);
+});
+
+test("media pixels distinguish provider verification from the company event signal", () => {
+  const overview = readFileSync(resolve(process.cwd(), "lib/admin-marketing-overview.ts"), "utf8");
+  const page = readFileSync(resolve(process.cwd(), "app/admin/midia/page.tsx"), "utf8");
+  assert.equal(overview.includes("tenantDeliveryStatus"), true);
+  assert.equal(overview.includes('"recent_tenant_event"'), true);
+  assert.equal(page.includes("Sinal recente da operação"), true);
+  assert.equal(page.includes("não confirma entrega deste pixel específico"), true);
+});
+
+test("custom contracts keep their offer after Asaas payment events and expose the open charge", () => {
+  const asaasAdmin = readFileSync(resolve(process.cwd(), "app/api/admin/client-portal/contracts/asaas/route.ts"), "utf8");
+  const webhook = readFileSync(resolve(process.cwd(), "app/api/webhooks/asaas/route.ts"), "utf8");
+  const subscription = readFileSync(resolve(process.cwd(), "app/api/billing/asaas/subscription/route.ts"), "utf8");
+  assert.equal(asaasAdmin.includes("syncOpenSubscriptionCharge"), true);
+  assert.equal(asaasAdmin.includes("asaas_subscription_"), true);
+  assert.equal(webhook.includes("adminManagedEntitlements"), true);
+  assert.equal(webhook.includes('event === "PAYMENT_CREATED"'), true);
+  assert.equal(subscription.includes("pixQrCode"), true);
+});
+
+test("company deletion accepts intentional cleanup after an exact-name confirmation", () => {
+  const route = readFileSync(resolve(process.cwd(), "app/api/clientes/delete/route.ts"), "utf8");
+  const page = readFileSync(resolve(process.cwd(), "app/admin/clientes/page.tsx"), "utf8");
+  const cancellation = readFileSync(resolve(process.cwd(), "lib/server/subscription-cancellation.ts"), "utf8");
+  assert.equal(route.includes("Digite o nome exato da empresa"), true);
+  assert.equal(route.includes("cancelPlatformSubscription"), true);
+  assert.equal(route.includes("company_permanently_deleted"), true);
+  assert.equal(route.includes('roles: ["agency_admin"]'), true);
+  assert.equal(route.includes('roles: ["agency_agent"]'), false);
+  assert.equal(cancellation.includes("platformAccessStatus: billingStatus"), true);
+  assert.equal(page.includes("digite exatamente"), true);
+});
+
 test("new knowledge and conversation media respect contracted storage", () => {
   const usage = readFileSync(resolve(process.cwd(), "lib/server/tenant-usage.ts"), "utf8");
   const dispatch = readFileSync(resolve(process.cwd(), "lib/server/chat-dispatch.ts"), "utf8");

@@ -50,6 +50,8 @@ type Payment = {
   billingType: string | null;
   invoiceUrl: string | null;
   bankSlipUrl: string | null;
+  pixPayload?: string | null;
+  pixQrCode?: string | null;
 };
 
 type UsageKey = "users" | "whatsappChannels" | "contacts" | "messagesPerMonth" | "aiRunsPerMonth" | "automationsPerMonth" | "storageMb";

@@ -10,6 +10,7 @@ import { runLeadAutomations } from "@/lib/server/automations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { deriveSalesJourney, type SalesJourneyRecommendation } from "@/lib/sales-journey";
 import { canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
+import { inferClientAccessProfile } from "@/lib/client-access-profiles";
 
 const DEFAULT_LEADS_LIMIT = 200;
 const MAX_LEADS_LIMIT = 250;
@@ -388,6 +389,10 @@ export async function POST(
 
     const leadRef = adminDb.collection("leads").doc();
     const pipelineStage = normalizePipelineStageId(cleanString(body.pipelineStage, 80) || "captado");
+    const creatorIsSeller = inferClientAccessProfile({
+      role: membership.role,
+      capabilities: membership.capabilities,
+    }).id === "seller";
     const payload = {
       tenantId,
       nome: nome || "Contato sem nome",
@@ -404,8 +409,12 @@ export async function POST(
       heat: cleanString(body.heat, 20) || "morno",
       potentialValue: cleanPotentialValue(body.potentialValue),
       notes: cleanString(body.notes, 4000),
-      ownerId: user.uid,
-      owner: user.name,
+      ownerId: creatorIsSeller ? user.uid : null,
+      ownerUserId: creatorIsSeller ? user.uid : null,
+      assignedTo: creatorIsSeller ? user.uid : null,
+      owner: creatorIsSeller ? user.name : null,
+      ownerName: creatorIsSeller ? user.name : null,
+      assignedUserName: creatorIsSeller ? user.name : null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };

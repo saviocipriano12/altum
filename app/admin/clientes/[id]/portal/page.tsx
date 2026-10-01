@@ -7,13 +7,12 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { BUSINESS_PROFILES, getBusinessProfile, normalizeBusinessProfileId, type BusinessProfileId } from "@/lib/business-profiles";
 import { getBusinessProfileStarterKit } from "@/lib/business-profile-starter-kit";
-import { normalizePlatformBillingPlanId, PLATFORM_BILLING_PLANS, type PlatformBillingPlanId } from "@/lib/platform-billing";
+import { normalizePlatformBillingPlanId, PLATFORM_BILLING_PLANS } from "@/lib/platform-billing";
 import { TenantEntitlementsCard } from "@/app/admin/clientes/[id]/portal/tenant-entitlements-card";
 import {
   ArrowLeft,
   CheckCircle2,
   CreditCard,
-  ExternalLink,
   Loader2,
   Rocket,
   Save,
@@ -40,21 +39,20 @@ type ContractDoc = {
   autoSuspendBusinessDays?: number;
   platformPlan?: string;
   customPlanName?: string;
-  platformAccessMode?: "stripe_subscription" | "agency_included" | "manual_release" | "disabled";
+  platformAccessMode?: "asaas_subscription" | "agency_included" | "manual_release" | "disabled";
   platformAccessStatus?: "active" | "trial" | "blocked" | "pending";
-  billingProvider?: "stripe" | "asaas" | "manual" | "included";
-  stripeCustomerId?: string;
-  stripeSubscriptionId?: string;
-  stripePriceId?: string;
-  stripeSubscriptionStatus?: string;
-  stripeCurrentPeriodEnd?: string;
-  stripeCheckoutUrl?: string;
-  stripeCustomerPortalUrl?: string;
+  billingProvider?: "asaas" | "manual" | "included";
   billingNotes?: string;
   whatsappCostMonthlyBrl?: number;
   telephonyCostMonthlyBrl?: number;
   otherVariableCostMonthlyBrl?: number;
   aiUsdBrlRate?: number;
+};
+
+type LoadedContractDoc = Omit<ContractDoc, "platformAccessMode" | "billingProvider" | "reminderWhatsAppPhones"> & {
+  platformAccessMode?: ContractDoc["platformAccessMode"] | "stripe_subscription";
+  billingProvider?: ContractDoc["billingProvider"] | "stripe";
+  reminderWhatsAppPhones?: string | string[];
 };
 
 type BillingOverview = {
@@ -74,22 +72,12 @@ type BillingOverview = {
   lastPaidAt?: number;
   lastAutoChargeDueDate?: string | null;
   lastAutoChargeFinanceId?: string | null;
-  stripeSetup?: {
-    enabled: boolean;
-    planId: PlatformBillingPlanId;
-    planLabel: string;
-    planPrice: number | null;
-    stripeEnvKey: string | null;
-    resolvedPriceId: string | null;
-    subscriptionStatus: string | null;
-    currentPeriodEnd: string | null;
-    customerId: string | null;
-    subscriptionId: string | null;
-    checkoutUrl: string | null;
-    customerPortalUrl: string | null;
-    missing: string[];
-    nextStep: string;
-  } | null;
+  trialEndsAt?: string | null;
+  asaasCustomerId?: string | null;
+  asaasSubscriptionId?: string | null;
+  asaasSubscriptionStatus?: string | null;
+  asaasNextDueDate?: string | null;
+  asaasBillingType?: string | null;
 };
 
 type FinanceBrief = {
@@ -230,8 +218,9 @@ export default function ClientePortalAdminPage() {
   const [readiness, setReadiness] = useState<TenantReadinessPayload | null>(null);
   const [billingOverview, setBillingOverview] = useState<BillingOverview | null>(null);
   const [recentFinance, setRecentFinance] = useState<FinanceBrief[]>([]);
-  const [billingAction, setBillingAction] = useState<"release_access" | "block_access" | "send_reminder" | null>(null);
-  const [stripeAction, setStripeAction] = useState<"create_checkout" | "open_portal" | null>(null);
+  const [billingAction, setBillingAction] = useState<"release_access" | "block_access" | "send_reminder" | "extend_trial" | null>(null);
+  const [asaasAction, setAsaasAction] = useState<"create_subscription" | "update_subscription" | "cancel_subscription" | null>(null);
+  const [trialDays, setTrialDays] = useState(7);
   const [applyPlanTemplate, setApplyPlanTemplate] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState("");
@@ -257,13 +246,6 @@ export default function ClientePortalAdminPage() {
     platformAccessMode: "manual_release",
     platformAccessStatus: "active",
     billingProvider: "manual",
-    stripeCustomerId: "",
-    stripeSubscriptionId: "",
-    stripePriceId: "",
-    stripeSubscriptionStatus: "",
-    stripeCurrentPeriodEnd: "",
-    stripeCheckoutUrl: "",
-    stripeCustomerPortalUrl: "",
     billingNotes: "",
     whatsappCostMonthlyBrl: 0,
     telephonyCostMonthlyBrl: 0,
@@ -359,7 +341,7 @@ export default function ClientePortalAdminPage() {
 
       const usersData = (await usersRes.json()) as { items?: PortalUserDoc[]; error?: string };
       const contractData = (await contractRes.json()) as {
-        contract?: ContractDoc | null;
+        contract?: LoadedContractDoc | null;
         billingOverview?: BillingOverview | null;
         recentFinance?: FinanceBrief[];
         error?: string;
@@ -439,16 +421,9 @@ export default function ClientePortalAdminPage() {
           autoSuspendBusinessDays: Number(contractData.contract.autoSuspendBusinessDays || 2),
           platformPlan: normalizePlatformBillingPlanId(contractData.contract.platformPlan),
           customPlanName: contractData.contract.customPlanName || "",
-          platformAccessMode: contractData.contract.platformAccessMode || "manual_release",
+          platformAccessMode: contractData.contract.platformAccessMode === "stripe_subscription" ? "manual_release" : contractData.contract.platformAccessMode || "manual_release",
           platformAccessStatus: contractData.contract.platformAccessStatus || "active",
-          billingProvider: contractData.contract.billingProvider || "manual",
-          stripeCustomerId: contractData.contract.stripeCustomerId || "",
-          stripeSubscriptionId: contractData.contract.stripeSubscriptionId || "",
-          stripePriceId: contractData.contract.stripePriceId || "",
-          stripeSubscriptionStatus: contractData.contract.stripeSubscriptionStatus || "",
-          stripeCurrentPeriodEnd: contractData.contract.stripeCurrentPeriodEnd || "",
-          stripeCheckoutUrl: contractData.contract.stripeCheckoutUrl || "",
-          stripeCustomerPortalUrl: contractData.contract.stripeCustomerPortalUrl || "",
+          billingProvider: contractData.contract.billingProvider === "stripe" ? "manual" : contractData.contract.billingProvider || "manual",
           billingNotes: contractData.contract.billingNotes || "",
           whatsappCostMonthlyBrl: Number(contractData.contract.whatsappCostMonthlyBrl || 0),
           telephonyCostMonthlyBrl: Number(contractData.contract.telephonyCostMonthlyBrl || 0),
@@ -537,7 +512,7 @@ export default function ClientePortalAdminPage() {
     }
   }
 
-  async function runBillingAction(action: "release_access" | "block_access" | "send_reminder") {
+  async function runBillingAction(action: "release_access" | "block_access" | "send_reminder" | "extend_trial") {
     setBillingAction(action);
     setError(null);
     setBillingNotice(null);
@@ -549,6 +524,7 @@ export default function ClientePortalAdminPage() {
           clientId,
           tenantId: tenantSummary?.tenantId || billingOverview?.tenantId || "",
           action,
+          ...(action === "extend_trial" ? { trialDays } : {}),
           note: contract.billingNotes || contract.notes || "",
         }),
       });
@@ -566,6 +542,8 @@ export default function ClientePortalAdminPage() {
             data.reminderSent || 0
           )}.  ${Number(data.reminderFailed || 0)}.`
         );
+      } else if (action === "extend_trial") {
+        setBillingNotice(`Teste estendido por ${trialDays} dia(s).`);
       } else if (action === "release_access") {
         setBillingNotice("Acesso do tenant liberado manualmente pelo admin.");
       } else {
@@ -581,12 +559,13 @@ export default function ClientePortalAdminPage() {
     }
   }
 
-  async function runStripeAction(action: "create_checkout" | "open_portal") {
-    setStripeAction(action);
+  async function runAsaasAction(action: "create_subscription" | "update_subscription" | "cancel_subscription") {
+    if (action === "cancel_subscription" && !window.confirm("Cancelar esta assinatura no Asaas? A recorrência será encerrada e o acesso seguirá a regra do período já pago.")) return;
+    setAsaasAction(action);
     setError(null);
     setBillingNotice(null);
     try {
-      const res = await authedFetch("/api/admin/client-portal/contracts/stripe", {
+      const res = await authedFetch("/api/admin/client-portal/contracts/asaas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -597,28 +576,24 @@ export default function ClientePortalAdminPage() {
       });
       const data = (await res.json()) as {
         error?: string;
-        checkoutUrl?: string;
-        portalUrl?: string;
+        subscriptionId?: string;
+        nextDueDate?: string;
       };
 
-      if (!res.ok) throw new Error(data.error || "Falha ao executar acao Stripe.");
-
-      const destinationUrl = data.checkoutUrl || data.portalUrl || "";
-      if (destinationUrl) {
-        window.open(destinationUrl, "_blank", "noopener,noreferrer");
-      }
-
+      if (!res.ok) throw new Error(data.error || "Falha ao atualizar assinatura Asaas.");
       setBillingNotice(
-        action === "create_checkout"
-          ? "Checkout Stripe gerado e aberto em nova aba."
-          : "Portal Stripe do cliente aberto em nova aba."
+        action === "create_subscription"
+          ? `Assinatura Asaas criada (${data.subscriptionId || "sem ID"}) com próximo vencimento em ${formatDateLabel(data.nextDueDate || null)}.`
+          : action === "update_subscription"
+            ? `Assinatura Asaas atualizada. Próximo vencimento: ${formatDateLabel(data.nextDueDate || null)}.`
+            : "Assinatura Asaas cancelada. O acesso seguirá o período já pago, quando aplicável."
       );
       await loadData();
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error ? err.message : "Falha ao executar acao Stripe.");
+      setError(err instanceof Error ? err.message : "Falha ao criar assinatura Asaas.");
     } finally {
-      setStripeAction(null);
+      setAsaasAction(null);
     }
   }
 
@@ -1210,7 +1185,7 @@ export default function ClientePortalAdminPage() {
                 className="inline-flex items-center gap-2 rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-500/20 disabled:opacity-60"
               >
                 {billingAction === "send_reminder" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Enviar lembrete agora
+                Enviar cobrança por WhatsApp e e-mail
               </button>
               <button
                 type="button"
@@ -1232,22 +1207,20 @@ export default function ClientePortalAdminPage() {
               </button>
               <button
                 type="button"
-                onClick={() => void runStripeAction("create_checkout")}
-                disabled={stripeAction !== null || !billingOverview?.stripeSetup?.resolvedPriceId}
+                onClick={() => void runAsaasAction(billingOverview?.asaasSubscriptionId ? "update_subscription" : "create_subscription")}
+                disabled={asaasAction !== null || Number(contract.monthlyValue || 0) <= 0 || !tenantSummary?.tenantId}
                 className="inline-flex items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-500/20 disabled:opacity-60"
               >
-                {stripeAction === "create_checkout" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                Gerar checkout Stripe
+                {asaasAction === "create_subscription" || asaasAction === "update_subscription" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                {billingOverview?.asaasSubscriptionId ? "Atualizar assinatura Asaas" : "Criar assinatura Asaas"}
               </button>
-              <button
-                type="button"
-                onClick={() => void runStripeAction("open_portal")}
-                disabled={stripeAction !== null || !contract.stripeCustomerId}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-60"
-              >
-                {stripeAction === "open_portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
-                Abrir portal Stripe
-              </button>
+              {billingOverview?.asaasSubscriptionId ? <button type="button" onClick={() => void runAsaasAction("cancel_subscription")} disabled={asaasAction !== null} className="inline-flex items-center gap-2 rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-500/20 disabled:opacity-60">{asaasAction === "cancel_subscription" ? <Loader2 className="h-4 w-4 animate-spin" /> : <TriangleAlert className="h-4 w-4" />} Cancelar assinatura</button> : null}
+              <div className="inline-flex overflow-hidden rounded-lg border border-blue-400/20">
+                <input type="number" min={1} max={365} value={trialDays} onChange={(event) => setTrialDays(Math.min(365, Math.max(1, Number(event.target.value || 7))))} className="w-16 bg-white px-2 text-sm font-semibold text-slate-700 outline-none" aria-label="Dias adicionais de teste" />
+                <button type="button" onClick={() => void runBillingAction("extend_trial")} disabled={billingAction !== null || !tenantSummary?.tenantId} className="inline-flex items-center gap-2 bg-blue-500/10 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-500/20 disabled:opacity-60">
+                  {billingAction === "extend_trial" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Estender teste
+                </button>
+              </div>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
@@ -1273,78 +1246,16 @@ export default function ClientePortalAdminPage() {
               )}
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Prontidao Stripe</p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Estrutura preparada para assinatura da plataforma sem ativar cobranca real ainda.
-                  </p>
-                </div>
-                <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${billingOverview?.stripeSetup?.enabled ? financeStatusClass(billingOverview?.stripeSetup?.missing.length ? "pending" : "active") : badgeToneClass("neutral")}`}>
-                  {billingOverview?.stripeSetup?.enabled ? "trilho ativo" : "nao ativo"}
-                </span>
+                <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Assinatura Asaas</p><p className="mt-1 text-sm text-slate-500">A mensalidade salva acima é o valor que será enviado ao Asaas. Use este controle para contratos fora da tabela de planos.</p></div>
+                <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${billingOverview?.asaasSubscriptionId ? financeStatusClass("active") : badgeToneClass("neutral")}`}>{billingOverview?.asaasSubscriptionId ? "vinculada" : "sem assinatura"}</span>
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Plano mapeado</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">
-                    {billingOverview?.stripeSetup?.planLabel || "Nao definido"}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {billingOverview?.stripeSetup?.planPrice
-                      ? money(billingOverview.stripeSetup.planPrice)
-                      : "Sob diagnostico"}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Price ID do ambiente</p>
-                  <p className="mt-2 text-xs font-mono text-slate-900 break-all">
-                    {billingOverview?.stripeSetup?.resolvedPriceId || "Nao encontrado"}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    {billingOverview?.stripeSetup?.stripeEnvKey || "Sem env padrao"}
-                  </p>
-                </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3 text-sm">
+                <div><p className="text-xs text-slate-500">Mensalidade</p><p className="mt-1 font-semibold text-slate-900">{money(contract.monthlyValue || 0)}</p></div>
+                <div><p className="text-xs text-slate-500">Próximo vencimento</p><p className="mt-1 font-semibold text-slate-900">{formatDateLabel(billingOverview?.asaasNextDueDate || billingOverview?.trialEndsAt || null)}</p></div>
+                <div><p className="text-xs text-slate-500">Status no Asaas</p><p className="mt-1 font-semibold text-slate-900">{billingOverview?.asaasSubscriptionStatus || "Não criada"}</p></div>
               </div>
-
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Proximo passo</p>
-                <p className="mt-2 text-sm text-slate-700">
-                  {billingOverview?.stripeSetup?.nextStep || "Defina provider e plano para preparar a assinatura."}
-                </p>
-                {billingOverview?.stripeSetup?.missing?.length ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {billingOverview.stripeSetup.missing.map((item) => (
-                      <span key={item} className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${badgeToneClass("warning")}`}>
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              {contract.stripeCheckoutUrl || contract.stripeCustomerPortalUrl ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <a
-                    href={contract.stripeCheckoutUrl || "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 hover:bg-slate-50"
-                  >
-                    Ultimo checkout Stripe
-                  </a>
-                  <a
-                    href={contract.stripeCustomerPortalUrl || "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 hover:bg-slate-50"
-                  >
-                    Ultimo portal do cliente
-                  </a>
-                </div>
-              ) : null}
             </div>
 
             <input
@@ -1483,7 +1394,6 @@ export default function ClientePortalAdminPage() {
                 className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
                 <option value="manual">Manual</option>
-                <option value="stripe">Stripe</option>
                 <option value="asaas">Asaas</option>
                 <option value="included">Incluso na agencia</option>
               </select>
@@ -1528,7 +1438,7 @@ export default function ClientePortalAdminPage() {
                 className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
               >
                 <option value="manual_release">Liberacao manual</option>
-                <option value="stripe_subscription">Assinatura da plataforma</option>
+                <option value="asaas_subscription">Assinatura Asaas</option>
                 <option value="agency_included">Incluso no contrato da agencia</option>
                 <option value="disabled">Sem acesso</option>
               </select>
@@ -1547,57 +1457,6 @@ export default function ClientePortalAdminPage() {
                 <option value="pending">Pendente</option>
                 <option value="blocked">Bloqueado</option>
               </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                value={contract.stripeCustomerId || ""}
-                onChange={(e) => setContract((prev) => ({ ...prev, stripeCustomerId: e.target.value }))}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
-                placeholder="Stripe customer ID"
-              />
-              <input
-                value={contract.stripeSubscriptionId || ""}
-                onChange={(e) => setContract((prev) => ({ ...prev, stripeSubscriptionId: e.target.value }))}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
-                placeholder="Stripe subscription ID"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                value={contract.stripePriceId || ""}
-                onChange={(e) => setContract((prev) => ({ ...prev, stripePriceId: e.target.value }))}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
-                placeholder="Stripe price ID"
-              />
-              <input
-                value={contract.stripeSubscriptionStatus || ""}
-                onChange={(e) => setContract((prev) => ({ ...prev, stripeSubscriptionStatus: e.target.value }))}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
-                placeholder="Status da subscription"
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <input
-                type="date"
-                value={contract.stripeCurrentPeriodEnd || ""}
-                onChange={(e) => setContract((prev) => ({ ...prev, stripeCurrentPeriodEnd: e.target.value }))}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
-              />
-              <input
-                value={contract.stripeCheckoutUrl || ""}
-                onChange={(e) => setContract((prev) => ({ ...prev, stripeCheckoutUrl: e.target.value }))}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
-                placeholder="URL de checkout Stripe"
-              />
-              <input
-                value={contract.stripeCustomerPortalUrl || ""}
-                onChange={(e) => setContract((prev) => ({ ...prev, stripeCustomerPortalUrl: e.target.value }))}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
-                placeholder="URL do portal do cliente"
-              />
             </div>
 
             <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">

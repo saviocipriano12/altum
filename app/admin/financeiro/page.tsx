@@ -37,15 +37,15 @@ interface BillingOverviewSummary {
   totalContracts: number;
   activeContracts: number;
   blockedContracts: number;
-  stripeContracts: number;
+  asaasContracts: number;
   includedContracts: number;
   manualContracts: number;
   openFinanceCount: number;
   overdueFinanceCount: number;
   monthlyPlatformValue: number;
   overdueAmount: number;
-  stripeReady: boolean;
-  stripeMissing: string[];
+  asaasReady: boolean;
+  asaasMissing: string[];
 }
 
 interface BillingActionItem {
@@ -781,12 +781,12 @@ function BillingOpsPanel({
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-6">
-          <p className="text-xs font-medium text-slate-400">Trilho Stripe</p>
+          <p className="text-xs font-medium text-slate-400">Assinaturas Asaas</p>
           <h3 className="mt-4 text-2xl font-semibold tracking-tight">
-            {summary.stripeContracts}
+            {summary.asaasContracts}
           </h3>
           <p className="mt-3 text-xs text-slate-400">
-            {summary.stripeReady ? "ambiente pronto" : `faltando ${summary.stripeMissing.length} chave(s)`}
+            {summary.asaasReady ? "ambiente pronto" : `faltando ${summary.asaasMissing.length} chave(s)`}
           </p>
         </div>
       </div>
@@ -849,7 +849,7 @@ function BillingOpsPanel({
         <div className="rounded-xl border border-slate-200 bg-white p-6">
           <p className="text-xs font-medium text-slate-400">Composicao operacional</p>
           <div className="mt-6 space-y-4">
-            <MiniMetric label="Stripe" value={summary.stripeContracts} />
+            <MiniMetric label="Asaas" value={summary.asaasContracts} />
             <MiniMetric label="Incluso na agencia" value={summary.includedContracts} />
             <MiniMetric label="Manual / Asaas" value={summary.manualContracts} />
             <MiniMetric label="Atrasos" value={summary.overdueFinanceCount} />

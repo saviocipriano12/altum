@@ -36,6 +36,7 @@ export async function GET(
     const membership = await assertTenantAccess(user.uid, tenantId);
     await assertTenantModule(tenantId, "reports");
     assertTenantRole(membership, "client_viewer");
+    assertTenantCapability(membership, "view_metrics");
 
     const dateKey = readDateKey(req);
     if (!dateKey) {

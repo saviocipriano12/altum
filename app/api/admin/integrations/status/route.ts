@@ -95,17 +95,6 @@ export async function GET(req: Request) {
         "Conexao de WhatsApp por QR, entrega de mensagens e midias da operacao."
       ),
       checkIntegration(
-        "stripe",
-        "Stripe (Plataforma SaaS)",
-        [
-          "STRIPE_SECRET_KEY",
-          "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
-          "STRIPE_WEBHOOK_SECRET",
-          "NEXT_PUBLIC_SITE_URL",
-        ],
-        "Assinatura recorrente da plataforma, checkout e webhooks de billing."
-      ),
-      checkIntegration(
         "firebase_admin",
         "Firebase Admin SDK",
         ["FIREBASE_SERVICE_ACCOUNT_KEY"],

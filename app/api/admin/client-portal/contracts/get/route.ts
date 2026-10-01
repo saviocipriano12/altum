@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { buildStripePlanReadiness } from "@/lib/platform-billing";
 
 function clean(value: unknown, max = 140) {
   if (typeof value !== "string") return "";
@@ -160,18 +159,6 @@ export async function GET(req: Request) {
     const accessStatus = clean(tenantData.status, 40) === "blocked" || clean(tenantData.billingStatus, 40) === "blocked"
       ? "blocked"
       : clean(contractData.platformAccessStatus, 40) || "active";
-    const stripeSetup = buildStripePlanReadiness({
-      platformPlan: clean(contractData.platformPlan, 120),
-      billingProvider: clean(contractData.billingProvider, 40),
-      platformAccessMode: clean(contractData.platformAccessMode, 80),
-      stripeCustomerId: clean(contractData.stripeCustomerId, 180),
-      stripeSubscriptionId: clean(contractData.stripeSubscriptionId, 180),
-      stripeSubscriptionStatus: clean(contractData.stripeSubscriptionStatus, 80),
-      stripeCurrentPeriodEnd: clean(contractData.stripeCurrentPeriodEnd, 40),
-      stripeCheckoutUrl: clean(contractData.stripeCheckoutUrl, 800),
-      stripeCustomerPortalUrl: clean(contractData.stripeCustomerPortalUrl, 800),
-    });
-
     return NextResponse.json({
       ok: true,
       contract: {
@@ -203,7 +190,12 @@ export async function GET(req: Request) {
         lastPaidAt: paidFinance[0]?.updatedAt || paidFinance[0]?.createdAt || 0,
         lastAutoChargeDueDate: clean(contractData.lastAutoChargeDueDate, 20) || null,
         lastAutoChargeFinanceId: clean(contractData.lastAutoChargeFinanceId, 140) || null,
-        stripeSetup,
+        trialEndsAt: tenantData.trialEndsAt ? new Date(toMillis(tenantData.trialEndsAt)).toISOString() : null,
+        asaasCustomerId: clean(tenantData.asaasCustomerId || contractData.asaasCustomerId, 180) || null,
+        asaasSubscriptionId: clean(tenantData.asaasSubscriptionId || contractData.asaasSubscriptionId, 180) || null,
+        asaasSubscriptionStatus: clean(tenantData.asaasSubscriptionStatus || contractData.asaasSubscriptionStatus, 80) || null,
+        asaasNextDueDate: clean(tenantData.asaasNextDueDate || contractData.asaasNextDueDate, 20) || null,
+        asaasBillingType: clean(tenantData.asaasBillingType || contractData.autoBillingBillingType, 40) || null,
       },
       recentFinance,
     });

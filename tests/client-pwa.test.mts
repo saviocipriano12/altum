@@ -5,13 +5,13 @@ import { runInNewContext } from "node:vm";
 
 const workerSource = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
 function worker(options: { offline?: boolean; missingFallback?: boolean } = {}) {
-  const handlers: Record<string, (event: any) => void> = {};
+  const handlers: Record<string, (event: unknown) => void> = {};
   const deleted: string[] = [];
   let fetches = 0, preloadEnabled = false;
   const offlineResponse = new Response("offline-screen");
   runInNewContext(workerSource, {
     URL, Request, Response,
-    self: { location: { origin: "https://altum.test" }, addEventListener: (name: string, fn: any) => handlers[name] = fn,
+    self: { location: { origin: "https://altum.test" }, addEventListener: (name: string, fn: (event: unknown) => void) => handlers[name] = fn,
       skipWaiting() {}, clients: { async claim() {} }, registration: { navigationPreload: { async enable() { preloadEnabled = true; } } } },
     caches: { async keys() { return ["static-altum-client-v4", "static-altum-client-v5", "other-product-cache"]; },
       async delete(key: string) { deleted.push(key); }, async open() { return { async match() { return options.missingFallback ? undefined : offlineResponse; } }; } },

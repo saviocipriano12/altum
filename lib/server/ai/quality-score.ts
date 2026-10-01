@@ -1,5 +1,6 @@
 import type { AltumPlannerDecision } from "@/lib/server/ai/altum-agent-v2";
 import type { AltumConversationRuntimeState } from "@/lib/server/ai/runtime-state";
+import { classifyConversationTurn } from "@/lib/server/ai/conversation-policy";
 
 function cleanText(value: unknown, max = 1200) {
   if (typeof value !== "string") return "";
@@ -70,6 +71,7 @@ export function scoreAltumConversationQuality(input: QualityInput): AltumQuality
   const previousOutbound = normalizeText(input.runtimeState?.lastOutboundText || "");
   const notes: string[] = [];
   let score = 0.62;
+  const turnPolicy = classifyConversationTurn(inbound);
 
   if (typeof input.plan.confidence === "number") {
     score += Math.max(-0.1, Math.min(0.15, (input.plan.confidence - 0.5) * 0.5));
@@ -126,10 +128,22 @@ export function scoreAltumConversationQuality(input: QualityInput): AltumQuality
     outboundNormalized.includes("policy") ||
     outboundNormalized.includes("playbook") ||
     outboundNormalized.includes("guardrail") ||
-    outboundNormalized.includes("catalogo")
+    outboundNormalized.includes("catalogo") ||
+    outboundNormalized.includes("catalog_struct") ||
+    /\b(produto|categoria|perfil|sku|estoque)[_\s-]*(struct|field)\b/.test(outboundNormalized)
   ) {
     score -= 0.22;
     notes.push("vazou_jargao_interno");
+  }
+
+  const commercialPush = /\b(consultoria|diagnostico|oferta|proposta|plano|pacote|gerar leads|vender mais|nicho|orcamento|agendar|reuniao)\b/.test(outboundNormalized);
+  if (["greeting", "relational", "conversation_request"].includes(turnPolicy.kind) && commercialPush) {
+    score -= 0.32;
+    notes.push("forcou_venda_em_turno_conversacional");
+  }
+  if (turnPolicy.kind === "correction" && !/\b(voce tem razao|entendi errado|desculp|vamos deixar|vamos recomecar)\b/.test(outboundNormalized)) {
+    score -= 0.34;
+    notes.push("ignorou_correcao_do_lead");
   }
 
   if (normalizeText(inbound) && outboundNormalized.includes(normalizeText(inbound).slice(0, 90))) {

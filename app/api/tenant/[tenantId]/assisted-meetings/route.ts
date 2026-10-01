@@ -5,6 +5,7 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertLeadCommercialAccess, canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 import {
   generateAssistedMeetingSummary,
   summaryToMarkdown,
@@ -119,9 +120,14 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       .limit(80)
       .get();
 
-    const items = snap.docs
+    let items = snap.docs
       .map(normalizeSession)
       .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    if (!hasTeamWideCommercialAccess(membership)) {
+      const leadsSnap = await adminDb.collection("leads").where("tenantId", "==", tenantId).limit(1000).get();
+      const visibleLeadIds = new Set(leadsSnap.docs.filter((doc) => canAccessAssignedCommercialRecord(membership, user.uid, doc.data() as Record<string, unknown>)).map((doc) => doc.id));
+      items = items.filter((item) => visibleLeadIds.has(clean(item.leadId, 180)) || canAccessAssignedCommercialRecord(membership, user.uid, item as unknown as Record<string, unknown>));
+    }
 
     return NextResponse.json({ ok: true, tenantId, items });
   } catch (error) {
@@ -152,6 +158,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     if (!leadRef || !lead) {
       return NextResponse.json({ error: "Selecione um lead ou uma reuniao vinculada a um lead." }, { status: 400 });
     }
+    await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId });
 
     const transcript = clean(body.transcript, 80000);
     const notes = clean(body.notes, 8000);

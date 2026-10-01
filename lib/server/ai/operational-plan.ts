@@ -2,6 +2,11 @@ import type { AltumPlannerDecision } from "@/lib/server/ai/altum-agent-v2";
 import type { AltumConversationRuntimeState, AltumConversationStage, AltumLeadMemory } from "@/lib/server/ai/runtime-state";
 import type { AltumTenantLearningHints } from "@/lib/server/ai/tenant-learning";
 import type { SalesMotion } from "@/lib/sales-journey";
+import {
+  assistantRoleAllowsProactiveClosing,
+  assistantRoleUsesCommercialFunnel,
+  type AltumAssistantRole,
+} from "@/lib/ai-assistant-role";
 
 type ConversationMessage = {
   sender: "agent" | "client" | "system";
@@ -22,6 +27,7 @@ type TenantAiOperationalContext = {
   playbookOffers?: Array<{ title?: string }>;
   learningHints?: AltumTenantLearningHints | null;
   salesMotion?: SalesMotion | null;
+  assistantRole?: AltumAssistantRole;
 };
 
 type ConversationalChoice = {
@@ -196,7 +202,6 @@ function chooseRecommendedOffer(input: {
     sanitizeText(input.extractedFields?.serviceInterest, 160) ||
     sanitizeText(input.extractedFields?.offer, 160) ||
     sanitizeText(input.leadMemory?.recommendedOffer, 160);
-  if (!rawOffer) return null;
 
   const allowedOffers = Array.from(
     new Set(
@@ -211,13 +216,17 @@ function chooseRecommendedOffer(input: {
 
   const learnedOffer = sanitizeText(input.tenantAi.learningHints?.topOffers?.[0], 160);
   if (!rawOffer && learnedOffer) {
-    if (!allowedOffers.length) return learnedOffer;
+    // Aprendizado e uma sugestao estatistica, nunca uma nova fonte de verdade
+    // comercial. A oferta aprendida so pode reaparecer se ainda existir no
+    // catalogo ou playbook ativo deste tenant.
+    if (!allowedOffers.length) return null;
     const normalizedLearned = normalizeComparable(learnedOffer);
     const learnedMatch = allowedOffers.find((offer) => {
       const normalizedOffer = normalizeComparable(offer);
       return normalizedOffer === normalizedLearned || normalizedOffer.includes(normalizedLearned);
     });
     if (learnedMatch) return learnedMatch;
+    return null;
   }
 
   if (!allowedOffers.length) return rawOffer || learnedOffer || null;
@@ -281,6 +290,10 @@ function inferNextAction(input: {
     return "conduzir_para_proximo_passo";
   }
 
+  if (!assistantRoleUsesCommercialFunnel(input.tenantAi.assistantRole)) {
+    return "resolver_necessidade_atual";
+  }
+
   const hasBusinessContext =
     sanitizeText(input.extractedFields?.businessType, 120) ||
     sanitizeText(input.extractedFields?.primaryGoal, 160) ||
@@ -329,9 +342,24 @@ export function deriveOperationalPlan(input: DeriveOperationalPlanInput): AltumP
 
   const fallbackResponseGoal = inferFallbackResponseGoal(intent, input.choice);
   const normalizedTurnGoal = sanitizeText(input.llmTurnGoal, 120).toLowerCase();
-  const responseGoal = forcedHandoff
+  const proposedResponseGoal = forcedHandoff
     ? "handoff"
     : mapTurnGoalToResponseGoal(normalizedTurnGoal, fallbackResponseGoal);
+  const explicitClosingRequest = intent === "proposal_interest" || intent === "meeting_interest";
+  const roleSafeResponseGoal =
+    !forcedHandoff &&
+    !assistantRoleUsesCommercialFunnel(input.tenantAi.assistantRole) &&
+    !explicitClosingRequest &&
+    ["qualify", "recommend", "handle_objection", "move_to_next_step"].includes(proposedResponseGoal)
+      ? ("clarify" as const)
+      : proposedResponseGoal;
+  const responseGoal =
+    !forcedHandoff &&
+    roleSafeResponseGoal === "move_to_next_step" &&
+    !assistantRoleAllowsProactiveClosing(input.tenantAi.assistantRole) &&
+    !explicitClosingRequest
+      ? ("clarify" as const)
+      : roleSafeResponseGoal;
   const stateAfter = forcedHandoff
     ? ("handoff" as const)
     : inferStateAfter({

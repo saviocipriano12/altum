@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Altum — Mapa Completo de Capacidades Comerciais</title>
+  <style>
+    :root { --ink:#172033; --muted:#667085; --line:#dce3ef; --canvas:#f4f7fb; --surface:#fff; --blue:#315eea; --purple:#6e3bd1; --green:#087f5b; --amber:#b54708; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--canvas); font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(1180px,calc(100% - 32px)); margin:36px auto 72px; }
+    header,section { background:var(--surface); border:1px solid var(--line); border-radius:18px; box-shadow:0 14px 40px rgba(29,48,84,.07); }
+    header { padding:42px; background:linear-gradient(135deg,#fff 15%,#edf2ff 62%,#f2eaff); }
+    section { margin-top:18px; padding:30px; }
+    .eyebrow { color:var(--blue); font-size:12px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
+    h1 { max-width:930px; margin:10px 0 14px; font-size:clamp(34px,5vw,58px); line-height:1.04; letter-spacing:-.035em; }
+    h2 { margin:0 0 15px; font-size:27px; letter-spacing:-.02em; }
+    h3 { margin:0 0 7px; font-size:18px; }
+    p { margin:8px 0 14px; }
+    .lead { max-width:880px; color:#43506a; font-size:19px; }
+    .callout { margin:20px 0; padding:17px 19px; border-left:4px solid var(--purple); background:#f8f5ff; border-radius:0 12px 12px 0; font-size:18px; font-weight:680; }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:13px; }
+    .two { grid-template-columns:repeat(2,1fr); }
+    .card { padding:18px; border:1px solid var(--line); border-radius:14px; background:#fbfcff; }
+    .card ul { padding-left:19px; margin-bottom:0; }
+    .card li+li { margin-top:5px; }
+    .tag { display:inline-block; margin-bottom:9px; padding:3px 9px; border-radius:999px; font-size:12px; font-weight:800; }
+    .present { color:var(--green); background:#dff7ee; }
+    .partial { color:var(--amber); background:#fff0d5; }
+    .new { color:var(--blue); background:#e7edff; }
+    .critical { color:var(--red); background:#fee4e2; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th,td { padding:12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:#344054; background:#f7f9fc; }
+    .flow { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:18px 0; }
+    .flow div { padding:13px 10px; border:1px solid var(--line); border-radius:12px; text-align:center; font-weight:750; background:#fbfcff; }
+    .small { color:var(--muted); font-size:13px; }
+    a { color:var(--blue); }
+    code { padding:2px 6px; border-radius:6px; background:#eef2f8; }
+    ol,ul { padding-left:22px; }
+    li+li { margin-top:7px; }
+    @media(max-width:850px){ .grid,.two,.flow{grid-template-columns:1fr} header,section{padding:24px} table{display:block;overflow-x:auto} }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Mapa de produto · revisão ampliada · 25 de setembro de 2026</div>
+    <h1>A Altum precisa operar todo o trabalho comercial — inclusive fora do WhatsApp</h1>
+    <p class="lead">O plano anterior descrevia bem inteligência, memória e CRM, mas tratava execução comercial como consequência. Este mapa torna explícitas as capacidades necessárias para prospectar, conversar, ligar, reunir, propor, contratar, receber, entregar, renovar e expandir.</p>
+  </header>
+
+  <section id="overview">
+    <h2>Overview</h2>
+    <div class="flow"><div>Encontrar</div><div>Engajar</div><div>Converter</div><div>Entregar</div><div>Expandir</div></div>
+    <p>A unidade de produto não deve ser “uma conversa” nem “um lead”. Deve ser uma <strong>jornada de receita</strong>, com canais, responsáveis, decisões, documentos, dinheiro e resultado conectados.</p>
+    <div class="callout">A Altum ideal não apenas aconselha o vendedor. Ela consegue executar o trabalho comercial, pedir aprovação no limite certo e provar o resultado produzido.</div>
+    <p class="small">Leitura local: existem superfícies e rotas para inbox, leads, pipeline, agenda, produtos, campanhas, propostas/orçamentos, reuniões assistidas, follow-ups, voz em áudio e início de ligação. A existência de uma rota não foi considerada prova de uma jornada completa em produção.</p>
+  </section>
+
+  <section id="capabilities">
+    <h2>As capacidades que estavam sub-representadas</h2>
+    <div class="grid">
+      <article class="card"><span class="tag new">Aquisição</span><h3>Prospecção inteligente</h3><ul><li>Listas e ICP</li><li>Enriquecimento de empresa e contato</li><li>Sinais de intenção</li><li>Pesquisa automática</li><li>Deduplicação e identidade</li><li>Consentimento e bloqueios</li></ul></article>
+      <article class="card"><span class="tag new">Outbound</span><h3>Cadências multicanal</h3><ul><li>WhatsApp, email, SMS e ligação</li><li>Sequências condicionais</li><li>Horários e frequência segura</li><li>Resposta interrompe cadência</li><li>Teste de abordagens</li><li>Fila por vendedor</li></ul></article>
+      <article class="card"><span class="tag critical">Canal completo</span><h3>Telefonia humana e IA</h3><ul><li>Número e SIP por empresa</li><li>Inbound e outbound</li><li>Click-to-call e discador</li><li>URA e filas</li><li>Gravação e transcrição</li><li>Transferência fria ou assistida</li></ul></article>
+      <article class="card"><span class="tag new">Reuniões</span><h3>Agenda e meeting intelligence</h3><ul><li>Roteamento de agenda</li><li>Round-robin e territórios</li><li>Lembretes e confirmação</li><li>Bot em reunião</li><li>Resumo, objeções e compromissos</li><li>Follow-up executado</li></ul></article>
+      <article class="card"><span class="tag new">Fechamento</span><h3>CPQ, proposta e negociação</h3><ul><li>Preço, margem e descontos</li><li>Pacotes e opcionais</li><li>Aprovação comercial</li><li>Versões da proposta</li><li>Portal do comprador</li><li>Expiração e nudges</li></ul></article>
+      <article class="card"><span class="tag critical">Receita</span><h3>Contrato, pagamento e pedido</h3><ul><li>Assinatura eletrônica</li><li>Pix, boleto e cartão</li><li>Entrada e parcelamento</li><li>Pedido e nota</li><li>Estoque ou capacidade reservada</li><li>Conciliação e inadimplência</li></ul></article>
+      <article class="card"><span class="tag new">Pós-venda</span><h3>Onboarding e entrega</h3><ul><li>Passagem venda → operação</li><li>Checklist de implantação</li><li>Status e comunicação proativa</li><li>Risco de atraso</li><li>Solicitações e suporte</li><li>Confirmação de valor entregue</li></ul></article>
+      <article class="card"><span class="tag new">Expansão</span><h3>Retenção e crescimento</h3><ul><li>Saúde do cliente</li><li>Risco de churn</li><li>Renovação</li><li>Upsell e cross-sell</li><li>Recompra</li><li>NPS, avaliação e indicação</li></ul></article>
+      <article class="card"><span class="tag new">Gestão</span><h3>Revenue Operations</h3><ul><li>Metas, territórios e carteira</li><li>Forecast e cobertura</li><li>Capacidade e escala</li><li>Comissão</li><li>Coaching e QA</li><li>Margem e receita atribuída</li></ul></article>
+      <article class="card"><span class="tag new">Execução</span><h3>Ações em sistemas externos</h3><ul><li>Ferramentas autenticadas</li><li>Browser para sistemas sem API</li><li>Aprovação de ações sensíveis</li><li>Retentativa e compensação</li><li>Resultado estruturado</li><li>Trilha de auditoria</li></ul></article>
+      <article class="card"><span class="tag new">Ecossistema</span><h3>Parceiros e canais indiretos</h3><ul><li>Indicações</li><li>Revendedores</li><li>Afiliados</li><li>Distribuição de leads</li><li>Comissões e repasses</li><li>Portal do parceiro</li></ul></article>
+      <article class="card"><span class="tag critical">Governança</span><h3>Confiança operacional</h3><ul><li>LGPD e consentimento</li><li>Opt-out e listas de bloqueio</li><li>Permissões por ação</li><li>Limite de orçamento</li><li>Explicação e reversão</li><li>Monitoramento de incidentes</li></ul></article>
+    </div>
+  </section>
+
+  <section id="voice">
+    <h2>Telefonia Altum: o canal que precisa nascer completo</h2>
+    <p>No código atual, <code>/api/tenant/[tenantId]/calls/start</code> resolve o contato, registra a tentativa e abre <code>tel:</code> ou usa um endpoint de gateway quando configurado. Isso é uma boa base de click-to-call, mas ainda não equivale a uma central de voz.</p>
+    <div class="grid two">
+      <article class="card"><span class="tag present">Humano</span><h3>Altum Phone</h3><ul><li>Receber e fazer ligações na própria plataforma</li><li>Fila, horário, presença e roteamento</li><li>Tela do cliente aberta durante a chamada</li><li>Gravação, transcrição e resumo</li><li>Objeções, tarefas e CRM atualizados automaticamente</li><li>Supervisor, escuta, sussurro e transferência</li></ul></article>
+      <article class="card"><span class="tag new">Autônomo</span><h3>Vendedor Altum por voz</h3><ul><li>Responder chamadas 24/7</li><li>Ligar para leads com consentimento</li><li>Qualificar, recomendar e contornar objeções</li><li>Consultar produto, estoque e agenda durante a fala</li><li>Agendar, enviar proposta ou link por WhatsApp</li><li>Fazer transferência assistida com resumo</li></ul></article>
+    </div>
+    <p>LiveKit documenta chamadas de saída por SIP, agentes iniciando chamadas e transferências assistidas com contexto. Isso permite desenhar uma camada única para humanos e IA, em vez de criar um “bot de ligação” separado. <a href="https://docs.livekit.io/telephony/making-calls/outbound-calls/">Chamadas de saída</a> · <a href="https://docs.livekit.io/telephony/features/transfers/warm/">Transferência assistida</a>.</p>
+  </section>
+
+  <section id="competitors">
+    <h2>Competitors e projetos: o que cada um revela</h2>
+    <table>
+      <thead><tr><th>Projeto/referência</th><th>Capacidade comercial descoberta</th><th>Papel recomendado na Altum</th></tr></thead>
+      <tbody>
+        <tr><td>LiveKit Agents</td><td>Telefonia SIP, inbound/outbound, agente em tempo real e transferência.</td><td>Base de transporte e orquestração da voz; Altum mantém regras, CRM e experiência.</td></tr>
+        <tr><td>Odoo</td><td>Fluxo proposta → pedido → entrega → fatura → pagamento, além de VoIP, assinatura, recorrência, renovação e upsell.</td><td>Referência de completude transacional, não de interface nem de core a ser copiado.</td></tr>
+        <tr><td>Documenso</td><td>Criação, envio, status e recuperação de documentos assinados; assinatura embutida.</td><td>Integração ou módulo isolado para transformar proposta aceita em contrato.</td></tr>
+        <tr><td>Cal.com</td><td>Agenda como infraestrutura, equipes, roteamento e workflows.</td><td>Referência/integração para marcação com distribuição inteligente.</td></tr>
+        <tr><td>Mautic / Dittofeed</td><td>Segmentos, jornadas disparadas por eventos, broadcasts e comunicação multicanal.</td><td>Base conceitual para lifecycle, nutrição, reativação e pós-venda.</td></tr>
+        <tr><td>Composio</td><td>Descoberta de ferramentas, autenticação por usuário, eventos e execução em centenas de aplicativos.</td><td>Referência ou camada de integração para agentes agirem fora da Altum com escopo.</td></tr>
+        <tr><td>browser-use</td><td>Navegação, preenchimento de formulários e execução em sistemas sem API.</td><td>Último recurso controlado, com aprovação, sandbox e evidência visual.</td></tr>
+        <tr><td>RudderStack / PostHog</td><td>Identidade, eventos, ativação, experimentos e jornada entre canais.</td><td>Revenue Graph e medição causal da operação.</td></tr>
+        <tr><td>Chatwoot / Twenty</td><td>Ownership, colaboração, SLA e modelo comercial flexível.</td><td>UX e padrões para Conversas Pro e CRM Vivo.</td></tr>
+        <tr><td>LangGraph</td><td>Estado, retomada, aprovação, falha e jornadas duráveis.</td><td>Cérebro de execução da jornada comercial, não apenas chat.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="guidance">
+    <h2>Guidance: arquitetura de produto corrigida</h2>
+    <p>A Altum não deve criar quinze módulos independentes. Essas capacidades devem aparecer em quatro produtos coerentes:</p>
+    <div class="grid two">
+      <article class="card"><h3>1. Vendedor Altum</h3><p>Atende, liga, qualifica, apresenta produto, envia mídia, agenda, propõe, negocia dentro dos limites, coleta assinatura e conduz ao pagamento.</p></article>
+      <article class="card"><h3>2. Mesa Comercial</h3><p>Inbox, telefone, reuniões, carteira, tarefas, propostas e histórico em uma superfície diária para o vendedor humano.</p></article>
+      <article class="card"><h3>3. Gerente Altum</h3><p>Distribui trabalho, prevê receita, encontra riscos, avalia conversas, faz coaching, controla metas e recomenda intervenções.</p></article>
+      <article class="card"><h3>4. Motor de Receita</h3><p>Jornadas, integrações, aprovações, pagamentos, experimentos, memória, observabilidade e execução durável por trás da experiência.</p></article>
+    </div>
+    <h3 style="margin-top:24px">Ordem recomendada</h3>
+    <ol>
+      <li><strong>Fechar o ciclo atual:</strong> conversa → produto → proposta → aceite → pagamento → pedido → pós-venda.</li>
+      <li><strong>Altum Phone:</strong> primeiro telefonia humana integrada; depois IA receptiva; por último campanhas ativas governadas.</li>
+      <li><strong>Cadências multicanal:</strong> WhatsApp, email, SMS e voz coordenados pela resposta e pelo estágio do lead.</li>
+      <li><strong>Customer lifecycle:</strong> onboarding, renovação, recompra, churn e indicação.</li>
+      <li><strong>Gêmeo Comercial e simulador:</strong> aprender com todo o ciclo, testar mudanças e otimizar por receita e margem.</li>
+    </ol>
+    <p><strong>Decisão importante:</strong> telefonia merece uma trilha própria, mas não um produto isolado. A chamada deve ser mais um evento da mesma jornada e da mesma ficha do cliente.</p>
+  </section>
+
+  <section id="sources">
+    <h2>Sources</h2>
+    <ul>
+      <li><a href="https://docs.livekit.io/telephony/making-calls/outbound-calls/">LiveKit — chamadas de saída e agentes</a></li>
+      <li><a href="https://docs.livekit.io/telephony/features/transfers/warm/">LiveKit — transferência assistida</a></li>
+      <li><a href="https://www.odoo.com/documentation/18.0/applications/sales/sales/sales_quotations.html">Odoo — proposta ao pagamento</a></li>
+      <li><a href="https://www.odoo.com/documentation/18.0/applications/productivity/voip/sales_calls.html">Odoo — chamadas comerciais integradas ao CRM</a></li>
+      <li><a href="https://www.odoo.com/documentation/18.0/applications/sales/subscriptions.html">Odoo — recorrência, renovação e upsell</a></li>
+      <li><a href="https://docs.documenso.com/docs/developers/embedding">Documenso — assinatura embutida</a></li>
+      <li><a href="https://github.com/documenso/documenso/blob/main/apps/docs/content/docs/developers/api/documents.mdx">Documenso — API de documentos</a></li>
+      <li><a href="https://docs.composio.dev/">Composio — ferramentas autenticadas para agentes</a></li>
+      <li><a href="https://github.com/dittofeed/dittofeed">Dittofeed — jornadas e comunicação multicanal</a></li>
+      <li><a href="https://github.com/mautic/mautic-documentation/blob/main/pages/12.contacts/03.manage-segments/docs.en.md">Mautic — segmentação de contatos</a></li>
+      <li><a href="https://github.com/browser-use/browser-use/blob/main/README.md">browser-use — execução por navegador</a></li>
+      <li><a href="https://github.com/RudderStack/rudder-server/blob/master/README.md">RudderStack — eventos e Customer Data Platform</a></li>
+    </ul>
+    <p class="small">Dependências utilizadas: material fornecido pelo usuário, leitura local do repositório Altum e fontes públicas oficiais. Não foram usados dados de CRM, transcrições ou mensageria interna de clientes.</p>
+  </section>
+</main>
+</body>
+</html>

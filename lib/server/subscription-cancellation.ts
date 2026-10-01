@@ -8,9 +8,29 @@ import { isWithinRefundWindow } from "@/lib/platform-subscription-policy";
 import { completeProviderCancellation, RefundReviewRequired } from "@/lib/subscription-provider-cancellation";
 import { paidAccessEnd, PAID_STATUSES } from "@/lib/subscription-lifecycle";
 
+type PlatformCancellationResult = {
+  ok: boolean;
+  action: string;
+  accessEndsAt: string | null;
+  refundEligible: boolean;
+  protocol: string;
+  reused?: boolean;
+};
+
+function normalizeStoredCancellationResult(value: Record<string, unknown>): PlatformCancellationResult {
+  return {
+    ok: value.ok === true,
+    action: String(value.action || "cancelled"),
+    accessEndsAt: typeof value.accessEndsAt === "string" ? value.accessEndsAt : null,
+    refundEligible: value.refundEligible === true,
+    protocol: String(value.protocol || ""),
+    reused: true,
+  };
+}
+
 export async function cancelPlatformSubscription(input: {
-  tenantId: string; subscriptionId: string; actorId: string; reason: string;
-}) {
+  tenantId: string; subscriptionId: string; actorId: string; reason: string; contractId?: string;
+}): Promise<PlatformCancellationResult> {
   const id = createHash("sha256").update(`${input.tenantId}:${input.subscriptionId}:cancel`).digest("hex");
   const operation = adminDb.collection("billing_operations").doc(id);
   const tenantRef = adminDb.collection("tenants").doc(input.tenantId);
@@ -25,7 +45,7 @@ export async function cancelPlatformSubscription(input: {
       createdAt: saved.createdAt || FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     return null;
   });
-  if (existing) return { ...existing, reused: true };
+  if (existing) return normalizeStoredCancellationResult(existing);
   try {
     const saved = (await operation.get()).data() || {};
     let accessEndsAt = saved.accessEndsAt ? new Date(saved.accessEndsAt) : null;
@@ -86,8 +106,11 @@ export async function cancelPlatformSubscription(input: {
         ...(refundEligible && !refunded ? { refundPaymentId, refundRequestedAt: FieldValue.serverTimestamp() } : {}),
         updatedAt: FieldValue.serverTimestamp() };
       tx.set(tenantRef, patch, { merge: true });
-      tx.set(adminDb.collection("client_contracts").doc(input.tenantId), {
-        accessStatus: billingStatus, cancelAtPeriodEnd: patch.cancelAtPeriodEnd,
+      tx.set(adminDb.collection("client_contracts").doc(input.contractId || input.tenantId), {
+        // The administrative billing overview reads platformAccessStatus.
+        // Keep the legacy accessStatus in sync until old consumers are removed.
+        accessStatus: billingStatus, platformAccessStatus: billingStatus,
+        cancelAtPeriodEnd: patch.cancelAtPeriodEnd,
         accessEndsAt: patch.accessEndsAt, updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       tx.set(operation, { status: "completed", emailStatus: "pending", result, updatedAt: FieldValue.serverTimestamp() }, { merge: true });

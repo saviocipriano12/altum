@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Benchmark GitHub — Arquitetura de IA para a Altum</title>
+  <style>
+    :root{color-scheme:light;--ink:#172033;--soft:#5e6a7f;--line:#dce3ef;--bg:#f5f7fb;--card:#fff;--blue:#315efb;--green:#087a55;--amber:#a25b00;--red:#b42318;--purple:#6d4aff}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:1120px;margin:auto;padding:36px 24px 64px}.hero,.card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 8px 30px rgba(24,38,68,.06)}.hero{padding:32px;margin-bottom:18px;background:linear-gradient(135deg,#fff,#eef2ff)}h1{font-size:34px;line-height:1.1;margin:8px 0 14px}h2{font-size:22px;margin:0 0 14px}h3{font-size:16px;margin:0 0 8px}.eyebrow{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--blue)}.lead{font-size:18px;max-width:880px}.muted{color:var(--soft)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:16px 0}.card{padding:22px}.winner{border-color:#aebcff;background:#f7f8ff}.tag{display:inline-block;border-radius:999px;padding:4px 9px;margin:3px 4px 3px 0;background:#edf1f7;font-size:12px;font-weight:700}.leadtag{background:#e7edff;color:#2448c9}.good{color:var(--green)}.warn{color:var(--amber)}.bad{color:var(--red)}table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:13px}th{background:#eef2f8;font-size:12px;text-transform:uppercase;letter-spacing:.04em}tr:last-child td{border-bottom:0}code{background:#edf1f7;border-radius:5px;padding:2px 5px}pre{white-space:pre-wrap;background:#101827;color:#e8eefc;border-radius:14px;padding:18px;overflow:auto}.callout{border-left:4px solid var(--blue);padding:14px 16px;background:#edf2ff;border-radius:8px;margin:14px 0}.risk{border-left-color:var(--amber);background:#fff5e7}.section{margin-top:28px}ul,ol{padding-left:21px}li{margin:6px 0}a{color:#2448c9;text-decoration:none}a:hover{text-decoration:underline}.small{font-size:12px}.sources li{margin:9px 0}@media(max-width:760px){.grid{grid-template-columns:1fr}.wrap{padding:20px 14px}h1{font-size:28px}table{font-size:13px}}
+  </style>
+</head>
+<body><main class="wrap">
+  <section class="hero">
+    <div class="eyebrow">Pesquisa técnica · 28/09/2026</div>
+    <h1>Qual arquitetura de IA usar para levar a Altum ao próximo nível</h1>
+    <p class="lead">Não há um único repositório que resolva uma operação comercial multicanal inteira. A melhor decisão é usar o <strong>OpenAI Agents SDK para TypeScript como loop do agente</strong>, adotar do <strong>LangGraph o padrão de execução durável</strong> e aproveitar referências especializadas de HNBCRM, Mem0, Langfuse e LiveKit/Pipecat.</p>
+    <div><span class="tag leadtag">Decisão: composição, não fork integral</span><span class="tag">TypeScript</span><span class="tag">multi-tenant</span><span class="tag">WhatsApp</span><span class="tag">ações seguras</span></div>
+  </section>
+
+  <section class="grid">
+    <article class="card winner"><div class="eyebrow">Espinha dorsal recomendada</div><h2>OpenAI Agents SDK JS</h2><p>Loop real de agente: o modelo escolhe ferramentas, recebe os resultados e continua até concluir. Inclui schemas com Zod, guardrails, aprovações humanas, handoffs, sessões, cancelamento e tracing.</p><p><strong>Aplicação na Altum:</strong> substituir a cadeia atual de JSON + heurísticas + executores paralelos por um único runner tipado.</p></article>
+    <article class="card"><div class="eyebrow">Durabilidade</div><h2>LangGraphJS</h2><p>Modela o trabalho como grafo de estados, com checkpoints, retomada após falha e interrupções humanas duráveis.</p><p><strong>Aplicação na Altum:</strong> copiar os conceitos de checkpoint, interrupção e transição explícita; avaliar a biblioteca apenas se o runner da Altum precisar de fluxos longos.</p></article>
+    <article class="card"><div class="eyebrow">Referência comercial mais próxima</div><h2>HNBCRM</h2><p>CRM multiempresa com atendente WhatsApp, fila com debounce, lock por conversa, revalidação transacional, sugestão por padrão, autopilot por métricas, handoff reversível e MCP amplo.</p><p><strong>Aplicação na Altum:</strong> adaptar padrões operacionais e testes. Projeto pequeno: não deve virar dependência central.</p></article>
+    <article class="card"><div class="eyebrow">Camadas especializadas</div><h2>Mem0 · Langfuse · LiveKit/Pipecat</h2><p><strong>Mem0:</strong> fatos deduplicados e busca híbrida. <strong>Langfuse:</strong> traces, prompts versionados, datasets e evals. <strong>LiveKit/Pipecat:</strong> voz em tempo real, interrupção e telefonia.</p><p><strong>Aplicação:</strong> incorporar seletivamente, conforme cada etapa do roadmap.</p></article>
+  </section>
+
+  <section class="section"><h2>Como o melhor padrão age</h2>
+    <pre>mensagem recebida
+  → aguarda 3–5 s e agrupa a rajada
+  → adquire lock exclusivo da conversa
+  → monta contexto confiável e dados não confiáveis separados
+  → agente recebe missão + ferramentas permitidas
+  → agente chama busca/CRM/estoque/agenda quando necessário
+  → ferramenta valida schema, escopo, permissão e idempotência
+  → resultado volta ao agente, que redige a resposta final
+  → guardrails verificam fatos, política, tom e risco
+  → revalidação transacional confirma que humano não respondeu e não chegou mensagem nova
+  → modo sugestão cria rascunho; autopilot envia
+  → resposta, ações, custo e resultado ficam no mesmo trace</pre>
+    <div class="callout">A diferença central é esta: o modelo não devolve apenas um JSON que outro conjunto de heurísticas interpreta. Ele trabalha dentro de um loop de ferramentas controlado, e cada efeito externo passa por validação própria.</div>
+  </section>
+
+  <section class="section"><h2>Comparação</h2>
+    <table><thead><tr><th>Projeto</th><th>Onde vence</th><th>Limite para Altum</th><th>Decisão</th></tr></thead><tbody>
+      <tr><td><strong>OpenAI Agents JS</strong><br><span class="small">MIT</span></td><td>Loop, tools, Zod, guardrails, handoff, sessão, tracing, HITL e voz.</td><td>Não resolve sozinho fila por conversa, CRM, catálogo ou regras comerciais.</td><td class="good"><strong>Adotar como runtime</strong></td></tr>
+      <tr><td><strong>LangGraphJS</strong><br><span class="small">MIT</span></td><td>Estados explícitos, checkpoint, retomada e aprovação durável.</td><td>Pode aumentar complexidade se usado para todo turno simples.</td><td><strong>Adotar padrões; biblioteca seletiva</strong></td></tr>
+      <tr><td><strong>HNBCRM</strong><br><span class="small">MIT · projeto pequeno</span></td><td>Operação WhatsApp/CRM: debounce, lock, commit, sugestão, coaching e autopilot condicionado.</td><td>Baixa maturidade comunitária; backend Convex diferente da Altum.</td><td><strong>Adaptar código/padrões pontuais</strong></td></tr>
+      <tr><td><strong>Mem0</strong><br><span class="small">Apache-2.0</span></td><td>Extração de fatos, deduplicação, embeddings, busca híbrida e tempo.</td><td>Não substitui histórico auditável nem verdade operacional do CRM.</td><td><strong>Referência/integração de memória</strong></td></tr>
+      <tr><td><strong>Langfuse</strong><br><span class="small">MIT no core</span></td><td>Tracing, prompt versionado, datasets, experimentos e avaliações.</td><td>É plano de qualidade/observabilidade, não cérebro.</td><td><strong>Adotar ou reproduzir via OTel</strong></td></tr>
+      <tr><td><strong>LiveKit/Pipecat</strong><br><span class="small">Apache/BSD</span></td><td>Voz realtime, turn detection, interrupção, telefonia e testes.</td><td>Excesso para áudio assíncrono de WhatsApp; ideal para ligações.</td><td><strong>Reservar para Voice/Calls</strong></td></tr>
+      <tr><td><strong>SalesGPT</strong></td><td>Modelo mental de estágios da conversa comercial.</td><td>Arquitetura antiga; roadmap ainda lista evals, segurança, múltiplas tools e refatoração.</td><td><strong>Usar apenas como referência conceitual</strong></td></tr>
+      <tr><td><strong>Dify</strong></td><td>UI de workflows, RAG e provedores.</td><td class="bad">Licença restringe serviço SaaS multi-tenant sem autorização comercial.</td><td class="bad"><strong>Não copiar como base da Altum</strong></td></tr>
+    </tbody></table>
+  </section>
+
+  <section class="section grid">
+    <article class="card"><h2>O que adaptar primeiro</h2><ol><li>Debounce/coalescência por conversa.</li><li>Lock e número monotônico do turno.</li><li>Commit/outbox transacional antes do envio.</li><li>Runner único com ferramentas Zod.</li><li>Modo sugestão real; autopilot só após métricas.</li><li>Revalidação depois da geração.</li><li>Trace completo por turno.</li></ol></article>
+    <article class="card"><h2>O que não copiar</h2><ul><li>Fork completo de uma plataforma externa.</li><li>Prompts genéricos de vendedor.</li><li>Autoconfiança declarada pelo próprio modelo.</li><li>Estágios comerciais lineares obrigatórios.</li><li>Dify em produto multiempresa sem licença.</li><li>Infraestrutura de voz realtime para simples voice note.</li></ul></article>
+  </section>
+
+  <section class="section"><h2>Arquitetura proposta para a Altum</h2>
+    <pre>Turn Coordinator (Altum)
+  ├─ inbox aggregation + lock + supersession + outbox
+  └─ Conversation Runtime (@openai/agents)
+       ├─ Mission Agent: atendente | SDR | consultor | vendedor | pós-venda
+       ├─ typed tools: CRM | catálogo | estoque | agenda | proposta | mídia | handoff
+       ├─ knowledge retriever: lexical + embedding + reranker + fontes
+       ├─ memory: fatos confirmados + origem + validade + correções
+       ├─ guardrails: factualidade | escopo | política | segurança | canal
+       └─ trace/evals: versão do prompt + ferramentas + latência + custo + resultado
+
+Release Plane
+  rascunho → simulador idêntico ao runtime → dataset → shadow → sugestão
+  → canário → autopilot por missão/cliente → rollback</pre>
+  </section>
+
+  <section class="section card"><h2>Conclusão</h2><p><strong>O melhor repositório como base técnica para a Altum é o OpenAI Agents SDK para TypeScript.</strong> O melhor código de referência para os problemas práticos já encontrados na Altum é o HNBCRM. LangGraph oferece o padrão correto para durabilidade e aprovação; Mem0, Langfuse e LiveKit/Pipecat completam memória, qualidade e voz.</p><p>A Altum deve absorver os padrões, não virar uma cópia. Seu diferencial será a camada que esses frameworks não oferecem: missão comercial configurável, conhecimento do negócio, CRM brasileiro, WhatsApp/Instagram, governança multiempresa, distribuição humana e inteligência de receita ponta a ponta.</p></section>
+
+  <section class="section card sources"><h2>Fontes primárias</h2><ul>
+    <li><a href="https://github.com/openai/openai-agents-js">OpenAI Agents SDK JS</a> — runtime, tools, handoffs, sessões, guardrails, voz e tracing.</li>
+    <li><a href="https://github.com/langchain-ai/langgraphjs">LangGraphJS</a> — execução durável, memória e human-in-the-loop.</li>
+    <li><a href="https://github.com/ericmil87/hnbcrm">HNBCRM</a> — operação CRM/WhatsApp e modelo de liberação gradual.</li>
+    <li><a href="https://github.com/mem0ai/mem0">Mem0</a> — extração e recuperação de memória.</li>
+    <li><a href="https://github.com/langfuse/langfuse">Langfuse</a> — observabilidade, prompts e avaliações.</li>
+    <li><a href="https://github.com/pipecat-ai/pipecat">Pipecat</a> e <a href="https://github.com/livekit/agents">LiveKit Agents</a> — voz realtime e telefonia.</li>
+    <li><a href="https://github.com/filip-michalsky/SalesGPT">SalesGPT</a> — estágios comerciais.</li>
+    <li><a href="https://github.com/langgenius/dify">Dify</a> — referência visual/RAG; licença exige cautela para SaaS multi-tenant.</li>
+  </ul><p class="small muted">Limitação: este benchmark avalia arquitetura pública, documentação, código e licenças visíveis. Popularidade não foi usada como sinônimo de qualidade. O HNBCRM é particularmente relevante no domínio, mas tem baixa maturidade comunitária; por isso foi classificado como referência de padrões, não dependência.</p></section>
+</main></body></html>

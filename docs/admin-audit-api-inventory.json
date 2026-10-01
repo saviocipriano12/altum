@@ -179,12 +179,11 @@
   },
   {
     "file": "app/api/admin/billing/overview/route.ts",
-    "lines": 291,
+    "lines": 279,
     "imports": [
       "next/server",
       "@/app/lib/server/firebase-admin",
-      "@/app/lib/server/route-auth",
-      "@/lib/platform-billing"
+      "@/app/lib/server/route-auth"
     ],
     "requests": [],
     "collections": [
@@ -195,7 +194,7 @@
     "auth": [
       {
         "guard": "requireRequestUser",
-        "line": 43,
+        "line": 42,
         "arguments": [
           "req",
           "{ roles: [\"agency_admin\"] }"
@@ -356,10 +355,44 @@
     ]
   },
   {
-    "file": "app/api/admin/client-portal/contracts/control/route.ts",
-    "lines": 116,
+    "file": "app/api/admin/client-portal/contracts/asaas/route.ts",
+    "lines": 228,
     "imports": [
       "next/server",
+      "firebase-admin/firestore",
+      "@/app/lib/server/firebase-admin",
+      "@/app/lib/server/route-auth",
+      "@/lib/server/asaas-api",
+      "@/lib/server/subscription-cancellation"
+    ],
+    "requests": [],
+    "collections": [
+      "financeiro",
+      "tenants",
+      "client_contracts",
+      "clientes",
+      "audit_logs"
+    ],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 72,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      }
+    ],
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "file": "app/api/admin/client-portal/contracts/control/route.ts",
+    "lines": 152,
+    "imports": [
+      "next/server",
+      "firebase-admin/firestore",
       "firebase-admin/firestore",
       "@/app/lib/server/firebase-admin",
       "@/app/lib/server/route-auth",
@@ -368,15 +401,16 @@
     "requests": [],
     "collections": [
       "tenants",
-      "client_contracts"
+      "client_contracts",
+      "audit_logs"
     ],
     "auth": [
       {
         "guard": "requireRequestUser",
-        "line": 40,
+        "line": 42,
         "arguments": [
           "req",
-          "{ roles: [\"admin\"] }"
+          "{ roles: [\"agency_admin\"] }"
         ]
       }
     ],
@@ -386,12 +420,11 @@
   },
   {
     "file": "app/api/admin/client-portal/contracts/get/route.ts",
-    "lines": 221,
+    "lines": 213,
     "imports": [
       "next/server",
       "@/app/lib/server/firebase-admin",
-      "@/app/lib/server/route-auth",
-      "@/lib/platform-billing"
+      "@/app/lib/server/route-auth"
     ],
     "requests": [],
     "collections": [
@@ -402,10 +435,10 @@
     "auth": [
       {
         "guard": "requireRequestUser",
-        "line": 60,
+        "line": 59,
         "arguments": [
           "req",
-          "{ roles: [\"admin\"] }"
+          "{ roles: [\"agency_admin\"] }"
         ]
       }
     ],
@@ -434,7 +467,7 @@
         "line": 35,
         "arguments": [
           "req",
-          "{ roles: [\"admin\"] }"
+          "{ roles: [\"agency_admin\"] }"
         ]
       }
     ],
@@ -444,28 +477,32 @@
   },
   {
     "file": "app/api/admin/client-portal/contracts/upsert/route.ts",
-    "lines": 215,
+    "lines": 245,
     "imports": [
       "next/server",
       "firebase-admin/firestore",
       "@/app/lib/server/firebase-admin",
       "@/app/lib/server/route-auth",
-      "@/app/lib/server/phone"
+      "@/app/lib/server/phone",
+      "@/lib/platform-plan-entitlements",
+      "@/lib/platform-plans",
+      "@/lib/platform-billing"
     ],
     "requests": [],
     "collections": [
       "clientes",
       "tenants",
       "client_contracts",
-      "audit_logs"
+      "audit_logs",
+      "tenant_entitlements"
     ],
     "auth": [
       {
         "guard": "requireRequestUser",
-        "line": 104,
+        "line": 102,
         "arguments": [
           "req",
-          "{ roles: [\"admin\"] }"
+          "{ roles: [\"agency_admin\"] }"
         ]
       }
     ],
@@ -573,7 +610,7 @@
   },
   {
     "file": "app/api/admin/integrations/status/route.ts",
-    "lines": 145,
+    "lines": 134,
     "imports": [
       "next/server",
       "@/app/lib/server/route-auth"
@@ -622,8 +659,55 @@
     ]
   },
   {
+    "file": "app/api/admin/marketing/batch/route.ts",
+    "lines": 86,
+    "imports": [
+      "node:crypto",
+      "firebase-admin/firestore",
+      "next/server",
+      "@/app/lib/server/firebase-admin",
+      "@/app/lib/server/route-auth",
+      "@/lib/admin-batch",
+      "@/lib/server/command-center/security",
+      "@/lib/admin-marketing-overview",
+      "@/app/api/tenant/[tenantId]/growth/meta-ads/operator/route",
+      "@/app/api/tenant/[tenantId]/growth/google-ads/operator/route",
+      "@/app/api/tenant/[tenantId]/mcp/drafts/route",
+      "@/app/api/tenant/[tenantId]/mcp/drafts/[draftId]/route",
+      "@/app/api/tenant/[tenantId]/mcp/drafts/[draftId]/apply/route",
+      "@/app/api/admin/marketing/pixels/discover/route"
+    ],
+    "requests": [],
+    "collections": [
+      "admin_marketing_batches",
+      "mcp_action_drafts"
+    ],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 20,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      },
+      {
+        "guard": "requireRequestUser",
+        "line": 32,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      }
+    ],
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
     "file": "app/api/admin/marketing/overview/route.ts",
-    "lines": 44,
+    "lines": 45,
     "imports": [
       "next/server",
       "@/app/lib/server/firebase-admin",
@@ -635,7 +719,191 @@
     "auth": [
       {
         "guard": "requireRequestUser",
-        "line": 14,
+        "line": 15,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      }
+    ],
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "file": "app/api/admin/marketing/pixels/discover/route.ts",
+    "lines": 25,
+    "imports": [
+      "firebase-admin/firestore",
+      "@/app/lib/server/firebase-admin",
+      "@/app/lib/server/secret-crypto",
+      "@/app/lib/server/route-auth",
+      "@/lib/server/tenant-entitlements",
+      "@/lib/server/growth/adport-connectors",
+      "@/lib/server/growth/pixel-inventory"
+    ],
+    "requests": [],
+    "collections": [
+      "tenant_channels",
+      "admin_growth_pixels",
+      "audit_logs"
+    ],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 10,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      },
+      {
+        "guard": "assertTenantModule",
+        "line": 12,
+        "arguments": [
+          "body.tenantId",
+          "\"marketing\""
+        ]
+      }
+    ],
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "file": "app/api/admin/marketing/pixels/route.ts",
+    "lines": 39,
+    "imports": [
+      "next/server",
+      "firebase-admin/firestore",
+      "zod",
+      "@/app/lib/server/firebase-admin",
+      "@/app/lib/server/route-auth",
+      "@/lib/server/growth/pixel-inventory"
+    ],
+    "requests": [],
+    "collections": [
+      "tenants",
+      "admin_growth_pixels",
+      "audit_logs"
+    ],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 15,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      }
+    ],
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "file": "app/api/admin/mcp/authorize/route.ts",
+    "lines": 14,
+    "imports": [
+      "@/app/lib/server/route-auth",
+      "@/lib/server/mcp/oauth",
+      "@/lib/server/mcp/admin-oauth",
+      "@/lib/server/command-center/security"
+    ],
+    "requests": [],
+    "collections": [],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 11,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      }
+    ],
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "file": "app/api/admin/mcp/connections/route.ts",
+    "lines": 19,
+    "imports": [
+      "@/app/lib/server/firebase-admin",
+      "firebase-admin/firestore",
+      "@/app/lib/server/route-auth",
+      "@/lib/server/mcp/admin-oauth",
+      "@/lib/server/command-center/security"
+    ],
+    "requests": [],
+    "collections": [
+      "platform_settings",
+      "admin_mcp_connections",
+      "audit_logs"
+    ],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 8,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      },
+      {
+        "guard": "requireRequestUser",
+        "line": 12,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      },
+      {
+        "guard": "requireRequestUser",
+        "line": 16,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      }
+    ],
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ]
+  },
+  {
+    "file": "app/api/admin/mcp/token/route.ts",
+    "lines": 9,
+    "imports": [
+      "@/lib/server/mcp/admin-oauth",
+      "@/lib/server/command-center/security"
+    ],
+    "requests": [],
+    "collections": [],
+    "auth": [],
+    "methods": [
+      "POST",
+      "OPTIONS"
+    ]
+  },
+  {
+    "file": "app/api/admin/portfolio/route.ts",
+    "lines": 16,
+    "imports": [
+      "@/app/lib/server/firebase-admin",
+      "@/app/lib/server/route-auth",
+      "@/lib/admin-portfolio"
+    ],
+    "requests": [],
+    "collections": [],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 7,
         "arguments": [
           "req",
           "{ roles: [\"agency_admin\"] }"
@@ -671,8 +939,114 @@
     ]
   },
   {
+    "file": "app/api/admin/strategies/route.ts",
+    "lines": 44,
+    "imports": [
+      "next/server",
+      "firebase-admin/firestore",
+      "@/app/lib/server/firebase-admin",
+      "@/app/lib/server/route-auth",
+      "@/lib/admin-strategies",
+      "@/lib/server/admin/strategies"
+    ],
+    "requests": [],
+    "collections": [
+      "admin_growth_strategies",
+      "audit_logs"
+    ],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 10,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      },
+      {
+        "guard": "requireRequestUser",
+        "line": 20,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      },
+      {
+        "guard": "requireRequestUser",
+        "line": 32,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      }
+    ],
+    "methods": [
+      "GET",
+      "POST",
+      "PATCH"
+    ]
+  },
+  {
+    "file": "app/api/admin/strategies/suggest/route.ts",
+    "lines": 39,
+    "imports": [
+      "next/server",
+      "zod",
+      "@/app/lib/server/firebase-admin",
+      "@/app/lib/server/route-auth",
+      "@/lib/server/admin/strategies",
+      "@/lib/admin-strategies",
+      "@/lib/server/tenant-entitlements",
+      "@/lib/server/ai/usage-ledger",
+      "@/lib/server/public-abuse"
+    ],
+    "requests": [
+      {
+        "file": "app/api/admin/strategies/suggest/route.ts",
+        "line": 24,
+        "callee": "fetch",
+        "expression": "\"https://api.openai.com/v1/chat/completions\"",
+        "reference": "https://api.openai.com/v1/chat/completions",
+        "method": "POST"
+      }
+    ],
+    "collections": [
+      "admin_growth_strategies",
+      "audit_logs"
+    ],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 13,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      },
+      {
+        "guard": "assertTenantModule",
+        "line": 17,
+        "arguments": [
+          "target.tenantId",
+          "\"marketing\""
+        ]
+      },
+      {
+        "guard": "assertTenantModule",
+        "line": 17,
+        "arguments": [
+          "target.tenantId",
+          "\"ai\""
+        ]
+      }
+    ],
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "file": "app/api/admin/tenants/create/route.ts",
-    "lines": 178,
+    "lines": 186,
     "imports": [
       "next/server",
       "firebase-admin/firestore",
@@ -680,7 +1054,8 @@
       "@/app/lib/server/route-auth",
       "@/lib/business-profiles",
       "@/lib/server/business-profile-provisioning",
-      "@/lib/tenant-entitlements"
+      "@/lib/platform-plan-entitlements",
+      "@/lib/platform-plans"
     ],
     "requests": [],
     "collections": [
@@ -693,7 +1068,7 @@
     "auth": [
       {
         "guard": "requireRequestUser",
-        "line": 29,
+        "line": 31,
         "arguments": [
           "req",
           "{\r\n      roles: [\"agency_owner\", \"agency_admin\"],\r\n    }"
@@ -740,7 +1115,7 @@
   },
   {
     "file": "app/api/admin/tenants/[tenantId]/entitlements/route.ts",
-    "lines": 100,
+    "lines": 101,
     "imports": [
       "firebase-admin/firestore",
       "next/server",
@@ -826,7 +1201,7 @@
         "line": 27,
         "arguments": [
           "req",
-          "{\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\n    }"
+          "{\r\n      roles: [\"agency_owner\", \"agency_admin\"],\r\n    }"
         ]
       }
     ],
@@ -860,7 +1235,7 @@
         "line": 45,
         "arguments": [
           "req",
-          "{\r\n      roles: [\"agency_owner\", \"agency_admin\", \"agency_agent\"],\r\n    }"
+          "{\r\n      roles: [\"agency_owner\", \"agency_admin\"],\r\n    }"
         ]
       }
     ],
@@ -870,8 +1245,68 @@
   },
   {
     "file": "app/api/admin/users/block/route.ts",
-    "lines": 60,
+    "lines": 62,
     "imports": [
+      "@/lib/server/admin/user-access",
+      "next/server",
+      "firebase-admin/firestore",
+      "@/app/lib/server/firebase-admin",
+      "@/app/lib/server/route-auth"
+    ],
+    "requests": [],
+    "collections": [
+      "users",
+      "audit_logs"
+    ],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 14,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      }
+    ],
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "file": "app/api/admin/users/invite/route.ts",
+    "lines": 129,
+    "imports": [
+      "@/lib/server/admin/user-access",
+      "crypto",
+      "next/server",
+      "firebase-admin/firestore",
+      "@/app/lib/server/firebase-admin",
+      "@/app/lib/server/route-auth"
+    ],
+    "requests": [],
+    "collections": [
+      "users",
+      "audit_logs"
+    ],
+    "auth": [
+      {
+        "guard": "requireRequestUser",
+        "line": 36,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      }
+    ],
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "file": "app/api/admin/users/resend-invite/route.ts",
+    "lines": 83,
+    "imports": [
+      "@/lib/server/admin/user-access",
       "next/server",
       "firebase-admin/firestore",
       "@/app/lib/server/firebase-admin",
@@ -888,64 +1323,7 @@
         "line": 13,
         "arguments": [
           "req",
-          "{ roles: [\"admin\"] }"
-        ]
-      }
-    ],
-    "methods": [
-      "POST"
-    ]
-  },
-  {
-    "file": "app/api/admin/users/invite/route.ts",
-    "lines": 122,
-    "imports": [
-      "crypto",
-      "next/server",
-      "firebase-admin/firestore",
-      "@/app/lib/server/firebase-admin",
-      "@/app/lib/server/route-auth"
-    ],
-    "requests": [],
-    "collections": [
-      "users",
-      "audit_logs"
-    ],
-    "auth": [
-      {
-        "guard": "requireRequestUser",
-        "line": 35,
-        "arguments": [
-          "req",
-          "{ roles: [\"admin\"] }"
-        ]
-      }
-    ],
-    "methods": [
-      "POST"
-    ]
-  },
-  {
-    "file": "app/api/admin/users/resend-invite/route.ts",
-    "lines": 78,
-    "imports": [
-      "next/server",
-      "firebase-admin/firestore",
-      "@/app/lib/server/firebase-admin",
-      "@/app/lib/server/route-auth"
-    ],
-    "requests": [],
-    "collections": [
-      "users",
-      "audit_logs"
-    ],
-    "auth": [
-      {
-        "guard": "requireRequestUser",
-        "line": 12,
-        "arguments": [
-          "req",
-          "{ roles: [\"admin\"] }"
+          "{ roles: [\"agency_admin\"] }"
         ]
       }
     ],
@@ -981,8 +1359,9 @@
   },
   {
     "file": "app/api/admin/users/unblock/route.ts",
-    "lines": 57,
+    "lines": 59,
     "imports": [
+      "@/lib/server/admin/user-access",
       "next/server",
       "firebase-admin/firestore",
       "@/app/lib/server/firebase-admin",
@@ -996,10 +1375,10 @@
     "auth": [
       {
         "guard": "requireRequestUser",
-        "line": 12,
+        "line": 13,
         "arguments": [
           "req",
-          "{ roles: [\"admin\"] }"
+          "{ roles: [\"agency_admin\"] }"
         ]
       }
     ],
@@ -1009,8 +1388,9 @@
   },
   {
     "file": "app/api/admin/users/update/route.ts",
-    "lines": 100,
+    "lines": 102,
     "imports": [
+      "@/lib/server/admin/user-access",
       "next/server",
       "firebase-admin/firestore",
       "@/app/lib/server/firebase-admin",
@@ -1024,10 +1404,10 @@
     "auth": [
       {
         "guard": "requireRequestUser",
-        "line": 30,
+        "line": 31,
         "arguments": [
           "req",
-          "{ roles: [\"admin\"] }"
+          "{ roles: [\"agency_admin\"] }"
         ]
       }
     ],
@@ -1037,7 +1417,7 @@
   },
   {
     "file": "app/api/admin/whatsapp/templates/route.ts",
-    "lines": 98,
+    "lines": 115,
     "imports": [
       "next/server",
       "@/app/lib/server/route-auth",
@@ -1048,7 +1428,15 @@
     "auth": [
       {
         "guard": "requireRequestUser",
-        "line": 27,
+        "line": 17,
+        "arguments": [
+          "req",
+          "{ roles: [\"agency_admin\"] }"
+        ]
+      },
+      {
+        "guard": "requireRequestUser",
+        "line": 44,
         "arguments": [
           "req",
           "{ roles: [\"agency_agent\"] }"
@@ -1056,6 +1444,7 @@
       }
     ],
     "methods": [
+      "POST",
       "GET"
     ]
   }

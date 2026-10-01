@@ -56,10 +56,19 @@ export function createDemo(now = Date.now()) {
   const ports: CommandPorts = {
     async access(uid, tenant) {
       if (uid !== userId || tenant !== tenantId) throw new CommandError("FORBIDDEN");
-      return { userId: uid, tenantId: tenant, active: true, capabilities: ["edit_leads", "respond_inbox", "view_metrics", "manage_settings", "manage_channels"],
-        modules: { crm: true, inbox: true, reports: true, whatsapp: true, marketing: true }, entitlementSource: "demo_synthetic", teamWideCommercial: true, canRead: () => true };
+      return { userId: uid, tenantId: tenant, active: true, capabilities: ["edit_leads", "respond_inbox", "view_metrics", "manage_settings", "manage_channels", "manage_pipeline", "manage_commercial", "manage_ai", "manage_automations", "manage_users"],
+        modules: { crm: true, inbox: true, reports: true, whatsapp: true, marketing: true, ai: true, automation: true }, entitlementSource: "demo_synthetic", teamWideCommercial: true, canRead: () => true };
     },
     async profile(tenant) { if (tenant !== tenantId) throw new CommandError("FORBIDDEN"); return { name: "Loja demonstracao - DADOS FICTICIOS", timezone: "America/Sao_Paulo", niche: "varejo", updatedAt: date(1), mcp: { enabled: true, writeMode: "draft_only" } }; },
+    async aiCommercialProfile(tenant) { if (tenant !== tenantId) throw new CommandError("FORBIDDEN"); return { tenantId, profile: { agentName: "Altum Demo", assistantRole: "sales", objective: "Atender bem" } }; },
+    async commercialOffers(tenant, limit, after) { return slice([{ id: "offer-demo", tenantId, type: "catalog", productName: "Plano Demo", description: "Oferta ficticia", kind: "plano" }], limit, after); },
+    async commercialOffer(tenant, id) { return id === "offer-demo" && tenant === tenantId ? { id, tenantId, type: "catalog", productName: "Plano Demo", description: "Oferta ficticia", kind: "plano" } : null; },
+    async knowledgeDocuments(tenant, limit, after) { return slice([{ id: "doc-demo", tenantId, type: "faq", content: "FAQ ficticio", tags: ["demo"] }], limit, after); },
+    async knowledgeDocument(tenant, id) { return id === "doc-demo" && tenant === tenantId ? { id, tenantId, type: "faq", content: "FAQ ficticio", tags: ["demo"] } : null; },
+    async automations(tenant, limit, after) { return slice([{ id: "automation-demo", tenantId, name: "Follow-up demo", trigger: "waiting_for_reply", enabled: false, conditions: {}, actions: [] }], limit, after); },
+    async automation(tenant, id) { return id === "automation-demo" && tenant === tenantId ? { id, tenantId, name: "Follow-up demo", trigger: "waiting_for_reply", enabled: false, conditions: {}, actions: [] } : null; },
+    async teamOperation(tenant) { if (tenant !== tenantId) throw new CommandError("FORBIDDEN"); return { teams: [{ id: "comercial", name: "Comercial" }], people: [{ userId, name: "Gestor demo", accessProfile: "admin", teamId: "comercial" }], distribution: { firstResponseSlaMinutes: 15, assignmentMode: "least_loaded" } }; },
+    async whatsappTemplates(tenant) { if (tenant !== tenantId) throw new CommandError("FORBIDDEN"); return { requiresTemplate: true, templates: [{ name: "contato_inicial", language: "pt_BR", status: "approved", category: "MARKETING", body: "Ola {{1}}", parameterCount: 1 }] }; },
     async list(tenant, kind, limit, after) { return slice(data[kind].filter(r => r.tenantId === tenant).sort((a,b) => a.id.localeCompare(b.id)), limit, after); },
     async conversation(tenant, id) { return data.chats.find(r => r.tenantId === tenant && r.id === id) || null; },
     async messages(tenant, id, limit, after) { return slice(messages.filter(r => r.tenantId === tenant && r.chatId === id), limit, after); },

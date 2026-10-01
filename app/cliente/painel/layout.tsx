@@ -1,20 +1,25 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { ClienteBottomNav } from "@/app/cliente/painel/components/cliente-bottom-nav";
-import { ClienteCommandPalette } from "@/app/cliente/painel/components/cliente-command-palette";
 import { ClienteSidebar } from "@/app/cliente/painel/components/cliente-sidebar";
 import { ClienteShellProvider, useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { ClienteTopbar } from "@/app/cliente/painel/components/cliente-topbar";
-import { ClienteGuidedTour } from "@/app/cliente/painel/components/cliente-guided-tour";
-import { ClienteActivationCenter } from "@/app/cliente/painel/components/cliente-activation-center";
-import { ClienteCriticalNotifications } from "@/app/cliente/components/cliente-critical-notifications";
 import { ClienteTrialBanner } from "@/app/cliente/components/cliente-trial-banner";
+
+// These tools are useful after the workspace is ready, but should not delay the
+// first interaction with Conversas, Clientes or Agenda on slower devices.
+const ClienteCommandPalette = dynamic(() => import("@/app/cliente/painel/components/cliente-command-palette").then((mod) => mod.ClienteCommandPalette), { ssr: false });
+const ClientePresenceHeartbeat = dynamic(() => import("@/app/cliente/painel/components/cliente-presence-heartbeat").then((mod) => mod.ClientePresenceHeartbeat), { ssr: false });
+const ClienteActivationCenter = dynamic(() => import("@/app/cliente/painel/components/cliente-activation-center").then((mod) => mod.ClienteActivationCenter), { ssr: false });
+const ClienteGuidedTour = dynamic(() => import("@/app/cliente/painel/components/cliente-guided-tour").then((mod) => mod.ClienteGuidedTour), { ssr: false });
+const ClienteCriticalNotifications = dynamic(() => import("@/app/cliente/components/cliente-critical-notifications").then((mod) => mod.ClienteCriticalNotifications), { ssr: false });
 
 function ClientAppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const shellRef = useRef<HTMLDivElement>(null);
+  const [enhancementsReady, setEnhancementsReady] = useState(false);
   const pathname = usePathname();
   const { density } = useClienteShell();
   const compact = density === "compact";
@@ -34,22 +39,19 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("altum:cliente-sidebar-open", openSidebar);
   }, []);
 
-  useEffect(() => { setSidebarOpen(false); }, [pathname]);
-
   useEffect(() => {
-    const viewport = window.visualViewport;
-    const sync = () => shellRef.current?.style.setProperty("--cliente-viewport-height", `${viewport?.height || window.innerHeight}px`);
-    sync();
-    viewport?.addEventListener("resize", sync);
-    window.addEventListener("resize", sync);
-    return () => { viewport?.removeEventListener("resize", sync); window.removeEventListener("resize", sync); };
+    const schedule = window.requestIdleCallback ?? ((callback: IdleRequestCallback) => window.setTimeout(callback, 700) as unknown as number);
+    const cancel = window.cancelIdleCallback ?? window.clearTimeout;
+    const task = schedule(() => setEnhancementsReady(true), { timeout: 1_500 });
+    return () => cancel(task);
   }, []);
+
+  useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
   return (
     <div
-      ref={shellRef}
       data-client-area={clientArea}
-      className="relative min-h-screen overflow-hidden bg-[var(--cliente-bg)] pb-[env(safe-area-inset-bottom)] text-[var(--cliente-text)] [font-family:var(--cliente-font-family)] transition-[background-color,color] duration-300"
+      className="relative min-h-screen overflow-x-clip bg-[var(--cliente-bg)] pb-[env(safe-area-inset-bottom)] text-[var(--cliente-text)] [font-family:var(--cliente-font-family)] transition-[background-color,color] duration-300"
     >
       <div className="client-shell-ambient pointer-events-none absolute inset-0 hidden overflow-hidden lg:block">
         <div className="absolute inset-0 bg-[var(--cliente-bg)]" />
@@ -61,8 +63,13 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
         <ClienteTopbar onOpenMenu={() => setSidebarOpen(true)} />
       </div>
       <ClienteCommandPalette />
-      <ClienteActivationCenter />
-      <ClienteGuidedTour />
+      {enhancementsReady ? (
+        <>
+          <ClientePresenceHeartbeat />
+          <ClienteActivationCenter />
+          <ClienteGuidedTour />
+        </>
+      ) : null}
 
       <div className="relative transition-[padding] duration-300 lg:pl-[var(--cliente-sidebar-width)]">
         <main id="client-main" className={`min-h-[100dvh] min-w-0 transition-[padding] duration-300 ${mainPaddingClass}`}>
@@ -78,7 +85,7 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
 
       <Suspense fallback={null}>
         <ClienteBottomNav />
-        <ClienteCriticalNotifications />
+        {enhancementsReady ? <ClienteCriticalNotifications /> : null}
       </Suspense>
     </div>
   );

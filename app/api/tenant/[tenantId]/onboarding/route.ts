@@ -109,6 +109,19 @@ function compactLines(items: Array<[string, string]>) {
   return items.filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join("\n");
 }
 
+function resolveOnboardingBusinessProfile(storedValue: unknown, configuredValue: unknown) {
+  const storedProfileId = normalizeBusinessProfileId(storedValue);
+  const configuredProfileId = normalizeBusinessProfileId(configuredValue);
+
+  // Um rascunho antigo nascia como "generic". Quando o perfil canônico já foi
+  // configurado em Configurações/IA, ele é mais específico e deve alimentar a
+  // tela de implantação, sem substituir uma escolha explícita do próprio fluxo.
+  if (storedProfileId === "generic" && configuredProfileId !== "generic") {
+    return configuredProfileId;
+  }
+  return storedProfileId;
+}
+
 async function getProductOnboardingSnapshot(tenantId: string) {
   const [settings, entitlements, channelsSnap, kbSnap, commerceSnap] = await Promise.all([
     getTenantSettings(tenantId),
@@ -127,7 +140,7 @@ async function getProductOnboardingSnapshot(tenantId: string) {
       location: stored.company.location || clean(settings?.location, 240),
       website: stored.company.website || clean(settings?.website, 300),
       businessHours: stored.company.businessHours || clean(settings?.businessHours, 300),
-      businessProfileId: normalizeBusinessProfileId(stored.company.businessProfileId || settings?.businessProfileId),
+      businessProfileId: resolveOnboardingBusinessProfile(stored.company.businessProfileId, settings?.businessProfileId),
     },
   };
   const channels = channelsSnap.docs.map((doc) => {

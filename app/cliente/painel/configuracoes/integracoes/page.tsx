@@ -38,6 +38,7 @@ const ECOMMERCE_PLATFORMS = [
   { id: "vtex", label: "VTEX", detail: "Comercio enterprise", brand: "vtex" },
   { id: "tray", label: "Tray", detail: "Loja, pedidos e carrinhos", brand: "tray" },
   { id: "loja_integrada", label: "Loja Integrada", detail: "Catalogo e pedidos", brand: "loja_integrada" },
+  { id: "checkout_externo", label: "Checkout externo", detail: "Yampi, Cartpanda, Appmax e outros", brand: "generic" },
 ] as const;
 
 const CHANNEL_INTEGRATIONS: Array<{
@@ -136,6 +137,21 @@ type AutomationTemplate = {
 
 type EcommerceAutomation = {
   autoSendEnabled: boolean;
+  agent: {
+    mode: "off" | "shadow" | "automatic";
+    agentVersion: string;
+    rolloutPercent: number;
+    maxActionsPerRun: number;
+    experiment: {
+      enabled: boolean;
+      challengerVersion: string;
+      challengerPercent: number;
+      autoRollback: boolean;
+      minSampleSize: number;
+      maxFailureRate: number;
+      maxRelativeConversionDrop: number;
+    };
+  };
   purchaseConfirmation: AutomationTemplate;
   trackingAvailable: AutomationTemplate;
   abandonedCartRecovery: AutomationTemplate;
@@ -153,10 +169,17 @@ const EMPTY_FORM: FormState = {
 
 const DEFAULT_AUTOMATION: EcommerceAutomation = {
   autoSendEnabled: false,
+  agent: {
+    mode: "off",
+    agentVersion: "ecommerce-v1",
+    rolloutPercent: 0,
+    maxActionsPerRun: 10,
+    experiment: { enabled: false, challengerVersion: "", challengerPercent: 10, autoRollback: true, minSampleSize: 50, maxFailureRate: 0.15, maxRelativeConversionDrop: 0.25 },
+  },
   purchaseConfirmation: { enabled: true, templateName: "compra_confirmada_altum", languageCode: "pt_BR", params: ["{{nome}}", "{{pedido}}"] },
   trackingAvailable: { enabled: true, templateName: "rastreio_disponivel_altum", languageCode: "pt_BR", params: ["{{nome}}", "{{pedido}}", "{{rastreio}}"] },
   abandonedCartRecovery: { enabled: true, templateName: "recuperar_carrinho_altum", languageCode: "pt_BR", params: ["{{nome}}", "{{produtos}}", "{{checkout_url}}"] },
-  postPurchaseUpsell: { enabled: false, templateName: "pos_compra_altum", languageCode: "pt_BR", params: ["{{nome}}", "{{produtos}}"] },
+  postPurchaseUpsell: { enabled: false, templateName: "pos_compra_altum", languageCode: "pt_BR", params: ["{{nome}}", "{{produtos}}", "{{oferta_recomendada}}"] },
 };
 
 function money(value: number | null | undefined, currency = "BRL") {
@@ -167,7 +190,7 @@ function money(value: number | null | undefined, currency = "BRL") {
 function statusTone(status: string): "success" | "warning" | "danger" | "info" | "neutral" {
   if (status === "active" || status === "receiving_events" || status === "connected") return "success";
   if (status === "syncing") return "info";
-  if (status === "error") return "danger";
+  if (status === "error" || status === "failed") return "danger";
   if (status === "paused" || status === "draft") return "warning";
   return "info";
 }
@@ -184,6 +207,11 @@ export default function ClienteIntegracoesPage() {
   const [notice, setNotice] = useState("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [automation, setAutomation] = useState<EcommerceAutomation>(DEFAULT_AUTOMATION);
+  const [agentPerformance, setAgentPerformance] = useState<{
+    champion?: { version: string; sent: number; failures: number; mature: number; conversions: number; revenue: number };
+    challenger?: { version: string; sent: number; failures: number; mature: number; conversions: number; revenue: number };
+    verdict?: { status: string; reason: string; relativeDrop: number };
+  } | null>(null);
   const [freshSecrets, setFreshSecrets] = useState<Record<string, string>>({});
 
   const baseUrl = useMemo(() => (typeof window === "undefined" ? "" : window.location.origin), []);
@@ -193,16 +221,19 @@ export default function ClienteIntegracoesPage() {
     setLoading(true);
     setError("");
     try {
-      const [res, automationRes] = await Promise.all([
+      const [res, automationRes, performanceRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/ecommerce/connections`),
         authedFetch(`/api/tenant/${tenant.tenantId}/ecommerce/automation`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/ecommerce/agent-performance`),
       ]);
       const data = (await res.json()) as EcommercePayload;
       const automationData = (await automationRes.json()) as { ecommerceAutomation?: EcommerceAutomation; error?: string };
+      const performanceData = await performanceRes.json();
       if (!res.ok) throw new Error(data.error || "Falha ao carregar ecommerce.");
       if (!automationRes.ok) throw new Error(automationData.error || "Falha ao carregar automacoes ecommerce.");
       setPayload(data);
       setAutomation(automationData.ecommerceAutomation || DEFAULT_AUTOMATION);
+      setAgentPerformance(performanceRes.ok ? performanceData : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar ecommerce.");
     } finally {
@@ -611,7 +642,7 @@ export default function ClienteIntegracoesPage() {
               </div>
             ) : null}
             {!["shopify", "nuvemshop", "woocommerce"].includes(form.provider) ? (
-              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">Esta plataforma será conectada por webhook. A sincronização direta por API ainda não está disponível para este conector.</p>
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">{form.provider === "checkout_externo" ? "Use este conector quando a loja e o checkout forem plataformas diferentes. O checkout envia pedido, pagamento, itens e a atribuição recebida pela URL para a Altum por webhook assinado." : "Esta plataforma será conectada por webhook. A sincronização direta por API ainda não está disponível para este conector."}</p>
             ) : (
               <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold leading-5 text-emerald-800">Conexões por API são validadas, criptografadas e sincronizadas automaticamente.</p>
             )}
@@ -678,25 +709,122 @@ export default function ClienteIntegracoesPage() {
           </div>
         </div>
 
-        <label className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-          <span>
-            <span className="block text-sm font-semibold text-[var(--cliente-card-text)]">Envio automatico liberado</span>
-            <span className="mt-1 block text-xs leading-5 text-[var(--cliente-card-text-soft)]">Quando desligado, as acoes ficam pendentes e podem ser enviadas manualmente.</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={automation.autoSendEnabled}
-            disabled={!canManage || saving}
-            onChange={(event) => setAutomation((current) => ({ ...current, autoSendEnabled: event.target.checked }))}
-            className="h-5 w-5 accent-[var(--cliente-primary)]"
-          />
-        </label>
+        <div className="mt-5 grid gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 lg:grid-cols-[1.2fr_1fr_1fr]">
+          <label>
+            <span className="block text-sm font-semibold text-[var(--cliente-card-text)]">Modo do agente ecommerce</span>
+            <span className="mt-1 block text-xs leading-5 text-[var(--cliente-card-text-soft)]">Simulacao observa sem enviar. Automatico reage aos eventos reais da loja.</span>
+            <select
+              value={automation.agent.mode}
+              disabled={!canManage || saving}
+              onChange={(event) => {
+                const mode = event.target.value as EcommerceAutomation["agent"]["mode"];
+                setAutomation((current) => ({
+                  ...current,
+                  autoSendEnabled: mode === "automatic",
+                  agent: { ...current.agent, mode, rolloutPercent: mode === "off" ? 0 : current.agent.rolloutPercent || 100 },
+                }));
+              }}
+              className="mt-3 w-full rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-sm text-[var(--cliente-card-text)]"
+            >
+              <option value="off">Desligado</option>
+              <option value="shadow">Simulacao segura</option>
+              <option value="automatic">Automatico</option>
+            </select>
+          </label>
+          <label>
+            <span className="block text-sm font-semibold text-[var(--cliente-card-text)]">Clientes liberados</span>
+            <span className="mt-1 block text-xs leading-5 text-[var(--cliente-card-text-soft)]">Percentual deterministico da base que pode receber mensagens.</span>
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={automation.agent.rolloutPercent}
+                disabled={!canManage || saving || automation.agent.mode === "off"}
+                onChange={(event) => setAutomation((current) => ({ ...current, agent: { ...current.agent, rolloutPercent: Number(event.target.value) } }))}
+                className="w-full accent-[var(--cliente-primary)]"
+              />
+              <span className="w-12 text-right text-sm font-black text-[var(--cliente-card-text)]">{automation.agent.rolloutPercent}%</span>
+            </div>
+          </label>
+          <label>
+            <span className="block text-sm font-semibold text-[var(--cliente-card-text)]">Versao em operacao</span>
+            <span className="mt-1 block text-xs leading-5 text-[var(--cliente-card-text-soft)]">Identifica qual comportamento gerou cada decisao e resultado.</span>
+            <input
+              value={automation.agent.agentVersion}
+              disabled={!canManage || saving}
+              onChange={(event) => setAutomation((current) => ({ ...current, agent: { ...current.agent, agentVersion: event.target.value } }))}
+              className="mt-3 w-full rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-sm text-[var(--cliente-card-text)]"
+              placeholder="ecommerce-v1"
+            />
+          </label>
+        </div>
 
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           <TemplateEditor label="Compra realizada" value={automation.purchaseConfirmation} onChange={(value) => setAutomation((current) => ({ ...current, purchaseConfirmation: value }))} disabled={!canManage || saving} />
           <TemplateEditor label="Rastreio disponivel" value={automation.trackingAvailable} onChange={(value) => setAutomation((current) => ({ ...current, trackingAvailable: value }))} disabled={!canManage || saving} />
           <TemplateEditor label="Carrinho abandonado" value={automation.abandonedCartRecovery} onChange={(value) => setAutomation((current) => ({ ...current, abandonedCartRecovery: value }))} disabled={!canManage || saving} />
           <TemplateEditor label="Recompra e upsell" value={automation.postPurchaseUpsell} onChange={(value) => setAutomation((current) => ({ ...current, postPurchaseUpsell: value }))} disabled={!canManage || saving} />
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Laboratorio de receita</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">Compara uma versao desafiante com a atual usando clientes estaveis e resultado comercial real.</p>
+            </div>
+            <label className="flex items-center gap-2 text-xs font-semibold text-[var(--cliente-card-text)]">
+              <input
+                type="checkbox"
+                checked={automation.agent.experiment.enabled}
+                disabled={!canManage || saving || !automation.agent.experiment.challengerVersion}
+                onChange={(event) => setAutomation((current) => ({ ...current, agent: { ...current.agent, experiment: { ...current.agent.experiment, enabled: event.target.checked } } }))}
+                className="h-4 w-4 accent-[var(--cliente-primary)]"
+              />
+              Experimento ativo
+            </label>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <label className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">
+              Versao desafiante
+              <input
+                value={automation.agent.experiment.challengerVersion}
+                disabled={!canManage || saving}
+                onChange={(event) => setAutomation((current) => ({ ...current, agent: { ...current.agent, experiment: { ...current.agent.experiment, challengerVersion: event.target.value } } }))}
+                className="mt-2 w-full rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-sm text-[var(--cliente-card-text)]"
+                placeholder="ecommerce-v2"
+              />
+            </label>
+            <label className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">
+              Coorte desafiante: {automation.agent.experiment.challengerPercent}%
+              <input
+                type="range"
+                min={1}
+                max={50}
+                value={automation.agent.experiment.challengerPercent}
+                disabled={!canManage || saving}
+                onChange={(event) => setAutomation((current) => ({ ...current, agent: { ...current.agent, experiment: { ...current.agent.experiment, challengerPercent: Number(event.target.value) } } }))}
+                className="mt-4 w-full accent-[var(--cliente-primary)]"
+              />
+            </label>
+            <label className="flex items-center gap-2 self-end rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text)]">
+              <input
+                type="checkbox"
+                checked={automation.agent.experiment.autoRollback}
+                disabled={!canManage || saving}
+                onChange={(event) => setAutomation((current) => ({ ...current, agent: { ...current.agent, experiment: { ...current.agent.experiment, autoRollback: event.target.checked } } }))}
+                className="h-4 w-4 accent-[var(--cliente-primary)]"
+              />
+              Rollback automatico com evidencia
+            </label>
+          </div>
+          {agentPerformance?.champion && agentPerformance?.challenger ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <ExperimentMetric label={`Principal · ${agentPerformance.champion.version}`} value={`${agentPerformance.champion.conversions}/${agentPerformance.champion.mature}`} detail={`${money(agentPerformance.champion.revenue)} atribuida`} />
+              <ExperimentMetric label={`Desafiante · ${agentPerformance.challenger.version || "nao definida"}`} value={`${agentPerformance.challenger.conversions}/${agentPerformance.challenger.mature}`} detail={`${agentPerformance.challenger.failures} falha(s)`} />
+              <ExperimentMetric label="Leitura atual" value={agentPerformance.verdict?.status || "sem leitura"} detail={agentPerformance.verdict?.reason || "aguardando amostra"} />
+            </div>
+          ) : null}
         </div>
       </PanelCard>
 
@@ -881,6 +1009,11 @@ function ConnectionCard({
         <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
           Use estes dados apenas na configuracao tecnica da plataforma da loja para enviar produtos, pedidos, rastreio e carrinhos para a Altum.
         </p>
+        {connection.provider === "checkout_externo" ? (
+          <p className="mt-2 rounded-xl border border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,var(--cliente-border))] bg-[var(--cliente-primary-soft)] px-3 py-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+            Para Yampi, Cartpanda, Appmax e similares: envie o token no header <strong>x-altum-webhook-token</strong>. A Altum reconhece eventos de pedido, pagamento, rastreio, carrinho e reembolso, inclusive quando o pedido vier dentro de <strong>data</strong>, <strong>payload</strong> ou <strong>resource</strong>.
+          </p>
+        ) : null}
       </details>
     </div>
   );
@@ -995,6 +1128,16 @@ function CapabilityCard({ icon: Icon, title, detail }: { icon: typeof CheckCircl
   );
 }
 
+function ExperimentMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
+      <p className="text-[11px] font-bold uppercase text-[var(--cliente-card-text-soft)]">{label}</p>
+      <p className="mt-2 text-lg font-black text-[var(--cliente-card-text)]">{value}</p>
+      <p className="mt-1 text-xs text-[var(--cliente-card-text-muted)]">{detail}</p>
+    </div>
+  );
+}
+
 function RecentList({
   title,
   items,
@@ -1029,9 +1172,9 @@ function RecentList({
                 Abrir cliente
               </Link>
             ) : null}
-            {actionMode && item.status === "pending" && canHandleActions && onUpdateAction ? (
+            {actionMode && (item.status === "pending" || item.status === "failed") && canHandleActions && onUpdateAction ? (
               <div className="mt-3 flex flex-wrap gap-2">
-                {onSendTemplate ? (
+                {onSendTemplate && item.status === "pending" ? (
                   <button
                     type="button"
                     onClick={() => void onSendTemplate(item.id)}
@@ -1042,18 +1185,18 @@ function RecentList({
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => void onUpdateAction(item.id, "done")}
+                  onClick={() => void onUpdateAction(item.id, item.status === "failed" ? "pending" : "done")}
                   className="rounded-lg border border-[var(--cliente-success)]/25 bg-[var(--cliente-success-soft)] px-2.5 py-1.5 text-xs font-semibold text-[var(--cliente-success)]"
                 >
-                  Concluir
+                  {item.status === "failed" ? "Reprocessar" : "Concluir"}
                 </button>
-                <button
+                {item.status === "pending" ? <button
                   type="button"
                   onClick={() => void onUpdateAction(item.id, "dismissed")}
                   className="rounded-lg border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1.5 text-xs font-semibold text-[var(--cliente-card-text-soft)]"
                 >
                   Ignorar
-                </button>
+                </button> : null}
               </div>
             ) : null}
           </div>

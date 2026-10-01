@@ -63,10 +63,37 @@ type CatalogDoc = {
   targetProfile?: string | null;
   priceFrom?: number | null;
   priceTo?: number | null;
+  currency?: string | null;
+  sku?: string | null;
+  inventoryQuantity?: number | null;
+  checkoutUrl?: string | null;
   upsellKeys?: string[];
   crossSellKeys?: string[];
+  upsellOfferIds?: string[];
+  crossSellOfferIds?: string[];
+  downsellOfferIds?: string[];
+  incompatibleOfferIds?: string[];
+  nextOfferId?: string | null;
   priority?: number | null;
   availability?: Availability;
+  description?: string | null;
+  benefits?: string | null;
+  commonQuestions?: string | null;
+  objections?: string | null;
+  whenRecommend?: string | null;
+  whenNotRecommend?: string | null;
+  whenHuman?: string | null;
+  productSpecs?: string | null;
+  stockDelivery?: string | null;
+  warranty?: string | null;
+  serviceScope?: string | null;
+  duration?: string | null;
+  schedulingRules?: string | null;
+  deliverables?: string | null;
+  proofAndCases?: string | null;
+  demonstration?: string | null;
+  paymentConditions?: string | null;
+  supportAndSla?: string | null;
 };
 
 type FormState = {
@@ -75,12 +102,17 @@ type FormState = {
   category: string;
   priceFrom: string;
   priceTo: string;
+  currency: string;
+  sku: string;
+  inventoryQuantity: string;
+  checkoutUrl: string;
   targetProfile: string;
   shortDescription: string;
   benefits: string;
   commonQuestions: string;
   objections: string;
   whenRecommend: string;
+  whenNotRecommend: string;
   whenHuman: string;
   productSpecs: string;
   stockDelivery: string;
@@ -89,8 +121,14 @@ type FormState = {
   duration: string;
   schedulingRules: string;
   deliverables: string;
+  proofAndCases: string;
+  demonstration: string;
+  paymentConditions: string;
+  supportAndSla: string;
   upsell: string;
   crossSell: string;
+  upsellOfferIds: string[];
+  crossSellOfferIds: string[];
   availability: Availability;
   source: string;
   extraTags: string;
@@ -109,12 +147,17 @@ const EMPTY_FORM: FormState = {
   category: "",
   priceFrom: "",
   priceTo: "",
+  currency: "BRL",
+  sku: "",
+  inventoryQuantity: "",
+  checkoutUrl: "",
   targetProfile: "",
   shortDescription: "",
   benefits: "",
   commonQuestions: "",
   objections: "",
   whenRecommend: "",
+  whenNotRecommend: "",
   whenHuman: "",
   productSpecs: "",
   stockDelivery: "",
@@ -123,8 +166,14 @@ const EMPTY_FORM: FormState = {
   duration: "",
   schedulingRules: "",
   deliverables: "",
+  proofAndCases: "",
+  demonstration: "",
+  paymentConditions: "",
+  supportAndSla: "",
   upsell: "",
   crossSell: "",
+  upsellOfferIds: [],
+  crossSellOfferIds: [],
   availability: "active",
   source: "manual",
   extraTags: "",
@@ -196,10 +245,33 @@ function formFromDoc(item: CatalogDoc): FormState {
     category: item.productCategory || tagValue(item.tags || [], "categoria:"),
     priceFrom: typeof item.priceFrom === "number" ? String(item.priceFrom) : "",
     priceTo: typeof item.priceTo === "number" ? String(item.priceTo) : "",
+    currency: item.currency || "BRL",
+    sku: item.sku || "",
+    inventoryQuantity: typeof item.inventoryQuantity === "number" ? String(item.inventoryQuantity) : "",
+    checkoutUrl: item.checkoutUrl || "",
     targetProfile: item.targetProfile || "",
-    shortDescription: item.content || "",
+    shortDescription: item.description || item.content || "",
+    benefits: item.benefits || "",
+    commonQuestions: item.commonQuestions || "",
+    objections: item.objections || "",
+    whenRecommend: item.whenRecommend || "",
+    whenNotRecommend: item.whenNotRecommend || "",
+    whenHuman: item.whenHuman || "",
+    productSpecs: item.productSpecs || "",
+    stockDelivery: item.stockDelivery || "",
+    warranty: item.warranty || "",
+    serviceScope: item.serviceScope || "",
+    duration: item.duration || "",
+    schedulingRules: item.schedulingRules || "",
+    deliverables: item.deliverables || "",
+    proofAndCases: item.proofAndCases || "",
+    demonstration: item.demonstration || "",
+    paymentConditions: item.paymentConditions || "",
+    supportAndSla: item.supportAndSla || "",
     upsell: (item.upsellKeys || []).join(", "),
     crossSell: (item.crossSellKeys || []).join(", "),
+    upsellOfferIds: item.upsellOfferIds || [],
+    crossSellOfferIds: item.crossSellOfferIds || [],
     availability: item.availability || "active",
     source: sourceFromDoc(item),
     extraTags: (item.tags || [])
@@ -249,7 +321,12 @@ function buildContent(form: FormState) {
     ["Duvidas frequentes", form.commonQuestions],
     ["Objecoes comuns", form.objections],
     ["Quando recomendar", form.whenRecommend],
+    ["Quando nao recomendar", form.whenNotRecommend],
     ["Quando chamar humano", form.whenHuman],
+    ["Provas e casos", form.proofAndCases],
+    ["Como demonstrar", form.demonstration],
+    ["Pagamento", form.paymentConditions],
+    ["Suporte e SLA", form.supportAndSla],
     form.mediaItems.length
       ? ["Materiais para conversa", form.mediaItems.map((item) => `${item.mediaTitle || "Material"} (${mediaLabel(item.mediaType)} - ${usageLabel(item.usage || "suggest")})`).join("; ")]
       : form.mediaUrl
@@ -280,6 +357,15 @@ function serviceKeyFromName(value: string) {
     .replace(/\s+/g, "_")
     .replace(/[^a-z0-9_]/g, "")
     .slice(0, 80);
+}
+
+function legacyRelationIds(keys: string[] | undefined, offers: CatalogDoc[], currentOfferId: string) {
+  const wanted = new Set((keys || []).map((value) => value.trim().toLocaleLowerCase("pt-BR")).filter(Boolean));
+  if (!wanted.size) return [];
+  return offers
+    .filter((offer) => offer.id !== currentOfferId && offer.productName && wanted.has(offer.productName.trim().toLocaleLowerCase("pt-BR")))
+    .map((offer) => offer.id)
+    .slice(0, 12);
 }
 
 function mediaSizeLabel(value: number | null) {
@@ -330,6 +416,7 @@ export default function NovoProdutoServicoPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(() => ({ ...EMPTY_FORM, kind: initialKind }));
+  const [catalogOffers, setCatalogOffers] = useState<CatalogDoc[]>([]);
 
   const canManage = hasCapability("manage_ai");
   const isServiceMode = form.kind === "servico" || form.kind === "plano" || form.kind === "pacote";
@@ -343,9 +430,17 @@ export default function NovoProdutoServicoPage() {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`);
       const payload = (await res.json()) as { items?: CatalogDoc[]; error?: string };
       if (!res.ok) throw new Error(payload.error || "Falha ao carregar item.");
-      const found = (payload.items || []).find((item) => item.id === docId && item.type === "catalog");
+      const items = payload.items || [];
+      const offers = items.filter((item) => item.type === "catalog");
+      setCatalogOffers(offers);
+      const found = items.find((item) => item.id === docId && item.type === "catalog");
       if (!found) throw new Error("Item nao encontrado no catalogo.");
-      setForm(formFromDoc(found));
+      const nextForm = formFromDoc(found);
+      setForm({
+        ...nextForm,
+        upsellOfferIds: nextForm.upsellOfferIds.length ? nextForm.upsellOfferIds : legacyRelationIds(found.upsellKeys, offers, found.id),
+        crossSellOfferIds: nextForm.crossSellOfferIds.length ? nextForm.crossSellOfferIds : legacyRelationIds(found.crossSellKeys, offers, found.id),
+      });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Falha ao carregar item.");
     } finally {
@@ -370,7 +465,7 @@ export default function NovoProdutoServicoPage() {
       Boolean(form.benefits.trim()),
       Boolean(form.whenRecommend.trim()),
       Boolean(form.mediaItems.length || form.mediaUrl),
-      Boolean(parseList(form.upsell).length || parseList(form.crossSell).length),
+      Boolean(form.upsellOfferIds.length || form.crossSellOfferIds.length),
     ];
     const done = checks.filter(Boolean).length;
     return Math.round((done / checks.length) * 100);
@@ -378,6 +473,21 @@ export default function NovoProdutoServicoPage() {
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function toggleOfferRelation(key: "upsellOfferIds" | "crossSellOfferIds", offerId: string) {
+    setForm((current) => ({
+      ...current,
+      [key]: current[key].includes(offerId)
+        ? current[key].filter((id) => id !== offerId)
+        : [...current[key], offerId].slice(0, 12),
+    }));
+  }
+
+  function selectedOfferNames(ids: string[]) {
+    return ids
+      .map((id) => catalogOffers.find((offer) => offer.id === id)?.productName)
+      .filter((name): name is string => Boolean(name));
   }
 
   function removeMediaItem(mediaUrl: string) {
@@ -585,9 +695,36 @@ export default function NovoProdutoServicoPage() {
           targetProfile: form.targetProfile.trim() || null,
           priceFrom: numberOrNull(form.priceFrom),
           priceTo: numberOrNull(form.priceTo),
-          upsellKeys: parseList(form.upsell),
-          crossSellKeys: parseList(form.crossSell),
+          currency: form.currency.trim().toUpperCase() || "BRL",
+          sku: form.sku.trim() || null,
+          inventoryQuantity: form.kind === "produto" ? numberOrNull(form.inventoryQuantity) : null,
+          checkoutUrl: form.checkoutUrl.trim() || null,
+          kind: form.kind,
+          // Keep display labels for legacy screens, but the runtime relies on validated offer ids below.
+          upsellKeys: selectedOfferNames(form.upsellOfferIds),
+          crossSellKeys: selectedOfferNames(form.crossSellOfferIds),
+          upsellOfferIds: form.upsellOfferIds,
+          crossSellOfferIds: form.crossSellOfferIds,
           availability: form.availability,
+          useInAi: true,
+          description: form.shortDescription.trim() || null,
+          benefits: form.benefits.trim() || null,
+          commonQuestions: form.commonQuestions.trim() || null,
+          objections: form.objections.trim() || null,
+          whenRecommend: form.whenRecommend.trim() || null,
+          whenNotRecommend: form.whenNotRecommend.trim() || null,
+          whenHuman: form.whenHuman.trim() || null,
+          productSpecs: form.productSpecs.trim() || null,
+          stockDelivery: form.stockDelivery.trim() || null,
+          warranty: form.warranty.trim() || null,
+          serviceScope: form.serviceScope.trim() || null,
+          duration: form.duration.trim() || null,
+          schedulingRules: form.schedulingRules.trim() || null,
+          deliverables: form.deliverables.trim() || null,
+          proofAndCases: form.proofAndCases.trim() || null,
+          demonstration: form.demonstration.trim() || null,
+          paymentConditions: form.paymentConditions.trim() || null,
+          supportAndSla: form.supportAndSla.trim() || null,
         }),
       });
 
@@ -746,6 +883,8 @@ export default function NovoProdutoServicoPage() {
                   <Field label="Categoria" value={form.category} onChange={(value) => updateForm("category", value)} placeholder={isServiceMode ? "Ex: Atendimento" : "Ex: Acessorios"} />
                   <Field label="Preco inicial" value={form.priceFrom} onChange={(value) => updateForm("priceFrom", value)} placeholder="Ex: 497" />
                   <Field label="Preco final" value={form.priceTo} onChange={(value) => updateForm("priceTo", value)} placeholder="Opcional" />
+                  <Field label="Moeda" value={form.currency} onChange={(value) => updateForm("currency", value.toUpperCase().slice(0, 3))} placeholder="BRL" />
+                  <Field label="Link para comprar ou contratar" value={form.checkoutUrl} onChange={(value) => updateForm("checkoutUrl", value)} placeholder="https://..." />
                   <SelectField
                     label="Status"
                     value={form.availability}
@@ -768,7 +907,16 @@ export default function NovoProdutoServicoPage() {
                   <TextArea label="Objecoes comuns" value={form.objections} onChange={(value) => updateForm("objections", value)} rows={4} placeholder="Preco, prazo, garantia, comparacao, confianca." />
                   <TextArea label="Quando recomendar" value={form.whenRecommend} onChange={(value) => updateForm("whenRecommend", value)} rows={4} placeholder="Sinais da conversa que indicam fit." />
                 </div>
+                <TextArea label="Quando nao recomendar" value={form.whenNotRecommend} onChange={(value) => updateForm("whenNotRecommend", value)} rows={3} placeholder="Casos sem aderencia ou que precisam de outra solucao." />
                 <TextArea label="Quando chamar humano" value={form.whenHuman} onChange={(value) => updateForm("whenHuman", value)} rows={3} placeholder="Negociacao sensivel, excecoes, reclamacoes ou pedido fora do padrao." />
+              </FormSection>
+
+              <FormSection icon={BriefcaseBusiness} title="Confianca e condicoes" description="Fatos que a IA pode usar para orientar sem prometer o que nao esta combinado.">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <TextArea label="Provas e casos" value={form.proofAndCases} onChange={(value) => updateForm("proofAndCases", value)} rows={3} placeholder="Cases autorizados, numeros verificaveis, depoimentos ou certificacoes." />
+                  <TextArea label="Condicoes de pagamento" value={form.paymentConditions} onChange={(value) => updateForm("paymentConditions", value)} rows={3} placeholder="Formas, parcelas, entrada e regras comerciais realmente praticadas." />
+                  <TextArea label="Suporte e SLA" value={form.supportAndSla} onChange={(value) => updateForm("supportAndSla", value)} rows={3} placeholder="Canais, horario e prazo de atendimento ou suporte." />
+                </div>
               </FormSection>
 
               <FormSection icon={isServiceMode ? BriefcaseBusiness : Package} title={isServiceMode ? "Detalhes do servico" : "Detalhes do produto"} description={isServiceMode ? "Escopo, prazo e agenda deixam a promessa mais clara." : "Caracteristicas, entrega e garantia reduzem atrito no atendimento."}>
@@ -776,15 +924,18 @@ export default function NovoProdutoServicoPage() {
                   <div className="grid gap-3 md:grid-cols-2">
                     <TextArea label="Escopo do servico" value={form.serviceScope} onChange={(value) => updateForm("serviceScope", value)} rows={4} placeholder="O que esta incluso e o que nao esta." />
                     <TextArea label="Entregaveis" value={form.deliverables} onChange={(value) => updateForm("deliverables", value)} rows={4} placeholder="Itens entregues, etapas ou marcos." />
+                    <TextArea label="Como demonstrar" value={form.demonstration} onChange={(value) => updateForm("demonstration", value)} rows={4} placeholder="Como a IA ou atendente pode apresentar este servico." />
                     <Field label="Duracao ou prazo" value={form.duration} onChange={(value) => updateForm("duration", value)} placeholder="Ex: 7 dias, 3 sessoes, mensal" />
                     <Field label="Agenda e regras" value={form.schedulingRules} onChange={(value) => updateForm("schedulingRules", value)} placeholder="Ex: segunda a sexta, mediante disponibilidade" />
                   </div>
                 ) : (
                   <div className="grid gap-3 md:grid-cols-2">
+                    <Field label="SKU ou codigo" value={form.sku} onChange={(value) => updateForm("sku", value)} placeholder="Ex: KIT-PREMIUM-01" />
+                    <Field label="Estoque atual" value={form.inventoryQuantity} onChange={(value) => updateForm("inventoryQuantity", value)} placeholder="Deixe vazio para confirmar antes de prometer" />
                     <TextArea label="Especificacoes" value={form.productSpecs} onChange={(value) => updateForm("productSpecs", value)} rows={4} placeholder="Tamanho, modelo, cor, composicao, compatibilidade." />
                     <TextArea label="Estoque, entrega e envio" value={form.stockDelivery} onChange={(value) => updateForm("stockDelivery", value)} rows={4} placeholder="Disponibilidade, prazo, retirada, frete, rastreio." />
                     <TextArea label="Garantia e troca" value={form.warranty} onChange={(value) => updateForm("warranty", value)} rows={4} placeholder="Garantia, politica de troca, cuidados e restricoes." />
-                    <TextArea label="Como demonstrar" value={form.deliverables} onChange={(value) => updateForm("deliverables", value)} rows={4} placeholder="Como a IA ou atendente pode apresentar este produto." />
+                    <TextArea label="Como demonstrar" value={form.demonstration} onChange={(value) => updateForm("demonstration", value)} rows={4} placeholder="Como a IA ou atendente pode apresentar este produto." />
                   </div>
                 )}
               </FormSection>
@@ -876,9 +1027,26 @@ export default function NovoProdutoServicoPage() {
 
               <FormSection icon={CheckCircle2} title="Venda adicional" description="Ajude a operacao a sugerir o proximo melhor item.">
                 <div className="grid gap-3 md:grid-cols-2">
-                  <TextArea label="Upsell" value={form.upsell} onChange={(value) => updateForm("upsell", value)} rows={3} placeholder="Itens ou planos acima deste." />
-                  <TextArea label="Cross-sell" value={form.crossSell} onChange={(value) => updateForm("crossSell", value)} rows={3} placeholder="Itens complementares." />
+                  <OfferRelationSelector
+                    label="Upsell"
+                    description="Oferta acima desta, escolhida no catalogo real."
+                    offers={catalogOffers}
+                    currentOfferId={docId}
+                    selectedIds={form.upsellOfferIds}
+                    onToggle={(offerId) => toggleOfferRelation("upsellOfferIds", offerId)}
+                  />
+                  <OfferRelationSelector
+                    label="Cross-sell"
+                    description="Complemento que faz sentido junto com esta oferta."
+                    offers={catalogOffers}
+                    currentOfferId={docId}
+                    selectedIds={form.crossSellOfferIds}
+                    onToggle={(offerId) => toggleOfferRelation("crossSellOfferIds", offerId)}
+                  />
                 </div>
+                <p className="text-xs leading-5 text-[var(--cliente-card-text-muted)]">
+                  A Altum so sugere uma venda adicional que esteja vinculada a uma oferta real. Nao ha recomendacao automatica por proximidade de preco ou categoria.
+                </p>
                 <div className="grid gap-3 md:grid-cols-2">
                   <Field label="Origem" value={form.source} onChange={(value) => updateForm("source", value)} placeholder="manual, shopify, vtex..." />
                   <Field label="Tags extras" value={form.extraTags} onChange={(value) => updateForm("extraTags", value)} placeholder="whatsapp, recorrencia, premium" />
@@ -937,7 +1105,7 @@ export default function NovoProdutoServicoPage() {
               <ChecklistRow checked={Boolean(form.shortDescription.trim())} label="Descricao comercial objetiva" />
               <ChecklistRow checked={Boolean(form.whenRecommend.trim())} label="Sinais para recomendar" />
               <ChecklistRow checked={Boolean(form.mediaItems.length || form.mediaUrl)} label="Material de apoio anexado" />
-              <ChecklistRow checked={Boolean(parseList(form.upsell).length || parseList(form.crossSell).length)} label="Proxima oferta configurada" />
+              <ChecklistRow checked={Boolean(form.upsellOfferIds.length || form.crossSellOfferIds.length)} label="Proxima oferta configurada" />
             </div>
           </PanelCard>
         </aside>
@@ -1021,6 +1189,53 @@ function TextArea({
         className="client-input mt-2 w-full resize-y rounded-[16px] border px-3 py-3 text-sm font-medium normal-case leading-6 tracking-normal outline-none transition focus:border-[color:color-mix(in_srgb,var(--cliente-primary)_46%,var(--cliente-border))] placeholder:text-[var(--cliente-card-text-soft)]"
       />
     </label>
+  );
+}
+
+function OfferRelationSelector({
+  label,
+  description,
+  offers,
+  currentOfferId,
+  selectedIds,
+  onToggle,
+}: {
+  label: string;
+  description: string;
+  offers: CatalogDoc[];
+  currentOfferId: string;
+  selectedIds: string[];
+  onToggle: (offerId: string) => void;
+}) {
+  const candidates = offers.filter((offer) => offer.id !== currentOfferId && offer.productName && offer.availability !== "paused");
+  return (
+    <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
+      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">{label}</p>
+      <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-muted)]">{description}</p>
+      {candidates.length ? (
+        <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto pr-1">
+          {candidates.map((offer) => {
+            const selected = selectedIds.includes(offer.id);
+            return (
+              <label key={offer.id} className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 text-sm transition hover:bg-[var(--cliente-surface-hover)]">
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() => onToggle(offer.id)}
+                  className="h-4 w-4 rounded border-[var(--cliente-border)] text-[var(--cliente-primary)]"
+                />
+                <span className="min-w-0 flex-1 truncate font-semibold text-[var(--cliente-card-text)]">{offer.productName}</span>
+                {typeof offer.priceFrom === "number" ? <span className="text-[11px] text-[var(--cliente-card-text-soft)]">{offer.currency || "BRL"} {offer.priceFrom}</span> : null}
+              </label>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-xl border border-dashed border-[var(--cliente-border)] px-3 py-2 text-xs leading-5 text-[var(--cliente-card-text-muted)]">
+          Cadastre outra oferta ativa para criar um vinculo comercial real.
+        </p>
+      )}
+    </div>
   );
 }
 

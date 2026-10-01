@@ -28,12 +28,27 @@ import {
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CardTitle, MetricCard, PanelCard, SectionHeader, StateBadge } from "@/app/cliente/painel/components/ui";
+import { CommercialAgentActionQueue } from "@/app/cliente/painel/components/commercial-agent-action-queue";
 import { getBusinessProfile, getBusinessProfilePlaybookPreset, type BusinessProfileId } from "@/lib/business-profiles";
 import { DEFAULT_AI_PROVIDERS } from "@/lib/server/ai/operating-layer";
+import {
+  AI_EVALUATION_SCENARIOS,
+  evaluateAiScenario,
+  summarizeAiEvaluation,
+  type AiEvaluationPreview,
+  type AiEvaluationRunItem,
+  type AiEvaluationSummary,
+} from "@/lib/ai-evaluation";
+import {
+  ALTUM_ASSISTANT_ROLES,
+  assistantRoleLabel,
+  type AltumAssistantRole,
+} from "@/lib/ai-assistant-role";
 
 type AiSettings = {
   enabled: boolean;
   agentName?: string;
+  assistantRole?: AltumAssistantRole;
   toneOfVoice: string;
   businessSummary: string;
   objective?: string;
@@ -72,6 +87,16 @@ type AiSettings = {
   extractionModelOverride?: string;
   monthlyBudgetUsd?: number;
   monthlyUsageCap?: number;
+  rolloutMode?: "automatic" | "shadow";
+  rolloutPercent?: number;
+  agentVersion?: string;
+  rolloutQuality?: {
+    gate?: "ready" | "watch" | "blocked" | null;
+    evaluatedAt?: unknown;
+    scenarioVersion?: string | null;
+    fresh?: boolean;
+    available?: boolean;
+  };
   runtimePolicy?: {
     primaryProvider?: string;
     fallbackProviders?: string[];
@@ -123,6 +148,12 @@ type AiLog = {
   reason?: string;
   confidence?: number | null;
   matchedKbDocIds?: string[];
+  groundingSources?: Array<{
+    kind: "knowledge" | "catalog" | "campaign";
+    id: string;
+    label: string;
+    detail?: string | null;
+  }>;
   extractedFields?: Record<string, string> | null;
   nextAction?: string | null;
   plannerIntent?: string | null;
@@ -134,6 +165,21 @@ type AiLog = {
   commercialTemperature?: string | null;
   qualityScore?: number | null;
   latencyMs?: number | null;
+  inboundToStartLatencyMs?: number | null;
+  tenantContextFingerprint?: string | null;
+  tenantContextDiagnostics?: {
+    guardrailCount?: number;
+    mandatoryQuestionCount?: number;
+    escalationTopicCount?: number;
+    configuredCommercialBrainFields?: number;
+  } | null;
+  rollout?: {
+    mode?: "automatic" | "shadow";
+    percent?: number;
+    bucket?: number;
+    agentVersion?: string;
+    reason?: string;
+  } | null;
   createdAt?: unknown;
 };
 
@@ -144,6 +190,10 @@ type AiUsageSummary = {
   premiumLane: number;
   conversationRuns: number;
   fallbackRuns: number;
+  effectiveUsageCap?: number;
+  monthlyBudgetUsd?: number;
+  usageCapExceeded?: boolean;
+  budgetCapExceeded?: boolean;
 };
 
 type CampaignOverviewResponse = {
@@ -179,172 +229,26 @@ type ActionSignal = {
   action: () => void;
 };
 
-type PreviewScenario = {
-  id: string;
-  label: string;
-  message: string;
-  messageType?: string;
-  history?: Array<{ sender: "agent" | "client" | "system"; text: string; type?: string }>;
-  leadMemory?: Record<string, unknown>;
-  expected?: {
-    decisions?: string[];
-    responseGoals?: string[];
-    stateAfter?: string[];
-    extractedFields?: string[];
-    minQuality?: number;
-    forbiddenNotes?: string[];
-  };
-};
-
-type PreviewResult = {
-  plannerDecision?: {
-    decision?: string;
-    reason?: string;
-    confidence?: number;
-    stateBefore?: string;
-    stateAfter?: string;
-    responseGoal?: string;
-    intent?: string;
-    objectionType?: string | null;
-    commercialTemperature?: string | null;
-    nextQuestion?: string | null;
-    nextAction?: string | null;
-    recommendedOffer?: string | null;
-  };
-  extractedFields?: Record<string, string> | null;
-  responseText?: string;
-  quality?: { score?: number; notes?: string[] };
-  matchedKbDocs?: Array<{ id: string; type: string; score: number; preview: string }>;
-};
-
 type CommercialBrainSettings = NonNullable<AiSettings["commercialBrain"]>;
 
-type PreviewBatchRun = {
-  scenarioId: string;
-  label: string;
-  preview: PreviewResult | null;
-  error?: string | null;
-  verdict?: {
-    passed: boolean;
-    issues: string[];
-  };
-};
+type PreviewScenario = (typeof AI_EVALUATION_SCENARIOS)[number];
+type PreviewResult = AiEvaluationPreview;
+type PreviewBatchRun = AiEvaluationRunItem;
 
-const PREVIEW_SCENARIOS: PreviewScenario[] = [
-  {
-    id: "greeting",
-    label: "Saudacao fria",
-    message: "Oi",
-    expected: {
-      decisions: ["respond"],
-      responseGoals: ["welcome"],
-      stateAfter: ["discovery"],
-      minQuality: 0.7,
-      forbiddenNotes: ["vazou_jargao_interno", "resposta_longa"],
-    },
-  },
-  {
-    id: "price_early",
-    label: "Preco cedo demais",
-    message: "Quanto custa?",
-    expected: {
-      decisions: ["ask_more"],
-      responseGoals: ["handle_objection"],
-      stateAfter: ["qualification"],
-      minQuality: 0.7,
-      forbiddenNotes: ["vazou_jargao_interno"],
-    },
-  },
-  {
-    id: "ask_services",
-    label: "O que voces fazem",
-    message: "O que voces fazem?",
-    expected: {
-      decisions: ["respond"],
-      responseGoals: ["clarify"],
-      minQuality: 0.68,
-      forbiddenNotes: ["vazou_jargao_interno", "resposta_longa"],
-    },
-  },
-  {
-    id: "imobiliaria",
-    label: "Imobiliaria + dor",
-    message: "Sou uma imobiliaria e quero vender mais pelo WhatsApp",
-    expected: {
-      decisions: ["respond"],
-      responseGoals: ["recommend"],
-      stateAfter: ["recommendation"],
-      extractedFields: ["businessType", "primaryGoal"],
-      minQuality: 0.72,
-    },
-  },
-  {
-    id: "price_with_context",
-    label: "Preco com contexto",
-    message: "Sou uma clinica e quero organizar atendimento e vendas. Quanto custa?",
-    expected: {
-      decisions: ["respond"],
-      responseGoals: ["handle_objection"],
-      stateAfter: ["recommendation"],
-      extractedFields: ["businessType", "primaryGoal"],
-      minQuality: 0.72,
-    },
-  },
-  {
-    id: "soft_objection",
-    label: "Objecao suave",
-    message: "Entendi, mas vou pensar",
-    history: [
-      { sender: "agent", text: "Pelo seu contexto, o caminho mais aderente aqui tende a ser implantacao de IA para atendimento e comercial. Se fizer sentido, eu te mostro o proximo passo." },
-    ],
-    leadMemory: {
-      businessType: "imobiliaria",
-      primaryGoal: "aumentar vendas",
-      currentChannels: "whatsapp, instagram",
-      recommendedOffer: "implantacao de IA para atendimento e comercial",
-    },
-    expected: {
-      decisions: ["respond"],
-      responseGoals: ["handle_objection"],
-      stateAfter: ["objection_handling"],
-      minQuality: 0.7,
-    },
-  },
-  {
-    id: "proposal_too_early",
-    label: "Proposta cedo demais",
-    message: "Me manda uma proposta",
-    expected: {
-      decisions: ["ask_more"],
-      responseGoals: ["qualify"],
-      stateAfter: ["qualification"],
-      minQuality: 0.7,
-    },
-  },
-  {
-    id: "audio_context",
-    label: "Audio com contexto",
-    message: "Tenho uma loja, anuncio no Instagram e perco lead no atendimento",
-    messageType: "audio",
-    expected: {
-      decisions: ["ask_more", "respond"],
-      extractedFields: ["currentChannels"],
-      minQuality: 0.68,
-    },
-  },
-  {
-    id: "audio_unclear",
-    label: "Audio pouco claro",
-    message: "[Audio com fala pouco clara]",
-    messageType: "audio",
-    expected: {
-      decisions: ["ask_more"],
-      responseGoals: ["qualify"],
-      minQuality: 0.68,
-      forbiddenNotes: ["vazou_jargao_interno"],
-    },
-  },
-];
+type AiEvaluationHistoryRun = {
+  id: string;
+  source?: string;
+  scenarioVersion?: string;
+  summary?: AiEvaluationSummary | null;
+  results?: Array<{
+    scenarioId?: string;
+    label?: string;
+    passed?: boolean;
+    critical?: boolean;
+    issues?: string[];
+  }>;
+  createdAt?: unknown;
+};
 
 type TenantSettingsPayload = {
   settings?: {
@@ -355,6 +259,7 @@ type TenantSettingsPayload = {
 const EMPTY_SETTINGS: AiSettings = {
   enabled: true,
   agentName: "",
+  assistantRole: "sales",
   toneOfVoice: "consultivo e objetivo",
   businessSummary: "",
   objective: "",
@@ -375,7 +280,7 @@ const EMPTY_SETTINGS: AiSettings = {
   voiceReplyEnabled: false,
   voiceReplyVoice: "marin",
   voiceReplyMode: "smart",
-  voiceReplyMaxChars: 760,
+  voiceReplyMaxChars: 460,
   guardrails: [],
   mandatoryQuestions: [],
   escalationTopics: [],
@@ -393,6 +298,9 @@ const EMPTY_SETTINGS: AiSettings = {
   extractionModelOverride: "",
   monthlyBudgetUsd: 100,
   monthlyUsageCap: 1500,
+  rolloutMode: "automatic",
+  rolloutPercent: 100,
+  agentVersion: "conversation-v1",
 };
 
 function audioBase64ToObjectUrl(base64: string, mimeType = "audio/mpeg") {
@@ -411,6 +319,22 @@ const PROVIDER_OPTIONS = [
   { id: "mistral", label: "Backup leve" },
   { id: "altum_rules", label: "Regras internas" },
 ] as const;
+
+const VOICE_OPTIONS: ReadonlyArray<{ id: string; label: string; profile: string; recommended?: boolean }> = [
+  { id: "marin", label: "Marin", profile: "Natural e equilibrada", recommended: true },
+  { id: "cedar", label: "Cedar", profile: "Segura e próxima", recommended: true },
+  { id: "coral", label: "Coral", profile: "Calorosa e positiva" },
+  { id: "sage", label: "Sage", profile: "Calma e consultiva" },
+  { id: "nova", label: "Nova", profile: "Clara e dinâmica" },
+  { id: "shimmer", label: "Shimmer", profile: "Leve e acolhedora" },
+  { id: "alloy", label: "Alloy", profile: "Neutra e versátil" },
+  { id: "ash", label: "Ash", profile: "Direta e moderna" },
+  { id: "ballad", label: "Ballad", profile: "Expressiva e suave" },
+  { id: "echo", label: "Echo", profile: "Firme e conversacional" },
+  { id: "fable", label: "Fable", profile: "Narrativa e envolvente" },
+  { id: "onyx", label: "Onyx", profile: "Grave e confiante" },
+  { id: "verse", label: "Verse", profile: "Fluida e espontânea" },
+];
 
 const CONVERSATION_MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
   openai: [
@@ -537,51 +461,6 @@ function responseStyleLabel(value?: string) {
   return "Consultivo";
 }
 
-function evaluatePreviewScenario(preview: PreviewResult | null, scenario: PreviewScenario) {
-  const issues: string[] = [];
-  const expected = scenario.expected;
-  if (!preview || !expected) {
-    return { passed: Boolean(preview), issues };
-  }
-
-  const decision = String(preview.plannerDecision?.decision || "");
-  const responseGoal = String(preview.plannerDecision?.responseGoal || "");
-  const stateAfter = String(preview.plannerDecision?.stateAfter || "");
-  const extractedFieldKeys = new Set(Object.keys(preview.extractedFields || {}));
-  const qualityScore = typeof preview.quality?.score === "number" ? preview.quality.score : 0;
-  const qualityNotes = new Set(preview.quality?.notes || []);
-
-  if (expected.decisions?.length && !expected.decisions.includes(decision)) {
-    issues.push(`decisao fora do esperado: ${decision || "sem decisao"}`);
-  }
-  if (expected.responseGoals?.length && !expected.responseGoals.includes(responseGoal)) {
-    issues.push(`objetivo fora do esperado: ${responseGoal || "sem objetivo"}`);
-  }
-  if (expected.stateAfter?.length && !expected.stateAfter.includes(stateAfter)) {
-    issues.push(`estado final fora do esperado: ${stateAfter || "sem estado"}`);
-  }
-  if (expected.extractedFields?.length) {
-    const missing = expected.extractedFields.filter((field) => !extractedFieldKeys.has(field));
-    if (missing.length) {
-      issues.push(`faltou CRM: ${missing.join(", ")}`);
-    }
-  }
-  if (typeof expected.minQuality === "number" && qualityScore < expected.minQuality) {
-    issues.push(`qualidade baixa: ${Math.round(qualityScore * 100)}%`);
-  }
-  if (expected.forbiddenNotes?.length) {
-    const forbiddenFound = expected.forbiddenNotes.filter((note) => qualityNotes.has(note));
-    if (forbiddenFound.length) {
-      issues.push(`sinais ruins: ${forbiddenFound.join(", ")}`);
-    }
-  }
-
-  return {
-    passed: issues.length === 0,
-    issues,
-  };
-}
-
 function reorderProviders(
   currentProviders: NonNullable<AiSettings["preferredProviders"]>,
   providerId: NonNullable<AiSettings["preferredProviders"]>[number],
@@ -662,18 +541,21 @@ export default function ClienteIaPage() {
   const [logSearch, setLogSearch] = useState("");
   const [decisionFilter, setDecisionFilter] = useState<"all" | "respond" | "ask_more" | "handoff" | "skip">("all");
   const [logRiskFilter, setLogRiskFilter] = useState<"all" | "low_confidence" | "handoff_only">("all");
-  const [previewScenarioId, setPreviewScenarioId] = useState(PREVIEW_SCENARIOS[0].id);
-  const [previewMessage, setPreviewMessage] = useState(PREVIEW_SCENARIOS[0].message);
+  const [previewScenarioId, setPreviewScenarioId] = useState(AI_EVALUATION_SCENARIOS[0].id);
+  const [previewMessage, setPreviewMessage] = useState(AI_EVALUATION_SCENARIOS[0].message);
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
   const [runningPreview, setRunningPreview] = useState(false);
   const [runningPreviewBatch, setRunningPreviewBatch] = useState(false);
   const [previewBatchResults, setPreviewBatchResults] = useState<PreviewBatchRun[]>([]);
+  const [evaluationRuns, setEvaluationRuns] = useState<AiEvaluationHistoryRun[]>([]);
   const [voicePreviewText, setVoicePreviewText] = useState("Oi! Aqui e a Altum. Estou te mandando um audio curto para mostrar como a IA pode responder pelo WhatsApp.");
   const [voicePreviewUrl, setVoicePreviewUrl] = useState("");
   const [voicePreviewTranscript, setVoicePreviewTranscript] = useState("");
   const [voicePreviewStatus, setVoicePreviewStatus] = useState("");
   const [voicePreviewError, setVoicePreviewError] = useState("");
+  const [voicePreviewNativeReady, setVoicePreviewNativeReady] = useState<boolean | null>(null);
   const [runningVoicePreview, setRunningVoicePreview] = useState(false);
+  const [voicePreviewVoice, setVoicePreviewVoice] = useState("");
 
   const canManage = hasCapability("manage_ai");
   const canEditKb = hasCapability("manage_ai");
@@ -685,7 +567,7 @@ export default function ClienteIaPage() {
       setLoading(true);
       setError(null);
 
-      const [settingsRes, kbRes, logsRes, usageRes, campaignsRes, tenantSettingsRes] = await Promise.all([
+      const [settingsRes, kbRes, logsRes, usageRes, campaignsRes, tenantSettingsRes, evaluationsRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`),
         authedFetch(`/api/tenant/${tenant.tenantId}/kb-docs`),
         canManage
@@ -696,6 +578,9 @@ export default function ClienteIaPage() {
           : Promise.resolve(new Response(JSON.stringify({ summary: { total: 0, estimatedCostUsd: 0, rulesLane: 0, premiumLane: 0, conversationRuns: 0, fallbackRuns: 0 } }), { status: 200 })),
         authedFetch(`/api/tenant/${tenant.tenantId}/campaigns/overview`),
         authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
+        canManage
+          ? authedFetch(`/api/tenant/${tenant.tenantId}/ai-evaluations`)
+          : Promise.resolve(new Response(JSON.stringify({ runs: [] }), { status: 200 })),
       ]);
 
       const settingsPayload = (await settingsRes.json()) as { ai?: AiSettings; error?: string };
@@ -704,6 +589,9 @@ export default function ClienteIaPage() {
       const usagePayload = (await usageRes.json()) as { summary?: AiUsageSummary; error?: string };
       const campaignsPayload = (await campaignsRes.json().catch(() => ({}))) as CampaignOverviewResponse;
       const tenantSettingsPayload = (await tenantSettingsRes.json().catch(() => ({}))) as TenantSettingsPayload;
+      const evaluationsPayload = (await evaluationsRes.json().catch(() => ({}))) as {
+        runs?: AiEvaluationHistoryRun[];
+      };
       setBusinessProfileId((tenantSettingsPayload.settings?.businessProfileId as BusinessProfileId) || "generic");
 
       if (settingsRes.ok) {
@@ -753,6 +641,10 @@ export default function ClienteIaPage() {
       } else {
         setCampaignOverview({});
       }
+
+      if (evaluationsRes.ok) {
+        setEvaluationRuns(evaluationsPayload.runs || []);
+      }
     } catch {
       setError("Falha ao carregar modulo IA.");
     } finally {
@@ -764,6 +656,10 @@ export default function ClienteIaPage() {
     void loadData();
   }, [loadData]);
 
+  useEffect(() => () => {
+    if (voicePreviewUrl.startsWith("blob:")) URL.revokeObjectURL(voicePreviewUrl);
+  }, [voicePreviewUrl]);
+
   const businessProfile = useMemo(() => getBusinessProfile(businessProfileId), [businessProfileId]);
   const playbookPreset = useMemo(() => getBusinessProfilePlaybookPreset(businessProfileId), [businessProfileId]);
 
@@ -771,6 +667,10 @@ export default function ClienteIaPage() {
     const lowConfidence = logs.filter((log) => typeof log.confidence === "number" && log.confidence < 0.55).length;
     const avgLatency = logs.length
       ? Math.round(logs.reduce((sum, item) => sum + Number(item.latencyMs || 0), 0) / Math.max(1, logs.length))
+      : 0;
+    const logsWithQueueWait = logs.filter((item) => typeof item.inboundToStartLatencyMs === "number");
+    const avgInboundToStartLatency = logsWithQueueWait.length
+      ? Math.round(logsWithQueueWait.reduce((sum, item) => sum + Number(item.inboundToStartLatencyMs || 0), 0) / logsWithQueueWait.length)
       : 0;
 
     return {
@@ -781,6 +681,7 @@ export default function ClienteIaPage() {
       objectionHandling: logs.filter((log) => String(log.stateAfter || "") === "objection_handling").length,
       lowConfidence,
       avgLatency,
+      avgInboundToStartLatency,
       avgQuality:
         logs.filter((log) => typeof log.qualityScore === "number").length > 0
           ? Number(
@@ -826,6 +727,14 @@ export default function ClienteIaPage() {
       .sort((a, b) => b.total - a.total)
       .slice(0, 6);
   }, [kbDocs, logs]);
+
+  const kbSourceById = useMemo(
+    () => new Map(kbDocs.map((doc) => [
+      doc.id,
+      doc.productName || doc.mediaTitle || doc.content.slice(0, 80) || doc.id,
+    ])),
+    [kbDocs]
+  );
 
   const aiCoverage = useMemo(() => {
     const used = kbUsage.filter((item) => item.total > 0).length;
@@ -987,30 +896,45 @@ export default function ClienteIaPage() {
         id: "assistant",
         label: "Assistente ligado",
         detail: settings.enabled ? "Atende automaticamente" : "IA pausada",
+        impact: settings.enabled ? "Novas conversas elegiveis podem receber resposta." : "Nenhum cliente recebera resposta automatica.",
+        href: "#ia-comportamento",
+        actionLabel: "Revisar ativacao",
         done: settings.enabled,
       },
       {
         id: "offer",
         label: "Oferta ensinada",
         detail: kbDocs.length > 0 ? `${kbDocs.length} itens na base` : "Cadastre produtos e respostas",
+        impact: kbDocs.length > 0 ? "A IA pode responder usando fontes verificadas." : "Preco, estoque e politicas serao encaminhados para uma pessoa.",
+        href: "/cliente/painel/produtos-servicos",
+        actionLabel: "Ensinar ofertas",
         done: kbDocs.length > 0,
       },
       {
         id: "handoff",
         label: "Humano definido",
         detail: settings.responsiblePhone || "Sem responsavel",
+        impact: settings.responsiblePhone ? "Escaladas tem um destino operacional." : "Pedidos de ajuda podem ficar sem notificacao direta.",
+        href: "#ia-comportamento",
+        actionLabel: "Definir responsavel",
         done: Boolean(settings.responsiblePhone),
       },
       {
         id: "voice",
         label: "Audio preparado",
         detail: settings.voiceReplyEnabled ? "Voz liberada no WhatsApp" : "Voz desativada",
+        impact: settings.voiceReplyEnabled ? "A IA pode responder em voz conforme a politica escolhida." : "Todas as respostas seguem em texto.",
+        href: "#ia-audio",
+        actionLabel: "Configurar voz",
         done: Boolean(settings.voiceReplyEnabled),
       },
       {
         id: "quality",
         label: "Qualidade monitorada",
         detail: logSummary.lowConfidence > 0 ? `${logSummary.lowConfidence} ponto(s) para revisar` : "Sem alerta recente",
+        impact: logSummary.lowConfidence > 0 ? "Respostas de baixa confianca precisam de revisao antes de ampliar a autonomia." : "Nenhum alerta recente bloqueia a operacao.",
+        href: "#ia-teste",
+        actionLabel: "Abrir testes",
         done: logSummary.lowConfidence === 0,
       },
     ],
@@ -1108,17 +1032,17 @@ export default function ClienteIaPage() {
   }
 
   const selectedPreviewScenario = useMemo(
-    () => PREVIEW_SCENARIOS.find((item) => item.id === previewScenarioId) || PREVIEW_SCENARIOS[0],
+    () =>
+      AI_EVALUATION_SCENARIOS.find((item) => item.id === previewScenarioId) ||
+      AI_EVALUATION_SCENARIOS[0],
     [previewScenarioId]
   );
 
-  const previewBatchSummary = useMemo(() => {
-    const total = previewBatchResults.length;
-    const approved = previewBatchResults.filter((item) => item.verdict?.passed).length;
-    const errors = previewBatchResults.filter((item) => item.error).length;
-    const adjustments = previewBatchResults.filter((item) => !item.error && item.verdict && !item.verdict.passed).length;
-    return { total, approved, errors, adjustments };
-  }, [previewBatchResults]);
+  const previewBatchSummary = useMemo(
+    () => summarizeAiEvaluation(previewBatchResults),
+    [previewBatchResults]
+  );
+  const latestEvaluationRun = evaluationRuns[0] || null;
 
   const primaryProvider = useMemo(() => getPrimaryProvider(settings), [settings]);
   const conversationModelOptions = useMemo(
@@ -1131,7 +1055,7 @@ export default function ClienteIaPage() {
   );
 
   function applyPreviewScenario(scenarioId: string) {
-    const scenario = PREVIEW_SCENARIOS.find((item) => item.id === scenarioId);
+    const scenario = AI_EVALUATION_SCENARIOS.find((item) => item.id === scenarioId);
     if (!scenario) return;
     setPreviewScenarioId(scenario.id);
     setPreviewMessage(scenario.message);
@@ -1151,6 +1075,9 @@ export default function ClienteIaPage() {
         messageType: scenario.messageType || "text",
         history: scenario.history || [],
         leadMemory: scenario.leadMemory || null,
+        assistantRole: scenario.assistantRole,
+        businessProfileId: scenario.businessProfileId,
+        evaluationScenarioId: scenario.id,
       }),
     });
     const payload = (await res.json()) as { error?: string; preview?: PreviewResult };
@@ -1186,17 +1113,47 @@ export default function ClienteIaPage() {
     setError(null);
     try {
       const results: PreviewBatchRun[] = [];
-      for (const scenario of PREVIEW_SCENARIOS) {
+      for (const scenario of AI_EVALUATION_SCENARIOS) {
         const result = await runPreviewScenario(scenario);
         results.push({
           scenarioId: scenario.id,
           label: scenario.label,
           preview: result.preview,
           error: result.error,
-          verdict: result.preview ? evaluatePreviewScenario(result.preview, scenario) : undefined,
+          verdict: result.preview
+            ? evaluateAiScenario(result.preview, scenario)
+            : { passed: false, issues: [result.error || "preview ausente"] },
         });
       }
       setPreviewBatchResults(results);
+      const saveRes = await authedFetch(`/api/tenant/${tenant.tenantId}/ai-evaluations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "manual_console",
+          results: results.map((item) => ({
+            scenarioId: item.scenarioId,
+            proofId: item.preview?.evaluationProofId || null,
+          })),
+        }),
+      });
+      const savePayload = (await saveRes.json().catch(() => ({}))) as {
+        error?: string;
+        run?: AiEvaluationHistoryRun;
+      };
+      if (!saveRes.ok || !savePayload.run) {
+        setError(savePayload.error || "A bateria terminou, mas o resultado nao foi registrado.");
+      } else {
+        setEvaluationRuns((current) => [savePayload.run as AiEvaluationHistoryRun, ...current].slice(0, 10));
+        const gate = savePayload.run.summary?.gate;
+        setSuccess(
+          gate === "ready"
+            ? "Gate de qualidade aprovado. Esta versao esta pronta para avancar."
+            : gate === "watch"
+              ? "Bateria registrada. A IA pode avancar com acompanhamento."
+              : "Bateria registrada e bloqueada por regressao critica."
+        );
+      }
     } catch {
       setError("Falha ao executar bateria de cenarios da IA.");
     } finally {
@@ -1204,7 +1161,7 @@ export default function ClienteIaPage() {
     }
   }
 
-  async function handleRunVoicePreview() {
+  async function handleRunVoicePreview(voiceOverride?: string) {
     if (!tenant?.tenantId) {
       setVoicePreviewError("Nao encontrei o workspace para gerar o teste.");
       return;
@@ -1224,7 +1181,10 @@ export default function ClienteIaPage() {
     setVoicePreviewUrl("");
     setVoicePreviewTranscript("");
     setVoicePreviewError("");
-    setVoicePreviewStatus("Gerando audio de teste...");
+    setVoicePreviewNativeReady(null);
+    const selectedVoice = voiceOverride || settings.voiceReplyVoice || "marin";
+    setVoicePreviewVoice(selectedVoice);
+    setVoicePreviewStatus(`Gerando amostra da voz ${selectedVoice}...`);
 
     try {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/ai-voice/preview`, {
@@ -1232,8 +1192,8 @@ export default function ClienteIaPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: voicePreviewText,
-          voice: settings.voiceReplyVoice || "marin",
-          maxChars: settings.voiceReplyMaxChars || 760,
+          voice: selectedVoice,
+          maxChars: settings.voiceReplyMaxChars || 460,
         }),
       });
       const payload = (await res.json().catch(() => ({}))) as {
@@ -1242,8 +1202,14 @@ export default function ClienteIaPage() {
         audioBase64?: string;
         audioMimeType?: string;
         audioByteLength?: number;
+        durationMs?: number;
+        durationSource?: "measured_wav" | "estimated_text";
         transcript?: string;
         warning?: string;
+        voice?: string;
+        model?: string;
+        whatsappMimeType?: string | null;
+        nativeVoiceReady?: boolean;
       };
       if (!res.ok) {
         setVoicePreviewError(payload.error || "Falha ao gerar teste de audio.");
@@ -1260,15 +1226,21 @@ export default function ClienteIaPage() {
         : payload.audioUrl || "";
       setVoicePreviewUrl(previewUrl);
       setVoicePreviewTranscript(payload.transcript || "");
+      setVoicePreviewVoice(payload.voice || selectedVoice);
+      setVoicePreviewNativeReady(payload.nativeVoiceReady === true);
+      const durationLabel = typeof payload.durationMs === "number"
+        ? ` · ${Math.max(1, Math.round(payload.durationMs / 1000))}s${payload.durationSource === "estimated_text" ? " estimados" : ""}`
+        : "";
       setVoicePreviewStatus(
         payload.warning
-          ? `Audio gerado (${Math.round(Number(payload.audioByteLength || 0) / 1024)} KB). Carregando no player local.`
-          : `Audio pronto (${Math.round(Number(payload.audioByteLength || 0) / 1024)} KB). Carregando no player.`
+          ? `Audio gerado (${Math.round(Number(payload.audioByteLength || 0) / 1024)} KB${durationLabel}). Carregando no player local.`
+          : `Audio pronto (${Math.round(Number(payload.audioByteLength || 0) / 1024)} KB${durationLabel}). Carregando no player.`
       );
-      setSuccess("Audio de teste gerado.");
+      setSuccess(`Amostra da voz ${payload.voice || selectedVoice} pronta.`);
     } catch (previewError) {
       setVoicePreviewError(previewError instanceof Error ? previewError.message : "Falha ao gerar teste de audio.");
       setVoicePreviewStatus("");
+      setVoicePreviewNativeReady(null);
     } finally {
       setRunningVoicePreview(false);
     }
@@ -1550,6 +1522,77 @@ export default function ClienteIaPage() {
         action={<StateBadge label={settings.enabled ? "Assistente ativo" : "Assistente pausado"} tone={settings.enabled ? "success" : "warning"} />}
       />
 
+      <nav aria-label="Etapas de configuracao do assistente" className="grid gap-2 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3 shadow-[var(--cliente-shadow-soft)] sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          {
+            step: "1",
+            label: "Papel",
+            detail: assistantRoleLabel(settings.assistantRole),
+            href: "#ia-papel",
+            ready: Boolean(settings.assistantRole),
+          },
+          {
+            step: "2",
+            label: "Comportamento",
+            detail: settings.businessSummary && settings.objective ? "contexto definido" : "revisar contexto",
+            href: "#ia-comportamento",
+            ready: Boolean(settings.businessSummary && settings.objective),
+          },
+          {
+            step: "3",
+            label: "Conhecimento",
+            detail: kbDocs.length ? `${kbDocs.length} fonte(s)` : "base vazia",
+            href: "/cliente/painel/conhecimento",
+            ready: kbDocs.length > 0,
+          },
+          {
+            step: "4",
+            label: "Canais e voz",
+            detail: settings.voiceReplyEnabled ? `voz ${settings.voiceReplyVoice || "marin"}` : "voz opcional",
+            href: "#ia-audio",
+            ready: true,
+          },
+          {
+            step: "5",
+            label: "Teste",
+            detail:
+              latestEvaluationRun?.summary?.gate === "ready"
+                ? "aprovado"
+                : latestEvaluationRun?.summary?.gate === "blocked"
+                  ? "ajustes necessarios"
+                  : "validar antes de publicar",
+            href: "#ia-teste",
+            ready: latestEvaluationRun?.summary?.gate === "ready",
+          },
+        ].map((item) => {
+          const content = (
+            <>
+              <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${item.ready ? "bg-[var(--cliente-success-soft)] text-[var(--cliente-success)]" : "bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]"}`}>
+                {item.ready ? "✓" : item.step}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-[var(--cliente-card-text)]">{item.label}</span>
+                <span className="mt-0.5 block truncate text-xs text-[var(--cliente-card-text-soft)]">{item.detail}</span>
+              </span>
+            </>
+          );
+          const className = "flex min-w-0 items-center gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-3 text-left transition hover:border-[var(--cliente-border-strong)] hover:bg-[var(--cliente-panel-soft)]";
+          return item.href.startsWith("/") ? (
+            <Link key={item.step} href={item.href} className={className}>{content}</Link>
+          ) : (
+            <a key={item.step} href={item.href} className={className}>{content}</a>
+          );
+        })}
+      </nav>
+
+      {tenant?.tenantId ? (
+        <CommercialAgentActionQueue
+          tenantId={tenant.tenantId}
+          canEditLeads={hasCapability("edit_leads")}
+          canManageCommercial={hasCapability("manage_commercial")}
+        />
+      ) : null}
+
       <section className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
         <PanelCard tone="spotlight" className="overflow-hidden p-0">
           <div className="relative p-5 md:p-7">
@@ -1632,7 +1675,19 @@ export default function ClienteIaPage() {
                 </span>
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold text-[var(--cliente-card-text)]">{item.label}</span>
-                  <span className="mt-1 block truncate text-xs text-[var(--cliente-card-text-soft)]">{item.detail}</span>
+                  <span className="mt-1 block text-xs text-[var(--cliente-card-text-soft)]">{item.detail}</span>
+                  <span className="mt-1 block text-xs leading-5 text-[var(--cliente-card-text-muted)]">{item.impact}</span>
+                  {!item.done ? (
+                    item.href.startsWith("/") ? (
+                      <Link href={item.href} className="mt-2 inline-flex text-xs font-semibold text-[var(--cliente-accent)] hover:underline">
+                        {item.actionLabel}
+                      </Link>
+                    ) : (
+                      <a href={item.href} className="mt-2 inline-flex text-xs font-semibold text-[var(--cliente-accent)] hover:underline">
+                        {item.actionLabel}
+                      </a>
+                    )
+                  ) : null}
                 </span>
               </div>
             ))}
@@ -1734,7 +1789,7 @@ export default function ClienteIaPage() {
               icon={Mic2}
               title="Resposta por audio"
               value={settings.voiceReplyEnabled ? voiceModeLabel : "Desativada"}
-              detail={settings.voiceReplyEnabled ? `${settings.voiceReplyMaxChars || 760} caracteres por audio` : "Ative quando a operacao vender melhor por voz."}
+              detail={settings.voiceReplyEnabled ? `${settings.voiceReplyMaxChars || 460} caracteres por audio` : "Ative quando a operacao vender melhor por voz."}
               tone={settings.voiceReplyEnabled ? "info" : "neutral"}
             />
             <OperationRow
@@ -1743,6 +1798,25 @@ export default function ClienteIaPage() {
               value={settings.responsiblePhone ? "Configurada" : "Pendente"}
               detail={settings.responsiblePhone || "Defina quem assume conversas sensiveis."}
               tone={settings.responsiblePhone ? "success" : "warning"}
+            />
+            <OperationRow
+              icon={Waypoints}
+              title="Protecao de uso"
+              value={
+                usageSummary.usageCapExceeded
+                  ? "Contingencia por volume"
+                  : usageSummary.budgetCapExceeded
+                    ? "Contingencia por budget"
+                    : "Dentro do limite"
+              }
+              detail={
+                usageSummary.usageCapExceeded
+                  ? `${usageSummary.conversationRuns}/${usageSummary.effectiveUsageCap || 0} execucoes no mes. A IA segue com respostas de contingencia ate o limite ser ajustado ou renovado.`
+                  : usageSummary.budgetCapExceeded
+                    ? `US$ ${Number(usageSummary.estimatedCostUsd || 0).toFixed(2)} de US$ ${Number(usageSummary.monthlyBudgetUsd || 0).toFixed(2)} no mes. A IA segue com respostas de contingencia.`
+                    : `${usageSummary.conversationRuns}/${usageSummary.effectiveUsageCap || settings.monthlyUsageCap || 0} execucoes no mes.`
+              }
+              tone={usageSummary.usageCapExceeded || usageSummary.budgetCapExceeded ? "warning" : "success"}
             />
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
@@ -1797,7 +1871,37 @@ export default function ClienteIaPage() {
         </PanelCard>
       </section>
 
-      <div id="ia-teste" className="hidden">
+      <details
+        id="ia-teste"
+        className="rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4 shadow-[var(--cliente-shadow-soft)]"
+      >
+        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-black text-[var(--cliente-card-text)]">Gate de qualidade da IA</p>
+            <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
+              Simule cenarios criticos antes de liberar mudancas para os clientes.
+            </p>
+          </div>
+          <StateBadge
+            label={
+              latestEvaluationRun?.summary?.gate === "ready"
+                ? "pronto para avancar"
+                : latestEvaluationRun?.summary?.gate === "watch"
+                  ? "acompanhar"
+                  : latestEvaluationRun?.summary?.gate === "blocked"
+                    ? "bloqueado"
+                    : "sem avaliacao"
+            }
+            tone={
+              latestEvaluationRun?.summary?.gate === "ready"
+                ? "success"
+                : latestEvaluationRun?.summary?.gate === "blocked"
+                  ? "danger"
+                  : "warning"
+            }
+          />
+        </summary>
+        <div className="mt-4">
       <PanelCard className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <CardTitle
@@ -1815,7 +1919,7 @@ export default function ClienteIaPage() {
             <div className="ia-preview-block rounded-[26px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
               <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Cenario base</p>
               <div className="mt-3 grid gap-2">
-                {PREVIEW_SCENARIOS.map((scenario) => (
+                {AI_EVALUATION_SCENARIOS.map((scenario) => (
                   <button
                     key={scenario.id}
                     type="button"
@@ -1826,7 +1930,15 @@ export default function ClienteIaPage() {
                         : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-panel-soft)]"
                     }`}
                   >
-                    <p className="font-medium">{scenario.label}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium">{scenario.label}</p>
+                      {scenario.assistantRole ? (
+                        <StateBadge label={assistantRoleLabel(scenario.assistantRole)} tone="info" />
+                      ) : null}
+                      {scenario.businessProfileId ? (
+                        <StateBadge label={getBusinessProfile(scenario.businessProfileId).label} tone="neutral" />
+                      ) : null}
+                    </div>
                     <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{scenario.message}</p>
                   </button>
                 ))}
@@ -1901,6 +2013,37 @@ export default function ClienteIaPage() {
             </div>
 
             <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+              <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Execucao do preview</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <StateBadge
+                  label={previewResult?.runtime?.source === "model" ? "modelo respondeu" : previewResult?.runtime ? "modo de contingencia" : "rode um preview"}
+                  tone={previewResult?.runtime?.source === "model" ? "success" : previewResult?.runtime ? "warning" : "neutral"}
+                />
+                {previewResult?.runtime?.provider ? <StateBadge label={previewResult.runtime.provider} tone="info" /> : null}
+                {previewResult?.runtime?.model ? <StateBadge label={previewResult.runtime.model} tone="neutral" /> : null}
+                {typeof previewResult?.runtime?.retrievedKnowledgeDocuments === "number" ? (
+                  <StateBadge label={`${previewResult.runtime.retrievedKnowledgeDocuments} item(ns) da base`} tone="neutral" />
+                ) : null}
+                {typeof previewResult?.runtime?.latencyMs === "number" ? (
+                  <StateBadge label={`${(previewResult.runtime.latencyMs / 1000).toFixed(1)}s`} tone="neutral" />
+                ) : null}
+                {typeof previewResult?.runtime?.estimatedCostUsd === "number" ? (
+                  <StateBadge label={`US$ ${previewResult.runtime.estimatedCostUsd.toFixed(4)}`} tone="neutral" />
+                ) : null}
+                {previewResult?.runtime?.providerFallbackTriggered ? <StateBadge label="fallback de provedor" tone="warning" /> : null}
+              </div>
+              {previewResult?.runtime ? (
+                <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                  Contexto {previewResult.runtime.tenantContextFingerprint || "--"} · {previewResult.runtime.configuredGuardrails || 0} regras · {previewResult.runtime.configuredMandatoryQuestions || 0} perguntas de qualificacao · {previewResult.runtime.configuredEscalationTopics || 0} temas de escalada.
+                  {typeof previewResult.runtime.inputTokens === "number" && typeof previewResult.runtime.outputTokens === "number"
+                    ? ` Uso estimado: ${previewResult.runtime.inputTokens} entrada / ${previewResult.runtime.outputTokens} saída.`
+                    : ""}
+                  {previewResult.runtime.providerChainError ? ` Contingencia: ${previewResult.runtime.providerChainError}.` : ""}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
               <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Campos que iriam para o CRM</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {Object.entries(previewResult?.extractedFields || {}).length === 0 ? (
@@ -1950,24 +2093,19 @@ export default function ClienteIaPage() {
 
             <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Bateria de cenarios SDR</p>
+                <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Bateria comercial de regressao</p>
                 <StateBadge
                   label={
                     previewBatchResults.length
                       ? `${previewBatchResults.filter((item) => item.verdict?.passed).length}/${previewBatchResults.length} aprovados`
                       : "sem bateria"
                   }
-                  tone={
-                    previewBatchResults.some((item) => item.error)
-                      ? "warning"
-                      : previewBatchResults.length && previewBatchResults.every((item) => item.verdict?.passed)
-                        ? "success"
-                        : "info"
-                  }
+                  tone={previewBatchSummary.gate === "ready" ? "success" : previewBatchSummary.gate === "blocked" ? "danger" : "warning"}
                 />
               </div>
               {previewBatchResults.length > 0 ? (
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
                     <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Aprovados</p>
                     <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{previewBatchSummary.approved}</p>
@@ -1980,12 +2118,49 @@ export default function ClienteIaPage() {
                     <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Erros</p>
                     <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">{previewBatchSummary.errors}</p>
                   </div>
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">Cenarios criticos</p>
+                    <p className="mt-2 text-lg font-semibold text-[var(--cliente-card-text)]">
+                      {previewBatchSummary.criticalApproved}/{previewBatchSummary.criticalTotal}
+                    </p>
+                  </div>
                 </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                      Cobertura por papel
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {Object.entries(previewBatchSummary.byRole).map(([role, result]) => (
+                        <StateBadge
+                          key={role}
+                          label={`${role === "tenant_default" ? "padrao da conta" : assistantRoleLabel(role as AltumAssistantRole)}: ${result.approved}/${result.total}`}
+                          tone={result.approved === result.total ? "success" : "warning"}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
+                      Cobertura por capacidade
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {Object.entries(previewBatchSummary.byCategory).map(([category, result]) => (
+                        <StateBadge
+                          key={category}
+                          label={`${category.replaceAll("_", " ")}: ${result.approved}/${result.total}`}
+                          tone={result.approved === result.total ? "success" : "warning"}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                </>
               ) : null}
               <div className="mt-3 space-y-2">
                 {previewBatchResults.length === 0 ? (
                   <p className="text-sm text-[var(--cliente-card-text-soft)]">
-                    Rode a bateria para validar saudacao, preco, objecao, proposta e audio de uma vez.
+                    Rode a bateria para validar identidade, handoff, contexto, qualificacao, objecao e audio de uma vez.
                   </p>
                 ) : (
                   previewBatchResults.map((item) => (
@@ -2048,7 +2223,58 @@ export default function ClienteIaPage() {
           </div>
         </div>
       </PanelCard>
-      </div>
+      {evaluationRuns.length > 0 ? (
+        <PanelCard className="mt-4 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle
+              title="Historico do gate"
+              subtitle="Cada bateria fica registrada para comparar evolucao e identificar regressao."
+            />
+            <StateBadge label={`${evaluationRuns.length} execucoes`} tone="neutral" />
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {evaluationRuns.slice(0, 6).map((run) => (
+              <div
+                key={run.id}
+                className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-[var(--cliente-card-text)]">
+                    {formatDateTime(run.createdAt)}
+                  </p>
+                  <StateBadge
+                    label={
+                      run.summary?.gate === "ready"
+                        ? "aprovado"
+                        : run.summary?.gate === "watch"
+                          ? "acompanhar"
+                          : "bloqueado"
+                    }
+                    tone={
+                      run.summary?.gate === "ready"
+                        ? "success"
+                        : run.summary?.gate === "blocked"
+                          ? "danger"
+                          : "warning"
+                    }
+                  />
+                </div>
+                <p className="mt-2 text-sm text-[var(--cliente-card-text-muted)]">
+                  {run.summary?.approved || 0}/{run.summary?.total || 0} aprovados · {run.summary?.criticalFailures || 0} falha(s) critica(s)
+                </p>
+                {run.summary?.runtime ? (
+                  <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">
+                    {run.summary.runtime.modelResponses} resposta(s) do modelo · {latencyLabel(run.summary.runtime.avgLatencyMs)} medio · US$ {run.summary.runtime.estimatedCostUsd.toFixed(4)}
+                    {run.summary.runtime.fallbackResponses ? ` · ${run.summary.runtime.fallbackResponses} fallback(s)` : ""}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </PanelCard>
+      ) : null}
+        </div>
+      </details>
 
       <PanelCard className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2223,6 +2449,7 @@ export default function ClienteIaPage() {
             <HealthTile label="Pediu contexto" value={String(logSummary.askMore)} detail="qualificacao adicional" tone="info" />
             <HealthTile label="Chamou humano" value={String(logSummary.handoff)} detail="conversas assumidas pela equipe" tone="warning" />
             <HealthTile label="Latencia media" value={latencyLabel(logSummary.avgLatency)} detail="tempo medio de resposta" tone="neutral" />
+            <HealthTile label="Espera antes da IA" value={latencyLabel(logSummary.avgInboundToStartLatency)} detail="da mensagem recebida ao inicio do processamento" tone="neutral" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <HealthTile
@@ -2353,6 +2580,67 @@ export default function ClienteIaPage() {
                 placeholder="1500"
                 disabled={!canManage}
               />
+            </div>
+
+            <div className="rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-[var(--cliente-card-text)]">Lançamento controlado</p>
+                <StateBadge
+                  label={
+                    settings.rolloutQuality?.available === false
+                      ? "qualidade indisponível"
+                      : settings.rolloutQuality?.gate === "ready" && settings.rolloutQuality?.fresh
+                      ? "qualidade aprovada"
+                      : settings.rolloutQuality?.gate === "watch"
+                        ? "acompanhar qualidade"
+                        : settings.rolloutQuality?.gate === "blocked"
+                          ? "qualidade bloqueada"
+                          : "qualidade não avaliada"
+                  }
+                  tone={
+                    settings.rolloutQuality?.available === false
+                      ? "warning"
+                      : settings.rolloutQuality?.gate === "ready" && settings.rolloutQuality?.fresh
+                      ? "success"
+                      : settings.rolloutQuality?.gate === "watch"
+                        ? "warning"
+                        : settings.rolloutQuality?.gate === "blocked"
+                          ? "danger"
+                          : "neutral"
+                  }
+                />
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                Use para liberar uma nova versão por etapas. Em 0%, nenhuma conversa recebe resposta automática; em modo sombra, a resposta é calculada e fica na auditoria, mas nada é enviado nem altera a operação. Para aumentar respostas automáticas depois de reduzir o percentual, a bateria de qualidade precisa estar aprovada.
+              </p>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <label className="block text-xs text-[var(--cliente-card-text-soft)]">
+                  Modo
+                  <select
+                    value={settings.rolloutMode || "automatic"}
+                    onChange={(event) => setSettings((prev) => ({ ...prev, rolloutMode: event.target.value as AiSettings["rolloutMode"] }))}
+                    disabled={!canManage}
+                    className="client-input mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none disabled:opacity-60"
+                  >
+                    <option value="automatic">Responder automaticamente</option>
+                    <option value="shadow">Modo sombra (não envia)</option>
+                  </select>
+                </label>
+                <Field
+                  label="Percentual liberado"
+                  value={String(settings.rolloutPercent ?? 100)}
+                  onChange={(value) => setSettings((prev) => ({ ...prev, rolloutPercent: Math.max(0, Math.min(100, Number(value) || 0)) }))}
+                  placeholder="100"
+                  disabled={!canManage}
+                />
+                <Field
+                  label="Versão da IA"
+                  value={settings.agentVersion || "conversation-v1"}
+                  onChange={(value) => setSettings((prev) => ({ ...prev, agentVersion: value }))}
+                  placeholder="conversation-v1"
+                  disabled={!canManage}
+                />
+              </div>
             </div>
 
             <label className="flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2 text-xs text-[var(--cliente-card-text-soft)]">
@@ -2498,9 +2786,9 @@ export default function ClienteIaPage() {
                 <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">Escolha quanta liberdade a IA tem antes de chamar sua equipe.</p>
                 <div className="mt-4 grid gap-2">
                   {[
-                    { value: "copilot", label: "Assistida", detail: "Apoia o atendimento, mas evita assumir decisoes sensiveis." },
-                    { value: "hybrid", label: "Equilibrada", detail: "Responde, qualifica e chama humano quando precisa." },
-                    { value: "autonomous", label: "Autonoma", detail: "Atua com mais liberdade dentro das regras comerciais." },
+                    { value: "copilot", label: "Assistida", detail: "Responde sem atualizar o CRM; em handoff, cria apenas a tarefa de seguranca para a equipe assumir." },
+                    { value: "hybrid", label: "Equilibrada", detail: "Responde, qualifica, registra contexto e chama humano; nao move o funil nem cria rascunhos." },
+                    { value: "autonomous", label: "Autonoma", detail: "Tambem pode mover funil, criar follow-ups e abrir rascunhos dentro das regras comerciais." },
                   ].map((option) => {
                     const active = (settings.autonomyMode || "hybrid") === option.value;
                     return (
@@ -2573,6 +2861,33 @@ export default function ClienteIaPage() {
               <Field label="Nome do agente" value={settings.agentName || ""} onChange={(value) => setSettings((prev) => ({ ...prev, agentName: value }))} placeholder="Ex: Assistente da loja" disabled={!canManage} />
               <Field label="Tom de voz" value={settings.toneOfVoice} onChange={(value) => setSettings((prev) => ({ ...prev, toneOfVoice: value }))} placeholder="consultivo, claro e humano" disabled={!canManage} />
             </div>
+            <div id="ia-papel" className="scroll-mt-24 rounded-[24px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-5">
+              <p className="text-base font-semibold text-[var(--cliente-card-text)]">Qual é o trabalho desta IA?</p>
+              <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">
+                Esta escolha muda de verdade como ela conduz cada conversa, quando pergunta, oferece ou chama uma pessoa.
+              </p>
+              <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {ALTUM_ASSISTANT_ROLES.map((role) => {
+                  const active = (settings.assistantRole || "sales") === role.id;
+                  return (
+                    <button
+                      key={role.id}
+                      type="button"
+                      disabled={!canManage}
+                      onClick={() => setSettings((prev) => ({ ...prev, assistantRole: role.id }))}
+                      className={`rounded-2xl border px-4 py-3 text-left transition disabled:opacity-60 ${
+                        active
+                          ? "border-[color:color-mix(in_srgb,var(--cliente-ai)_35%,var(--cliente-border))] bg-[var(--cliente-ai-soft)]"
+                          : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] hover:border-[var(--cliente-border-strong)]"
+                      }`}
+                    >
+                      <span className="block text-[15px] font-semibold text-[var(--cliente-card-text)]">{role.label}</span>
+                      <span className="mt-1 block text-sm leading-6 text-[var(--cliente-card-text-soft)]">{role.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <Field label="Resumo do negocio" value={settings.businessSummary} onChange={(value) => setSettings((prev) => ({ ...prev, businessSummary: value }))} placeholder="o que a empresa vende, para quem e com qual foco" disabled={!canManage} />
             <Field label="Objetivo principal da IA" value={settings.objective || ""} onChange={(value) => setSettings((prev) => ({ ...prev, objective: value }))} placeholder="qualificar, orientar, vender e encaminhar" disabled={!canManage} />
 
@@ -2580,10 +2895,13 @@ export default function ClienteIaPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <CardTitle
                   title="Cerebro comercial"
-                  subtitle="Ensine como a IA deve diagnosticar, vender e chamar sua equipe sem perder contexto."
+                  subtitle="Orienta como a IA diagnostica, vende e prepara o proximo passo. Regras obrigatorias e escaladas ficam logo abaixo."
                 />
                 <StateBadge label="inteligencia do negocio" tone="ai" />
               </div>
+              <p className="mt-3 rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-ai)_20%,var(--cliente-border))] bg-[var(--cliente-panel-soft)] px-4 py-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+                As orientacoes deste bloco entram no contexto da conversa. Em “Quando chamar humano”, sinais claros como proposta, urgencia, customizacao e desconto tambem reforcam a escalada automatica. Em “Follow-up”, prazos como “48 horas” passam para a tarefa operacional. O que a IA “nunca deve fazer” vira regra obrigatoria do atendimento.
+              </p>
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <TextAreaField
                   label="Como o negocio ganha dinheiro"
@@ -2638,7 +2956,7 @@ export default function ClienteIaPage() {
                   label="Follow-up comercial"
                   value={settings.commercialBrain?.followUpStrategy || ""}
                   onChange={(value) => updateCommercialBrain("followUpStrategy", value)}
-                  placeholder="Ex: retomar com contexto, mostrar exemplo, reduzir duvida e conduzir para agenda/proposta."
+                  placeholder="Ex: retomar em 48 horas com contexto, mostrar exemplo, reduzir duvida e conduzir para agenda/proposta."
                   disabled={!canManage}
                 />
               </div>
@@ -2659,7 +2977,7 @@ export default function ClienteIaPage() {
               <p className="mt-1 text-sm leading-6 text-[var(--cliente-card-text-soft)]">Configure voz, responsavel humano e quando a IA deve sair do texto.</p>
             </div>
 
-            <Field label="WhatsApp para chamar humano" value={settings.responsiblePhone} onChange={(value) => setSettings((prev) => ({ ...prev, responsiblePhone: value }))} placeholder="5511999999999" disabled={!canManage} />
+            <Field label="WhatsApp do responsavel interno" value={settings.responsiblePhone} onChange={(value) => setSettings((prev) => ({ ...prev, responsiblePhone: value }))} placeholder="5511999999999" disabled={!canManage} />
             <div className="grid gap-4 md:grid-cols-2">
               <SwitchRow
                 title="Permitir audio da IA"
@@ -2674,21 +2992,10 @@ export default function ClienteIaPage() {
                 <select
                   value={settings.voiceReplyVoice || "marin"}
                   onChange={(event) => setSettings((prev) => ({ ...prev, voiceReplyVoice: event.target.value }))}
-                  disabled={!canManage || settings.voiceReplyEnabled !== true}
+                  disabled={!canManage}
                   className="client-input mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] outline-none disabled:opacity-60"
                 >
-                  <option value="marin">Marin</option>
-                  <option value="cedar">Cedar</option>
-                  <option value="alloy">Alloy</option>
-                  <option value="ash">Ash</option>
-                  <option value="ballad">Ballad</option>
-                  <option value="coral">Coral</option>
-                  <option value="echo">Echo</option>
-                  <option value="fable">Fable</option>
-                  <option value="nova">Nova</option>
-                  <option value="onyx">Onyx</option>
-                  <option value="sage">Sage</option>
-                  <option value="shimmer">Shimmer</option>
+                  {VOICE_OPTIONS.map((voice) => <option key={voice.id} value={voice.id}>{voice.label}{voice.recommended ? " · recomendada" : ""}</option>)}
                 </select>
               </label>
             </div>
@@ -2700,6 +3007,7 @@ export default function ClienteIaPage() {
                   {[
                     { value: "audio_only", label: "Responder audio com audio", detail: "Melhor para nao invadir conversas em texto." },
                     { value: "smart", label: "Audio sob demanda", detail: "Usa audio quando o cliente manda audio ou pede audio." },
+                    { value: "always", label: "Sempre responder em audio", detail: "Envia audio mesmo quando o cliente escreve. Use quando a voz fizer parte da experiencia da marca." },
                   ].map((option) => {
                     const active = (settings.voiceReplyMode || "smart") === option.value;
                     return (
@@ -2725,16 +3033,47 @@ export default function ClienteIaPage() {
               </div>
               <Field
                 label="Tamanho maximo do audio"
-                value={String(settings.voiceReplyMaxChars || 760)}
-                onChange={(value) => setSettings((prev) => ({ ...prev, voiceReplyMaxChars: Number(value) || 760 }))}
-                placeholder="760"
+                value={String(settings.voiceReplyMaxChars || 460)}
+                onChange={(value) => setSettings((prev) => ({ ...prev, voiceReplyMaxChars: Number(value) || 460 }))}
+                placeholder="460"
                 disabled={!canManage || settings.voiceReplyEnabled !== true}
               />
             </div>
             <div className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <CardTitle title="Teste de voz" subtitle="Gere um audio antes de liberar a IA em conversa real." />
+                <CardTitle title="Ouça e escolha a voz" subtitle="Teste cada opção antes de liberar a IA em uma conversa real." />
                 <StateBadge label={settings.voiceReplyEnabled ? "voz ativa" : "voz pausada"} tone={settings.voiceReplyEnabled ? "success" : "warning"} />
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {VOICE_OPTIONS.map((voice) => {
+                  const selected = (settings.voiceReplyVoice || "marin") === voice.id;
+                  const generating = runningVoicePreview && voicePreviewVoice === voice.id;
+                  return (
+                    <div key={voice.id} className={`rounded-2xl border p-3 ${selected ? "border-[var(--cliente-ai)] bg-[var(--cliente-ai-soft)]" : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)]"}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--cliente-card-text)]">{voice.label}</p>
+                          <p className="mt-0.5 text-xs text-[var(--cliente-card-text-soft)]">{voice.profile}</p>
+                        </div>
+                        {voice.recommended ? <StateBadge label="recomendada" tone="success" /> : null}
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          disabled={!canManage || runningVoicePreview}
+                          onClick={() => {
+                            setSettings((prev) => ({ ...prev, voiceReplyVoice: voice.id }));
+                            void handleRunVoicePreview(voice.id);
+                          }}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] disabled:opacity-60"
+                        >
+                          {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Headphones className="h-3.5 w-3.5" />}
+                          {generating ? "Gerando" : "Ouvir"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
               <textarea
                 value={voicePreviewText}
@@ -2752,7 +3091,7 @@ export default function ClienteIaPage() {
                   className="inline-flex items-center gap-2 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
                 >
                   {runningVoicePreview ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  {runningVoicePreview ? "Gerando audio..." : "Gerar audio de teste"}
+                  {runningVoicePreview ? "Gerando audio..." : `Ouvir ${settings.voiceReplyVoice || "marin"}`}
                 </button>
                 <span className="text-sm leading-6 text-[var(--cliente-card-text-soft)]">
                   O texto e limpo e encurtado para soar natural no WhatsApp.
@@ -2770,7 +3109,14 @@ export default function ClienteIaPage() {
               ) : null}
               {voicePreviewUrl ? (
                 <div className="mt-4 rounded-[24px] border border-[var(--cliente-border-strong)] bg-[var(--cliente-panel-soft)] p-4">
-                  <p className="mb-3 text-sm font-semibold text-[var(--cliente-card-text)]">Clique no play para ouvir</p>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-[var(--cliente-card-text)]">Prévia da voz {voicePreviewVoice || settings.voiceReplyVoice || "marin"}</p>
+                    {voicePreviewNativeReady === true ? (
+                      <StateBadge label="pronta para WhatsApp" tone="success" />
+                    ) : voicePreviewNativeReady === false ? (
+                      <StateBadge label="somente prévia" tone="warning" />
+                    ) : null}
+                  </div>
                   <audio
                     key={voicePreviewUrl}
                     controls
@@ -2791,6 +3137,11 @@ export default function ClienteIaPage() {
                       setVoicePreviewError("O arquivo foi gerado, mas o navegador nao conseguiu carregar o audio. Gere novamente.");
                     }}
                   />
+                  {voicePreviewNativeReady === false ? (
+                    <p className="mt-2 text-sm leading-6 text-[var(--cliente-warning)]">
+                      A amostra pode ser ouvida aqui, mas a conversao para mensagem de voz nativa do WhatsApp nao ficou disponivel. A IA nao enviara um arquivo inadequado ao cliente.
+                    </p>
+                  ) : null}
                   {voicePreviewTranscript ? (
                     <p className="mt-2 text-sm leading-6 text-[var(--cliente-card-text-muted)]">{voicePreviewTranscript}</p>
                   ) : null}
@@ -2917,6 +3268,11 @@ export default function ClienteIaPage() {
                 title="Status"
                 value={settings.enabled ? "Atendendo" : "Pausado"}
                 detail={settings.enabled ? "A IA pode responder automaticamente." : "A equipe segue no controle manual."}
+              />
+              <IaContext
+                title="Papel"
+                value={assistantRoleLabel(settings.assistantRole)}
+                detail="Define a condução da conversa e os limites comerciais."
               />
               <IaContext
                 title="Tom"
@@ -3289,7 +3645,7 @@ export default function ClienteIaPage() {
 
         <PanelCard className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <CardTitle title="Historico de decisoes" subtitle="Veja o que a IA recebeu, respondeu e quando chamou uma pessoa." />
+            <CardTitle title="Historico de decisoes" subtitle="Ultimas 40 decisoes registradas: veja o que a IA recebeu, respondeu e quando chamou uma pessoa." />
             <StateBadge label={`${filteredLogs.length}/${logs.length} registros`} tone="info" />
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_220px_220px]">
@@ -3430,11 +3786,40 @@ export default function ClienteIaPage() {
                       </Link>
                     ) : null}
                     <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1">latencia {latencyLabel(log.latencyMs)}</span>
-                    {(log.matchedKbDocIds || []).slice(0, 3).map((docId) => (
-                      <span key={`${log.id}_${docId}`} className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1">
-                        kb {docId.slice(0, 10)}
+                    {typeof log.inboundToStartLatencyMs === "number" ? (
+                      <span className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1">espera {latencyLabel(log.inboundToStartLatencyMs)}</span>
+                    ) : null}
+                    {log.tenantContextFingerprint ? (
+                      <span
+                        title={`Regras ${log.tenantContextDiagnostics?.guardrailCount || 0}; perguntas ${log.tenantContextDiagnostics?.mandatoryQuestionCount || 0}; escaladas ${log.tenantContextDiagnostics?.escalationTopicCount || 0}; cerebro comercial ${log.tenantContextDiagnostics?.configuredCommercialBrainFields || 0}.`}
+                        className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1"
+                      >
+                        configuracao · {log.tenantContextFingerprint.slice(0, 8)}
                       </span>
-                    ))}
+                    ) : null}
+                    {log.rollout ? (
+                      <span
+                        title={`Versao ${log.rollout.agentVersion || "conversation-v1"}; grupo ${typeof log.rollout.bucket === "number" ? log.rollout.bucket : "--"}; motivo ${log.rollout.reason || "--"}.`}
+                        className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1"
+                      >
+                        rollout · {log.rollout.mode || "automatic"} {typeof log.rollout.percent === "number" ? `${log.rollout.percent}%` : ""}
+                      </span>
+                    ) : null}
+                    {(log.groundingSources || []).length
+                      ? (log.groundingSources || []).slice(0, 4).map((source) => (
+                          <span
+                            key={`${log.id}_${source.kind}_${source.id}`}
+                            title={source.detail || undefined}
+                            className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1"
+                          >
+                            fonte · {source.label}
+                          </span>
+                        ))
+                      : (log.matchedKbDocIds || []).slice(0, 3).map((docId) => (
+                          <span key={`${log.id}_${docId}`} className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1">
+                            fonte · {kbSourceById.get(docId) || docId.slice(0, 10)}
+                          </span>
+                        ))}
                     {(log.toolCalls || []).slice(0, 3).map((tool) => (
                       <span key={`${log.id}_${tool}`} className="rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-2.5 py-1">
                         {tool}

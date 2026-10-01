@@ -42,6 +42,8 @@ export type NormalizedGrowthEvent = {
     term: string;
     gclid: string;
     fbclid: string;
+    fbc: string;
+    fbp: string;
   };
 };
 
@@ -208,6 +210,8 @@ export function normalizeGrowthEvent(value: unknown, now = new Date()): Normaliz
       term: cleanText(attributionInput.term, 240),
       gclid: cleanText(attributionInput.gclid, 300),
       fbclid: cleanText(attributionInput.fbclid, 300),
+      fbc: cleanText(attributionInput.fbc, 300),
+      fbp: cleanText(attributionInput.fbp, 300),
     },
   };
 }

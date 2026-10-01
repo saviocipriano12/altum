@@ -1,9 +1,9 @@
 {
-  "screens": 24,
-  "existingScreens": 23,
-  "adminApis": 37,
-  "directRequests": 119,
-  "mappedDirectRequests": 111,
+  "screens": 28,
+  "existingScreens": 27,
+  "adminApis": 47,
+  "directRequests": 126,
+  "mappedDirectRequests": 117,
   "manualReview": [
     {
       "file": "app/admin/campanhas/page.tsx",
@@ -42,16 +42,22 @@
       "status": "manual_review_computed_or_external"
     },
     {
+      "file": "app/admin/estrategias/page.tsx",
+      "line": 34,
+      "expression": "action === \"suggest\" ? \"/api/admin/strategies/suggest\" : \"/api/admin/strategies\"",
+      "status": "manual_review_computed_or_external"
+    },
+    {
+      "file": "app/admin/ia/page.tsx",
+      "line": 320,
+      "expression": "url",
+      "status": "manual_review_computed_or_external"
+    },
+    {
       "file": "app/admin/prospeccao/[id]/page.tsx",
       "line": 627,
       "expression": "path",
       "status": "manual_review_computed_or_external"
-    },
-    {
-      "file": "app/admin/templates/page.tsx",
-      "line": 218,
-      "expression": "\"/api/admin/whatsapp/templates\"",
-      "status": "http_method_missing_static"
     }
   ]
 }

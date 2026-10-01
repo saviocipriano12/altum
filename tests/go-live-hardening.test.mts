@@ -71,7 +71,7 @@ test("Reports and campaigns render their operational core before secondary datas
 
 test("Assistant Altum avoids a settings request waterfall", async () => {
   const ai = await source("app/cliente/painel/ia/page.tsx");
-  assert.match(ai, /const \[settingsRes, kbRes, logsRes, usageRes, campaignsRes, tenantSettingsRes\] = await Promise\.all/);
+  assert.match(ai, /const \[settingsRes, kbRes, logsRes, usageRes, campaignsRes, tenantSettingsRes, evaluationsRes\] = await Promise\.all/);
   assert.doesNotMatch(ai, /\]\);\s*const tenantSettingsRes = await authedFetch/);
 });
 

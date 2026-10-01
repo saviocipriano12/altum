@@ -62,12 +62,24 @@ type CatalogDoc = {
   targetProfile?: string | null;
   priceFrom?: number | null;
   priceTo?: number | null;
+  currency?: string | null;
+  sku?: string | null;
+  inventoryQuantity?: number | null;
+  checkoutUrl?: string | null;
   upsellKeys?: string[];
   crossSellKeys?: string[];
+  upsellOfferIds?: string[];
+  crossSellOfferIds?: string[];
   priority?: number | null;
   availability?: Availability;
   createdAt?: unknown;
   updatedAt?: unknown;
+  commercialReadiness?: {
+    readyForAi?: boolean;
+    issues?: string[];
+    sellable?: boolean;
+    sellabilityReason?: string;
+  };
 };
 
 const KIND_OPTIONS: Array<{ value: CatalogKind | "all"; label: string }> = [
@@ -116,17 +128,29 @@ function kindTone(kind: CatalogKind) {
   return "success" as const;
 }
 
-function money(value?: number | null) {
+function money(value?: number | null, currency = "BRL") {
   if (typeof value !== "number") return "Sem preco";
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return value.toLocaleString("pt-BR", { style: "currency", currency: currency || "BRL" });
 }
 
 function priceLabel(item: CatalogDoc) {
   if (typeof item.priceFrom !== "number" && typeof item.priceTo !== "number") return "Sem preco";
   if (typeof item.priceFrom === "number" && typeof item.priceTo === "number" && item.priceFrom !== item.priceTo) {
-    return `${money(item.priceFrom)} a ${money(item.priceTo)}`;
+    return `${money(item.priceFrom, item.currency || "BRL")} a ${money(item.priceTo, item.currency || "BRL")}`;
   }
-  return money(item.priceFrom ?? item.priceTo ?? null);
+  return money(item.priceFrom ?? item.priceTo ?? null, item.currency || "BRL");
+}
+
+function stockLabel(item: CatalogDoc, kind: CatalogKind) {
+  if (kind !== "produto") return "Nao se aplica";
+  if (item.inventoryQuantity === 0) return "Sem estoque";
+  if (typeof item.inventoryQuantity === "number") return `${item.inventoryQuantity} unidade(s)`;
+  return "Confirmar antes de vender";
+}
+
+function isAiReady(item: CatalogDoc) {
+  if (typeof item.commercialReadiness?.readyForAi === "boolean") return item.commercialReadiness.readyForAi;
+  return item.availability !== "paused" && !isThin(item) && mediaCount(item) > 0 && (typeof item.priceFrom === "number" || typeof item.priceTo === "number");
 }
 
 function compactContent(value: string) {
@@ -192,9 +216,16 @@ export default function ClienteProdutosServicosPage() {
     const thin = docs.filter(isThin).length;
     const withMedia = docs.filter((item) => mediaCount(item) > 0).length;
     const imported = docs.filter((item) => sourceFromDoc(item) !== "manual").length;
-    const withoutOfferPath = docs.filter((item) => item.availability !== "paused" && !(item.upsellKeys || []).length && !(item.crossSellKeys || []).length).length;
+    const withoutOfferPath = docs.filter(
+      (item) =>
+        item.availability !== "paused" &&
+        !(item.upsellOfferIds || []).length &&
+        !(item.crossSellOfferIds || []).length &&
+        !(item.upsellKeys || []).length &&
+        !(item.crossSellKeys || []).length
+    ).length;
     const withPrice = docs.filter((item) => typeof item.priceFrom === "number" || typeof item.priceTo === "number").length;
-    const aiReady = docs.filter((item) => item.availability !== "paused" && !isThin(item) && mediaCount(item) > 0 && (typeof item.priceFrom === "number" || typeof item.priceTo === "number")).length;
+    const aiReady = docs.filter(isAiReady).length;
     const readinessScore = active ? Math.round((aiReady / active) * 100) : 0;
     return { total: docs.length, active, thin, withMedia, imported, withoutOfferPath, withPrice, aiReady, readinessScore };
   }, [docs]);
@@ -367,7 +398,7 @@ export default function ClienteProdutosServicosPage() {
                         <StateBadge label={kind} tone={kindTone(kind)} />
                         <StateBadge label={statusLabel(item.availability)} tone={statusTone(item.availability)} />
                         {source !== "manual" ? <StateBadge label={source} tone="info" /> : null}
-                        {isThin(item) ? <StateBadge label="melhorar" tone="warning" /> : null}
+                        {!isAiReady(item) ? <StateBadge label="revisar para IA" tone="warning" /> : <StateBadge label="pronto para IA" tone="success" />}
                       </div>
                     </div>
 
@@ -390,8 +421,9 @@ export default function ClienteProdutosServicosPage() {
                         {compactContent(item.content) || "Adicione descricao, beneficios e criterios de recomendacao para este item ficar utilizavel pela IA."}
                       </p>
 
-                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
                         <MiniInfo label="Material" value={totalMedia ? `${totalMedia} arquivo(s)` : "Nao vinculado"} tone={totalMedia ? "info" : "neutral"} />
+                        <MiniInfo label="Estoque" value={stockLabel(item, kind)} tone={item.inventoryQuantity === 0 ? "warning" : typeof item.inventoryQuantity === "number" || kind !== "produto" ? "success" : "neutral"} />
                         <MiniInfo label="Venda adicional" value={[...(item.upsellKeys || []), ...(item.crossSellKeys || [])].length ? "Configurada" : "Pendente"} tone={[...(item.upsellKeys || []), ...(item.crossSellKeys || [])].length ? "success" : "warning"} />
                       </div>
 

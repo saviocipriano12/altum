@@ -31,7 +31,7 @@ type BillingOverview = {
     overdueFinanceCount?: number;
     monthlyPlatformValue?: number;
     overdueAmount?: number;
-    stripeReady?: boolean;
+    asaasReady?: boolean;
   };
   actionItems?: Array<{
     clientId: string;

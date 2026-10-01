@@ -394,6 +394,39 @@ export async function sendMetaConversationText(input: {
   return payload;
 }
 
+export async function sendMetaConversationMedia(input: {
+  channel: MetaChannelConfig;
+  recipientId: string;
+  mediaUrl: string;
+  mediaType: "image" | "video" | "document";
+}) {
+  const attachmentType = input.mediaType === "document" ? "file" : input.mediaType;
+  const response = await fetch(`https://graph.facebook.com/${VERSION}/me/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.channel.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      recipient: { id: input.recipientId },
+      messaging_type: "RESPONSE",
+      message: {
+        attachment: {
+          type: attachmentType,
+          payload: { url: input.mediaUrl, is_reusable: true },
+        },
+      },
+    }),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    const errMessage = payload?.error?.message || "Erro ao enviar midia pela API da Meta.";
+    throw new Error(errMessage);
+  }
+  return payload;
+}
+
 export async function fetchMetaConversationProfile(input: {
   channel: MetaChannelConfig;
   userId: string;

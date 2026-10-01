@@ -117,7 +117,7 @@ export async function POST(
     const channelSnapshots = await Promise.all(channelIds.map((id) => adminDb.collection("tenant_channels").doc(id).get()));
     const channels = new Map(channelSnapshots.map((snap) => [snap.id, snap.exists ? snap.data() as Record<string, unknown> : null]));
 
-    const assignments: Array<{ chatId: string; userId: string; userName: string }> = [];
+    const assignments: Array<{ chatId: string; userId: string; userName: string; isSeller: boolean }> = [];
     let currentRoundRobinUserId = lastAssignedUserId;
 
     for (const chat of candidates) {
@@ -158,6 +158,7 @@ export async function POST(
         chatId: chat.id,
         userId: nextAssignee.userId,
         userName: nextAssignee.name,
+        isSeller: nextAssignee.isSeller === true,
       });
       activeAssignedCounts.set(nextAssignee.userId, (activeAssignedCounts.get(nextAssignee.userId) || 0) + 1);
     }
@@ -197,7 +198,7 @@ export async function POST(
         { merge: true }
       );
 
-        if (leadRef && leadSnap?.exists && clean(leadSnap.data()?.tenantId) === tenantId) {
+        if (assignment.isSeller && leadRef && leadSnap?.exists && clean(leadSnap.data()?.tenantId) === tenantId) {
           transaction.set(leadRef, {
             ownerId: assignment.userId,
             owner: assignment.userName,

@@ -28,6 +28,8 @@ export type LeadAttributionInput = {
   referrer?: string;
   gclid?: string;
   fbclid?: string;
+  fbc?: string;
+  fbp?: string;
 };
 
 type LeadSubmissionInput = {
@@ -40,6 +42,8 @@ type LeadSubmissionInput = {
   utmContent?: string | null;
   gclid?: string | null;
   fbclid?: string | null;
+  fbc?: string | null;
+  fbp?: string | null;
   sourceLabel?: string | null;
   landingPage?: string | null;
   referrer?: string | null;
@@ -68,6 +72,7 @@ type RecordInboundLeadInput = {
   automationActorId?: string | null;
   automationActorName?: string | null;
   skipLeadCreatedWorkflows?: boolean;
+  preserveExistingAttribution?: boolean;
 };
 
 type LeadTouchSnapshot = {
@@ -88,6 +93,8 @@ type LeadTouchSnapshot = {
   referrer: string;
   gclid: string;
   fbclid: string;
+  fbc: string;
+  fbp: string;
   clickIds: {
     gclid: string;
     fbclid: string;
@@ -102,6 +109,7 @@ type BuildLeadAttributionPatchInput = {
   sourceLabel?: string | null;
   channel?: string | null;
   sourceType?: string | null;
+  preserveExistingAttribution?: boolean;
 };
 
 type BuildLeadAttributionPatchResult = {
@@ -235,6 +243,8 @@ function buildTouchFromExisting(existingData: Record<string, unknown>, key: "fir
     referrer: clean(touch.referrer, 500),
     gclid: clean(touch.gclid || readObject(touch.clickIds).gclid, 240),
     fbclid: clean(touch.fbclid || readObject(touch.clickIds).fbclid, 240),
+    fbc: clean(touch.fbc, 300),
+    fbp: clean(touch.fbp, 300),
     clickIds: {
       gclid: clean(touch.gclid || readObject(touch.clickIds).gclid, 240),
       fbclid: clean(touch.fbclid || readObject(touch.clickIds).fbclid, 240),
@@ -262,6 +272,14 @@ function hasTouchSignal(touch: LeadTouchSnapshot) {
       touch.referrer ||
       touch.gclid ||
       touch.fbclid
+      || touch.fbc
+      || touch.fbp
+  );
+}
+
+function hasCommercialAttributionSignal(touch: LeadTouchSnapshot) {
+  return Boolean(
+    touch.source || touch.medium || touch.campaign || touch.term || touch.content || touch.campaignId || touch.adsetId || touch.adId || touch.formId || touch.gclid || touch.fbclid || touch.fbc || touch.fbp || touch.landingPage || touch.referrer
   );
 }
 
@@ -286,6 +304,8 @@ function buildTouch(input: BuildLeadAttributionPatchInput): LeadTouchSnapshot {
   const referrer = clean(submission.referrer || attribution.referrer, 500);
   const gclid = clean(submission.gclid || attribution.gclid, 240);
   const fbclid = clean(submission.fbclid || attribution.fbclid, 240);
+  const fbc = clean(submission.fbc || attribution.fbc, 300);
+  const fbp = clean(submission.fbp || attribution.fbp, 300);
 
   return {
     source,
@@ -305,6 +325,8 @@ function buildTouch(input: BuildLeadAttributionPatchInput): LeadTouchSnapshot {
     referrer,
     gclid,
     fbclid,
+    fbc,
+    fbp,
     clickIds: {
       gclid,
       fbclid,
@@ -332,11 +354,14 @@ export function buildLeadAttributionPatch(input: BuildLeadAttributionPatchInput)
     ...item,
     clickIds: item.clickIds,
   })) as LeadTouchSnapshot[];
+  const preserveExistingAttribution = input.preserveExistingAttribution === true && hasTouchSignal(existingFirstTouch) && !hasCommercialAttributionSignal(currentTouch);
 
   const firstTouch = hasTouchSignal(existingFirstTouch)
     ? existingFirstTouch
     : buildTouchWriteSnapshot(currentTouch);
-  const lastTouch = hasTouchSignal(currentTouch)
+  const lastTouch = preserveExistingAttribution
+    ? existingLastTouch
+    : hasTouchSignal(currentTouch)
     ? buildTouchWriteSnapshot(currentTouch)
     : hasTouchSignal(existingLastTouch)
       ? existingLastTouch
@@ -355,9 +380,14 @@ export function buildLeadAttributionPatch(input: BuildLeadAttributionPatchInput)
   const attributionContent = currentTouch.content || clean(existingData.utmContent, 240) || firstTouch.content;
   const gclid = currentTouch.gclid || clean(existingData.gclid, 240) || firstTouch.gclid;
   const fbclid = currentTouch.fbclid || clean(existingData.fbclid, 240) || firstTouch.fbclid;
-  const originLabel =
-    currentTouch.sourceLabel || currentTouch.source || clean(existingData.origem, 140) || clean(input.sourceLabel, 140);
-  const sourceLabel = currentTouch.sourceLabel || firstTouch.sourceLabel || clean(input.sourceLabel, 140);
+  const fbc = currentTouch.fbc || clean(existingData.fbc, 300) || firstTouch.fbc;
+  const fbp = currentTouch.fbp || clean(existingData.fbp, 300) || firstTouch.fbp;
+  const originLabel = preserveExistingAttribution
+    ? clean(existingData.origem, 140) || existingLastTouch.sourceLabel || existingFirstTouch.sourceLabel || clean(input.sourceLabel, 140)
+    : currentTouch.sourceLabel || currentTouch.source || clean(existingData.origem, 140) || clean(input.sourceLabel, 140);
+  const sourceLabel = preserveExistingAttribution
+    ? existingLastTouch.sourceLabel || existingFirstTouch.sourceLabel || clean(input.sourceLabel, 140)
+    : currentTouch.sourceLabel || firstTouch.sourceLabel || clean(input.sourceLabel, 140);
   const campaignLabel = attributionCampaign || clean(existingData.campaignName, 180);
   const campaignId = currentTouch.campaignId || clean(existingData.campaignId, 180) || firstTouch.campaignId;
   const adsetId = currentTouch.adsetId || clean(existingData.adsetId, 180) || firstTouch.adsetId;
@@ -388,6 +418,8 @@ export function buildLeadAttributionPatch(input: BuildLeadAttributionPatchInput)
       utmContent: attributionContent,
       gclid,
       fbclid,
+      fbc,
+      fbp,
       first_touch: firstTouch,
       last_touch: lastTouch,
       assisted_touches: assistedTouches,
@@ -409,6 +441,8 @@ export function buildLeadAttributionPatch(input: BuildLeadAttributionPatchInput)
         referrer,
         gclid,
         fbclid,
+        fbc,
+        fbp,
         clickIds: {
           gclid,
           fbclid,
@@ -487,6 +521,7 @@ export async function recordInboundLead(input: RecordInboundLeadInput) {
     sourceLabel,
     channel: input.channel,
     sourceType,
+    preserveExistingAttribution: input.preserveExistingAttribution,
   });
 
   const notesParts = [

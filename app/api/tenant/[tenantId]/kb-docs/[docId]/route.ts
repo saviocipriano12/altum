@@ -4,6 +4,8 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { normalizeCommercialOffer, normalizeCommercialOfferRelationIds } from "@/lib/commercial-offer";
+import { normalizeCommercialKnowledgeFields } from "@/lib/commercial-knowledge-fields";
 
 type Body = {
   type?: "faq" | "catalog" | "policy";
@@ -22,10 +24,39 @@ type Body = {
   targetProfile?: string | null;
   priceFrom?: number | null;
   priceTo?: number | null;
+  currency?: string | null;
+  sku?: string | null;
+  inventoryQuantity?: number | null;
+  checkoutUrl?: string | null;
+  kind?: "produto" | "servico" | "plano" | "pacote" | string | null;
   upsellKeys?: string[] | string;
   crossSellKeys?: string[] | string;
+  upsellOfferIds?: string[] | string;
+  crossSellOfferIds?: string[] | string;
+  downsellOfferIds?: string[] | string;
+  incompatibleOfferIds?: string[] | string;
+  nextOfferId?: string | null;
   priority?: number | null;
   availability?: "active" | "seasonal" | "paused" | string | null;
+  useInAi?: boolean;
+  description?: string | null;
+  benefits?: string | null;
+  commonQuestions?: string | null;
+  objections?: string | null;
+  whenRecommend?: string | null;
+  whenNotRecommend?: string | null;
+  whenHuman?: string | null;
+  productSpecs?: string | null;
+  stockDelivery?: string | null;
+  warranty?: string | null;
+  serviceScope?: string | null;
+  duration?: string | null;
+  schedulingRules?: string | null;
+  deliverables?: string | null;
+  proofAndCases?: string | null;
+  demonstration?: string | null;
+  paymentConditions?: string | null;
+  supportAndSla?: string | null;
 };
 
 type MediaItemBody = {
@@ -152,6 +183,25 @@ async function getDocRef(tenantId: string, docId: string) {
   return ref;
 }
 
+async function normalizeOfferRelations(tenantId: string, body: Body, currentOfferId: string) {
+  const requested = [body.upsellOfferIds, body.crossSellOfferIds, body.downsellOfferIds, body.incompatibleOfferIds, body.nextOfferId]
+    .some((value) => value !== undefined);
+  if (!requested) return null;
+
+  const offers = await adminDb.collection("kb_docs").where("tenantId", "==", tenantId).limit(200).get();
+  const validOfferIds = offers.docs
+    .filter((doc) => String(doc.data().type || "").toLowerCase() === "catalog")
+    .map((doc) => doc.id);
+  const normalize = (value: unknown) => normalizeCommercialOfferRelationIds({ value, validOfferIds, currentOfferId, max: 12 });
+  return {
+    upsellOfferIds: normalize(body.upsellOfferIds),
+    crossSellOfferIds: normalize(body.crossSellOfferIds),
+    downsellOfferIds: normalize(body.downsellOfferIds),
+    incompatibleOfferIds: normalize(body.incompatibleOfferIds),
+    nextOfferId: normalize(body.nextOfferId)[0] || null,
+  };
+}
+
 export async function PATCH(
   req: Request,
   context: { params: Promise<{ tenantId: string; docId: string }> }
@@ -170,6 +220,8 @@ export async function PATCH(
       return NextResponse.json({ error: "Campo obrigatorio: content." }, { status: 400 });
     }
     const mediaItems = normalizeMediaItems(body.mediaItems);
+    const commercial = normalizeCommercialOffer({ ...body, mediaItems });
+    const relations = await normalizeOfferRelations(tenantId, body, docId);
 
     await ref.set(
       {
@@ -189,10 +241,17 @@ export async function PATCH(
         ...(body.targetProfile !== undefined ? { targetProfile: clean(body.targetProfile, 180) || null } : {}),
         ...(body.priceFrom !== undefined ? { priceFrom: priceValue(body.priceFrom) } : {}),
         ...(body.priceTo !== undefined ? { priceTo: priceValue(body.priceTo) } : {}),
+        ...(body.currency !== undefined ? { currency: commercial.currency } : {}),
+        ...(body.sku !== undefined ? { sku: commercial.sku } : {}),
+        ...(body.inventoryQuantity !== undefined ? { inventoryQuantity: commercial.inventoryQuantity } : {}),
+        ...(body.checkoutUrl !== undefined ? { checkoutUrl: commercial.checkoutUrl } : {}),
+        ...(body.kind !== undefined ? { kind: commercial.kind } : {}),
         ...(body.upsellKeys !== undefined ? { upsellKeys: parseList(body.upsellKeys, 12) } : {}),
         ...(body.crossSellKeys !== undefined ? { crossSellKeys: parseList(body.crossSellKeys, 12) } : {}),
+        ...(relations || {}),
         ...(body.priority !== undefined ? { priority: numericValue(body.priority) } : {}),
         ...(body.availability !== undefined ? { availability: normalizeAvailability(body.availability) } : {}),
+        ...normalizeCommercialKnowledgeFields(body, { onlyPresent: true }),
         updatedAt: FieldValue.serverTimestamp(),
         updatedBy: user.uid,
         updatedByName: user.name,

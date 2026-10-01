@@ -6,6 +6,7 @@ import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@
 import { runLeadAutomations } from "@/lib/server/automations";
 import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertLeadCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
   status?: string;
@@ -59,6 +60,8 @@ export async function PATCH(
     if (String(budget.tenantId || "") !== tenantId) {
       return NextResponse.json({ error: "Proposta fora do tenant informado." }, { status: 403 });
     }
+    const accessLeadId = clean(budget.leadId, 160);
+    if (accessLeadId) await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId: accessLeadId });
 
     const body = (await req.json()) as Body;
     const patch: Record<string, unknown> = {

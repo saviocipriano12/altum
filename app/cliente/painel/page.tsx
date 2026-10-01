@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -18,17 +19,6 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
@@ -42,6 +32,11 @@ import {
   StateBadge,
 } from "@/app/cliente/painel/components/ui";
 import { getPipelineStageLabel, normalizePipelineStageId } from "@/lib/pipeline";
+
+const DashboardDesktopCharts = dynamic(
+  () => import("@/app/cliente/painel/components/dashboard-desktop-charts").then((mod) => mod.DashboardDesktopCharts),
+  { ssr: false, loading: () => null }
+);
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "info" | "ai";
 
@@ -415,12 +410,9 @@ export default function ClientePainelOverviewPage() {
         readJson<{ items?: AppointmentItem[] }>(`/api/tenant/${tenantId}/appointments`),
         readJson<{ items?: LeadItem[]; error?: string }>(`/api/tenant/${tenantId}/leads`),
         readJson<MetricsSummaryPayload>(`/api/tenant/${tenantId}/metrics-summary`),
-        canConfigure ? readJson<AutomationSummaryPayload>(`/api/tenant/${tenantId}/automation-summary`) : Promise.resolve({ ok: true, payload: {} as AutomationSummaryPayload }),
-        canConfigure ? readJson<ReadinessPayload>(`/api/tenant/${tenantId}/readiness`) : Promise.resolve({ ok: true, payload: {} as ReadinessPayload }),
       ]);
 
-      const [dashboardResult, chatsResult, followUpsResult, appointmentsResult, leadsResult, metricsResult, automationResult, readinessResult] =
-        results;
+      const [dashboardResult, chatsResult, followUpsResult, appointmentsResult, leadsResult, metricsResult] = results;
       setUnavailableSections([
         ["Conversas", chatsResult], ["Retornos", followUpsResult], ["Agenda", appointmentsResult], ["Clientes", leadsResult], ["Indicadores", metricsResult],
       ].filter(([, result]) => {
@@ -441,12 +433,24 @@ export default function ClientePainelOverviewPage() {
       if (appointmentsResult.status === "fulfilled" && appointmentsResult.value.ok) setAppointments(appointmentsResult.value.payload.items || []);
       if (leadsResult.status === "fulfilled" && leadsResult.value.ok) setLeads(leadsResult.value.payload.items || []);
       if (metricsResult.status === "fulfilled" && metricsResult.value.ok) setMetricsSummary(metricsResult.value.payload || {});
-      if (automationResult.status === "fulfilled" && automationResult.value.ok) setAutomationSummary(automationResult.value.payload || {});
-      if (readinessResult.status === "fulfilled" && readinessResult.value.ok) setReadiness(readinessResult.value.payload || {});
 
       setSnapshotAt(Date.now());
       setLoading(false);
       setRefreshing(false);
+
+      if (canConfigure) {
+        void Promise.allSettled([
+          readJson<AutomationSummaryPayload>(`/api/tenant/${tenantId}/automation-summary`),
+          readJson<ReadinessPayload>(`/api/tenant/${tenantId}/readiness`),
+        ]).then(([automationResult, readinessResult]) => {
+          if (automationResult.status === "fulfilled" && automationResult.value.ok) {
+            setAutomationSummary(automationResult.value.payload || {});
+          }
+          if (readinessResult.status === "fulfilled" && readinessResult.value.ok) {
+            setReadiness(readinessResult.value.payload || {});
+          }
+        });
+      }
     },
     [tenantId, canViewTeam, canConfigure]
   );
@@ -762,7 +766,7 @@ export default function ClientePainelOverviewPage() {
       items.push({
         id: "unassigned",
         title: "Distribuir conversas sem responsavel",
-        detail: `${unassignedChats} contato${unassignedChats === 1 ? "" : "s"} sem dono comercial.`,
+        detail: `${unassignedChats} conversa${unassignedChats === 1 ? "" : "s"} sem responsavel na fila de atendimento.`,
         href: "/cliente/painel/inbox?queue=unassigned",
         badge: "fila",
         tone: "warning",
@@ -896,7 +900,7 @@ export default function ClientePainelOverviewPage() {
         </PanelCard>
       </section>
 
-      <section className="hidden gap-4 sm:grid xl:grid-cols-[1fr_360px]">
+      {showDesktopCharts ? <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <PanelCard tone="spotlight" className="p-4 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4 md:gap-5">
             <div className="min-w-0 max-w-2xl">
@@ -944,7 +948,7 @@ export default function ClientePainelOverviewPage() {
             </Link>
           </div>
         </PanelCard>
-      </section>
+      </section> : null}
 
       <section className="grid gap-3 sm:hidden">
         <PanelCard className="p-4">
@@ -980,68 +984,19 @@ export default function ClientePainelOverviewPage() {
         </PanelCard>
       </section>
 
-      <section className="hidden gap-3 sm:grid md:grid-cols-2 xl:grid-cols-4">
+      {showDesktopCharts ? <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {(canViewTeam ? liveMetrics : personalMetrics).map((item) => (
           <LiveMetricCard key={item.label} item={item} />
         ))}
-      </section>
+      </section> : null}
 
       {showDesktopCharts && canViewTeam ? (
-        <section className="client-advanced-layer grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-          <PanelCard className="p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle title="Crescimento por origem" subtitle="Leads, reunioes e vendas com leitura visual." />
-              <Link href="/cliente/painel/campanhas" className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
-                Campanhas
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-            <div className="mt-4 h-[260px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={campaignChartData} margin={{ left: -18, right: 8, top: 10, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="leadsGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--cliente-primary)" stopOpacity={0.24} />
-                      <stop offset="95%" stopColor="var(--cliente-primary)" stopOpacity={0.02} />
-                    </linearGradient>
-                    <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--cliente-success)" stopOpacity={0.24} />
-                      <stop offset="95%" stopColor="var(--cliente-success)" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke={chartGridColor} strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fill: chartTextColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: chartTextColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ border: "1px solid var(--cliente-border)", borderRadius: 14, background: "var(--cliente-card)", color: "var(--cliente-card-text)" }} />
-                  <Area type="monotone" dataKey="leads" name="Leads" stroke="var(--cliente-primary)" strokeWidth={2.5} fill="url(#leadsGradient)" />
-                  <Area type="monotone" dataKey="vendas" name="Vendas" stroke="var(--cliente-success)" strokeWidth={2.5} fill="url(#salesGradient)" />
-                  <Area type="monotone" dataKey="reunioes" name="Reunioes" stroke="var(--cliente-ai)" strokeWidth={2} fill="transparent" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </PanelCard>
-
-          <PanelCard className="p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle title="Funil em movimento" subtitle="Onde estao as oportunidades agora." />
-              <Link href="/cliente/painel/pipeline" className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-hover)]">
-                Funil
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-            <div className="mt-4 h-[260px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stageChartData} margin={{ left: -18, right: 8, top: 10, bottom: 0 }}>
-                  <CartesianGrid stroke={chartGridColor} strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fill: chartTextColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: chartTextColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ border: "1px solid var(--cliente-border)", borderRadius: 14, background: "var(--cliente-card)", color: "var(--cliente-card-text)" }} />
-                  <Bar dataKey="oportunidades" name="Oportunidades" radius={[8, 8, 0, 0]} fill="var(--cliente-primary)" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </PanelCard>
-        </section>
+        <DashboardDesktopCharts
+          campaignChartData={campaignChartData}
+          stageChartData={stageChartData}
+          chartGridColor={chartGridColor}
+          chartTextColor={chartTextColor}
+        />
       ) : canViewTeam ? (
         <section className="client-advanced-layer grid gap-4 sm:hidden">
           <PanelCard className="p-4">

@@ -27,7 +27,7 @@ type Body = {
   ownerUserId?: string | null;
 };
 
-const VALID_STATUSES = new Set(["scheduled", "confirmed", "completed", "canceled", "no_show"]);
+const VALID_STATUSES = new Set(["draft", "scheduled", "confirmed", "completed", "canceled", "no_show"]);
 
 type AppointmentItem = {
   id: string;
@@ -166,6 +166,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     }
 
     const status = clean(body.status, 40);
+    const appointmentStatus = VALID_STATUSES.has(status) ? status : "scheduled";
     const endAt = parseIso(body.endAt) || addMinutes(startAt, 60);
     const conflict = await findAppointmentConflict({
       tenantId,
@@ -192,7 +193,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       leadCompany: clean(lead?.empresa, 180) || null,
       title,
       type: clean(body.type, 80) || "reuniao",
-      status: VALID_STATUSES.has(status) ? status : "scheduled",
+      status: appointmentStatus,
       startAt,
       endAt,
       location: clean(body.location, 180) || null,
@@ -210,7 +211,9 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       await adminDb.collection("leads").doc(leadId).collection("events").add({
         type: "appointment_created",
         title: "Agendamento criado",
-        detail: `${title} agendado para ${new Date(startAt).toLocaleString("pt-BR")}.`,
+        detail: appointmentStatus === "draft"
+          ? `${title} sugerido para ${new Date(startAt).toLocaleString("pt-BR")}.`
+          : `${title} agendado para ${new Date(startAt).toLocaleString("pt-BR")}.`,
         appointmentId: ref.id,
         actorId: user.uid,
         actorName: user.name,
@@ -221,37 +224,39 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         tenantId,
         leadId,
         appointmentId: ref.id,
-        status: VALID_STATUSES.has(status) ? status : "scheduled",
+        status: appointmentStatus,
       });
 
-      await dispatchLeadConversionEvents({
-        tenantId,
-        leadId,
-        appointmentId: ref.id,
-        reason: "meeting_scheduled",
-      }).catch((error) => {
-        console.error("Falha ao disparar conversao de reuniao agendada:", error);
-      });
+      if (appointmentStatus === "scheduled" || appointmentStatus === "confirmed") {
+        await dispatchLeadConversionEvents({
+          tenantId,
+          leadId,
+          appointmentId: ref.id,
+          reason: "meeting_scheduled",
+        }).catch((error) => {
+          console.error("Falha ao disparar conversao de reuniao agendada:", error);
+        });
 
-      await upsertLeadCommercialDossier({
-        tenantId,
-        leadId,
-        trigger: "appointment_scheduled",
-        appointmentId: ref.id,
-        sourceId: ref.id,
-        lead,
-        appointment: {
-          title,
-          startAt,
-          endAt,
-          location: clean(body.location, 180) || null,
-          meetingUrl: clean(body.meetingUrl, 500) || null,
-          notes: clean(body.notes, 4000) || null,
-          ownerName,
-        },
-        actorId: user.uid,
-        actorName: user.name,
-      });
+        await upsertLeadCommercialDossier({
+          tenantId,
+          leadId,
+          trigger: "appointment_scheduled",
+          appointmentId: ref.id,
+          sourceId: ref.id,
+          lead,
+          appointment: {
+            title,
+            startAt,
+            endAt,
+            location: clean(body.location, 180) || null,
+            meetingUrl: clean(body.meetingUrl, 500) || null,
+            notes: clean(body.notes, 4000) || null,
+            ownerName,
+          },
+          actorId: user.uid,
+          actorName: user.name,
+        });
+      }
     }
 
     return NextResponse.json({ ok: true, tenantId, id: ref.id });

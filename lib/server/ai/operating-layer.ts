@@ -46,6 +46,10 @@ export const AI_AUTONOMY_LABELS: Record<AltumAiAutonomyMode, string> = {
   autonomous: "Autonomo",
 };
 
+export function canAutonomouslyAdvanceCommercialWorkflow(mode: AltumAiAutonomyMode) {
+  return mode === "autonomous";
+}
+
 export const AI_REASONING_LABELS: Record<AltumAiReasoningLevel, string> = {
   fast: "Rapido",
   balanced: "Equilibrado",
@@ -91,7 +95,10 @@ function normalizeProviders(value: unknown): AltumAiProvider[] {
 
 function normalizePositiveNumber(value: unknown, fallback: number, max: number) {
   const numeric = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+  if (!Number.isFinite(numeric) || numeric < 0) return fallback;
+  // Zero is an explicit "unlimited" setting. Treating it as absent silently
+  // re-enabled the default cap and forced live conversations into contingency.
+  if (numeric === 0) return 0;
   return Math.min(max, Math.max(1, Math.round(numeric)));
 }
 

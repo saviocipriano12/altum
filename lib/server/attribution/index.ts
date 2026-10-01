@@ -18,6 +18,8 @@ export type AttributionTouch = {
   referrer: string;
   gclid: string;
   fbclid: string;
+  fbc: string;
+  fbp: string;
   clickIds: {
     gclid: string;
     fbclid: string;
@@ -55,6 +57,8 @@ export function emptyAttributionTouch(): AttributionTouch {
     referrer: "",
     gclid: "",
     fbclid: "",
+    fbc: "",
+    fbp: "",
     clickIds: {
       gclid: "",
       fbclid: "",
@@ -84,6 +88,8 @@ export function normalizeAttributionTouch(value: unknown): AttributionTouch {
     referrer: clean(touch.referrer, 500),
     gclid: clean(touch.gclid || clickIds.gclid, 240),
     fbclid: clean(touch.fbclid || clickIds.fbclid, 240),
+    fbc: clean(touch.fbc, 300),
+    fbp: clean(touch.fbp, 300),
     clickIds: {
       gclid: clean(touch.gclid || clickIds.gclid, 240),
       fbclid: clean(touch.fbclid || clickIds.fbclid, 240),
@@ -111,6 +117,8 @@ export function hasAttributionTouchSignal(touch: AttributionTouch) {
       touch.referrer ||
       touch.gclid ||
       touch.fbclid
+      || touch.fbc
+      || touch.fbp
   );
 }
 
@@ -133,6 +141,8 @@ export function areTouchesEquivalent(left: AttributionTouch, right: AttributionT
     left.referrer === right.referrer &&
     left.gclid === right.gclid &&
     left.fbclid === right.fbclid
+    && left.fbc === right.fbc
+    && left.fbp === right.fbp
   );
 }
 

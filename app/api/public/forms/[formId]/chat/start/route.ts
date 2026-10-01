@@ -8,7 +8,7 @@ import {
   normalizeCaptureFields,
   normalizeCaptureFieldValue,
 } from "@/lib/capture-form";
-import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
+import { enqueueIncomingMessageJob, processAiJobAfterSettle, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
@@ -272,13 +272,9 @@ export async function POST(
         source: "site_chat_widget",
         dedupeKey: `${tenantId}_${messageRef.id}`,
       });
-      await processAiJobNow(queue.jobId);
-      await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
       triggerAiQueueWorker({ limit: 8, drain: true });
       after(async () => {
-        await processAiJobNow(queue.jobId);
-        await kickAiQueueNow({ limit: 8, drain: true, maxBatches: 6, timeoutMs: 18000 });
-        triggerAiQueueWorker({ limit: 8, drain: true });
+        await processAiJobAfterSettle(queue.jobId, { source: "site_chat_widget" });
       });
     }
 

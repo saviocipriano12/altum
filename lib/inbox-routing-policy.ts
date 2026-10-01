@@ -6,6 +6,7 @@ export type TenantOperator = {
   availability: "online" | "busy" | "offline";
   allowedChannels: string[];
   maxOpenChats: number | null;
+  isSeller?: boolean;
 };
 
 export type InboxRoutingRules = {
@@ -73,5 +74,9 @@ export function filterEligibleOperators(input: {
   }
 
   return eligible;
+}
+
+export function filterLeadOwners(operators: TenantOperator[]) {
+  return operators.filter((operator) => operator.isSeller === true);
 }
 

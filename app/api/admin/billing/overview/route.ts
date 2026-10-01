@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { buildStripePlanReadiness, getStripeIntegrationEnvStatus } from "@/lib/platform-billing";
 
 function clean(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
@@ -93,7 +92,7 @@ export async function GET(req: Request) {
     let overdueAmount = 0;
     let openFinanceCount = 0;
     let overdueFinanceCount = 0;
-    let stripeContracts = 0;
+    let asaasContracts = 0;
     let includedContracts = 0;
     let manualContracts = 0;
     let activeContracts = 0;
@@ -129,7 +128,8 @@ export async function GET(req: Request) {
       if (accessStatus === "blocked") blockedContracts += 1;
       else activeContracts += 1;
 
-      if (billingProvider === "stripe" || accessMode === "stripe_subscription") stripeContracts += 1;
+      const asaasSubscription = billingProvider === "asaas" || accessMode === "asaas_subscription";
+      if (asaasSubscription) asaasContracts += 1;
       if (billingProvider === "included" || accessMode === "agency_included") includedContracts += 1;
       if (billingProvider === "manual" || billingProvider === "asaas" || accessMode === "manual_release") {
         manualContracts += 1;
@@ -165,18 +165,6 @@ export async function GET(req: Request) {
         .reduce((sum, item) => sum + toNumber((item as Record<string, unknown>).valor), 0);
 
       const nextOpen = openItems[0] || null;
-      const stripeSetup = buildStripePlanReadiness({
-        platformPlan,
-        billingProvider,
-        platformAccessMode: accessMode,
-        stripeCustomerId: clean(data.stripeCustomerId, 180),
-        stripeSubscriptionId: clean(data.stripeSubscriptionId, 180),
-        stripeSubscriptionStatus: clean(data.stripeSubscriptionStatus, 80),
-        stripeCurrentPeriodEnd: clean(data.stripeCurrentPeriodEnd, 40),
-        stripeCheckoutUrl: clean(data.stripeCheckoutUrl, 800),
-        stripeCustomerPortalUrl: clean(data.stripeCustomerPortalUrl, 800),
-      });
-
       const reasons: string[] = [];
       let severity = 0;
 
@@ -199,8 +187,8 @@ export async function GET(req: Request) {
         }
       }
 
-      if (stripeSetup.enabled && stripeSetup.missing.length > 0) {
-        reasons.push("Stripe incompleto");
+      if (accessMode === "asaas_subscription" && !clean(tenant?.asaasSubscriptionId || data.asaasSubscriptionId, 180)) {
+        reasons.push("Assinatura Asaas não criada");
         severity += 2;
       }
 
@@ -249,7 +237,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const stripeEnv = getStripeIntegrationEnvStatus();
+    const asaasMissing = ["ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN"].filter((key) => !process.env[key]);
 
     return NextResponse.json({
       ok: true,
@@ -257,15 +245,15 @@ export async function GET(req: Request) {
         totalContracts: contractsSnap.size,
         activeContracts,
         blockedContracts,
-        stripeContracts,
+        asaasContracts,
         includedContracts,
         manualContracts,
         openFinanceCount,
         overdueFinanceCount,
         monthlyPlatformValue: Number(monthlyPlatformValue.toFixed(2)),
         overdueAmount: Number(overdueAmount.toFixed(2)),
-        stripeReady: stripeEnv.ready,
-        stripeMissing: stripeEnv.missing,
+        asaasReady: asaasMissing.length === 0,
+        asaasMissing,
       },
       actionItems: actionItems
         .sort((left, right) => {

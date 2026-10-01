@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { normalizePhone } from "@/app/lib/server/phone";
 import { decryptSecret, encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
 import { recordInboundLead } from "@/lib/server/lead-intake";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
@@ -9,8 +10,12 @@ import { commerceProviderMeta, connectionConfigFromDoc, hasCommerceCredentials, 
 import type { CommerceSyncEvent } from "@/lib/server/commerce/types";
 import { verifyNativeCommerceWebhook } from "@/lib/server/commerce/webhook-security";
 import { fetchNuvemshopWebhookResource } from "@/lib/server/commerce/providers/nuvemshop";
+import { deriveEcommerceOrderJourney } from "@/lib/ecommerce-journey";
+import { normalizeEcommerceAgentRollout, type EcommerceAgentRollout } from "@/lib/ecommerce-agent-policy";
+import { recommendEcommerceRelatedOffer, type EcommerceOfferRecommendation } from "@/lib/ecommerce-recommendation";
+import { recordNativeGrowthEvent } from "@/lib/server/growth/record-event";
 
-export const ECOMMERCE_PROVIDERS = ["shopify", "nuvemshop", "woocommerce", "vtex", "tray", "loja_integrada"] as const;
+export const ECOMMERCE_PROVIDERS = ["shopify", "nuvemshop", "woocommerce", "vtex", "tray", "loja_integrada", "checkout_externo"] as const;
 
 export type EcommerceProvider = (typeof ECOMMERCE_PROVIDERS)[number];
 export type EcommerceConnectionStatus = "draft" | "active" | "paused" | "error";
@@ -26,6 +31,7 @@ export type EcommerceAutomationTemplate = {
 
 export type EcommerceAutomationSettings = {
   autoSendEnabled: boolean;
+  agent: EcommerceAgentRollout;
   purchaseConfirmation: EcommerceAutomationTemplate;
   trackingAvailable: EcommerceAutomationTemplate;
   abandonedCartRecovery: EcommerceAutomationTemplate;
@@ -61,6 +67,7 @@ type NormalizedProduct = {
 type NormalizedOrder = {
   externalOrderId: string;
   orderNumber: string;
+  customerExternalId: string;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
@@ -75,6 +82,15 @@ type NormalizedOrder = {
   purchasedProductNames: string[];
   items: Array<{ name: string; quantity: number; sku: string; productId: string; price: number | null }>;
   orderedAt: string | null;
+  attribution: {
+    source: string;
+    medium: string;
+    campaign: string;
+    content: string;
+    term: string;
+    landingPage: string;
+    referrer: string;
+  };
 };
 
 type NormalizedCart = {
@@ -100,6 +116,7 @@ type NormalizedWebhookEvent = {
 
 const DEFAULT_AUTOMATION_SETTINGS: EcommerceAutomationSettings = {
   autoSendEnabled: false,
+  agent: normalizeEcommerceAgentRollout({}, false),
   purchaseConfirmation: {
     enabled: true,
     templateName: "compra_confirmada_altum",
@@ -122,7 +139,7 @@ const DEFAULT_AUTOMATION_SETTINGS: EcommerceAutomationSettings = {
     enabled: false,
     templateName: "pos_compra_altum",
     languageCode: "pt_BR",
-    params: ["{{nome}}", "{{produtos}}"],
+    params: ["{{nome}}", "{{produtos}}", "{{oferta_recomendada}}"],
   },
 };
 
@@ -133,6 +150,7 @@ const PROVIDER_LABELS: Record<EcommerceProvider, string> = {
   vtex: "VTEX",
   tray: "Tray",
   loja_integrada: "Loja Integrada",
+  checkout_externo: "Checkout externo",
 };
 
 function clean(value: unknown, max = 300) {
@@ -273,36 +291,6 @@ function topicHas(topic: string, words: string[]) {
   return words.some((word) => normalized.includes(word));
 }
 
-function isPaidEcommerceOrder(order: NormalizedOrder) {
-  const status = normalize(`${order.paymentStatus} ${order.status}`, 180).replace(/[^a-z0-9]+/g, "_");
-  const hasToken = (values: string[]) =>
-    values.some((value) => new RegExp(`(^|_)${value}(_|$)`).test(status));
-
-  if (
-    hasToken([
-      "unpaid",
-      "not_paid",
-      "partially_paid",
-      "partial",
-      "pending",
-      "pendente",
-      "authorized",
-      "autorizado",
-      "refunded",
-      "estornado",
-      "voided",
-      "canceled",
-      "cancelado",
-    ])
-  ) {
-    return false;
-  }
-
-  return hasToken(
-    ["paid", "pago", "received", "recebido", "confirmed", "confirmado", "approved", "aprovado"]
-  );
-}
-
 function tagsFrom(value: unknown) {
   if (Array.isArray(value)) return value.map((item) => clean(item, 60)).filter(Boolean).slice(0, 20);
   return clean(value, 500)
@@ -363,33 +351,170 @@ function normalizeOrderItems(value: unknown) {
   }).filter((item) => item.name || item.productId);
 }
 
-function normalizeOrder(payload: Record<string, unknown>): NormalizedOrder | null {
+function firstText(value: unknown, max = 800) {
+  if (Array.isArray(value)) {
+    return value.map((item) => clean(item, max)).find(Boolean) || "";
+  }
+  return clean(value, max);
+}
+
+function normalizeOrder(payload: Record<string, unknown>, topic = ""): NormalizedOrder | null {
   const order = nestedOrSelf(payload.order, payload);
   const customer = safeRecord(order.customer || order.client || order.billing);
   const shipping = safeRecord(order.shipping || order.shipping_address);
   const firstFulfillment = firstRecord(order.fulfillments || order.shipments || order.shipping_lines);
+  const attribution = safeRecord(order.attribution || order.customer_journey_summary || order.customerJourneySummary);
+  const lastVisit = safeRecord(attribution.last_visit || attribution.lastVisit);
+  const firstVisit = safeRecord(attribution.first_visit || attribution.firstVisit);
+  const visit = Object.keys(lastVisit).length ? lastVisit : Object.keys(firstVisit).length ? firstVisit : attribution;
+  const utm = safeRecord(visit.utm_parameters || visit.utmParameters || attribution.utm);
   const items = normalizeOrderItems(order.line_items || order.items || order.products);
   const externalOrderId = clean(order.id || order.order_id || order.orderId || order.number, 180);
   if (!externalOrderId && !items.length) return null;
+  const refunds = list(order.refunds || order.refund_transactions || order.refundTransactions);
+  const normalizedTopic = normalize(topic, 180);
+  const cancellationDetected = Boolean(order.cancelled_at || order.cancelledAt || order.cancel_reason || order.cancelReason);
+  const refundDetected = refunds.length > 0 || topicHas(normalizedTopic, ["refund", "reembolso", "estorno"]);
+  const rawFinancialStatus = clean(order.financial_status || order.payment_status || order.paymentStatus, 80);
+  const rawStatus = clean(order.status || order.order_status || order.state, 80) || "created";
+  const refundTotal = refunds.reduce<number>((sum, item) => {
+    const row = safeRecord(item);
+    return sum + (numberValue(row.amount || row.total || row.refund_amount) || 0);
+  }, 0);
+  const totalPrice = numberValue(order.total_price || order.total || order.value || order.amount);
+  const fullRefund = refundDetected && (!refundTotal || !totalPrice || refundTotal >= totalPrice);
 
   return {
     externalOrderId: externalOrderId || hashId([order.number, customer.email, order.total_price]),
     orderNumber: clean(order.name || order.number || order.order_number || order.code, 120),
+    customerExternalId: clean(customer.id || customer.customer_id || customer.customerId, 180),
     customerName: clean(customer.name || `${clean(customer.first_name, 80)} ${clean(customer.last_name, 80)}`.trim(), 180),
     customerEmail: clean(customer.email || order.email || shipping.email, 180),
     customerPhone: clean(customer.phone || customer.phone_number || order.phone || shipping.phone, 80),
-    totalPrice: numberValue(order.total_price || order.total || order.value || order.amount),
+    totalPrice,
     currency: clean(order.currency || order.currency_code, 20) || "BRL",
-    status: clean(order.status || order.order_status || order.state, 80) || "created",
-    paymentStatus: clean(order.financial_status || order.payment_status || order.paymentStatus, 80),
+    status: cancellationDetected ? "cancelled" : fullRefund ? "refunded" : rawStatus,
+    paymentStatus: fullRefund ? "refunded" : refundDetected ? "partially_refunded" : rawFinancialStatus,
     fulfillmentStatus: clean(order.fulfillment_status || order.shipping_status || order.fulfillmentStatus, 80),
-    trackingCode: clean(order.tracking_number || order.trackingCode || firstFulfillment.tracking_number || firstFulfillment.code, 180),
-    trackingUrl: clean(order.tracking_url || firstFulfillment.tracking_url || firstFulfillment.url, 800),
+    // Shopify REST sends tracking_numbers/tracking_urls as arrays. GraphQL
+    // sync uses a scalar; accepting both keeps webhook and API sync equivalent.
+    trackingCode: firstText(
+      order.tracking_number || order.trackingCode || firstFulfillment.tracking_number || firstFulfillment.tracking_numbers || firstFulfillment.code,
+      180
+    ),
+    trackingUrl: firstText(
+      order.tracking_url || firstFulfillment.tracking_url || firstFulfillment.tracking_urls || firstFulfillment.url,
+      800
+    ),
     checkoutUrl: clean(order.checkout_url || order.order_status_url || order.url, 800),
     purchasedProductNames: items.map((item) => item.name).filter(Boolean).slice(0, 20),
     items,
     orderedAt: dateIso(order.created_at || order.createdAt || order.date_created),
+    attribution: {
+      source: clean(visit.source || attribution.source, 180),
+      medium: clean(utm.medium || attribution.medium, 180),
+      campaign: clean(utm.campaign || attribution.campaign, 240),
+      content: clean(utm.content || attribution.content, 240),
+      term: clean(utm.term || attribution.term, 240),
+      landingPage: clean(visit.landing_page || visit.landingPage || attribution.landing_page || attribution.landingPage, 800),
+      referrer: clean(visit.referrer || visit.referrer_url || visit.referrerUrl || attribution.referrer, 800),
+    },
   };
+}
+
+function ecommerceCustomerKey(input: Pick<NormalizedOrder, "customerExternalId" | "customerEmail" | "customerPhone">) {
+  return clean(input.customerExternalId, 180) || clean(input.customerEmail, 180).toLowerCase() || normalizePhone(input.customerPhone) || "";
+}
+
+async function syncEcommerceCustomerProfile(input: {
+  tenantId: string;
+  connectionId: string;
+  provider: EcommerceProvider;
+  order: NormalizedOrder;
+  purchaseDelta: number;
+  revenueDelta: number;
+}) {
+  const customerKey = ecommerceCustomerKey(input.order);
+  if (!customerKey) return null;
+  const ref = adminDb.collection("ecommerce_customers").doc(hashId([input.tenantId, input.connectionId, customerKey]));
+  return adminDb.runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    const current = snapshot.exists ? snapshot.data() as Record<string, unknown> : {};
+    const countBefore = Math.max(0, Number(current.totalOrders || 0));
+    const valueBefore = Math.max(0, Number(current.lifetimeValue || 0));
+    // Revenue changes only on a commercial state transition. This prevents a
+    // pending order, a delivery update, or a repeated webhook from inflating LTV.
+    const totalOrders = Math.max(0, countBefore + input.purchaseDelta);
+    const lifetimeValue = Math.max(0, valueBefore + input.revenueDelta);
+    const priorProducts = Array.isArray(current.recentProductNames) ? current.recentProductNames.map((item) => clean(item, 180)) : [];
+    const recentProductNames = input.purchaseDelta > 0
+      ? Array.from(new Set([...input.order.purchasedProductNames, ...priorProducts].filter(Boolean))).slice(0, 30)
+      : priorProducts;
+    const orderedAt = input.order.orderedAt || new Date().toISOString();
+    const priorOrderedAt = clean(current.lastOrderedAt, 80);
+    const isLatest = !priorOrderedAt || new Date(orderedAt).getTime() >= new Date(priorOrderedAt).getTime();
+    const summary = {
+      id: ref.id,
+      customerKey,
+      totalOrders,
+      lifetimeValue,
+      lastOrderId: isLatest ? input.order.externalOrderId : clean(current.lastOrderId, 180),
+      lastOrderNumber: isLatest ? input.order.orderNumber : clean(current.lastOrderNumber, 120),
+      lastOrderedAt: isLatest ? orderedAt : priorOrderedAt,
+      recentProductNames,
+      customerName: input.order.customerName || clean(current.customerName, 180),
+      customerEmail: input.order.customerEmail || clean(current.customerEmail, 180),
+      customerPhone: input.order.customerPhone || clean(current.customerPhone, 80),
+    };
+    tx.set(ref, {
+      tenantId: input.tenantId,
+      connectionId: input.connectionId,
+      provider: input.provider,
+      ...summary,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: snapshot.exists ? current.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return summary;
+  });
+}
+
+function comparableCatalogValue(value: unknown) {
+  return clean(value, 240)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Resolves a recommendation only from a real, tenant-owned catalog relation. */
+async function resolveOrderCatalogRecommendation(input: {
+  tenantId: string;
+  connectionId: string;
+  order: NormalizedOrder;
+}): Promise<EcommerceOfferRecommendation | null> {
+  if (!input.order.items.length) return null;
+  const docs = await adminDb.collection("kb_docs")
+    .where("tenantId", "==", input.tenantId)
+    .limit(400)
+    .get();
+  const offers = docs.docs.map((doc) => ({ id: doc.id, data: doc.data() as Record<string, unknown> }));
+  const itemIds = new Set(input.order.items.map((item) => clean(item.productId, 180)).filter(Boolean));
+  const itemSkus = new Set(input.order.items.map((item) => comparableCatalogValue(item.sku)).filter(Boolean));
+  const itemNames = new Set(input.order.items.map((item) => comparableCatalogValue(item.name)).filter(Boolean));
+  const purchasedOfferIds = offers
+    .filter(({ data }) => {
+      const sourceKey = clean(data.sourceKey, 240);
+      const sourceProductId = sourceKey.startsWith(`ecommerce:${input.connectionId}:`)
+        ? sourceKey.slice(`ecommerce:${input.connectionId}:`.length)
+        : "";
+      return itemIds.has(sourceProductId)
+        || itemSkus.has(comparableCatalogValue(data.sku))
+        || itemNames.has(comparableCatalogValue(data.productName));
+    })
+    .map(({ id }) => id);
+  return recommendEcommerceRelatedOffer({ purchasedOfferIds, offers });
 }
 
 function normalizeCart(payload: Record<string, unknown>, topic: string): NormalizedCart | null {
@@ -497,13 +622,64 @@ async function createCommercialAction(input: {
   return ref.id;
 }
 
+async function resolveLeadTask(input: {
+  tenantId: string;
+  leadId: string;
+  key: string;
+  reason: string;
+}) {
+  const ref = adminDb.collection("lead_tasks").doc(hashId([input.tenantId, input.leadId, input.key]));
+  const snap = await ref.get();
+  if (!snap.exists || clean(snap.data()?.status, 40) === "done") return;
+  await ref.set({
+    status: "done",
+    completedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: "ecommerce_webhook",
+    updatedByName: "Ecommerce",
+    resolutionReason: input.reason,
+  }, { merge: true });
+}
+
+async function resolveCommercialAction(input: {
+  tenantId: string;
+  connectionId: string;
+  externalId: string;
+  type: EcommerceActionType;
+  status: "done" | "dismissed";
+  reason: string;
+}) {
+  const ref = adminDb.collection("ecommerce_commercial_actions").doc(actionDocId(input));
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const currentStatus = clean(snap.data()?.status, 40) || "pending";
+  await ref.set({
+    status: currentStatus === "pending" ? input.status : currentStatus,
+    resolvedAt: snap.data()?.resolvedAt || FieldValue.serverTimestamp(),
+    resolvedBy: snap.data()?.resolvedBy || "ecommerce_webhook",
+    resolvedByName: snap.data()?.resolvedByName || "Ecommerce",
+    resolutionReason: input.reason,
+    businessOutcome: input.reason,
+    businessOutcomeAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
 async function syncOrderToCommercial(input: {
   tenantId: string;
   connectionId: string;
   provider: EcommerceProvider;
   order: NormalizedOrder;
+  eventId: string;
+  previousJourneyState?: string;
 }) {
   const order = input.order;
+  const journey = deriveEcommerceOrderJourney(order);
+  const previouslyPaid = ["payment_confirmed", "shipped", "delivered", "partially_refunded"].includes(
+    clean(input.previousJourneyState, 60)
+  );
+  const purchaseDelta = journey.paid && !previouslyPaid ? 1 : journey.terminal && previouslyPaid ? -1 : 0;
+  const revenueDelta = purchaseDelta * Math.max(0, order.totalPrice || 0);
   const productText = order.purchasedProductNames.length ? order.purchasedProductNames.join(", ") : "produtos do pedido";
   const lead = await recordInboundLead({
     tenantId: input.tenantId,
@@ -515,7 +691,7 @@ async function syncOrderToCommercial(input: {
     email: order.customerEmail,
     telefone: order.customerPhone,
     mensagem: `Pedido ${order.orderNumber || order.externalOrderId} recebido. Itens: ${productText}.`,
-    tags: ["ecommerce", input.provider, "pedido_realizado", order.trackingCode ? "rastreio_disponivel" : ""],
+    tags: ["ecommerce", input.provider, journey.state, journey.shouldSendTracking ? "rastreio_disponivel" : ""],
     customFields: {
       ecommerce_provider: input.provider,
       ecommerce_connection_id: input.connectionId,
@@ -529,17 +705,86 @@ async function syncOrderToCommercial(input: {
       ecommerce_products: productText,
     },
     attribution: {
-      source: input.provider,
-      medium: "ecommerce",
-      campaign: "order",
-      content: productText,
+      source: order.attribution.source,
+      medium: order.attribution.medium,
+      campaign: order.attribution.campaign,
+      content: order.attribution.content || productText,
+      term: order.attribution.term,
+      landingPage: order.attribution.landingPage,
+      referrer: order.attribution.referrer,
       sourceLabel: `${providerLabel(input.provider)} - pedido`,
       channel: "ecommerce",
       sourceType: "ecommerce_order",
     },
     automationActorId: "ecommerce_webhook",
     automationActorName: "Ecommerce",
+    preserveExistingAttribution: true,
   });
+  const customerProfile = await syncEcommerceCustomerProfile({
+    tenantId: input.tenantId,
+    connectionId: input.connectionId,
+    provider: input.provider,
+    order,
+    purchaseDelta,
+    revenueDelta,
+  });
+  const catalogRecommendation = journey.shouldCreatePostPurchaseUpsell
+    ? await resolveOrderCatalogRecommendation({
+      tenantId: input.tenantId,
+      connectionId: input.connectionId,
+      order,
+    })
+    : null;
+
+  if (journey.paid) {
+    await recordNativeGrowthEvent({
+      tenantId: input.tenantId,
+      eventId: `ecommerce_purchase:${input.connectionId}:${order.externalOrderId}`,
+      name: "purchase_completed",
+      externalId: lead.leadId,
+      url: order.attribution.landingPage || order.checkoutUrl,
+      path: order.attribution.landingPage || order.checkoutUrl,
+      value: order.totalPrice || 0,
+      currency: order.currency,
+      properties: {
+        provider: input.provider,
+        orderId: order.externalOrderId,
+        orderNumber: order.orderNumber,
+      },
+      attribution: order.attribution,
+    });
+  }
+
+  const orderTaskKey = (suffix: string) => `ecommerce_order:${order.externalOrderId}:${suffix}`;
+  if (journey.paid) {
+    await resolveLeadTask({
+      tenantId: input.tenantId, leadId: lead.leadId, key: orderTaskKey("payment"), reason: "payment_confirmed",
+    });
+  }
+  if (journey.shouldSendTracking || journey.state === "delivered") {
+    await resolveLeadTask({
+      tenantId: input.tenantId, leadId: lead.leadId, key: orderTaskKey("waiting_tracking"), reason: journey.state,
+    });
+  }
+  if (journey.state === "delivered") {
+    await Promise.all([
+      resolveLeadTask({ tenantId: input.tenantId, leadId: lead.leadId, key: orderTaskKey("confirm"), reason: "delivered" }),
+      resolveLeadTask({ tenantId: input.tenantId, leadId: lead.leadId, key: orderTaskKey("tracking"), reason: "delivered" }),
+      resolveCommercialAction({ tenantId: input.tenantId, connectionId: input.connectionId, externalId: order.externalOrderId, type: "purchase_confirmation", status: "done", reason: "delivered" }),
+      resolveCommercialAction({ tenantId: input.tenantId, connectionId: input.connectionId, externalId: order.externalOrderId, type: "tracking_available", status: "done", reason: "delivered" }),
+    ]);
+  }
+  if (journey.terminal) {
+    await Promise.all([
+      ...["payment", "confirm", "tracking", "waiting_tracking"].map((suffix) => resolveLeadTask({
+        tenantId: input.tenantId, leadId: lead.leadId, key: orderTaskKey(suffix), reason: journey.state,
+      })),
+      ...(["purchase_confirmation", "tracking_available", "post_purchase_upsell"] as EcommerceActionType[]).map((type) => resolveCommercialAction({
+        tenantId: input.tenantId, connectionId: input.connectionId, externalId: order.externalOrderId,
+        type, status: "dismissed", reason: journey.state,
+      })),
+    ]);
+  }
 
   await Promise.all([
     upsertContactProfile({
@@ -560,16 +805,32 @@ async function syncOrderToCommercial(input: {
           lastEcommerceAmount: order.totalPrice,
           lastEcommerceProducts: order.purchasedProductNames,
           lastEcommerceTrackingCode: order.trackingCode,
+          lastEcommerceTrackingUrl: order.trackingUrl,
+          lastEcommerceCheckoutUrl: order.checkoutUrl,
+          lastEcommerceStatus: order.status,
+          lastEcommercePaymentStatus: order.paymentStatus,
+          lastEcommerceFulfillmentStatus: order.fulfillmentStatus,
+          lastEcommerceJourneyState: journey.state,
+          ecommerceCustomerId: customerProfile?.id || null,
+          ecommerceCustomerOrders: customerProfile?.totalOrders || 1,
+          ecommerceCustomerLifetimeValue: customerProfile?.lifetimeValue || order.totalPrice || 0,
+          ecommerceCustomerRecentProducts: customerProfile?.recentProductNames || order.purchasedProductNames,
+          ecommerceRecommendedOfferId: catalogRecommendation?.offerId || null,
+          ecommerceRecommendedOfferName: catalogRecommendation?.offerName || null,
+          ecommerceRecommendedOfferCheckoutUrl: catalogRecommendation?.checkoutUrl || null,
+          ecommerceRecommendationRelation: catalogRecommendation?.relation || null,
           updatedAt: new Date().toISOString(),
         },
-        tags: FieldValue.arrayUnion("ecommerce", "cliente", input.provider),
+        tags: FieldValue.arrayUnion("ecommerce", "cliente", input.provider, journey.state),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     ),
-    adminDb.collection("leads").doc(lead.leadId).collection("events").add({
+    adminDb.collection("leads").doc(lead.leadId).collection("events").doc(
+      hashId([input.tenantId, input.connectionId, input.eventId, "order_journey"])
+    ).set({
       type: "ecommerce_order",
-      title: "Pedido recebido",
+      title: journey.state === "payment_confirmed" ? "Pagamento confirmado" : journey.state === "delivered" ? "Pedido entregue" : journey.state === "shipped" ? "Pedido enviado" : journey.terminal ? "Pedido encerrado" : "Pedido recebido",
       detail: `Pedido ${order.orderNumber || order.externalOrderId} em ${providerLabel(input.provider)}. Itens: ${productText}.`,
       metadata: {
         connectionId: input.connectionId,
@@ -578,45 +839,45 @@ async function syncOrderToCommercial(input: {
         orderNumber: order.orderNumber,
         totalPrice: order.totalPrice,
         trackingCode: order.trackingCode,
+        journeyState: journey.state,
+        eventId: input.eventId,
       },
       createdAt: FieldValue.serverTimestamp(),
-    }),
-    createCommercialAction({
-      tenantId: input.tenantId,
-      connectionId: input.connectionId,
-      provider: input.provider,
-      type: "purchase_confirmation",
-      leadId: lead.leadId,
-      externalId: order.externalOrderId,
-      title: "Confirmar compra realizada",
-      detail: `Confirmar pedido ${order.orderNumber || order.externalOrderId} e orientar o cliente sobre proximos passos.`,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      customerEmail: order.customerEmail,
-      productNames: order.purchasedProductNames,
-      amount: order.totalPrice,
-      metadata: { orderNumber: order.orderNumber, checkoutUrl: order.checkoutUrl },
-    }),
-    createLeadTask({
-      tenantId: input.tenantId,
-      leadId: lead.leadId,
-      key: `ecommerce_order:${order.externalOrderId}:confirm`,
-      title: `Confirmar compra ${order.orderNumber || order.externalOrderId}`,
-      priority: "medium",
-      dueInMinutes: 120,
-      source: "ecommerce_order",
-      metadata: { provider: input.provider, orderId: order.externalOrderId },
-    }),
+    }, { merge: true }),
   ]);
 
-  const paidOrder = isPaidEcommerceOrder(order);
+  if (journey.shouldConfirmPurchase) {
+    await Promise.all([
+      createCommercialAction({
+        tenantId: input.tenantId, connectionId: input.connectionId, provider: input.provider,
+        type: "purchase_confirmation", leadId: lead.leadId, externalId: order.externalOrderId,
+        title: "Confirmar compra realizada",
+        detail: `Confirmar pedido ${order.orderNumber || order.externalOrderId} e orientar o cliente sobre proximos passos.`,
+        customerName: order.customerName, customerPhone: order.customerPhone, customerEmail: order.customerEmail,
+        productNames: order.purchasedProductNames, amount: order.totalPrice,
+        metadata: { orderNumber: order.orderNumber, checkoutUrl: order.checkoutUrl, journeyState: journey.state },
+      }),
+      createLeadTask({
+        tenantId: input.tenantId, leadId: lead.leadId, key: `ecommerce_order:${order.externalOrderId}:confirm`,
+        title: `Confirmar compra ${order.orderNumber || order.externalOrderId}`, priority: "medium", dueInMinutes: 120,
+        source: "ecommerce_order", metadata: { provider: input.provider, orderId: order.externalOrderId, journeyState: journey.state },
+      }),
+    ]);
+  } else if (journey.shouldFollowUpPayment) {
+    await createLeadTask({
+      tenantId: input.tenantId, leadId: lead.leadId, key: `ecommerce_order:${order.externalOrderId}:payment`,
+      title: `Acompanhar pagamento ${order.orderNumber || order.externalOrderId}`, priority: "high", dueInMinutes: 60,
+      source: "ecommerce_payment_pending", metadata: { provider: input.provider, orderId: order.externalOrderId, checkoutUrl: order.checkoutUrl },
+    });
+  }
+
   await setLeadPipelineStageWithEffects({
     tenantId: input.tenantId,
     leadId: lead.leadId,
-    nextStage: paidOrder ? "ganho" : "proposta",
+    nextStage: journey.pipelineStage,
     actorId: "ecommerce_webhook",
     actorName: "Ecommerce",
-    source: paidOrder ? "ecommerce_order_paid" : "ecommerce_order_created",
+    source: `ecommerce_${journey.state}`,
     metadata: {
       connectionId: input.connectionId,
       provider: input.provider,
@@ -625,10 +886,11 @@ async function syncOrderToCommercial(input: {
       orderStatus: order.status,
       paymentStatus: order.paymentStatus,
       totalPrice: order.totalPrice,
+      journeyState: journey.state,
     },
   });
 
-  if (order.trackingCode || order.trackingUrl) {
+  if (journey.shouldSendTracking) {
     await Promise.all([
       createCommercialAction({
         tenantId: input.tenantId,
@@ -657,7 +919,7 @@ async function syncOrderToCommercial(input: {
         metadata: { provider: input.provider, orderId: order.externalOrderId, trackingCode: order.trackingCode },
       }),
     ]);
-  } else {
+  } else if (journey.shouldWaitForTracking) {
     await createLeadTask({
       tenantId: input.tenantId,
       leadId: lead.leadId,
@@ -670,7 +932,7 @@ async function syncOrderToCommercial(input: {
     });
   }
 
-  if (order.purchasedProductNames.length) {
+  if (journey.shouldCreatePostPurchaseUpsell && catalogRecommendation) {
     await createCommercialAction({
       tenantId: input.tenantId,
       connectionId: input.connectionId,
@@ -678,14 +940,21 @@ async function syncOrderToCommercial(input: {
       type: "post_purchase_upsell",
       leadId: lead.leadId,
       externalId: order.externalOrderId,
-      title: "Sugerir recompra ou complemento",
-      detail: `Cliente comprou ${productText}. A Altum pode sugerir complemento quando houver oferta relacionada.`,
+      title: `Sugerir ${catalogRecommendation.offerName}`,
+      detail: `Cliente comprou ${productText}. Oferta relacionada configurada: ${catalogRecommendation.offerName}.`,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       customerEmail: order.customerEmail,
       productNames: order.purchasedProductNames,
       amount: order.totalPrice,
-      metadata: { orderNumber: order.orderNumber },
+      metadata: {
+        orderNumber: order.orderNumber,
+        journeyState: journey.state,
+        recommendedOfferId: catalogRecommendation.offerId,
+        recommendedOfferName: catalogRecommendation.offerName,
+        recommendedOfferCheckoutUrl: catalogRecommendation.checkoutUrl,
+        recommendationRelation: catalogRecommendation.relation,
+      },
     });
   }
 
@@ -697,9 +966,42 @@ async function syncCartToCommercial(input: {
   connectionId: string;
   provider: EcommerceProvider;
   cart: NormalizedCart;
+  eventId: string;
+  existingLeadId?: string;
 }) {
-  if (input.cart.status !== "abandoned") return null;
   const cart = input.cart;
+  if (cart.status === "recovered") {
+    const leadId = clean(input.existingLeadId, 180);
+    if (!leadId) return null;
+    await Promise.all([
+      resolveLeadTask({
+        tenantId: input.tenantId, leadId, key: `ecommerce_cart:${cart.externalCartId}:recover`, reason: "cart_recovered",
+      }),
+      resolveCommercialAction({
+        tenantId: input.tenantId, connectionId: input.connectionId, externalId: cart.externalCartId,
+        type: "abandoned_cart_recovery", status: "done", reason: "cart_recovered",
+      }),
+      adminDb.collection("leads").doc(leadId).set({
+        tags: FieldValue.arrayUnion("carrinho_recuperado"),
+        commercialState: {
+          lastRecoveredCartId: cart.externalCartId,
+          lastRecoveredCartAt: new Date().toISOString(),
+        },
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true }),
+      adminDb.collection("leads").doc(leadId).collection("events").doc(
+        hashId([input.tenantId, input.connectionId, input.eventId, "recovered_cart"])
+      ).set({
+        type: "ecommerce_recovered_cart",
+        title: "Carrinho recuperado",
+        detail: `Carrinho ${cart.externalCartId} foi recuperado em ${providerLabel(input.provider)}.`,
+        metadata: { connectionId: input.connectionId, provider: input.provider, cartId: cart.externalCartId, eventId: input.eventId },
+        createdAt: FieldValue.serverTimestamp(),
+      }, { merge: true }),
+    ]);
+    return leadId;
+  }
+  if (cart.status !== "abandoned") return null;
   const productText = cart.productNames.length ? cart.productNames.join(", ") : "produtos no carrinho";
   const lead = await recordInboundLead({
     tenantId: input.tenantId,
@@ -758,7 +1060,9 @@ async function syncCartToCommercial(input: {
       },
       { merge: true }
     ),
-    adminDb.collection("leads").doc(lead.leadId).collection("events").add({
+    adminDb.collection("leads").doc(lead.leadId).collection("events").doc(
+      hashId([input.tenantId, input.connectionId, input.eventId, "abandoned_cart"])
+    ).set({
       type: "ecommerce_abandoned_cart",
       title: "Carrinho abandonado",
       detail: `Carrinho em ${providerLabel(input.provider)} com ${productText}.`,
@@ -768,9 +1072,10 @@ async function syncCartToCommercial(input: {
         cartId: cart.externalCartId,
         totalPrice: cart.totalPrice,
         checkoutUrl: cart.checkoutUrl,
+        eventId: input.eventId,
       },
       createdAt: FieldValue.serverTimestamp(),
-    }),
+    }, { merge: true }),
     createCommercialAction({
       tenantId: input.tenantId,
       connectionId: input.connectionId,
@@ -822,8 +1127,11 @@ export function normalizeEcommerceActionType(value: unknown): EcommerceActionTyp
 
 export function normalizeEcommerceAutomationSettings(value: unknown): EcommerceAutomationSettings {
   const raw = safeRecord(value);
+  const autoSendEnabled = raw.autoSendEnabled === true;
+  const agent = normalizeEcommerceAgentRollout(raw.agent, autoSendEnabled);
   return {
-    autoSendEnabled: raw.autoSendEnabled === true,
+    autoSendEnabled: agent.mode === "automatic",
+    agent,
     purchaseConfirmation: templateFromRaw(raw.purchaseConfirmation, DEFAULT_AUTOMATION_SETTINGS.purchaseConfirmation),
     trackingAvailable: templateFromRaw(raw.trackingAvailable, DEFAULT_AUTOMATION_SETTINGS.trackingAvailable),
     abandonedCartRecovery: templateFromRaw(raw.abandonedCartRecovery, DEFAULT_AUTOMATION_SETTINGS.abandonedCartRecovery),
@@ -856,6 +1164,9 @@ export function interpolateEcommerceTemplateParams(params: string[], action: Rec
     tracking_code: clean(metadata.trackingCode, 180),
     tracking_url: clean(metadata.trackingUrl, 800),
     checkout_url: clean(metadata.checkoutUrl, 800),
+    oferta_recomendada: clean(metadata.recommendedOfferName, 160),
+    recommended_offer: clean(metadata.recommendedOfferName, 160),
+    recommended_offer_url: clean(metadata.recommendedOfferCheckoutUrl, 800),
   };
 
   return params
@@ -942,7 +1253,17 @@ export function buildConnectionPayload(input: EcommerceConnectionInput & { tenan
 }
 
 export function normalizeWebhookEvent(provider: EcommerceProvider, payload: unknown, headers: Headers): NormalizedWebhookEvent {
-  const body = safeRecord(payload);
+  const envelope = safeRecord(payload);
+  // Several checkout providers put the actual order in data, payload or
+  // resource. Flatten the common envelope without losing the event metadata.
+  const nestedPayload = safeRecord(envelope.data || envelope.payload || envelope.resource);
+  const body = Object.keys(nestedPayload).length
+    ? {
+      ...nestedPayload,
+      topic: nestedPayload.topic || nestedPayload.event || nestedPayload.event_type || envelope.topic || envelope.event || envelope.event_type || envelope.type || envelope.action,
+      event_id: nestedPayload.event_id || nestedPayload.webhook_id || envelope.event_id || envelope.webhook_id || envelope.id,
+    }
+    : envelope;
   const headerTopic = headerValue(headers, [
     "x-altum-event",
     "x-shopify-topic",
@@ -951,18 +1272,26 @@ export function normalizeWebhookEvent(provider: EcommerceProvider, payload: unkn
     "x-nuvemshop-event",
     "x-vtex-event",
     "x-tray-event",
+    "x-yampi-event",
+    "x-yampi-event-type",
+    "x-cartpanda-event",
+    "x-appmax-event",
+    "x-kirvano-event",
+    "x-perfectpay-event",
   ]);
   const topic =
     clean(headerTopic, 180) ||
     clean(body.topic || body.event || body.event_type || body.type || body.action, 180) ||
     `${provider}.event`;
   const externalEventId =
-    headerValue(headers, ["x-altum-event-id", "x-shopify-webhook-id", "x-wc-webhook-id", "x-request-id"]) ||
+    headerValue(headers, ["x-altum-event-id", "x-shopify-webhook-id", "x-wc-webhook-id", "x-yampi-event-id", "x-cartpanda-event-id", "x-appmax-event-id", "x-request-id"]) ||
     clean(body.event_id || body.webhook_id || body.id, 180) ||
     hashId([provider, topic, JSON.stringify(body).slice(0, 1200)]);
 
   const product = topicHas(topic, ["product", "produto", "catalog"]) ? normalizeProduct(body) : null;
-  const order = topicHas(topic, ["order", "pedido", "paid", "fulfill", "shipment", "tracking"]) ? normalizeOrder(body) : null;
+  const order = topicHas(topic, ["order", "pedido", "paid", "fulfill", "shipment", "tracking", "refund", "reembolso", "estorno"])
+    ? normalizeOrder(body, topic)
+    : null;
   const cart = topicHas(topic, ["cart", "checkout", "abandoned", "carrinho"]) ? normalizeCart(body, topic) : null;
 
   return {
@@ -1034,16 +1363,27 @@ async function mirrorProductToKnowledge(input: {
       source: "ecommerce",
       sourceProvider: input.provider,
       sourceConnectionId: input.connectionId,
+      kind: "produto",
       content: [input.product.name, input.product.description, priceText].filter(Boolean).join("\n\n").slice(0, 1600),
       tags: Array.from(new Set(["ecommerce", providerLabel(input.provider), ...input.product.tags])).slice(0, 20),
       productName: input.product.name,
       productCategory: input.product.category,
+      sku: input.product.sku || null,
       priceFrom: input.product.priceFrom,
       priceTo: input.product.priceTo,
+      currency: input.product.currency,
+      inventoryQuantity: input.product.inventoryQuantity,
       availability: normalize(input.product.status).includes("active") ? "active" : "paused",
       mediaUrl: input.product.imageUrl || null,
+      mediaType: input.product.imageUrl ? "image" : null,
+      mediaTitle: input.product.imageUrl ? input.product.name : null,
+      mediaItems: input.product.imageUrl
+        ? [{ mediaUrl: input.product.imageUrl, mediaType: "image", mediaTitle: input.product.name, usage: "auto" }]
+        : [],
       updatedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
+      createdAt: existing.empty
+        ? FieldValue.serverTimestamp()
+        : existing.docs[0].data().createdAt || FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -1080,7 +1420,8 @@ export async function processEcommerceWebhook(input: {
   }
   const normalized = normalizeWebhookEvent(input.provider, effectivePayload, input.req.headers);
   const eventRef = adminDb.collection("ecommerce_events").doc(hashId([input.tenantId, input.connectionId, normalized.externalEventId]));
-  const eventAlreadyExists = (await eventRef.get()).exists;
+  const eventSnap = await eventRef.get();
+  const eventAlreadyExists = eventSnap.exists;
   await eventRef.set(
     {
       tenantId: input.tenantId,
@@ -1094,7 +1435,9 @@ export async function processEcommerceWebhook(input: {
         order: normalized.order || null,
         cart: normalized.cart || null,
       },
-      receivedAt: FieldValue.serverTimestamp(),
+      receivedAt: eventSnap.exists ? eventSnap.data()?.receivedAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
+      lastReceivedAt: FieldValue.serverTimestamp(),
+      deliveryCount: FieldValue.increment(1),
     },
     { merge: true }
   );
@@ -1108,6 +1451,7 @@ export async function processEcommerceWebhook(input: {
 
   if (normalized.product) {
     const productRef = adminDb.collection("ecommerce_products").doc(hashId([input.tenantId, input.connectionId, normalized.product.externalProductId]));
+    const productSnap = await productRef.get();
     await productRef.set(
       {
         tenantId: input.tenantId,
@@ -1115,7 +1459,7 @@ export async function processEcommerceWebhook(input: {
         provider: input.provider,
         ...normalized.product,
         updatedAt: FieldValue.serverTimestamp(),
-        createdAt: FieldValue.serverTimestamp(),
+        createdAt: productSnap.exists ? productSnap.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -1125,14 +1469,17 @@ export async function processEcommerceWebhook(input: {
 
   if (normalized.order) {
     const orderRef = adminDb.collection("ecommerce_orders").doc(hashId([input.tenantId, input.connectionId, normalized.order.externalOrderId]));
+    const orderSnap = await orderRef.get();
+    const journey = deriveEcommerceOrderJourney(normalized.order);
     await orderRef.set(
       {
         tenantId: input.tenantId,
         connectionId: input.connectionId,
         provider: input.provider,
         ...normalized.order,
+        journeyState: journey.state,
         updatedAt: FieldValue.serverTimestamp(),
-        createdAt: FieldValue.serverTimestamp(),
+        createdAt: orderSnap.exists ? orderSnap.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -1141,6 +1488,8 @@ export async function processEcommerceWebhook(input: {
       connectionId: input.connectionId,
       provider: input.provider,
       order: normalized.order,
+      eventId: normalized.externalEventId,
+      previousJourneyState: clean(orderSnap.data()?.journeyState, 60),
     });
     await orderRef.set({ leadId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     if (!eventAlreadyExists) connectionUpdates.orderCount = FieldValue.increment(1);
@@ -1148,6 +1497,7 @@ export async function processEcommerceWebhook(input: {
 
   if (normalized.cart) {
     const cartRef = adminDb.collection("ecommerce_abandoned_carts").doc(hashId([input.tenantId, input.connectionId, normalized.cart.externalCartId]));
+    const cartSnap = await cartRef.get();
     await cartRef.set(
       {
         tenantId: input.tenantId,
@@ -1155,7 +1505,7 @@ export async function processEcommerceWebhook(input: {
         provider: input.provider,
         ...normalized.cart,
         updatedAt: FieldValue.serverTimestamp(),
-        createdAt: FieldValue.serverTimestamp(),
+        createdAt: cartSnap.exists ? cartSnap.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -1164,9 +1514,32 @@ export async function processEcommerceWebhook(input: {
       connectionId: input.connectionId,
       provider: input.provider,
       cart: normalized.cart,
+      eventId: normalized.externalEventId,
+      existingLeadId: clean(cartSnap.data()?.leadId, 180),
     });
     if (leadId) await cartRef.set({ leadId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     if (!eventAlreadyExists) connectionUpdates.cartCount = FieldValue.increment(1);
+  }
+
+  if (!eventAlreadyExists && (normalized.order || normalized.cart)) {
+    try {
+      const settingsSnap = await adminDb.collection("tenant_settings").doc(input.tenantId).get();
+      const tenantSettings = settingsSnap.exists ? settingsSnap.data() as Record<string, unknown> : {};
+      const automation = normalizeEcommerceAutomationSettings(tenantSettings.ecommerceAutomation);
+      if (automation.agent.mode !== "off") {
+        const { processTenantEcommerceActions } = await import("@/lib/server/ecommerce-agent");
+        await processTenantEcommerceActions({
+          tenantId: input.tenantId,
+          automation,
+          limit: automation.agent.maxActionsPerRun,
+          actor: { id: "ecommerce_agent", name: "Agente Ecommerce Altum" },
+          source: "webhook",
+        });
+      }
+    } catch (error) {
+      connectionUpdates.lastAutomationError = error instanceof Error ? error.message.slice(0, 500) : "ecommerce_agent_failed";
+      connectionUpdates.lastAutomationErrorAt = FieldValue.serverTimestamp();
+    }
   }
 
   await connectionRef.set(connectionUpdates, { merge: true });

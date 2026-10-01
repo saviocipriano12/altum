@@ -7,6 +7,13 @@ import type {
 } from "@/lib/server/ai/operating-layer";
 import type { AltumTenantLearningHints } from "@/lib/server/ai/tenant-learning";
 import type { BusinessProfilePlaybookOffer, BusinessProfilePlaybookScript } from "@/lib/business-profiles";
+import { classifyConversationTurn, conversationPolicyInstruction } from "@/lib/server/ai/conversation-policy";
+import { assistantRoleInstruction, type AltumAssistantRole } from "@/lib/ai-assistant-role";
+import type { CompiledTenantAiContext } from "@/lib/server/ai/tenant-context";
+import {
+  buildKnowledgePromptContext,
+  type AiKnowledgeDocument,
+} from "@/lib/server/ai/knowledge-context";
 
 type ConversationMessage = {
   id: string;
@@ -14,12 +21,20 @@ type ConversationMessage = {
   sender: "agent" | "client" | "system";
 };
 
-type KnowledgeDoc = {
+type KnowledgeDoc = AiKnowledgeDocument & {
   id: string;
   type: "faq" | "catalog" | "policy";
   content: string;
   tags: string[];
   score?: number;
+  productName?: string | null;
+  productCategory?: string | null;
+  targetProfile?: string | null;
+  priceFrom?: number | null;
+  priceTo?: number | null;
+  currency?: string | null;
+  inventoryQuantity?: number | null;
+  availability?: "active" | "seasonal" | "paused";
 };
 
 export type ConversationAgentInput = {
@@ -30,6 +45,8 @@ export type ConversationAgentInput = {
   messageType?: string;
   channel: string;
   agentName?: string;
+  assistantRole?: AltumAssistantRole;
+  tenantContext?: CompiledTenantAiContext;
   tenantContextConfigured?: boolean;
   contactName?: string;
   runtimeStateSummary?: string;
@@ -224,12 +241,12 @@ function styleDirective(style: AltumAiResponseStyle) {
 
 function autonomyDirective(mode: AltumAiAutonomyMode) {
   if (mode === "autonomous") {
-    return "Autonomia: assuma iniciativa, dite o ritmo e evite depender do lead para mover a conversa.";
+    return "Autonomia: tome iniciativa somente depois de compreender a intencao do lead; proponha um proximo passo concreto sem presumir dor, produto ou interesse.";
   }
   if (mode === "hybrid") {
-    return "Autonomia: conduza com iniciativa, mas valide rapidamente antes de avancar para fechamento.";
+    return "Autonomia: conduza com iniciativa leve; valide contexto antes de recomendar, agendar ou fechar.";
   }
-  return "Autonomia: conduza discovery com cautela e confirme contexto antes do fechamento.";
+  return "Autonomia: responda e investigue com cautela; confirme contexto antes de qualquer movimento comercial.";
 }
 
 function reasoningDirective(level: AltumAiReasoningLevel) {
@@ -238,7 +255,7 @@ function reasoningDirective(level: AltumAiReasoningLevel) {
   return "Raciocinio: equilibrado, com clareza e progressao comercial.";
 }
 
-function buildPrompt(input: ConversationAgentInput) {
+export function buildConversationAgentPrompt(input: ConversationAgentInput) {
   const inboundText = sanitizeText(input.inboundText, 700);
   const multimodalSummary = sanitizeText(input.multimodalSummary, 280);
   const messageType = sanitizeText(input.messageType, 40);
@@ -249,16 +266,14 @@ function buildPrompt(input: ConversationAgentInput) {
     /^(sim|s|ok|okay|beleza|entendi|claro|isso|pode|quero|show|perfeito|certo)\b/.test(normalizedInbound);
   const isDirectQuestion = normalizedInbound.includes("?");
   const isGreetingOnly = /^(oi|ola|bom dia|boa tarde|boa noite)\\W*$/i.test(inboundText);
+  const turnPolicy = classifyConversationTurn(inboundText, messageType);
 
   const conversation = input.conversation
     .slice(-10)
     .map((item) => `${item.sender}: ${sanitizeText(item.text, 220)}`)
     .join("\n");
 
-  const kb = input.kbDocs
-    .slice(0, 4)
-    .map((doc, index) => `${index + 1}. ${sanitizeText(doc.content, 220)}`)
-    .join("\n");
+  const kb = buildKnowledgePromptContext(input.kbDocs);
 
   const guardrails = (input.guardrails || [])
     .slice(0, 8)
@@ -295,20 +310,25 @@ function buildPrompt(input: ConversationAgentInput) {
 
   const systemPrompt = [
     `Voce e ${sanitizeText(input.agentName, 80) || "um agente conversacional comercial"} do negocio configurado.`,
+    assistantRoleInstruction(input.assistantRole),
+    input.tenantContext?.policyPrompt || "",
     "Converse em portugues do Brasil como uma pessoa atenta, clara e natural no WhatsApp.",
     input.tenantContextConfigured === false
       ? "A empresa ainda nao forneceu contexto confiavel. Nao invente o que ela vende, nao assuma que ela oferece servicos de marketing ou gestao de leads e nao fale como se conhecesse o negocio. Explique brevemente que a configuracao ainda esta pendente e peca apenas os dados necessarios para entender a empresa."
       : "",
     "Entenda o que o lead acabou de dizer e responda isso primeiro.",
-    "Responda de forma humana, curta e sempre com progressao comercial.",
-    "Em saudacoes ou turnos relacionais, acolha em uma frase e conduza com uma pergunta util sobre contexto de negocio.",
-    "Evite conversa infinita: cada turno deve mover para descoberta, recomendacao ou proximo passo.",
+    conversationPolicyInstruction(turnPolicy),
+    "Responda de forma humana e curta. Progressao comercial vem depois de compreender a pessoa; nao force qualificacao em todo turno.",
+    "Em saudacoes ou turnos relacionais, acolha como uma conversa normal e deixe o lead dizer por que chamou.",
+    "Se a pessoa ja disser que precisa de ajuda, de suporte ou de falar com alguem, acolha esse pedido especifico; nao responda apenas com uma saudacao generica e nao empilhe 'tudo bem?' com outra pergunta.",
+    "Se o lead corrigir uma suposicao, reconhecer o erro e abandonar imediatamente o tema ou a oferta incorreta e mais importante do que avancar a venda.",
+    "Quando o lead pedir para conversar primeiro, converse sem apresentar oferta, diagnostico, consultoria ou menu de qualificacao.",
     "Nao repita a mesma pergunta com outras palavras. Se a memoria ou historico ja trouxe um sinal suficiente, use esse sinal e avance.",
     "Quando ja existir contexto minimo, entregue um diagnostico curto: problema percebido, impacto comercial e caminho recomendado.",
-    "Se o lead trouxer uma necessidade clara, mesmo sem haver pacote pronto, monte uma hipotese de solucao personalizada e ofereca proximo passo com a equipe.",
-    "Use o cerebro comercial do negocio para pensar como consultor: entenda o objetivo, ligue com uma oferta ou plano personalizado, e avance para decisao.",
+    "Se o lead trouxer uma necessidade clara e nao houver oferta cadastrada que a sustente, ajude a organizar a necessidade sem inventar nome de solucao, escopo, preco ou disponibilidade; ofereca confirmacao com a equipe.",
+    "Use o cerebro comercial do negocio para escolher a melhor conducao, mas trate como fatos somente o que estiver confirmado na base, no catalogo ou no contexto de campanha.",
     "Quando o lead pedir recomendacao, exemplo, roteiro, plano, onde ficar, como fazer ou qual caminho seguir, entregue uma orientacao util antes de pedir novos dados.",
-    "Depois do diagnostico, conduza para uma decisao simples: agendar conversa qualificada, preparar proposta ou encaminhar humano.",
+    "So conduza para agenda, proposta ou compra quando o contexto e o papel configurado indicarem esse proximo passo; atendimento e pos-venda nao devem virar pitch.",
     "Se o lead fizer uma pergunta direta, responda com clareza antes de conduzir qualquer outra coisa.",
     "Nao use menus de opcoes; faca pergunta precisa e contextual.",
     "Se o lead responder curto, trate como continuidade do assunto vivo. Nao reinicie nem repita bloco.",
@@ -330,6 +350,8 @@ function buildPrompt(input: ConversationAgentInput) {
       : "",
     "Nao use bordoes de vendedor nem frases institucionais repetitivas.",
     "Nao invente oferta, preco, prazo, prova social ou promessa.",
+    "Ao falar de produto, use somente nome, preco, disponibilidade e estoque presentes na base. Se estoque nao estiver informado, diga que precisa confirmar; nunca presuma disponibilidade.",
+    "Quando a mensagem trouxer uma imagem e a base relevante mostrar produtos, compare apenas atributos observaveis, recomende o item mais proximo com linguagem de semelhanca e ofereca enviar a foto ou o video cadastrado. Nao afirme que e identico sem evidencia.",
     styleDirective(input.responseStyle),
     autonomyDirective(input.autonomyMode),
     reasoningDirective(input.reasoningLevel),
@@ -344,31 +366,37 @@ function buildPrompt(input: ConversationAgentInput) {
   ].join(" ");
 
   const userPrompt = [
-    `Negocio: ${sanitizeText(input.businessSummary, 240) || (input.tenantContextConfigured === false ? "contexto da empresa ainda nao configurado" : "empresa cliente configurada")}.`,
-    `Nome do agente: ${sanitizeText(input.agentName, 80) || "nao informado"}.`,
-    `Objetivo da IA: ${sanitizeText(input.objective, 140) || "entender o lead, orientar bem e avancar a conversa"}.`,
-    `Tom esperado: ${sanitizeText(input.toneOfVoice, 80) || "claro e humano"}.`,
+    input.tenantContext?.businessPrompt ||
+      [
+        `Negocio: ${sanitizeText(input.businessSummary, 240) || (input.tenantContextConfigured === false ? "contexto da empresa ainda nao configurado" : "empresa cliente configurada")}.`,
+        `Nome do agente: ${sanitizeText(input.agentName, 80) || "nao informado"}.`,
+        `Papel operacional: ${input.assistantRole || "sales"}.`,
+        `Objetivo da IA: ${sanitizeText(input.objective, 140) || "entender o lead, orientar bem e avancar a conversa"}.`,
+        `Tom esperado: ${sanitizeText(input.toneOfVoice, 80) || "claro e humano"}.`,
+      ].join("\n"),
     `Canal: ${input.channel}. Nome conhecido do contato: ${sanitizeText(input.contactName, 80) || "nao informado"}.`,
     multimodalSummary ? `Resumo multimodal: ${multimodalSummary}` : "",
     messageType ? `Tipo de mensagem: ${messageType}` : "",
     input.runtimeStateSummary ? `Contexto vivo da conversa:\n${sanitizeText(input.runtimeStateSummary, 220)}` : "",
     input.leadMemorySummary ? `Memoria relevante:\n${sanitizeText(input.leadMemorySummary, 1000)}` : "",
-    input.commercialBrainSummary ? `Cerebro comercial do negocio:\n${sanitizeText(input.commercialBrainSummary, 1600)}` : "",
+    !input.tenantContext && input.commercialBrainSummary ? `Cerebro comercial do negocio:\n${sanitizeText(input.commercialBrainSummary, 1600)}` : "",
     isShortFollowup ? "A mensagem atual parece uma continuidade curta. Continue do ponto vivo da conversa." : "",
     isDirectQuestion ? "A mensagem atual contem uma pergunta direta. Responda essa pergunta primeiro." : "",
     isGreetingOnly ? "A mensagem atual e apenas uma saudacao. Responda como conversa normal, sem menu." : "",
-    escalations ? `Temas sensiveis para escalar:\n${escalations}` : "",
-    guardrails ? `Limites importantes:\n${guardrails}` : "",
+    `Politica deste turno: ${conversationPolicyInstruction(turnPolicy)}`,
+    !input.tenantContext && escalations ? `Temas sensiveis para escalar:\n${escalations}` : "",
+    !input.tenantContext && guardrails ? `Limites importantes:\n${guardrails}` : "",
     playbookOffers ? `Ofertas disponiveis como referencia:\n${playbookOffers}` : "",
     learningSignals ? `Aprendizado recente (use como sinal, nao regra fixa): ${learningSignals}` : "",
     conversation ? `Historico recente:\n${conversation}` : "",
     kb ? `Base relevante:\n${kb}` : "",
     `Mensagem atual do lead: ${inboundText}`,
-    "Exemplo bom 1: lead='oi' -> responseText='Oi! Tudo bem? Pra te direcionar certo: hoje o foco e gerar mais leads ou melhorar conversao?'",
-    "Exemplo bom 2: lead='como voce esta?' -> responseText='Tudo certo por aqui. E no seu comercial hoje, qual e o maior gargalo?'",
-    "Exemplo bom 3: lead='quero gerar mais leads' -> responseText='Perfeito. Hoje voces captam mais por qual canal e com qual meta mensal?'",
-    "Exemplo bom 4: lead ja explicou negocio e objetivo -> responseText='Pelo que voce trouxe, o gargalo parece estar em captacao e conversao no WhatsApp. O caminho mais forte e organizar uma estrutura com campanha, atendimento rapido e acompanhamento do funil. Faz sentido eu marcar um diagnostico curto para fechar o melhor plano?'",
-    "Exemplo bom 5: lead pede algo fora do pacote pronto -> responseText='Faz sentido. Nao vou te empurrar um pacote generico: pelo que voce falou, o melhor e montar um plano sob medida com rota, prioridade e investimento estimado. Posso separar isso com um consultor e ja deixar um resumo do que voce precisa?'",
+    "Exemplo bom 1: lead='oi' -> responseText='Oi! Tudo bem? Pode falar, como posso te ajudar?'",
+    "Exemplo bom 1b: lead='oi, preciso de ajuda mas nao sei com quem falar' -> responseText='Claro, eu te ajudo a encontrar o caminho. Me conta em uma frase o que aconteceu ou o que voce precisa resolver.'",
+    "Exemplo bom 2: lead='voce pode conversar primeiro?' -> responseText='Claro. Podemos conversar sem pressa. O que voce gostaria de me contar?'",
+    "Exemplo bom 3: lead='mas eu nao pedi consultoria' -> responseText='Voce tem razao, eu entendi errado. Vamos recomecar: sobre o que voce gostaria de conversar?'",
+    "Exemplo bom 4: lead='quero gerar mais leads' -> responseText='Entendi. Hoje a maior dificuldade e atrair pessoas ou transformar o interesse em conversa?'",
+    "Exemplo bom 5: lead ja explicou negocio e objetivo -> devolva uma leitura curta e confirme se entendeu antes de recomendar algo.",
     'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","turnGoal":"...","memorySummary":"...","nextAction":"...","extractedFields":{"preferredName":"...","leadTone":"...","activeTopic":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"...","diagnosis":"problema percebido e impacto comercial","personalizedPlan":"plano recomendado em linguagem simples","sellerNextMove":"o que o vendedor deve fazer agora","materialToSend":"link, exemplo ou material que ajudaria","proposalOutline":"estrutura resumida da proposta se fizer sentido"}}',
     "A responseText deve parecer mensagem real de WhatsApp escrita por uma pessoa, nao por um sistema.",
   ]
@@ -443,7 +471,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 1800
 async function callOpenAI(input: ConversationAgentInput, model: string) {
   const env = getProviderEnv("openai");
   if (!env.ready) return null;
-  const { systemPrompt, userPrompt } = buildPrompt(input);
+  const { systemPrompt, userPrompt } = buildConversationAgentPrompt(input);
   const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -479,7 +507,7 @@ async function callOpenAI(input: ConversationAgentInput, model: string) {
 async function callAnthropic(input: ConversationAgentInput, model: string) {
   const env = getProviderEnv("anthropic");
   if (!env.ready) return null;
-  const { systemPrompt, userPrompt } = buildPrompt(input);
+  const { systemPrompt, userPrompt } = buildConversationAgentPrompt(input);
   const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -513,7 +541,7 @@ async function callAnthropic(input: ConversationAgentInput, model: string) {
 async function callGemini(input: ConversationAgentInput, model: string) {
   const env = getProviderEnv("gemini");
   if (!env.ready) return null;
-  const { systemPrompt, userPrompt } = buildPrompt(input);
+  const { systemPrompt, userPrompt } = buildConversationAgentPrompt(input);
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.apiKey)}`;
   const response = await fetchWithTimeout(endpoint, {
     method: "POST",
@@ -549,7 +577,7 @@ async function callGemini(input: ConversationAgentInput, model: string) {
 async function callMistral(input: ConversationAgentInput, model: string) {
   const env = getProviderEnv("mistral");
   if (!env.ready) return null;
-  const { systemPrompt, userPrompt } = buildPrompt(input);
+  const { systemPrompt, userPrompt } = buildConversationAgentPrompt(input);
   const response = await fetchWithTimeout("https://api.mistral.ai/v1/chat/completions", {
     method: "POST",
     headers: {

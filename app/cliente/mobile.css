@@ -22,6 +22,16 @@
 }
 @media (max-width: 1023px) {
   .client-portal { overflow-x: clip; }
+  .client-portal #client-main {
+    min-width: 0;
+    overflow-x: clip;
+    scroll-padding-top: calc(76px + env(safe-area-inset-top));
+    scroll-padding-bottom: calc(6.75rem + env(safe-area-inset-bottom));
+  }
+  .client-portal .client-route-stage,
+  .client-portal .client-route-stage > * {
+    min-width: 0;
+  }
   .client-portal .client-topbar {
     padding-top: env(safe-area-inset-top);
     background: var(--cliente-panel-solid, #ffffff);
@@ -44,10 +54,47 @@
     transform: none;
   }
   .client-portal .inbox-thread-shell { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .client-portal[data-client-area="inbox"] .inbox-thread-wall {
+    scroll-padding-block: 0.75rem calc(0.75rem + env(safe-area-inset-bottom));
+  }
+  /* iOS may retain an old paint-containment cache after the app resumes.
+     Conversation rows must always participate in normal layout. */
+  .client-portal[data-client-area="inbox"] .inbox-conversation-row {
+    display: block;
+    contain: none !important;
+    content-visibility: visible !important;
+    contain-intrinsic-size: auto !important;
+    min-height: 0;
+  }
+}
+@media (max-width: 639px) {
+  .client-portal[data-client-area="inbox"] :is(.inbox-thread-action, .inbox-toolbar-button) {
+    min-height: 44px;
+  }
+  .client-portal[data-client-area="inbox"] .inbox-thread-composer button {
+    min-height: 44px;
+  }
+  .client-portal[data-client-area="inbox"] :is(.inbox-thread-back-button, .inbox-thread-details-button) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .client-portal[data-client-area="inbox"] .inbox-thread-takeover {
+    min-height: 44px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .client-portal *, .client-install-prompt * { scroll-behavior: auto !important; }
+  .client-portal .animate-pulse { animation: none !important; }
+  .client-portal .client-customer-drawer,
+  .client-portal .client-drawer-backdrop { transition: none !important; }
 }
 @media (max-width: 1279px) {
-  .client-portal .inbox-thread-shell { height: var(--cliente-viewport-height, 100dvh); }
+  .client-portal[data-client-area="inbox"] .inbox-thread-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
+  }
 }

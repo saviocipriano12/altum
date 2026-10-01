@@ -14,14 +14,20 @@ import {
 import { getTenantLearningHints } from "@/lib/server/ai/tenant-learning";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { runConversationAgent } from "@/lib/server/ai/router";
+import { compileTenantAiContext, deriveHandoffTopicsFromCommercialCriteria } from "@/lib/server/ai/tenant-context";
+import { normalizeAiConversationRollout } from "@/lib/ai-conversation-rollout";
+import { normalizeCommercialOffer } from "@/lib/commercial-offer";
 import { resolveConversationalChoice } from "@/lib/server/ai/conversation-core";
 import { deriveOperationalPlan } from "@/lib/server/ai/operational-plan";
 import { scoreAltumConversationQuality } from "@/lib/server/ai/quality-score";
-import { getBusinessProfile, getBusinessProfilePlaybookPreset, normalizeBusinessProfileId } from "@/lib/business-profiles";
+import { getBusinessProfile, normalizeBusinessProfileId } from "@/lib/business-profiles";
 import type { AltumLeadMemory } from "@/lib/server/ai/runtime-state";
+import { normalizeAltumAssistantRole } from "@/lib/ai-assistant-role";
+import { getAiEvaluationScenario, type AiEvaluationPreview } from "@/lib/ai-evaluation";
 import {
   extractBusinessFields,
   normalizeExtractedFieldsForCrm,
+  DEFAULT_GUARDRAILS,
 } from "@/lib/server/ai/agent";
 
 type PreviewMessage = {
@@ -36,6 +42,34 @@ type PreviewKbDoc = {
   tags: string[];
   content: string;
   score: number;
+  useInAi?: boolean;
+  productName?: string | null;
+  productCategory?: string | null;
+  targetProfile?: string | null;
+  priceFrom?: number | null;
+  priceTo?: number | null;
+  currency?: string | null;
+  inventoryQuantity?: number | null;
+  availability?: "active" | "seasonal" | "paused";
+  availabilityConfigured?: boolean;
+  description?: string | null;
+  benefits?: string | null;
+  commonQuestions?: string | null;
+  objections?: string | null;
+  whenRecommend?: string | null;
+  whenNotRecommend?: string | null;
+  whenHuman?: string | null;
+  productSpecs?: string | null;
+  stockDelivery?: string | null;
+  warranty?: string | null;
+  serviceScope?: string | null;
+  duration?: string | null;
+  schedulingRules?: string | null;
+  deliverables?: string | null;
+  proofAndCases?: string | null;
+  demonstration?: string | null;
+  paymentConditions?: string | null;
+  supportAndSla?: string | null;
 };
 
 type Body = {
@@ -45,6 +79,9 @@ type Body = {
   contactName?: string;
   runtimeStateSummary?: string;
   leadMemory?: Partial<AltumLeadMemory> | null;
+  assistantRole?: string;
+  businessProfileId?: string;
+  evaluationScenarioId?: string;
 };
 
 function summarizeLeadMemoryForPreview(leadMemory: Partial<AltumLeadMemory> | null | undefined) {
@@ -269,9 +306,9 @@ function buildPreviewFallbackChoice(input: { inboundText: string; responseText?:
     responseText:
       responseText ||
       (isGreeting
-        ? "Oi! Tudo bem? Pra te direcionar certo, hoje o foco e gerar mais leads, organizar atendimento ou converter melhor?"
+        ? "Oi! Tudo bem? Pode falar, como posso te ajudar?"
         : isHumanTurn
-          ? "Tudo certo por aqui. Pra eu te direcionar melhor, qual e o principal gargalo comercial hoje?"
+          ? "Tudo certo por aqui 😊 E com você?"
           : "Me conta um pouco melhor o teu momento hoje."),
   };
 }
@@ -285,16 +322,52 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     assertTenantCapability(membership, "manage_ai");
 
     const body = (await req.json()) as Body;
-    const inboundText = clean(body.message, 1400);
+    const evaluationScenario = body.evaluationScenarioId
+      ? getAiEvaluationScenario(clean(body.evaluationScenarioId, 80))
+      : null;
+    if (body.evaluationScenarioId && !evaluationScenario) {
+      return NextResponse.json({ error: "Cenario oficial de avaliacao nao encontrado." }, { status: 400 });
+    }
+    const effectiveBody: Body = evaluationScenario
+      ? {
+          ...body,
+          message: evaluationScenario.message,
+          messageType: evaluationScenario.messageType || "text",
+          history: evaluationScenario.history,
+          leadMemory: evaluationScenario.leadMemory,
+          assistantRole: evaluationScenario.assistantRole,
+          businessProfileId: evaluationScenario.businessProfileId,
+        }
+      : body;
+    const inboundText = clean(effectiveBody.message, 1400);
     if (!inboundText) {
       return NextResponse.json({ error: "Mensagem obrigatoria para preview." }, { status: 400 });
     }
 
     const settings = await getTenantSettings(tenantId);
     const ai = settings && typeof settings.ai === "object" && settings.ai ? (settings.ai as Record<string, unknown>) : {};
-    const businessProfileId = normalizeBusinessProfileId(settings?.businessProfileId);
+    const blueprintRoot = settings?.businessBlueprint && typeof settings.businessBlueprint === "object"
+      ? (settings.businessBlueprint as Record<string, unknown>)
+      : {};
+    const activeBlueprint = blueprintRoot.active && typeof blueprintRoot.active === "object"
+      ? (blueprintRoot.active as Record<string, unknown>)
+      : {};
+    const blueprintAiPolicy = activeBlueprint.aiPolicy && typeof activeBlueprint.aiPolicy === "object"
+      ? (activeBlueprint.aiPolicy as Record<string, unknown>)
+      : {};
+    const blueprintBusinessSummary = clean(activeBlueprint.description || activeBlueprint.summary, 2000);
+    const businessProfileId = normalizeBusinessProfileId(effectiveBody.businessProfileId || settings?.businessProfileId);
     const businessProfile = getBusinessProfile(businessProfileId);
-    const playbookPreset = getBusinessProfilePlaybookPreset(businessProfileId);
+    const assistantRole = normalizeAltumAssistantRole(effectiveBody.assistantRole || ai.assistantRole);
+    const resolvedBusinessSummary =
+      clean(ai.businessSummary, 2000) ||
+      blueprintBusinessSummary ||
+      clean(settings?.name, 120) ||
+      businessProfile.description;
+    const resolvedToneOfVoice =
+      clean(ai.toneOfVoice, 120) ||
+      clean(blueprintAiPolicy.toneOfVoice, 120) ||
+      businessProfile.ai.toneOfVoice;
     const operatingProfile = normalizeTenantAiOperatingProfile(ai.operatingProfile);
     const runtimePolicy = buildAiRuntimePolicy(operatingProfile);
     const commercialBrain = normalizeCommercialBrain(ai.commercialBrain);
@@ -314,29 +387,119 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         const type: PreviewKbDoc["type"] = typeRaw === "catalog" ? "catalog" : typeRaw === "policy" ? "policy" : "faq";
         const tags = Array.isArray(data.tags) ? data.tags.map((tag) => clean(tag, 80)).filter(Boolean) : [];
         const content = clean(data.content, 600);
+        const commercialOffer = normalizeCommercialOffer(data);
+        const retrievalContent = type === "catalog"
+          ? clean(
+              [
+                content,
+                data.productName,
+                data.productCategory,
+                data.targetProfile,
+                data.description,
+                data.benefits,
+                data.commonQuestions,
+                data.objections,
+                data.whenRecommend,
+                data.whenNotRecommend,
+                data.whenHuman,
+                data.productSpecs,
+                data.stockDelivery,
+                data.warranty,
+                data.serviceScope,
+                data.duration,
+                data.schedulingRules,
+                data.deliverables,
+                data.proofAndCases,
+                data.demonstration,
+                data.paymentConditions,
+                data.supportAndSla,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+              8000
+            )
+          : content;
         return {
           id: doc.id,
           type,
           tags,
           content,
+          useInAi: data.useInAi !== false,
+          productName: clean(data.productName, 160) || null,
+          productCategory: clean(data.productCategory, 120) || null,
+          targetProfile: clean(data.targetProfile, 300) || null,
+          priceFrom: commercialOffer.priceFrom,
+          priceTo: commercialOffer.priceTo,
+          currency: commercialOffer.currency,
+          inventoryQuantity: commercialOffer.inventoryQuantity,
+          availability: commercialOffer.availability,
+          availabilityConfigured: commercialOffer.availabilityConfigured,
+          description: clean(data.description, 800) || null,
+          benefits: clean(data.benefits, 700) || null,
+          commonQuestions: clean(data.commonQuestions, 700) || null,
+          objections: clean(data.objections, 700) || null,
+          whenRecommend: clean(data.whenRecommend, 600) || null,
+          whenNotRecommend: clean(data.whenNotRecommend, 600) || null,
+          whenHuman: clean(data.whenHuman, 600) || null,
+          productSpecs: clean(data.productSpecs, 700) || null,
+          stockDelivery: clean(data.stockDelivery, 700) || null,
+          warranty: clean(data.warranty, 600) || null,
+          serviceScope: clean(data.serviceScope, 700) || null,
+          duration: clean(data.duration, 300) || null,
+          schedulingRules: clean(data.schedulingRules, 600) || null,
+          deliverables: clean(data.deliverables, 700) || null,
+          proofAndCases: clean(data.proofAndCases, 700) || null,
+          demonstration: clean(data.demonstration, 600) || null,
+          paymentConditions: clean(data.paymentConditions, 600) || null,
+          supportAndSla: clean(data.supportAndSla, 600) || null,
           score: scoreKbDoc({
             inboundText,
             messageWords,
             retrievalMode: runtimePolicy.retrievalMode,
-            doc: { content, tags, type },
+            doc: { content: retrievalContent, tags, type },
           }),
         };
       })
-      .filter((item) => item.content && item.score > 0)
+      .filter((item) => item.content && item.useInAi !== false && item.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 8);
     const tenantContextConfigured = Boolean(
-      clean(ai.businessSummary, 360) ||
+      clean(ai.businessSummary, 2000) ||
+      blueprintBusinessSummary ||
       businessProfileId !== "generic" ||
       kbDocs.length > 0
     );
+    const configuredGuardrails = parseGuardrails(ai.guardrails);
+    const configuredMandatoryQuestions = parseLines(ai.mandatoryQuestions, 20);
+    const configuredEscalationTopics = parseLines(ai.escalationTopics, 20);
+    const previewGuardrails = Array.from(new Set([
+      ...DEFAULT_GUARDRAILS,
+      ...parseGuardrails(blueprintAiPolicy.guardrails),
+      ...parseGuardrails(commercialBrain.forbiddenSalesMoves),
+      ...(configuredGuardrails.length ? configuredGuardrails : businessProfile.ai.guardrails),
+    ])).slice(0, 40);
+    const previewMandatoryQuestions = (configuredMandatoryQuestions.length
+      ? configuredMandatoryQuestions
+      : businessProfile.ai.mandatoryQuestions).slice(0, 20);
+    const previewEscalationTopics = Array.from(new Set([
+      ...parseLines(blueprintAiPolicy.handoffWhen, 20),
+      ...deriveHandoffTopicsFromCommercialCriteria(commercialBrain.handoffCriteria),
+      ...(configuredEscalationTopics.length ? configuredEscalationTopics : businessProfile.ai.escalationTopics),
+    ])).slice(0, 20);
+    const tenantContext = compileTenantAiContext({
+      tenantId,
+      agentName: clean(ai.agentName, 80) || `Agente ${clean(settings?.name, 80) || businessProfile.label}`,
+      assistantRole,
+      businessSummary: resolvedBusinessSummary,
+      objective: clean(ai.objective, 800) || businessProfile.ai.objective,
+      toneOfVoice: resolvedToneOfVoice,
+      commercialBrain,
+      guardrails: previewGuardrails,
+      mandatoryQuestions: previewMandatoryQuestions,
+      escalationTopics: previewEscalationTopics,
+    });
 
-    const history = (body.history || []).map((item, index) => ({
+    const history = (effectiveBody.history || []).map((item, index) => ({
       id: `preview_${index + 1}`,
       sender: item.sender || "client",
       text: clean(item.text, 900),
@@ -347,10 +510,11 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       id: "preview_current",
       sender: "client" as const,
       text: inboundText,
-      type: clean(body.messageType, 40) || "text",
+      type: clean(effectiveBody.messageType, 40) || "text",
     };
     const conversation = [...history, currentMessage];
 
+    const inferenceStartedAt = Date.now();
     const llmRun =
       runtimePolicy.primaryProvider !== "altum_rules"
         ? await runConversationAgent(
@@ -360,34 +524,21 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
               inboundText,
               channel: "whatsapp",
               agentName: clean(ai.agentName, 80) || `Agente ${clean(settings?.name, 80) || businessProfile.label}`,
+              assistantRole,
               tenantContextConfigured,
-              contactName: typeof body.contactName === "string" ? body.contactName : undefined,
-              runtimeStateSummary: clean(body.runtimeStateSummary, 320) || undefined,
-              leadMemorySummary: summarizeLeadMemoryForPreview(body.leadMemory || null) || undefined,
+              tenantContext,
+              contactName: typeof effectiveBody.contactName === "string" ? effectiveBody.contactName : undefined,
+              runtimeStateSummary: clean(effectiveBody.runtimeStateSummary, 320) || undefined,
+              leadMemorySummary: summarizeLeadMemoryForPreview(effectiveBody.leadMemory || null) || undefined,
               commercialBrainSummary: summarizeCommercialBrain(commercialBrain) || undefined,
-              toneOfVoice: clean(ai.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
-              businessSummary: clean(ai.businessSummary, 360) || clean(settings?.name, 120) || businessProfile.description,
-              objective: clean(ai.objective, 200) || businessProfile.ai.objective,
-              guardrails: Array.from(
-                new Set([
-                  ...parseGuardrails(ai.guardrails),
-                  ...businessProfile.ai.guardrails,
-                ])
-              ),
-              mandatoryQuestions: Array.from(
-                new Set([
-                  ...businessProfile.ai.mandatoryQuestions,
-                  ...parseLines(ai.mandatoryQuestions, 12),
-                ])
-              ),
-              escalationTopics: Array.from(
-                new Set([
-                  ...businessProfile.ai.escalationTopics,
-                  ...parseLines(ai.escalationTopics, 12),
-                ])
-              ),
-              playbookOffers: playbookPreset.offers.slice(0, 6),
-              playbookScripts: playbookPreset.scripts.slice(0, 6),
+              toneOfVoice: resolvedToneOfVoice,
+              businessSummary: resolvedBusinessSummary,
+              objective: clean(ai.objective, 800) || businessProfile.ai.objective,
+              guardrails: previewGuardrails,
+              mandatoryQuestions: previewMandatoryQuestions,
+              escalationTopics: previewEscalationTopics,
+              playbookOffers: [],
+              playbookScripts: [],
               learningHints,
               tier: operatingProfile.tier,
               autonomyMode: operatingProfile.autonomyMode,
@@ -404,23 +555,35 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
 
     const tenantAiConfig = {
       enabled: true,
+      responsePaused: false,
+      tenantContextConfigured,
       businessProfileId,
       businessProfileLabel: businessProfile.label,
+      salesMotion: "consultative" as const,
       agentName: clean(ai.agentName, 80) || `Agente ${clean(settings?.name, 80) || businessProfile.label}`,
-      businessSummary: clean(ai.businessSummary, 360) || clean(settings?.name, 120) || businessProfile.description,
-      objective: clean(ai.objective, 200) || businessProfile.ai.objective,
+      assistantRole,
+      businessSummary: resolvedBusinessSummary,
+      objective: clean(ai.objective, 800) || businessProfile.ai.objective,
       commercialBrain,
-      toneOfVoice: clean(ai.toneOfVoice, 120) || businessProfile.ai.toneOfVoice,
+      toneOfVoice: resolvedToneOfVoice,
       responsiblePhone: clean(ai.responsiblePhone, 40),
       handoffNotifyEnabled: ai.handoffNotifyEnabled !== false,
       handoffNotifyPhones: parseLines(ai.handoffNotifyPhones, 8),
       voiceReplyEnabled: ai.voiceReplyEnabled === true,
       voiceReplyVoice: clean(ai.voiceReplyVoice, 40) || "marin",
-      guardrails: parseGuardrails(ai.guardrails),
-      mandatoryQuestions: parseLines(ai.mandatoryQuestions, 12),
-      escalationTopics: parseLines(ai.escalationTopics, 12),
-      playbookOffers: playbookPreset.offers.slice(0, 6),
-      playbookScripts: playbookPreset.scripts.slice(0, 6),
+      voiceReplyMode: ["audio_only", "smart", "always"].includes(clean(ai.voiceReplyMode, 40))
+        ? (clean(ai.voiceReplyMode, 40) as "audio_only" | "smart" | "always")
+        : "smart",
+      voiceReplyMaxChars: Math.max(260, Math.min(1400, Number(ai.voiceReplyMaxChars || 460) || 460)),
+      whatsappTemplateFollowUpEnabled: ai.whatsappTemplateFollowUpEnabled !== false,
+      whatsappTemplateFollowUpName: clean(ai.whatsappTemplateFollowUpName, 120) || "follow_up_geral",
+      whatsappTemplateFollowUpLanguage: clean(ai.whatsappTemplateFollowUpLanguage, 24) || "pt_BR",
+      whatsappTemplateFollowUpParams: parseLines(ai.whatsappTemplateFollowUpParams, 12),
+      guardrails: previewGuardrails,
+      mandatoryQuestions: previewMandatoryQuestions,
+      escalationTopics: previewEscalationTopics,
+      playbookOffers: [],
+      playbookScripts: [],
       learningHints,
       tier: operatingProfile.tier,
       autonomyMode: operatingProfile.autonomyMode,
@@ -430,12 +593,13 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       preferredProviders: operatingProfile.preferredProviders as AltumAiProvider[],
       monthlyBudgetUsd: Number(ai.monthlyBudgetUsd || 0) || 0,
       monthlyUsageCap: Number(ai.monthlyUsageCap || 0) || 0,
+      rollout: normalizeAiConversationRollout(ai.rollout),
       runtimePolicy,
     };
 
     const heuristicExtractedFields = extractBusinessFields(
       inboundText,
-      tenantAiConfig as Parameters<typeof extractBusinessFields>[1]
+      tenantAiConfig
     );
     const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields);
 
@@ -467,14 +631,14 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       : { ...fallbackChoice, ledBy: "fallback" as const };
     const plannerDecision = deriveOperationalPlan({
       inboundText,
-      messageType: clean(body.messageType, 40) || "text",
+      messageType: clean(effectiveBody.messageType, 40) || "text",
       choice,
       llmDecision: llmResult?.decision,
       llmReason: llmResult?.reason || null,
       llmConfidence: llmResult?.confidence ?? null,
       llmTurnGoal: llmResult?.turnGoal || null,
       runtimeState: null,
-      leadMemory: (body.leadMemory || null) as AltumLeadMemory | null,
+      leadMemory: (effectiveBody.leadMemory || null) as AltumLeadMemory | null,
       extractedFields,
       conversation,
       kbDocs,
@@ -490,9 +654,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       runtimeState: null,
     });
 
-    return NextResponse.json({
-      ok: true,
-      preview: {
+    const preview: AiEvaluationPreview & Record<string, unknown> = {
         conversationalChoice: choice,
         plannerDecision,
         llmTurnGoal: llmResult?.turnGoal || null,
@@ -508,7 +670,46 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
           score: doc.score,
           preview: doc.content.slice(0, 120),
         })),
+      evaluationContext: {
+          assistantRole,
+          businessProfileId,
+          businessProfileLabel: businessProfile.label,
+        },
+      runtime: {
+          source: llmResult ? "model" : "fallback",
+          provider: llmResult?.provider || null,
+          model: llmResult?.model || null,
+          providerFallbackTriggered: Boolean(llmRun?.providerFallbackTriggered || llmResult?.fallbackUsed),
+          providerChainError: llmRun?.providerChainError || null,
+          tenantContextFingerprint: tenantContext.fingerprint,
+          configuredGuardrails: tenantContext.diagnostics.guardrailCount,
+          configuredMandatoryQuestions: tenantContext.diagnostics.mandatoryQuestionCount,
+          configuredEscalationTopics: tenantContext.diagnostics.escalationTopicCount,
+          retrievedKnowledgeDocuments: kbDocs.length,
+          latencyMs: Date.now() - inferenceStartedAt,
+          inputTokens: llmResult?.inputTokens ?? null,
+          outputTokens: llmResult?.outputTokens ?? null,
+          estimatedCostUsd: llmResult?.estimatedCostUsd ?? null,
       },
+    };
+
+    if (evaluationScenario) {
+      const { adminDb } = await import("@/app/lib/server/firebase-admin");
+      const proofRef = adminDb.collection("ai_evaluation_previews").doc();
+      await proofRef.set({
+        tenantId,
+        createdBy: user.uid,
+        scenarioId: evaluationScenario.id,
+        scenarioVersion: "2026-09-28",
+        preview,
+        createdAt: new Date(),
+      });
+      preview.evaluationProofId = proofRef.id;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      preview,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {

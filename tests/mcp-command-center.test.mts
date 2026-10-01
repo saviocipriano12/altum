@@ -8,6 +8,7 @@ import { canAccessAssignedCommercialRecord } from "../lib/commercial-record-acce
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { resolve } from "node:path";
+import { tools } from "../lib/mcp/contracts.ts";
 
 const fixture = () => createDemo(Date.parse("2026-09-09T15:00:00.000Z"));
 async function selected(f: ReturnType<typeof fixture>) {
@@ -16,6 +17,64 @@ async function selected(f: ReturnType<typeof fixture>) {
 }
 function call(f: ReturnType<typeof fixture>, tool: string, args: Record<string, unknown>) { return f.service.execute(f.userId, { tool, arguments: args }); }
 const code = (value: string) => (error: unknown) => error instanceof CommandError && error.code === value;
+
+test("MCP exposes structured AI, offer, knowledge and automation reads", async () => {
+  const f = fixture(), context = await selected(f);
+  const ai = await call(f, "get_ai_commercial_profile", { context });
+  assert.equal((ai.data.profile as Record<string, unknown>).assistantRole, "sales");
+  const offers = await call(f, "list_commercial_offers", { context, limit: 20 });
+  assert.equal((offers.data.items as Array<Record<string, unknown>>)[0].productName, "Plano Demo");
+  const offer = await call(f, "get_commercial_offer", { context, offerId: "offer-demo" });
+  assert.equal(((offer.data.item as Record<string, unknown>).kind), "plano");
+  const documents = await call(f, "list_knowledge_documents", { context, limit: 20, type: "faq" });
+  assert.equal((documents.data.items as Array<Record<string, unknown>>).length, 1);
+  const automations = await call(f, "list_automations", { context, limit: 20 });
+  assert.equal((automations.data.items as Array<Record<string, unknown>>)[0].trigger, "waiting_for_reply");
+});
+
+test("MCP structured PATCH supports dry-run without creating a draft", async () => {
+  const f = fixture(), context = await selected(f);
+  const result = await call(f, "update_ai_commercial_profile", {
+    context,
+    patch: { assistantRole: "consultant", commercialBrain: { idealCustomer: "Empresas B2B" } },
+    dryRun: true,
+    reason: "Validar perfil antes de publicar",
+  });
+  assert.equal(result.data.status, "dry_run");
+  assert.equal(f.drafts.length, 0);
+  const offer = await call(f, "upsert_commercial_offer", {
+    context,
+    patch: { kind: "plano", productName: "Altum Pro", benefits: "Mais conversao" },
+    dryRun: true,
+    reason: "Validar oferta antes de publicar",
+  });
+  assert.equal(offer.data.status, "dry_run");
+  assert.equal(f.drafts.length, 0);
+});
+
+test("MCP accepts the full operational IA profile without exposing provider secrets", () => {
+  const parsed = tools.update_ai_commercial_profile.schema.safeParse({
+    context: "x".repeat(24),
+    patch: {
+      assistantRole: "consultant",
+      commercialBrain: { idealCustomer: "Empresas B2B com vendas consultivas" },
+      operatingProfile: {
+        tier: "growth",
+        autonomyMode: "hybrid",
+        reasoningLevel: "balanced",
+        responseStyle: "consultative",
+        preferredProviders: ["openai", "altum_rules"],
+        monthlyBudgetUsd: 100,
+        monthlyUsageCap: 1500,
+      },
+      rollout: { mode: "shadow", rolloutPercent: 10, agentVersion: "conversation-v2" },
+    },
+    dryRun: true,
+    reason: "Validar o perfil operacional completo antes de aplicar.",
+  });
+  assert.equal(parsed.success, true);
+  if (parsed.success) assert.equal("apiKey" in parsed.data.patch, false);
+});
 const jsonReq = (body: unknown, token = "ok") => new Request("https://altum.test/api/mcp/read", {
   method: "POST",
   headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -230,6 +289,74 @@ test("MCP draft tools create reviewable AI configuration drafts without applying
     instructions: "Responder com clareza e pedir confirmacao humana antes de prometer algo.",
   }), code("DRAFTS_DISABLED"));
 });
+test("MCP exposes supervised operations across CRM, agenda and conversations", async () => {
+  const f = fixture(), context = await selected(f);
+  const lead = await call(f, "update_lead", { context, leadId: "lead-ana", patch: { company: "Loja Ana", potentialValue: 5400 }, reason: "Atualizar os dados confirmados pelo cliente." });
+  const meeting = await call(f, "create_appointment", { context, leadId: "lead-ana", title: "Demonstracao comercial", startAt: "2026-10-01T14:00:00.000Z", reason: "Agendar o proximo passo combinado com o cliente." });
+  const reply = await call(f, "send_or_reply_conversation", { context, conversationId: "chat-ana", text: "Sim, conseguimos confirmar a entrega ate sexta.", reason: "Responder a pergunta objetiva registrada na conversa." });
+  assert.equal(lead.data.status, "pending_review");
+  assert.equal(meeting.data.status, "pending_review");
+  assert.equal(reply.data.status, "pending_review");
+  assert.deepEqual(f.drafts.slice(-3).map((draft) => draft.type), ["update_lead", "create_appointment", "send_or_reply_conversation"]);
+  assert.equal(f.drafts.at(-1)?.risk, "WRITE_HIGH");
+});
+test("MCP prepares a proposal with an explicit no-write preview", async () => {
+  const f = fixture(), context = await selected(f);
+  const response = await call(f, "create_proposal", {
+    context,
+    leadId: "lead-ana",
+    title: "Implantacao comercial",
+    totalValue: 5400,
+    validUntil: "2026-10-31",
+    summary: "Implantacao, configuracao e acompanhamento inicial.",
+    reason: "Preparar a proposta solicitada pelo responsavel comercial.",
+  });
+  assert.equal(response.data.status, "pending_review");
+  assert.equal(response.data.dryRun.willWrite, false);
+  assert.equal(response.data.dryRun.requiresApproval, true);
+  assert.equal(response.data.dryRun.risk, "WRITE_HIGH");
+  assert.deepEqual(response.data.target, { leadId: "lead-ana" });
+  assert.equal(f.drafts.at(-1)?.type, "create_proposal");
+  assert.equal(f.drafts.at(-1)?.risk, "WRITE_HIGH");
+});
+test("MCP validates complete pipeline and automation definitions before drafting", async () => {
+  const f = fixture(), context = await selected(f);
+  await call(f, "update_pipeline", { context, stages: [{ id: "novo", label: "Novo", position: 0 }, { id: "ganho", label: "Ganho", position: 1, isTerminal: true }], reason: "Ajustar as etapas ao processo comercial aprovado." });
+  await call(f, "upsert_automation", { context, name: "Cobrar retorno", trigger: "waiting_for_reply", enabled: false, conditions: { waitAtLeastHours: 4, stageIn: ["qualificacao"] }, actions: [{ type: "create_task", title: "Retomar conversa", dueInHours: 1 }], reason: "Criar acompanhamento sem disparar mensagem automaticamente." });
+  assert.deepEqual(f.drafts.slice(-2).map((draft) => draft.type), ["update_pipeline", "upsert_automation"]);
+  await assert.rejects(call(f, "update_pipeline", { context, stages: [{ id: "unica", label: "Unica" }], reason: "Esta definicao deve ser recusada por ser incompleta." }), code("INVALID_INPUT"));
+});
+test("MCP exposes team governance and prepares supervised people, SLA and commission changes", async () => {
+  const f = fixture();
+  const context = await selected(f);
+  const operation = await call(f, "team_operation", { context });
+  assert.equal((operation.data.teams as Array<{ id: string }>)[0].id, "comercial");
+  await call(f, "invite_team_member", { context, email: "vendedor@exemplo.com", name: "Vendedor Demo", accessProfile: "seller", teamId: "comercial", reason: "Adicionar vendedor aprovado para a operacao comercial." });
+  await call(f, "configure_commercial_sla", { context, firstResponseMinutes: 10, assignmentMode: "least_loaded", autoAssignOnInbound: true, businessHoursOnly: false, reason: "Reduzir o tempo de resposta das novas conversas." });
+  await call(f, "configure_commission", { context, userId: f.userId, commissionRate: 5, reason: "Aplicar a politica comercial aprovada pela empresa." });
+  assert.deepEqual(f.drafts.slice(-3).map((draft) => draft.type), ["invite_team_member", "configure_commercial_sla", "configure_commission"]);
+  assert.ok(f.drafts.slice(-3).every((draft) => draft.status === "pending_review"));
+});
+test("MCP exposes the complete lead prospecting and WhatsApp workflow", async () => {
+  const f = fixture();
+  const context = await selected(f);
+  await call(f, "create_lead", { context, name: "Nova Empresa", phone: "11999999999", source: "prospeccao", reason: "Cadastrar o contato encontrado na prospeccao comercial." });
+  await call(f, "add_lead_note", { context, leadId: "lead-ana", text: "Contato demonstrou interesse no produto.", reason: "Registrar contexto confirmado durante a prospeccao." });
+  await call(f, "create_lead_task", { context, leadId: "lead-ana", title: "Retomar contato", dueAt: "2026-10-02T13:00:00.000Z", reason: "Agendar o proximo acompanhamento comercial." });
+  await call(f, "start_whatsapp_conversation", { context, leadId: "lead-ana", text: "Ola, posso apresentar a solucao?", reason: "Iniciar a conversa solicitada pelo responsavel comercial." });
+  assert.deepEqual(f.drafts.slice(-4).map((draft) => draft.type), ["create_lead", "add_lead_note", "create_lead_task", "start_whatsapp_conversation"]);
+  assert.equal(f.drafts.at(-1)?.risk, "WRITE_HIGH");
+});
+test("MCP lists approved WhatsApp templates before a new outbound conversation", async () => {
+  const f = fixture();
+  const context = await selected(f);
+  const response = await call(f, "list_whatsapp_templates", { context });
+  const templates = response.data.templates as Array<{ name: string; status: string; parameterCount: number }>;
+  assert.equal(templates[0].name, "contato_inicial");
+  assert.equal(templates[0].status, "approved");
+  assert.equal(templates[0].parameterCount, 1);
+});
+
 test("MCP unsigned/short secrets cannot mint contexts", async () => {
   const f = fixture();
   const service = new CommandCenter(f.ports, f.grants, "weak", () => f.now);
@@ -241,9 +368,18 @@ test("MCP actual stdio protocol initializes, lists READ tools and returns synthe
   try {
     await client.connect(transport);
     const catalogue = await client.listTools();
-    assert.equal(catalogue.tools.length, 35);
+    assert.equal(catalogue.tools.length, Object.keys(tools).length);
     const draftTool = catalogue.tools.find(t => t.name === "draft_ai_behavior_update");
     assert.equal(draftTool?.annotations?.readOnlyHint, false);
+    assert.deepEqual(draftTool?._meta?.securitySchemes, [{ type: "oauth2", scopes: ["ai:draft"] }]);
+    const createLeadTool = catalogue.tools.find(t => t.name === "create_lead");
+    assert.deepEqual(createLeadTool?._meta?.securitySchemes, [{ type: "oauth2", scopes: ["crm:write"] }]);
+    const accessTool = catalogue.tools.find(t => t.name === "operational_access_status");
+    assert.equal((accessTool?._meta?.securitySchemes as Array<{ scopes: string[] }>)[0].scopes.length, 16);
+    assert.equal(accessTool?.annotations?.readOnlyHint, true);
+    const whatsappTemplatesTool = catalogue.tools.find(t => t.name === "list_whatsapp_templates");
+    assert.equal(whatsappTemplatesTool?.annotations?.readOnlyHint, true);
+    assert.equal(whatsappTemplatesTool?.annotations?.openWorldHint, true);
     assert.ok(catalogue.tools.every(t => !t.annotations?.destructiveHint));
     const response = await client.callTool({ name: "list_businesses", arguments: {} });
     assert.ok(!response.isError);

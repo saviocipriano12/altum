@@ -4,6 +4,8 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { commercialOfferReadiness, normalizeCommercialOffer, normalizeCommercialOfferRelationIds } from "@/lib/commercial-offer";
+import { normalizeCommercialKnowledgeFields } from "@/lib/commercial-knowledge-fields";
 
 type Body = {
   type?: "faq" | "catalog" | "policy";
@@ -22,10 +24,39 @@ type Body = {
   targetProfile?: string | null;
   priceFrom?: number | null;
   priceTo?: number | null;
+  currency?: string | null;
+  sku?: string | null;
+  inventoryQuantity?: number | null;
+  checkoutUrl?: string | null;
+  kind?: "produto" | "servico" | "plano" | "pacote" | string | null;
   upsellKeys?: string[] | string;
   crossSellKeys?: string[] | string;
+  upsellOfferIds?: string[] | string;
+  crossSellOfferIds?: string[] | string;
+  downsellOfferIds?: string[] | string;
+  incompatibleOfferIds?: string[] | string;
+  nextOfferId?: string | null;
   priority?: number | null;
   availability?: "active" | "seasonal" | "paused" | string | null;
+  useInAi?: boolean;
+  description?: string | null;
+  benefits?: string | null;
+  commonQuestions?: string | null;
+  objections?: string | null;
+  whenRecommend?: string | null;
+  whenNotRecommend?: string | null;
+  whenHuman?: string | null;
+  productSpecs?: string | null;
+  stockDelivery?: string | null;
+  warranty?: string | null;
+  serviceScope?: string | null;
+  duration?: string | null;
+  schedulingRules?: string | null;
+  deliverables?: string | null;
+  proofAndCases?: string | null;
+  demonstration?: string | null;
+  paymentConditions?: string | null;
+  supportAndSla?: string | null;
 };
 
 type MediaItemBody = {
@@ -137,6 +168,26 @@ function normalizeMediaItems(value: unknown) {
     .slice(0, 12);
 }
 
+async function normalizeOfferRelations(tenantId: string, body: Body, currentOfferId?: string | null) {
+  const requested = [body.upsellOfferIds, body.crossSellOfferIds, body.downsellOfferIds, body.incompatibleOfferIds, body.nextOfferId]
+    .some((value) => value !== undefined);
+  if (!requested) return null;
+
+  const offers = await adminDb.collection("kb_docs").where("tenantId", "==", tenantId).limit(200).get();
+  const validOfferIds = offers.docs
+    .filter((doc) => String(doc.data().type || "").toLowerCase() === "catalog")
+    .map((doc) => doc.id);
+  const normalize = (value: unknown) => normalizeCommercialOfferRelationIds({ value, validOfferIds, currentOfferId, max: 12 });
+  const nextOfferId = normalize(body.nextOfferId)[0] || null;
+  return {
+    upsellOfferIds: normalize(body.upsellOfferIds),
+    crossSellOfferIds: normalize(body.crossSellOfferIds),
+    downsellOfferIds: normalize(body.downsellOfferIds),
+    incompatibleOfferIds: normalize(body.incompatibleOfferIds),
+    nextOfferId,
+  };
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -157,6 +208,9 @@ export async function GET(
 
     const items = snap.docs.map((doc) => {
       const data = doc.data() as Record<string, unknown>;
+      const normalizedMediaItems = normalizeMediaItems(data.mediaItems);
+      const commercial = normalizeCommercialOffer({ ...data, mediaItems: normalizedMediaItems });
+      const readiness = commercialOfferReadiness({ ...data, mediaItems: normalizedMediaItems });
       return {
         id: doc.id,
         tenantId,
@@ -169,17 +223,34 @@ export async function GET(
         mediaStoragePath: clean(data.mediaStoragePath, 600) || null,
         mediaMimeType: clean(data.mediaMimeType, 140) || null,
         mediaSize: numericValue(data.mediaSize),
-        mediaItems: normalizeMediaItems(data.mediaItems),
+        mediaItems: normalizedMediaItems,
         serviceKey: clean(data.serviceKey, 120) || null,
         productName: clean(data.productName, 160) || null,
         productCategory: clean(data.productCategory, 120) || null,
         targetProfile: clean(data.targetProfile, 180) || null,
         priceFrom: priceValue(data.priceFrom),
         priceTo: priceValue(data.priceTo),
+        currency: commercial.currency,
+        sku: commercial.sku,
+        inventoryQuantity: commercial.inventoryQuantity,
+        checkoutUrl: commercial.checkoutUrl,
+        kind: commercial.kind,
         upsellKeys: parseList(data.upsellKeys, 12),
         crossSellKeys: parseList(data.crossSellKeys, 12),
+        upsellOfferIds: parseList(data.upsellOfferIds, 12),
+        crossSellOfferIds: parseList(data.crossSellOfferIds, 12),
+        downsellOfferIds: parseList(data.downsellOfferIds, 12),
+        incompatibleOfferIds: parseList(data.incompatibleOfferIds, 12),
+        nextOfferId: clean(data.nextOfferId, 180) || null,
         priority: numericValue(data.priority),
         availability: normalizeAvailability(data.availability),
+        ...normalizeCommercialKnowledgeFields(data),
+        commercialReadiness: {
+          readyForAi: readiness.readyForAi,
+          issues: readiness.issues,
+          sellable: readiness.sellability.sellable,
+          sellabilityReason: readiness.sellability.reason,
+        },
         createdAt: data.createdAt || null,
         updatedAt: data.updatedAt || null,
       };
@@ -218,6 +289,8 @@ export async function POST(
       return NextResponse.json({ error: "Campo obrigatorio: content." }, { status: 400 });
     }
     const mediaItems = normalizeMediaItems(body.mediaItems);
+    const commercial = normalizeCommercialOffer({ ...body, mediaItems });
+    const relations = await normalizeOfferRelations(tenantId, body);
 
     const docRef = await adminDb.collection("kb_docs").add({
       tenantId,
@@ -237,10 +310,17 @@ export async function POST(
       targetProfile: clean(body.targetProfile, 180) || null,
       priceFrom: priceValue(body.priceFrom),
       priceTo: priceValue(body.priceTo),
+      currency: commercial.currency,
+      sku: commercial.sku,
+      inventoryQuantity: commercial.inventoryQuantity,
+      checkoutUrl: commercial.checkoutUrl,
+      kind: commercial.kind,
       upsellKeys: parseList(body.upsellKeys, 12),
       crossSellKeys: parseList(body.crossSellKeys, 12),
+      ...(relations || {}),
       priority: numericValue(body.priority),
       availability: normalizeAvailability(body.availability),
+      ...normalizeCommercialKnowledgeFields(body),
       createdBy: user.uid,
       createdByName: user.name,
       createdAt: FieldValue.serverTimestamp(),

@@ -520,6 +520,7 @@ async function ensureSocialChatContext(input: {
     const inboundAssignee = await resolveInboundAssignment(input.tenantId, {
       channel: input.event.channelType,
       priority: input.event.eventType === "comment" ? "high" : "medium",
+      responsibility: "lead",
     });
     if (inboundAssignee) {
       ownerId = inboundAssignee.userId;

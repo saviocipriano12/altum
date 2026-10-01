@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "@/app/lib/server/firebase-admin";
+import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, getTenantCapabilities, TenantAccessError, TENANT_CAPABILITIES, type TenantCapability, type TenantUserRole } from "@/lib/server/tenant";
 import { assertTenantLimitAvailable } from "@/lib/server/tenant-entitlements";
 import { getTenantUserUsage } from "@/lib/server/tenant-usage";
+import { buildOwnershipTransferPatch, buildPersonalChannelTransferPatch, recordBelongsToUser } from "@/lib/team-member-lifecycle";
 
 type Body = {
   role?: "client_admin" | "client_agent" | "client_viewer";
@@ -15,6 +16,12 @@ type Body = {
   maxOpenChats?: number | null;
   capabilities?: TenantCapability[] | string;
   accessProfile?: string;
+};
+
+type DeleteBody = {
+  confirmation?: string;
+  replacementUserId?: string;
+  channelAction?: "transfer" | "shared";
 };
 
 const ALLOWED_ROLES = new Set(["client_admin", "client_agent", "client_viewer"]);
@@ -185,7 +192,19 @@ export async function PATCH(
       patch.accessProfile = clean(body.accessProfile, 40).toLowerCase();
     }
 
-    await ref.set(patch, { merge: true });
+    await Promise.all([
+      ref.set(patch, { merge: true }),
+      adminDb.collection("audit_logs").add({
+        type: nextStatus === "active" && currentStatus === "blocked" ? "tenant_user_reactivate" : "tenant_user_update",
+        tenantId,
+        actorId: actor.uid,
+        actorName: actor.name,
+        targetUserId: userId,
+        targetUserName: clean(data.name, 140) || clean(data.email, 180),
+        changedFields: Object.keys(patch).filter((key) => !["updatedAt", "updatedBy", "updatedByName"].includes(key)),
+        createdAt: FieldValue.serverTimestamp(),
+      }),
+    ]);
 
     return NextResponse.json({ ok: true, tenantId, userId });
   } catch (error) {
@@ -197,5 +216,118 @@ export async function PATCH(
     }
     console.error("Erro ao atualizar usuario do tenant:", error);
     return NextResponse.json({ error: "Falha ao atualizar usuario." }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ tenantId: string; userId: string }> }
+) {
+  try {
+    const actor = await requireRequestUser(req);
+    const { tenantId, userId } = await context.params;
+    const actorMembership = await assertTenantAccess(actor.uid, tenantId);
+    assertTenantCapability(actorMembership, "manage_users");
+    if (!["client_owner", "agency_owner", "agency_admin"].includes(actorMembership.role)) {
+      return NextResponse.json({ error: "Somente o dono da conta pode excluir uma pessoa da empresa." }, { status: 403 });
+    }
+    if (actor.uid === userId) {
+      return NextResponse.json({ error: "O dono não pode excluir o próprio acesso." }, { status: 403 });
+    }
+
+    const { ref, data } = await getMembership(tenantId, userId);
+    if (clean(data.role, 40) === "client_owner") {
+      return NextResponse.json({ error: "O dono da conta não pode ser excluído." }, { status: 403 });
+    }
+
+    const body = await req.json().catch(() => ({})) as DeleteBody;
+    const targetEmail = clean(data.email, 180).toLowerCase();
+    const confirmation = clean(body.confirmation, 180).toLowerCase();
+    if (!confirmation || confirmation !== targetEmail) {
+      return NextResponse.json({ error: "Digite o e-mail da pessoa para confirmar a exclusão." }, { status: 400 });
+    }
+
+    const replacementUserId = clean(body.replacementUserId, 140);
+    let replacement: { userId: string; name?: string } | null = null;
+    if (replacementUserId) {
+      if (replacementUserId === userId) {
+        return NextResponse.json({ error: "Escolha outra pessoa para receber a carteira." }, { status: 400 });
+      }
+      const replacementSnap = await adminDb.collection("tenant_users").doc(`${tenantId}_${replacementUserId}`).get();
+      const replacementData = replacementSnap.data() as Record<string, unknown> | undefined;
+      if (!replacementSnap.exists || clean(replacementData?.status, 20) === "blocked") {
+        return NextResponse.json({ error: "A pessoa escolhida para receber a carteira está inativa." }, { status: 400 });
+      }
+      replacement = { userId: replacementUserId, name: clean(replacementData?.name, 140) || clean(replacementData?.email, 180) };
+    }
+
+    const collections = ["chats", "leads", "appointments", "lead_tasks"];
+    const counts: Record<string, number> = {};
+    const writes: Array<{ ref: FirebaseFirestore.DocumentReference; patch: Record<string, unknown> }> = [];
+    for (const collection of collections) {
+      const snapshot = await adminDb.collection(collection).where("tenantId", "==", tenantId).get();
+      for (const row of snapshot.docs) {
+        const rowData = row.data() as Record<string, unknown>;
+        if (!recordBelongsToUser(rowData, userId)) continue;
+        const patch = buildOwnershipTransferPatch(rowData, userId, replacement);
+        if (!Object.keys(patch).length) continue;
+        writes.push({ ref: row.ref, patch: { ...patch, reassignedAt: FieldValue.serverTimestamp(), reassignedBy: actor.uid } });
+        counts[collection] = (counts[collection] || 0) + 1;
+      }
+    }
+
+    const channelSnapshot = await adminDb.collection("tenant_channels").where("tenantId", "==", tenantId).get();
+    for (const row of channelSnapshot.docs) {
+      const patch = buildPersonalChannelTransferPatch(row.data() as Record<string, unknown>, userId, body.channelAction === "transfer" ? replacement : null);
+      if (!Object.keys(patch).length) continue;
+      writes.push({ ref: row.ref, patch: { ...patch, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.uid } });
+      counts.channels = (counts.channels || 0) + 1;
+    }
+
+    for (let index = 0; index < writes.length; index += 400) {
+      const batch = adminDb.batch();
+      writes.slice(index, index + 400).forEach((write) => batch.set(write.ref, write.patch, { merge: true }));
+      await batch.commit();
+    }
+
+    const memberships = await adminDb.collection("tenant_users").where("userId", "==", userId).limit(80).get();
+    const nextMembership = memberships.docs.find((item) => item.id !== ref.id && clean(item.data().status, 20) !== "blocked");
+    const legacyPortalRef = adminDb.collection("client_portal_users").doc(userId);
+    const legacyPortal = await legacyPortalRef.get();
+    const legacyPointsToTenant = legacyPortal.exists && clean(legacyPortal.data()?.tenantId || legacyPortal.data()?.clientId, 140) === tenantId;
+    const userPatch: Record<string, unknown> = {
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(nextMembership ? { defaultTenantId: clean(nextMembership.data().tenantId, 140) } : { defaultTenantId: FieldValue.delete() }),
+    };
+
+    const finalBatch = adminDb.batch();
+    finalBatch.delete(ref);
+    finalBatch.set(adminDb.collection("users").doc(userId), userPatch, { merge: true });
+    if (legacyPointsToTenant) finalBatch.delete(legacyPortalRef);
+    await finalBatch.commit();
+
+    await Promise.all([
+      adminAuth.revokeRefreshTokens(userId).catch(() => undefined),
+      adminDb.collection("audit_logs").add({
+        type: "tenant_user_delete",
+        tenantId,
+        actorId: actor.uid,
+        actorName: actor.name,
+        targetUserId: userId,
+        targetUserName: clean(data.name, 140) || targetEmail,
+        targetUserEmail: targetEmail,
+        replacementUserId: replacement?.userId || null,
+        replacementUserName: replacement?.name || null,
+        affected: counts,
+        createdAt: FieldValue.serverTimestamp(),
+      }),
+    ]);
+
+    return NextResponse.json({ ok: true, affected: counts, replacement });
+  } catch (error) {
+    if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    console.error("Erro ao excluir pessoa do tenant:", error);
+    return NextResponse.json({ error: "Não foi possível excluir a pessoa da empresa." }, { status: 500 });
   }
 }

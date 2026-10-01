@@ -22,6 +22,82 @@ function numericValue(value: unknown) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+export type InboundVisualAnalysis = {
+  summary: string;
+  intent: "find_similar_product" | "product_question" | "proof_or_document" | "other";
+  category: string | null;
+  colors: string[];
+  materials: string[];
+  styles: string[];
+  attributes: string[];
+  visibleText: string | null;
+  searchQuery: string;
+};
+
+export type VisualCatalogCandidate = {
+  id: string;
+  name?: string | null;
+  category?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+};
+
+export type VisualCatalogMatch = {
+  id: string;
+  confidence: number;
+  reason: string;
+};
+
+function stringList(value: unknown, maxItems = 8) {
+  if (!Array.isArray(value)) return [] as string[];
+  return value.map((item) => cleanText(item, 80)).filter(Boolean).slice(0, maxItems);
+}
+
+function parseVisualAnalysis(value: unknown): InboundVisualAnalysis | null {
+  if (!value || typeof value !== "object") return null;
+  const data = value as Record<string, unknown>;
+  const summary = cleanText(data.summary, 500);
+  if (!summary) return null;
+  const rawIntent = cleanText(data.intent, 60);
+  const intent: InboundVisualAnalysis["intent"] = [
+    "find_similar_product",
+    "product_question",
+    "proof_or_document",
+    "other",
+  ].includes(rawIntent)
+    ? (rawIntent as InboundVisualAnalysis["intent"])
+    : "other";
+  return {
+    summary,
+    intent,
+    category: cleanText(data.category, 120) || null,
+    colors: stringList(data.colors),
+    materials: stringList(data.materials),
+    styles: stringList(data.styles),
+    attributes: stringList(data.attributes, 12),
+    visibleText: cleanText(data.visibleText, 240) || null,
+    searchQuery: cleanText(data.searchQuery, 320) || summary,
+  };
+}
+
+function visualAnalysisAsSearchText(analysis: InboundVisualAnalysis) {
+  return cleanText(
+    [
+      analysis.summary,
+      analysis.category,
+      ...analysis.colors,
+      ...analysis.materials,
+      ...analysis.styles,
+      ...analysis.attributes,
+      analysis.visibleText,
+      analysis.searchQuery,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    1100
+  );
+}
+
 function looksLikeHttpUrl(value: string) {
   return /^https?:\/\//i.test(value);
 }
@@ -274,7 +350,7 @@ async function transcribeAudio(buffer: Buffer, contentType: string) {
   const extension =
     contentType.includes("mpeg") ? "mp3" : contentType.includes("ogg") ? "ogg" : contentType.includes("wav") ? "wav" : "webm";
   form.append("file", new Blob([new Uint8Array(buffer)], { type: contentType }), `audio.${extension}`);
-  form.append("model", "whisper-1");
+  form.append("model", cleanText(process.env.OPENAI_TRANSCRIPTION_MODEL, 80) || "gpt-4o-mini-transcribe");
   form.append("language", "pt");
   form.append("response_format", "json");
 
@@ -301,9 +377,9 @@ function hasWeakTranscription(text: string) {
   return words.length < 4;
 }
 
-async function analyzeImage(buffer: Buffer, contentType: string) {
+async function analyzeImage(buffer: Buffer, contentType: string): Promise<InboundVisualAnalysis | null> {
   const apiKey = process.env.OPENAI_API_KEY || "";
-  if (!apiKey) return "";
+  if (!apiKey) return null;
 
   const dataUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -315,18 +391,19 @@ async function analyzeImage(buffer: Buffer, contentType: string) {
     body: JSON.stringify({
       model: "gpt-4o-mini",
       temperature: 0.2,
+      response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
           content:
-            "Voce ajuda um agente comercial a entender imagens recebidas por WhatsApp. Responda em portugues do Brasil, em ate 2 frases, dizendo o que aparece e qual parece ser o contexto comercial mais importante.",
+            "Voce e a visao de um vendedor consultivo. Analise imagens recebidas por WhatsApp e devolva somente JSON valido com: summary, intent (find_similar_product, product_question, proof_or_document ou other), category, colors, materials, styles, attributes, visibleText e searchQuery. Descreva apenas fatos visiveis; nunca invente marca, modelo, preco ou estoque. searchQuery deve reunir termos objetivos que permitam localizar itens semelhantes em um catalogo.",
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Descreva essa imagem de forma objetiva para um agente comercial. Se houver anuncio, conversa, tela, oferta, marca, problema visual ou metrica relevante, cite isso.",
+              text: "Identifique o que aparece, os atributos visuais distintivos e se o cliente parece querer encontrar um produto igual ou semelhante. Use portugues do Brasil.",
             },
             { type: "image_url", image_url: { url: dataUrl } },
           ],
@@ -342,7 +419,103 @@ async function analyzeImage(buffer: Buffer, contentType: string) {
   const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
-  return cleanText(payload.choices?.[0]?.message?.content, 700);
+  const raw = payload.choices?.[0]?.message?.content || "";
+  try {
+    return parseVisualAnalysis(JSON.parse(raw));
+  } catch {
+    const summary = cleanText(raw, 500);
+    return summary
+      ? {
+          summary,
+          intent: "other",
+          category: null,
+          colors: [],
+          materials: [],
+          styles: [],
+          attributes: [],
+          visibleText: null,
+          searchQuery: summary,
+        }
+      : null;
+  }
+}
+
+export async function matchInboundImageToCatalog(input: {
+  tenantId: string;
+  message: Record<string, unknown>;
+  candidates: VisualCatalogCandidate[];
+}): Promise<VisualCatalogMatch[]> {
+  const apiKey = cleanText(process.env.OPENAI_API_KEY, 300);
+  const candidates = input.candidates.filter((item) => item.id && item.imageUrl).slice(0, 6);
+  if (!apiKey || !candidates.length) return [];
+
+  const visionCandidates: Array<VisualCatalogCandidate & { visionUrl: string }> = [];
+  for (const candidate of candidates) {
+    try {
+      const source = cleanMediaSource(candidate.imageUrl);
+      if (!source) continue;
+      if (looksLikeHttpUrl(source) || source.startsWith("data:")) {
+        visionCandidates.push({ ...candidate, visionUrl: source });
+        continue;
+      }
+      const media = await resolveMediaBuffer(source);
+      if (!media.buffer.length || media.buffer.length > 8 * 1024 * 1024) continue;
+      visionCandidates.push({
+        ...candidate,
+        visionUrl: `data:${media.contentType};base64,${media.buffer.toString("base64")}`,
+      });
+    } catch {
+      // Um ativo ausente nao deve impedir a comparacao dos demais produtos.
+    }
+  }
+  if (!visionCandidates.length) return [];
+
+  const inbound = await resolveInboundMedia({ tenantId: input.tenantId, message: input.message });
+  const inboundUrl = `data:${inbound.contentType};base64,${inbound.buffer.toString("base64")}`;
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "text",
+      text: `Compare a primeira imagem do cliente com os produtos candidatos abaixo. Retorne JSON {"matches":[{"id":"...","confidence":0.0,"reason":"..."}]}. Use apenas os IDs fornecidos, ordene do mais semelhante, limite a 3, e reduza a confianca quando forma, cor, material ou categoria divergirem. Candidatos:\n${visionCandidates
+        .map((item) => `${item.id}: ${cleanText(item.name, 120)} | ${cleanText(item.category, 80)} | ${cleanText(item.description, 220)}`)
+        .join("\n")}`,
+    },
+    { type: "image_url", image_url: { url: inboundUrl, detail: "high" } },
+  ];
+  for (const candidate of visionCandidates) {
+    content.push({ type: "text", text: `Produto ${candidate.id}` });
+    content.push({ type: "image_url", image_url: { url: candidate.visionUrl, detail: "low" } });
+  }
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: cleanText(process.env.OPENAI_VISION_MATCH_MODEL, 80) || "gpt-4o-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "Voce compara visualmente uma imagem enviada por um cliente com imagens reais de um catalogo. Nao afirme que e o mesmo produto sem evidencia visual forte e nunca infira estoque.",
+        },
+        { role: "user", content },
+      ],
+    }),
+  });
+  if (!response.ok) throw new Error(`visual_catalog_match_http_${response.status}`);
+  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const parsed = JSON.parse(payload.choices?.[0]?.message?.content || "{}") as { matches?: unknown[] };
+  return (Array.isArray(parsed.matches) ? parsed.matches : [])
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const data = item as Record<string, unknown>;
+      const id = cleanText(data.id, 180);
+      if (!visionCandidates.some((candidate) => candidate.id === id)) return null;
+      const confidence = Math.max(0, Math.min(1, Number(data.confidence || 0)));
+      return { id, confidence, reason: cleanText(data.reason, 240) };
+    })
+    .filter((item): item is VisualCatalogMatch => Boolean(item));
 }
 
 async function summarizeTextDocument(text: string, mediaName: string) {
@@ -385,7 +558,8 @@ async function summarizeTextDocument(text: string, mediaName: string) {
 
 async function summarizeDocument(buffer: Buffer, contentType: string, mediaName: string) {
   if (contentType.startsWith("image/")) {
-    return analyzeImage(buffer, contentType);
+    const analysis = await analyzeImage(buffer, contentType);
+    return analysis?.summary || "";
   }
 
   if (looksLikeTextDocument(contentType)) {
@@ -429,6 +603,7 @@ export async function enrichInboundMessageForAgent(input: {
     return {
       normalizedText: existingNormalized,
       summary: cleanText(input.message.aiMultimodalSummary, 700) || null,
+      visualAnalysis: parseVisualAnalysis(input.message.aiVisualAnalysis),
       source: "cached" as const,
     };
   }
@@ -442,6 +617,7 @@ export async function enrichInboundMessageForAgent(input: {
     return {
       normalizedText: rawText,
       summary: null,
+      visualAnalysis: null,
       source: "text" as const,
     };
   }
@@ -449,6 +625,7 @@ export async function enrichInboundMessageForAgent(input: {
   try {
     let normalizedText = rawText;
     let summary = "";
+    let visualAnalysis: InboundVisualAnalysis | null = null;
 
     if (type === "audio") {
       const { buffer, contentType } = await resolveInboundMedia(input);
@@ -463,18 +640,24 @@ export async function enrichInboundMessageForAgent(input: {
       }
     } else if (type === "image") {
       const { buffer, contentType } = await resolveInboundMedia(input);
-      const analysis = await analyzeImage(buffer, contentType);
-      summary = analysis || "[Imagem recebida]";
-      normalizedText = [rawText, analysis].filter(Boolean).join(" ").trim() || "[Imagem recebida]";
+      visualAnalysis = await analyzeImage(buffer, contentType);
+      summary = visualAnalysis?.summary || "[Imagem recebida]";
+      normalizedText = [rawText, visualAnalysis ? visualAnalysisAsSearchText(visualAnalysis) : ""]
+        .filter(Boolean)
+        .join(" ")
+        .trim() || "[Imagem recebida]";
     } else if (type === "video") {
       // Modelos de visao analisam imagens, nao um arquivo MP4 inteiro. A
       // Evolution fornece uma miniatura da cena, que preservamos separada do
       // arquivo original e usamos como leitura visual objetiva do video.
       try {
         const { buffer, contentType } = resolveVideoThumbnail(input.message);
-        const analysis = await analyzeImage(buffer, contentType);
-        summary = analysis ? `Video: ${analysis}` : "[Video recebido]";
-        normalizedText = [rawText, analysis].filter(Boolean).join(" ").trim() || "[Video recebido]";
+        visualAnalysis = await analyzeImage(buffer, contentType);
+        summary = visualAnalysis ? `Video: ${visualAnalysis.summary}` : "[Video recebido]";
+        normalizedText = [rawText, visualAnalysis ? visualAnalysisAsSearchText(visualAnalysis) : ""]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || "[Video recebido]";
       } catch {
         summary = "[Video recebido - arquivo disponivel para reproducao]";
         normalizedText = rawText || "[Video recebido]";
@@ -495,6 +678,7 @@ export async function enrichInboundMessageForAgent(input: {
       {
         aiNormalizedText: normalizedText || null,
         aiMultimodalSummary: summary || null,
+        aiVisualAnalysis: visualAnalysis,
         aiMediaProcessedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },
@@ -504,6 +688,7 @@ export async function enrichInboundMessageForAgent(input: {
     return {
       normalizedText: normalizedText || rawText,
       summary: summary || null,
+      visualAnalysis,
       source: type as "audio" | "image" | "video" | "document",
     };
   } catch (error) {
@@ -532,6 +717,7 @@ export async function enrichInboundMessageForAgent(input: {
     return {
       normalizedText: fallback,
       summary: null,
+      visualAnalysis: null,
       source: "fallback" as const,
     };
   }

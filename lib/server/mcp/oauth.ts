@@ -4,6 +4,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { scopes, type Grant, type Scope } from "@/lib/mcp/contracts";
+import { isChatGptClientMetadataUrl, isChatGptOAuthRedirect, parseMcpOAuthScopes } from "@/lib/mcp/oauth-contract";
 import { assertTenantAccess, assertTenantCapability, getTenantSettings } from "@/lib/server/tenant";
 import { CommandError } from "@/lib/server/command-center/security";
 
@@ -15,6 +16,8 @@ type StoredCode = {
   redirectUri?: string;
   codeChallenge?: string;
   scopes?: string[];
+  offline?: boolean;
+  audience?: string;
   expiresAt?: unknown;
   consumedAt?: unknown;
 };
@@ -25,6 +28,7 @@ type StoredToken = {
   clientId?: string;
   clientName?: string;
   scopes?: string[];
+  audience?: string;
   refreshHash?: string;
   expiresAt?: unknown;
   refreshExpiresAt?: unknown;
@@ -118,9 +122,7 @@ function clientFamily(clientId: string, clientName?: string) {
 }
 
 export function parseScope(value: unknown): Scope[] {
-  const requested = typeof value === "string" ? value.split(/\s+/).filter(Boolean) : [];
-  const valid = requested.filter((scope): scope is Scope => (scopes as readonly string[]).includes(scope));
-  return valid.length ? Array.from(new Set(valid)) : [...scopes];
+  return parseMcpOAuthScopes(value, true).scopes;
 }
 
 export function oauthMetadata(req: Request) {
@@ -133,6 +135,8 @@ export function oauthMetadata(req: Request) {
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     scopes_supported: [...scopes, "offline_access"],
+    client_id_metadata_document_supported: true,
+    authorization_response_iss_parameter_supported: true,
   };
 }
 
@@ -157,10 +161,13 @@ export async function createAuthorizationCode(input: {
   state?: string;
   codeChallenge: string;
   scope?: string;
+  resource?: string;
 }) {
   if (!safeRedirectUri(input.redirectUri)) throw new CommandError("INVALID_REDIRECT_URI", 400);
   if (!input.codeChallenge || input.codeChallenge.length < 32 || input.codeChallenge.length > 160) throw new CommandError("INVALID_INPUT", 400);
 
+  const audience = endpoint(input.req, MCP_REMOTE_PATH);
+  if (input.resource && input.resource !== audience) throw new CommandError("INVALID_TARGET", 400);
   const membership = await assertTenantAccess(input.userId, input.tenantId);
   assertTenantCapability(membership, "manage_settings");
   const settings = await getTenantSettings(input.tenantId);
@@ -171,20 +178,31 @@ export async function createAuthorizationCode(input: {
   if (allowedClients.length > 0 && !allowedClients.includes(family) && !allowedClients.includes("other")) {
     throw new CommandError("CLIENT_NOT_ALLOWED", 403);
   }
+  if (isChatGptClientMetadataUrl(input.clientId)) {
+    if (!isChatGptOAuthRedirect(input.redirectUri)) throw new CommandError("UNAUTHORIZED_CLIENT", 400);
+    await verifyChatGptClientMetadata(input.clientId, input.redirectUri);
+  }
 
   const code = randomToken("mcp_code", 28);
   const codeHash = tokenHash(code);
   const now = Date.now();
-  const selectedScopes = parseScope(input.scope);
+  let requested;
+  try {
+    requested = parseMcpOAuthScopes(input.scope, true);
+  } catch {
+    throw new CommandError("INVALID_SCOPE", 400);
+  }
   await adminDb.collection("mcp_oauth_codes").doc(codeHash).set({
     userId: input.userId,
     userName: input.userName,
     tenantId: input.tenantId,
-    clientId: clean(input.clientId, 180),
+    clientId: clean(input.clientId, 500),
     clientName: clean(input.clientName, 180),
     redirectUri: input.redirectUri,
     codeChallenge: input.codeChallenge,
-    scopes: selectedScopes,
+    scopes: requested.scopes,
+    offline: requested.offline,
+    audience,
     expiresAt: Timestamp.fromMillis(now + MCP_AUTH_CODE_TTL_MS),
     createdAt: FieldValue.serverTimestamp(),
   });
@@ -194,13 +212,14 @@ export async function createAuthorizationCode(input: {
     actorId: input.userId,
     actorName: input.userName,
     tenantId: input.tenantId,
-    clientId: clean(input.clientId, 180),
-    scopes: selectedScopes,
+    clientId: clean(input.clientId, 500),
+    scopes: requested.scopes,
     createdAt: FieldValue.serverTimestamp(),
   });
 
   const redirect = new URL(input.redirectUri);
   redirect.searchParams.set("code", code);
+  redirect.searchParams.set("iss", publicOrigin(input.req));
   if (input.state) redirect.searchParams.set("state", input.state);
   return redirect.toString();
 }
@@ -210,6 +229,7 @@ export async function exchangeAuthorizationCode(input: {
   clientId: string;
   redirectUri: string;
   codeVerifier: string;
+  resource?: string;
 }) {
   const codeHash = tokenHash(input.code);
   const ref = adminDb.collection("mcp_oauth_codes").doc(codeHash);
@@ -220,66 +240,91 @@ export async function exchangeAuthorizationCode(input: {
   if (code.consumedAt || !expiresAt || expiresAt <= Date.now()) throw new CommandError("INVALID_GRANT", 400);
   if (code.clientId !== input.clientId || code.redirectUri !== input.redirectUri) throw new CommandError("INVALID_GRANT", 400);
   if (!code.codeChallenge || !timingEqual(code.codeChallenge, codeChallengeFor(input.codeVerifier))) throw new CommandError("INVALID_GRANT", 400);
-
-  await ref.update({ consumedAt: FieldValue.serverTimestamp() });
-  return issueTokens({
+  const audience = clean(code.audience, 500);
+  if (!audience || (input.resource && input.resource !== audience)) throw new CommandError("INVALID_TARGET", 400);
+  const issued = buildTokenIssue({
     userId: clean(code.userId, 180),
     tenantId: clean(code.tenantId, 180),
-    clientId: clean(code.clientId, 180),
+    clientId: clean(code.clientId, 500),
     clientName: clean(code.clientName, 180),
-    scopes: parseScope((code.scopes || []).join(" ")),
+    scopes: parseMcpOAuthScopes((code.scopes || []).join(" ")).scopes,
+    audience,
+    offline: code.offline === true,
   });
+  await adminDb.runTransaction(async (transaction) => {
+    const current = await transaction.get(ref);
+    if (!current.exists || current.data()?.consumedAt) throw new CommandError("INVALID_GRANT", 400);
+    transaction.update(ref, { consumedAt: FieldValue.serverTimestamp() });
+    transaction.create(issued.ref, issued.record);
+  });
+  return issued.payload;
 }
 
-export async function refreshAccessToken(input: { refreshToken: string; clientId: string }) {
+export async function refreshAccessToken(input: { refreshToken: string; clientId: string; resource?: string }) {
   const refreshHash = tokenHash(input.refreshToken);
   const snap = await adminDb.collection("mcp_oauth_tokens").where("refreshHash", "==", refreshHash).limit(1).get();
   const doc = snap.docs[0];
   if (!doc) throw new CommandError("INVALID_GRANT", 400);
   const token = doc.data() as StoredToken;
   const refreshExpiresAt = timestampMillis(token.refreshExpiresAt);
+  const audience = clean(token.audience, 500);
   if (token.revokedAt || token.clientId !== input.clientId || !refreshExpiresAt || refreshExpiresAt <= Date.now()) throw new CommandError("INVALID_GRANT", 400);
-  return issueTokens({
+  if (!audience || (input.resource && input.resource !== audience)) throw new CommandError("INVALID_TARGET", 400);
+  const issued = buildTokenIssue({
     userId: clean(token.userId, 180),
     tenantId: clean(token.tenantId, 180),
-    clientId: clean(token.clientId, 180),
+    clientId: clean(token.clientId, 500),
     clientName: clean(token.clientName, 180),
-    scopes: parseScope((token.scopes || []).join(" ")),
+    scopes: parseMcpOAuthScopes((token.scopes || []).join(" ")).scopes,
+    audience,
+    offline: true,
   });
+  await adminDb.runTransaction(async (transaction) => {
+    const current = await transaction.get(doc.ref);
+    const data = current.data() as StoredToken | undefined;
+    if (!data || data.revokedAt || data.refreshHash !== refreshHash) throw new CommandError("INVALID_GRANT", 400);
+    transaction.set(doc.ref, { revokedAt: FieldValue.serverTimestamp(), rotatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    transaction.create(issued.ref, issued.record);
+  });
+  return issued.payload;
 }
 
-async function issueTokens(input: { userId: string; tenantId: string; clientId: string; clientName?: string; scopes: Scope[] }) {
+function buildTokenIssue(input: { userId: string; tenantId: string; clientId: string; clientName?: string; scopes: Scope[]; audience: string; offline: boolean }) {
   if (!input.userId || !input.tenantId || !input.clientId) throw new CommandError("INVALID_GRANT", 400);
   const accessToken = randomToken("mcp_at", 32);
   const refreshToken = randomToken("mcp_rt", 36);
   const now = Date.now();
-  await adminDb.collection("mcp_oauth_tokens").doc(tokenHash(accessToken)).set({
+  const ref = adminDb.collection("mcp_oauth_tokens").doc(tokenHash(accessToken));
+  const record = {
     userId: input.userId,
     tenantId: input.tenantId,
     clientId: input.clientId,
     clientName: clean(input.clientName, 180),
     scopes: input.scopes,
-    refreshHash: tokenHash(refreshToken),
+    audience: input.audience,
+    refreshHash: input.offline ? tokenHash(refreshToken) : null,
     expiresAt: Timestamp.fromMillis(now + MCP_ACCESS_TOKEN_TTL_MS),
     refreshExpiresAt: Timestamp.fromMillis(now + MCP_REFRESH_TOKEN_TTL_MS),
     createdAt: FieldValue.serverTimestamp(),
-  });
-  return {
+  };
+  const payload = {
     access_token: accessToken,
     token_type: "Bearer",
     expires_in: Math.floor(MCP_ACCESS_TOKEN_TTL_MS / 1000),
-    refresh_token: refreshToken,
     scope: input.scopes.join(" "),
+    ...(input.offline ? { refresh_token: refreshToken } : {}),
   };
+  return { ref, record, payload };
 }
 
-export async function validateMcpAccessToken(rawToken: string): Promise<{ userId: string; tenantId: string; grant: Grant; clientId: string }> {
+export async function validateMcpAccessToken(req: Request, rawToken: string): Promise<{ userId: string; tenantId: string; grant: Grant; clientId: string }> {
   if (!rawToken || rawToken.length > 4096) throw new CommandError("UNAUTHENTICATED", 401);
   const snap = await adminDb.collection("mcp_oauth_tokens").doc(tokenHash(rawToken)).get();
   if (!snap.exists) throw new CommandError("UNAUTHENTICATED", 401);
   const token = snap.data() as StoredToken;
   const expiresAt = timestampMillis(token.expiresAt);
   if (token.revokedAt || !expiresAt || expiresAt <= Date.now()) throw new CommandError("UNAUTHENTICATED", 401);
+  if (token.audience !== endpoint(req, MCP_REMOTE_PATH)) throw new CommandError("UNAUTHENTICATED", 401);
 
   const userId = clean(token.userId, 180);
   const tenantId = clean(token.tenantId, 180);
@@ -290,7 +335,7 @@ export async function validateMcpAccessToken(rawToken: string): Promise<{ userId
   return {
     userId,
     tenantId,
-    clientId: clean(token.clientId, 180),
+    clientId: clean(token.clientId, 500),
     grant: {
       userId,
       tenantId,
@@ -298,6 +343,23 @@ export async function validateMcpAccessToken(rawToken: string): Promise<{ userId
       expiresAt: new Date(expiresAt).toISOString(),
     },
   };
+}
+
+async function verifyChatGptClientMetadata(clientId: string, redirectUri: string) {
+  const response = await fetch(clientId, { redirect: "error", signal: AbortSignal.timeout(10_000), cache: "no-store" });
+  if (!response.ok) throw new CommandError("UNAUTHORIZED_CLIENT", 400);
+  const raw = await response.text();
+  if (raw.length > 64_000) throw new CommandError("UNAUTHORIZED_CLIENT", 400);
+  let data: Record<string, unknown>;
+  try { data = JSON.parse(raw) as Record<string, unknown>; }
+  catch { throw new CommandError("UNAUTHORIZED_CLIENT", 400); }
+  const redirects = Array.isArray(data.redirect_uris) ? data.redirect_uris : [];
+  const methods = Array.isArray(data.token_endpoint_auth_methods_supported)
+    ? data.token_endpoint_auth_methods_supported
+    : [data.token_endpoint_auth_method];
+  if (data.client_id !== clientId || !redirects.includes(redirectUri) || !methods.includes("none")) {
+    throw new CommandError("UNAUTHORIZED_CLIENT", 400);
+  }
 }
 
 export async function listMcpConnections(tenantId: string): Promise<McpConnectionSummary[]> {
@@ -310,8 +372,8 @@ export async function listMcpConnections(tenantId: string): Promise<McpConnectio
     const status: McpConnectionSummary["status"] = revokedAt ? "revoked" : expiresAt && expiresAt <= now ? "expired" : "active";
     return {
       id: doc.id,
-      clientId: clean(token.clientId, 180),
-      clientName: clean(token.clientName, 180) || clean(token.clientId, 180) || "Cliente MCP",
+      clientId: clean(token.clientId, 500),
+      clientName: clean(token.clientName, 180) || clean(token.clientId, 500) || "Cliente MCP",
       scopes: Array.isArray(token.scopes) ? token.scopes.map((scope) => clean(scope, 80)).filter(Boolean) : [],
       status,
       createdAt: timestampIso(token.createdAt),
@@ -337,7 +399,7 @@ export async function revokeMcpConnection(tenantId: string, connectionId: string
       actorName,
       tenantId,
       connectionId: safeId,
-      clientId: clean(token.clientId, 180),
+      clientId: clean(token.clientId, 500),
       createdAt: FieldValue.serverTimestamp(),
     }),
   ]);

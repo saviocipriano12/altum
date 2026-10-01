@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
-import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { assertTenantAccess, assertTenantCapability, getTenantSettings, TenantAccessError } from "@/lib/server/tenant";
 import { getAiMonthlyUsageSnapshot } from "@/lib/server/ai/usage-ledger";
-import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { assertTenantModule, getTenantEntitlements } from "@/lib/server/tenant-entitlements";
+import { normalizeTenantAiOperatingProfile } from "@/lib/server/ai/operating-layer";
 
 type AiUsageItem = {
   id: string;
@@ -15,28 +16,6 @@ type AiUsageItem = {
   [key: string]: unknown;
 };
 
-function toMillis(value: unknown) {
-  if (!value) return 0;
-  if (typeof value === "number") return value;
-  if (
-    typeof value === "object" &&
-    value &&
-    "toDate" in value &&
-    typeof (value as { toDate?: () => Date }).toDate === "function"
-  ) {
-    return (value as { toDate: () => Date }).toDate().getTime();
-  }
-  if (
-    typeof value === "object" &&
-    value &&
-    "_seconds" in value &&
-    typeof (value as { _seconds?: number })._seconds === "number"
-  ) {
-    return (value as { _seconds: number })._seconds * 1000;
-  }
-  return 0;
-}
-
 export async function GET(req: Request, context: { params: Promise<{ tenantId: string }> }) {
   try {
     const user = await requireRequestUser(req);
@@ -45,14 +24,33 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     await assertTenantModule(tenantId, "ai");
     assertTenantCapability(membership, "manage_ai");
 
-    const monthlySnapshot = await getAiMonthlyUsageSnapshot(tenantId);
-    const snap = await adminDb.collection("ai_usage_ledger").where("tenantId", "==", tenantId).limit(200).get();
+    const [monthlySnapshot, settings, entitlements] = await Promise.all([
+      getAiMonthlyUsageSnapshot(tenantId),
+      getTenantSettings(tenantId),
+      getTenantEntitlements(tenantId),
+    ]);
+    const ai = settings?.ai && typeof settings.ai === "object" ? settings.ai as Record<string, unknown> : {};
+    const operatingProfile = normalizeTenantAiOperatingProfile(ai.operatingProfile);
+    const configuredUsageCaps = [
+      Number(operatingProfile.monthlyUsageCap || 0),
+      Number(entitlements.limits.aiRunsPerMonth || 0),
+    ].filter((value) => Number.isFinite(value) && value > 0);
+    const effectiveUsageCap = configuredUsageCaps.length ? Math.min(...configuredUsageCaps) : 0;
+    const usageCapExceeded = effectiveUsageCap > 0 && monthlySnapshot.conversationRuns >= effectiveUsageCap;
+    const budgetCapExceeded =
+      operatingProfile.monthlyBudgetUsd > 0 && monthlySnapshot.estimatedCostUsd >= operatingProfile.monthlyBudgetUsd;
+
+    const snap = await adminDb
+      .collection("ai_usage_ledger")
+      .where("tenantId", "==", tenantId)
+      .orderBy("createdAt", "desc")
+      .limit(40)
+      .get();
     const items: AiUsageItem[] = snap.docs
       .map((doc): AiUsageItem => ({
         id: doc.id,
         ...(doc.data() as Record<string, unknown>),
-      }))
-      .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+      }));
 
     const summary = {
       total: monthlySnapshot.runs,
@@ -62,6 +60,10 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       conversationRuns: monthlySnapshot.conversationRuns,
       fallbackRuns: items.filter((item) => String(item.status || "") === "fallback").length,
       monthRef: monthlySnapshot.monthRef,
+      effectiveUsageCap,
+      monthlyBudgetUsd: operatingProfile.monthlyBudgetUsd,
+      usageCapExceeded,
+      budgetCapExceeded,
     };
 
     const providers = Array.from(
@@ -79,7 +81,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       tenantId,
       summary,
       providers,
-      items: items.slice(0, 40),
+      items,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) {

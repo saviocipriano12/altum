@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   ArrowRight,
@@ -89,6 +89,23 @@ type ChargePreview = {
   pix?: { payload?: string };
 };
 
+type CommercialChargeAction = {
+  id: string;
+  leadId?: string;
+  type?: string;
+  status?: string;
+  title?: string;
+  detail?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  payload?: {
+    billingType?: string | null;
+    dueDate?: string | null;
+    description?: string | null;
+    budgetId?: string | null;
+  };
+};
+
 type ActiveTab = "proposals" | "finance" | "charges" | "new";
 
 const budgetStatuses = ["Rascunho", "Enviado", "Aprovado", "Perdido"];
@@ -125,6 +142,7 @@ export default function ClienteComercialPage() {
   const [finance, setFinance] = useState<FinanceItem[]>([]);
   const [activeTab, setActiveTab] = useState<ActiveTab>("proposals");
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [budgetStatus, setBudgetStatus] = useState("all");
   const [financeStatus, setFinanceStatus] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -136,6 +154,7 @@ export default function ClienteComercialPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [chargePreview, setChargePreview] = useState<ChargePreview | null>(null);
+  const [chargeActions, setChargeActions] = useState<CommercialChargeAction[]>([]);
 
   const [budgetForm, setBudgetForm] = useState({
     leadId: leadFromQuery,
@@ -170,20 +189,23 @@ export default function ClienteComercialPage() {
     setLoading(true);
     setError(null);
     try {
-      const [leadsRes, budgetsRes, financeRes] = await Promise.all([
+      const [leadsRes, budgetsRes, financeRes, actionsRes] = await Promise.all([
         authedFetch(`/api/tenant/${tenant.tenantId}/leads`),
         authedFetch(`/api/tenant/${tenant.tenantId}/budgets`),
         authedFetch(`/api/tenant/${tenant.tenantId}/finance`),
+        authedFetch(`/api/tenant/${tenant.tenantId}/commercial-agent/actions`),
       ]);
       const leadsPayload = (await leadsRes.json()) as { items?: LeadItem[]; error?: string };
       const budgetsPayload = (await budgetsRes.json()) as { items?: BudgetItem[]; error?: string };
       const financePayload = (await financeRes.json()) as { items?: FinanceItem[]; error?: string };
-      if (!leadsRes.ok || !budgetsRes.ok || !financeRes.ok || leadsPayload.error || budgetsPayload.error || financePayload.error) {
-        throw new Error(leadsPayload.error || budgetsPayload.error || financePayload.error || "Falha ao carregar comercial.");
+      const actionsPayload = (await actionsRes.json()) as { items?: CommercialChargeAction[]; error?: string };
+      if (!leadsRes.ok || !budgetsRes.ok || !financeRes.ok || !actionsRes.ok || leadsPayload.error || budgetsPayload.error || financePayload.error || actionsPayload.error) {
+        throw new Error(leadsPayload.error || budgetsPayload.error || financePayload.error || actionsPayload.error || "Falha ao carregar comercial.");
       }
       setLeads(leadsPayload.items || []);
       setBudgets((budgetsPayload.items || []).sort((a, b) => (toCrmDate(b.updatedAt)?.getTime() || 0) - (toCrmDate(a.updatedAt)?.getTime() || 0)));
       setFinance((financePayload.items || []).sort((a, b) => (toCrmDate(b.updatedAt)?.getTime() || 0) - (toCrmDate(a.updatedAt)?.getTime() || 0)));
+      setChargeActions((actionsPayload.items || []).filter((item) => item.type === "review_charge" && ["approved", "execution_failed"].includes(item.status || "")));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar comercial.");
     } finally {
@@ -208,24 +230,24 @@ export default function ClienteComercialPage() {
   const sentBudgets = budgets.filter((item) => item.status === "Enviado").length;
 
   const filteredBudgets = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = deferredSearch.trim().toLowerCase();
     return budgets.filter((item) => {
       if (budgetStatus !== "all" && item.status !== budgetStatus) return false;
       if (leadFromQuery && item.leadId !== leadFromQuery) return false;
       if (!term) return true;
       return `${item.titulo || ""} ${item.leadName || ""} ${item.status || ""}`.toLowerCase().includes(term);
     });
-  }, [budgetStatus, budgets, leadFromQuery, search]);
+  }, [budgetStatus, budgets, deferredSearch, leadFromQuery]);
 
   const filteredFinance = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = deferredSearch.trim().toLowerCase();
     return finance.filter((item) => {
       if (financeStatus !== "all" && item.status !== financeStatus) return false;
       if (leadFromQuery && item.leadId !== leadFromQuery) return false;
       if (!term) return true;
       return `${item.descricao || ""} ${item.leadName || ""} ${item.status || ""} ${item.meioPagamento || ""}`.toLowerCase().includes(term);
     });
-  }, [finance, financeStatus, leadFromQuery, search]);
+  }, [deferredSearch, finance, financeStatus, leadFromQuery]);
 
   async function createBudget(event: FormEvent) {
     event.preventDefault();
@@ -317,7 +339,7 @@ export default function ClienteComercialPage() {
     }
   }
 
-  async function createCharge(event: FormEvent) {
+  async function prepareChargeRequest(event: FormEvent) {
     event.preventDefault();
     if (!tenant?.tenantId || !canOperate) return;
     setCreatingCharge(true);
@@ -325,29 +347,62 @@ export default function ClienteComercialPage() {
     setNotice(null);
     setChargePreview(null);
     try {
-      const lead = leads.find((item) => item.id === chargeForm.leadId);
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/finance/create-charge`, {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/commercial-agent/actions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           leadId: chargeForm.leadId,
           budgetId: chargeForm.budgetId || null,
+          title: "Aprovar emissao de cobranca",
+          detail: chargeForm.description || "Revise valor, vencimento e meio de pagamento antes da emissao.",
           description: chargeForm.description,
           amount: Number(chargeForm.amount || 0),
           dueDate: chargeForm.dueDate,
           billingType: chargeForm.billingType,
+        }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao preparar cobranca.");
+      setNotice("Cobranca preparada. Uma pessoa precisa aprovar antes da emissao no Asaas.");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao preparar cobranca.");
+    } finally {
+      setCreatingCharge(false);
+    }
+  }
+
+  async function executeApprovedCharge(action: CommercialChargeAction) {
+    if (!tenant?.tenantId || !canOperate) return;
+    setBusyId(action.id);
+    setError(null);
+    setNotice(null);
+    setChargePreview(null);
+    try {
+      const lead = leads.find((item) => item.id === action.leadId);
+      const response = await authedFetch(`/api/tenant/${tenant.tenantId}/finance/create-charge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approvalActionId: action.id,
+          leadId: action.leadId,
+          budgetId: action.payload?.budgetId || null,
+          description: action.payload?.description || action.title,
+          amount: action.amount,
+          dueDate: action.payload?.dueDate,
+          billingType: action.payload?.billingType,
           customerInfo: { name: lead?.nome, email: lead?.email, phone: lead?.telefone },
         }),
       });
-      const payload = (await res.json().catch(() => ({}))) as ChargePreview & { error?: string };
-      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao gerar cobranca.");
+      const payload = await response.json().catch(() => ({})) as ChargePreview & { error?: string };
+      if (!response.ok || payload.error) throw new Error(payload.error || "Falha ao emitir cobranca aprovada.");
       setChargePreview(payload);
-      setNotice("Cobranca criada e registrada no financeiro.");
+      setNotice("Cobranca aprovada emitida e registrada no financeiro.");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao gerar cobranca.");
+      setError(err instanceof Error ? err.message : "Falha ao emitir cobranca aprovada.");
     } finally {
-      setCreatingCharge(false);
+      setBusyId(null);
     }
   }
 
@@ -392,7 +447,7 @@ export default function ClienteComercialPage() {
           </>
         }
       >
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <CrmMetric label="Propostas" value={String(budgets.length)} detail={`${sentBudgets} enviadas`} icon={FileText} tone="blue" />
           <CrmMetric label="Aprovado" value={formatCrmMoney(approvedValue)} detail="receita aprovada" icon={CheckCircle2} tone="green" />
           <CrmMetric label="Pendente" value={formatCrmMoney(pendingFinance)} detail="financeiro aberto" icon={Receipt} tone="orange" />
@@ -524,8 +579,33 @@ export default function ClienteComercialPage() {
 
         {activeTab === "charges" ? (
           <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <form onSubmit={createCharge} className="space-y-3">
-              <CrmSectionTitle title="Gerar cobranca" description="Crie uma cobranca a partir de uma proposta ou direto para um cliente." />
+            <div className="space-y-5">
+              {chargeActions.length ? (
+                <div className="space-y-3">
+                  <CrmSectionTitle title="Aprovadas para emissao" description="Somente cobrancas revisadas por uma pessoa podem chegar ao Asaas." />
+                  {chargeActions.map((action) => (
+                    <div key={action.id} className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap gap-2">
+                            <CrmBadge tone={action.status === "execution_failed" ? "red" : "green"}>{action.status === "execution_failed" ? "reconciliar" : "aprovada"}</CrmBadge>
+                            <CrmBadge>{action.payload?.billingType || "pagamento"}</CrmBadge>
+                          </div>
+                          <p className="mt-3 text-sm font-black text-[var(--cliente-card-text)]">{action.title || "Cobranca comercial"}</p>
+                          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatCrmMoney(action.amount)} · vencimento {action.payload?.dueDate || "a definir"}</p>
+                        </div>
+                        <CrmButton type="button" tone="primary" disabled={busyId === action.id} onClick={() => executeApprovedCharge(action)}>
+                          {busyId === action.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                          {action.status === "execution_failed" ? "Reconciliar" : "Emitir no Asaas"}
+                        </CrmButton>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <form onSubmit={prepareChargeRequest} className="space-y-3">
+              <CrmSectionTitle title="Preparar cobranca" description="Defina os dados e envie para aprovacao antes de emitir." />
               <LeadSelect leads={leads} value={chargeForm.leadId} onChange={(leadId) => setChargeForm((current) => ({ ...current, leadId }))} disabled={!canOperate} />
               <CrmSelect value={chargeForm.budgetId} onChange={(event) => {
                 const budget = budgets.find((item) => item.id === event.target.value);
@@ -549,9 +629,10 @@ export default function ClienteComercialPage() {
               </div>
               <CrmButton type="submit" tone="primary" disabled={!canOperate || creatingCharge || !chargeForm.leadId || !chargeForm.amount} className="w-full">
                 {creatingCharge ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                Gerar cobranca
+                Enviar para aprovacao
               </CrmButton>
-            </form>
+              </form>
+            </div>
 
             <CrmPanel className="xl:sticky xl:top-[132px] xl:self-start">
               <CrmSectionTitle title="Retorno da cobranca" description="Links e dados retornados aparecem aqui." />

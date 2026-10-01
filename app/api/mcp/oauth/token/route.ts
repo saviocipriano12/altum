@@ -27,13 +27,15 @@ export async function POST(req: Request) {
     const payload = grantType === "refresh_token"
       ? await refreshAccessToken({
           refreshToken: clean(body.refresh_token, 4096),
-          clientId: clean(body.client_id, 180) || "mcp-client",
+          clientId: clean(body.client_id, 500) || "mcp-client",
+          resource: clean(body.resource, 500),
         })
       : await exchangeAuthorizationCode({
           code: clean(body.code, 4096),
-          clientId: clean(body.client_id, 180) || "mcp-client",
+          clientId: clean(body.client_id, 500) || "mcp-client",
           redirectUri: clean(body.redirect_uri, 500),
           codeVerifier: clean(body.code_verifier, 500),
+          resource: clean(body.resource, 500),
         });
     return NextResponse.json(payload, { headers });
   } catch (error) {

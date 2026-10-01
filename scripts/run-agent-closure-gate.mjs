@@ -2,6 +2,10 @@ import { spawnSync } from "node:child_process";
 
 const checks = [
   {
+    label: "AI quality gate",
+    command: ["npm", "run", "test:ai-quality"],
+  },
+  {
     label: "Smoke tests",
     command: ["node", "scripts/run-smoke-tests.mjs"],
   },
@@ -19,7 +23,15 @@ const checks = [
   },
   {
     label: "TypeScript check",
-    command: ["npx", "tsc", "--noEmit", "--incremental", "false"],
+    command: [
+      "npx",
+      "tsc",
+      "-p",
+      "tsconfig.release.json",
+      "--noEmit",
+      "--incremental",
+      "false",
+    ],
   },
 ];
 

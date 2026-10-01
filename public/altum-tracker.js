@@ -49,12 +49,24 @@
       content: params.get("utm_content") || "",
       term: params.get("utm_term") || "",
       gclid: params.get("gclid") || "",
-      fbclid: params.get("fbclid") || ""
+      fbclid: params.get("fbclid") || "",
+      fbc: readCookie("_fbc"),
+      fbp: readCookie("_fbp")
     };
     var hasCampaign = Object.keys(current).some(function (key) { return Boolean(current[key]); });
     if (hasCampaign) write(localStorage, "last_attribution", JSON.stringify(current));
     try { return hasCampaign ? current : JSON.parse(read(localStorage, "last_attribution") || "{}"); }
     catch { return current; }
+  }
+
+  function readCookie(name) {
+    var prefix = name + "=";
+    var parts = document.cookie ? document.cookie.split(";") : [];
+    for (var index = 0; index < parts.length; index += 1) {
+      var part = parts[index].trim();
+      if (part.indexOf(prefix) === 0) return decodeURIComponent(part.slice(prefix.length)).slice(0, 300);
+    }
+    return "";
   }
 
   function hasConsent() {
@@ -104,13 +116,37 @@
     externalId = typeof value === "string" ? value.slice(0, 180) : "";
   }
 
-  window.Altum = { loaded: true, track: send, identify: identify, consent: consent };
+  // Checkout externo nao deve receber PII pela URL. Esta funcao preserva somente
+  // os IDs anonimos e a origem comercial para que o adaptador do checkout possa
+  // devolver a compra para a Altum com a mesma jornada.
+  function decorateCheckout(value) {
+    try {
+      var checkout = new URL(value, location.href);
+      checkout.searchParams.set("altum_vid", getAnonymousId());
+      checkout.searchParams.set("altum_sid", getSessionId());
+      var attribution = currentAttribution();
+      ["source", "medium", "campaign", "content", "term", "gclid", "fbclid"].forEach(function (key) {
+        if (attribution[key] && !checkout.searchParams.has("utm_" + key)) {
+          checkout.searchParams.set(key === "source" || key === "medium" || key === "campaign" || key === "content" || key === "term" ? "utm_" + key : key, attribution[key]);
+        }
+      });
+      return checkout.toString();
+    } catch {
+      return "";
+    }
+  }
+
+  window.Altum = { loaded: true, track: send, identify: identify, consent: consent, decorateCheckout: decorateCheckout };
 
   document.addEventListener("click", function (event) {
     var target = event.target && event.target.closest ? event.target.closest("a,button,[data-altum-event]") : null;
     if (!target) return;
     var customEvent = target.getAttribute("data-altum-event");
     var href = target.getAttribute("href") || "";
+    if (target.hasAttribute("data-altum-checkout") && href) {
+      var decorated = decorateCheckout(href);
+      if (decorated) target.setAttribute("href", decorated);
+    }
     if (customEvent) send(customEvent, { label: target.getAttribute("data-altum-label") || target.textContent.trim().slice(0, 120) });
     else if (/wa\.me|whatsapp\.com|api\.whatsapp\.com/i.test(href)) send("whatsapp_clicked", { destination: href });
   }, true);

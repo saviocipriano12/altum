@@ -194,7 +194,7 @@ export function ClientActionButton({
   return (
     <button
       {...props}
-      className={`client-action-button inline-flex items-center justify-center gap-2 rounded-[16px] border px-4 py-2.5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 ${ACTION_BUTTON_TONE[tone]} ${className}`}
+      className={`client-action-button inline-flex min-h-11 items-center justify-center gap-2 rounded-[16px] border px-4 py-2.5 text-sm font-semibold transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cliente-primary)] disabled:cursor-not-allowed disabled:opacity-60 ${ACTION_BUTTON_TONE[tone]} ${className}`}
     >
       {children}
     </button>

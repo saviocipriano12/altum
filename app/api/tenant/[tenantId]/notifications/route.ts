@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { getTenantEntitlements } from "@/lib/server/tenant-entitlements";
+import { canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 
 type NotificationTone = "danger" | "warning" | "info" | "success";
 
@@ -52,6 +53,18 @@ function notificationId(prefix: string, count: number, occurredAt: number) {
 function internalAlert(item: Record<string, unknown>): NotificationItem {
   const type = clean(item.type, 100).toLowerCase();
   const occurredAt = iso(item.lastOccurredAt || item.updatedAt || item.createdAt);
+  if (type.includes("commercial_action")) {
+    const highSeverity = clean(item.severity, 40).toLowerCase() === "high";
+    return {
+      id: `assistant:${clean(item.id, 160)}`,
+      category: "assistant",
+      title: clean(item.title, 180) || "Decisao comercial precisa de atencao",
+      description: clean(item.detail, 300) || "Uma decisao preparada pela IA esta fora do prazo.",
+      href: clean(item.href, 240) || "/cliente/painel/ia?section=decisions",
+      tone: highSeverity ? "danger" : "warning",
+      occurredAt,
+    };
+  }
   if (type.includes("handoff")) {
     return { id: `assistant:${clean(item.id, 160)}`, category: "assistant", title: "Atendimento aguardando sua equipe", description: "A Altum pediu ajuda humana em uma conversa.", href: "/cliente/painel/inbox?ai=human_owned", tone: "warning", occurredAt };
   }
@@ -93,7 +106,8 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
 
     const notifications: NotificationItem[] = [];
     const now = Date.now();
-    const chats = (chatsSnap?.docs || []).map((doc): Record<string, unknown> => ({ id: doc.id, ...doc.data() }));
+    const teamWide = hasTeamWideCommercialAccess(membership);
+    const chats = (chatsSnap?.docs || []).map((doc): Record<string, unknown> => ({ id: doc.id, ...doc.data() })).filter((item) => teamWide || canAccessAssignedCommercialRecord(membership, user.uid, item));
     const waitingChats = chats.filter((chat) => {
       const status = clean(chat.status, 40).toLowerCase();
       if (status === "resolved" || status === "archived") return false;
@@ -111,7 +125,8 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       notifications.push({ id: notificationId("waiting_chats", waitingChats.length, occurred), category: "conversation", title: `${waitingChats.length} conversa(s) precisam de resposta`, description: "Há clientes aguardando a equipe neste momento.", href: "/cliente/painel/inbox", tone: "warning", occurredAt: iso(occurred) });
     }
 
-    const leads = (leadsSnap?.docs || []).map((doc): Record<string, unknown> => ({ id: doc.id, ...doc.data() }));
+    const leads = (leadsSnap?.docs || []).map((doc): Record<string, unknown> => ({ id: doc.id, ...doc.data() })).filter((item) => teamWide || canAccessAssignedCommercialRecord(membership, user.uid, item));
+    const visibleLeadIds = new Set(leads.map((lead) => clean(lead.id, 180)));
     const hotLeads = leads.filter((lead) => {
       const value = clean(lead.aiCommercialTemperature || lead.heat || lead.priority, 40).toLowerCase();
       return ["hot", "quente", "high", "alta"].includes(value);
@@ -121,7 +136,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       notifications.push({ id: notificationId("hot_leads", hotLeads.length, occurred), category: "lead", title: `${hotLeads.length} oportunidade(s) quentes`, description: "Priorize os contatos com maior intenção de compra.", href: "/cliente/painel/crm?temperature=hot", tone: "info", occurredAt: iso(occurred) });
     }
 
-    const channels = (channelsSnap?.docs || []).map((doc): Record<string, unknown> => ({ id: doc.id, ...doc.data() }));
+    const channels = (channelsSnap?.docs || []).map((doc): Record<string, unknown> => ({ id: doc.id, ...doc.data() })).filter((channel) => teamWide || (clean(channel.channelScope, 40) === "personal" && clean(channel.ownerUserId, 140) === user.uid));
     const unhealthyChannels = channels.filter((channel) => {
       const status = clean(channel.status, 40).toLowerCase();
       const connection = clean(channel.connectionStatus, 40).toLowerCase();
@@ -132,7 +147,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       notifications.push({ id: notificationId("channels", unhealthyChannels.length, occurred), category: "channel", title: `${unhealthyChannels.length} canal(is) precisam reconectar`, description: "Mensagens podem deixar de entrar ou sair até a conexão ser revisada.", href: "/cliente/painel/configuracoes/canais", tone: "danger", occurredAt: iso(occurred) });
     }
 
-    const finance = (financeSnap?.docs || []).map((doc): Record<string, unknown> => ({ id: doc.id, ...doc.data() }));
+    const finance = (financeSnap?.docs || []).map((doc): Record<string, unknown> => ({ id: doc.id, ...doc.data() })).filter((item) => teamWide || visibleLeadIds.has(clean(item.leadId, 180)));
     const overdueFinance = finance.filter((item) => {
       const status = clean(item.status, 40).toLowerCase();
       const due = toMillis(item.contractDueDate || item.vencimento || item.dueDate);
@@ -143,7 +158,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       notifications.push({ id: notificationId("overdue_finance", overdueFinance.length, occurred), category: "billing", title: `${overdueFinance.length} pagamento(s) vencido(s)`, description: "Revise as cobranças pendentes e programe o próximo contato.", href: "/cliente/painel/crm", tone: "danger", occurredAt: iso(occurred) });
     }
 
-    const internalRaw = (alertsSnap?.docs || [])
+    const internalRaw = (teamWide ? (alertsSnap?.docs || []) : [])
       .map((doc): Record<string, unknown> => ({ id: doc.id, ...doc.data() }))
       .filter((item) => clean(item.status, 40).toLowerCase() !== "resolved")
       .slice(0, 12)

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -101,6 +101,7 @@ function statusTone(status?: string) {
 }
 
 function statusLabel(status?: string) {
+  if (status === "draft") return "sugestao da IA";
   if (status === "completed") return "concluido";
   if (status === "confirmed") return "confirmado";
   if (status === "canceled") return "cancelado";
@@ -113,10 +114,12 @@ export default function ClienteAgendaPage() {
   const leadIdFromQuery = searchParams.get("leadId") || "";
   const { tenant, hasCapability } = useClienteTenant();
   const canOperate = hasCapability("edit_leads");
+  const createFormRef = useRef<HTMLDivElement>(null);
 
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState("open");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -170,12 +173,13 @@ export default function ClienteAgendaPage() {
   const completedCount = appointments.filter((item) => item.status === "completed").length;
   const overdueCount = appointments.filter(isPastOpen).length;
   const confirmationCount = appointments.filter((item) => item.status === "scheduled").length;
+  const suggestionCount = appointments.filter((item) => item.status === "draft").length;
   const nextAppointment = upcoming
     .filter((item) => !isPastOpen(item))
     .sort((a, b) => (toCrmDate(a.startAt)?.getTime() || 0) - (toCrmDate(b.startAt)?.getTime() || 0))[0] || null;
 
   const filteredAppointments = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = deferredSearch.trim().toLowerCase();
     return appointments
       .filter((item) => {
         if (status === "open" && !isOpen(item)) return false;
@@ -184,7 +188,7 @@ export default function ClienteAgendaPage() {
         return `${item.title || ""} ${item.leadName || ""} ${item.leadCompany || ""} ${item.ownerName || ""}`.toLowerCase().includes(term);
       })
       .sort((a, b) => (toCrmDate(a.startAt)?.getTime() || 0) - (toCrmDate(b.startAt)?.getTime() || 0));
-  }, [appointments, search, status]);
+  }, [appointments, deferredSearch, status]);
 
   async function createAppointment(event: FormEvent) {
     event.preventDefault();
@@ -242,6 +246,10 @@ export default function ClienteAgendaPage() {
     }
   }
 
+  function openCreateForm() {
+    createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <CrmWorkspace className="agenda-refined">
       <CrmHero
@@ -252,13 +260,21 @@ export default function ClienteAgendaPage() {
         assistantSubtitle="Antes da conversa"
         assistantText="A Altum mantem cada compromisso ligado ao cliente certo para o time chegar com contexto."
         action={
-          <CrmButton type="button" onClick={loadData}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Atualizar
-          </CrmButton>
+          <div className="flex gap-2">
+            {canOperate ? (
+              <CrmButton type="button" tone="primary" onClick={openCreateForm}>
+                <Plus className="h-4 w-4" />
+                Novo compromisso
+              </CrmButton>
+            ) : null}
+            <CrmButton type="button" onClick={loadData}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Atualizar
+            </CrmButton>
+          </div>
         }
       >
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <CrmMetric label="Hoje" value={String(todayCount)} detail="compromissos abertos" icon={CalendarDays} tone="blue" />
           <CrmMetric label="Proximos" value={String(upcoming.length)} detail="agenda futura" icon={Clock3} tone="orange" />
           <CrmMetric label="Concluidos" value={String(completedCount)} detail="historico recente" icon={CheckCircle2} tone="green" />
@@ -274,6 +290,7 @@ export default function ClienteAgendaPage() {
         overdueCount={overdueCount}
         todayCount={todayCount}
         confirmationCount={confirmationCount}
+        suggestionCount={suggestionCount}
       />
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -287,6 +304,7 @@ export default function ClienteAgendaPage() {
               </div>
               <CrmSelect value={status} onChange={(event) => setStatus(event.target.value)} className="lg:w-[220px]">
                 <option value="open">Abertos</option>
+                <option value="draft">Sugestoes da IA</option>
                 <option value="scheduled">Marcados</option>
                 <option value="confirmed">Confirmados</option>
                 <option value="completed">Concluidos</option>
@@ -319,19 +337,25 @@ export default function ClienteAgendaPage() {
 
                 <div className="flex flex-wrap gap-2 lg:justify-end">
                   {item.leadId ? (
-                    <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex items-center justify-center rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
+                    <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex min-h-11 items-center justify-center rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
                       Ficha
                     </Link>
                   ) : null}
                   {item.leadId ? (
-                    <Link href={`/cliente/painel/reunioes-assistidas?appointmentId=${encodeURIComponent(item.id)}&leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex items-center justify-center rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
+                    <Link href={`/cliente/painel/reunioes-assistidas?appointmentId=${encodeURIComponent(item.id)}&leadId=${encodeURIComponent(item.leadId)}`} className="inline-flex min-h-11 items-center justify-center rounded-[12px] border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold text-[var(--cliente-card-text)] hover:bg-[var(--cliente-panel-soft)]">
                       IA da reuniao
                     </Link>
                   ) : null}
                   {canOperate && item.status === "scheduled" ? (
                     <CrmButton type="button" disabled={busyId === item.id} onClick={() => updateStatus(item.id, "confirmed")}>Confirmar</CrmButton>
                   ) : null}
-                  {canOperate && isOpen(item) ? (
+                  {canOperate && item.status === "draft" ? (
+                    <CrmButton type="button" tone="primary" disabled={busyId === item.id} onClick={() => updateStatus(item.id, "scheduled")}>
+                      {busyId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      Aprovar horario
+                    </CrmButton>
+                  ) : null}
+                  {canOperate && isOpen(item) && item.status !== "draft" ? (
                     <CrmButton type="button" tone="green" disabled={busyId === item.id} onClick={() => updateStatus(item.id, "completed")}>
                       {busyId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                       Concluir
@@ -349,7 +373,8 @@ export default function ClienteAgendaPage() {
           </div>
         </CrmPanel>
 
-        <CrmPanel className="xl:sticky xl:top-[132px] xl:self-start">
+        <div ref={createFormRef} className="scroll-mt-24 pb-[calc(7rem+env(safe-area-inset-bottom))] xl:sticky xl:top-[132px] xl:self-start xl:pb-0">
+        <CrmPanel>
           <CrmSectionTitle eyebrow="Novo" title="Criar compromisso" description="Vincule uma reuniao ou ligacao a um contato." action={!canOperate ? <CrmBadge tone="orange">somente leitura</CrmBadge> : null} />
           <form onSubmit={createAppointment} className="mt-5 space-y-3">
             <CrmSelect value={form.leadId} onChange={(event) => setForm((current) => ({ ...current, leadId: event.target.value }))} disabled={!canOperate} className="w-full">
@@ -374,6 +399,7 @@ export default function ClienteAgendaPage() {
             </CrmButton>
           </form>
         </CrmPanel>
+        </div>
       </section>
     </CrmWorkspace>
   );
@@ -384,11 +410,13 @@ function AgendaCommandCenter({
   overdueCount,
   todayCount,
   confirmationCount,
+  suggestionCount,
 }: {
   nextAppointment: AppointmentItem | null;
   overdueCount: number;
   todayCount: number;
   confirmationCount: number;
+  suggestionCount: number;
 }) {
   const leadId = nextAppointment?.leadId || "";
 
@@ -401,9 +429,10 @@ function AgendaCommandCenter({
             title="Comando da agenda"
             description="O que precisa acontecer para reunioes e retornos virarem avanco comercial."
           />
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
             <AgendaSignal icon={CalendarDays} label="Hoje" value={String(todayCount)} detail="compromissos abertos" tone="blue" />
             <AgendaSignal icon={AlertTriangle} label="Atrasados" value={String(overdueCount)} detail="reagendar ou concluir" tone={overdueCount ? "red" : "green"} />
+            <AgendaSignal icon={Sparkles} label="Sugestoes da IA" value={String(suggestionCount)} detail="aprovar ou ajustar" tone={suggestionCount ? "orange" : "green"} />
             <AgendaSignal icon={Target} label="Confirmar" value={String(confirmationCount)} detail="evitar no-show" tone={confirmationCount ? "orange" : "green"} />
           </div>
         </div>

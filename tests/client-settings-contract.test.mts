@@ -47,7 +47,7 @@ test("inbound routing honors configured teams and writes nested inbox rules", as
   assert.doesNotMatch(leadDistribution, /"rules\.inbox\.lastAssignedUserId"/);
 });
 
-test("client MCP settings are discoverable but keep real writes behind approval policy", async () => {
+test("client MCP settings expose supervised and autonomous policies with an audit history", async () => {
   const page = await source("app/cliente/painel/configuracoes/mcp/page.tsx");
   const statusRoute = await source("app/api/tenant/[tenantId]/mcp/status/route.ts");
   const revokeRoute = await source("app/api/tenant/[tenantId]/mcp/connections/[connectionId]/route.ts");
@@ -59,10 +59,13 @@ test("client MCP settings are discoverable but keep real writes behind approval 
 
   assert.match(page, /\/api\/tenant\/\$\{tenant\.tenantId\}\/mcp\/status/);
   assert.match(page, /approval_required/);
+  assert.match(page, /autonomous/);
+  assert.match(statusRoute, /autonomous/);
   assert.match(page, /ChatGPT web/);
   assert.match(page, /Servidor remoto universal/);
   assert.match(page, /Conexoes autorizadas/);
-  assert.match(page, /Rascunhos para aprovacao/);
+  assert.match(page, /Historico de acoes MCP/);
+  assert.match(page, /No modo autonomo, as acoes aparecem aqui ja executadas e auditadas/);
   assert.match(page, /applyDraft/);
   assert.match(statusRoute, /assertTenantCapability\(membership, "manage_settings"\)/);
   assert.match(statusRoute, /MCP_CONTEXT_SECRET/);
@@ -76,6 +79,7 @@ test("client MCP settings are discoverable but keep real writes behind approval 
   assert.match(draftApplyRoute, /tenant_settings/);
   assert.match(draftApplyRoute, /assertTenantCapability\(membership, "manage_ai"\)/);
   assert.match(draftApplyRoute, /mcp_action_draft_applied/);
+  assert.match(draftApplyRoute, /mcp_autonomous_action_approved/);
   assert.doesNotMatch(statusRoute, /contextSecret:\s*process\.env\.MCP_CONTEXT_SECRET/);
   assert.match(settingsPage, /\/cliente\/painel\/configuracoes\/mcp/);
   assert.match(sidebar, /\/cliente\/painel\/configuracoes\/mcp/);

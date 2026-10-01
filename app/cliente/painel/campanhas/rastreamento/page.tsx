@@ -203,7 +203,7 @@ export default function RastreamentoPage() {
         <div className="flex flex-wrap items-start justify-between gap-3"><CardTitle title="Instalar no site" subtitle="Cole antes do fechamento da tag </body> em todas as paginas." /><button type="button" onClick={() => void copySnippet()} disabled={!config?.publicWriteKey} className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] px-3 py-2 text-xs font-bold disabled:opacity-50">{copied ? <Check className="h-4 w-4 text-[var(--cliente-success)]" /> : <Copy className="h-4 w-4" />}{copied ? "Copiado" : "Copiar codigo"}</button></div>
         <pre className="mt-4 overflow-x-auto rounded-xl bg-slate-950 p-4 text-xs leading-6 text-slate-100"><code>{snippet}</code></pre>
         {consentMode === "required" ? <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">Depois que o visitante aceitar cookies, execute <code className="rounded bg-[var(--cliente-surface-muted)] px-1.5 py-1">Altum.consent(&quot;granted&quot;)</code>.</p> : null}
-        <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">Para registrar uma venda: <code className="rounded bg-[var(--cliente-surface-muted)] px-1.5 py-1">Altum.track(&quot;purchase_completed&quot;, &#123; value: 299.90, currency: &quot;BRL&quot; &#125;)</code></p>
+        <p className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">Para checkout externo, marque o link com <code className="rounded bg-[var(--cliente-surface-muted)] px-1.5 py-1">data-altum-checkout</code>. A Altum preserva somente IDs anonimos e a origem; o checkout devolve a compra pelo conector ou webhook.</p>
       </PanelCard>
 
       <PanelCard className="p-5 md:p-6">

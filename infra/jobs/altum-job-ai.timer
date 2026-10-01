@@ -1,9 +1,10 @@
 [Unit]
-Description=Processa fila de IA da Altum diariamente
+Description=Recupera fila de IA da Altum a cada minuto
 
 [Timer]
-OnCalendar=*-*-* 03:00:00 UTC
-Persistent=true
+OnBootSec=40s
+OnUnitActiveSec=60s
+AccuracySec=5s
 Unit=altum-job@ai.service
 
 [Install]

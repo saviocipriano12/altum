@@ -9,6 +9,7 @@ test("vendedor acessa seu número pessoal e somente contatos atribuídos no núm
   const seller = { role: "client_agent", capabilities: getClientAccessProfile("seller").capabilities } as TenantMembership;
   assert.equal(canAccessAssignedCommercialRecord(seller, "seller-a", { channelScope: "personal", channelOwnerUserId: "seller-a" }), true);
   assert.equal(canAccessAssignedCommercialRecord(seller, "seller-a", { channelScope: "personal", channelOwnerUserId: "seller-b", assignedTo: "seller-b" }), false);
+  assert.equal(canAccessAssignedCommercialRecord(seller, "seller-a", { channelScope: "personal", channelOwnerUserId: "seller-b", assignedTo: "seller-a" }), false);
   assert.equal(canAccessAssignedCommercialRecord(seller, "seller-a", { channelScope: "shared", assignedTo: "seller-a" }), true);
   assert.equal(canAccessAssignedCommercialRecord(seller, "seller-a", { channelScope: "shared", assignedTo: "seller-b" }), false);
   assert.equal(canAccessAssignedCommercialRecord(seller, "seller-a", { channelScope: "shared" }), false);

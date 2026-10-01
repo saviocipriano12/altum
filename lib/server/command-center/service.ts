@@ -22,6 +22,15 @@ export type Page = { rows: Row[]; next: string | null };
 export interface CommandPorts {
   access(userId: string, tenantId: string): Promise<Access>;
   profile(tenantId: string): Promise<Record<string, unknown>>;
+  aiCommercialProfile?(tenantId: string): Promise<Record<string, unknown>>;
+  commercialOffers?(tenantId: string, limit: number, after?: string): Promise<Page>;
+  commercialOffer?(tenantId: string, id: string): Promise<Row | null>;
+  knowledgeDocuments?(tenantId: string, limit: number, after?: string): Promise<Page>;
+  knowledgeDocument?(tenantId: string, id: string): Promise<Row | null>;
+  automations?(tenantId: string, limit: number, after?: string): Promise<Page>;
+  automation?(tenantId: string, id: string): Promise<Row | null>;
+  teamOperation?(tenantId: string): Promise<Record<string, unknown>>;
+  whatsappTemplates?(tenantId: string, channelId?: string): Promise<Record<string, unknown>>;
   list(tenantId: string, kind: Kind, limit: number, after?: string): Promise<Page>;
   conversation(tenantId: string, id: string): Promise<Row | null>;
   messages(tenantId: string, chatId: string, limit: number, after?: string): Promise<Page>;
@@ -143,6 +152,15 @@ export class CommandCenter {
       const page = await this.ports.list(tenantId, kind, 200);
       return { rows: visible(page.rows), incomplete: !!page.next, scanned: page.rows.length };
     };
+    if (tool === "operational_access_status") {
+      const grantedScopes = this.grant(userId, tenantId).scopes;
+      return {
+        status: "full_operational_access",
+        grantedScopes,
+        writeScopes: grantedScopes.filter(scope => scope.endsWith(":write") || scope.endsWith(":draft")),
+        coverage: "A conexao pode usar as ferramentas MCP autorizadas, sempre limitada ao tenant, ao perfil e as permissoes do usuario.",
+      };
+    }
     if (tool === "business_context") {
       const profile = await this.ports.profile(tenantId);
       return { name: clean(profile.name), niche: clean(profile.niche), timezone: clean(profile.timezone) || "America/Sao_Paulo",
@@ -151,6 +169,40 @@ export class CommandCenter {
         grantedScopes: this.grant(userId, tenantId).scopes,
         availableTools: Object.entries(tools).filter(([, def]) => def.requiredScopes.every(s => this.grant(userId, tenantId).scopes.includes(s)) &&
           def.capabilities.every(c => access.capabilities.includes(c)) && def.modules.every(m => access.modules[m])).map(([name]) => name) };
+    }
+    if (tool === "team_operation") {
+      if (!this.ports.teamOperation) throw new CommandError("UNAVAILABLE", 503);
+      return this.ports.teamOperation(tenantId);
+    }
+    if (tool === "list_whatsapp_templates") {
+      if (!this.ports.whatsappTemplates) throw new CommandError("UNAVAILABLE", 503);
+      return this.ports.whatsappTemplates(tenantId, input.channelId);
+    }
+    if (tool === "get_ai_commercial_profile") {
+      if (!this.ports.aiCommercialProfile) throw new CommandError("UNAVAILABLE", 503);
+      return this.ports.aiCommercialProfile(tenantId);
+    }
+    if (tool === "list_offers" || tool === "list_commercial_offers" || tool === "list_knowledge_documents" || tool === "list_automations") {
+      const port = tool === "list_offers" || tool === "list_commercial_offers" ? this.ports.commercialOffers : tool === "list_knowledge_documents" ? this.ports.knowledgeDocuments : this.ports.automations;
+      if (!port) throw new CommandError("UNAVAILABLE", 503);
+      const result = await port(tenantId, limit, after);
+      const query = String(input.query || "").trim().toLocaleLowerCase("pt-BR");
+      const requestedType = String(input.type || "");
+      const items = result.rows.filter((row) => row.tenantId === tenantId)
+        .filter((row) => !requestedType || row.type === requestedType)
+        .filter((row) => !query || JSON.stringify(row).toLocaleLowerCase("pt-BR").includes(query))
+        .map(({ tenantId: ignoredTenant, ...row }) => { void ignoredTenant; return row; });
+      return { items, nextCursor: next(result.next), coverage: "Dados persistidos e estruturados da empresa selecionada; nenhum segredo ou credencial e retornado." };
+    }
+    if (tool === "get_offer" || tool === "get_commercial_offer" || tool === "get_knowledge_document" || tool === "get_automation") {
+      const requestedId = String(input.offerId || input.documentId || input.automationId || "");
+      const port = tool === "get_offer" || tool === "get_commercial_offer" ? this.ports.commercialOffer : tool === "get_knowledge_document" ? this.ports.knowledgeDocument : this.ports.automation;
+      if (!port) throw new CommandError("UNAVAILABLE", 503);
+      const row = await port(tenantId, requestedId);
+      if (!row || row.tenantId !== tenantId) throw new CommandError("NOT_FOUND", 404);
+      const { tenantId: ignoredTenant, ...item } = row;
+      void ignoredTenant;
+      return { item, coverage: "Registro completo persistido da empresa selecionada; nenhum segredo ou credencial e retornado." };
     }
     if (tool === "segment_leads_preview") {
       const leads = await this.ports.list(tenantId, "leads", 200);
@@ -373,10 +425,121 @@ export class CommandCenter {
   }
 
   private async draft(tool: ToolName, input: ToolInput, access: Access): Promise<Record<string, unknown>> {
+    if (tool === "create_offer" || tool === "update_offer") tool = "upsert_commercial_offer";
     const profile = await this.ports.profile(access.tenantId);
     const mcp = profile.mcp && typeof profile.mcp === "object" ? profile.mcp as Record<string, unknown> : {};
     const writeMode = String(mcp.writeMode || "disabled");
-    if (writeMode !== "draft_only" && writeMode !== "approval_required") throw new CommandError("DRAFTS_DISABLED", 403);
+    if (writeMode !== "draft_only" && writeMode !== "approval_required" && writeMode !== "autonomous") throw new CommandError("DRAFTS_DISABLED", 403);
+
+    const operationalTools = new Set<ToolName>([
+      "update_pipeline", "create_lead", "update_lead", "assign_lead", "add_lead_note", "create_lead_task", "upsert_automation", "upsert_kb_document", "update_ai_commercial_profile", "upsert_commercial_offer", "archive_offer",
+      "update_business_settings", "configure_lead_fields", "create_appointment", "create_proposal", "update_channel",
+      "send_or_reply_conversation", "start_whatsapp_conversation", "upsert_team", "invite_team_member", "update_team_member",
+      "configure_commercial_sla", "prepare_operational_onboarding", "configure_commission",
+    ]);
+    if (operationalTools.has(tool)) {
+      if (tool === "update_lead" || tool === "assign_lead" || tool === "add_lead_note" || tool === "create_lead_task" || tool === "start_whatsapp_conversation" || tool === "create_proposal") {
+        const leads = await this.ports.list(access.tenantId, "leads", 500);
+        const lead = leads.rows.find((row) => row.tenantId === access.tenantId && row.id === input.leadId);
+        if (!lead || !access.canRead(lead)) throw new CommandError("FORBIDDEN", 403);
+      }
+      if (tool === "send_or_reply_conversation") {
+        const chat = await this.ports.conversation(access.tenantId, String(input.conversationId || ""));
+        if (!chat || chat.tenantId !== access.tenantId || !access.canRead(chat)) throw new CommandError("FORBIDDEN", 403);
+      }
+      if (tool === "update_channel") {
+        const channels = await this.ports.list(access.tenantId, "channels", 200);
+        const channel = channels.rows.find((row) => row.tenantId === access.tenantId && row.id === input.channelId);
+        if (!channel) throw new CommandError("CHANNEL_NOT_FOUND", 400);
+      }
+      const { context: ignoredContext, reason: ignoredReason, ...proposedChange } = input;
+      void ignoredContext; void ignoredReason;
+      const target = tool === "update_lead" || tool === "assign_lead" || tool === "add_lead_note" || tool === "create_lead_task" || tool === "start_whatsapp_conversation" || tool === "create_proposal"
+        ? { leadId: input.leadId }
+        : tool === "send_or_reply_conversation"
+          ? { conversationId: input.conversationId }
+          : tool === "update_channel"
+            ? { channelId: input.channelId }
+            : tool === "upsert_automation"
+              ? { automationId: input.automationId || null }
+            : tool === "upsert_kb_document"
+              ? { documentId: input.documentId || null }
+              : tool === "upsert_commercial_offer"
+                ? { offerId: input.offerId || null }
+                : tool === "archive_offer"
+                  ? { offerId: input.offerId }
+                : tool === "update_ai_commercial_profile"
+                  ? { settings: "tenant_settings.ai" }
+              : tool === "upsert_team"
+                ? { teamId: input.teamId || null }
+                : tool === "update_team_member" || tool === "configure_commission"
+                  ? { userId: input.userId }
+                  : tool === "invite_team_member"
+                    ? { email: input.email }
+                : {};
+      const labels: Record<string, string> = {
+        update_pipeline: "Atualizar funil comercial",
+        create_lead: `Criar cliente ${clean(input.name, 120) || clean(input.email, 120) || clean(input.phone, 40)}`,
+        update_lead: `Atualizar cliente ${String(input.leadId || "")}`,
+        assign_lead: `Atribuir cliente ${String(input.leadId || "")}`,
+        add_lead_note: `Registrar nota no cliente ${String(input.leadId || "")}`,
+        create_lead_task: `Criar follow-up para ${String(input.leadId || "")}`,
+        upsert_automation: `${input.automationId ? "Atualizar" : "Criar"} automacao ${clean(input.name, 120)}`,
+        upsert_kb_document: `${input.documentId ? "Atualizar" : "Criar"} item da base de conhecimento`,
+        upsert_commercial_offer: `${input.offerId ? "Atualizar" : "Criar"} oferta comercial estruturada`,
+        archive_offer: `Arquivar oferta ${String(input.offerId || "")}`,
+        update_ai_commercial_profile: "Atualizar perfil comercial estruturado da IA",
+        update_business_settings: "Atualizar dados da empresa",
+        configure_lead_fields: "Configurar campos de qualificacao",
+        create_appointment: `Criar compromisso ${clean(input.title, 120)}`,
+        create_proposal: `Criar proposta ${clean(input.title, 120)} para ${String(input.leadId || "")}`,
+        update_channel: `Atualizar canal ${String(input.channelId || "")}`,
+        send_or_reply_conversation: `Responder conversa ${String(input.conversationId || "")}`,
+        start_whatsapp_conversation: `Iniciar WhatsApp com ${String(input.leadId || "")}`,
+        upsert_team: `${input.teamId ? "Atualizar" : "Criar"} time ${clean(input.name, 100)}`,
+        invite_team_member: `Convidar ${clean(input.name, 120)} para a equipe`,
+        update_team_member: `Atualizar pessoa ${String(input.userId || "")}`,
+        configure_commercial_sla: "Configurar SLA e distribuicao comercial",
+        prepare_operational_onboarding: "Preparar onboarding operacional",
+        configure_commission: `Configurar comissao de ${String(input.userId || "")}`,
+      };
+      if (input.dryRun === true) {
+        return { ok: true, status: "dry_run", dryRun: true, target, proposedChange, warnings: [], message: "Validacao concluida. Nenhum dado foi gravado." };
+      }
+      const draft = await this.ports.createDraft({
+        tenantId: access.tenantId,
+        userId: access.userId,
+        type: tool,
+        source: "mcp",
+        status: "pending_review",
+        risk: tool === "send_or_reply_conversation" || tool === "start_whatsapp_conversation" || tool === "update_channel" || tool === "invite_team_member" || tool === "create_proposal" ? "WRITE_HIGH" : "WRITE_LOW",
+        title: labels[tool],
+        target,
+        reason: clean(input.reason, 600),
+        proposedChange,
+        requiredScopes: tools[tool].requiredScopes,
+        autonomousEligible: writeMode === "autonomous",
+        createdAt: new Date(this.now()).toISOString(),
+      });
+      return {
+        draftId: draft.id,
+        status: "pending_review",
+        href: draft.href,
+        target,
+        proposedChange,
+        dryRun: {
+          willWrite: false,
+          requiresApproval: writeMode !== "autonomous",
+          autonomousEligible: writeMode === "autonomous",
+          risk: tool === "send_or_reply_conversation" || tool === "start_whatsapp_conversation" || tool === "update_channel" || tool === "invite_team_member" || tool === "create_proposal" ? "WRITE_HIGH" : "WRITE_LOW",
+          target,
+          proposedChange,
+        },
+        message: tool === "send_or_reply_conversation" || tool === "start_whatsapp_conversation"
+          ? "Resposta preparada. Confirme na Altum antes do envio ao cliente."
+          : "Alteracao preparada. Revise e aprove na Altum para aplicar com auditoria.",
+      };
+    }
 
     if (tool === "draft_lead_segment") {
       const leads = await this.ports.list(access.tenantId, "leads", 200);
@@ -404,6 +567,8 @@ export class CommandCenter {
         proposedChange,
         preview: { totalScanned: preview.totalScanned, totalMatched: preview.totalMatched, sample: preview.sample },
         sourceIncomplete: Boolean(leads.next),
+        requiredScopes: tools[tool].requiredScopes,
+        autonomousEligible: writeMode === "autonomous",
         createdAt: new Date(this.now()).toISOString(),
       });
       return {
@@ -445,6 +610,8 @@ export class CommandCenter {
         title: `Criar campanha ${proposedChange.name}`,
         reason: clean(input.reason, 600),
         proposedChange,
+        requiredScopes: tools[tool].requiredScopes,
+        autonomousEligible: writeMode === "autonomous",
         createdAt: new Date(this.now()).toISOString(),
       });
       return {
@@ -472,6 +639,8 @@ export class CommandCenter {
           guardrails: Array.isArray(input.guardrails) ? input.guardrails.map((item) => clean(item, 300)).filter(Boolean).slice(0, 12) : [],
           notes: clean(input.notes, 800),
         },
+        requiredScopes: tools[tool].requiredScopes,
+        autonomousEligible: writeMode === "autonomous",
         createdAt: new Date(this.now()).toISOString(),
       });
       return {
@@ -491,7 +660,7 @@ export class CommandCenter {
       try { prepared = prepareGoogleDraft(tool as GoogleDraftTool, input as Record<string, unknown>, snapshots); }
       catch (error) { if (error instanceof GoogleDraftError) throw new CommandError("INVALID_INPUT", 400); throw error; }
       const operationHash = await hashAdportOperation(prepared.operation);
-      const draft = await this.ports.createDraft({ tenantId: access.tenantId, userId: access.userId, type: prepared.type, source: "mcp", status: "pending_review", risk: "DRAFT", title: prepared.title, target: prepared.target, reason: clean(input.reason, 600), evidence, proposedChange: prepared.proposedChange, providerValidationRequired: true, operationHash, adportValidation: { engine: "@adport/core", version: "0.6.0", operation: prepared.operation, preview: prepared.preview }, createdAt: new Date(this.now()).toISOString() });
+      const draft = await this.ports.createDraft({ tenantId: access.tenantId, userId: access.userId, type: prepared.type, source: "mcp", status: "pending_review", risk: "DRAFT", title: prepared.title, target: prepared.target, reason: clean(input.reason, 600), evidence, proposedChange: prepared.proposedChange, providerValidationRequired: true, operationHash, adportValidation: { engine: "@adport/core", version: "0.6.0", operation: prepared.operation, preview: prepared.preview }, requiredScopes: tools[tool].requiredScopes, autonomousEligible: writeMode === "autonomous", createdAt: new Date(this.now()).toISOString() });
       return { draftId: draft.id, status: "pending_review", href: draft.href, target: prepared.target, proposedChange: prepared.proposedChange, providerValidationRequired: true, message: "Rascunho criado. O Google sera validado ao vivo somente depois da aprovacao humana." };
     }
     const metaDraftTools: MetaDraftTool[] = ["draft_meta_campaign_create", "draft_meta_ad_set_create", "draft_meta_ad_set_status", "draft_meta_creative_create", "draft_meta_ad_create"];
@@ -503,7 +672,7 @@ export class CommandCenter {
       try { prepared = prepareMetaDraft(tool as MetaDraftTool, input as Record<string, unknown>, snapshots); }
       catch (error) { if (error instanceof MetaDraftError) throw new CommandError("INVALID_INPUT", 400); throw error; }
       const operationHash = await hashAdportOperation(prepared.operation);
-      const draft = await this.ports.createDraft({ tenantId: access.tenantId, userId: access.userId, type: prepared.type, source: "mcp", status: "pending_review", risk: "DRAFT", title: prepared.title, target: prepared.target, reason: clean(input.reason, 600), evidence, proposedChange: prepared.proposedChange, providerValidationRequired: true, operationHash, adportValidation: { engine: "@adport/core", version: "0.6.0", operation: prepared.operation, preview: prepared.preview }, createdAt: new Date(this.now()).toISOString() });
+      const draft = await this.ports.createDraft({ tenantId: access.tenantId, userId: access.userId, type: prepared.type, source: "mcp", status: "pending_review", risk: "DRAFT", title: prepared.title, target: prepared.target, reason: clean(input.reason, 600), evidence, proposedChange: prepared.proposedChange, providerValidationRequired: true, operationHash, adportValidation: { engine: "@adport/core", version: "0.6.0", operation: prepared.operation, preview: prepared.preview }, requiredScopes: tools[tool].requiredScopes, autonomousEligible: writeMode === "autonomous", createdAt: new Date(this.now()).toISOString() });
       return { draftId: draft.id, status: "pending_review", href: draft.href, target: prepared.target, proposedChange: prepared.proposedChange, providerValidationRequired: true, message: "Rascunho criado. O Meta Ads será validado ao vivo somente depois da aprovação humana." };
     }
     if (tool === "draft_campaign_pause" || tool === "draft_campaign_budget_change") {
@@ -536,6 +705,8 @@ export class CommandCenter {
         providerValidationRequired: true,
         sampledSnapshots: snapshots.rows.length,
         sourceIncomplete: Boolean(snapshots.next),
+        requiredScopes: tools[tool].requiredScopes,
+        autonomousEligible: writeMode === "autonomous",
         createdAt: new Date(this.now()).toISOString(),
       };
 

@@ -3,8 +3,15 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
-import { prepareAltumVoiceReplyText, storeAltumSpeech, synthesizeAltumSpeech } from "@/lib/server/ai/voice";
+import {
+  defaultAltumVoiceReplyMaxChars,
+  prepareAltumVoiceReplyText,
+  storeAltumSpeech,
+  synthesizeAltumSpeech,
+} from "@/lib/server/ai/voice";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+
+export const maxDuration = 60;
 
 type Body = {
   text?: string;
@@ -31,10 +38,13 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       return NextResponse.json({ error: "Campo obrigatorio: text." }, { status: 400 });
     }
 
-    const maxChars = Math.max(260, Math.min(1400, Number(body.maxChars || 760) || 760));
+    const defaultMaxChars = defaultAltumVoiceReplyMaxChars();
+    const maxChars = Math.max(260, Math.min(1400, Number(body.maxChars || defaultMaxChars) || defaultMaxChars));
     const transcript = prepareAltumVoiceReplyText(text, maxChars);
-    const speech = await synthesizeAltumSpeech(transcript, body.voice);
-    const audioBase64 = speech.buffer.toString("base64");
+    const speech = await synthesizeAltumSpeech(transcript, body.voice, {
+      allowSourcePlaybackFallback: true,
+    });
+    const audioBase64 = speech.playbackBuffer.toString("base64");
     let audioUrl = "";
     let storagePath: string | null = null;
     let storageWarning: string | null = null;
@@ -43,9 +53,9 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       const stored = await storeAltumSpeech({
         tenantId,
         chatId: "preview",
-        buffer: speech.buffer,
-        contentType: speech.contentType,
-        extension: speech.extension,
+        buffer: speech.playbackBuffer,
+        contentType: speech.playbackContentType,
+        extension: speech.playbackExtension,
       });
       audioUrl = stored.signedUrl;
       storagePath = stored.path;
@@ -54,13 +64,16 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         tenantId,
         createdBy: user.uid,
         createdByName: user.name,
-        voice: clean(body.voice, 40) || "marin",
+        voice: speech.voice,
+        model: speech.model,
         maxChars,
         transcript,
         mediaUrl: stored.signedUrl,
         mediaStoragePath: stored.path,
         mediaMimeType: stored.contentType,
         mediaSize: stored.size,
+        durationMs: speech.durationMs,
+        durationSource: speech.durationSource,
         createdAt: FieldValue.serverTimestamp(),
       });
     } catch (storageError) {
@@ -73,11 +86,17 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       tenantId,
       audioUrl,
       audioBase64,
-      audioMimeType: speech.contentType,
-      audioByteLength: speech.buffer.length,
+      audioMimeType: speech.playbackContentType,
+      audioByteLength: speech.playbackBuffer.length,
+      durationMs: speech.durationMs,
+      durationSource: speech.durationSource,
       transcript,
-      mediaMimeType: speech.contentType,
-      mediaSize: speech.buffer.length,
+      voice: speech.voice,
+      model: speech.model,
+      whatsappMimeType: speech.nativeVoiceReady ? speech.contentType : null,
+      nativeVoiceReady: speech.nativeVoiceReady,
+      mediaMimeType: speech.playbackContentType,
+      mediaSize: speech.playbackBuffer.length,
       mediaStoragePath: storagePath,
       warning: storageWarning,
     });
@@ -89,8 +108,33 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
     }
     console.error("Erro ao gerar preview de voz da IA:", error);
+    const code = error instanceof Error ? error.message : "voice_preview_failed";
+    if (code === "voice_synthesis_no_credits") {
+      return NextResponse.json(
+        { error: "A voz está temporariamente indisponível porque o saldo da API de áudio acabou. Adicione créditos na conta OpenAI da Altum e tente novamente.", code },
+        { status: 503 }
+      );
+    }
+    if (code === "voice_synthesis_invalid_credentials") {
+      return NextResponse.json(
+        { error: "A credencial do provedor de voz precisa ser atualizada pela equipe Altum.", code },
+        { status: 503 }
+      );
+    }
+    if (code === "voice_synthesis_rate_limited") {
+      return NextResponse.json(
+        { error: "O provedor de voz está ocupado. Aguarde alguns segundos e tente novamente.", code },
+        { status: 429 }
+      );
+    }
+    if (code === "voice_synthesis_timeout" || code === "voice_synthesis_network_unavailable") {
+      return NextResponse.json(
+        { error: "A amostra de voz demorou mais do que o esperado. Tente novamente; nenhuma mensagem foi enviada ao cliente.", code },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Falha ao gerar audio de teste." },
+      { error: "Não foi possível gerar a amostra agora. Tente novamente ou peça ajuda à equipe Altum.", code },
       { status: 500 }
     );
   }

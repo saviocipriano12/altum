@@ -12,28 +12,6 @@ type AiLogItem = {
   [key: string]: unknown;
 };
 
-function toMillis(value: unknown) {
-  if (!value) return 0;
-  if (typeof value === "number") return value;
-  if (
-    typeof value === "object" &&
-    value &&
-    "toDate" in value &&
-    typeof (value as { toDate?: () => Date }).toDate === "function"
-  ) {
-    return (value as { toDate: () => Date }).toDate().getTime();
-  }
-  if (
-    typeof value === "object" &&
-    value &&
-    "_seconds" in value &&
-    typeof (value as { _seconds?: number })._seconds === "number"
-  ) {
-    return (value as { _seconds: number })._seconds * 1000;
-  }
-  return 0;
-}
-
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantId: string }> }
@@ -45,14 +23,17 @@ export async function GET(
     await assertTenantModule(tenantId, "ai");
     assertTenantCapability(membership, "manage_ai");
 
-    const snap = await adminDb.collection("ai_logs").where("tenantId", "==", tenantId).limit(150).get();
+    const snap = await adminDb
+      .collection("ai_logs")
+      .where("tenantId", "==", tenantId)
+      .orderBy("createdAt", "desc")
+      .limit(40)
+      .get();
     const items: AiLogItem[] = snap.docs
       .map((doc): AiLogItem => ({
         id: doc.id,
         ...(doc.data() as Record<string, unknown>),
-      }))
-      .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt))
-      .slice(0, 40);
+      }));
 
     const summary = {
       total: items.length,

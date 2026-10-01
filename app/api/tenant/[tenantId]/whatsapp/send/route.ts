@@ -8,6 +8,7 @@ import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@
 import { getWhatsAppChannelForTenant } from "@/app/lib/server/whatsapp-channel";
 import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 import { getChatStateDocId } from "@/lib/server/ai/agent";
+import { observeConversationCommercialState } from "@/lib/server/crm/conversation-intelligence";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { assertChatCommercialAccess, assertLeadCommercialAccess, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 
@@ -250,6 +251,7 @@ export async function POST(
     });
 
     if (destination.chatRef && destination.chatId) {
+      const messageRef = adminDb.collection("messages").doc();
       await Promise.all([
         destination.chatRef.set(
           {
@@ -267,7 +269,7 @@ export async function POST(
           },
           { merge: true }
         ),
-        adminDb.collection("messages").add({
+        messageRef.set({
           chatId: destination.chatId,
           tenantId,
           text: destination.text,
@@ -296,6 +298,13 @@ export async function POST(
           { merge: true }
         ),
       ]);
+      await observeConversationCommercialState({
+        tenantId,
+        chatId: destination.chatId,
+        messageId: messageRef.id,
+        actorId: user.uid,
+        actorName: user.name,
+      }).catch((error) => console.error("Falha ao observar resposta humana para CRM:", error));
     }
 
     return NextResponse.json({

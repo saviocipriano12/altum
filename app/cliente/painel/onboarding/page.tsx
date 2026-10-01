@@ -77,8 +77,15 @@ type ProductSnapshot = {
   blueprint?: { draft?: BusinessBlueprint; active?: BusinessBlueprint; status?: string };
 };
 
+type OperationalOnboardingProgress = {
+  completed: number;
+  total: number;
+  progressPct: number;
+};
+
 type ApiPayload = {
   product?: ProductSnapshot;
+  onboarding?: OperationalOnboardingProgress;
   preparation?: {
     pipelineApplied?: boolean;
     automationsCreated?: number;
@@ -128,6 +135,7 @@ export default function ClienteOnboardingPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [state, setState] = useState<OnboardingState>(EMPTY_STATE);
   const [snapshot, setSnapshot] = useState<ProductSnapshot | null>(null);
+  const [operationalProgress, setOperationalProgress] = useState<OperationalOnboardingProgress | null>(null);
   const [preparation, setPreparation] = useState<ApiPayload["preparation"]>(undefined);
   const [blueprint, setBlueprint] = useState<BusinessBlueprint | null>(null);
   const canManage = hasCapability("manage_settings");
@@ -144,6 +152,7 @@ export default function ClienteOnboardingPage() {
         if (!mounted) return;
         if (!response.ok || !payload.product) throw new Error(payload.error || "Falha ao carregar a implantacao.");
         setSnapshot(payload.product);
+        setOperationalProgress(payload.onboarding || null);
         setState(payload.product.state || EMPTY_STATE);
         setBlueprint(payload.product.blueprint?.draft || payload.product.blueprint?.active || null);
       } catch (loadError) {
@@ -159,7 +168,8 @@ export default function ClienteOnboardingPage() {
     () => (snapshot?.channels || []).filter((channel) => ["ready", "connected"].includes(channel.connectionStatus)),
     [snapshot?.channels]
   );
-  const progress = snapshot?.status === "ready" ? 100 : Math.round(((currentStep - 1) / 6) * 100);
+  const formProgress = snapshot?.status === "ready" ? 100 : Math.round(((currentStep - 1) / 6) * 100);
+  const progress = Math.max(0, Math.min(100, operationalProgress?.progressPct ?? formProgress));
 
   function updateCompany(patch: Partial<OnboardingState["company"]>) {
     setState((current) => ({ ...current, company: { ...current.company, ...patch } }));
@@ -280,9 +290,9 @@ export default function ClienteOnboardingPage() {
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">Conte como sua empresa vende. A Altum organiza a base inicial e deixa o trabalho diario pronto para sua equipe.</p>
           </div>
           <div className="min-w-[210px] rounded-2xl border border-white bg-white/80 p-4 shadow-sm backdrop-blur">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-500"><span>Progresso</span><span>{progress}%</span></div>
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500"><span>Prontidao operacional</span><span>{progress}%</span></div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 transition-all" style={{ width: `${progress}%` }} /></div>
-            <p className="mt-3 text-xs text-slate-500">Etapa {currentStep} de 6</p>
+            <p className="mt-3 text-xs text-slate-500">Roteiro atual: etapa {currentStep} de 6 ({formProgress}%).</p>
           </div>
         </div>
       </section>

@@ -19,6 +19,22 @@ export const woocommerceProvider: CommerceProvider = {
   id: "woocommerce",
   label: "WooCommerce",
   capabilities: ["products", "orders", "tracking"],
+  capabilityMatrix: {
+    catalog_products: "available",
+    product_variants: "partial",
+    inventory_aggregate: "partial",
+    inventory_by_location: "unsupported",
+    customers: "partial",
+    orders: "partial",
+    payments: "partial",
+    fulfillments: "partial",
+    tracking: "partial",
+    refunds: "planned",
+    returns: "planned",
+    abandoned_checkouts: "planned",
+    webhooks: "available",
+    api_sync: "available",
+  },
   credentialFields: ["consumerKey", "consumerSecret"],
   async testConnection({ connection, credentials }) {
     const url = await wooUrl(connection.storeUrl, "products", 1);

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { CheckCircle2, ExternalLink, KeyRound, Loader2, ShieldCheck, XCircle } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { scopes } from "@/lib/mcp/scope-catalog";
 
 function param(searchParams: URLSearchParams, key: string) {
   return String(searchParams.get(key) || "").trim();
@@ -15,10 +16,20 @@ function scopeLabel(scope: string) {
   const labels: Record<string, string> = {
     "context:read": "Contexto da empresa",
     "crm:read": "Clientes e oportunidades",
+    "crm:write": "Editar clientes, responsáveis e funil com aprovação",
     "inbox:read": "Conversas e mensagens recentes",
+    "inbox:write": "Preparar e enviar respostas com confirmação",
     "reports:read": "Resumo e relatórios",
     "integrations:read": "Saúde das integrações",
+    "integrations:write": "Configurar canais com aprovação",
     "events:read": "Eventos e auditoria operacional",
+    "automation:write": "Criar e editar automações com aprovação",
+    "knowledge:write": "Editar produtos e base de conhecimento",
+    "calendar:write": "Criar compromissos e reuniões",
+    "settings:write": "Editar configurações comerciais da empresa",
+    "marketing:read": "Ler campanhas e atribuição",
+    "marketing:draft": "Preparar mudanças em campanhas",
+    "ai:draft": "Ajustar comportamento da IA com aprovação",
     offline_access: "Manter a conexão ativa",
   };
   return labels[scope] || scope;
@@ -33,7 +44,7 @@ export default function ClienteMcpAuthorizePage() {
   const redirectUri = param(searchParams, "redirect_uri");
   const requestedScopes = useMemo(() => {
     const raw = param(searchParams, "scope");
-    return raw ? raw.split(/\s+/).filter(Boolean) : ["context:read", "crm:read", "inbox:read", "reports:read", "integrations:read", "events:read"];
+    return raw ? raw.split(/\s+/).filter(Boolean) : [...scopes, "offline_access"];
   }, [searchParams]);
   const canAuthorize = Boolean(tenant?.tenantId && hasCapability("manage_settings"));
 
@@ -55,6 +66,7 @@ export default function ClienteMcpAuthorizePage() {
           code_challenge: param(searchParams, "code_challenge"),
           code_challenge_method: param(searchParams, "code_challenge_method") || "S256",
           response_type: param(searchParams, "response_type") || "code",
+          resource: param(searchParams, "resource"),
         }),
       });
       const payload = (await response.json().catch(() => ({}))) as { redirectTo?: string; error?: string; code?: string };

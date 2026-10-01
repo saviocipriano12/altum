@@ -72,6 +72,8 @@ export async function POST(
       batch.set(ref, {
         tenantId,
         type: "catalog",
+        kind: item.kind,
+        source: "catalog_import",
         content: buildCatalogImportContent(item),
         tags: catalogImportTags(item, importId),
         serviceKey: catalogServiceKey(item.name),
@@ -80,6 +82,8 @@ export async function POST(
         targetProfile: item.targetProfile || null,
         priceFrom: item.priceFrom,
         priceTo: item.priceTo,
+        currency: "BRL",
+        inventoryQuantity: null,
         upsellKeys: [],
         crossSellKeys: [],
         priority: item.confidence === "high" ? 80 : item.confidence === "medium" ? 60 : 40,

@@ -68,7 +68,7 @@ export function CrmHero({
 }) {
   return (
     <section className="overflow-hidden rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)]">
-      <div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-3 p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <CrmBadge tone="neutral">{active}</CrmBadge>
@@ -77,14 +77,14 @@ export function CrmHero({
           <h1 className="max-w-4xl text-[1.55rem] font-extrabold leading-tight tracking-normal text-[var(--cliente-card-text)] sm:text-[1.85rem]">
             {title}
           </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">
+          <p className="mt-2 hidden max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)] sm:block">
             {description}
           </p>
         </div>
-        {action ? <div className="-mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0 lg:pb-0">{action}</div> : null}
+        {action ? <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap lg:mx-0">{action}</div> : null}
       </div>
 
-      <div className="border-t border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-5 py-3.5">
+      <div className="hidden border-t border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-5 py-3.5 sm:block">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]">
@@ -102,7 +102,7 @@ export function CrmHero({
         </div>
       </div>
 
-      <div className="border-t border-[var(--cliente-border)] px-3 py-3">
+      <div className="hidden border-t border-[var(--cliente-border)] px-3 py-3 sm:block">
         <CrmTabs active={active} />
       </div>
       {children ? <div className="border-t border-[var(--cliente-border)] p-3 lg:p-4">{children}</div> : null}
@@ -131,7 +131,7 @@ export function CrmTabs({ active }: { active: CrmRouteLabel }) {
           <Link
             key={item.href}
             href={href}
-            className={`inline-flex min-w-max items-center justify-center gap-2 rounded-[12px] border px-3 py-2.5 text-sm font-bold transition ${
+            className={`inline-flex min-h-11 min-w-max items-center justify-center gap-2 rounded-[12px] border px-3 py-2.5 text-sm font-bold transition ${
               isActive
                 ? "border-[color:color-mix(in_srgb,var(--cliente-primary)_28%,transparent)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"
                 : "border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text-soft)] hover:bg-[var(--cliente-panel-soft)] hover:text-[var(--cliente-card-text)]"
@@ -243,7 +243,7 @@ export function CrmButton({
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-55 ${classes[tone]} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cliente-primary)] disabled:cursor-not-allowed disabled:opacity-55 ${classes[tone]} ${className}`}
     >
       {children}
     </button>
@@ -275,7 +275,7 @@ export function CrmLinkButton({
     <Link
       href={href}
       target={target}
-      className={`inline-flex items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-bold transition ${classes[tone]} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cliente-primary)] ${classes[tone]} ${className}`}
     >
       {children}
     </Link>
@@ -293,7 +293,11 @@ export function CrmNotice({ children, tone = "blue" }: { children: ReactNode; to
   };
 
   return (
-    <div className={`rounded-[18px] border px-4 py-3 text-sm font-bold ${noticeTone[tone]}`}>
+    <div
+      className={`rounded-[18px] border px-4 py-3 text-sm font-bold ${noticeTone[tone]}`}
+      role={tone === "red" ? "alert" : "status"}
+      aria-live={tone === "red" ? "assertive" : "polite"}
+    >
       {children}
     </div>
   );
@@ -334,7 +338,7 @@ export function CrmInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`h-11 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 text-sm text-[var(--cliente-card-text)] outline-none transition placeholder:text-[var(--cliente-card-text-muted)] focus:border-[var(--cliente-primary)] ${props.className || ""}`}
+      className={`h-11 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 text-sm text-[var(--cliente-card-text)] outline-none transition placeholder:text-[var(--cliente-card-text-muted)] focus:border-[var(--cliente-primary)] focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)]/20 ${props.className || ""}`}
     />
   );
 }
@@ -343,7 +347,7 @@ export function CrmSelect(props: React.SelectHTMLAttributes<HTMLSelectElement>) 
   return (
     <select
       {...props}
-      className={`h-11 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 text-sm font-semibold text-[var(--cliente-card-text)] outline-none transition focus:border-[var(--cliente-primary)] ${props.className || ""}`}
+      className={`h-11 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 text-sm font-semibold text-[var(--cliente-card-text)] outline-none transition focus:border-[var(--cliente-primary)] focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)]/20 ${props.className || ""}`}
     />
   );
 }
@@ -352,7 +356,7 @@ export function CrmTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElem
   return (
     <textarea
       {...props}
-      className={`rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-3 text-sm text-[var(--cliente-card-text)] outline-none transition placeholder:text-[var(--cliente-card-text-muted)] focus:border-[var(--cliente-primary)] ${props.className || ""}`}
+      className={`rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-3 text-sm text-[var(--cliente-card-text)] outline-none transition placeholder:text-[var(--cliente-card-text-muted)] focus:border-[var(--cliente-primary)] focus-visible:ring-2 focus-visible:ring-[var(--cliente-primary)]/20 ${props.className || ""}`}
     />
   );
 }

@@ -1,4 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { Resend } from "resend";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
 import { AGENCY_TENANT_ID, getWhatsAppChannelForTenant } from "@/app/lib/server/whatsapp-channel";
@@ -560,6 +561,41 @@ async function markTenantBillingBlocked(input: {
   ]);
 }
 
+async function sendBillingReminderEmail(input: {
+  client: ClientRow;
+  amount: number;
+  dueDate: string;
+  invoiceUrl: string;
+  paymentLink: string;
+  pixPayload?: string | null;
+}) {
+  if (!input.client.email) return { sent: 0, failed: 0, status: "skipped_no_email" };
+  if (!process.env.RESEND_API_KEY) return { sent: 0, failed: 0, status: "skipped_email_not_configured" };
+  const paymentTarget = input.invoiceUrl || input.paymentLink;
+  const text = [
+    "ALTUM - Cobrança disponível",
+    `Olá, ${input.client.contactName || input.client.name}.`,
+    `Valor: ${formatCurrencyBr(input.amount)}`,
+    `Vencimento: ${formatDateBr(input.dueDate)}`,
+    input.pixPayload ? `PIX copia e cola: ${input.pixPayload}` : "",
+    paymentTarget ? `Pague com segurança pelo Asaas: ${paymentTarget}` : "Entre em contato com o financeiro para receber sua cobrança.",
+  ].filter(Boolean).join("\n\n");
+  try {
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const result = await resend.emails.send({
+      from: process.env.AUTH_EMAIL_FROM || "Altum <conta@altumia.com.br>",
+      to: input.client.email,
+      replyTo: "suporte.altum@gmail.com",
+      subject: "Sua cobrança Altum está disponível",
+      text,
+    });
+    if (result.error) throw new Error("email_provider_failure");
+    return { sent: 1, failed: 0, status: "sent" };
+  } catch {
+    return { sent: 0, failed: 1, status: "failed" };
+  }
+}
+
 export async function setTenantBillingAccessByAdmin(input: {
   tenantId: string;
   status: "active" | "blocked";
@@ -929,17 +965,15 @@ export async function sendManualContractReminderByClientId(input: {
     input.reminderKind ||
     (diffDays < 0 ? "overdue_blocked" : diffDays === 0 ? "due_today" : "pre_due");
 
-  const reminder = await sendBillingReminderWhatsapp({
-    tenantId,
-    client,
-    contract,
-    amount,
-    dueDate,
-    invoiceUrl,
-    paymentLink,
-    pixPayload,
-    reminderKind,
-  });
+  const [whatsappReminder, emailReminder] = await Promise.all([
+    sendBillingReminderWhatsapp({ tenantId, client, contract, amount, dueDate, invoiceUrl, paymentLink, pixPayload, reminderKind }),
+    sendBillingReminderEmail({ client, amount, dueDate, invoiceUrl, paymentLink, pixPayload }),
+  ]);
+  const reminder = {
+    reminderStatus: [whatsappReminder.reminderStatus, emailReminder.status].filter((value) => !value.startsWith("skipped_")).join("+") || "skipped",
+    reminderSent: whatsappReminder.reminderSent + emailReminder.sent,
+    reminderFailed: whatsappReminder.reminderFailed + emailReminder.failed,
+  };
 
   await Promise.all([
     contractSnap.ref.set(

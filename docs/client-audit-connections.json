@@ -33,6 +33,14 @@
   },
   {
     "source": "app/cliente/assinatura/page.tsx",
+    "reference": "/api/billing/asaas/subscription?${query}",
+    "resolvedRoutes": [
+      "app/api/billing/asaas/subscription/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/assinatura/page.tsx",
     "reference": "/api/billing/asaas/checkout",
     "resolvedRoutes": [
       "app/api/billing/asaas/checkout/route.ts"
@@ -386,6 +394,14 @@
   },
   {
     "source": "app/cliente/painel/comercial/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/commercial-agent/actions",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/commercial-agent/actions/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/comercial/page.tsx",
     "reference": "/api/tenant/${tenant.tenantId}/budgets/${budgetId}",
     "resolvedRoutes": [
       "app/api/tenant/[tenantId]/budgets/[budgetId]/route.ts"
@@ -422,6 +438,30 @@
     "reference": "/api/tenant/${tenantId}/notifications",
     "resolvedRoutes": [
       "app/api/tenant/[tenantId]/notifications/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/components/cliente-presence-heartbeat.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/presence",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/presence/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/components/commercial-agent-action-queue.tsx",
+    "reference": "/api/tenant/${tenantId}/commercial-agent/actions?status=pending_approval",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/commercial-agent/actions/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/components/commercial-agent-action-queue.tsx",
+    "reference": "/api/tenant/${tenantId}/commercial-agent/actions/${actionId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/commercial-agent/actions/[actionId]/route.ts"
     ],
     "status": "route_exists_static_check"
   },
@@ -539,6 +579,14 @@
   },
   {
     "source": "app/cliente/painel/configuracoes/integracoes/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ecommerce/agent-performance",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ecommerce/agent-performance/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/integracoes/page.tsx",
     "reference": "/api/integrations/commerce/${provider}/start",
     "resolvedRoutes": [],
     "status": "manual_review_dynamic_expression"
@@ -629,6 +677,22 @@
     "reference": "/api/tenant/${tenant.tenantId}/mcp/drafts/${encodeURIComponent(draftId)}/apply",
     "resolvedRoutes": [
       "app/api/tenant/[tenantId]/mcp/drafts/[draftId]/apply/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/meu-whatsapp/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/meu-whatsapp/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels/${encodeURIComponent(selectedId)}/whatsapp-session?action=qr",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/[channelId]/whatsapp-session/route.ts"
     ],
     "status": "route_exists_static_check"
   },
@@ -738,9 +802,49 @@
   },
   {
     "source": "app/cliente/painel/configuracoes/times/page.tsx",
-    "reference": "/api/tenant/${tenant.tenantId}/users/${encodeURIComponent(String(member.userId))}",
+    "reference": "/api/tenant/${tenant.tenantId}/channels",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/times/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/metrics-summary",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/metrics-summary/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/times/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/audit-log",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/audit-log/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/times/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users/${encodeURIComponent(member.userId)}",
     "resolvedRoutes": [
       "app/api/tenant/[tenantId]/users/[userId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/times/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users/${encodeURIComponent(member.userId)}/offboard",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/[userId]/offboard/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/times/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/channels/${encodeURIComponent(channelId)}/whatsapp-session?action=qr",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/channels/[channelId]/whatsapp-session/route.ts"
     ],
     "status": "route_exists_static_check"
   },
@@ -818,6 +922,14 @@
   },
   {
     "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/users",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/users/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
     "reference": "/api/tenant/${tenant.tenantId}/leads?limit=${CRM_PAGE_SIZE}&view=compact&offset=${encodeURIComponent(String(nextLeadOffset))}",
     "resolvedRoutes": [
       "app/api/tenant/[tenantId]/leads/route.ts"
@@ -866,6 +978,14 @@
   },
   {
     "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ecommerce/actions/${actionId}",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ecommerce/actions/[actionId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
     "reference": "/api/tenant/${tenant.tenantId}/leads/import",
     "resolvedRoutes": [
       "app/api/tenant/[tenantId]/leads/import/route.ts",
@@ -896,6 +1016,14 @@
     "resolvedRoutes": [
       "app/api/tenant/[tenantId]/leads/distribute/route.ts",
       "app/api/tenant/[tenantId]/leads/[leadId]/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/crm/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/leads/distribute/${lastAssignmentAuditId}/undo",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/leads/distribute/[auditId]/undo/route.ts"
     ],
     "status": "route_exists_static_check"
   },
@@ -1099,6 +1227,14 @@
     "reference": "/api/tenant/${tenant.tenantId}/settings",
     "resolvedRoutes": [
       "app/api/tenant/[tenantId]/settings/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/ia/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ai-evaluations",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ai-evaluations/route.ts"
     ],
     "status": "route_exists_static_check"
   },
@@ -1376,7 +1512,7 @@
   },
   {
     "source": "app/cliente/painel/page.tsx",
-    "reference": "/api/client-portal/dashboard",
+    "reference": "/api/client-portal/dashboard?tenantId=${encodeURIComponent(tenantId)}",
     "resolvedRoutes": [
       "app/api/client-portal/dashboard/route.ts"
     ],
@@ -1523,6 +1659,14 @@
     "reference": "/api/tenant/${tenant.tenantId}/kb-docs",
     "resolvedRoutes": [
       "app/api/tenant/[tenantId]/kb-docs/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/produtos-servicos/[docId]/page.tsx",
+    "reference": "/api/tenant/${tenant.tenantId}/ai-preview",
+    "resolvedRoutes": [
+      "app/api/tenant/[tenantId]/ai-preview/route.ts"
     ],
     "status": "route_exists_static_check"
   },

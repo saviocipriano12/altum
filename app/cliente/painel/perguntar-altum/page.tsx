@@ -11,9 +11,11 @@ type InsightResponse = {
   title?: string;
   answer?: string;
   metrics?: Record<string, number>;
-  sources?: Array<{ collection: string }>;
+  sources?: Array<{ collection: string; period?: string }>;
   suggestedQuestions?: string[];
   mode?: "ai" | "verified_fallback";
+  ai?: { available?: boolean; provider?: string | null; model?: string | null; fallbackUsed?: boolean; message?: string | null };
+  scope?: "company" | "personal";
   asOf?: string;
   error?: string;
 };
@@ -23,10 +25,13 @@ type Message = {
   role: "user" | "assistant";
   text: string;
   title?: string;
-  sources?: Array<{ collection: string }>;
+  sources?: Array<{ collection: string; period?: string }>;
   metrics?: Record<string, number>;
   suggestedQuestions?: string[];
   mode?: "ai" | "verified_fallback";
+  ai?: InsightResponse["ai"];
+  scope?: InsightResponse["scope"];
+  asOf?: string;
 };
 
 const INTRO_MESSAGE: Message = {
@@ -125,8 +130,7 @@ export default function PerguntarAltumPage() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canViewCompany = ["client_owner", "client_admin", "agency_owner", "agency_admin", "agency_agent"].includes(tenant?.tenantRole || "") || hasCapability("view_team_records") || hasCapability("manage_users") || hasCapability("manage_settings");
-  const canAsk = canViewCompany && (hasCapability("view_metrics") || hasCapability("manage_ai") || hasCapability("manage_settings"));
+  const canAsk = hasCapability("view_metrics") || hasCapability("manage_ai") || hasCapability("manage_settings");
   const hydratedStorageKey = useRef<string | null>(null);
   const skipNextPersist = useRef(false);
   const conversationEndRef = useRef<HTMLDivElement | null>(null);
@@ -195,6 +199,9 @@ export default function PerguntarAltumPage() {
           metrics: payload.metrics || {},
           suggestedQuestions: payload.suggestedQuestions || [],
           mode: payload.mode,
+          ai: payload.ai,
+          scope: payload.scope,
+          asOf: payload.asOf,
         },
       ]);
     } catch (askError) {
@@ -279,7 +286,7 @@ export default function PerguntarAltumPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <StateBadge label={lastAssistant?.mode === "verified_fallback" ? "dados verificados" : "IA conectada"} tone="ai" />
+                <StateBadge label={lastAssistant?.mode === "verified_fallback" ? "leitura calculada" : lastAssistant?.ai?.fallbackUsed ? "IA conectada · redundância" : "IA conectada"} tone={lastAssistant?.mode === "verified_fallback" ? "warning" : "ai"} />
                 <button
                   type="button"
                   onClick={resetConversation}
@@ -313,10 +320,13 @@ export default function PerguntarAltumPage() {
                 {message.role === "assistant" && message.sources?.length ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {message.sources.map((source) => (
-                      <StateBadge key={`${message.id}_${source.collection}`} label={sourceLabel(source.collection)} tone="neutral" />
+                      <StateBadge key={`${message.id}_${source.collection}`} label={`${sourceLabel(source.collection)}${source.period ? ` · ${source.period}` : ""}`} tone="neutral" />
                     ))}
                   </div>
                 ) : null}
+                {message.role === "assistant" && message.ai?.message ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">{message.ai.message}</p> : null}
+                {message.role === "assistant" && message.mode === "ai" && message.ai?.provider ? <p className="mt-3 text-[11px] text-[var(--cliente-card-text-soft)]">Resposta gerada por IA · {message.ai.provider}{message.scope === "personal" ? " · somente sua carteira" : " · visão da empresa"}</p> : null}
+                {message.role === "assistant" && message.asOf ? <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">Dados consultados em {new Date(message.asOf).toLocaleString("pt-BR")}</p> : null}
               </article>
             ))}
             {loading ? (
@@ -335,12 +345,14 @@ export default function PerguntarAltumPage() {
               </p>
             ) : null}
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <input
+              <textarea
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (question.trim()) void askAltum(); } }}
                 disabled={!canAsk || loading}
                 placeholder="Pergunte: onde esta meu maior gargalo hoje?"
-                className="client-input rounded-2xl border px-4 py-3 text-sm outline-none"
+                rows={2}
+                className="client-input min-h-14 resize-none rounded-2xl border px-4 py-3 text-sm outline-none"
               />
               <ClientActionButton type="submit" tone="ai" disabled={!canAsk || loading || !question.trim()}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

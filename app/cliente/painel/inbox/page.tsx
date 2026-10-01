@@ -4,7 +4,7 @@ import { requiresWhatsAppTemplate } from "@/lib/whatsapp-service-window";
 
 import Link from "next/link";
 import NextImage from "next/image";
-import { CSSProperties, FormEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, type MouseEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ref as storageRef, uploadBytesResumable } from "firebase/storage";
 import {
@@ -1241,17 +1241,13 @@ function InboxHero({
   action?: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--cliente-success)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-success)_13%,var(--cliente-card)),var(--cliente-card)_52%,color-mix(in_srgb,var(--cliente-primary)_9%,var(--cliente-card)))] shadow-[var(--cliente-shadow-soft)]">
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:p-5">
+    <section className="overflow-hidden rounded-[20px] border border-[color:color-mix(in_srgb,var(--cliente-success)_20%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-success)_10%,var(--cliente-card)),var(--cliente-card)_58%,color-mix(in_srgb,var(--cliente-primary)_7%,var(--cliente-card)))] shadow-[var(--cliente-shadow-soft)]">
+      <div className="grid gap-3 p-3.5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:px-4 lg:py-3">
         <div className="min-w-0">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <StateBadge label="Engajamento" tone="success" />
-            <StateBadge label="Assistente + humano" tone="ai" />
-          </div>
-          <h1 className="max-w-4xl text-2xl font-extrabold leading-tight text-[var(--cliente-card-text)] md:text-[2rem]">
+          <h1 className="max-w-4xl text-xl font-extrabold leading-tight text-[var(--cliente-card-text)]">
             {title}
           </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)]">
+          <p className="mt-1 max-w-2xl truncate text-xs leading-5 text-[var(--cliente-card-text-soft)]">
             {subtitle}
           </p>
         </div>
@@ -1342,7 +1338,7 @@ function ConversationListItem({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">
-                  {chat.isGroup ? "Grupo ? " : ""}{chat.contactName || chat.contactPhone || "Contato sem nome"}
+                  {chat.isGroup ? "Grupo · " : ""}{chat.contactName || chat.contactPhone || "Contato sem nome"}
                 </p>
                 {chat.priority === "high" ? (
                   <span className="h-2 w-2 rounded-full bg-[var(--cliente-accent)]" />
@@ -1838,6 +1834,7 @@ function MessageBubble({
   canOperate?: boolean;
 }) {
   const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
+  const [aiSummaryExpanded, setAiSummaryExpanded] = useState(false);
   const isAgent = message.sender === "agent";
   const isSystem = message.sender === "system";
   const type = String(message.type || "text").toLowerCase();
@@ -1957,7 +1954,19 @@ function MessageBubble({
           {message.aiMultimodalSummary ? (
             <div className="mt-3 flex gap-2 rounded-2xl border border-violet-100 bg-violet-50/80 px-3 py-2 text-xs leading-5 text-violet-950">
               <Bot className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
-              <p><span className="font-semibold">Leitura da Altum:</span> {message.aiMultimodalSummary}</p>
+              <div className="min-w-0">
+                <p className={cn(!aiSummaryExpanded && "line-clamp-4 sm:line-clamp-none")}>
+                  <span className="font-semibold">Leitura da Altum:</span> {message.aiMultimodalSummary}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAiSummaryExpanded((current) => !current)}
+                  className="mt-1 text-[11px] font-bold text-violet-700 sm:hidden"
+                  aria-expanded={aiSummaryExpanded}
+                >
+                  {aiSummaryExpanded ? "Mostrar menos" : "Ver transcricao"}
+                </button>
+              </div>
             </div>
           ) : null}
           {shouldRenderText ? (
@@ -2124,6 +2133,7 @@ export default function ClienteInboxPage() {
   const [internalNoteText, setInternalNoteText] = useState("");
   const [leadNoteText, setLeadNoteText] = useState("");
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
@@ -2146,7 +2156,10 @@ export default function ClienteInboxPage() {
   const [leadTaskPriority, setLeadTaskPriority] = useState<(typeof TASK_PRIORITIES)[number]>("medium");
   const [leadTaskType, setLeadTaskType] = useState<(typeof TASK_TYPES)[number]>("follow_up");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
+  const [showQueueOverview, setShowQueueOverview] = useState(false);
   const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
+  const [isWideContextViewport, setIsWideContextViewport] = useState(false);
   const [globalAiResponsePaused, setGlobalAiResponsePaused] = useState(false);
 
   const initialChatId = searchParams.get("chatId");
@@ -2168,6 +2181,14 @@ export default function ClienteInboxPage() {
   const showDesktopContextPanel = Boolean(selectedChatId);
 
   useEffect(() => {
+    const media = window.matchMedia("(min-width: 1536px)");
+    const sync = () => setIsWideContextViewport(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
     };
@@ -2178,6 +2199,45 @@ export default function ClienteInboxPage() {
       setShowAdvancedFilters(false);
     }
   }, [allowAdvanced]);
+
+  useEffect(() => {
+    if (!tenant?.tenantId) return;
+    setFiltersHydrated(false);
+    try {
+      const raw = window.localStorage.getItem(`altum:inbox-filters:${tenant.tenantId}`);
+      const saved = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+      if (STATUS_FILTERS.includes(saved.status as StatusFilter)) setStatusFilter(saved.status as StatusFilter);
+      if (PRIORITY_FILTERS.includes(saved.priority as PriorityFilter)) setPriorityFilter(saved.priority as PriorityFilter);
+      if (QUEUE_FILTERS.includes(saved.queue as QueueFilter)) setQueueFilter(saved.queue as QueueFilter);
+      if (AI_FILTERS.includes(saved.ai as AiFilter)) setAiFilter(saved.ai as AiFilter);
+      if (typeof saved.conversationType === "string") setConversationTypeFilter(saved.conversationType);
+      if (typeof saved.channel === "string") setChannelFilter(saved.channel);
+      if (typeof saved.channelInstance === "string") setChannelInstanceFilter(saved.channelInstance);
+      if (typeof saved.assignedUser === "string") setAssignedUserFilter(saved.assignedUser);
+      if (["all", "hot", "warm", "cold"].includes(String(saved.temperature))) setTemperatureFilter(String(saved.temperature));
+      if (allowAdvanced && typeof saved.expanded === "boolean") setShowAdvancedFilters(saved.expanded);
+    } catch {
+      window.localStorage.removeItem(`altum:inbox-filters:${tenant.tenantId}`);
+    } finally {
+      setFiltersHydrated(true);
+    }
+  }, [allowAdvanced, tenant?.tenantId]);
+
+  useEffect(() => {
+    if (!tenant?.tenantId || !filtersHydrated) return;
+    window.localStorage.setItem(`altum:inbox-filters:${tenant.tenantId}`, JSON.stringify({
+      status: statusFilter,
+      priority: priorityFilter,
+      queue: queueFilter,
+      ai: aiFilter,
+      conversationType: conversationTypeFilter,
+      channel: channelFilter,
+      channelInstance: channelInstanceFilter,
+      assignedUser: assignedUserFilter,
+      temperature: temperatureFilter,
+      expanded: showAdvancedFilters,
+    }));
+  }, [aiFilter, assignedUserFilter, channelFilter, channelInstanceFilter, conversationTypeFilter, filtersHydrated, priorityFilter, queueFilter, showAdvancedFilters, statusFilter, temperatureFilter, tenant?.tenantId]);
 
   useEffect(() => {
     if (!selectedChatId) {
@@ -2594,6 +2654,7 @@ export default function ClienteInboxPage() {
   );
 
   const filteredChats = useMemo(() => {
+    const normalizedSearch = deferredSearch.trim().toLowerCase();
     return chats.filter((chat) => {
       if (conversationTypeFilter === "groups" && !chat.isGroup) return false;
       if (conversationTypeFilter === "contacts" && chat.isGroup) return false;
@@ -2623,7 +2684,7 @@ export default function ClienteInboxPage() {
       }
       if (leadIdFromQuery && chat.leadId !== leadIdFromQuery) return false;
 
-      if (!search.trim()) return true;
+      if (!normalizedSearch) return true;
       const haystack = [
         chat.contactName,
         chat.contactPhone,
@@ -2636,9 +2697,9 @@ export default function ClienteInboxPage() {
         .join(" ")
         .toLowerCase();
 
-      return haystack.includes(search.trim().toLowerCase());
+      return haystack.includes(normalizedSearch);
     });
-  }, [conversationTypeFilter, aiFilter, assignedUserFilter, channelFilter, channelInstanceFilter, chats, leadIdFromQuery, priorityFilter, queueFilter, search, statusFilter, temperatureFilter]);
+  }, [conversationTypeFilter, aiFilter, assignedUserFilter, channelFilter, channelInstanceFilter, chats, deferredSearch, leadIdFromQuery, priorityFilter, queueFilter, statusFilter, temperatureFilter]);
 
   const availableChannelInstances = useMemo(() => {
     const usedIds = new Set(chats.map((chat) => String(chat.channelId || "")).filter(Boolean));
@@ -3441,8 +3502,32 @@ export default function ClienteInboxPage() {
   }).length;
   const aiPausedConversations = chats.filter((chat) => isAiPaused(chat)).length;
   const linkedLeadConversations = chats.filter((chat) => chat.leadId).length;
+  const activeFilterCount = [
+    statusFilter !== "all",
+    priorityFilter !== "all",
+    queueFilter !== "all",
+    aiFilter !== "all",
+    conversationTypeFilter !== "all",
+    channelFilter !== "all",
+    channelInstanceFilter !== "all",
+    assignedUserFilter !== "all",
+    temperatureFilter !== "all",
+  ].filter(Boolean).length;
 
-  const contextPanelContent = (
+  function clearConversationFilters() {
+    setStatusFilter("all");
+    setPriorityFilter("all");
+    setQueueFilter("all");
+    setAiFilter("all");
+    setConversationTypeFilter("all");
+    setChannelFilter("all");
+    setChannelInstanceFilter("all");
+    setAssignedUserFilter("all");
+    setTemperatureFilter("all");
+  }
+
+  const shouldRenderContextPanel = showDetailsDrawer || (showDesktopContextPanel && isWideContextViewport);
+  const contextPanelContent = shouldRenderContextPanel ? (
     <div className="space-y-4">
       <PanelCard className="p-4">
         <div className="flex items-start justify-between gap-3">
@@ -4265,7 +4350,7 @@ export default function ClienteInboxPage() {
         </details>
       </PanelCard>
     </div>
-  );
+  ) : null;
 
   if (!selectedChat && !loadingChats && chats.length === 0) {
     return (
@@ -4315,6 +4400,15 @@ export default function ClienteInboxPage() {
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 {allowAdvanced ? "Modo simples" : "Mais opcoes"}
               </button>
+              <button
+                type="button"
+                onClick={() => setShowQueueOverview((current) => !current)}
+                className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:border-[var(--cliente-border-strong)] hover:text-[var(--cliente-card-text)]"
+                aria-expanded={showQueueOverview}
+              >
+                <PanelRightOpen className="h-3.5 w-3.5" />
+                {showQueueOverview ? "Ocultar resumo" : "Resumo da fila"}
+              </button>
               {allowAdvanced && canManageQueue ? (
                 <button
                   type="button"
@@ -4347,7 +4441,7 @@ export default function ClienteInboxPage() {
         />
       </div>
 
-      <div className="hidden gap-3 md:grid-cols-2 xl:grid xl:grid-cols-5">
+      <div className={cn("hidden gap-3 md:grid-cols-2 xl:grid-cols-5", showQueueOverview && "xl:grid")}>
         <InboxMetricCard
           label="Conversas ativas"
           value={String(chats.length)}
@@ -4386,7 +4480,7 @@ export default function ClienteInboxPage() {
       </div>
 
       {error ? (
-        <div className="inbox-notice inbox-notice-danger flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
+        <div role="alert" aria-live="assertive" className="inbox-notice inbox-notice-danger flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>{error}</p>
         </div>
@@ -4396,7 +4490,7 @@ export default function ClienteInboxPage() {
         className={cn(
           "grid min-w-0 grid-cols-1 gap-0 xl:h-[calc(100vh-7rem)] xl:min-h-0 xl:grid-cols-[minmax(320px,370px)_minmax(0,1.7fr)] xl:gap-3",
           selectedChatId ? "min-h-0" : "min-h-[82vh]",
-          showDesktopContextPanel
+          showDesktopContextPanel && isWideContextViewport
             ? "2xl:grid-cols-[minmax(320px,370px)_minmax(0,1.7fr)_minmax(320px,360px)]"
             : "2xl:grid-cols-[minmax(320px,370px)_minmax(0,1.8fr)]"
         )}
@@ -4410,7 +4504,7 @@ export default function ClienteInboxPage() {
               <div className="flex min-w-0 items-center gap-2">
                 <Link
                   href="/cliente/painel"
-                  className="inline-flex h-10 shrink-0 items-center justify-center gap-1 rounded-full px-2 text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)] sm:hidden"
+                  className="hidden h-10 shrink-0 items-center justify-center gap-1 rounded-full px-2 text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)] sm:hidden"
                   aria-label="Voltar para Inicio"
                 >
                   <ArrowLeft className="h-5 w-5" />
@@ -4421,7 +4515,7 @@ export default function ClienteInboxPage() {
                     Conversas
                   </h1>
                   <p className="mt-0.5 text-xs text-[#667781] sm:text-[var(--cliente-card-text-soft)]">
-                    {filteredChats.length} conversas
+                    {filteredChats.length} conversas <span className="sm:hidden">· {canViewTeamRecords ? "Visao da empresa" : "Minha fila"}</span>
                   </p>
                 </div>
               </div>
@@ -4445,7 +4539,7 @@ export default function ClienteInboxPage() {
                       setSelectionMode((current) => !current);
                       setSelectedChatIds([]);
                     }}
-                    className="inline-flex h-10 items-center justify-center rounded-full px-3 text-xs font-bold text-[#54656f] transition hover:bg-[#f0f2f5]"
+                    className="hidden h-10 items-center justify-center rounded-full px-3 text-xs font-bold text-[#54656f] transition hover:bg-[#f0f2f5] sm:inline-flex"
                   >
                     {selectionMode ? "Cancelar" : "Selecionar"}
                   </button>
@@ -4456,7 +4550,7 @@ export default function ClienteInboxPage() {
                     onClick={() => void handleToggleGlobalAiResponses()}
                     disabled={updatingGlobalAi || loadingAiSettings}
                     className={cn(
-                      "inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-bold transition disabled:opacity-55",
+                      "hidden h-10 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-bold transition disabled:opacity-55 sm:inline-flex",
                       globalAiResponsePaused
                         ? "bg-[#d9fdd3] text-[#147d45] hover:brightness-95"
                         : "bg-[#ede9fe] text-[#6d28d9] hover:brightness-95"
@@ -4478,10 +4572,16 @@ export default function ClienteInboxPage() {
                 <button
                   type="button"
                   onClick={() => setShowAdvancedFilters((current) => !current)}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] sm:hidden"
-                  aria-label="Mostrar filtros"
+                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] sm:hidden"
+                  aria-label={showAdvancedFilters ? "Ocultar filtros" : "Mostrar filtros"}
+                  aria-expanded={showAdvancedFilters}
                 >
                   <SlidersHorizontal className="h-4 w-4" />
+                  {activeFilterCount ? (
+                    <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[var(--cliente-primary)] px-1 text-[10px] font-black text-white">
+                      {activeFilterCount}
+                    </span>
+                  ) : null}
                 </button>
               </div>
               <div className="hidden sm:block">
@@ -4490,7 +4590,7 @@ export default function ClienteInboxPage() {
             </div>
 
             <div className="mt-3 space-y-3 sm:mt-4">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5">
+              <div className="hidden items-center justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 sm:flex">
                 <div className="min-w-0">
                   <p className="truncate text-xs font-bold text-[var(--cliente-card-text)]">{canViewTeamRecords ? "Visão da empresa" : "Visão pessoal"}</p>
                   <p className="truncate text-[11px] text-[var(--cliente-card-text-soft)]">{canViewTeamRecords ? "Todos os canais e responsáveis liberados" : "Somente conversas sob sua responsabilidade"}</p>
@@ -4507,7 +4607,63 @@ export default function ClienteInboxPage() {
                 />
               </label>
 
-              <div className={cn(showAdvancedFilters ? "block" : "hidden", "sm:block")}>
+              <div className="flex gap-2 overflow-x-auto pb-0.5 sm:hidden" aria-label="Filtros rapidos da fila">
+                <button
+                  type="button"
+                  onClick={() => setQueueFilter(queueFilter === "assigned_waiting" ? "all" : "assigned_waiting")}
+                  aria-pressed={queueFilter === "assigned_waiting"}
+                  className={cn(
+                    "inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition",
+                    queueFilter === "assigned_waiting"
+                      ? "border-[color:color-mix(in_srgb,var(--cliente-success)_32%,transparent)] bg-[var(--cliente-whatsapp-soft)] text-[var(--cliente-success)]"
+                      : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)]"
+                  )}
+                >
+                  Responder
+                  {conversationsNeedingReply ? <span className="rounded-full bg-current/10 px-1.5 py-0.5 text-[10px]">{conversationsNeedingReply}</span> : null}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPriorityFilter(priorityFilter === "high" ? "all" : "high")}
+                  aria-pressed={priorityFilter === "high"}
+                  className={cn(
+                    "inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition",
+                    priorityFilter === "high"
+                      ? "border-[color:color-mix(in_srgb,var(--cliente-warning)_32%,transparent)] bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]"
+                      : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)]"
+                  )}
+                >
+                  Urgentes
+                </button>
+                {canViewTeamRecords ? (
+                  <button
+                    type="button"
+                    onClick={() => setQueueFilter(queueFilter === "unassigned" ? "all" : "unassigned")}
+                    aria-pressed={queueFilter === "unassigned"}
+                    className={cn(
+                      "inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition",
+                      queueFilter === "unassigned"
+                        ? "border-[color:color-mix(in_srgb,var(--cliente-primary)_32%,transparent)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"
+                        : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)]"
+                    )}
+                  >
+                    Sem dono
+                    {unassignedConversations ? <span className="rounded-full bg-current/10 px-1.5 py-0.5 text-[10px]">{unassignedConversations}</span> : null}
+                  </button>
+                ) : null}
+                {activeFilterCount ? (
+                  <button
+                    type="button"
+                    onClick={clearConversationFilters}
+                    className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 text-xs font-bold text-[var(--cliente-accent)] transition hover:bg-[var(--cliente-accent-soft)]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Limpar
+                  </button>
+                ) : null}
+              </div>
+
+              <div className={showAdvancedFilters ? "block" : "hidden"}>
                 <ClientTabs
                   value={statusFilter}
                   onChange={(value) => setStatusFilter(value as StatusFilter)}
@@ -4519,7 +4675,7 @@ export default function ClienteInboxPage() {
                 />
               </div>
 
-              <div className={cn("grid-cols-3 gap-2", showAdvancedFilters ? "grid" : "hidden", "sm:grid")}>
+              <div className={cn("max-sm:hidden grid-cols-3 gap-2", showAdvancedFilters ? "grid" : "hidden")}>
                 <button
                   type="button"
                   onClick={() => setQueueFilter(queueFilter === "assigned_waiting" ? "all" : "assigned_waiting")}
@@ -4558,7 +4714,7 @@ export default function ClienteInboxPage() {
                 </button>
               </div>
 
-              <label className="mb-2 block">
+              <label className={cn("mb-2", showAdvancedFilters ? "block" : "hidden")}>
                 <span className="sr-only">Tipo de conversa</span>
                 <select value={conversationTypeFilter} onChange={(event) => setConversationTypeFilter(event.target.value)} className="client-input w-full rounded-xl border px-3 py-2 text-sm font-semibold">
                   <option value="all">Contatos e grupos</option>
@@ -4566,7 +4722,7 @@ export default function ClienteInboxPage() {
                   <option value="groups">Somente grupos</option>
                 </select>
               </label>
-              <div className={cn("grid-cols-1 gap-2 sm:grid-cols-2", showAdvancedFilters ? "grid" : "hidden", "sm:grid")}>
+              <div className={cn("grid-cols-1 gap-2 sm:grid-cols-2", showAdvancedFilters ? "grid" : "hidden")}>
                 <label className="min-w-0">
                   <span className="sr-only">Filtrar por canal</span>
                   <select
@@ -4625,16 +4781,27 @@ export default function ClienteInboxPage() {
                 </label>
               </div>
 
-              {allowAdvanced ? (
+              <div className="hidden flex-wrap items-center gap-2 sm:flex">
                 <button
                   type="button"
                   onClick={() => setShowAdvancedFilters((current) => !current)}
-                  className="hidden items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] sm:inline-flex"
+                  className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
+                  aria-expanded={showAdvancedFilters}
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
-                  {showAdvancedFilters ? "Ocultar filtros" : "Mais filtros"}
+                  {showAdvancedFilters ? "Recolher filtros" : `Filtros${activeFilterCount ? ` (${activeFilterCount})` : ""}`}
                 </button>
-              ) : null}
+                {activeFilterCount ? (
+                  <button
+                    type="button"
+                    onClick={clearConversationFilters}
+                    className="inline-flex items-center gap-1.5 rounded-[18px] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-accent)] transition hover:bg-[var(--cliente-accent-soft)]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Limpar filtros
+                  </button>
+                ) : null}
+              </div>
 
               {allowAdvanced && showAdvancedFilters ? (
                 <>
@@ -4681,8 +4848,20 @@ export default function ClienteInboxPage() {
           </div>
           <div className="flex-1 overflow-x-hidden overflow-y-auto max-xl:pb-24">
             {loadingChats ? (
-              <div className="py-10 text-center text-[var(--cliente-card-text-soft)]">
-                <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+              <div className="space-y-1 p-2.5" role="status" aria-label="Carregando conversas">
+                {Array.from({ length: 7 }, (_, index) => (
+                  <div key={index} className="flex min-h-[76px] items-center gap-3 rounded-2xl px-2.5 py-3">
+                    <div className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-[var(--cliente-surface-muted)]" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="h-3.5 w-2/5 animate-pulse rounded bg-[var(--cliente-surface-muted)]" />
+                        <div className="h-3 w-10 animate-pulse rounded bg-[var(--cliente-surface-muted)]" />
+                      </div>
+                      <div className="h-3 w-4/5 animate-pulse rounded bg-[var(--cliente-surface-muted)]" />
+                    </div>
+                  </div>
+                ))}
+                <span className="sr-only">Carregando conversas</span>
               </div>
             ) : filteredChats.length === 0 ? (
               <div className="p-2">
@@ -4726,7 +4905,7 @@ export default function ClienteInboxPage() {
               </div>
             ) : (
               filteredChats.map((chat) => (
-                <div key={chat.id} className="relative">
+                <div key={chat.id} className="inbox-conversation-row relative">
                   {selectionMode ? (
                     <input
                       type="checkbox"
@@ -4751,7 +4930,7 @@ export default function ClienteInboxPage() {
 
         <PanelCard className={cn(
           "inbox-thread-shell min-h-0 min-w-0 flex-col overflow-hidden max-xl:rounded-none max-xl:border-0 max-xl:shadow-none xl:flex",
-          selectedChatId ? "flex h-[100dvh] xl:h-full" : "hidden"
+          selectedChatId ? "flex h-[100dvh] max-h-[100dvh] xl:h-full xl:max-h-none" : "hidden"
         )}>
           <div className="inbox-thread-header inbox-chat-header border-b border-[var(--cliente-border)] p-2.5 sm:p-5">
             <div className="flex items-center justify-between gap-2 sm:items-start sm:gap-4">
@@ -4759,7 +4938,7 @@ export default function ClienteInboxPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedChatId(null)}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)] xl:hidden"
+                  className="inbox-thread-back-button inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)] xl:hidden"
                   aria-label="Voltar para conversas"
                 >
                   <ArrowLeft className="h-5 w-5" />
@@ -4773,7 +4952,7 @@ export default function ClienteInboxPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2 sm:flex-wrap">
                     <h3 className="truncate text-[15px] font-semibold tracking-normal text-[var(--cliente-card-text)] sm:text-lg">
-                      {activeChat?.isGroup ? "Grupo ? " : ""}{activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
+                      {activeChat?.isGroup ? "Grupo · " : ""}{activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
                     </h3>
                     <span className="hidden sm:inline-flex">
                       <StateBadge label={activeChat?.channelDisplayName || formatChannelLabel(activeChat?.channel)} tone="neutral" />
@@ -4836,7 +5015,7 @@ export default function ClienteInboxPage() {
                     type="button"
                     onClick={() => void handleTakeover()}
                     disabled={!selectedChat || updatingAi}
-                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-[#25D366] px-3 text-xs font-bold text-[#07130C] transition hover:brightness-95 disabled:opacity-55 sm:px-3.5"
+                    className="inbox-thread-takeover inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-[#25D366] px-3 text-xs font-bold text-[#07130C] transition hover:brightness-95 disabled:opacity-55 sm:px-3.5"
                     aria-label="Assumir esta conversa"
                     title="Assumir esta conversa e pausar respostas automaticas aqui"
                   >
@@ -4864,7 +5043,7 @@ export default function ClienteInboxPage() {
                   type="button"
                   onClick={() => setShowDetailsDrawer(true)}
                   disabled={!showContextPanel}
-                  className="inline-flex h-10 w-10 items-center justify-center gap-2 rounded-full border border-transparent bg-transparent text-[#54656f] transition hover:bg-black/5 disabled:opacity-50 sm:w-auto sm:border-[var(--cliente-border)] sm:bg-[var(--cliente-surface-muted)] sm:px-3 sm:text-xs sm:font-semibold sm:text-[var(--cliente-card-text-muted)] sm:hover:bg-[var(--cliente-panel-soft)] 2xl:hidden"
+                  className="inbox-thread-details-button inline-flex h-10 w-10 items-center justify-center gap-2 rounded-full border border-transparent bg-transparent text-[#54656f] transition hover:bg-black/5 disabled:opacity-50 sm:w-auto sm:border-[var(--cliente-border)] sm:bg-[var(--cliente-surface-muted)] sm:px-3 sm:text-xs sm:font-semibold sm:text-[var(--cliente-card-text-muted)] sm:hover:bg-[var(--cliente-panel-soft)] 2xl:hidden"
                   aria-label="Abrir opcoes da conversa"
                 >
                   <MoreVertical className="h-5 w-5 sm:hidden" />
@@ -4895,15 +5074,21 @@ export default function ClienteInboxPage() {
             </div>
 
             {activeLead ? (
-              <div className="mt-3 grid gap-2 sm:hidden">
-                <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_16%,var(--cliente-border))] bg-[var(--cliente-panel-soft)] px-3 py-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-primary)]">Cliente vinculado</p>
-                    <StateBadge label={formatTemperature(activeLead.aiCommercialTemperature)} tone={getTemperatureTone(activeLead.aiCommercialTemperature)} />
-                  </div>
-                  <p className="mt-1 truncate text-sm font-black text-[var(--cliente-card-text)]">{activeLead.nome || activeChat?.contactName || "Contato em conversa"}</p>
-                  <p className="mt-1 line-clamp-2 text-xs text-[var(--cliente-card-text-soft)]">{formatAiAction(activeLead.aiNextAction)}</p>
-                </div>
+              <div className="mt-2 sm:hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowDetailsDrawer(true)}
+                  disabled={!showContextPanel}
+                  className="flex min-h-11 w-full items-center gap-2 rounded-[14px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_16%,var(--cliente-border))] bg-[var(--cliente-panel-soft)] px-3 text-left disabled:opacity-55"
+                  aria-label="Abrir ficha do cliente"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-primary)]">Cliente vinculado</span>
+                    <span className="mt-0.5 block truncate text-sm font-black text-[var(--cliente-card-text)]">{activeLead.nome || activeChat?.contactName || "Contato em conversa"}</span>
+                  </span>
+                  <StateBadge label={formatTemperature(activeLead.aiCommercialTemperature)} tone={getTemperatureTone(activeLead.aiCommercialTemperature)} />
+                  <ArrowRight className="h-4 w-4 shrink-0 text-[var(--cliente-card-text-soft)]" />
+                </button>
               </div>
             ) : null}
 
@@ -5192,6 +5377,7 @@ export default function ClienteInboxPage() {
                   rows={1}
                   className="inbox-chat-input max-h-28 min-h-11 min-w-0 flex-1 resize-none rounded-[22px] border border-transparent px-4 py-3 text-sm outline-none focus:border-[#25D366]"
                   disabled={!selectedChatId || sending || sendingMedia || !canOperate}
+                  onFocus={() => window.setTimeout(() => scrollMessagesToBottom("smooth"), 160)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
@@ -5229,21 +5415,23 @@ export default function ClienteInboxPage() {
           </form>
         </PanelCard>
 
-        {showDesktopContextPanel ? (
+        {showDesktopContextPanel && isWideContextViewport ? (
           <div className="hidden min-h-0 min-w-0 overflow-x-hidden overflow-y-auto 2xl:block 2xl:sticky 2xl:top-4 2xl:max-h-[calc(100vh-8rem)]">
             {contextPanelContent}
           </div>
         ) : null}
       </section>
 
-      <CustomerProfileDrawer
-        open={showDetailsDrawer}
-        onClose={() => setShowDetailsDrawer(false)}
-        title="Opcoes avancadas"
-        subtitle="Cliente, oportunidade, assistente e controles desta conversa"
-      >
-        {contextPanelContent}
-      </CustomerProfileDrawer>
+      {showDetailsDrawer ? (
+        <CustomerProfileDrawer
+          open={showDetailsDrawer}
+          onClose={() => setShowDetailsDrawer(false)}
+          title="Opcoes avancadas"
+          subtitle="Cliente, oportunidade, assistente e controles desta conversa"
+        >
+          {contextPanelContent}
+        </CustomerProfileDrawer>
+      ) : null}
     </div>
   );
 }

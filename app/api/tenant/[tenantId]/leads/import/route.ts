@@ -6,6 +6,7 @@ import { recordInboundLead } from "@/lib/server/lead-intake";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
 import { assertTenantLimitAvailable, assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { eligibleLeadSellers } from "@/lib/lead-assignment";
 
 const MAX_CSV_CHARS = 1_200_000;
 const MAX_IMPORT_ROWS = 1200;
@@ -430,7 +431,34 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       );
     }
 
-    const parsedRows = parsed.rows.map((row) => parseImportRow(row, defaults));
+    const tenantUsersSnap = await adminDb.collection("tenant_users").where("tenantId", "==", tenantId).limit(100).get();
+    const eligibleSellersForImport = eligibleLeadSellers(tenantUsersSnap.docs.map((doc) => {
+      const data = doc.data() as Record<string, unknown>;
+      return {
+        userId: clean(data.userId, 140),
+        name: clean(data.name || data.email, 140) || "Vendedor",
+        role: clean(data.role, 40),
+        status: clean(data.status, 40),
+        accessProfile: clean(data.accessProfile, 40),
+        capabilities: Array.isArray(data.capabilities) ? data.capabilities.map((item) => clean(item, 60)).filter(Boolean) : [],
+      };
+    }));
+    const sellersById = new Map(eligibleSellersForImport.map((seller) => [seller.userId, seller]));
+    const sellersByName = new Map(eligibleSellersForImport.map((seller) => [seller.name.toLocaleLowerCase("pt-BR"), seller]));
+    if (defaults.ownerId && !sellersById.has(defaults.ownerId)) {
+      return NextResponse.json({ error: "O responsavel padrao precisa ser um vendedor ativo." }, { status: 400 });
+    }
+    const parsedRows = parsed.rows.map((row) => {
+      const parsedRow = parseImportRow(row, defaults);
+      const eligibleSeller = parsedRow.ownerId
+        ? sellersById.get(parsedRow.ownerId)
+        : sellersByName.get(parsedRow.ownerName.toLocaleLowerCase("pt-BR"));
+      return {
+        ...parsedRow,
+        ownerId: eligibleSeller?.userId || "",
+        ownerName: eligibleSeller?.name || "",
+      };
+    });
     const currentLeadsSnap = await adminDb.collection("leads").where("tenantId", "==", tenantId).get();
     const knownEmails = new Set<string>();
     const knownPhones = new Set<string>();

@@ -72,7 +72,7 @@ function userStatusLabel(value?: string) {
 export default function ClienteUsuariosPage() {
   const router = useRouter();
   useEffect(() => {
-    router.replace("/cliente/painel/configuracoes/times?view=people");
+    router.replace("/cliente/painel/configuracoes/times");
   }, [router]);
   const { tenant, hasCapability } = useClienteTenant();
   const [loading, setLoading] = useState(true);
@@ -255,7 +255,7 @@ export default function ClienteUsuariosPage() {
     <div className="settings-users-refined client-daily-page space-y-4">
       <SectionHeader
         title="Usuários e permissões"
-        subtitle="Organize quem atende, vende, gerencia e revisa a operação dentro da conta."
+        subtitle="Defina o que cada pessoa pode ver e fazer. Ao desligar alguém, o histórico comercial permanece preservado."
         action={
           <Link
             href="/cliente/painel/configuracoes"
@@ -424,7 +424,7 @@ export default function ClienteUsuariosPage() {
                         onClick={() => void updateUser(String(user.userId || ""), { status: user.status === "blocked" ? "active" : "blocked" })}
                         className="settings-users-action rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-60"
                       >
-                        {user.status === "blocked" ? "Reativar" : "Bloquear"}
+                        {user.status === "blocked" ? "Reativar acesso" : "Desligar acesso"}
                       </button>
                     </div>
                   ) : null}
