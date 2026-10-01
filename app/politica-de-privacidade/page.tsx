@@ -3,9 +3,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Política de Privacidade | Altumia",
+  title: "Política de Privacidade | ALTUM",
   description:
-    "Política de Privacidade da Altumia - Informações sobre como coletamos, usamos e protegemos seus dados.",
+    "Política de Privacidade da ALTUM - Informações sobre como coletamos, usamos e protegemos seus dados.",
 };
 
 export default function PoliticaDePrivacidadePage() {
@@ -14,7 +14,7 @@ export default function PoliticaDePrivacidadePage() {
       <section className="max-w-4xl px-4 py-16 mx-auto">
         <header className="mb-10 border-b border-white/10 pb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400/80">
-            Altumia · Política de Privacidade
+            ALTUM · Política de Privacidade
           </p>
           <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">
             Política de Privacidade
@@ -33,7 +33,7 @@ export default function PoliticaDePrivacidadePage() {
             </h2>
             <p className="text-slate-300">
               Esta Política de Privacidade descreve como a{" "}
-              <span className="font-semibold">Altumia</span> coleta, utiliza,
+              <span className="font-semibold">ALTUM</span> coleta, utiliza,
               armazena e protege as informações pessoais dos usuários que
               acessam nossos sites, landing pages, plataformas digitais e demais
               serviços relacionados.
@@ -256,7 +256,7 @@ export default function PoliticaDePrivacidadePage() {
             </ul>
             <p className="mt-2 text-slate-300">
               Cada serviço possui sua própria Política de Privacidade, sendo
-              responsabilidade do usuário consultá-las. A Altumia não se
+              responsabilidade do usuário consultá-las. A ALTUM não se
               responsabiliza por práticas de terceiros.
             </p>
           </section>
@@ -267,7 +267,7 @@ export default function PoliticaDePrivacidadePage() {
               10. Alterações nesta Política
             </h2>
             <p className="text-slate-300">
-              A Altumia poderá atualizar esta Política de Privacidade
+              A ALTUM poderá atualizar esta Política de Privacidade
               periodicamente para refletir mudanças em nossos serviços ou na
               legislação aplicável. A versão mais recente estará sempre
               disponível neste endereço.
@@ -289,7 +289,7 @@ export default function PoliticaDePrivacidadePage() {
             </p>
             <p className="mt-2 text-slate-300">
               Ou através do nosso site oficial:{" "}
-              <span className="font-semibold">https://altumia.com.br</span>
+              <span className="font-semibold">https://www.altumia.com.br</span>
             </p>
           </section>
         </div>
