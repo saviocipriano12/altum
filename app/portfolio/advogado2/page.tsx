@@ -3,8 +3,6 @@
 import "./advogado.css";
 import { useEffect } from "react";
 
-const whatsappNumber = "5500000000000";
-
 const links = {
   consult: "/diagnostico?entry=portfolio_advogado2_consult",
   analysis: "/diagnostico?entry=portfolio_advogado2_analysis",

@@ -13,7 +13,6 @@ import {
   canAccessAssignedCommercialRecord,
 } from "@/lib/server/commercial-access";
 import { recordCommercialAgentAction } from "@/lib/server/commercial-agent-actions";
-import { processCommercialAgentSla } from "@/lib/server/commercial-agent-sla";
 import {
   evaluateCommercialAgentSla,
   normalizeCommercialAgentActionType,
@@ -89,11 +88,6 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const membership = await assertTenantAccess(user.uid, tenantId);
     await assertTenantModule(tenantId, "crm");
     assertTenantRole(membership, "client_viewer");
-
-    // Hobby deployments only guarantee a daily cron. Processing the current
-    // tenant when its decision queue is opened keeps SLA state fresh without
-    // requiring an external scheduler; updates are transactionally idempotent.
-    await processCommercialAgentSla({ tenantId, limit: 50 });
 
     const url = new URL(req.url);
     const status = clean(url.searchParams.get("status"), 40);

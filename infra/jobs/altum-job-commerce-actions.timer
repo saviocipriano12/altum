@@ -1,0 +1,11 @@
+[Unit]
+Description=Processa a fila comercial do ecommerce Altum a cada cinco minutos
+
+[Timer]
+OnBootSec=50s
+OnUnitActiveSec=5min
+AccuracySec=10s
+Unit=altum-job@commerce-actions.service
+
+[Install]
+WantedBy=timers.target

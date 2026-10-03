@@ -5,7 +5,9 @@ A VPS dispara os endpoints protegidos da Altum, preservando o processamento freq
 - `ai`: a cada minuto, para recuperar decisoes de IA que ficaram pendentes apos o webhook ou uma tentativa inline
 - `chat`: a cada minuto, para retomar mensagens e midias que ficaram pendentes
 - `outbound`: a cada minuto
-- `commerce`: a cada hora
+- `commerce`: a cada hora, para sincronizar lojas
+- `commerce-actions`: a cada cinco minutos, para executar ou recuperar a fila comercial do ecommerce
+- `commercial-agent`: a cada cinco minutos, para atualizar prazos e escaladas das decisoes comerciais
 - demais jobs: diariamente nos mesmos horarios UTC antes definidos em `vercel.json`
 - `flock` impede duas execucoes simultaneas do mesmo job
 - o segredo vive somente na Vercel e em `/opt/altum-jobs/.env` na VPS

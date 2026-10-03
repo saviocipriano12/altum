@@ -630,33 +630,47 @@ async function resolveWhatsAppBusinessAccountId(channel: WhatsAppChannelConfig) 
 }
 
 async function listMetaMessageTemplates(channel: WhatsAppChannelConfig, wabaId: string) {
-  const response = await fetch(
-    `https://graph.facebook.com/${VERSION}/${wabaId}/message_templates?fields=id,name,status,language,category,components&limit=200`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${channel.accessToken}`,
-      },
-    }
-  );
-
-  const payload = (await response.json().catch(() => ({}))) as {
-    data?: Array<{
-      id?: string;
-      name?: string;
-      status?: string;
-      language?: string;
-      category?: string;
-      components?: Array<Record<string, unknown>>;
-    }>;
+  type MetaTemplate = {
+    id?: string;
+    name?: string;
+    status?: string;
+    language?: string;
+    category?: string;
+    components?: Array<Record<string, unknown>>;
+  };
+  type MetaTemplatesPayload = {
+    data?: MetaTemplate[];
+    paging?: { cursors?: { after?: string } };
     error?: { message?: string };
   };
 
-  if (!response.ok) {
-    throw new Error(normalizeMetaErrorMessage(payload.error?.message, "Falha ao listar templates do WABA."));
+  // A conta pode ter mais de 200 modelos. Paginar evita que modelos antigos
+  // simplesmente desapareçam do seletor de disparo da Altum.
+  const items: MetaTemplate[] = [];
+  let after = "";
+  for (let page = 0; page < 10; page += 1) {
+    const query = new URLSearchParams({
+      fields: "id,name,status,language,category,components",
+      limit: "100",
+    });
+    if (after) query.set("after", after);
+    const response = await fetch(
+      `https://graph.facebook.com/${VERSION}/${wabaId}/message_templates?${query.toString()}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${channel.accessToken}` },
+      }
+    );
+    const payload = (await response.json().catch(() => ({}))) as MetaTemplatesPayload;
+    if (!response.ok) {
+      throw new Error(normalizeMetaErrorMessage(payload.error?.message, "Falha ao listar templates do WABA."));
+    }
+    items.push(...(payload.data || []));
+    after = String(payload.paging?.cursors?.after || "").trim();
+    if (!after || !(payload.data || []).length) break;
   }
 
-  return (payload.data || []).map((item) => ({
+  return items.map((item) => ({
     id: String(item.id || "").trim() || null,
     name: String(item.name || "").trim().toLowerCase(),
     language: String(item.language || "").trim(),

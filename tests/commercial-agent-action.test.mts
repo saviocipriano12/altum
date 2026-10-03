@@ -66,7 +66,7 @@ test("painel do agente calcula tempo de decisao e valor aprovado", async () => {
   assert.match(actionsSource, /overdue/);
 });
 
-test("SLA expira, escala e notifica por atividade do tenant com cron diario de seguranca", async () => {
+test("SLA expira, escala e notifica pelo worker, sem efeito colateral ao abrir a fila", async () => {
   const processorSource = await readFile(new URL("../lib/server/commercial-agent-sla.ts", import.meta.url), "utf8");
   const routeSource = await readFile(new URL("../app/api/internal/jobs/commercial-agent/actions/route.ts", import.meta.url), "utf8");
   const tenantRouteSource = await readFile(new URL("../app/api/tenant/[tenantId]/commercial-agent/actions/route.ts", import.meta.url), "utf8");
@@ -74,9 +74,11 @@ test("SLA expira, escala e notifica por atividade do tenant com cron diario de s
   assert.match(processorSource, /commercial_agent_action_expired/);
   assert.match(processorSource, /sendCriticalPushToTenantUser/);
   assert.match(processorSource, /runTransaction/);
+  assert.match(processorSource, /where\("status", "==", "pending_approval"\)/);
+  assert.match(processorSource, /orderBy\("createdAt", "asc"\)/);
   assert.match(routeSource, /timingSafeEqual/);
   assert.match(routeSource, /COMMERCIAL_AGENT_JOBS_TOKEN/);
-  assert.match(tenantRouteSource, /processCommercialAgentSla\(\{ tenantId, limit: 50 \}\)/);
+  assert.doesNotMatch(tenantRouteSource, /processCommercialAgentSla/);
   assert.match(processorSource, /where\("tenantId", "==", tenantId\)/);
   assert.match(vercelSource, /commercial-agent\/actions/);
   assert.match(vercelSource, /10 9 \* \* \*/);

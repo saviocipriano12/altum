@@ -67,6 +67,14 @@ test("falhas recebem backoff e seguem para dead letter apos o limite", () => {
   assert.match(processorSource, /ecommerce_agent_dead_letters/);
 });
 
+test("fila comercial recupera claims abandonados e escolhe a proxima tentativa em ordem", () => {
+  assert.match(processorSource, /PROCESSING_LEASE_MS/);
+  assert.match(processorSource, /recoverExpiredActionClaims/);
+  assert.match(processorSource, /processing_lease_expired/);
+  assert.match(processorSource, /orderBy\("nextAttemptAt", "asc"\)/);
+  assert.match(processorSource, /backfillPendingActionSchedules/);
+});
+
 test("webhook e job agendado usam o mesmo processador controlado", () => {
   assert.match(webhookSource, /processTenantEcommerceActions/);
   assert.match(cronSource, /processTenantEcommerceActions/);

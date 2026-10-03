@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -17,7 +18,9 @@ import {
   Pause,
   Play,
   Plus,
+  RefreshCw,
   Save,
+  Search,
   Send,
   ShieldCheck,
   Smartphone,
@@ -40,6 +43,7 @@ type CampaignStatus = "draft" | "active" | "paused";
 type DeliveryMode = "text" | "template";
 type Step = "remetente" | "publico" | "conteudo" | "revisao";
 type BuilderMode = "simple" | "flow";
+type Workspace = "overview" | "builder";
 type AudienceBehavior = "all" | "no_response" | "inactive" | "proposal_stalled" | "new_inbound";
 
 type AutomationFlowNodeType = "send" | "condition" | "ai" | "media" | "meeting" | "human" | "end";
@@ -92,6 +96,12 @@ type Channel = {
   outboundReady?: boolean;
   metadata?: Record<string, string>;
   wabaId?: string;
+};
+
+type ChannelCapability = {
+  kind: "meta_template" | "freeform" | "unavailable";
+  title: string;
+  description: string;
 };
 
 type Campaign = {
@@ -396,10 +406,46 @@ function createDirectSalesAutomationFlow(): AutomationFlow {
 }
 
 const STEPS: Array<{ id: Step; label: string; icon: typeof Smartphone }> = [
-  { id: "remetente", label: "Remetente", icon: Smartphone },
-  { id: "publico", label: "Publico", icon: Users },
-  { id: "conteudo", label: "Conteudo", icon: MessageCircle },
-  { id: "revisao", label: "Revisao", icon: ShieldCheck },
+  { id: "remetente", label: "Número", icon: Smartphone },
+  { id: "publico", label: "Público", icon: Users },
+  { id: "conteudo", label: "Mensagem", icon: MessageCircle },
+  { id: "revisao", label: "Revisar", icon: ShieldCheck },
+];
+
+type CampaignStarter = {
+  id: "reactivate" | "offer" | "proposal";
+  title: string;
+  name: string;
+  behavior: AudienceBehavior;
+  behaviorWindowDays: number;
+  summary: string;
+};
+
+const CAMPAIGN_STARTERS: CampaignStarter[] = [
+  {
+    id: "reactivate",
+    title: "Reativar contatos",
+    name: "Reativação de contatos sem resposta",
+    behavior: "no_response",
+    behaviorWindowDays: 7,
+    summary: "Falar novamente com quem não respondeu nos últimos 7 dias.",
+  },
+  {
+    id: "offer",
+    title: "Apresentar uma oferta",
+    name: "Apresentação de oferta",
+    behavior: "all",
+    behaviorWindowDays: 3,
+    summary: "Escolher o público ideal e apresentar uma oferta com modelo aprovado.",
+  },
+  {
+    id: "proposal",
+    title: "Destravar propostas",
+    name: "Follow-up de propostas paradas",
+    behavior: "proposal_stalled",
+    behaviorWindowDays: 7,
+    summary: "Retomar oportunidades com proposta parada há mais de 7 dias.",
+  },
 ];
 
 function emptyCampaign(): Campaign {
@@ -433,30 +479,54 @@ function emptyCampaign(): Campaign {
   };
 }
 
-function hasGatewayMetadata(channel?: Channel | null) {
-  if (!channel?.metadata) return false;
-  return Boolean(
-    channel.metadata.gatewayEndpoint ||
-      channel.metadata.endpointUrl ||
-      channel.metadata.apiBaseUrl ||
-      channel.metadata.webhookUrl
-  );
+function hydrateCampaign(source: Partial<Campaign>): Campaign {
+  const fallback = emptyCampaign();
+  return {
+    ...fallback,
+    ...source,
+    name: typeof source.name === "string" ? source.name : fallback.name,
+    channelId: typeof source.channelId === "string" ? source.channelId : fallback.channelId,
+    deliveryMode: source.deliveryMode === "template" ? "template" : source.deliveryMode === "text" ? "text" : fallback.deliveryMode,
+    messageTemplate: typeof source.messageTemplate === "string" ? source.messageTemplate : fallback.messageTemplate,
+    templateName: typeof source.templateName === "string" ? source.templateName : fallback.templateName,
+    languageCode: typeof source.languageCode === "string" ? source.languageCode : fallback.languageCode,
+    bodyParams: Array.isArray(source.bodyParams) ? source.bodyParams.filter((item): item is string => typeof item === "string") : fallback.bodyParams,
+    aiFollowup: { ...fallback.aiFollowup, ...(source.aiFollowup || {}) },
+    automationFlow: source.automationFlow && typeof source.automationFlow === "object" ? source.automationFlow : fallback.automationFlow,
+    filters: { ...fallback.filters, ...(source.filters || {}) },
+  };
 }
 
 function isOfficialChannel(channel?: Channel | null) {
   if (!channel) return false;
-  const normalized = String(channel.provider || "").toLowerCase();
-  if (
-    normalized === "whatsapp_qr" ||
-    normalized === "whatsapp_session" ||
-    normalized === "whatsapp_gateway" ||
-    normalized === "external_whatsapp"
-  ) {
-    return false;
+  // Keep this in sync with isOfficialWhatsAppProvider on the server. A visual
+  // "official" badge must never promise a Meta template catalogue that the API
+  // will reject for this provider.
+  return ["meta_whatsapp", "whatsapp_cloud_api", "whatsapp_business_cloud_api"].includes(
+    String(channel.provider || "").trim().toLowerCase()
+  );
+}
+
+function getChannelCapability(channel?: Channel | null): ChannelCapability {
+  if (!channel || (!channel.outboundReady && channel.status !== "active")) {
+    return {
+      kind: "unavailable",
+      title: "Precisa de atenção",
+      description: "Finalize a conexão antes de usar este número em uma campanha.",
+    };
   }
-  if (normalized.includes("meta") || normalized.includes("cloud")) return true;
-  if (hasGatewayMetadata(channel)) return false;
-  return Boolean(channel.phoneNumberId || channel.wabaId);
+  if (isOfficialChannel(channel)) {
+    return {
+      kind: "meta_template",
+      title: "Modelos aprovados pela Meta",
+      description: "Para iniciar conversas, escolha um modelo já aprovado para este número.",
+    };
+  }
+  return {
+    kind: "freeform",
+    title: "Mensagem livre",
+    description: "Escreva uma mensagem personalizada e adicione mídia quando fizer sentido.",
+  };
 }
 
 function formatDate(value?: string | null) {
@@ -557,6 +627,13 @@ function getTemplateVariableCount(template: WhatsAppTemplate | undefined) {
   return highest;
 }
 
+function getTemplateVariableIndexes(template: WhatsAppTemplate | undefined) {
+  const body = getTemplateBody(template);
+  return Array.from(new Set(Array.from(body.matchAll(/\{\{\s*(\d+)\s*\}\}/g), (match) => Number(match[1]))))
+    .filter((index) => index > 0)
+    .sort((a, b) => a - b);
+}
+
 function getTemplateHeaderMediaType(template: WhatsAppTemplate | undefined): "image" | "video" | "document" | null {
   const header = template?.components.find((component) => String(component.type || "").toUpperCase() === "HEADER");
   const format = String(header?.format || "").toUpperCase();
@@ -579,6 +656,23 @@ function renderTemplateBodyPreview(template: WhatsAppTemplate | undefined, param
     const index = Number(rawIndex) - 1;
     return params[index] || `{variavel ${rawIndex}}`;
   });
+}
+
+function getTemplateHeaderText(template: WhatsAppTemplate | undefined) {
+  const header = template?.components.find((component) => String(component.type || "").toUpperCase() === "HEADER");
+  return String(header?.text || "").trim();
+}
+
+function getTemplateFooter(template: WhatsAppTemplate | undefined) {
+  const footer = template?.components.find((component) => String(component.type || "").toUpperCase() === "FOOTER");
+  return String(footer?.text || "").trim();
+}
+
+function getTemplateButtons(template: WhatsAppTemplate | undefined) {
+  const buttons = template?.components.find((component) => String(component.type || "").toUpperCase() === "BUTTONS")?.buttons;
+  return Array.isArray(buttons)
+    ? buttons.map((button) => String((button as Record<string, unknown>).text || "").trim()).filter(Boolean)
+    : [];
 }
 
 function humanizeTemplateError(message: string) {
@@ -605,10 +699,13 @@ export default function BulkMessagingPage() {
   const [templateMeta, setTemplateMeta] = useState<TemplateMeta | null>(null);
   const [templateError, setTemplateError] = useState("");
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [templateRefreshKey, setTemplateRefreshKey] = useState(0);
   const [editor, setEditor] = useState<Campaign>(emptyCampaign);
   const [selectedId, setSelectedId] = useState("");
   const [step, setStep] = useState<Step>("remetente");
   const [builderMode, setBuilderMode] = useState<BuilderMode>("simple");
+  const [workspace, setWorkspace] = useState<Workspace>("overview");
+  const [selectedStarter, setSelectedStarter] = useState<CampaignStarter | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState<"save" | "preview" | "send" | "delete" | "media" | "audience" | null>(null);
@@ -651,7 +748,7 @@ export default function BulkMessagingPage() {
     if (!selectedId) return;
     const selected = campaigns.find((item) => item.id === selectedId);
     if (!selected) return;
-    setEditor({ ...emptyCampaign(), ...selected });
+    setEditor(hydrateCampaign(selected));
     setPreview(null);
     setAudienceImport(null);
   }, [campaigns, selectedId]);
@@ -666,12 +763,16 @@ export default function BulkMessagingPage() {
   const requiredHeaderMedia = getTemplateHeaderMediaType(selectedTemplate);
 
   const readiness = useMemo(() => {
+    const name = editor.name || "";
+    const templateName = editor.templateName || "";
+    const message = editor.messageTemplate || "";
+    const followup = editor.aiFollowup || emptyCampaign().aiFollowup;
     const checks = [
-      Boolean(editor.name.trim()),
+      Boolean(name.trim()),
       Boolean(editor.channelId),
-      editor.deliveryMode === "template" ? Boolean(editor.templateName.trim()) : editor.messageTemplate.trim().length >= 10,
+      editor.deliveryMode === "template" ? Boolean(templateName.trim()) : message.trim().length >= 10,
       editor.deliveryMode !== "template" || !requiredHeaderMedia || editor.headerMedia?.type === requiredHeaderMedia,
-      Boolean(editor.aiFollowup.offerName.trim() || editor.aiFollowup.exampleUrl.trim() || editor.aiFollowup.nextStep.trim()),
+      Boolean(followup.offerName.trim() || followup.exampleUrl.trim() || followup.nextStep.trim()),
       editor.maxRecipients > 0,
       Boolean(preview),
     ];
@@ -745,11 +846,23 @@ export default function BulkMessagingPage() {
     return () => {
       mounted = false;
     };
-  }, [editor.channelId, officialChannel, tenant?.tenantId]);
+  }, [editor.channelId, officialChannel, templateRefreshKey, tenant?.tenantId]);
 
-  function createNew() {
-    const firstChannel = readyChannels[0] || channels[0];
+  function createNew(starter?: CampaignStarter) {
+    // A campanha deve iniciar no canal oficial sempre que ele existir. Antes,
+    // a primeira conexao ativa (frequentemente um WhatsApp normal) era escolhida
+    // por ordem de cadastro e, por isso, o catalogo de templates nem era consultado.
+    const firstChannel =
+      readyChannels.find((channel) => isOfficialChannel(channel)) ||
+      readyChannels[0] ||
+      channels.find((channel) => isOfficialChannel(channel)) ||
+      channels[0];
     const next = emptyCampaign();
+    if (starter) {
+      next.name = starter.name;
+      next.filters.behavior = starter.behavior;
+      next.filters.behaviorWindowDays = starter.behaviorWindowDays;
+    }
     if (firstChannel) {
       next.channelId = firstChannel.id;
       next.deliveryMode = isOfficialChannel(firstChannel) ? "template" : "text";
@@ -758,7 +871,9 @@ export default function BulkMessagingPage() {
     setSelectedId("");
     setPreview(null);
     setAudienceImport(null);
-    setStep("remetente");
+    setStep(starter ? "publico" : "remetente");
+    setSelectedStarter(starter || null);
+    setWorkspace("builder");
     setNotice("");
     setError("");
   }
@@ -770,6 +885,12 @@ export default function BulkMessagingPage() {
       deliveryMode: isOfficialChannel(channel) ? "template" : "text",
     }));
     setPreview(null);
+  }
+
+  function moveStep(direction: -1 | 1) {
+    const current = STEPS.findIndex((item) => item.id === step);
+    const next = STEPS[Math.max(0, Math.min(STEPS.length - 1, current + direction))];
+    if (next) setStep(next.id);
   }
 
   async function importAudienceFile(file: File) {
@@ -1012,32 +1133,70 @@ export default function BulkMessagingPage() {
     return <div className="flex min-h-[45vh] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-[var(--cliente-primary)]" /></div>;
   }
 
+  if (workspace === "overview") {
+    return (
+      <CampaignOverview
+        campaigns={campaigns}
+        runs={runs}
+        totals={totals}
+        readyChannels={readyChannels.length}
+        canManage={canManage}
+        onCreate={createNew}
+        onStart={createNew}
+        onOpen={(campaignId) => {
+          setSelectedId(campaignId);
+          setSelectedStarter(null);
+          setWorkspace("builder");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-5 pb-24 lg:pb-8">
       <SectionHeader
-        title="Disparos em Massa"
-        subtitle="Escolha o numero, segmente a base, revise a mensagem e acompanhe cada envio."
+        title={editor.id ? "Editar campanha" : "Criar campanha"}
+        subtitle="Escolha quem deve receber e qual conversa você quer começar."
         action={
-          canManage ? (
-            <ClientActionButton tone="primary" onClick={createNew}>
-              <Plus className="h-4 w-4" /> Novo disparo
-            </ClientActionButton>
-          ) : null
+          <ClientActionButton tone="secondary" onClick={() => setWorkspace("overview")}>
+            <ArrowLeft className="h-4 w-4" /> Campanhas
+          </ClientActionButton>
         }
       />
-
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryMetric label="Enviados" value={totals.sent} icon={Send} tone="text-emerald-600" />
-        <SummaryMetric label="Ativos" value={totals.active} icon={Play} tone="text-blue-600" />
-        <SummaryMetric label="Falhas" value={totals.failed} icon={AlertTriangle} tone="text-rose-600" />
-        <SummaryMetric label="Numeros prontos" value={readyChannels.length} icon={Smartphone} tone="text-violet-600" />
-      </section>
 
       {error ? <Feedback tone="error" text={error} /> : null}
       {notice ? <Feedback tone="success" text={notice} /> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[250px_minmax(0,1fr)_310px]">
-        <aside className="order-2 xl:order-1">
+      <CampaignComposer
+        editor={editor}
+        channels={channels}
+        selectedChannel={selectedChannel}
+        official={officialChannel}
+        templates={templates}
+        templateMeta={templateMeta}
+        templateError={templateError}
+        loadingTemplates={loadingTemplates}
+        uploading={working === "media"}
+        uploadProgress={uploadProgress}
+        importing={working === "audience"}
+        importSummary={audienceImport}
+        preview={preview}
+        canManage={canManage}
+        working={working}
+        onChooseChannel={chooseChannel}
+        onImportFile={(file) => void importAudienceFile(file)}
+        onRefreshTemplates={() => setTemplateRefreshKey((current) => current + 1)}
+        onUpload={uploadMedia}
+        onChange={(patch) => { setEditor((current) => ({ ...current, ...patch })); setPreview(null); }}
+        onSave={() => void save()}
+        onSimulate={() => void simulate()}
+        onDispatch={() => void dispatch()}
+      />
+
+      {false ? (
+        <>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_310px]">
+        <aside className="hidden">
           <PanelCard className="overflow-hidden p-0">
             <div className="border-b border-[var(--cliente-border)] p-4">
               <p className="text-sm font-bold text-[var(--cliente-card-text)]">Seus disparos</p>
@@ -1090,6 +1249,15 @@ export default function BulkMessagingPage() {
                 />
                 <StateBadge label={`${readiness}% pronto`} tone={readiness >= 80 ? "success" : "warning"} />
               </div>
+              {selectedStarter ? (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-blue-200 bg-blue-50 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-extrabold text-blue-950">Objetivo: {selectedStarter?.title}</p>
+                    <p className="mt-1 text-xs text-blue-800">{selectedStarter?.summary}</p>
+                  </div>
+                  <button type="button" onClick={() => setWorkspace("overview")} className="text-xs font-bold text-blue-700 underline underline-offset-4">Trocar objetivo</button>
+                </div>
+              ) : null}
               <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-1">
                 {[
                   { id: "simple" as BuilderMode, label: "Disparo simples", icon: MessageCircle },
@@ -1175,6 +1343,7 @@ export default function BulkMessagingPage() {
                   templateMeta={templateMeta}
                   templateError={templateError}
                   loadingTemplates={loadingTemplates}
+                  onRefreshTemplates={() => setTemplateRefreshKey((current) => current + 1)}
                   uploading={working === "media"}
                   uploadProgress={uploadProgress}
                   onUpload={uploadMedia}
@@ -1188,6 +1357,11 @@ export default function BulkMessagingPage() {
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-4 md:px-6">
               <div className="flex gap-2">
+                {builderMode === "simple" && step !== "remetente" ? (
+                  <ClientActionButton tone="secondary" onClick={() => moveStep(-1)} disabled={Boolean(working)}>
+                    <ArrowLeft className="h-4 w-4" /> Anterior
+                  </ClientActionButton>
+                ) : null}
                 {editor.id ? (
                   <ClientActionButton tone="danger" onClick={() => void remove()} disabled={Boolean(working)}>
                     {working === "delete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -1205,12 +1379,20 @@ export default function BulkMessagingPage() {
                 </ClientActionButton>
               </div>
               <div className="flex gap-2">
-                <ClientActionButton tone="secondary" onClick={() => void simulate()} disabled={Boolean(working) || !editor.channelId || !canManage}>
-                  {working === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Filter className="h-4 w-4" />} Simular
-                </ClientActionButton>
-                <ClientActionButton tone="success" onClick={() => void dispatch()} disabled={Boolean(working) || !preview || !editor.id || !canManage}>
-                  {working === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {editor.scheduledAt ? "Agendar" : "Enviar agora"}
-                </ClientActionButton>
+                {builderMode === "simple" && step !== "revisao" ? (
+                  <ClientActionButton tone="primary" onClick={() => moveStep(1)} disabled={Boolean(working)}>
+                    Continuar <ChevronRight className="h-4 w-4" />
+                  </ClientActionButton>
+                ) : (
+                  <>
+                    <ClientActionButton tone="secondary" onClick={() => void simulate()} disabled={Boolean(working) || !editor.channelId || !canManage}>
+                      {working === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Filter className="h-4 w-4" />} Simular público
+                    </ClientActionButton>
+                    <ClientActionButton tone="success" onClick={() => void dispatch()} disabled={Boolean(working) || !preview || !editor.id || !canManage}>
+                      {working === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {editor.scheduledAt ? "Agendar" : "Enviar agora"}
+                    </ClientActionButton>
+                  </>
+                )}
               </div>
             </div>
           </PanelCard>
@@ -1262,22 +1444,103 @@ export default function BulkMessagingPage() {
           {!runs.length ? <p className="py-6 text-center text-sm text-[var(--cliente-card-text-soft)]">Nenhum envio executado ainda.</p> : null}
         </div>
       </PanelCard>
+        </>
+      ) : null}
     </div>
   );
 }
 
-function SummaryMetric({ label, value, icon: Icon, tone }: { label: string; value: number; icon: typeof Send; tone: string }) {
+function CampaignOverview({
+  campaigns,
+  runs,
+  totals,
+  readyChannels,
+  canManage,
+  onCreate,
+  onStart,
+  onOpen,
+}: {
+  campaigns: Campaign[];
+  runs: Run[];
+  totals: { sent: number; failed: number; active: number };
+  readyChannels: number;
+  canManage: boolean;
+  onCreate: () => void;
+  onStart: (starter: CampaignStarter) => void;
+  onOpen: (campaignId: string) => void;
+}) {
+  const recentCampaigns = campaigns.slice(0, 6);
+  const hasCampaigns = Boolean(campaigns.length);
+
   return (
-    <PanelCard className="p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <p className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">{label}</p>
-          <p className="mt-1 text-2xl font-extrabold text-[var(--cliente-card-text)]">{value}</p>
+    <div className="space-y-6 pb-24 lg:pb-8">
+      <SectionHeader
+        title="Campanhas WhatsApp"
+        subtitle="Planeje, envie e acompanhe conversas que viram oportunidades."
+        action={canManage ? <ClientActionButton tone="primary" onClick={onCreate}><Plus className="h-4 w-4" /> Nova campanha</ClientActionButton> : null}
+      />
+
+      <section className="overflow-hidden rounded-[28px] border border-blue-200 bg-[linear-gradient(120deg,#173d9d_0%,#2563d9_58%,#4f46e5_100%)] p-6 text-white shadow-[0_18px_55px_rgba(37,99,235,.18)] md:p-8">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="max-w-2xl">
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold"><MessageCircle className="h-3.5 w-3.5" /> Operação comercial</span>
+            <h2 className="mt-4 text-2xl font-black tracking-tight md:text-3xl">Toda campanha começa com uma conversa que vale a pena responder.</h2>
+            <p className="mt-3 text-sm leading-6 text-blue-100 md:text-base">Escolha o público, use um modelo aprovado e deixe a Altum organizar as respostas no seu funil.</p>
+          </div>
+          {canManage ? <button type="button" onClick={onCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-extrabold text-blue-800 transition hover:-translate-y-0.5 hover:shadow-lg"><Plus className="h-4 w-4" /> Criar campanha</button> : null}
         </div>
-        <Icon className={`h-5 w-5 ${tone}`} />
-      </div>
-    </PanelCard>
+        <div className="mt-7 grid grid-cols-2 gap-3 border-t border-white/15 pt-5 sm:grid-cols-4">
+          <HeroMetric label="enviados" value={totals.sent} />
+          <HeroMetric label="em operação" value={totals.active} />
+          <HeroMetric label="falhas" value={totals.failed} />
+          <HeroMetric label="números prontos" value={readyChannels} />
+        </div>
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-3">
+        {CAMPAIGN_STARTERS.map((play) => {
+          const details = play.id === "reactivate"
+            ? { icon: Clock3, tone: "border-amber-200 bg-amber-50 text-amber-800" }
+            : play.id === "proposal"
+              ? { icon: GitBranch, tone: "border-violet-200 bg-violet-50 text-violet-800" }
+              : { icon: Send, tone: "border-blue-200 bg-blue-50 text-blue-800" };
+          const Icon = details.icon;
+          return (
+            <button key={play.id} type="button" onClick={() => onStart(play)} disabled={!canManage} className="group rounded-[20px] border border-[var(--cliente-border)] bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--cliente-border-strong)] hover:shadow-md disabled:cursor-default disabled:hover:translate-y-0">
+              <span className={`flex h-9 w-9 items-center justify-center rounded-xl border ${details.tone}`}><Icon className="h-4 w-4" /></span>
+              <p className="mt-4 text-sm font-extrabold text-[var(--cliente-card-text)]">{play.title}</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{play.summary}</p>
+              <span className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[var(--cliente-primary)]">Começar <ChevronRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" /></span>
+            </button>
+          );
+        })}
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_330px]">
+        <PanelCard className="overflow-hidden p-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--cliente-border)] px-5 py-4">
+            <div><p className="text-base font-extrabold text-[var(--cliente-card-text)]">Suas campanhas</p><p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Acompanhe o que está em andamento e retome rascunhos.</p></div>
+            <span className="rounded-full bg-[var(--cliente-surface-muted)] px-2.5 py-1 text-xs font-bold text-[var(--cliente-card-text-soft)]">{campaigns.length} no total</span>
+          </div>
+          {hasCampaigns ? <div className="divide-y divide-[var(--cliente-border)]">{recentCampaigns.map((campaign) => (
+            <button key={campaign.id} type="button" onClick={() => onOpen(campaign.id)} className="grid w-full gap-3 px-5 py-4 text-left transition hover:bg-[var(--cliente-surface-hover)] sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+              <div className="min-w-0"><p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{campaign.name}</p><p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{campaign.templateName ? `Modelo ${campaign.templateName}` : "Mensagem livre"} · {formatDate(campaign.lastRunAt)}</p></div>
+              <StateBadge label={campaign.status === "active" ? "em operação" : campaign.status === "paused" ? "pausada" : "rascunho"} tone={campaign.status === "active" ? "success" : campaign.status === "paused" ? "warning" : "neutral"} />
+              <span className="text-xs font-bold text-[var(--cliente-card-text-soft)]">{campaign.deliveryMetrics?.responded || 0} respostas</span>
+            </button>
+          ))}</div> : <div className="p-8"><EmptyState title="Sua primeira campanha começa aqui" description="Use um modelo aprovado para iniciar conversas com o público certo." /></div>}
+        </PanelCard>
+        <PanelCard className="p-5">
+          <div className="flex items-center justify-between"><div><p className="text-base font-extrabold text-[var(--cliente-card-text)]">Últimos resultados</p><p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">O que aconteceu nos envios recentes.</p></div><CheckCircle2 className="h-5 w-5 text-emerald-500" /></div>
+          <div className="mt-4 space-y-3">{runs.slice(0, 4).map((run) => <div key={run.id} className="rounded-[16px] bg-[var(--cliente-surface-muted)] p-3"><p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{run.campaignName}</p><p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{run.summary.sent} enviados · {run.summary.failed} falhas · {formatDate(run.createdAt)}</p></div>)}{!runs.length ? <p className="rounded-[16px] bg-[var(--cliente-surface-muted)] p-4 text-sm text-[var(--cliente-card-text-soft)]">Quando sua campanha for enviada, os resultados aparecem aqui.</p> : null}</div>
+        </PanelCard>
+      </section>
+    </div>
   );
+}
+
+function HeroMetric({ label, value }: { label: string; value: number }) {
+  return <div><p className="text-xl font-black tabular-nums">{value}</p><p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-blue-100">{label}</p></div>;
 }
 
 function ImportStat({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) {
@@ -1296,6 +1559,200 @@ function Feedback({ tone, text }: { tone: "error" | "success"; text: string }) {
       <Icon className="h-4 w-4 shrink-0" /> {text}
     </div>
   );
+}
+
+function CampaignComposer({
+  editor,
+  channels,
+  selectedChannel,
+  official,
+  templates,
+  templateMeta,
+  templateError,
+  loadingTemplates,
+  uploading,
+  uploadProgress,
+  importing,
+  importSummary,
+  preview,
+  canManage,
+  working,
+  onChooseChannel,
+  onImportFile,
+  onRefreshTemplates,
+  onUpload,
+  onChange,
+  onSave,
+  onSimulate,
+  onDispatch,
+}: {
+  editor: Campaign;
+  channels: Channel[];
+  selectedChannel: Channel | null;
+  official: boolean;
+  templates: WhatsAppTemplate[];
+  templateMeta: TemplateMeta | null;
+  templateError: string;
+  loadingTemplates: boolean;
+  uploading: boolean;
+  uploadProgress: number | null;
+  importing: boolean;
+  importSummary: AudienceImportSummary | null;
+  preview: Preview | null;
+  canManage: boolean;
+  working: string | null;
+  onChooseChannel: (channel: Channel) => void;
+  onImportFile: (file: File) => void;
+  onRefreshTemplates: () => void;
+  onUpload: (file: File) => void;
+  onChange: (patch: Partial<Campaign>) => void;
+  onSave: () => void;
+  onSimulate: () => void;
+  onDispatch: () => void;
+}) {
+  const capability = getChannelCapability(selectedChannel);
+  const selectedTemplate = templates.find((template) => template.name === editor.templateName && template.language === editor.languageCode);
+  const requiredHeaderMedia = getTemplateHeaderMediaType(selectedTemplate);
+  const messageReady = editor.deliveryMode === "template"
+    ? Boolean(editor.templateName) && (!requiredHeaderMedia || editor.headerMedia?.type === requiredHeaderMedia)
+    : editor.messageTemplate.trim().length > 9;
+  const audienceReady = Boolean(editor.filters.behavior);
+  const readyToReview = Boolean(selectedChannel && audienceReady && messageReady);
+  const pendingRequirement = !selectedChannel
+    ? "Escolha um WhatsApp para continuar."
+    : !messageReady && requiredHeaderMedia
+      ? `O modelo escolhido precisa de ${requiredHeaderMedia === "image" ? "uma imagem" : requiredHeaderMedia === "video" ? "um vídeo" : "um documento"}.`
+      : !messageReady
+        ? official ? "Escolha um modelo aprovado para continuar." : "Escreva uma mensagem para continuar."
+        : "Escolha concluída: você já pode conferir o público.";
+
+  return (
+    <div className="mx-auto max-w-6xl">
+      <PanelCard className="overflow-hidden p-0 shadow-[0_18px_55px_rgba(25,45,85,.08)]">
+        <div className="border-b border-blue-100 bg-[linear-gradient(120deg,#eff6ff_0%,#f8fbff_58%,#eefcf7_100%)] px-5 py-7 md:px-8 md:py-8">
+          <div className="flex flex-wrap items-start justify-between gap-5">
+            <div className="max-w-2xl">
+              <p className="text-xs font-black uppercase tracking-[.16em] text-blue-600">Campanha WhatsApp</p>
+              <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-950 md:text-3xl">Uma boa conversa começa com uma escolha simples.</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Defina o público e a mensagem. A Altum cuida das proteções, da cadência e do registro das respostas.</p>
+            </div>
+            <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500">Seu WhatsApp</p>
+              <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-800"><MessageCircle className="h-4 w-4 text-emerald-500" />{selectedChannel?.displayName || "Escolha um número"}</p>
+              <p className="mt-1 text-[11px] font-semibold text-slate-500">{capability.title}</p>
+            </div>
+          </div>
+          <label className="mt-6 block max-w-xl">
+            <span className="text-xs font-bold text-slate-600">Como você quer chamar esta campanha?</span>
+            <input value={editor.name} onChange={(event) => onChange({ name: event.target.value })} className="mt-2 w-full border-0 border-b-2 border-blue-200 bg-transparent px-0 py-2 text-lg font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600" placeholder="Ex.: Retomada de propostas de outubro" />
+          </label>
+        </div>
+
+        <div className="divide-y divide-[var(--cliente-border)]">
+          <section className="px-5 py-7 md:px-8 md:py-8">
+            <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+              <div><p className="text-xs font-black uppercase tracking-[.14em] text-blue-600">01 · Canal</p><h3 className="mt-1 text-xl font-extrabold text-slate-950">Por qual WhatsApp essa conversa vai acontecer?</h3><p className="mt-1 text-sm text-slate-600">A Altum adapta a campanha ao que cada número realmente pode fazer.</p></div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {channels.map((channel) => {
+                const channelCapability = getChannelCapability(channel);
+                const selected = channel.id === editor.channelId;
+                const isUnavailable = channelCapability.kind === "unavailable";
+                const Icon = channelCapability.kind === "meta_template" ? CheckCircle2 : channelCapability.kind === "freeform" ? MessageCircle : AlertTriangle;
+                const tone = channelCapability.kind === "meta_template" ? "border-blue-500 bg-blue-50" : channelCapability.kind === "freeform" ? "border-emerald-400 bg-emerald-50" : "border-amber-300 bg-amber-50";
+                return (
+                  <button key={channel.id} type="button" onClick={() => onChooseChannel(channel)} disabled={isUnavailable} className={`rounded-2xl border p-4 text-left transition ${selected ? `${tone} ring-2 ring-offset-1 ${channelCapability.kind === "meta_template" ? "ring-blue-200" : "ring-emerald-100"}` : "border-slate-200 bg-white hover:border-slate-300"} ${isUnavailable ? "cursor-not-allowed opacity-60" : "hover:-translate-y-0.5"}`}>
+                    <div className="flex items-start gap-3"><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${channelCapability.kind === "meta_template" ? "bg-blue-600 text-white" : channelCapability.kind === "freeform" ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-700"}`}><Icon className="h-5 w-5" /></span><div className="min-w-0"><div className="flex items-center gap-2"><p className="truncate text-sm font-extrabold text-slate-900">{channel.displayName || "WhatsApp"}</p>{selected ? <Check className="h-4 w-4 text-emerald-600" /> : null}</div><p className="mt-1 text-xs font-bold text-slate-600">{channelCapability.title}</p><p className="mt-1 text-xs leading-5 text-slate-500">{channelCapability.description}</p></div></div>
+                  </button>
+                );
+              })}
+            </div>
+            {!channels.length ? <EmptyState title="Nenhum WhatsApp conectado" description="Conecte um número para criar a primeira campanha." /> : null}
+            <div className={`mt-5 flex gap-3 rounded-2xl border p-4 ${capability.kind === "meta_template" ? "border-blue-200 bg-blue-50" : capability.kind === "freeform" ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${capability.kind === "meta_template" ? "bg-blue-600 text-white" : capability.kind === "freeform" ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-700"}`}>{capability.kind === "meta_template" ? <CheckCircle2 className="h-4 w-4" /> : capability.kind === "freeform" ? <MessageCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}</span>
+              <div><p className="text-sm font-extrabold text-slate-900">{capability.title}</p><p className="mt-1 text-sm leading-5 text-slate-600">{capability.description}</p></div>
+            </div>
+            <ChannelHealthNotice capability={capability} loading={loadingTemplates} error={templateError} templateCount={templates.length} />
+          </section>
+
+          <section className="px-5 py-7 md:px-8 md:py-8">
+            <div className="mb-6"><p className="text-xs font-black uppercase tracking-[.14em] text-blue-600">02 · Público</p><h3 className="mt-1 text-xl font-extrabold text-slate-950">Com quem você quer falar?</h3><p className="mt-1 text-sm text-slate-600">Comece pela intenção da campanha, não pelos filtros.</p></div>
+            <AudienceStep editor={editor} importing={importing} importSummary={importSummary} onImportFile={onImportFile} onChange={onChange} />
+          </section>
+
+          <section className="px-5 py-7 md:px-8 md:py-8">
+            <div className="mb-6"><p className="text-xs font-black uppercase tracking-[.14em] text-blue-600">03 · Mensagem</p><h3 className="mt-1 text-xl font-extrabold text-slate-950">{official ? "Escolha um modelo aprovado" : "Escreva a mensagem que inicia a conversa"}</h3><p className="mt-1 text-sm text-slate-600">{official ? "Estes são os modelos aprovados para o número e a conta Meta selecionados." : "Este número conversa como WhatsApp comum: use uma mensagem direta e personalizada."}</p></div>
+            <ContentStep editor={editor} official={official} templates={templates} templateMeta={templateMeta} templateError={templateError} loadingTemplates={loadingTemplates} onRefreshTemplates={onRefreshTemplates} uploading={uploading} uploadProgress={uploadProgress} onUpload={onUpload} onChange={onChange} />
+          </section>
+
+          <section className="bg-slate-50/80 px-5 py-7 md:px-8 md:py-8">
+            <div className="flex flex-wrap items-start justify-between gap-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[.14em] text-blue-600">04 · Confirmar</p>
+                <h3 className="mt-1 text-xl font-extrabold text-slate-950">Pronto para conferir o público?</h3>
+                <p className="mt-1 max-w-xl text-sm leading-6 text-slate-600">Antes do envio, mostramos quantas pessoas receberão a campanha e quem foi protegido automaticamente.</p>
+              </div>
+              <div className={`rounded-2xl border px-4 py-3 ${readyToReview ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                <p className="text-xs font-bold text-slate-600">Status da campanha</p>
+                <p className={`mt-1 text-sm font-extrabold ${readyToReview ? "text-emerald-700" : "text-amber-700"}`}>{readyToReview ? "Pronta para revisar" : "Faltam escolhas para revisar"}</p>
+              </div>
+            </div>
+            <p className={`mt-4 text-sm font-semibold ${readyToReview ? "text-emerald-700" : "text-amber-700"}`}>{pendingRequirement}</p>
+            {preview ? (
+              <PreflightResult preview={preview} />
+            ) : null}
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5">
+              <ClientActionButton tone="secondary" onClick={onSave} disabled={Boolean(working) || !canManage}><Save className="h-4 w-4" /> Salvar rascunho</ClientActionButton>
+              <div className="flex flex-wrap gap-2">
+                <ClientActionButton tone="secondary" onClick={onSimulate} disabled={Boolean(working) || !readyToReview || !canManage}>{working === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />} Conferir público</ClientActionButton>
+                <ClientActionButton tone="success" onClick={onDispatch} disabled={Boolean(working) || !preview || !editor.id || !canManage}>{working === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {editor.scheduledAt ? "Agendar campanha" : "Enviar campanha"}</ClientActionButton>
+              </div>
+            </div>
+          </section>
+        </div>
+      </PanelCard>
+    </div>
+  );
+}
+
+function ChannelHealthNotice({ capability, loading, error, templateCount }: { capability: ChannelCapability; loading: boolean; error: string; templateCount: number }) {
+  if (capability.kind === "freeform") {
+    return <div className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Canal pronto para mensagem livre. A Altum aplica as proteções de envio antes de disparar.</div>;
+  }
+  if (capability.kind === "unavailable") {
+    return <a href="/cliente/painel/configuracoes/canais" className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">Corrigir conexão deste número <ChevronRight className="h-4 w-4" /></a>;
+  }
+  if (loading) {
+    return <div className="mt-3 flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800"><Loader2 className="h-4 w-4 animate-spin" /> Validando a conexão com a Meta e buscando os modelos aprovados…</div>;
+  }
+  if (error) {
+    return <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3"><p className="text-sm font-bold text-rose-800">A Altum não conseguiu validar os modelos deste número.</p><p className="mt-1 text-xs leading-5 text-rose-700">{error}</p><a href="/cliente/painel/configuracoes/canais" className="mt-2 inline-flex text-sm font-bold text-blue-700 underline underline-offset-4">Corrigir conexão Meta</a></div>;
+  }
+  if (!templateCount) {
+    return <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Este número está conectado, mas ainda não há modelos aprovados disponíveis para usar.</div>;
+  }
+  return <div className="mt-3 flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-800"><CheckCircle2 className="h-4 w-4" /> Conexão Meta validada: {templateCount} {templateCount === 1 ? "modelo aprovado disponível" : "modelos aprovados disponíveis"}.</div>;
+}
+
+function PreflightResult({ preview }: { preview: Preview }) {
+  const protectedCount = preview.summary.blockedByConsent + preview.summary.blockedByFrequency + preview.summary.missingPhone;
+  const hasRecipients = preview.summary.estimatedSend > 0;
+  const protections = [
+    { label: "Sem permissão", value: preview.summary.blockedByConsent },
+    { label: "Contatos recentes", value: preview.summary.blockedByFrequency },
+    { label: "Sem WhatsApp válido", value: preview.summary.missingPhone },
+  ].filter((item) => item.value > 0);
+  return (
+    <div className={`mt-5 rounded-2xl border p-5 ${hasRecipients ? "border-emerald-200 bg-emerald-50/70" : "border-amber-200 bg-amber-50/70"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className={`text-base font-extrabold ${hasRecipients ? "text-emerald-900" : "text-amber-900"}`}>{hasRecipients ? "Público conferido. Sua campanha está pronta." : "Nenhum contato apto foi encontrado."}</p><p className="mt-1 text-sm text-slate-600">A Altum checou o público antes de colocar qualquer mensagem na fila.</p></div><StateBadge label={hasRecipients ? "seguro para enviar" : "revise o público"} tone={hasRecipients ? "success" : "warning"} /></div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3"><LaunchMetric label="Pessoas encontradas" value={preview.summary.matchedFilters} /><LaunchMetric label="Receberão esta campanha" value={preview.summary.estimatedSend} /><LaunchMetric label="Protegidas automaticamente" value={protectedCount} /></div>
+      {protections.length ? <p className="mt-4 text-xs leading-5 text-slate-600">Não receberão agora: {protections.map((item) => `${item.value} ${item.label.toLowerCase()}`).join(" · ")}. Isso ajuda a preservar a saúde do número e a experiência dos contatos.</p> : null}
+    </div>
+  );
+}
+
+function LaunchMetric({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3"><p className="text-2xl font-extrabold text-slate-950">{value}</p><p className="mt-1 text-xs font-semibold text-slate-500">{label}</p></div>;
 }
 
 function SenderStep({ channels, selectedId, onSelect }: { channels: Channel[]; selectedId: string; onSelect: (channel: Channel) => void }) {
@@ -1375,14 +1832,14 @@ function AudienceStep({
   return (
     <div>
       <h3 className="text-lg font-bold text-[var(--cliente-card-text)]">Quem deve receber?</h3>
-      <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Comece por uma jornada comercial ou refine a base. Opt-out, telefone invalido e contato recente ficam fora do envio.</p>
+      <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">Escolha primeiro o motivo do contato. A Altum exclui automaticamente opt-out, telefone inválido e contatos recentes.</p>
 
       <div className="mt-5">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-black text-[var(--cliente-card-text)]">Jornada de publico</p>
-          <span className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">Aplique antes dos filtros</span>
+          <span className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">Sugestões prontas</span>
         </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {journeys.map((journey) => {
             const active = editor.filters.behavior === journey.id;
             return (
@@ -1400,7 +1857,12 @@ function AudienceStep({
         </div>
         {editor.filters.behavior !== "all" ? (
           <div className="mt-3 flex flex-wrap items-center gap-3 rounded-[16px] border border-blue-200 bg-blue-500/6 p-3">
-            <label className="text-sm font-semibold text-[var(--cliente-card-text)]" htmlFor="audience-window-days">Janela da jornada</label>
+            <div className="min-w-0"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">Há quanto tempo?</p><p className="mt-0.5 text-xs text-[var(--cliente-card-text-soft)]">Defina quando alguém entra neste público.</p></div>
+            <div className="flex items-center gap-1.5">
+              {[3, 7, 14, 30].map((days) => (
+                <button key={days} type="button" onClick={() => onChange({ filters: { ...editor.filters, behaviorWindowDays: days } })} className={`rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${editor.filters.behaviorWindowDays === days ? "bg-[var(--cliente-primary)] text-white" : "bg-white text-[var(--cliente-card-text-soft)] hover:text-[var(--cliente-card-text)]"}`}>{days}d</button>
+              ))}
+            </div>
             <input
               id="audience-window-days"
               type="number"
@@ -1410,92 +1872,35 @@ function AudienceStep({
               onChange={(event) => onChange({ filters: { ...editor.filters, behaviorWindowDays: Math.max(editor.filters.behavior === "no_response" ? 3 : 1, Math.min(365, Number(event.target.value) || 1)) } })}
               className="client-input w-24 text-center"
             />
-            <span className="text-xs text-[var(--cliente-card-text-soft)]">dias. Reativacao respeita pelo menos 72h entre campanhas para o mesmo contato.</span>
+            <span className="text-xs text-[var(--cliente-card-text-soft)]">dias. Reativação respeita pelo menos 72h entre campanhas para o mesmo contato.</span>
           </div>
         ) : null}
       </div>
 
-      <div className="mt-5 rounded-[22px] border border-dashed border-emerald-300 bg-emerald-500/8 p-4 md:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm font-black text-[var(--cliente-card-text)]">Importar contatos por arquivo</p>
-            <p className="mt-1 text-sm leading-5 text-[var(--cliente-card-text-soft)]">
-              Aceita CSV/TXT com colunas como telefone, nome, empresa e origem. Se for uma lista simples, coloque um telefone por linha.
-            </p>
+      <details className="mt-5 rounded-[18px] border border-[var(--cliente-border)] bg-white p-4">
+        <summary className="cursor-pointer list-none text-sm font-bold text-[var(--cliente-card-text)]">Tenho uma lista pronta ou quero refinar este público <span className="ml-1 text-xs font-normal text-[var(--cliente-card-text-soft)]">opcional</span></summary>
+        <div className="mt-4 rounded-[18px] border border-dashed border-emerald-300 bg-emerald-500/8 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div><p className="text-sm font-bold text-[var(--cliente-card-text)]">Importar uma lista de contatos</p><p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">CSV ou TXT, com um telefone por linha ou colunas de contato.</p></div>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-bold text-white"><FileText className="h-4 w-4" />{importing ? "Importando" : "Escolher arquivo"}<input type="file" accept=".csv,.txt,text/csv,text/plain" className="sr-only" disabled={importing} onChange={(event) => { const file = event.target.files?.[0]; if (file) onImportFile(file); event.currentTarget.value = ""; }} /></label>
           </div>
-          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[16px] bg-emerald-500 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-emerald-600">
-            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-            {importing ? "Importando" : "Subir lista"}
-            <input
-              type="file"
-              accept=".csv,.txt,text/csv,text/plain"
-              className="sr-only"
-              disabled={importing}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) onImportFile(file);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
+          {importSummary ? <div className="mt-3 grid gap-2 sm:grid-cols-4"><ImportStat label="Importados" value={importSummary.processed} /><ImportStat label="Novos" value={importSummary.created} /><ImportStat label="Atualizados" value={importSummary.updated} /><ImportStat label="Ignorados" value={importSummary.skipped + importSummary.errors} danger={importSummary.errors > 0} /></div> : null}
         </div>
-        {importSummary ? (
-          <div className="mt-4 grid gap-2 sm:grid-cols-4">
-            <ImportStat label="Importados" value={importSummary.processed} />
-            <ImportStat label="Novos" value={importSummary.created} />
-            <ImportStat label="Atualizados" value={importSummary.updated} />
-            <ImportStat label="Ignorados" value={importSummary.skipped + importSummary.errors} danger={importSummary.errors > 0} />
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <Field label="Temperatura" hint="Ex.: quente, morno">
-          <input value={editor.filters.heat.join(", ")} onChange={(event) => changeFilter("heat", event.target.value)} className="client-input" placeholder="quente, morno" />
-        </Field>
-        <Field label="Etiquetas" hint="Separe por virgula">
-          <input value={editor.filters.tags.join(", ")} onChange={(event) => changeFilter("tags", event.target.value)} className="client-input" placeholder="cliente, proposta enviada" />
-        </Field>
-        <Field label="Origem" hint="Meta, Google, indicacao...">
-          <input value={editor.filters.sources.join(", ")} onChange={(event) => changeFilter("sources", event.target.value)} className="client-input" placeholder="instagram, google_ads" />
-        </Field>
-        <Field label="Etapa do funil" hint="Use o identificador da etapa">
-          <input value={editor.filters.stageIds.join(", ")} onChange={(event) => changeFilter("stageIds", event.target.value)} className="client-input" placeholder="novo_lead, proposta" />
-        </Field>
-      </div>
-      <div className="mt-5 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-bold text-[var(--cliente-card-text)]">Limite desta execucao</p>
-            <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Comece pequeno, acompanhe resposta e entrega. Cada campanha usa somente o remetente selecionado.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <input type="range" min={1} max={500} step={1} value={editor.maxRecipients} onChange={(event) => onChange({ maxRecipients: Number(event.target.value) })} className="w-36 accent-[var(--cliente-primary)]" />
-            <input type="number" min={1} max={500} value={editor.maxRecipients} onChange={(event) => onChange({ maxRecipients: Math.max(1, Math.min(500, Number(event.target.value))) })} className="client-input w-20 text-center" />
-          </div>
+        <div className="mt-4 rounded-2xl bg-[var(--cliente-surface-muted)] p-4">
+          <p className="text-sm font-bold text-[var(--cliente-card-text)]">Limitar esta campanha</p>
+          <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Comece com uma quantidade menor para acompanhar a resposta.</p>
+          <div className="mt-3 flex items-center gap-3"><input type="range" min={1} max={500} step={1} value={editor.maxRecipients} onChange={(event) => onChange({ maxRecipients: Number(event.target.value) })} className="w-40 accent-[var(--cliente-primary)]" /><input type="number" min={1} max={500} value={editor.maxRecipients} onChange={(event) => onChange({ maxRecipients: Math.max(1, Math.min(500, Number(event.target.value))) })} className="client-input w-20 text-center" /></div>
         </div>
-      </div>
-      <div className="mt-4 grid gap-4 rounded-[18px] border border-[var(--cliente-border)] p-4 md:grid-cols-2">
-        <Field label="Velocidade" hint="Contatos por minuto">
-          <input
-            type="number"
-            min={1}
-            max={120}
-            value={editor.sendRatePerMinute}
-            onChange={(event) => onChange({ sendRatePerMinute: Math.max(1, Math.min(120, Number(event.target.value))) })}
-            className="client-input"
-          />
-        </Field>
-        <Field label="Agendamento" hint="Deixe vazio para iniciar agora">
-          <input
-            type="datetime-local"
-            value={formatDateTimeLocal(editor.scheduledAt)}
-            onChange={(event) => onChange({ scheduledAt: event.target.value ? new Date(event.target.value).toISOString() : null })}
-            className="client-input"
-          />
-        </Field>
-      </div>
-      <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">A Altum faz cadencia por campanha e pausa contatos inelegiveis. Nao alterna numeros para contornar limites de WhatsApp.</p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <Field label="Temperatura" hint="Ex.: quente, morno"><input value={editor.filters.heat.join(", ")} onChange={(event) => changeFilter("heat", event.target.value)} className="client-input" placeholder="quente, morno" /></Field>
+          <Field label="Etiquetas" hint="Separe por vírgula"><input value={editor.filters.tags.join(", ")} onChange={(event) => changeFilter("tags", event.target.value)} className="client-input" placeholder="cliente, proposta enviada" /></Field>
+          <Field label="Origem" hint="Meta, Google, indicação..."><input value={editor.filters.sources.join(", ")} onChange={(event) => changeFilter("sources", event.target.value)} className="client-input" placeholder="instagram, google_ads" /></Field>
+          <Field label="Etapa do funil" hint="Ex.: novo_lead, proposta"><input value={editor.filters.stageIds.join(", ")} onChange={(event) => changeFilter("stageIds", event.target.value)} className="client-input" placeholder="novo_lead, proposta" /></Field>
+          <Field label="Ritmo de envio" hint="Contatos por minuto"><input type="number" min={1} max={120} value={editor.sendRatePerMinute} onChange={(event) => onChange({ sendRatePerMinute: Math.max(1, Math.min(120, Number(event.target.value))) })} className="client-input" /></Field>
+          <Field label="Agendar" hint="Deixe em branco para enviar agora"><input type="datetime-local" value={formatDateTimeLocal(editor.scheduledAt)} onChange={(event) => onChange({ scheduledAt: event.target.value ? new Date(event.target.value).toISOString() : null })} className="client-input" /></Field>
+        </div>
+      </details>
+      <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">O total de pessoas aptas é confirmado antes do envio. A Altum já protege contatos que não podem receber esta campanha.</p>
     </div>
   );
 }
@@ -1752,6 +2157,7 @@ function ContentStep({
   templateMeta,
   templateError,
   loadingTemplates,
+  onRefreshTemplates,
   uploading,
   uploadProgress,
   onUpload,
@@ -1763,17 +2169,43 @@ function ContentStep({
   templateMeta: TemplateMeta | null;
   templateError: string;
   loadingTemplates: boolean;
+  onRefreshTemplates: () => void;
   uploading: boolean;
   uploadProgress: number | null;
   onUpload: (file: File) => void;
   onChange: (patch: Partial<Campaign>) => void;
 }) {
+  const [templateSearch, setTemplateSearch] = useState("");
   const selectedTemplate = templates.find(
     (template) => template.name === editor.templateName && template.language === editor.languageCode
   );
   const selectedVariableCount = getTemplateVariableCount(selectedTemplate);
   const selectedPreview = renderTemplateBodyPreview(selectedTemplate, editor.bodyParams);
   const requiredHeaderMedia = getTemplateHeaderMediaType(selectedTemplate);
+  const selectedHeader = getTemplateHeaderText(selectedTemplate);
+  const selectedFooter = getTemplateFooter(selectedTemplate);
+  const selectedButtons = getTemplateButtons(selectedTemplate);
+  const variableIndexes = getTemplateVariableIndexes(selectedTemplate);
+  const matchingTemplates = templates
+    .filter((template) => {
+      const searchable = `${template.name} ${template.language} ${template.category} ${getTemplateBody(template)}`.toLowerCase();
+      return searchable.includes(templateSearch.trim().toLowerCase());
+    })
+    .slice(0, 24);
+
+  function selectTemplate(nextTemplate: WhatsAppTemplate) {
+    const variableCount = getTemplateVariableCount(nextTemplate);
+    onChange({
+      templateName: nextTemplate.name,
+      languageCode: nextTemplate.language || "pt_BR",
+      deliveryMode: "template",
+      bodyParams: buildDefaultBodyParams(variableCount, editor.bodyParams),
+      headerMedia:
+        editor.headerMedia && getTemplateHeaderMediaType(nextTemplate) && editor.headerMedia.type !== getTemplateHeaderMediaType(nextTemplate)
+          ? null
+          : editor.headerMedia,
+    });
+  }
 
   return (
     <div>
@@ -1807,6 +2239,18 @@ function ContentStep({
                   tone={templates.length ? "success" : "info"}
                 />
               </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-blue-200/70 pt-3">
+                <p className="text-xs text-[var(--cliente-card-text-soft)]">Catálogo lido diretamente do WABA deste número.</p>
+                <button
+                  type="button"
+                  onClick={onRefreshTemplates}
+                  disabled={loadingTemplates}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 transition hover:text-blue-900 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingTemplates ? "animate-spin" : ""}`} />
+                  Atualizar modelos
+                </button>
+              </div>
               {templateError ? (
                 <div className="mt-3 rounded-[14px] border border-rose-300/40 bg-white/75 px-3 py-2 text-xs font-semibold text-rose-700">
                   <p>{templateError}</p>
@@ -1822,62 +2266,76 @@ function ContentStep({
               ) : null}
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Template aprovado" hint="Vem direto da Meta">
-                <select
-                  value={`${editor.templateName}|${editor.languageCode}`}
-                  onChange={(event) => {
-                    const [templateName, languageCode] = event.target.value.split("|");
-                    const nextTemplate = templates.find(
-                      (template) => template.name === templateName && template.language === (languageCode || "pt_BR")
+            <div className="space-y-4">
+              <div>
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-[var(--cliente-card-text)]">Escolha o modelo</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Apenas modelos aprovados aparecem aqui.</p>
+                  </div>
+                  <span className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">{templates.length} disponíveis</span>
+                </div>
+                <label className="relative mt-3 block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--cliente-card-text-soft)]" />
+                  <input value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} className="client-input pl-10" placeholder="Buscar por nome, idioma ou texto do modelo" disabled={loadingTemplates} />
+                </label>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {matchingTemplates.map((template) => {
+                    const active = template.name === editor.templateName && template.language === editor.languageCode;
+                    const body = getTemplateBody(template);
+                    const media = getTemplateHeaderMediaType(template);
+                    return (
+                      <button key={`${template.name}_${template.language}`} type="button" onClick={() => selectTemplate(template)} className={`rounded-[16px] border p-3 text-left transition ${active ? "border-[var(--cliente-primary)] bg-[var(--cliente-primary-soft)] shadow-sm" : "border-[var(--cliente-border)] bg-white hover:border-blue-300 hover:bg-blue-50/40"}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="line-clamp-1 text-sm font-bold text-[var(--cliente-card-text)]">{template.name}</p>
+                          {active ? <Check className="h-4 w-4 shrink-0 text-[var(--cliente-primary)]" /> : null}
+                        </div>
+                        <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--cliente-card-text-soft)]">{template.category} · {template.language}</p>
+                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{body || "Modelo sem texto no corpo"}</p>
+                        <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-bold text-[var(--cliente-card-text-soft)]">
+                          {getTemplateVariableCount(template) ? <span className="rounded-full bg-[var(--cliente-surface-muted)] px-2 py-1">{getTemplateVariableCount(template)} variável(is)</span> : null}
+                          {media ? <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-800">exige {media}</span> : null}
+                        </div>
+                      </button>
                     );
-                    const variableCount = getTemplateVariableCount(nextTemplate);
-                    onChange({
-                      templateName,
-                      languageCode: languageCode || "pt_BR",
-                      deliveryMode: "template",
-                      bodyParams: buildDefaultBodyParams(variableCount, editor.bodyParams),
-                      headerMedia:
-                        editor.headerMedia && getTemplateHeaderMediaType(nextTemplate) && editor.headerMedia.type !== getTemplateHeaderMediaType(nextTemplate)
-                          ? null
-                          : editor.headerMedia,
-                    });
-                  }}
-                  className="client-input"
-                  disabled={loadingTemplates}
-                >
-                  <option value={`|${editor.languageCode}`}>{loadingTemplates ? "Consultando Meta..." : "Selecione um template aprovado"}</option>
-                  {templates.map((template) => (
-                    <option key={`${template.name}_${template.language}`} value={`${template.name}|${template.language}`}>
-                      {template.name} - {template.language} - {template.category}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Idioma" hint="Codigo aprovado">
-                <select value={editor.languageCode} onChange={(event) => onChange({ languageCode: event.target.value })} className="client-input">
-                  <option value="pt_BR">Portugues (Brasil)</option>
-                  <option value="en_US">English (US)</option>
-                  <option value="es">Espanol</option>
-                </select>
-              </Field>
-              <div className="md:col-span-2">
-                <Field
-                  label="Variaveis do template"
-                  hint={selectedVariableCount ? `${selectedVariableCount} variavel(is) esperada(s)` : "Este template nao exige variaveis"}
-                >
-                  <textarea
-                    value={editor.bodyParams.join("\n")}
-                    onChange={(event) => onChange({ bodyParams: event.target.value.split("\n").map((item) => item.trim()).slice(0, 20) })}
-                    className="client-input min-h-28 resize-y"
-                    placeholder={selectedVariableCount ? "{nome}\nNome da oferta" : "Sem variaveis"}
-                  />
-                </Field>
+                  })}
+                </div>
+                {!loadingTemplates && templateSearch && !matchingTemplates.length ? <p className="mt-3 text-sm text-[var(--cliente-card-text-soft)]">Nenhum modelo aprovado corresponde à busca.</p> : null}
+                {!loadingTemplates && matchingTemplates.length === 24 ? <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">Mostrando os primeiros 24 resultados. Refine a busca para encontrar outro modelo.</p> : null}
               </div>
-              {selectedPreview ? (
+              {selectedTemplate ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3"><p className="text-xs font-bold uppercase tracking-wide text-[var(--cliente-card-text-soft)]">Modelo selecionado</p><p className="mt-1 text-sm font-semibold text-[var(--cliente-card-text)]">{selectedTemplate.name}</p></div>
+                  <div className="rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-4 py-3"><p className="text-xs font-bold uppercase tracking-wide text-[var(--cliente-card-text-soft)]">Idioma aprovado</p><p className="mt-1 text-sm font-semibold text-[var(--cliente-card-text)]">{selectedTemplate.language}</p></div>
+                </div>
+              ) : null}
+              {selectedVariableCount ? (
+                <div className="rounded-[18px] border border-[var(--cliente-border)] bg-white p-4">
+                  <p className="text-sm font-bold text-[var(--cliente-card-text)]">Personalize a mensagem</p>
+                  <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Cada campo substitui a variável correspondente no modelo escolhido.</p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {variableIndexes.map((variableIndex) => (
+                      <Field key={variableIndex} label={`Variável {{${variableIndex}}}`} hint="Use dados do contato, como {nome}">
+                        <input value={editor.bodyParams[variableIndex - 1] || ""} onChange={(event) => { const next = buildDefaultBodyParams(selectedVariableCount, editor.bodyParams); next[variableIndex - 1] = event.target.value; onChange({ bodyParams: next }); }} className="client-input" placeholder={variableIndex === 1 ? "{nome}" : "Valor da variável"} />
+                      </Field>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {selectedTemplate ? (
                 <div className="md:col-span-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--cliente-card-text-soft)]">Previa do template</p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--cliente-card-text)]">{selectedPreview}</p>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-[var(--cliente-card-text-soft)]">Prévia do modelo aprovado</p>
+                    <StateBadge label={selectedTemplate.category.toLowerCase()} tone="info" />
+                  </div>
+                  {selectedHeader ? <p className="mt-3 text-sm font-bold text-[var(--cliente-card-text)]">{selectedHeader}</p> : null}
+                  {selectedPreview ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--cliente-card-text)]">{selectedPreview}</p> : <p className="mt-2 text-sm text-[var(--cliente-card-text-soft)]">Este modelo não possui texto no corpo.</p>}
+                  {selectedFooter ? <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">{selectedFooter}</p> : null}
+                  {selectedButtons.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedButtons.map((button) => <span key={button} className="rounded-full border border-blue-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700">{button}</span>)}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               {requiredHeaderMedia ? (
@@ -1968,16 +2426,16 @@ function AiFollowupEditor({ editor, onChange }: { editor: Campaign; onChange: (p
     onChange({ aiFollowup: { ...editor.aiFollowup, ...patch } });
 
   return (
-    <div className="mt-5 rounded-[22px] border border-violet-200 bg-violet-500/8 p-4 md:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <details className="mt-5 rounded-[22px] border border-violet-200 bg-violet-500/8 p-4 md:p-5">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-base font-extrabold text-[var(--cliente-card-text)]">IA depois da resposta</p>
+          <p className="text-base font-extrabold text-[var(--cliente-card-text)]">O que acontece quando alguém responder?</p>
           <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
-            O que a Altum deve saber para continuar a venda quando alguem responder este disparo.
+            Opcional: prepare a Altum para continuar a conversa comercial.
           </p>
         </div>
-        <StateBadge label="contexto comercial" tone="info" />
-      </div>
+        <StateBadge label="configurar IA" tone="info" />
+      </summary>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Field label="Oferta principal" hint="Ex.: Landing page para advogados">
@@ -2049,7 +2507,7 @@ function AiFollowupEditor({ editor, onChange }: { editor: Campaign; onChange: (p
           />
         </Field>
       </div>
-    </div>
+    </details>
   );
 }
 

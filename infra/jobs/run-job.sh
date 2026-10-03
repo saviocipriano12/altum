@@ -11,6 +11,8 @@ case "$job" in
   push) path='/api/internal/jobs/client-portal/push-critical?maxTenants=80' ;;
   integrations) path='/api/internal/jobs/integrations/health?maxTenants=80' ;;
   commerce) path='/api/internal/jobs/commerce/sync?connectionLimit=6&itemLimit=15&minimumIntervalMinutes=45' ;;
+  commerce-actions) path='/api/internal/jobs/commerce/actions?tenantLimit=20&scanLimit=80' ;;
+  commercial-agent) path='/api/internal/jobs/commercial-agent/actions?limit=500' ;;
   reports) path='/api/internal/jobs/daily-reports/send?maxTenants=120' ;;
   billing) path='/api/internal/jobs/finance/contract-billing?maxContracts=160' ;;
   *) echo "unknown_job=$job" >&2; exit 64 ;;

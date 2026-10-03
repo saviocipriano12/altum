@@ -10,11 +10,14 @@ Data: 15/04/2026
   - `META_APP_SECRET`
   - `META_WA_TOKEN` ou `META_ADS_ACCESS_TOKEN`
   - `AI_JOBS_PROCESS_TOKEN`, `AUTOMATION_JOBS_PROCESS_TOKEN`, `CAMPAIGN_SYNC_TOKEN`, `CHAT_OUTBOUND_PROCESS_TOKEN` (ou `CRON_SECRET`)
+  - `ECOMMERCE_AGENT_JOBS_TOKEN` e `COMMERCIAL_AGENT_JOBS_TOKEN` (ou o mesmo `CRON_SECRET`)
 
 ## 2) Rodar verificacao automatica
 Comando:
 
 ```bash
+git diff --check
+npm run altum:audit:full
 POST_DEPLOY_BASE_URL=https://SEU_DOMINIO npm run verify:postdeploy
 ```
 
@@ -41,6 +44,9 @@ Arquivo do script: `scripts/post-deploy-verify.mjs`
 - Enviar imagem, video, audio e documento: a mensagem deve aparecer imediatamente como enviando, concluir como enviada e permanecer acessivel apos recarregar a pagina.
 - Simular indisponibilidade do provider: a mensagem deve permanecer no historico com erro; o processador `GET /api/internal/jobs/chat-outbound/process` deve recuperar itens pendentes quando o provider voltar.
 - Confirmar na VPS que `altum-job-chat.timer` esta ativo (`systemctl status altum-job-chat.timer`) e que usa o mesmo `CRON_SECRET` configurado na aplicacao.
+- Reinstalar os timers com `sudo ./install.sh` em `infra/jobs` e confirmar `altum-job-commerce-actions.timer` e `altum-job-commercial-agent.timer`. Ambos devem executar a cada cinco minutos.
+- Publicar os índices do Firestore antes de ativar a fila comercial: `npm run firestore:indexes:deploy`.
+- Conferir uma ação de ecommerce com falha: ela deve voltar de `processing` para `pending` após o prazo de recuperação e respeitar `nextAttemptAt`.
 - Fluxo painel cliente e operacoes basicas sem erro.
 
 ## 5) Confirmacoes LGPD

@@ -614,6 +614,10 @@ async function createCommercialAction(input: {
       productNames: input.productNames,
       amount: input.amount,
       metadata: input.metadata || {},
+      // Every pending action needs a concrete availability time. Besides making
+      // the worker ordering deterministic, this prevents new actions from being
+      // starved behind retries that are not due yet.
+      nextAttemptAt: snap.exists ? snap.data()?.nextAttemptAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: snap.exists ? snap.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
     },

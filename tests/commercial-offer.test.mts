@@ -12,6 +12,7 @@ import {
   hasVerifiedCommercialFactSource,
   selectMediaDocForLead,
   recommendCommercialOffers,
+  type KbDoc,
 } from "../lib/server/ai/agent.ts";
 
 test("normaliza preco, moeda, estoque e midia em um contrato unico", () => {
@@ -94,10 +95,10 @@ test("relacoes comerciais aceitam somente ofertas reais e nunca a propria oferta
 });
 
 test("motor nao inventa upsell ou cross-sell por preco, categoria ou proximidade", () => {
-  const baseDocs = [
-    { id: "base", type: "catalog", content: "Plano Base para empresas", productName: "Plano Base", priceFrom: 100, availability: "active", score: 2 },
-    { id: "premium", type: "catalog", content: "Plano Premium para empresas", productName: "Plano Premium", priceFrom: 500, availability: "active", score: 1.8 },
-  ] as any;
+  const baseDocs: KbDoc[] = [
+    { id: "base", type: "catalog", content: "Plano Base para empresas", productName: "Plano Base", priceFrom: 100, availability: "active", score: 2, tags: [] },
+    { id: "premium", type: "catalog", content: "Plano Premium para empresas", productName: "Plano Premium", priceFrom: 500, availability: "active", score: 1.8, tags: [] },
+  ];
   const withoutLinks = recommendCommercialOffers({ kbDocs: baseDocs, inboundText: "Quero o Plano Base", commercialTemperature: "hot" });
   assert.equal(withoutLinks.primaryOffer, "Plano Base");
   assert.equal(withoutLinks.upsellOffer, null);
@@ -170,7 +171,7 @@ test("fato transacional exige evidencia concreta, nao apenas uma palavra em uma 
 });
 
 test("midia comercial nunca e enviada sem uma oferta identificada", () => {
-  const catalog = [
+  const catalog: KbDoc[] = [
     {
       id: "kit-solar",
       type: "catalog",
@@ -184,7 +185,7 @@ test("midia comercial nunca e enviada sem uma oferta identificada", () => {
       mediaType: "image",
       mediaTitle: "Foto do Kit Solar",
     },
-  ] as any;
+  ];
 
   assert.equal(
     selectMediaDocForLead({

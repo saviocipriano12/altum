@@ -113,7 +113,7 @@ export async function processCommercialAgentSla(input: { now?: number; limit?: n
   const baseQuery = tenantId
     ? adminDb.collection("commercial_agent_actions").where("tenantId", "==", tenantId).where("status", "==", "pending_approval")
     : adminDb.collection("commercial_agent_actions").where("status", "==", "pending_approval");
-  const snap = await baseQuery.limit(limit).get();
+  const snap = await baseQuery.orderBy("createdAt", "asc").limit(limit).get();
   const results: Array<Record<string, unknown>> = [];
   let backfilled = 0;
   let escalated = 0;

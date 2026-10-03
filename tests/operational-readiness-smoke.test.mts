@@ -24,6 +24,8 @@ test("operational schedulers point to real internal route handlers", () => {
     "/api/internal/jobs/campaigns/sync",
     "/api/internal/jobs/client-portal/push-critical",
     "/api/internal/jobs/commerce/sync",
+    "/api/internal/jobs/commerce/actions",
+    "/api/internal/jobs/commercial-agent/actions",
     "/api/internal/jobs/finance/contract-billing",
   ];
 
@@ -44,6 +46,26 @@ test("operational schedulers point to real internal route handlers", () => {
   assert.equal(existsSync(chatTimerPath), true, "A fila de conversa precisa de timer de recuperacao na VPS.");
   assert.match(readFileSync(chatTimerPath, "utf8"), /Unit=altum-job@chat\.service/);
   assert.match(readFileSync(installerPath, "utf8"), /altum-job-chat\.timer/);
+  assert.match(vpsScheduler, /commerce-actions\) path='\/api\/internal\/jobs\/commerce\/actions/);
+  assert.match(vpsScheduler, /commercial-agent\) path='\/api\/internal\/jobs\/commercial-agent\/actions/);
+});
+
+test("commercial queues have a frequent VPS worker while Vercel remains the daily backstop", () => {
+  const commerceTimer = readFileSync(join(process.cwd(), "infra/jobs/altum-job-commerce-actions.timer"), "utf8");
+  const commercialTimer = readFileSync(join(process.cwd(), "infra/jobs/altum-job-commercial-agent.timer"), "utf8");
+  const installer = readFileSync(join(process.cwd(), "infra/jobs/install.sh"), "utf8");
+
+  assert.match(commerceTimer, /OnUnitActiveSec=5min/);
+  assert.match(commercialTimer, /OnUnitActiveSec=5min/);
+  assert.match(installer, /altum-job-commerce-actions\.timer/);
+  assert.match(installer, /altum-job-commercial-agent\.timer/);
+});
+
+test("production checklist includes the commercial workers and their Firestore indexes", () => {
+  const checklist = readFileSync(join(process.cwd(), "docs/POST_DEPLOY_CHECKLIST.md"), "utf8");
+  assert.match(checklist, /ECOMMERCE_AGENT_JOBS_TOKEN/);
+  assert.match(checklist, /altum-job-commerce-actions\.timer/);
+  assert.match(checklist, /firestore:indexes:deploy/);
 });
 
 test("AI queue recovery runs every minute instead of waiting for the daily backstop", () => {

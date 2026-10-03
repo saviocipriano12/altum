@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizeEcommerceAutomationSettings } from "@/lib/server/ecommerce";
 import { processTenantEcommerceActions } from "@/lib/server/ecommerce-agent";
@@ -19,28 +19,29 @@ function authorized(req: Request) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function toMillis(value: unknown) {
-  if (value instanceof Date) return value.getTime();
-  if (value && typeof value === "object" && "toDate" in value && typeof (value as { toDate?: unknown }).toDate === "function") {
-    return (value as { toDate: () => Date }).toDate().getTime();
-  }
-  const parsed = new Date(String(value || ""));
-  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
-}
-
 export async function GET(req: Request) {
   const access = authorized(req);
   if (access === "missing") return NextResponse.json({ error: "ECOMMERCE_AGENT_JOBS_TOKEN ou CRON_SECRET nao configurado." }, { status: 503 });
   if (!access) return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
 
   try {
-    const tenantLimit = Math.max(1, Math.min(50, Number(new URL(req.url).searchParams.get("tenantLimit") || 20)));
-    const settingsSnap = await adminDb.collection("tenant_settings").limit(500).get();
+    const url = new URL(req.url);
+    const tenantLimit = Math.max(1, Math.min(50, Number(url.searchParams.get("tenantLimit") || 20)));
+    const scanLimit = Math.max(tenantLimit, Math.min(250, Number(url.searchParams.get("scanLimit") || tenantLimit * 4)));
+    const stateRef = adminDb.collection("operational_job_state").doc("ecommerce_agent_actions");
+    const state = (await stateRef.get()).data() as Record<string, unknown> | undefined;
+    const cursor = typeof state?.cursor === "string" ? state.cursor : "";
+    let settingsQuery = adminDb.collection("tenant_settings").orderBy(FieldPath.documentId()).limit(scanLimit);
+    if (cursor) settingsQuery = settingsQuery.startAfter(cursor);
+    let settingsSnap = await settingsQuery.get();
+    if (settingsSnap.empty && cursor) {
+      settingsSnap = await adminDb.collection("tenant_settings").orderBy(FieldPath.documentId()).limit(scanLimit).get();
+    }
+    const nextCursor = settingsSnap.docs.at(-1)?.id || "";
     const candidates = settingsSnap.docs
       .map((doc) => ({ id: doc.id, settings: doc.data() as Record<string, unknown> }))
       .map((row) => ({ ...row, automation: normalizeEcommerceAutomationSettings(row.settings.ecommerceAutomation) }))
       .filter((row) => row.automation.agent.mode !== "off")
-      .sort((a, b) => toMillis(a.settings.lastEcommerceAgentRunAt) - toMillis(b.settings.lastEcommerceAgentRunAt))
       .slice(0, tenantLimit);
     const results: Array<Record<string, unknown>> = [];
 
@@ -101,9 +102,18 @@ export async function GET(req: Request) {
       }
     }
 
+    await stateRef.set({
+      cursor: nextCursor,
+      lastRunAt: FieldValue.serverTimestamp(),
+      scannedTenants: settingsSnap.size,
+      processedTenants: candidates.length,
+    }, { merge: true });
+
     return NextResponse.json({
       ok: true,
       tenants: candidates.length,
+      scannedTenants: settingsSnap.size,
+      nextCursor: nextCursor || null,
       processed: results.reduce((total, item) => total + Number(item.processed || 0), 0),
       sent: results.reduce((total, item) => total + Number(item.sent || 0), 0),
       failed: results.reduce((total, item) => total + Number(item.failed || (item.error ? 1 : 0)), 0),

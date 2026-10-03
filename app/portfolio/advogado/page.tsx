@@ -1,7 +1,5 @@
 import "./advogado.css";
 
-const whatsappNumber = "5531998772098";
-
 const whatsappLinks = {
   main: "/diagnostico?entry=portfolio_advogado_main",
   consult: "/diagnostico?entry=portfolio_advogado_consult",

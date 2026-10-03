@@ -1,0 +1,11 @@
+[Unit]
+Description=Atualiza SLA das decisoes comerciais Altum a cada cinco minutos
+
+[Timer]
+OnBootSec=55s
+OnUnitActiveSec=5min
+AccuracySec=10s
+Unit=altum-job@commercial-agent.service
+
+[Install]
+WantedBy=timers.target

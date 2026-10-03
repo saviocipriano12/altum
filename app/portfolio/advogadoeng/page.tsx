@@ -3,24 +3,11 @@
 import "./advogado.css";
 import { useEffect } from "react";
 
-const whatsappNumber = "5500000000000";
-
 const links = {
   consult: "/diagnostico?entry=portfolio_advogadoeng_consult",
   analysis: "/diagnostico?entry=portfolio_advogadoeng_analysis",
   contact: "/diagnostico?entry=portfolio_advogadoeng_contact",
 };
-
-const capabilities = [
-  "Trabalhista e Sindical",
-  "Contratos e Civil",
-  "Empresarial e Societário",
-  "Previdenciário",
-  "Negociações e Acordos",
-  "Consultivo Estratégico",
-  "Contencioso",
-  "Planejamento Jurídico",
-];
 
 const numbers = [
   { value: "10+", label: "anos de experiência" },

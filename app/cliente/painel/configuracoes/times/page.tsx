@@ -211,6 +211,7 @@ export default function ClienteTimesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [dataWarning, setDataWarning] = useState<string | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [defaultTeam, setDefaultTeam] = useState("comercial");
   const [members, setMembers] = useState<Member[]>([]);
@@ -244,6 +245,7 @@ export default function ClienteTimesPage() {
     try {
       setLoading(true);
       setError(null);
+      setDataWarning(null);
       const [settingsRes, usersRes, channelsRes, metricsRes, auditRes] =
         await Promise.all([
           authedFetch(`/api/tenant/${tenant.tenantId}/settings`),
@@ -271,6 +273,15 @@ export default function ClienteTimesPage() {
             users.error ||
             "Não foi possível carregar a operação.",
         );
+      const unavailable: string[] = [];
+      if (!channelsRes.ok) unavailable.push("canais");
+      if (!metricsRes.ok) unavailable.push("indicadores");
+      if (auditRes && !auditRes.ok) unavailable.push("histórico de alterações");
+      if (unavailable.length) {
+        setDataWarning(
+          `Não foi possível atualizar ${unavailable.join(", ")}. Os dados principais da equipe continuam disponíveis; tente novamente em instantes.`,
+        );
+      }
       const nextTeams = settings.settings?.rules?.inbox?.teams || [];
       const nextMembers = users.items || [];
       setTeams(nextTeams);
@@ -906,6 +917,14 @@ export default function ClienteTimesPage() {
           className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
         >
           {notice}
+        </p>
+      )}
+      {dataWarning && (
+        <p
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+        >
+          {dataWarning}
         </p>
       )}
       <section className="grid gap-3 sm:grid-cols-3">

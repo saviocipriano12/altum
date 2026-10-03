@@ -79,6 +79,62 @@ async function claimAction(ref: FirebaseFirestore.DocumentReference, runId: stri
   });
 }
 
+const PROCESSING_LEASE_MS = 15 * 60_000;
+const SCHEDULING_BACKFILL_LIMIT = 250;
+
+async function backfillPendingActionSchedules(tenantId: string, now: Date) {
+  // Actions created before nextAttemptAt existed cannot participate in the
+  // ordered query below. Make the migration lazy and safe for live tenants.
+  const snap = await adminDb.collection("ecommerce_commercial_actions")
+    .where("tenantId", "==", tenantId)
+    .where("status", "==", "pending")
+    .limit(SCHEDULING_BACKFILL_LIMIT)
+    .get();
+  const missing = snap.docs.filter((doc) => !doc.data().nextAttemptAt);
+  if (!missing.length) return 0;
+
+  const writer = adminDb.bulkWriter();
+  for (const doc of missing) {
+    writer.set(doc.ref, {
+      nextAttemptAt: doc.data().createdAt || now,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+  await writer.close();
+  return missing.length;
+}
+
+async function recoverExpiredActionClaims(tenantId: string, now: number) {
+  const staleBefore = now - PROCESSING_LEASE_MS;
+  const snap = await adminDb.collection("ecommerce_commercial_actions")
+    .where("tenantId", "==", tenantId)
+    .where("status", "==", "processing")
+    .limit(SCHEDULING_BACKFILL_LIMIT)
+    .get();
+  let recovered = 0;
+
+  for (const doc of snap.docs) {
+    if (toMillis(doc.data().processingStartedAt) > staleBefore) continue;
+    const restored = await adminDb.runTransaction(async (tx) => {
+      const current = await tx.get(doc.ref);
+      if (!current.exists || clean(current.data()?.status, 40) !== "processing") return false;
+      if (toMillis(current.data()?.processingStartedAt) > staleBefore) return false;
+      tx.set(doc.ref, {
+        status: "pending",
+        processingRunId: null,
+        processingStartedAt: null,
+        nextAttemptAt: new Date(now),
+        lastSendError: "processing_lease_expired",
+        lastSendErrorAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return true;
+    });
+    if (restored) recovered += 1;
+  }
+  return recovered;
+}
+
 export type EcommerceAgentProcessResult = {
   actionId: string;
   status: "sent" | "ready" | "observed" | "skipped" | "busy" | "failed";
@@ -97,10 +153,13 @@ export async function processTenantEcommerceActions(input: {
   const startedAt = Date.now();
   const runId = crypto.randomUUID();
   const limit = Math.max(1, Math.min(25, Number(input.limit || input.automation.agent.maxActionsPerRun)));
+  const schedulingBackfilled = await backfillPendingActionSchedules(input.tenantId, new Date(startedAt));
+  const recoveredClaims = await recoverExpiredActionClaims(input.tenantId, startedAt);
   const actionsSnap = await adminDb.collection("ecommerce_commercial_actions")
     .where("tenantId", "==", input.tenantId)
     .where("status", "==", "pending")
-    .limit(Math.min(75, limit * 3))
+    .orderBy("nextAttemptAt", "asc")
+    .limit(Math.min(100, limit * 4))
     .get();
   const actionDocs = actionsSnap.docs
     .filter((doc) => toMillis(doc.data().nextAttemptAt) <= Date.now())
@@ -239,6 +298,8 @@ export async function processTenantEcommerceActions(input: {
     failed: results.filter((item) => item.status === "failed").length,
     observed: results.filter((item) => item.status === "observed").length,
     skipped: results.filter((item) => item.status === "skipped" || item.status === "busy").length,
+    recoveredClaims,
+    schedulingBackfilled,
     latencyMs: Date.now() - startedAt,
   };
   if (!input.dryRun) {
