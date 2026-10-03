@@ -27,3 +27,16 @@ test("AI settings keep the operation available when quality status cannot be rea
   assert.match(settingsSource, /getLatestAiEvaluationGateForRead\(tenantId\)/);
   assert.match(settingsSource, /rolloutQuality\.available && isEvaluationFreshForSettings/);
 });
+
+test("AI can always be paused or disabled even when the rollout-quality history is unavailable", async () => {
+  const settingsSource = await readFile(new URL("../app/api/tenant/[tenantId]/settings/ai/route.ts", import.meta.url), "utf8");
+
+  assert.match(
+    settingsSource,
+    /const requiresRolloutQualityGate\s*=\s*requestedRollout\.mode === "automatic"\s*&&\s*requestedRollout\.rolloutPercent > current\.rolloutPercent/
+  );
+  assert.match(
+    settingsSource,
+    /const latestEvaluation = requiresRolloutQualityGate\s*\? await getLatestAiEvaluationGate\(tenantId\)\s*:\s*null/
+  );
+});

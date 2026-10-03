@@ -420,14 +420,25 @@ export async function POST(
       rolloutPercent: body.rolloutPercent ?? current.rolloutPercent,
       agentVersion: body.agentVersion ?? current.agentVersion,
     });
-    const latestEvaluation = await getLatestAiEvaluationGate(tenantId);
+    // Alteracoes operacionais como pausar ou desativar a IA nao dependem da
+    // leitura das avaliacoes. A consulta e necessaria somente quando o
+    // usuario aumenta respostas automaticas, que e o unico caso de risco.
+    // Assim uma oscilacao/indice pendente no historico de qualidade jamais
+    // impede a equipe de interromper a IA.
+    const requiresRolloutQualityGate =
+      requestedRollout.mode === "automatic" &&
+      requestedRollout.rolloutPercent > current.rolloutPercent;
+    const latestEvaluation = requiresRolloutQualityGate
+      ? await getLatestAiEvaluationGate(tenantId)
+      : null;
     const rolloutGate = canIncreaseAiConversationRollout({
       currentPercent: current.rolloutPercent,
       nextPercent: requestedRollout.rolloutPercent,
       mode: requestedRollout.mode,
-      latestQualityGate: isEvaluationFreshForSettings(latestEvaluation, currentSettings)
-        ? latestEvaluation.gate
-        : null,
+      latestQualityGate:
+        latestEvaluation && isEvaluationFreshForSettings(latestEvaluation, currentSettings)
+          ? latestEvaluation.gate
+          : null,
     });
     if (!rolloutGate.allowed) {
       return NextResponse.json(
