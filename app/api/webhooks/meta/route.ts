@@ -679,7 +679,12 @@ export async function GET(req: Request) {
   }
 
   // Compatibilidade legada: permite tenants antigos com verify token por canal.
-  const channel = await getMetaChannelByVerifyToken(token);
+  // A tentativa de verificacao nunca deve expor uma falha interna para a Meta.
+  // Sem token global, um banco indisponivel precisa ser tratado como token invalido.
+  const channel = await getMetaChannelByVerifyToken(token).catch((error) => {
+    console.error("Falha ao consultar verify token legado da Meta:", error);
+    return null;
+  });
   if (!channel) {
     return new Response("Forbidden", { status: 403 });
   }
