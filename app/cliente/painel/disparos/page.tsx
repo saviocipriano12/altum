@@ -1473,7 +1473,9 @@ function CampaignOverview({
   const hasCampaigns = Boolean(campaigns.length);
 
   return (
-    <div className="space-y-6 pb-24 lg:pb-8">
+    <>
+      <MobileCampaignOverview campaigns={campaigns} totals={totals} readyChannels={readyChannels} canManage={canManage} onCreate={onCreate} onOpen={onOpen} />
+      <div className="hidden space-y-6 pb-24 lg:block lg:pb-8">
       <SectionHeader
         title="Campanhas WhatsApp"
         subtitle="Planeje, envie e acompanhe conversas que viram oportunidades."
@@ -1483,8 +1485,8 @@ function CampaignOverview({
       <section className="overflow-hidden rounded-[28px] border border-blue-200 bg-[linear-gradient(120deg,#173d9d_0%,#2563d9_58%,#4f46e5_100%)] p-6 text-white shadow-[0_18px_55px_rgba(37,99,235,.18)] md:p-8">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div className="max-w-2xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold"><MessageCircle className="h-3.5 w-3.5" /> Operação comercial</span>
-            <h2 className="mt-4 text-2xl font-black tracking-tight md:text-3xl">Toda campanha começa com uma conversa que vale a pena responder.</h2>
+            <span className="client-keep-light-text inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold"><MessageCircle className="h-3.5 w-3.5" /> Operação comercial</span>
+            <h2 className="client-keep-light-text mt-4 text-2xl font-black tracking-tight md:text-3xl">Toda campanha começa com uma conversa que vale a pena responder.</h2>
             <p className="mt-3 text-sm leading-6 text-blue-100 md:text-base">Escolha o público, use um modelo aprovado e deixe a Altum organizar as respostas no seu funil.</p>
           </div>
           {canManage ? <button type="button" onClick={onCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-extrabold text-blue-800 transition hover:-translate-y-0.5 hover:shadow-lg"><Plus className="h-4 w-4" /> Criar campanha</button> : null}
@@ -1535,8 +1537,20 @@ function CampaignOverview({
           <div className="mt-4 space-y-3">{runs.slice(0, 4).map((run) => <div key={run.id} className="rounded-[16px] bg-[var(--cliente-surface-muted)] p-3"><p className="truncate text-sm font-bold text-[var(--cliente-card-text)]">{run.campaignName}</p><p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{run.summary.sent} enviados · {run.summary.failed} falhas · {formatDate(run.createdAt)}</p></div>)}{!runs.length ? <p className="rounded-[16px] bg-[var(--cliente-surface-muted)] p-4 text-sm text-[var(--cliente-card-text-soft)]">Quando sua campanha for enviada, os resultados aparecem aqui.</p> : null}</div>
         </PanelCard>
       </section>
-    </div>
+      </div>
+    </>
   );
+}
+
+function MobileCampaignOverview({ campaigns, totals, readyChannels, canManage, onCreate, onOpen }: {
+  campaigns: Campaign[];
+  totals: { sent: number; failed: number; active: number };
+  readyChannels: number;
+  canManage: boolean;
+  onCreate: () => void;
+  onOpen: (campaignId: string) => void;
+}) {
+  return <section className="-mx-3 min-h-[100dvh] bg-[var(--cliente-bg)] pb-[calc(env(safe-area-inset-bottom)+5.5rem)] lg:hidden"><header className="border-b border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 pb-4 pt-3"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">Crescimento comercial</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-[var(--cliente-card-text)]">Campanhas</h1></div>{canManage ? <button type="button" onClick={onCreate} className="inline-flex h-10 items-center rounded-full bg-[var(--cliente-primary)] px-3 text-sm font-semibold text-white"><Plus className="mr-1.5 h-4 w-4" />Nova</button> : null}</div><div className="mt-4 grid grid-cols-3 gap-2"><div className="rounded-2xl bg-[var(--cliente-primary-soft)] p-3"><p className="text-[10px] font-semibold text-[var(--cliente-primary)]">Enviados</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{totals.sent}</p></div><div className="rounded-2xl bg-[var(--cliente-success-soft)] p-3"><p className="text-[10px] font-semibold text-[var(--cliente-success)]">Ativas</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{totals.active}</p></div><div className="rounded-2xl bg-[var(--cliente-surface-muted)] p-3"><p className="text-[10px] font-semibold text-[var(--cliente-card-text-soft)]">Números</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{readyChannels}</p></div></div></header><div className="px-4 py-4"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">Suas campanhas</p><p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Crie, acompanhe resultados e retome rascunhos.</p></div><div className="border-y border-[var(--cliente-border)] bg-[var(--cliente-card)]">{campaigns.length ? campaigns.slice(0, 12).map((campaign) => <button key={campaign.id} type="button" onClick={() => onOpen(campaign.id)} className="flex w-full items-center gap-3 border-b border-[var(--cliente-border)] px-4 py-4 text-left last:border-b-0 active:bg-[var(--cliente-surface-muted)]"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--cliente-success-soft)] text-[var(--cliente-success)]"><MessageCircle className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-[var(--cliente-card-text)]">{campaign.name}</span><span className="mt-1 block truncate text-xs text-[var(--cliente-card-text-soft)]">{campaign.templateName ? `Modelo ${campaign.templateName}` : 'Mensagem livre'} · {campaign.deliveryMetrics?.responded || 0} respostas</span></span><ChevronRight className="h-5 w-5 shrink-0 text-[var(--cliente-card-text-soft)]" /></button>) : <div className="p-8 text-center"><p className="text-sm font-semibold text-[var(--cliente-card-text)]">Sua primeira campanha começa aqui</p><p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Escolha um público e uma mensagem aprovada.</p>{canManage ? <button type="button" onClick={onCreate} className="mt-4 rounded-xl bg-[var(--cliente-primary)] px-4 py-2.5 text-sm font-semibold text-white">Criar campanha</button> : null}</div>}</div></section>;
 }
 
 function HeroMetric({ label, value }: { label: string; value: number }) {

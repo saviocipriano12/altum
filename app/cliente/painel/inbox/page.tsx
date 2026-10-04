@@ -4,6 +4,7 @@ import { requiresWhatsAppTemplate } from "@/lib/whatsapp-service-window";
 
 import Link from "next/link";
 import NextImage from "next/image";
+import dynamic from "next/dynamic";
 import { CSSProperties, FormEvent, type MouseEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ref as storageRef, uploadBytesResumable } from "firebase/storage";
@@ -64,6 +65,14 @@ import {
   normalizePipelineStageId,
 } from "@/lib/pipeline";
 import type { SalesJourneyRecommendation } from "@/lib/sales-journey";
+
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
+
+type QueuedMedia = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
 
 type ChatAiState = {
   aiEnabled?: boolean;
@@ -401,7 +410,6 @@ type MessageListPayload = {
 };
 
 const INBOX_CHANNEL_ORDER = ["whatsapp", "instagram", "messenger", "site_chat", "site_form"] as const;
-const QUICK_EMOJIS = ["👍", "🙏", "😊", "🔥", "✅", "🤝", "💚", "👏", "🚀", "😉", "📌", "💬"];
 const QUICK_REACTION_EMOJIS = ["\u{1F44D}", "\u2764\uFE0F", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
 const INBOX_CHANNEL_SET = new Set<string>(INBOX_CHANNEL_ORDER);
 const STATUS_FILTERS = ["all", "open", "pending", "resolved", "archived"] as const;
@@ -2125,8 +2133,8 @@ export default function ClienteInboxPage() {
   const [messageText, setMessageText] = useState("");
   const [replyTo, setReplyTo] = useState<MessageItem | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [mediaFile, setMediaFile] = useState<File | null>(null);
-  const [mediaPreviewUrl, setMediaPreviewUrl] = useState("");
+  const [mediaFiles, setMediaFiles] = useState<QueuedMedia[]>([]);
+  const mediaFilesRef = useRef<QueuedMedia[]>([]);
   const [templateName, setTemplateName] = useState("follow_up_geral");
   const [templateLanguage, setTemplateLanguage] = useState("pt_BR");
   const [templateParamsText, setTemplateParamsText] = useState("");
@@ -2189,10 +2197,16 @@ export default function ClienteInboxPage() {
   }, []);
 
   useEffect(() => {
+    mediaFilesRef.current = mediaFiles;
+  }, [mediaFiles]);
+
+  useEffect(() => {
     return () => {
-      if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+      mediaFilesRef.current.forEach((media) => {
+        if (media.previewUrl) URL.revokeObjectURL(media.previewUrl);
+      });
     };
-  }, [mediaPreviewUrl]);
+  }, []);
 
   useEffect(() => {
     if (!allowAdvanced) {
@@ -2754,31 +2768,46 @@ export default function ClienteInboxPage() {
     ).map(([userId, name]) => ({ userId, name }));
   }, [chats]);
 
-  function clearMediaSelection() {
-    if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
-    setMediaPreviewUrl("");
-    setMediaFile(null);
-    setMediaUploadProgress(0);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  function removeMediaSelection(id: string) {
+    setMediaFiles((current) => {
+      const removed = current.find((media) => media.id === id);
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter((media) => media.id !== id);
+    });
   }
 
-  function handleFileSelected(file: File | null) {
-    clearMediaSelection();
-    if (!file) return;
-    const limit = getClientMediaLimit(file);
-    if (file.size <= 0 || file.size > limit) {
-      setError(
-        file.size <= 0
-          ? "O arquivo selecionado esta vazio."
-          : `Arquivo muito grande. Limite: ${Math.round(limit / 1024 / 1024)}MB.`
-      );
-      return;
+  function handleFilesSelected(files: FileList | File[] | null) {
+    if (!files?.length) return;
+    const selected = Array.from(files);
+    const valid: QueuedMedia[] = [];
+    const invalid: string[] = [];
+    selected.forEach((file) => {
+      const limit = getClientMediaLimit(file);
+      if (file.size <= 0 || file.size > limit) {
+        invalid.push(file.name || "arquivo");
+        return;
+      }
+      valid.push({
+        id: typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        file,
+        previewUrl: file.type.startsWith("image/") || file.type.startsWith("video/") ? URL.createObjectURL(file) : "",
+      });
+    });
+    if (valid.length) {
+      setMediaFiles((current) => {
+        const next = [...current, ...valid];
+        next.slice(10).forEach((media) => {
+          if (media.previewUrl) URL.revokeObjectURL(media.previewUrl);
+        });
+        return next.slice(0, 10);
+      });
     }
-    setError(null);
-    setMediaFile(file);
-    if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
-      setMediaPreviewUrl(URL.createObjectURL(file));
+    if (invalid.length) {
+      setError(`${invalid.length === 1 ? `“${invalid[0]}” não pôde ser anexado` : `${invalid.length} arquivos não puderam ser anexados`}. Confira o tamanho permitido.`);
+    } else {
+      setError(null);
     }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function appendEmoji(emoji: string) {
@@ -3026,9 +3055,6 @@ export default function ClienteInboxPage() {
         return false;
       }
 
-      setMessageText("");
-      setReplyTo(null);
-      clearMediaSelection();
       await refreshSelected(true);
       scrollMessagesToBottom("smooth");
       return true;
@@ -3048,12 +3074,23 @@ export default function ClienteInboxPage() {
 
   async function handleSendMedia(event: FormEvent) {
     event.preventDefault();
-    if (!mediaFile) return;
-    await sendMediaFile(mediaFile, messageText);
+    if (!mediaFiles.length) return;
+    const queued = [...mediaFiles];
+    let sent = 0;
+    for (const [index, media] of queued.entries()) {
+      const delivered = await sendMediaFile(media.file, index === 0 ? messageText : "");
+      if (!delivered) break;
+      sent += 1;
+      removeMediaSelection(media.id);
+    }
+    if (sent) {
+      setMessageText("");
+      setReplyTo(null);
+    }
   }
 
   function handleComposerSubmit(event: FormEvent) {
-    if (mediaFile) {
+    if (mediaFiles.length) {
       void handleSendMedia(event);
       return;
     }
@@ -5244,17 +5281,14 @@ export default function ClienteInboxPage() {
             ) : (
               <div className="relative">
                 {emojiOpen ? (
-                  <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-20 grid w-[min(22rem,calc(100vw-1.25rem))] grid-cols-6 gap-1 rounded-3xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-2 shadow-[var(--cliente-shadow-hard)]">
-                    {QUICK_EMOJIS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => appendEmoji(emoji)}
-                        className="flex h-10 items-center justify-center rounded-2xl text-xl transition hover:bg-[var(--cliente-surface-muted)]"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
+                  <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-30 overflow-hidden rounded-3xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-hard)]">
+                    <EmojiPicker
+                      onEmojiClick={(emoji) => appendEmoji(emoji.emoji)}
+                      lazyLoadEmojis
+                      searchPlaceHolder="Buscar emoji"
+                      width="min(360px, calc(100vw - 1.25rem))"
+                      height={360}
+                    />
                   </div>
                 ) : null}
 
@@ -5275,46 +5309,29 @@ export default function ClienteInboxPage() {
                   </div>
                 ) : null}
 
-                {mediaFile ? (
-                  <div className="mb-2 overflow-hidden rounded-3xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.5)]">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)]">
-                        {mediaPreviewUrl && mediaFile.type.startsWith("image/") ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={mediaPreviewUrl} alt="" className="h-full w-full object-cover" />
-                        ) : mediaPreviewUrl && mediaFile.type.startsWith("video/") ? (
-                          <video src={mediaPreviewUrl} className="h-full w-full object-cover" muted />
-                        ) : mediaFile.type.startsWith("audio/") ? (
-                          <Mic className="h-5 w-5" />
-                        ) : (
-                          <FileText className="h-5 w-5" />
-                        )}
+                {mediaFiles.length ? (
+                  <div className="mb-2 flex max-h-36 gap-2 overflow-x-auto rounded-3xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.5)]">
+                    {mediaFiles.map((media, index) => (
+                      <div key={media.id} className="relative flex w-24 shrink-0 flex-col overflow-hidden rounded-2xl bg-[var(--cliente-surface-muted)] p-1.5 text-[var(--cliente-card-text-muted)]">
+                        <div className="flex h-16 items-center justify-center overflow-hidden rounded-xl bg-[var(--cliente-card)]">
+                          {media.previewUrl && media.file.type.startsWith("image/") ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={media.previewUrl} alt="" className="h-full w-full object-cover" />
+                          ) : media.previewUrl && media.file.type.startsWith("video/") ? (
+                            <video src={media.previewUrl} className="h-full w-full object-cover" muted />
+                          ) : media.file.type.startsWith("audio/") ? <Mic className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+                        </div>
+                        <p className="mt-1 truncate text-[10px] font-medium">{media.file.name}</p>
+                        {sendingMedia && index === 0 && mediaUploadProgress > 0 ? <p className="text-[10px] text-[var(--cliente-success)]">Enviando {mediaUploadProgress}%</p> : null}
+                        <button type="button" onClick={() => removeMediaSelection(media.id)} disabled={sendingMedia} className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50" aria-label={`Remover ${media.file.name}`}>
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{mediaFile.name}</p>
-                        <p className="mt-0.5 text-xs text-[var(--cliente-card-text-soft)]">
-                          {sendingMedia && mediaUploadProgress > 0
-                            ? `Enviando ${mediaUploadProgress}%`
-                            : `${(mediaFile.size / 1024 / 1024).toFixed(1)}MB`}
-                        </p>
-                        {sendingMedia && mediaUploadProgress > 0 ? (
-                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--cliente-surface-muted)]">
-                            <div
-                              className="h-full rounded-full bg-[#25D366] transition-[width] duration-200"
-                              style={{ width: `${mediaUploadProgress}%` }}
-                            />
-                          </div>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={clearMediaSelection}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)]"
-                        aria-label="Remover anexo"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
+                    ))}
+                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sendingMedia || mediaFiles.length >= 10} className="flex h-[86px] w-16 shrink-0 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--cliente-border-strong)] text-[var(--cliente-primary)] disabled:opacity-50" aria-label="Adicionar mais arquivos">
+                      <ImagePlus className="h-5 w-5" />
+                      <span className="mt-1 text-[10px] font-semibold">Adicionar</span>
+                    </button>
                   </div>
                 ) : null}
 
@@ -5366,14 +5383,15 @@ export default function ClienteInboxPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip"
                   className="hidden"
-                  onChange={(event) => handleFileSelected(event.target.files?.[0] || null)}
+                  onChange={(event) => handleFilesSelected(event.target.files)}
                 />
                 <textarea
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}
-                  placeholder={mediaFile ? "Legenda" : canOperate ? "Mensagem" : "Sem permissao para responder"}
+                  placeholder={mediaFiles.length ? "Legenda para o primeiro arquivo" : canOperate ? "Mensagem" : "Sem permissao para responder"}
                   rows={1}
                   className="inbox-chat-input max-h-28 min-h-11 min-w-0 flex-1 resize-none rounded-[22px] border border-transparent px-4 py-3 text-sm outline-none focus:border-[#25D366]"
                   disabled={!selectedChatId || sending || sendingMedia || !canOperate}
@@ -5385,7 +5403,7 @@ export default function ClienteInboxPage() {
                     }
                   }}
                 />
-                {!messageText.trim() && !mediaFile ? (
+                {!messageText.trim() && !mediaFiles.length ? (
                   <button
                     type="button"
                     onClick={recordingAudio ? stopAudioRecording : () => void startAudioRecording()}
@@ -5399,10 +5417,10 @@ export default function ClienteInboxPage() {
                 ) : null}
                 <button
                   type="submit"
-                  disabled={!selectedChatId || sending || sendingMedia || (!messageText.trim() && !mediaFile) || !canOperate}
+                  disabled={!selectedChatId || sending || sendingMedia || (!messageText.trim() && !mediaFiles.length) || !canOperate}
                   className={cn(
                     "h-12 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55 sm:w-auto sm:px-4 sm:py-2",
-                    !messageText.trim() && !mediaFile ? "hidden" : "inline-flex"
+                    !messageText.trim() && !mediaFiles.length ? "hidden" : "inline-flex"
                   )}
                   aria-label="Enviar mensagem"
                 >

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ClienteBottomNav } from "@/app/cliente/painel/components/cliente-bottom-nav";
 import { ClienteSidebar } from "@/app/cliente/painel/components/cliente-sidebar";
 import { ClienteShellProvider, useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
+import { ClienteMobileTopbar } from "@/app/cliente/painel/components/cliente-mobile-topbar";
 import { ClienteTopbar } from "@/app/cliente/painel/components/cliente-topbar";
 import { ClienteTrialBanner } from "@/app/cliente/components/cliente-trial-banner";
 
@@ -30,8 +31,8 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
   const mainPaddingClass = isInboxSurface
     ? "px-0 pb-0 pt-0 lg:px-7 lg:pb-10 xl:pt-[104px]"
     : compact
-      ? "px-3 pb-[calc(env(safe-area-inset-bottom)+5.75rem)] pt-[76px] sm:pb-20 sm:pt-[102px] lg:px-6 lg:pb-8 xl:pt-[104px]"
-      : "px-3 pb-[calc(env(safe-area-inset-bottom)+6.25rem)] pt-[76px] sm:px-4 sm:pb-24 sm:pt-[108px] lg:px-7 lg:pb-10 xl:pt-[104px]";
+      ? "px-3 pb-[calc(env(safe-area-inset-bottom)+5.5rem)] pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:pb-20 lg:px-6 lg:pb-8 lg:pt-[104px]"
+      : "px-3 pb-[calc(env(safe-area-inset-bottom)+5.5rem)] pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-4 sm:pb-24 lg:px-7 lg:pb-10 lg:pt-[104px]";
 
   useEffect(() => {
     const openSidebar = () => setSidebarOpen(true);
@@ -59,7 +60,8 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <ClienteSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className={isInboxSurface ? "max-xl:hidden" : ""}>
+      <ClienteMobileTopbar onOpenMenu={() => setSidebarOpen(true)} />
+      <div className="hidden lg:block">
         <ClienteTopbar onOpenMenu={() => setSidebarOpen(true)} />
       </div>
       <ClienteCommandPalette />

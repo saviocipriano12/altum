@@ -1369,7 +1369,22 @@ export default function ClienteCrmPage() {
   }
 
   return (
-    <CrmWorkspace>
+    <>
+      <MobileCrmScreen
+        leads={filteredLeads}
+        loading={loading}
+        search={search}
+        focus={focusFilter}
+        total={totalLeadCount}
+        needsResponse={prioritySummary.needsResponse}
+        hot={prioritySummary.hot}
+        noOwner={prioritySummary.noOwner}
+        onSearch={setSearch}
+        onFocus={setFocusFilter}
+        onRefresh={load}
+        onOpenPipeline={() => setViewAndUrl("pipeline")}
+      />
+      <CrmWorkspace className="hidden lg:block">
       <CrmHero
         active={view === "pipeline" ? "Funil" : "Lista"}
         title="Clientes, oportunidades e proxima acao."
@@ -2626,7 +2641,62 @@ export default function ClienteCrmPage() {
           </div>
         ) : null}
       </CustomerProfileDrawer>
-    </CrmWorkspace>
+      </CrmWorkspace>
+    </>
+  );
+}
+
+function MobileCrmScreen({
+  leads,
+  loading,
+  search,
+  focus,
+  total,
+  needsResponse,
+  hot,
+  noOwner,
+  onSearch,
+  onFocus,
+  onRefresh,
+  onOpenPipeline,
+}: {
+  leads: LeadItem[];
+  loading: boolean;
+  search: string;
+  focus: FocusFilter;
+  total: number;
+  needsResponse: number;
+  hot: number;
+  noOwner: number;
+  onSearch: (value: string) => void;
+  onFocus: (value: FocusFilter) => void;
+  onRefresh: () => void;
+  onOpenPipeline: () => void;
+}) {
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const selectedLead = leads.find((lead) => lead.id === selectedLeadId) || null;
+  const filters: Array<{ value: FocusFilter; label: string; count?: number }> = [
+    { value: "all", label: "Todos" },
+    { value: "needs_response", label: "Responder", count: needsResponse },
+    { value: "hot", label: "Quentes", count: hot },
+    { value: "no_owner", label: "Sem dono", count: noOwner },
+  ];
+
+  return (
+    <div className="lg:hidden">
+      <section className="-mx-3 min-h-[100dvh] bg-[var(--cliente-bg)] pb-[calc(env(safe-area-inset-bottom)+5.5rem)]">
+        <header className="border-b border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 pb-4 pt-3">
+          <div className="flex items-start justify-between gap-3">
+            <div><p className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">Carteira comercial</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-[var(--cliente-card-text)]">Clientes</h1></div>
+            <div className="flex gap-1"><button type="button" onClick={onRefresh} className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--cliente-primary)] active:bg-[var(--cliente-primary-soft)]" aria-label="Atualizar clientes"><RefreshCw className="h-5 w-5" /></button><button type="button" onClick={onOpenPipeline} className="inline-flex h-10 items-center rounded-full bg-[var(--cliente-primary)] px-3 text-sm font-semibold text-white">Funil</button></div>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2"><div className="rounded-2xl bg-[var(--cliente-primary-soft)] px-3 py-2.5"><p className="text-[10px] font-semibold text-[var(--cliente-primary)]">Na base</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{total}</p></div><div className="rounded-2xl bg-[var(--cliente-ai-soft)] px-3 py-2.5"><p className="text-[10px] font-semibold text-[var(--cliente-ai)]">Responder</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{needsResponse}</p></div><div className="rounded-2xl bg-[var(--cliente-warning-soft)] px-3 py-2.5"><p className="text-[10px] font-semibold text-[var(--cliente-warning)]">Sem dono</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{noOwner}</p></div></div>
+        </header>
+        <div className="px-4 py-4"><label className="flex h-12 items-center gap-2 rounded-2xl bg-[var(--cliente-surface-muted)] px-3 text-[var(--cliente-card-text-soft)]"><Search className="h-5 w-5" /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Buscar cliente ou empresa" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]" /></label><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{filters.map((item) => <button key={item.value} type="button" onClick={() => onFocus(item.value)} className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold ${focus === item.value ? 'bg-[var(--cliente-primary)] text-white' : 'bg-[var(--cliente-card)] text-[var(--cliente-card-text-muted)] ring-1 ring-[var(--cliente-border)]'}`}>{item.label}{typeof item.count === 'number' ? ` · ${item.count}` : ''}</button>)}</div></div>
+        <div className="border-y border-[var(--cliente-border)] bg-[var(--cliente-card)]">{loading ? <div className="p-8 text-center text-sm text-[var(--cliente-card-text-soft)]"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Carregando clientes</div> : null}{!loading && !leads.length ? <div className="p-8 text-center text-sm text-[var(--cliente-card-text-soft)]">Nenhum cliente neste filtro.</div> : null}{leads.map((lead) => { const pending = Number(lead.chatSummary?.pending || lead.chatSummary?.unresolved || 0); const heat = String(lead.heat || lead.aiCommercialTemperature || '').toLowerCase(); return <button key={lead.id} type="button" onClick={() => setSelectedLeadId(lead.id)} className="flex w-full items-center gap-3 border-b border-[var(--cliente-border)] px-4 py-4 text-left last:border-b-0 active:bg-[var(--cliente-surface-muted)]"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--cliente-primary-soft)] text-sm font-bold text-[var(--cliente-primary)]">{(lead.nome || lead.empresa || 'C').slice(0, 2).toUpperCase()}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{lead.nome || 'Contato sem nome'}</p>{pending ? <span className="rounded-full bg-[var(--cliente-ai-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--cliente-ai)]">Responder</span> : null}</div><p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{lead.empresa || lead.origem || 'Sem empresa informada'}</p><div className="mt-2 flex gap-2"><span className="text-[11px] text-[var(--cliente-card-text-muted)]">{getPipelineStageLabel(normalizePipelineStageId(lead.pipelineStage || lead.stage || 'captado'))}</span>{heat ? <span className="text-[11px] font-semibold text-[var(--cliente-warning)]">{heat === 'hot' || heat === 'quente' ? 'Quente' : heat}</span> : null}</div></div><ChevronRight className="h-5 w-5 shrink-0 text-[var(--cliente-card-text-soft)]" /></button>; })}</div>
+        {selectedLead ? <div className="fixed inset-0 z-[70] flex items-end bg-slate-950/30"><div className="w-full rounded-t-[28px] bg-[var(--cliente-card)] p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]"><div className="flex items-start justify-between gap-4"><div className="min-w-0"><p className="text-xs font-semibold text-[var(--cliente-primary)]">Cliente</p><h2 className="mt-1 truncate text-xl font-bold text-[var(--cliente-card-text)]">{selectedLead.nome || 'Contato sem nome'}</h2><p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{selectedLead.empresa || selectedLead.telefone || 'Sem empresa informada'}</p></div><button type="button" onClick={() => setSelectedLeadId(null)} className="h-10 rounded-full px-3 text-sm font-semibold text-[var(--cliente-card-text-muted)]">Fechar</button></div><div className="mt-5 grid grid-cols-2 gap-2"><div className="rounded-2xl bg-[var(--cliente-surface-muted)] p-3"><p className="text-[10px] font-semibold text-[var(--cliente-card-text-soft)]">Etapa</p><p className="mt-1 truncate text-sm font-semibold text-[var(--cliente-card-text)]">{getPipelineStageLabel(normalizePipelineStageId(selectedLead.pipelineStage || selectedLead.stage || 'captado'))}</p></div><div className="rounded-2xl bg-[var(--cliente-surface-muted)] p-3"><p className="text-[10px] font-semibold text-[var(--cliente-card-text-soft)]">Próxima ação</p><p className="mt-1 truncate text-sm font-semibold text-[var(--cliente-card-text)]">{selectedLead.aiNextAction || 'Definir ação'}</p></div></div><div className="mt-4"><Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`} className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--cliente-success)] px-3 text-sm font-semibold text-white">Abrir conversa</Link></div></div></div> : null}
+      </section>
+    </div>
   );
 }
 

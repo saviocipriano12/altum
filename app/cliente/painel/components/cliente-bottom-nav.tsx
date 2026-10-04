@@ -51,7 +51,7 @@ export function ClienteBottomNav() {
   if (!visibleItems.length) return null;
 
   return (
-    <nav className="client-bottom-nav client-glass fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.55rem)] z-40 rounded-[26px] border border-[var(--cliente-border)] bg-[color-mix(in_srgb,var(--cliente-panel)_92%,white)] p-1.5 shadow-[var(--cliente-shadow-hard)] lg:hidden">
+    <nav className="client-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-[var(--cliente-border)] bg-[color-mix(in_srgb,var(--cliente-panel-solid)_96%,transparent)] px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur-xl lg:hidden">
       <ul
         className="grid gap-1"
         style={{ gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))` }}
@@ -66,9 +66,9 @@ export function ClienteBottomNav() {
                 href={item.href}
                 prefetch
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-12 flex-col items-center justify-center rounded-2xl px-1 py-2 text-[11px] font-semibold transition ${
+                className={`flex min-h-[58px] flex-col items-center justify-center rounded-xl px-1 py-1.5 text-[11px] font-semibold transition active:scale-95 ${
                   active
-                    ? "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-accent-soft)_76%,white),var(--cliente-accent-soft))] text-[var(--cliente-accent)] shadow-[inset_0_0_0_1px_var(--cliente-border-strong)]"
+                    ? "bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"
                     : "text-[var(--cliente-text-soft)] hover:bg-[var(--cliente-surface-muted)] hover:text-[var(--cliente-text)]"
                 }`}
               >

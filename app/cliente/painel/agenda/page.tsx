@@ -64,6 +64,16 @@ type AppointmentItem = {
   ownerName?: string | null;
 };
 
+type AppointmentForm = {
+  leadId: string;
+  title: string;
+  type: string;
+  startAt: string;
+  location: string;
+  meetingUrl: string;
+  notes: string;
+};
+
 const typeOptions = [
   { value: "reuniao", label: "Reuniao" },
   { value: "call", label: "Ligacao" },
@@ -124,9 +134,10 @@ export default function ClienteAgendaPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<AppointmentForm>({
     leadId: leadIdFromQuery,
     title: "",
     type: "reuniao",
@@ -251,7 +262,33 @@ export default function ClienteAgendaPage() {
   }
 
   return (
-    <CrmWorkspace className="agenda-refined">
+    <>
+      <MobileAgendaScreen
+        appointments={filteredAppointments}
+        leads={leads}
+        loading={loading}
+        canOperate={canOperate}
+        busyId={busyId}
+        search={search}
+        status={status}
+        todayCount={todayCount}
+        overdueCount={overdueCount}
+        nextAppointment={nextAppointment}
+        createOpen={mobileCreateOpen}
+        form={form}
+        saving={saving}
+        error={error}
+        notice={notice}
+        onSearch={setSearch}
+        onStatus={setStatus}
+        onRefresh={loadData}
+        onOpenCreate={() => setMobileCreateOpen(true)}
+        onCloseCreate={() => setMobileCreateOpen(false)}
+        onFormChange={(field, value) => setForm((current) => ({ ...current, [field]: value }))}
+        onCreate={createAppointment}
+        onUpdateStatus={updateStatus}
+      />
+      <CrmWorkspace className="agenda-refined hidden lg:block">
       <CrmHero
         active="Agenda"
         title="Agenda que protege vendas e proximos passos."
@@ -401,7 +438,102 @@ export default function ClienteAgendaPage() {
         </CrmPanel>
         </div>
       </section>
-    </CrmWorkspace>
+      </CrmWorkspace>
+    </>
+  );
+}
+
+function MobileAgendaScreen({
+  appointments,
+  leads,
+  loading,
+  canOperate,
+  busyId,
+  search,
+  status,
+  todayCount,
+  overdueCount,
+  nextAppointment,
+  createOpen,
+  form,
+  saving,
+  error,
+  notice,
+  onSearch,
+  onStatus,
+  onRefresh,
+  onOpenCreate,
+  onCloseCreate,
+  onFormChange,
+  onCreate,
+  onUpdateStatus,
+}: {
+  appointments: AppointmentItem[];
+  leads: LeadItem[];
+  loading: boolean;
+  canOperate: boolean;
+  busyId: string | null;
+  search: string;
+  status: string;
+  todayCount: number;
+  overdueCount: number;
+  nextAppointment: AppointmentItem | null;
+  createOpen: boolean;
+  form: AppointmentForm;
+  saving: boolean;
+  error: string | null;
+  notice: string | null;
+  onSearch: (value: string) => void;
+  onStatus: (value: string) => void;
+  onRefresh: () => void;
+  onOpenCreate: () => void;
+  onCloseCreate: () => void;
+  onFormChange: (field: keyof AppointmentForm, value: string) => void;
+  onCreate: (event: FormEvent) => Promise<void>;
+  onUpdateStatus: (id: string, status: string) => Promise<void>;
+}) {
+  return (
+    <div className="lg:hidden">
+      <section className="-mx-3 bg-[var(--cliente-bg)] pb-[calc(env(safe-area-inset-bottom)+5.5rem)]">
+        <header className="border-b border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 pb-4 pt-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-[var(--cliente-card-text-soft)]">Operação de hoje</p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-[var(--cliente-card-text)]">Agenda</h1>
+            </div>
+            <div className="flex gap-1">
+              <button type="button" onClick={onRefresh} className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--cliente-primary)] active:bg-[var(--cliente-primary-soft)]" aria-label="Atualizar agenda"><RefreshCw className="h-5 w-5" /></button>
+              {canOperate ? <button type="button" onClick={onOpenCreate} className="inline-flex h-10 items-center gap-1.5 rounded-full bg-[var(--cliente-primary)] px-3 text-sm font-semibold text-white"><Plus className="h-4 w-4" />Novo</button> : null}
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-2xl bg-[var(--cliente-primary-soft)] px-3 py-2.5"><p className="text-[11px] font-semibold text-[var(--cliente-primary)]">Hoje</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{todayCount}</p></div>
+            <div className="rounded-2xl bg-[var(--cliente-warning-soft)] px-3 py-2.5"><p className="text-[11px] font-semibold text-[var(--cliente-warning)]">Atrasados</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{overdueCount}</p></div>
+          </div>
+          {nextAppointment ? <p className="mt-3 truncate text-sm text-[var(--cliente-card-text-muted)]"><span className="font-semibold">Próximo:</span> {nextAppointment.title || nextAppointment.leadName} · {formatCrmDate(nextAppointment.startAt, "Sem horário")}</p> : null}
+        </header>
+
+        <div className="px-4 py-4">
+          {error ? <div className="mb-3 rounded-2xl bg-[var(--cliente-danger-soft)] px-3 py-2.5 text-sm font-medium text-[var(--cliente-danger)]">{error}</div> : null}
+          {notice ? <div className="mb-3 rounded-2xl bg-[var(--cliente-success-soft)] px-3 py-2.5 text-sm font-medium text-[var(--cliente-success)]">{notice}</div> : null}
+          <label className="flex h-12 items-center gap-2 rounded-2xl bg-[var(--cliente-surface-muted)] px-3 text-[var(--cliente-card-text-soft)]"><Search className="h-5 w-5" /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Buscar na agenda" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]" /></label>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {[['open', 'Pendentes'], ['scheduled', 'Marcados'], ['confirmed', 'Confirmados'], ['all', 'Todos']].map(([value, label]) => <button key={value} type="button" onClick={() => onStatus(value)} className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold ${status === value ? 'bg-[var(--cliente-primary)] text-white' : 'bg-[var(--cliente-card)] text-[var(--cliente-card-text-muted)] ring-1 ring-[var(--cliente-border)]'}`}>{label}</button>)}
+          </div>
+        </div>
+
+        <div className="border-y border-[var(--cliente-border)] bg-[var(--cliente-card)]">
+          {loading ? <div className="p-8 text-center text-sm text-[var(--cliente-card-text-soft)]"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Carregando agenda</div> : null}
+          {!loading && !appointments.length ? <div className="p-8 text-center text-sm text-[var(--cliente-card-text-soft)]">Nenhum compromisso nesse filtro.</div> : null}
+          {appointments.map((item) => <article key={item.id} className="border-b border-[var(--cliente-border)] px-4 py-4 last:border-b-0">
+            <div className="flex gap-3"><div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-2xl bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"><CalendarDays className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{item.title || 'Compromisso comercial'}</p><p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{item.leadName || item.leadCompany || 'Sem contato vinculado'} · {formatCrmDate(item.startAt, 'Sem horário')}</p><div className="mt-2 flex items-center justify-between gap-2"><CrmBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</CrmBadge>{item.leadId ? <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="text-xs font-semibold text-[var(--cliente-primary)]">Ver cliente</Link> : null}</div></div></div>
+            {canOperate && isOpen(item) ? <div className="mt-3 flex gap-2"><button type="button" disabled={busyId === item.id} onClick={() => void onUpdateStatus(item.id, item.status === 'draft' ? 'scheduled' : item.status === 'scheduled' ? 'confirmed' : 'completed')} className="min-h-10 flex-1 rounded-xl bg-[var(--cliente-primary)] px-3 text-xs font-semibold text-white">{busyId === item.id ? 'Salvando…' : item.status === 'draft' ? 'Aprovar' : item.status === 'scheduled' ? 'Confirmar' : 'Concluir'}</button><button type="button" disabled={busyId === item.id} onClick={() => void onUpdateStatus(item.id, 'canceled')} className="min-h-10 rounded-xl px-3 text-xs font-semibold text-[var(--cliente-danger)] ring-1 ring-[var(--cliente-danger)]/25">Cancelar</button></div> : null}
+          </article>)}
+        </div>
+
+        {createOpen ? <div className="fixed inset-0 z-[70] flex items-end bg-slate-950/30" role="dialog" aria-modal="true"><form onSubmit={(event) => void onCreate(event)} className="max-h-[88dvh] w-full overflow-y-auto rounded-t-[28px] bg-[var(--cliente-card)] p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-2xl"><div className="flex items-center justify-between"><div><p className="text-xs font-semibold text-[var(--cliente-primary)]">Novo compromisso</p><h2 className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">Adicionar à agenda</h2></div><button type="button" onClick={onCloseCreate} className="h-10 rounded-full px-3 text-sm font-semibold text-[var(--cliente-card-text-muted)]">Fechar</button></div><div className="mt-5 space-y-3"><select value={form.leadId} onChange={(event) => onFormChange('leadId', event.target.value)} className="client-input w-full rounded-xl border px-3 py-3 text-sm"><option value="">Sem cliente vinculado</option>{leads.map((lead) => <option key={lead.id} value={lead.id}>{lead.nome || 'Contato'}{lead.empresa ? ` · ${lead.empresa}` : ''}</option>)}</select><input value={form.title} onChange={(event) => onFormChange('title', event.target.value)} placeholder="Título do compromisso" className="client-input w-full rounded-xl border px-3 py-3 text-sm" /><div className="grid grid-cols-2 gap-3"><select value={form.type} onChange={(event) => onFormChange('type', event.target.value)} className="client-input rounded-xl border px-3 py-3 text-sm">{typeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><input type="datetime-local" value={form.startAt} onChange={(event) => onFormChange('startAt', event.target.value)} className="client-input min-w-0 rounded-xl border px-3 py-3 text-sm" /></div><input value={form.location} onChange={(event) => onFormChange('location', event.target.value)} placeholder="Local ou cidade" className="client-input w-full rounded-xl border px-3 py-3 text-sm" /><textarea value={form.notes} onChange={(event) => onFormChange('notes', event.target.value)} placeholder="Notas para preparar a conversa" rows={3} className="client-input w-full rounded-xl border px-3 py-3 text-sm" /></div><button type="submit" disabled={!canOperate || saving || !form.title.trim() || !form.startAt} className="mt-5 flex min-h-12 w-full items-center justify-center rounded-xl bg-[var(--cliente-primary)] px-4 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Salvando…' : 'Salvar compromisso'}</button></form></div> : null}
+      </section>
+    </div>
   );
 }
 
