@@ -4526,7 +4526,9 @@ export default function ClienteInboxPage() {
       <section
         className={cn(
           "grid min-w-0 grid-cols-1 gap-0 xl:h-[calc(100vh-7rem)] xl:min-h-0 xl:grid-cols-[minmax(320px,370px)_minmax(0,1.7fr)] xl:gap-3",
-          selectedChatId ? "min-h-0" : "min-h-[82vh]",
+          selectedChatId
+            ? "min-h-0 max-xl:fixed max-xl:inset-0 max-xl:z-[60] max-xl:block max-xl:bg-white"
+            : "min-h-[82vh]",
           showDesktopContextPanel && isWideContextViewport
             ? "2xl:grid-cols-[minmax(320px,370px)_minmax(0,1.7fr)_minmax(320px,360px)]"
             : "2xl:grid-cols-[minmax(320px,370px)_minmax(0,1.8fr)]"
@@ -4969,7 +4971,7 @@ export default function ClienteInboxPage() {
           "inbox-thread-shell min-h-0 min-w-0 flex-col overflow-hidden max-xl:rounded-none max-xl:border-0 max-xl:shadow-none xl:flex",
           selectedChatId ? "flex h-[100dvh] max-h-[100dvh] xl:h-full xl:max-h-none" : "hidden"
         )}>
-          <div className="inbox-thread-header inbox-chat-header border-b border-[var(--cliente-border)] p-2.5 sm:p-5">
+          <div className="inbox-thread-header inbox-chat-header border-b border-[var(--cliente-border)] p-2.5 pt-[calc(env(safe-area-inset-top)+0.625rem)] sm:p-5">
             <div className="flex items-center justify-between gap-2 sm:items-start sm:gap-4">
               <div className="flex min-w-0 flex-1 items-center gap-2 sm:items-start sm:gap-3">
                 <button
