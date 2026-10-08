@@ -21,6 +21,7 @@ import { parseEvolutionWebhook, type EvolutionInbound } from "@/lib/server/messa
 import { cacheEvolutionProfilePicture, downloadEvolutionInboundMedia, fetchEvolutionProfilePicture } from "@/lib/server/messaging/evolution-provider";
 import { resolveCanonicalWhatsAppChat } from "@/lib/server/whatsapp-chat-identity";
 import { isEvolutionWhatsAppProvider } from "@/lib/server/messaging/registry";
+import { getMetaEnv } from "@/app/lib/server/integration-oauth";
 
 function sanitizeId(value: string, max = 220) {
   const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, "_").trim();
@@ -872,7 +873,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: "ignored_unknown_channel" });
     }
 
-    if (!channel.appSecret) {
+    const signatureSecret = channel.appSecret || getMetaEnv().appSecret;
+    if (!signatureSecret) {
       console.error("Webhook WhatsApp bloqueado: canal sem appSecret configurado.", {
         tenantId: channel.tenantId,
         phoneNumberId: channel.phoneNumberId,
@@ -880,7 +882,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Canal sem segredo de assinatura configurado." }, { status: 503 });
     }
 
-    if (!verifyMetaSignature(rawBody, signature, channel.appSecret)) {
+    if (!verifyMetaSignature(rawBody, signature, signatureSecret)) {
       return NextResponse.json({ error: "Assinatura invalida." }, { status: 401 });
     }
 

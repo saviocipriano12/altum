@@ -2,3 +2,11 @@ _benchmark
 *.zip
 *.log
 .tmp-*
+node_modules/
+.next/
+.git/
+.altum-agent-sources/
+.altum-openclaw/
+.qa-artifacts/
+.env*
+*.tsbuildinfo

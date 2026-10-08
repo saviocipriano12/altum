@@ -46,6 +46,8 @@ export type CommerceSyncResult = {
   products: number;
   orders: number;
   carts: number;
+  /** Non-blocking limitations found while synchronizing optional resources. */
+  warnings?: string[];
   cursor?: string | null;
 };
 

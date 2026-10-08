@@ -1,0 +1,13 @@
+{
+  "id": "altum-mission-bridge",
+  "categories": ["agent-orchestration", "infrastructure"],
+  "activation": {
+    "onStartup": true,
+    "onConfigPaths": ["plugins.entries.altum-mission-bridge"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

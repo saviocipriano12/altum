@@ -4,6 +4,8 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 const SHOPIFY_COMMERCE_TOPICS = [
   "PRODUCTS_CREATE",
   "PRODUCTS_UPDATE",
+  "CHECKOUTS_CREATE",
+  "CHECKOUTS_UPDATE",
   "ORDERS_CREATE",
   "ORDERS_PAID",
   "ORDERS_CANCELLED",

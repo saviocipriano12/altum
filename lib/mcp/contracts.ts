@@ -117,7 +117,7 @@ const definition = <S extends z.ZodType>(description: string, schema: S, require
   ({ description, schema, requiredScopes, capabilities, modules, risk });
 
 export const tools = {
-  list_businesses: definition("Liste somente empresas autorizadas e obtenha um context. Use antes das demais ferramentas; nunca invente contextos.", z.object({}).strict(), [], [], []),
+  list_businesses: definition("Liste somente empresas autorizadas e obtenha um context. Use antes das demais ferramentas; nunca invente contextos.", z.object({}).strict(), ["context:read"], [], []),
   list_whatsapp_templates: definition("Consulte ao vivo os templates WhatsApp disponiveis no canal da empresa antes de iniciar uma conversa nova. Use somente templates com status approved e forneca exatamente a quantidade de parametros indicada.", z.object({ context, channelId: id.optional() }).strict(), ["integrations:read"], ["respond_inbox"], ["whatsapp"]),
   get_ai_commercial_profile: definition("Leia a configuracao comercial completa e estruturada que realmente orienta o Assistente Altum. Nao retorna segredos de provider.", z.object({ context }).strict(), ["context:read"], ["manage_ai"], ["ai"]),
   list_offers: definition("Liste as ofertas comerciais estruturadas exatamente como aparecem em Produtos e Servicos, incluindo prontidao para IA, materiais e relacionamentos.", z.object({ context, ...page, query: z.string().trim().max(120).optional() }).strict(), ["context:read"], ["manage_ai"], ["ai"]),

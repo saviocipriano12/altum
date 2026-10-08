@@ -31,6 +31,7 @@ test("Shopify exposes current strengths without claiming planned coverage", () =
   const shopify = commerceProviderMeta("shopify");
   assert.equal(shopify.capabilityMatrix.catalog_products, "available");
   assert.equal(shopify.capabilityMatrix.tracking, "available");
+  assert.equal(shopify.capabilityMatrix.abandoned_checkouts, "available");
   assert.equal(shopify.capabilityMatrix.inventory_by_location, "planned");
   assert.equal(shopify.capabilityMatrix.refunds, "partial");
   assert.ok(shopify.availableCapabilities.includes("api_sync"));

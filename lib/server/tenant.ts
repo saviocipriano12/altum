@@ -33,6 +33,24 @@ export const TENANT_SCOPED_COLLECTIONS = [
   "whatsapp_webhook_events",
   "meta_webhook_events",
   "tenant_notification_state",
+  "agent_missions",
+  "agent_tasks",
+  "agent_runs",
+  "agent_approvals",
+  "agent_approval_policies",
+  "agent_memories",
+  "agent_conversations",
+  "agent_ideas",
+  "agent_experiments",
+  "brand_profiles",
+  "brand_assets",
+  "creative_projects",
+  "creative_jobs",
+  "creative_outputs",
+  "creative_assets",
+  "content_plans",
+  "content_items",
+  "avatar_profiles", "avatar_jobs",
 ] as const;
 
 export type TenantUserRole =
@@ -199,15 +217,23 @@ function normalizeMembership(
 
   if (!tenantId || !userId) return null;
 
+  const role = normalizeRole(data.role);
+  const capabilitiesConfigured = Object.prototype.hasOwnProperty.call(data, "capabilities");
+
   return {
     id,
     tenantId,
     userId,
-    role: normalizeRole(data.role),
+    role,
     status: data.status === "blocked" ? "blocked" : "active",
     isDefault: Boolean(data.isDefault),
-    capabilities: normalizeCapabilities(data.capabilities),
-    capabilitiesConfigured: Object.prototype.hasOwnProperty.call(data, "capabilities"),
+    // Registros antigos de proprietario/admin nao tinham a lista materializada.
+    // Nesses casos, preserve as permissoes padrao do cargo. Uma lista presente,
+    // inclusive vazia, continua sendo uma configuracao explicita e nao recebe fallback.
+    capabilities: capabilitiesConfigured
+      ? normalizeCapabilities(data.capabilities)
+      : [...DEFAULT_CAPABILITIES_BY_ROLE[role]],
+    capabilitiesConfigured,
   };
 }
 

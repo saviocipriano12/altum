@@ -22,6 +22,7 @@ test("native providers use their current official API contracts", () => {
   const woo = readFileSync(resolve(process.cwd(), "lib/server/commerce/providers/woocommerce.ts"), "utf8");
   assert.match(shopify, /graphql\.json/);
   assert.match(shopify, /X-Shopify-Access-Token/);
+  assert.match(shopify, /abandonedCheckouts/);
   assert.match(nuvemshop, /api\.nuvemshop\.com\.br\/v1/);
   assert.match(nuvemshop, /Authorization: `Bearer/);
   assert.match(woo, /wp-json\/wc\/v3/);

@@ -1,0 +1,44 @@
+name: altum-openclaw-runtime
+
+services:
+  openclaw:
+    # A imagem-base vem do checkout auditado, nunca de uma tag móvel pública.
+    # Esta camada é propositalmente mínima: mudanças no bridge não exigem
+    # recompilar a interface inteira do OpenClaw na VPS.
+    build:
+      context: ./resources/openclaw
+      dockerfile: runtime-patch/Dockerfile
+    image: altum-openclaw:runtime
+    env_file:
+      - path: .env.openclaw-runtime
+        required: true
+    environment:
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_GATEWAY_PORT: "18789"
+      # env_file é a única fonte dessas credenciais. Não use interpolação
+      # aqui: o Compose resolve ${...} antes de carregar env_file.
+      OPENCLAW_DISABLE_BONJOUR: "1"
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./.altum-openclaw:/home/node/.openclaw
+    ports:
+      - "127.0.0.1:${ALTUM_OPENCLAW_PORT:-18789}:18789"
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: unless-stopped
+    command: ["node", "openclaw.mjs", "gateway", "--bind", "loopback", "--port", "18789"]
+    healthcheck:
+      test: ["CMD", "node", "dist/docker-healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

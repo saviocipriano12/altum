@@ -3,10 +3,8 @@ import { scopes, type Scope } from "@/lib/mcp/contracts";
 export const ADMIN_MCP_PATH = "/api/mcp/admin";
 export const ADMIN_MCP_ISSUER_PATH = "/api/admin/mcp";
 export const adminConsentSchema = z.object({
-  tenantIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,180}$/)).min(1).max(20),
   scopes: z.array(z.enum(scopes)).min(1).max(scopes.length),
 }).strict().superRefine((data, context) => {
-  if (new Set(data.tenantIds).size !== data.tenantIds.length) context.addIssue({ code: "custom", message: "Empresas duplicadas." });
   if (!data.scopes.includes("context:read")) context.addIssue({ code: "custom", message: "A leitura do contexto é necessária." });
 });
 export function strictAdminScopes(value: unknown): { scopes: Scope[]; offline: boolean } {

@@ -4,7 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { isGoogleAdsServerConfigured } from "@/app/lib/server/google-ads";
-import { encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
+import { decryptSecret, encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
 import { getMetaEnv, normalizeConnectionStatus } from "@/app/lib/server/integration-oauth";
 import {
   AGENCY_WHATSAPP_ENV_CHANNEL_ID,
@@ -643,11 +643,16 @@ export async function POST(
     }
     const metadata = cleanMetadata(body.metadata);
     const wabaId = clean(body.wabaId, 180) || clean(metadata.wabaId, 180) || clean(metadata.whatsappBusinessAccountId, 180);
-    const verifyToken =
+    const submittedVerifyToken =
       clean(metadata.verifyToken, 400) || clean(metadata.webhookVerifyToken, 400);
-    const appSecret = clean(metadata.appSecret, 400);
+    const submittedAppSecret = clean(metadata.appSecret, 400);
 
     const provider = type === "whatsapp" ? normalizeWhatsAppProvider(body.provider) : clean(body.provider, 80) || type;
+    const metaEnv = getMetaEnv();
+    const isAltumManagedMetaWhatsApp =
+      type === "whatsapp" && provider === "meta_whatsapp" && Boolean(metaEnv.verifyToken && metaEnv.appSecret);
+    const verifyToken = submittedVerifyToken || (isAltumManagedMetaWhatsApp ? metaEnv.verifyToken : "");
+    const appSecret = submittedAppSecret || (isAltumManagedMetaWhatsApp ? metaEnv.appSecret : "");
     if (!canManageAllChannels && provider !== "evolution") {
       return NextResponse.json({ error: "Seu perfil pode conectar somente um WhatsApp pessoal por QR Code." }, { status: 403 });
     }
@@ -680,6 +685,26 @@ export async function POST(
 
     const accessToken = clean(body.accessToken, 4000) || managedEvolution?.apiKey || "";
     const refreshToken = clean(body.refreshToken, 4000);
+    const effectiveMetaAccessToken = accessToken || decryptSecret(currentChannelData.accessToken);
+
+    if (type === "whatsapp" && provider === "meta_whatsapp") {
+      if (!wabaId || !effectiveMetaAccessToken) {
+        return NextResponse.json({ error: "Informe o ID da conta WhatsApp e um token de acesso válido da Meta." }, { status: 400 });
+      }
+
+      const subscriptionResponse = await fetch(
+        `https://graph.facebook.com/${metaEnv.graphVersion}/${encodeURIComponent(wabaId)}/subscribed_apps`,
+        { method: "POST", headers: { Authorization: `Bearer ${effectiveMetaAccessToken}` }, cache: "no-store" }
+      );
+      const subscriptionPayload = (await subscriptionResponse.json().catch(() => ({}))) as { success?: unknown; error?: { message?: unknown } };
+      if (!subscriptionResponse.ok || subscriptionPayload.success !== true) {
+        const detail = clean(subscriptionPayload.error?.message, 500);
+        return NextResponse.json(
+          { error: detail || "A Meta não permitiu vincular este WhatsApp aos webhooks da Altum. Confira se o token tem acesso à conta WhatsApp." },
+          { status: 400 }
+        );
+      }
+    }
 
     if (type === "whatsapp" && provider === "evolution") {
       const currentMetadata = cleanMetadata(currentChannelData.metadata);

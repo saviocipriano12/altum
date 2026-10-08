@@ -1,8 +1,10 @@
 {
   "crons": [
+    { "path": "/api/internal/jobs/outbound-campaigns/process?limit=100", "schedule": "30 11 * * *" },
     { "path": "/api/internal/jobs/ai/process?limit=30&drain=1", "schedule": "20 9 * * *" },
     { "path": "/api/internal/jobs/finance/subscriptions", "schedule": "30 8 * * *" },
     { "path": "/api/internal/jobs/commerce/actions", "schedule": "0 9 * * *" },
-    { "path": "/api/internal/jobs/commercial-agent/actions", "schedule": "10 9 * * *" }
+    { "path": "/api/internal/jobs/commercial-agent/actions", "schedule": "10 9 * * *" },
+    { "path": "/api/internal/jobs/creative-media/process?limit=20", "schedule": "15 10 * * *" }
   ]
 }

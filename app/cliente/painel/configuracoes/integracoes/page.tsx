@@ -346,9 +346,12 @@ export default function ClienteIntegracoesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ limit: 20 }),
       });
-      const data = (await res.json()) as { error?: string; processed?: number; summary?: { products?: number; orders?: number } };
+      const data = (await res.json()) as { error?: string; processed?: number; summary?: { products?: number; orders?: number; carts?: number; warnings?: string[] } };
       if (!res.ok) throw new Error(data.error || "Falha ao sincronizar a loja.");
-      setNotice(`${data.summary?.products || 0} produto(s) e ${data.summary?.orders || 0} pedido(s) sincronizados.`);
+      const checkoutWarning = data.summary?.warnings?.includes("shopify_abandoned_checkouts_unavailable")
+        ? " Pedidos e produtos foram atualizados; libere o acesso a checkouts abandonados na Shopify para sincronizar carrinhos."
+        : "";
+      setNotice(`${data.summary?.products || 0} produto(s), ${data.summary?.orders || 0} pedido(s) e ${data.summary?.carts || 0} carrinho(s) sincronizados.${checkoutWarning}`);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao sincronizar a loja.");
@@ -991,6 +994,11 @@ function ConnectionCard({
           ? `Sincronização automática ativa${connection.lastSyncAt ? ` · última execução ${new Date(connection.lastSyncAt).toLocaleString("pt-BR")}` : " · primeira carga em preparação"}`
           : "Aguardando eventos enviados pela plataforma da loja."}
       </p>
+      {connection.provider === "shopify" ? (
+        <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
+          Pagamentos confirmados atualizam o cliente, a receita e a conversão atribuída da campanha. Checkouts abandonados entram como oportunidade de retomada.
+        </p>
+      ) : null}
       {connection.realtime?.failed ? (
         <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
           A loja está conectada. Alguns eventos em tempo real serão retomados na próxima reconexão; a sincronização automática continua cobrindo os dados.

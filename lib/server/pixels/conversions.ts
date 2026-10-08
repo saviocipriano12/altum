@@ -25,6 +25,12 @@ type DispatchInput = {
   reason: DispatchReason;
   appointmentId?: string | null;
   force?: boolean;
+  /** A provider-owned key (for example a Shopify order id) makes each sale idempotent. */
+  conversionKey?: string;
+  conversionValue?: number;
+  currency?: string;
+  occurredAt?: string | Date;
+  orderId?: string;
 };
 
 type MetaChannel = {
@@ -57,6 +63,16 @@ function clean(value: unknown, max = 4000) {
 
 function cleanLower(value: unknown, max = 4000) {
   return clean(value, max).toLowerCase();
+}
+
+function moneyValue(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Number(parsed.toFixed(2)) : fallback;
+}
+
+function currencyCode(value: unknown) {
+  const normalized = clean(value, 3).toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : "BRL";
 }
 
 function compactObject<T extends Record<string, unknown>>(value: T) {
@@ -352,11 +368,16 @@ async function sendMetaConversion(input: {
   eventName: string;
   lead: Record<string, unknown>;
   appointment: Record<string, unknown> | null;
+  conversionValue?: number;
+  currency?: string;
+  occurredAt?: string | Date;
+  orderId?: string;
 }) {
   const attribution = extractLeadAttributionSummary(input.lead);
   const lastTouch = attribution.lastTouch;
   const lastTouchRecord = lastTouch as Record<string, unknown>;
-  const value = resolveLeadPotentialValue(input.lead);
+  const value = moneyValue(input.conversionValue, resolveLeadPotentialValue(input.lead));
+  const currency = currencyCode(input.currency);
   const email = normalizeEmailForHash(input.lead.email);
   const phone = normalizePhoneForHash(input.lead.telefone);
   const firstName = normalizeNameForHash(input.lead.nome);
@@ -376,7 +397,7 @@ async function sendMetaConversion(input: {
       ? (input.lead.qualification as Record<string, unknown>)
       : {};
   const customData = compactObject({
-    currency: "BRL",
+    currency,
     value,
     tenant_id: input.tenantId,
     lead_id: input.leadId,
@@ -403,13 +424,14 @@ async function sendMetaConversion(input: {
     meeting_status: input.appointment ? clean(input.appointment.status, 40) : undefined,
     appointment_type: input.appointment ? clean(input.appointment.type, 80) : undefined,
     referrer: referrer || undefined,
+    order_id: clean(input.orderId, 180) || undefined,
   });
 
   const payload = {
     data: [
       {
         event_name: input.eventName,
-        event_time: toUnixSeconds(input.appointment?.updatedAt || input.lead.updatedAt || input.lead.createdAt),
+        event_time: toUnixSeconds(input.occurredAt || input.appointment?.updatedAt || input.lead.updatedAt || input.lead.createdAt),
         event_id: input.eventId,
         action_source: "website",
         event_source_url: landingPage || undefined,
@@ -452,6 +474,10 @@ async function sendGoogleConversion(input: {
   reason: DispatchReason;
   lead: Record<string, unknown>;
   appointment: Record<string, unknown> | null;
+  conversionValue?: number;
+  currency?: string;
+  occurredAt?: string | Date;
+  orderId?: string;
 }) {
   const gclid = clean(readLeadTouch(input.lead, "last_touch").gclid || input.lead.gclid, 240);
   if (!gclid) {
@@ -466,7 +492,7 @@ async function sendGoogleConversion(input: {
     throw new Error("Canal Google Ads sem access token valido.");
   }
 
-  const value = resolveLeadPotentialValue(input.lead);
+  const value = moneyValue(input.conversionValue, resolveLeadPotentialValue(input.lead));
   const email = normalizeEmailForHash(input.lead.email);
   const phone = normalizePhoneForHash(input.lead.telefone);
   const payload = {
@@ -474,11 +500,11 @@ async function sendGoogleConversion(input: {
       {
         conversionAction: `customers/${input.channel.customerId}/conversionActions/${input.channel.conversionActionId}`,
         gclid,
-        conversionDateTime: toGoogleDateTime(input.appointment?.updatedAt || input.lead.updatedAt || input.lead.createdAt),
+        conversionDateTime: toGoogleDateTime(input.occurredAt || input.appointment?.updatedAt || input.lead.updatedAt || input.lead.createdAt),
         conversionValue:
           input.reason === "sale_won" ? Math.max(0, Number(value.toFixed(2))) : 1,
-        currencyCode: "BRL",
-        orderId: input.eventId,
+        currencyCode: currencyCode(input.currency),
+        orderId: clean(input.orderId, 180) || input.eventId,
         userIdentifiers: [
           email ? { hashedEmail: sha256(email) } : null,
           phone ? { hashedPhoneNumber: sha256(phone) } : null,
@@ -536,9 +562,10 @@ export async function dispatchLeadConversionEvents(input: DispatchInput) {
   const metaChannels = resolveMetaChannels(channels);
   const googleChannels = resolveGoogleChannels(channels, input.reason);
   const results: Array<Record<string, unknown>> = [];
+  const conversionKey = clean(input.conversionKey, 240);
 
   for (const channel of metaChannels) {
-    const dedupeKey = `${input.tenantId}:${input.leadId}:${appointmentRecord?.id || "lead"}:meta:${channel.id}:${definition.reason}`;
+    const dedupeKey = `${input.tenantId}:${input.leadId}:${conversionKey || appointmentRecord?.id || "lead"}:meta:${channel.id}:${definition.reason}`;
     const claim = await claimDispatch(dedupeKey, Boolean(input.force));
     if (!claim.proceed) {
       results.push({ provider: "meta", channelId: channel.id, skipped: true, eventId: claim.eventId });
@@ -554,6 +581,10 @@ export async function dispatchLeadConversionEvents(input: DispatchInput) {
         eventName: definition.metaEventName,
         lead,
         appointment,
+        conversionValue: input.conversionValue,
+        currency: input.currency,
+        occurredAt: input.occurredAt,
+        orderId: input.orderId,
       });
 
       await claim.ref.set(
@@ -565,6 +596,8 @@ export async function dispatchLeadConversionEvents(input: DispatchInput) {
           channelId: channel.id,
           eventName: definition.metaEventName,
           reason: definition.reason,
+          conversionKey: conversionKey || null,
+          orderId: clean(input.orderId, 180) || null,
           eventId: claim.eventId,
           status: "processed",
           request: firestoreSafe(sent.request),
@@ -603,7 +636,7 @@ export async function dispatchLeadConversionEvents(input: DispatchInput) {
   }
 
   for (const channel of googleChannels) {
-    const dedupeKey = `${input.tenantId}:${input.leadId}:${appointmentRecord?.id || "lead"}:google:${channel.id}:${definition.reason}`;
+    const dedupeKey = `${input.tenantId}:${input.leadId}:${conversionKey || appointmentRecord?.id || "lead"}:google:${channel.id}:${definition.reason}`;
     const claim = await claimDispatch(dedupeKey, Boolean(input.force));
     if (!claim.proceed) {
       results.push({ provider: "google", channelId: channel.id, skipped: true, eventId: claim.eventId });
@@ -619,6 +652,10 @@ export async function dispatchLeadConversionEvents(input: DispatchInput) {
         reason: definition.reason,
         lead,
         appointment,
+        conversionValue: input.conversionValue,
+        currency: input.currency,
+        occurredAt: input.occurredAt,
+        orderId: input.orderId,
       });
 
       await claim.ref.set(
@@ -630,6 +667,8 @@ export async function dispatchLeadConversionEvents(input: DispatchInput) {
           channelId: channel.id,
           eventName: definition.reason,
           reason: definition.reason,
+          conversionKey: conversionKey || null,
+          orderId: clean(input.orderId, 180) || null,
           eventId: claim.eventId,
           status: "processed",
           request: firestoreSafe(sent.request),

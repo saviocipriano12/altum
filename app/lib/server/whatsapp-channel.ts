@@ -441,7 +441,12 @@ export async function sendMetaTextMessage(input: {
 
   const payload = await response.json();
   if (!response.ok) {
-    const errMessage = payload?.error?.message || "Erro na API da Meta.";
+    const rawMessage = String(payload?.error?.message || "").trim();
+    const errorCode = String(payload?.error?.code || "").trim();
+    const errMessage =
+      errorCode === "1" && /unknown error/i.test(rawMessage)
+        ? "A Meta recusou o envio sem um detalhe tecnico (codigo 1). Verifique se o app Altum esta em modo Live e se o acesso avancado ao WhatsApp foi aprovado pela Meta antes de tentar novamente."
+        : normalizeMetaErrorMessage(rawMessage, "Erro na API da Meta.");
     throw new Error(errMessage);
   }
 
@@ -573,7 +578,12 @@ export async function sendMetaTemplateMessage(input: {
 
   const payload = await response.json();
   if (!response.ok) {
-    const errMessage = payload?.error?.message || "Erro na API da Meta.";
+    const rawMessage = String(payload?.error?.message || "").trim();
+    const errorCode = String(payload?.error?.code || "").trim();
+    const errMessage =
+      errorCode === "1" && /unknown error/i.test(rawMessage)
+        ? "A Meta recusou o envio sem um detalhe tecnico (codigo 1). Verifique se o app Altum esta em modo Live e se o acesso avancado ao WhatsApp foi aprovado pela Meta antes de tentar novamente."
+        : normalizeMetaErrorMessage(rawMessage, "Erro na API da Meta.");
     throw new Error(errMessage);
   }
 

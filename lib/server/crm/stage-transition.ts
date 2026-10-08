@@ -18,6 +18,7 @@ export async function setLeadPipelineStageWithEffects(input: {
   source?: string;
   metadata?: Record<string, unknown>;
   patch?: Record<string, unknown>;
+  skipConversionDispatch?: boolean;
 }) {
   const tenantId = clean(input.tenantId);
   const leadId = clean(input.leadId);
@@ -62,11 +63,12 @@ export async function setLeadPipelineStageWithEffects(input: {
       actorName: input.actorName,
       source: input.source,
       metadata: input.metadata,
+      skipConversionDispatch: input.skipConversionDispatch,
     });
     return { ok: true, previousStage, nextStage };
   }
 
-  if (nextStage === "ganho") {
+  if (nextStage === "ganho" && !input.skipConversionDispatch) {
     await dispatchLeadConversionEvents({ tenantId, leadId, reason: "sale_won" }).catch((error) => {
       console.error("Falha ao confirmar conversao de venda em etapa ja ganha:", error);
     });

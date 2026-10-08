@@ -16,8 +16,8 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const url = new URL(req.url);
     const rangeDays = Math.min(90, Math.max(1, Number(url.searchParams.get("rangeDays") || 30)));
     const to = new Date(); const from = new Date(to.getTime() - rangeDays * 86400_000);
-    const names = ["growth_events", "leads", "chats", "appointments", "orcamentos", "financeiro", "campaign_snapshots"] as const;
-    const limits = [2000, 1500, 1500, 800, 800, 800, 2500];
+    const names = ["growth_events", "leads", "chats", "appointments", "orcamentos", "financeiro", "campaign_snapshots", "ecommerce_orders"] as const;
+    const limits = [2000, 1500, 1500, 800, 800, 800, 2500, 1500];
     const snaps = await Promise.all(names.map((name, index) => adminDb.collection(name).where("tenantId", "==", tenantId).limit(limits[index] + 1).get()));
     const incompleteSources = names.filter((_, index) => snaps[index].size > limits[index]);
     const rows = snaps.map((snap, index) => snap.docs.slice(0, limits[index]).map((doc): RevenueGraphRow => ({ id: doc.id, ...doc.data() })));
@@ -28,7 +28,7 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const graph = buildRevenueGraph({
       events: teamWide ? rows[0] : rows[0].filter((row) => leadIds.has(String(row.externalId || ""))),
       leads: visibleLeads, chats: related(rows[2]), appointments: related(rows[3]), proposals: related(rows[4]), finance: related(rows[5]),
-      snapshots: teamWide ? rows[6] : [], from: from.toISOString(), to: to.toISOString(),
+      snapshots: teamWide ? rows[6] : [], ecommerceOrders: related(rows[7]), from: from.toISOString(), to: to.toISOString(),
     });
     return NextResponse.json({ ok: true, tenantId, rangeDays, scope: teamWide ? "team" : "own", ...graph, incomplete: incompleteSources.length > 0, incompleteSources, sampled: Object.fromEntries(names.map((name, index) => [name, rows[index].length])) });
   } catch (error) {

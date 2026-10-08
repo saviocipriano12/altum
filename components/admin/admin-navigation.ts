@@ -21,6 +21,11 @@ import {
   UserCog,
   Users,
   Boxes,
+  Sparkles,
+  Palette,
+  Image,
+  UserRound,
+  LibraryBig,
 } from "lucide-react";
 
 export type AdminNavItem = {
@@ -34,7 +39,17 @@ export type AdminNavItem = {
 };
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
+  { label: "Comando Altum", description: "Sua conversa central: peça, acompanhe entregas, guarde ideias e aprove ações importantes.", href: "/admin/comando", icon: Sparkles, adminOnly: true, section: "comando" },
   { label: "Operação da carteira", shortLabel: "Carteira", description: "Empresas, riscos e próximas ações da operação.", href: "/admin/operacao", icon: LayoutDashboard, adminOnly: true, section: "comando" },
+  { label: "Missões", description: "Metas, agentes, limites e aprovações da operação autônoma.", href: "/admin/missoes", icon: Rocket, adminOnly: true, section: "comando" },
+  { label: "Tool Hub", description: "Capacidades, modelos, ferramentas e conectores da Altum.", href: "/admin/ferramentas", icon: Boxes, adminOnly: true, section: "comando" },
+  { label: "Conexões", description: "Credenciais, OAuth, ferramentas locais e escopos autorizados.", href: "/admin/conexoes", icon: ShieldCheck, adminOnly: true, section: "comando" },
+  { label: "Aprovações", description: "Ações externas que exigem decisão humana antes da execução.", href: "/admin/aprovacoes", icon: ShieldCheck, adminOnly: true, section: "comando" },
+  { label: "Políticas", description: "Limites de autonomia e revisão humana por empresa.", href: "/admin/politicas", icon: ShieldCheck, adminOnly: true, section: "comando" },
+  { label: "Brand Hub", description: "Contexto aprovado de marca para campanhas, criativos e agentes.", href: "/admin/marca", icon: Palette, adminOnly: true, section: "comando" },
+  { label: "Creative Studio", description: "Briefings, conceitos e rascunhos criativos revisáveis.", href: "/admin/criativos", icon: Image, adminOnly: true, section: "comando" },
+  { label: "Resultados", description: "Vídeos, imagens e entregas criadas pela Altum, prontas para reutilizar.", href: "/admin/resultados", icon: LibraryBig, adminOnly: true, section: "comando" },
+  { label: "Avatar Studio", description: "Perfis autorizados para vídeos com avatar, voz e revisão.", href: "/admin/avatares", icon: UserRound, adminOnly: true, section: "comando" },
   { label: "Estratégias e aprendizado", shortLabel: "Estratégias", description: "Hipóteses, resultados e memória por empresa.", href: "/admin/estrategias", icon: BookOpen, adminOnly: true, section: "comando" },
   { label: "ChatGPT e MCP", description: "Autorizações e empresas acessíveis pelo ChatGPT.", href: "/admin/mcp", icon: Bot, adminOnly: true, section: "gestao" },
   {

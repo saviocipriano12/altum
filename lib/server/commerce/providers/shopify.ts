@@ -86,7 +86,7 @@ function orderPayload(order: Record<string, unknown>) {
     tracking_number: tracking.number,
     tracking_url: tracking.url,
     attribution: {
-      source: visit.source || "",
+      source: utm.source || visit.source || "",
       medium: utm.medium || "",
       campaign: utm.campaign || "",
       content: utm.content || "",
@@ -97,10 +97,27 @@ function orderPayload(order: Record<string, unknown>) {
   };
 }
 
+function abandonedCheckoutPayload(checkout: Record<string, unknown>) {
+  const customer = record(checkout.customer);
+  return {
+    id: checkout.id,
+    completed_at: checkout.completedAt,
+    created_at: checkout.createdAt,
+    updated_at: checkout.updatedAt,
+    abandoned_checkout_url: checkout.abandonedCheckoutUrl,
+    customer: {
+      id: customer.id,
+      first_name: customer.firstName,
+      last_name: customer.lastName,
+      email: customer.email,
+    },
+  };
+}
+
 export const shopifyProvider: CommerceProvider = {
   id: "shopify",
   label: "Shopify",
-  capabilities: ["products", "orders", "tracking"],
+  capabilities: ["products", "orders", "carts", "tracking"],
   capabilityMatrix: {
     catalog_products: "available",
     product_variants: "partial",
@@ -116,7 +133,7 @@ export const shopifyProvider: CommerceProvider = {
     // merchant- and app-specific.
     refunds: "partial",
     returns: "planned",
-    abandoned_checkouts: "planned",
+    abandoned_checkouts: "available",
     webhooks: "available",
     api_sync: "available",
   },
@@ -137,10 +154,28 @@ export const shopifyProvider: CommerceProvider = {
     }`);
     const products = nodes(data.products);
     const orders = nodes(data.orders);
+    let carts: Record<string, unknown>[] = [];
+    const warnings: string[] = [];
+
+    // Some older Shopify staff installations have read_orders but not the
+    // abandoned-checkout permission. Keep catalog and order sync healthy and
+    // make the limitation visible instead of failing the whole operation.
+    try {
+      const checkoutData = await shopifyRequest(connection, credentials.accessToken || "", `query AltumAbandonedCheckouts {
+      abandonedCheckouts(first: ${Math.min(pageSize, 30)}, query: "status:open", reverse: true) {
+        nodes { id abandonedCheckoutUrl completedAt createdAt updatedAt customer { id firstName lastName email } }
+      }
+    }`);
+      carts = nodes(checkoutData.abandonedCheckouts);
+    } catch (error) {
+      console.warn("Shopify abandoned-checkout sync unavailable:", error);
+      warnings.push("shopify_abandoned_checkouts_unavailable");
+    }
     const events: CommerceSyncEvent[] = [
       ...products.map((product) => ({ topic: "products/update", externalEventId: `sync:product:${cleanCommerceText(product.id, 180)}`, payload: productPayload(product) })),
       ...orders.map((order) => ({ topic: "orders/update", externalEventId: `sync:order:${cleanCommerceText(order.id, 180)}`, payload: orderPayload(order) })),
+      ...carts.map((cart) => ({ topic: "checkouts/abandoned", externalEventId: `sync:checkout:${cleanCommerceText(cart.id, 180)}`, payload: abandonedCheckoutPayload(cart) })),
     ];
-    return { events, products: products.length, orders: orders.length, carts: 0 };
+    return { events, products: products.length, orders: orders.length, carts: carts.length, warnings };
   },
 };

@@ -27,6 +27,7 @@ export async function runPipelineStageSideEffects(input: {
   source?: string;
   forced?: boolean;
   metadata?: Record<string, unknown>;
+  skipConversionDispatch?: boolean;
 }) {
   const tenantId = clean(input.tenantId, 180);
   const leadId = clean(input.leadId, 180);
@@ -62,13 +63,13 @@ export async function runPipelineStageSideEffects(input: {
     }),
   ]);
 
-  if (nextStage === "qualificacao") {
+  if (nextStage === "qualificacao" && !input.skipConversionDispatch) {
     await dispatchLeadConversionEvents({ tenantId, leadId, reason: "lead_qualified" }).catch((error) => {
       console.error("Falha ao disparar conversao de lead qualificado:", error);
     });
   }
 
-  if (nextStage === "ganho") {
+  if (nextStage === "ganho" && !input.skipConversionDispatch) {
     await dispatchLeadConversionEvents({ tenantId, leadId, reason: "sale_won" }).catch((error) => {
       console.error("Falha ao disparar conversao de venda:", error);
     });

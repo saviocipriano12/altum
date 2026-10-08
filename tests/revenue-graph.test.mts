@@ -31,6 +31,20 @@ test("Revenue Graph connects one acquired lead through payment without inventing
   assert.equal(report.coverage.linkedTrackedEvents, 1);
 });
 
+test("Revenue Graph uses paid Shopify orders and avoids duplicating the Finance entry", () => {
+  const report = buildRevenueGraph({
+    from: "2026-09-01T00:00:00.000Z", to: "2026-10-01T00:00:00.000Z",
+    events: [],
+    leads: [{ id: "lead-shop", createdAt: "2026-09-10T10:00:00.000Z", pipelineStage: "ganho", last_touch: { source: "facebook", campaign: "Colecao" } }],
+    chats: [], appointments: [], proposals: [],
+    finance: [{ id: "finance-shop", leadId: "lead-shop", tipo: "Receita", status: "pago", valor: 399 }],
+    ecommerceOrders: [{ id: "order-shop", leadId: "lead-shop", journeyState: "payment_confirmed", orderedAt: "2026-09-10T10:00:00.000Z", totalPrice: 399 }],
+    snapshots: [],
+  });
+  assert.equal(report.totals.customers, 1);
+  assert.equal(report.totals.revenue, 399);
+});
+
 test("Revenue Graph keeps unlinked traffic visible and excludes leads outside the cohort", () => {
   const report = buildRevenueGraph({
     from: "2026-09-01T00:00:00.000Z", to: "2026-10-01T00:00:00.000Z",

@@ -67,6 +67,20 @@ export async function saveFirebaseStorageFileWithFallback(input: {
   throw lastError || new Error("Nenhum bucket de storage disponivel.");
 }
 
+/** Server-only, short-lived URL for a provider that must fetch a private input.
+ * Callers must validate ownership and file path before requesting a URL. */
+export async function signedStorageReadUrl(storagePath: string, expiresMs = 20 * 60_000) {
+  if (!storagePath || storagePath.includes("..")) return null;
+  for (const bucketName of firebaseStorageBucketCandidates()) {
+    const file = adminStorage.bucket(bucketName).file(storagePath);
+    const [exists] = await file.exists();
+    if (!exists) continue;
+    const [url] = await file.getSignedUrl({ action: "read", expires: Date.now() + expiresMs });
+    return url;
+  }
+  return null;
+}
+
 function extensionFromContentType(contentType: string, filename: string) {
   const mime = contentType.toLowerCase().split(";")[0].trim();
   const byMime: Record<string, string> = {

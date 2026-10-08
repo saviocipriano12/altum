@@ -1,0 +1,61 @@
+{
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": {
+        "source": "env",
+        "provider": "default",
+        "id": "ALTUM_OPENCLAW_GATEWAY_TOKEN"
+      }
+    },
+    "controlUi": { "enabled": false },
+    "uploads": { "enabled": false },
+    "tailscale": { "mode": "off" }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "altum-runtime": {
+        "baseUrl": "${ALTUM_OPENCLAW_MODEL_BASE_URL}",
+        "apiKey": {
+          "source": "env",
+          "provider": "default",
+          "id": "ALTUM_OPENCLAW_SHARED_SECRET"
+        },
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "${ALTUM_OPENCLAW_MODEL_ID}",
+            "name": "Altum Runtime Model",
+            "contextWindow": 32768,
+            "maxTokens": 4096,
+            "compat": {
+              "supportsTools": false,
+              "requiresStringContent": true
+            }
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": { "primary": "altum-runtime/${ALTUM_OPENCLAW_MODEL_ID}" }
+    }
+  },
+  "plugins": {
+    "enabled": true,
+    "allow": ["altum-mission-bridge"],
+    "deny": ["codex"],
+    "entries": {
+      "altum-mission-bridge": { "enabled": true },
+      "codex": { "enabled": false }
+    }
+  },
+  "tools": {
+    "allow": []
+  }
+}

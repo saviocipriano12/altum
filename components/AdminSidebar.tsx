@@ -8,14 +8,15 @@ import { useAuth } from "@/context/AuthContext";
 import { filterAdminNavItems, type AdminNavItem } from "@/components/admin/admin-navigation";
 
 const navigation = [
-  { label: "Operação", routes: ["/admin/operacao", "/admin/dashboard", "/admin/clientes", "/admin/chat"] },
-  { label: "Gestão", routes: ["/admin/prospeccao", "/admin/projetos", "/admin/midia", "/admin/financeiro", "/admin/ia"] },
+  { label: "Trabalho", routes: ["/admin/comando", "/admin/operacao", "/admin/prospeccao", "/admin/projetos", "/admin/midia", "/admin/financeiro"] },
+  { label: "Acompanhar", routes: ["/admin/clientes", "/admin/dashboard"] },
 ];
 const children: Record<string, string[]> = {
+  "/admin/operacao": ["/admin/ia", "/admin/chat"],
   "/admin/clientes": ["/admin/saas"],
   "/admin/prospeccao": ["/admin/pipeline", "/admin/orcamentos", "/admin/prospeccao/gerar", "/admin/playbook"],
   "/admin/projetos": ["/admin/atividades"],
-  "/admin/midia": ["/admin/estrategias", "/admin/campanhas", "/admin/templates"],
+  "/admin/midia": ["/admin/campanhas", "/admin/templates"],
 };
 
 export default function AdminSidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }: {
@@ -66,7 +67,7 @@ export default function AdminSidebar({ collapsed, setCollapsed, mobileOpen, setM
           return <div key={route}><div className="flex items-center gap-0.5"><div className="min-w-0 flex-1">{link(item, compact)}</div>{!!subitems.length && !compact && <button aria-label={`Opções de ${item.shortLabel || item.label}`} aria-expanded={open} onClick={() => toggle(route, active)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} /></button>}</div>{open && !compact && <div className="ml-5 mt-1 space-y-0.5 border-l border-slate-200 pl-2">{subitems.map(entry => link(entry, false, true))}</div>}</div>;
         })}</div>
       </section>)}
-      {isAdmin && <section>{compact ? items.filter(item => ["/admin/equipe", "/admin/mcp", "/admin/config"].includes(item.href)).map(item => link(item, true)) : <><button onClick={() => toggle("settings", ["/admin/equipe", "/admin/mcp", "/admin/config"].includes(current?.href || ""))} aria-expanded={expanded.settings ?? ["/admin/equipe", "/admin/mcp", "/admin/config"].includes(current?.href || "")} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[13px] font-medium text-slate-500 hover:bg-slate-100"><span className="flex items-center gap-3"><Settings2 size={18} strokeWidth={1.7} />Administração</span><ChevronDown size={14} /></button>{(expanded.settings ?? ["/admin/equipe", "/admin/mcp", "/admin/config"].includes(current?.href || "")) && <div className="ml-5 mt-1 space-y-0.5 border-l border-slate-200 pl-2">{items.filter(item => ["/admin/equipe", "/admin/mcp", "/admin/config"].includes(item.href)).map(item => link(item, false, true))}</div>}</>}</section>}
+      {isAdmin && <section>{compact ? items.filter(item => ["/admin/equipe", "/admin/mcp", "/admin/config", "/admin/ferramentas", "/admin/conexoes", "/admin/politicas", "/admin/marca", "/admin/avatares"].includes(item.href)).map(item => link(item, true)) : <><button onClick={() => toggle("settings", ["/admin/equipe", "/admin/mcp", "/admin/config", "/admin/ferramentas", "/admin/conexoes", "/admin/politicas", "/admin/marca", "/admin/avatares"].includes(current?.href || ""))} aria-expanded={expanded.settings ?? ["/admin/equipe", "/admin/mcp", "/admin/config", "/admin/ferramentas", "/admin/conexoes", "/admin/politicas", "/admin/marca", "/admin/avatares"].includes(current?.href || "")} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[13px] font-medium text-slate-500 hover:bg-slate-100"><span className="flex items-center gap-3"><Settings2 size={18} strokeWidth={1.7} />Configurações</span><ChevronDown size={14} /></button>{(expanded.settings ?? ["/admin/equipe", "/admin/mcp", "/admin/config", "/admin/ferramentas", "/admin/conexoes", "/admin/politicas", "/admin/marca", "/admin/avatares"].includes(current?.href || "")) && <div className="ml-5 mt-1 space-y-0.5 border-l border-slate-200 pl-2">{items.filter(item => ["/admin/equipe", "/admin/mcp", "/admin/config", "/admin/ferramentas", "/admin/conexoes", "/admin/politicas", "/admin/marca", "/admin/avatares"].includes(item.href)).map(item => link(item, false, true))}</div>}</>}</section>}
     </nav>
     {!mobile && <button onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "Expandir menu" : "Recolher menu"} className="m-3 flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 text-xs text-slate-500 hover:bg-slate-100">{collapsed ? <ChevronsRight size={16} /> : <><ChevronsLeft size={16} />Recolher menu</>}</button>}
     </>;

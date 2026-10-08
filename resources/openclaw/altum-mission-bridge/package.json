@@ -1,0 +1,13 @@
+{
+  "name": "@altum/openclaw-mission-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private, signed Altum mission bridge for the OpenClaw runtime",
+  "type": "module",
+  "devDependencies": {
+    "@openclaw/plugin-sdk": "workspace:*"
+  },
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  }
+}

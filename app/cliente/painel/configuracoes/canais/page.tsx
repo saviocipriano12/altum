@@ -114,6 +114,12 @@ type WhatsAppChannelResponse = {
   error?: string;
 };
 
+type EmbeddedSignupConfig = {
+  appId: string;
+  configId: string;
+  graphVersion?: string;
+};
+
 type ConversionHealthItem = {
   channelId: string;
   type: "meta_ads" | "google_ads";
@@ -162,6 +168,15 @@ type ConnectorDefinition = {
   metadataKey?: string;
   metadataLabel?: string;
 };
+
+declare global {
+  interface Window {
+    FB?: {
+      init: (options: Record<string, unknown>) => void;
+      login: (callback: (response: { authResponse?: { code?: string } }) => void, options: Record<string, unknown>) => void;
+    };
+  }
+}
 
 function supportsMetaWebhook(type: ConnectorType) {
   return type === "instagram" || type === "messenger" || type === "meta_ads";
@@ -464,6 +479,9 @@ export default function ClienteCanaisPage() {
   const [completingPending, setCompletingPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showManualWhatsAppSetup, setShowManualWhatsAppSetup] = useState(false);
+  const [embeddedSignupLoading, setEmbeddedSignupLoading] = useState(false);
+  const [embeddedSignupConfig, setEmbeddedSignupConfig] = useState<EmbeddedSignupConfig | null>(null);
   const [selectedType, setSelectedType] = useState<ConnectorType>("whatsapp");
   const canManage = hasCapability("manage_channels");
 
@@ -609,6 +627,46 @@ export default function ClienteCanaisPage() {
       mounted = false;
     };
   }, [tenant?.tenantId]);
+
+  useEffect(() => {
+    if (!tenant?.tenantId || !canManage) return;
+
+    let active = true;
+    void (async () => {
+      try {
+        const response = await authedFetch("/api/integrations/whatsapp/embedded-signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "config", tenantId: tenant.tenantId }),
+        });
+        const config = (await response.json().catch(() => ({}))) as {
+          appId?: string;
+          configId?: string;
+          graphVersion?: string;
+        };
+        if (active && response.ok && config.appId && config.configId) {
+          setEmbeddedSignupConfig({
+            appId: config.appId,
+            configId: config.configId,
+            graphVersion: config.graphVersion,
+          });
+          if (!window.FB && !document.getElementById("meta-jssdk")) {
+            const script = document.createElement("script");
+            script.id = "meta-jssdk";
+            script.src = "https://connect.facebook.net/pt_BR/sdk.js";
+            script.async = true;
+            document.head.appendChild(script);
+          }
+        }
+      } catch {
+        // A tela continua utilizável: o clique tentará carregar a configuração novamente.
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [canManage, tenant?.tenantId]);
 
   useEffect(() => {
     if (selectedType !== "whatsapp") return;
@@ -880,6 +938,140 @@ export default function ClienteCanaisPage() {
     }
   }
 
+  async function startWhatsAppEmbeddedSignup() {
+    if (!tenant?.tenantId || !canManage || embeddedSignupLoading) return;
+    setEmbeddedSignupLoading(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      let config = embeddedSignupConfig;
+      if (!config) {
+        const configResponse = await authedFetch("/api/integrations/whatsapp/embedded-signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "config", tenantId: tenant.tenantId }),
+        });
+        const data = (await configResponse.json().catch(() => ({}))) as { error?: string; appId?: string; configId?: string; graphVersion?: string };
+        if (!configResponse.ok || !data.appId || !data.configId) {
+          setError(data.error || "A conexão oficial da Meta não está disponível para esta conta.");
+          return;
+        }
+        config = { appId: data.appId, configId: data.configId, graphVersion: data.graphVersion };
+        setEmbeddedSignupConfig(config);
+      }
+
+      if (!window.FB) {
+        await new Promise<void>((resolve, reject) => {
+          let settled = false;
+          const finish = (error?: Error) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeout);
+            if (error) reject(error);
+            else resolve();
+          };
+          const timeout = window.setTimeout(
+            () => finish(new Error("A Meta não carregou no navegador. Libere pop-ups e desative bloqueadores de anúncios para altumia.com.br.")),
+            12000
+          );
+          const existing = document.getElementById("meta-jssdk") as HTMLScriptElement | null;
+          if (existing) {
+            existing.addEventListener("load", () => finish(), { once: true });
+            existing.addEventListener("error", () => finish(new Error("Não foi possível carregar a Meta.")), { once: true });
+            return;
+          }
+          const script = document.createElement("script");
+          script.id = "meta-jssdk";
+          script.src = "https://connect.facebook.net/pt_BR/sdk.js";
+          script.async = true;
+          script.onload = () => finish();
+          script.onerror = () => finish(new Error("Não foi possível carregar a Meta."));
+          document.head.appendChild(script);
+        });
+      }
+      if (!window.FB) throw new Error("SDK da Meta indisponível.");
+      window.FB.init({ appId: config.appId, cookie: true, xfbml: false, version: config.graphVersion || "v21.0" });
+
+      let selection: { phoneNumberId: string; wabaId: string } | null = null;
+      let loginFinished = false;
+      let loginTimeout: number | undefined;
+      const finishLogin = () => {
+        if (loginFinished) return;
+        loginFinished = true;
+        if (loginTimeout) window.clearTimeout(loginTimeout);
+        window.removeEventListener("message", receiveSelection);
+        setEmbeddedSignupLoading(false);
+      };
+      const receiveSelection = (event: MessageEvent) => {
+        if (event.origin !== "https://www.facebook.com") return;
+        const payload = typeof event.data === "string" ? (() => { try { return JSON.parse(event.data); } catch { return null; } })() : event.data;
+        if (!payload || payload.type !== "WA_EMBEDDED_SIGNUP") return;
+        if (payload.event === "ERROR") {
+          const metaError = String((payload.data as { error_message?: unknown } | undefined)?.error_message || "").trim();
+          setError(metaError || "A Meta ainda não liberou a Altum para conectar números de outras empresas. Nossa habilitação como provedor está em análise.");
+          finishLogin();
+          return;
+        }
+        if (payload.event === "CANCEL") {
+          setError("A conexão com a Meta foi cancelada antes da escolha do número.");
+          finishLogin();
+          return;
+        }
+        if (payload.event !== "FINISH") return;
+        const data = payload.data as { phone_number_id?: unknown; waba_id?: unknown } | undefined;
+        const phoneNumberId = String(data?.phone_number_id || "").trim();
+        const wabaId = String(data?.waba_id || "").trim();
+        if (phoneNumberId && wabaId) selection = { phoneNumberId, wabaId };
+      };
+      window.addEventListener("message", receiveSelection);
+
+      loginTimeout = window.setTimeout(() => {
+        setError("A janela da Meta não respondeu. Libere pop-ups para altumia.com.br e tente novamente.");
+        finishLogin();
+      }, 60000);
+
+      window.FB.login((response) => {
+        void (async () => {
+          try {
+          const code = String(response.authResponse?.code || "").trim();
+          for (let attempt = 0; !selection && attempt < 12; attempt += 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, 250));
+          }
+          if (!code || !selection) {
+            setError("A conexão foi cancelada ou a Meta não retornou o número selecionado.");
+            return;
+          }
+          const completeResponse = await authedFetch("/api/integrations/whatsapp/embedded-signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "complete", tenantId: tenant.tenantId, code, ...selection }),
+          });
+          const complete = (await completeResponse.json().catch(() => ({}))) as { error?: string; displayName?: string; phoneNumber?: string };
+          if (!completeResponse.ok) {
+            setError(complete.error || "Não foi possível concluir a conexão oficial.");
+            return;
+          }
+          setNotice(`${complete.displayName || "WhatsApp"}${complete.phoneNumber ? ` (${complete.phoneNumber})` : ""} conectado com a Meta.`);
+          await refreshChannels();
+          } catch (signupError) {
+            setError(signupError instanceof Error ? signupError.message : "Falha ao concluir a conexão oficial.");
+          } finally {
+            finishLogin();
+          }
+        })();
+      }, {
+        config_id: config.configId,
+        response_type: "code",
+        override_default_response_type: true,
+        extras: { setup: {}, sessionInfoVersion: 2 },
+      });
+    } catch (signupError) {
+      setError(signupError instanceof Error ? signupError.message : "Falha ao iniciar conexão oficial.");
+      setEmbeddedSignupLoading(false);
+    }
+  }
+
   async function disconnectManagedChannel() {
     if (!tenant?.tenantId || !selectedChannel?.id || !canManage || selectedType === "whatsapp") return;
     setDisconnecting(true);
@@ -1081,10 +1273,8 @@ export default function ClienteCanaisPage() {
       const isOfficial = whatsAppForm.provider === "meta_whatsapp";
       const sameProvider = selectedChannel?.provider === whatsAppForm.provider;
       const hasAccessToken = Boolean(whatsAppForm.accessToken.trim() || (sameProvider && selectedChannel?.hasAccessToken));
-      const hasVerifyToken = Boolean(whatsAppForm.verifyToken.trim() || (sameProvider && selectedChannel?.hasVerifyToken));
-      const hasAppSecret = Boolean(whatsAppForm.appSecret.trim() || (sameProvider && selectedChannel?.hasAppSecret));
-      if (isOfficial && (!whatsAppForm.phoneNumberId.trim() || !hasAccessToken || !hasVerifyToken || !hasAppSecret)) {
-        setError("No modo oficial, informe o ID do numero, a credencial de acesso, o token de verificacao e o segredo do app.");
+      if (isOfficial && (!whatsAppForm.phoneNumberId.trim() || !whatsAppForm.wabaId.trim() || !hasAccessToken)) {
+        setError("No modo oficial, informe o ID do número, o ID da conta WhatsApp e a credencial de acesso.");
         return;
       }
       if (
@@ -1237,7 +1427,7 @@ export default function ClienteCanaisPage() {
       ) : null}
 
       <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
-        Esta tela mostra o que esta conectado e pronto para operar. Tokens, IDs e reparos ficam disponiveis apenas para admins porque afetam integracoes externas.
+        Conecte os canais que movem sua operação. A Altum mostra o que está pronto para atender e deixa ajustes técnicos somente no avançado.
       </div>
 
       <section className="space-y-3">
@@ -1487,20 +1677,29 @@ export default function ClienteCanaisPage() {
                 </label>
               ) : null}
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/55">Como deseja conectar?</p>
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold text-[var(--cliente-card-text)]">Como você quer usar o WhatsApp?</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Escolha a conexão adequada à sua operação.</p>
+                  </div>
+                  <StateBadge label="Recomendado: Meta oficial" tone="success" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
                 {WHATSAPP_PROVIDER_OPTIONS.map((option) => {
                   const active = whatsAppForm.provider === option.value;
                   return (
                     <button
                       key={option.value}
                       type="button"
-                      onClick={() => setWhatsAppForm((current) => ({ ...current, provider: option.value }))}
+                      onClick={() => {
+                        setWhatsAppForm((current) => ({ ...current, provider: option.value }));
+                        setShowManualWhatsAppSetup(option.value !== "meta_whatsapp");
+                      }}
                       disabled={!canManage}
                       className={`settings-whatsapp-provider rounded-2xl border p-3 text-left transition ${
                         active
-                          ? "is-selected border-emerald-300/35 bg-emerald-500/12 text-emerald-50"
-                          : "border-white/10 bg-white/[0.03] text-white/68 hover:bg-white/[0.06]"
+                          ? "is-selected border-[var(--cliente-success)]/30 bg-[var(--cliente-success-soft)] text-[var(--cliente-card-text)]"
+                          : "border-[var(--cliente-border)] bg-[var(--cliente-card)] text-[var(--cliente-card-text-muted)] hover:bg-[var(--cliente-surface-muted)]"
                       } disabled:opacity-60`}
                     >
                       <div className="flex items-center gap-3">
@@ -1515,8 +1714,52 @@ export default function ClienteCanaisPage() {
                 })}
                 </div>
               </div>
+              {whatsAppForm.provider === "meta_whatsapp" && !showManualWhatsAppSetup ? (
+                <div className="rounded-[20px] border border-[#0866FF]/20 bg-[linear-gradient(135deg,#f6f9ff,#eef4ff)] p-5 text-[var(--cliente-card-text)]">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex min-w-0 gap-3">
+                      <BrandIcon id="meta" size="md" />
+                      <div>
+                        <p className="font-bold">Conexão oficial pela Meta</p>
+                        <p className="mt-1 max-w-xl text-sm leading-6 text-[var(--cliente-card-text-soft)]">O administrador entra na Meta, escolhe a conta do WhatsApp Business e confirma o número. IDs, tokens e webhooks são configurados pela Altum.</p>
+                      </div>
+                    </div>
+                    <StateBadge label="Login seguro" tone="info" />
+                  </div>
+                  <div className="mt-4 grid gap-2 text-sm text-[var(--cliente-card-text-muted)] sm:grid-cols-3">
+                    <span className="rounded-xl border border-blue-100 bg-white/80 px-3 py-2">1. Entrar na Meta</span>
+                    <span className="rounded-xl border border-blue-100 bg-white/80 px-3 py-2">2. Escolher o número</span>
+                    <span className="rounded-xl border border-blue-100 bg-white/80 px-3 py-2">3. Começar a atender</span>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void startWhatsAppEmbeddedSignup()}
+                      disabled={!canManage || embeddedSignupLoading}
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#0866FF] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#0758d9] disabled:opacity-60"
+                    >
+                      {embeddedSignupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                      Conectar com a Meta
+                    </button>
+                    <button type="button" onClick={() => setShowManualWhatsAppSetup(true)} className="rounded-xl border border-[var(--cliente-border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)]">
+                      Já tenho dados técnicos
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {(whatsAppForm.provider !== "meta_whatsapp" || showManualWhatsAppSetup) ? (
+                <div className="space-y-3 rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-4">
+                  {whatsAppForm.provider === "meta_whatsapp" ? (
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-[var(--cliente-card-text)]">Configuração manual avançada</p>
+                        <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">Use apenas se o suporte Altum tiver fornecido os dados. Eles não são necessários na conexão por login.</p>
+                      </div>
+                      <button type="button" onClick={() => setShowManualWhatsAppSetup(false)} className="text-xs font-semibold text-[var(--cliente-primary)]">Voltar ao login</button>
+                    </div>
+                  ) : null}
               <Field label="Nome do canal" value={whatsAppForm.displayName} onChange={(value) => setWhatsAppForm((current) => ({ ...current, displayName: value }))} placeholder="WhatsApp Comercial" disabled={!canManage} />
-              <Field label="Numero" value={whatsAppForm.phoneNumber} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumber: value }))} placeholder="+55 11 99999-9999" disabled={!canManage} />
+              <Field label="Número" value={whatsAppForm.phoneNumber} onChange={(value) => setWhatsAppForm((current) => ({ ...current, phoneNumber: value }))} placeholder="+55 11 99999-9999" disabled={!canManage} />
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="settings-channels-field block space-y-1">
                   <span className="text-xs uppercase tracking-[0.14em] text-white/55">Uso do numero</span>
@@ -1606,10 +1849,9 @@ export default function ClienteCanaisPage() {
                 <SecretField label={whatsAppForm.provider === "meta_whatsapp" ? "Credencial de acesso" : whatsAppForm.provider === "evolution" ? "API key da Evolution" : "Credencial do provedor"} value={whatsAppForm.accessToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, accessToken: value }))} placeholder={whatsAppMasked.access || "credencial"} required={!selectedChannel?.hasAccessToken} disabled={!canManage} />
               ) : null}
               {whatsAppForm.provider === "meta_whatsapp" ? (
-                <>
-                  <SecretField label="Token de verificacao" value={whatsAppForm.verifyToken} onChange={(value) => setWhatsAppForm((current) => ({ ...current, verifyToken: value }))} placeholder={whatsAppMasked.verify || "token de verificacao"} required={!selectedChannel?.hasVerifyToken} disabled={!canManage} />
-                  <SecretField label="Segredo do app Meta" value={whatsAppForm.appSecret} onChange={(value) => setWhatsAppForm((current) => ({ ...current, appSecret: value }))} placeholder={whatsAppMasked.secret || "segredo do app"} required={!selectedChannel?.hasAppSecret} disabled={!canManage} />
-                </>
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
+                  A Altum protege e configura automaticamente o token de verificação e o segredo do aplicativo. Nunca envie esses dados ao cliente.
+                </div>
               ) : (
                 <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-3 text-xs leading-5 text-emerald-50/80">
                   {whatsAppForm.provider === "evolution"
@@ -1716,6 +1958,8 @@ export default function ClienteCanaisPage() {
                   Novo numero
                 </button>
               </div>
+                </div>
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 <Link
                   href="/cliente/painel/inbox?channel=whatsapp"

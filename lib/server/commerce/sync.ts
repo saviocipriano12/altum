@@ -62,7 +62,13 @@ export async function syncCommerceConnection(input: {
       processed += 1;
     }
 
-    const summary = { processed, products: result.products, orders: result.orders, carts: result.carts };
+    const summary = {
+      processed,
+      products: result.products,
+      orders: result.orders,
+      carts: result.carts,
+      warnings: result.warnings || [],
+    };
     await Promise.all([
       ref.set(
         {

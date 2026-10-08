@@ -371,6 +371,33 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Agent OS é acessado exclusivamente por handlers autenticados no servidor.
+    // O bloqueio explícito impede acesso direto pelo SDK enquanto as superfícies
+    // de cliente, papéis e políticas por tenant ainda são entregues por fases.
+    match /agent_missions/{docId} { allow read, write: if false; }
+    match /agent_tasks/{docId} { allow read, write: if false; }
+    match /agent_runs/{docId} { allow read, write: if false; }
+    match /agent_approvals/{docId} { allow read, write: if false; }
+    match /agent_approval_policies/{docId} { allow read, write: if false; }
+    match /agent_command_messages/{docId} { allow read, write: if false; }
+    match /agent_conversations/{docId} { allow read, write: if false; }
+    match /agent_ideas/{docId} { allow read, write: if false; }
+    match /agent_memories/{docId} { allow read, write: if false; }
+    match /agent_experiments/{docId} { allow read, write: if false; }
+    match /tool_providers/{docId} { allow read, write: if false; }
+    match /tool_connections/{docId} { allow read, write: if false; }
+    match /brand_profiles/{docId} { allow read, write: if false; }
+    match /brand_assets/{docId} { allow read, write: if false; }
+    match /creative_projects/{docId} { allow read, write: if false; }
+    match /creative_jobs/{docId} { allow read, write: if false; }
+    match /creative_outputs/{docId} { allow read, write: if false; }
+    match /creative_assets/{docId} { allow read, write: if false; }
+    match /content_plans/{docId} { allow read, write: if false; }
+    match /content_items/{docId} { allow read, write: if false; }
+    match /avatar_profiles/{docId} { allow read, write: if false; }
+    match /avatar_profiles/{avatarId}/{document=**} { allow read, write: if false; }
+    match /avatar_jobs/{docId} { allow read, write: if false; }
+
     match /{document=**} {
       allow read, write: if false;
     }

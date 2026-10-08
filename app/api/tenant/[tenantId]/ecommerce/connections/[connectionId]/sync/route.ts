@@ -4,8 +4,10 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { normalizeEcommerceProvider } from "@/lib/server/ecommerce";
-import { getCommerceProvider } from "@/lib/server/commerce/registry";
+import { getCommerceProvider, readCommerceCredentials } from "@/lib/server/commerce/registry";
 import { syncCommerceConnection } from "@/lib/server/commerce/sync";
+import { ensureShopifyWebhookSubscriptions } from "@/lib/server/commerce/shopify-webhooks";
+import { getAppBaseUrl } from "@/app/lib/server/integration-oauth";
 
 function clean(value: unknown, max = 180) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -36,6 +38,27 @@ export async function POST(
     const body = (await req.json().catch(() => ({}))) as { limit?: unknown };
     const limit = Math.max(1, Math.min(25, Number(body.limit || 20)));
 
+    // Existing Shopify connections predate new webhook topics from time to
+    // time. Provisioning here keeps "Sincronizar agora" a safe upgrade path
+    // without requiring the merchant to reconnect or rotate credentials.
+    let webhookProvisioning: Awaited<ReturnType<typeof ensureShopifyWebhookSubscriptions>> | null = null;
+    if (providerId === "shopify") {
+      try {
+        const credentials = readCommerceCredentials(data.apiCredentials);
+        webhookProvisioning = await ensureShopifyWebhookSubscriptions({
+          tenantId,
+          connectionId,
+          shopDomain: clean(data.storeId || data.storeUrl, 220),
+          accessToken: credentials.accessToken || "",
+          appBaseUrl: getAppBaseUrl(req),
+        });
+      } catch (error) {
+        // The API sync remains useful even if Shopify transiently rejects a
+        // subscription. The connection retains the detailed provisioning state.
+        console.warn("Falha ao atualizar webhooks Shopify durante sincronizacao:", error);
+      }
+    }
+
     const result = await syncCommerceConnection({
       tenantId,
       connectionId,
@@ -47,7 +70,8 @@ export async function POST(
       connectionId,
       provider: providerId,
       processed: result.processed,
-      summary: { products: result.products, orders: result.orders, carts: result.carts },
+      summary: { products: result.products, orders: result.orders, carts: result.carts, warnings: result.warnings || [] },
+      webhookProvisioning,
     });
   } catch (error) {
     if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });

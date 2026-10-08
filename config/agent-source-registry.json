@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "description": "Fontes externas avaliadas para o Altum Agent OS. Cada commit foi resolvido no GitHub em 2026-10-05. Não são dependências do app por si só: runtimes rodam isolados, skills passam por adaptação e serviços externos exigem conexão aprovada.",
+  "sources": [
+    { "repo": "xxy2026/freellmapi", "commit": "55d2b801756f168ee292d36240442527f7b88541", "category": "ai_gateway", "adoption": "runtime" },
+    { "repo": "zoedsy/openJEV", "commit": "8d86941163db0ee2d74df8e2111bdfc77e40f9ea", "category": "decision_engine", "adoption": "runtime" },
+    { "repo": "razorback16/openjev", "commit": "dcd20947b5ddad5be4a8f5aed6aa6dd245653823", "category": "decision_engine", "adoption": "runtime" },
+    { "repo": "BerriAI/litellm", "commit": "169af2f8830b0e4684e9afb79e752cbe5d118027", "category": "ai_gateway", "adoption": "runtime" },
+    { "repo": "cuihuan/awesome-ai-gateway", "commit": "b27d72a5cc1c0fe11110c687a6660792f992ba1f", "category": "ai_gateway", "adoption": "reference" },
+    { "repo": "langchain-ai/langgraph", "commit": "2d942085e214ef6b99b6f54ed4d544a7c7c5ac56", "category": "orchestration", "adoption": "runtime" },
+    { "repo": "langchain-ai/langchain", "commit": "7ca02f333aa6d5e4cf566a2dcc444d06758e2958", "category": "orchestration", "adoption": "reference" },
+    { "repo": "crewaiinc/crewai", "commit": "1133f16cab274b9863b36fdacca7766b30e549fd", "category": "agent_runtime", "adoption": "reference" },
+    { "repo": "microsoft/semantic-kernel", "commit": "dcb969fbe624dc4efa462c2079831690425b98fd", "category": "agent_runtime", "adoption": "reference" },
+    { "repo": "microsoft/autogen", "commit": "027ecf0a379bcc1d09956d46d12d44a3ad9cee14", "category": "agent_runtime", "adoption": "reference" },
+    { "repo": "openai/openai-agents-python", "commit": "d7e52c375021248973f60ccbea8e7b69bc5b16e3", "category": "agent_runtime", "adoption": "reference" },
+    { "repo": "Cubiczan/autonomous-business-os", "commit": "8eb1eb87b2f056ba03b4a309ba5f3e678e5db772", "category": "business_agents", "adoption": "patterns" },
+    { "repo": "MaestroAgent/maestro", "commit": "1ad352d1a120c7ee32eae309e424506a2717757c", "category": "business_agents", "adoption": "patterns" },
+    { "repo": "browser-use/browser-use", "commit": "7be96ed8bafa8dfe1eef228b59cf5c884b8b2431", "category": "browser", "adoption": "runtime" },
+    { "repo": "open-browser-use/open-browser-use", "commit": "7765002ac88040aedc781be89afe68475a9d6c88", "category": "browser", "adoption": "reference" },
+    { "repo": "browser-use/workflow-use", "commit": "5d2d19fe8835cc86f1bf3e04302a5000d590f249", "category": "browser", "adoption": "runtime" },
+    { "repo": "browser-use/video-use", "commit": "b877063835e6ea6e457124da7e28a0ae26691dc3", "category": "creative_video", "adoption": "reference" },
+    { "repo": "All-Hands-AI/OpenHands", "commit": "9ccb12b83d69f514d7706421068a9774642662c3", "category": "code_agent", "adoption": "runtime" },
+    { "repo": "langgenius/dify", "commit": "63d2af7d276c24bae071db11e12cd70b82b085ec", "category": "workflow", "adoption": "runtime" },
+    { "repo": "langgenius/dify-agentbox", "commit": "fd0cfea3d1c5770cb486299ee9780e54b6b4bd22", "category": "sandbox", "adoption": "runtime" },
+    { "repo": "langgenius/mosoo", "commit": "b0bf041d955e71b24ff19fd72cf015429308d25b", "category": "agent_gateway", "adoption": "reference" },
+    { "repo": "n8n-io/n8n", "commit": "439e8ba2e70be371268bbdb86f6afb9bc5e50699", "category": "workflow", "adoption": "runtime" },
+    { "repo": "flowise-ai/flowise", "commit": "784e8c8b083dff45b00e6d6ef50d36f02f821146", "category": "workflow", "adoption": "reference" },
+    { "repo": "comfyanonymous/ComfyUI", "commit": "b0b743566f65daafc423b4fea8a2fbda94b3384a", "category": "creative_image", "adoption": "runtime" },
+    { "repo": "raphiki/ComfyUI-MCP-Server", "commit": "87f4865e1739003702d1826f69c9dc2e6c48e5c7", "category": "creative_image", "adoption": "adapter" },
+    { "repo": "Haervwe/comfyui-mcp", "commit": "ea17892d940eb552dfa532da4ffb38cd14696afd", "category": "creative_image", "adoption": "adapter" },
+    { "repo": "remotion-dev/remotion", "commit": "328178a68a8031167649273405f2405028bd2305", "category": "creative_video", "adoption": "runtime" },
+    { "repo": "mcp-use/remotion-mcp-app", "commit": "84815888157a0403768b79a911563874d1aa014d", "category": "creative_video", "adoption": "adapter" },
+    { "repo": "PratyushChauhan/remotion-mcp-server", "commit": "9ac2c6a0dcda6900ac0fa9bc49e3aa9c542bb032", "category": "creative_video", "adoption": "adapter" },
+    { "repo": "none-stack-developer/ffmpeg-mcp", "commit": "6b8682b0f62fb669d5d61f7604a70298653b2102", "category": "creative_video", "adoption": "adapter" },
+    { "repo": "evolution-foundation/evolution-api", "commit": "fa09d37892cdbb1d65a250155d293d92230c5b30", "category": "messaging", "adoption": "integration" },
+    { "repo": "msitarzewski/agency-agents", "commit": "83294689da3832c0a9f223221148c411fd3eacc0", "category": "skills", "adoption": "skills" },
+    { "repo": "wshobson/agents", "commit": "46891e7e60da0e52baf1050b7b6391b64e84c6d9", "category": "skills", "adoption": "skills" },
+    { "repo": "coreyhaines31/marketingskills", "commit": "dda3841f0b294e01e93b1541486beefbfab0915e", "category": "skills", "adoption": "skills" },
+    { "repo": "sujayjayjay/awesome-sales-automation-skills", "commit": "995eedda32c3156d6530d2562428c6af19c3b993", "category": "skills", "adoption": "skills" },
+    { "repo": "indranilbanerjee/digital-marketing-pro", "commit": "33439246f2a10e6d2c6ffbb211ebd672fa064d4c", "category": "skills", "adoption": "skills" },
+    { "repo": "iamwaqargulzar/Marketing-Agent-OS", "commit": "684a39407a3bf4bf2951b00273a48e3fa56cab89", "category": "skills", "adoption": "skills" },
+    { "repo": "social-media-skills/skills", "commit": "6e30eeb2f6736bda8683b6bbaa674af3641d7945", "category": "skills", "adoption": "skills" },
+    { "repo": "klaubeer/ai-marketing-agency", "commit": "ded53f7ed8c5e816efb489587edb9a3768a4c6dd", "category": "marketing_agents", "adoption": "patterns" },
+    { "repo": "rodrigoarias12/marketing-agent", "commit": "03ecc80b79bfa063abf391b0b7212f7cc633b934", "category": "marketing_agents", "adoption": "patterns" },
+    { "repo": "loopmark-opensource/loopmark-agent", "commit": "688249b0ac8290b0904c2d32d35aab3c5c38f8c3", "category": "marketing_agents", "adoption": "patterns" },
+    { "repo": "kevinbadi/social-agents", "commit": "7f9e1ce87f184274521d7d1fb216f663133907b6", "category": "marketing_agents", "adoption": "patterns" },
+    { "repo": "gengirish/social-media-agency", "commit": "7cc28b2b9366eb30c291c3ccb386779cea3d2f24", "category": "marketing_agents", "adoption": "patterns" },
+    { "repo": "lakeissn/ltx-2.3", "commit": "7ab97fa146d29ec92f71558896dec170a505ce2e", "category": "creative_video", "adoption": "runtime" },
+    { "repo": "9018/openmontage", "commit": "4eab34c5cfcccaa4f1970554928feccce73ee930", "category": "creative_video", "adoption": "reference" },
+    { "repo": "rkendel1/anydoc", "commit": "2d3f92397395a94cbeb6baf89e337425eae293e5", "category": "documents", "adoption": "adapter" },
+    { "repo": "syntax-syndicate/archify-agent-skill", "commit": "d65e57163c8f95bd8fba8d81b95fdf99cf5da18e", "category": "visualization", "adoption": "skills" },
+    { "repo": "666ghj/MiroFish", "commit": "7657031ac01184afe2cb220f5ee3545573b5e843", "category": "scenario_simulation", "adoption": "reference" },
+    { "repo": "geminiyellow/voicestudio", "commit": "a30b71666cf1c2aa58f4f0a4bc50075bfca282f6", "category": "creative_audio", "adoption": "reference" },
+    { "repo": "tasteskill/tasteskill", "commit": "37c8c376b92ebc02456f7c70776b514fddda88e1", "category": "design_skills", "adoption": "skills" },
+    { "repo": "Zapdev-labs/ommi-llm", "commit": "d99db558318fa1be1a4ba3e2a402c36903d4cec2", "category": "local_inference", "adoption": "reference" },
+    { "repo": "vercel-labs/vgpu", "commit": "c5ab0e8fccf2d80178fb9d3b30b27406b709ffa8", "category": "visualization", "adoption": "reference" },
+    { "repo": "Panniantong/agent-reach", "commit": "a19a171fa980a0785849596492e0af4db800c82f", "category": "web_research", "adoption": "runtime" },
+    { "repo": "Nethyric/orca", "commit": "a568ef075da4acee4a2a18ab874307481ea4c12f", "category": "agent_runtime", "adoption": "reference" }
+    ,{ "repo": "openclaw/openclaw", "commit": "f45e4dac14547bdc78d90c95384ca65c2de3ef4e", "category": "agent_gateway", "adoption": "fork_runtime" }
+    ,{ "repo": "hermes-agent-org/hermes", "commit": "036cbdfa0a3158454a0a2a7a7388cf70353326b4", "category": "agent_runtime", "adoption": "reference" }
+    ,{ "repo": "webret/openmontage", "commit": "0d917ea2ca768f248647afc92db987f65b78ec27", "category": "creative_video", "adoption": "patterns" }
+    ,{ "repo": "artffee/mirofish", "commit": "b0ff49d36c2faaa94c0a05c1a9a6daa39ca7d3e4", "category": "scenario_simulation", "adoption": "reference" }
+    ,{ "repo": "Lightricks/LTX-Desktop", "commit": "68cd86c15e5fd25f56229ea63c0dbcb0338f7812", "category": "creative_video", "adoption": "runtime" }
+    ,{ "repo": "alksnd/archify", "commit": "2736652e793a83bc0f1937b1fc4353c354ab8888", "category": "visualization", "adoption": "skills" }
+    ,{ "repo": "hatchet-dev/hatchet", "commit": "9aded2376ecc6a3027ea189b54d305b038295acd", "category": "durable_workflow", "adoption": "runtime_candidate" }
+    ,{ "repo": "docling-project/docling", "commit": "575d8918b7577ab3521a84ca2501376139e3cf63", "category": "documents", "adoption": "runtime_candidate" }
+    ,{ "repo": "microsoft/markitdown", "commit": "4cc9fa17653d695d64fb9eee5b33d4de55ff84e8", "category": "documents", "adoption": "adapter_candidate" }
+    ,{ "repo": "m-bain/whisperX", "commit": "771b4a14a9486f8fd5aef18ef49e35d639523dd3", "category": "creative_audio", "adoption": "runtime_candidate" }
+    ,{ "repo": "FunAudioLLM/CosyVoice", "commit": "074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc", "category": "creative_audio", "adoption": "runtime_candidate" }
+    ,{ "repo": "bytedance/LatentSync", "commit": "a229c3948406bc2cf6eaf4873e662e70c6a04746", "category": "creative_video", "adoption": "runtime_candidate" }
+    ,{ "repo": "mastra-ai/mastra", "commit": "2a478e00a1e71705488eda2ae0cb8e17a88d2a1f", "category": "agent_runtime", "adoption": "runtime_candidate" }
+  ]
+}

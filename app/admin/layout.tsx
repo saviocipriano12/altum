@@ -17,6 +17,16 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/campanhas",
   "/admin/midia",
   "/admin/operacao",
+  "/admin/comando",
+  "/admin/missoes",
+  "/admin/ferramentas",
+  "/admin/conexoes",
+  "/admin/aprovacoes",
+  "/admin/politicas",
+  "/admin/marca",
+  "/admin/criativos",
+  "/admin/resultados",
+  "/admin/avatares",
   "/admin/estrategias",
   "/admin/mcp",
   "/admin/templates",
@@ -86,6 +96,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!user || !profile) return null;
   if (isClientPanelRole(profile.role)) return null;
   if (needsAdmin && !isAdmin) return null;
+
+  // Comando is the primary Agent OS workspace. It owns its own focused
+  // conversation shell instead of nesting inside the legacy admin navigation.
+  if (pathname.startsWith("/admin/comando") || pathname.startsWith("/admin/resultados")) {
+    return <div className="h-dvh w-full overflow-hidden">{children}</div>;
+  }
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-slate-50 text-slate-900">

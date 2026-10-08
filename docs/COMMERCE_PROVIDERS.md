@@ -6,7 +6,7 @@ Os conectores de loja usam `CommerceProvider` para validar credenciais e sincron
 
 ## Conectores atuais
 
-- Shopify: Admin GraphQL API; produtos, pedidos e rastreio.
+- Shopify: Admin GraphQL API; produtos, pedidos, checkout abandonado e rastreio.
 - Nuvemshop: API v1; produtos, pedidos e rastreio.
 - WooCommerce: REST API `wc/v3`; produtos, pedidos e rastreio quando fornecido pela loja/plugin.
 - VTEX, Tray e Loja Integrada: webhook compativel; sincronizacao direta por API ainda nao habilitada.
@@ -23,18 +23,20 @@ Shopify e Nuvemshop tambem oferecem conexao gerenciada por OAuth na area do clie
 
 ## Sincronizacao
 
-`POST /api/tenant/:tenantId/ecommerce/connections/:connectionId/sync` busca um lote limitado e converte cada registro em evento interno idempotente. A mesma esteira de webhook atualiza:
+`POST /api/tenant/:tenantId/ecommerce/connections/:connectionId/sync` busca um lote limitado e converte cada registro em evento interno idempotente. Para Shopify, tambem consulta checkouts abandonados abertos. A mesma esteira de webhook atualiza:
 
 - `ecommerce_products`
 - `ecommerce_orders`
 - `kb_docs` para o catalogo comercial
 - contatos, leads, tarefas e acoes de WhatsApp quando aplicavel
 
+Um pedido Shopify pago vira uma conversao de venda por pedido: o identificador externo do pedido compoe a chave de deduplicacao, e valor, moeda e data do pedido seguem para Meta CAPI e Google Ads quando os respectivos conectores estiverem ativos. Assim, recompras do mesmo cliente continuam sendo vendas distintas e um reenvio de webhook nao duplica a conversao.
+
 URLs WooCommerce sao validadas como HTTPS e bloqueadas quando apontam para localhost ou redes privadas.
 
 Webhooks Shopify sao validados pelo `X-Shopify-Hmac-Sha256` usando o segredo do app e o corpo bruto. Webhooks WooCommerce usam `X-WC-Webhook-Signature` com o segredo individual da conexao. Conexoes manuais e outros provedores continuam aceitando o token Altum, preservando compatibilidade. Requisicoes rejeitadas registram apenas metadados tecnicos, nunca o payload comercial completo.
 
-Depois do OAuth Shopify, a Altum lista as assinaturas existentes e cria apenas as ausentes para produtos, pedidos e fulfillments. O provisionamento e idempotente, fica registrado na conexao e nao impede a primeira sincronizacao quando algum topico e recusado temporariamente.
+Depois do OAuth Shopify, a Altum lista as assinaturas existentes e cria apenas as ausentes para produtos, checkouts, pedidos e fulfillments. O provisionamento e idempotente, fica registrado na conexao e nao impede a primeira sincronizacao quando algum topico e recusado temporariamente.
 
 Na Nuvemshop, o OAuth inclui e valida `state`; os webhooks sao provisionados para alteracoes comerciais especificas e verificados pelo `x-linkedstore-hmac-sha256`. Como esses eventos carregam principalmente IDs, a Altum consulta o recurso completo antes de atualizar catalogo, CRM ou automacoes.
 

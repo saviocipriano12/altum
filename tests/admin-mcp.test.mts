@@ -6,10 +6,10 @@ test("admin MCP scope parser fails closed instead of granting all scopes", () =>
   for (const value of [undefined, "", "unknown", "context:read admin:write", "offline_access", "marketing:read"]) assert.throws(() => strictAdminScopes(value));
   assert.deepEqual(strictAdminScopes("context:read marketing:read context:read offline_access"), { scopes: ["context:read", "marketing:read"], offline: true });
 });
-test("admin MCP consent has explicit, unique and bounded company grants", () => {
-  const good = { tenantIds: ["t1", "t2"], scopes: ["context:read"] };
+test("admin MCP consent is platform-only and requires an explicit base scope", () => {
+  const good = { scopes: ["context:read"] };
   assert.equal(adminConsentSchema.safeParse(good).success, true);
-  for (const tenantIds of [[], ["t1", "t1"], ["../../other"], Array.from({ length: 21 }, (_, index) => `t${index}`)]) assert.equal(adminConsentSchema.safeParse({ ...good, tenantIds }).success, false);
+  assert.equal(adminConsentSchema.safeParse({ ...good, tenantIds: ["t1"] }).success, false);
   assert.equal(adminConsentSchema.safeParse({ ...good, scopes: ["marketing:read"] }).success, false);
 });
 test("CIMD metadata lookup accepts only exact ChatGPT host and document paths", () => {

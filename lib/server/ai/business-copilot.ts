@@ -1,4 +1,9 @@
 import { logAiUsage } from "@/lib/server/ai/usage-ledger";
+import { adminDb } from "@/app/lib/server/firebase-admin";
+import { decryptSecret } from "@/app/lib/server/secret-crypto";
+import { requestFreeLlmChat } from "@/lib/server/agent-os/freellmapi";
+import { requestOpenAiCompatibleChat } from "@/lib/server/agent-os/openai-compatible";
+import { selectCompatibleModels } from "@/lib/server/agent-os/compatible-model-routing";
 import {
   buildAiRuntimePolicy,
   normalizeTenantAiOperatingProfile,
@@ -12,7 +17,7 @@ export type BusinessCopilotMessage = {
 
 export type BusinessCopilotResult = {
   answer: string | null;
-  provider?: Exclude<AltumAiProvider, "altum_rules">;
+  provider?: Exclude<AltumAiProvider, "altum_rules"> | "freellmapi" | "alibaba-model-studio" | "custom-openai-compatible";
   model?: string;
   fallbackUsed: boolean;
   unavailableReason?: string;
@@ -37,6 +42,44 @@ function modelFor(provider: Provider, primaryProvider: AltumAiProvider, configur
   if (provider === "anthropic") return process.env.ANTHROPIC_BUSINESS_INSIGHTS_MODEL || "claude-sonnet-4";
   if (provider === "gemini") return process.env.GEMINI_BUSINESS_INSIGHTS_MODEL || "gemini-2.5-flash";
   return process.env.MISTRAL_BUSINESS_INSIGHTS_MODEL || "mistral-small-latest";
+}
+
+async function configuredFreeLlmConnection() {
+  const snapshot = await adminDb.collection("tool_connections").where("providerId", "==", "freellmapi").limit(20).get();
+  const candidate = snapshot.docs.map((doc) => doc.data()).find((connection) => {
+    const credential = typeof connection.credential === "string" ? connection.credential : "";
+    return connection.scope === "platform" && credential && connection.status !== "pending_config";
+  });
+  if (!candidate) return null;
+  const key = decryptSecret(candidate.credential);
+  if (!key) return null;
+  return { baseUrl: candidate.baseUrl, key };
+}
+
+/** OpenAI-compatible providers (including Alibaba Model Studio) keep one
+ * connection and a selected default model. This lets the interface stay
+ * provider-agnostic while the router evolves behind it. */
+async function configuredOpenAiCompatibleConnection() {
+  const snapshots = await Promise.all(["alibaba-model-studio", "custom-openai-compatible"].map((providerId) => adminDb.collection("tool_connections").where("providerId", "==", providerId).limit(20).get()));
+  const candidates: Array<Record<string, unknown> & { id: string }> = snapshots.flatMap((snapshot) => snapshot.docs.map((doc) => {
+    const data = doc.data() as Record<string, unknown>;
+    return { id: doc.id, ...data };
+  }));
+  const candidate = candidates.find((connection) => {
+    const credential = typeof connection.credential === "string" ? connection.credential : "";
+    return connection.scope === "platform" && credential && connection.status !== "pending_config" && Array.isArray(connection.capabilities) && connection.capabilities.includes("GENERATE_TEXT");
+  });
+  if (!candidate) return null;
+  const key = decryptSecret(candidate.credential);
+  if (!key || typeof candidate.baseUrl !== "string") return null;
+  return {
+    id: candidate.id,
+    providerId: candidate.providerId === "custom-openai-compatible" ? "custom-openai-compatible" as const : "alibaba-model-studio" as const,
+    baseUrl: candidate.baseUrl,
+    key,
+    model: typeof candidate.chatModel === "string" && candidate.chatModel.trim() ? candidate.chatModel.trim() : "qwen-plus",
+    modelCatalog: Array.isArray(candidate.modelCatalog) ? candidate.modelCatalog.map((model) => typeof model === "string" ? model : "").filter(Boolean) : [],
+  };
 }
 
 async function callProvider(input: {
@@ -126,6 +169,58 @@ export async function runBusinessCopilot(input: {
   const prompt = `Pergunta atual: ${clean(input.question, 700)}\n\nFatos autorizados da operacao:\n${clean(input.facts, 24_000)}\n\nLeitura calculada de apoio:\n${clean(input.deterministicAnswer, 3_000)}`;
   let lastError = providers.length ? "" : "Nenhum provedor de IA esta configurado.";
   const providerErrors: string[] = [];
+
+  // A Central é preferida quando o administrador a conectou explicitamente.
+  // Ela mantém o roteamento e o fallback entre provedores fora da conversa do usuário.
+  try {
+    const central = await configuredFreeLlmConnection();
+    if (central) {
+      const startedAt = Date.now();
+      const result = await requestFreeLlmChat({
+        baseUrl: central.baseUrl,
+        apiKey: central.key,
+        messages: [
+          { role: "system", content: system },
+          ...history,
+          { role: "user", content: prompt },
+        ],
+      });
+      void logAiUsage({ tenantId: input.tenantId, scope: "analysis", provider: "altum_rules", model: result.model, agentId: "business-insights", decision: "answer", latencyMs: Date.now() - startedAt, inputTokens: result.inputTokens || null, outputTokens: result.outputTokens || null, status: "success", metadata: { surface: "perguntar_altum", gateway: "freellmapi", routedVia: result.routedVia } }).catch(() => undefined);
+      return { answer: result.answer, provider: "freellmapi", model: result.routedVia || result.model, fallbackUsed: false };
+    }
+  } catch (error) {
+    lastError = `freellmapi: ${error instanceof Error ? clean(error.message, 220) : "falha na central"}`;
+    providerErrors.push(lastError);
+  }
+
+  try {
+    const compatible = await configuredOpenAiCompatibleConnection();
+    if (compatible) {
+      const models = selectCompatibleModels({ preferredModel: compatible.model, modelCatalog: compatible.modelCatalog, prompt: input.question });
+      let compatibleError: unknown;
+      for (let index = 0; index < models.length; index += 1) {
+        const startedAt = Date.now();
+        try {
+          const result = await requestOpenAiCompatibleChat({
+            baseUrl: compatible.baseUrl,
+            apiKey: compatible.key,
+            model: models[index],
+            messages: [{ role: "system", content: system }, ...history, { role: "user", content: prompt }],
+          });
+          // The ledger's historic provider enum intentionally stays stable. The
+          // exact external provider and connection are retained in metadata.
+          void logAiUsage({ tenantId: input.tenantId, scope: "analysis", provider: "altum_rules", model: result.model, agentId: "business-insights", decision: "answer", latencyMs: Date.now() - startedAt, inputTokens: result.inputTokens || null, outputTokens: result.outputTokens || null, status: "success", metadata: { surface: "perguntar_altum", externalProvider: compatible.providerId, connectionId: compatible.id, routedModel: models[index], modelFallback: index > 0 } }).catch(() => undefined);
+          return { answer: result.answer, provider: compatible.providerId, model: result.model, fallbackUsed: index > 0 };
+        } catch (error) {
+          compatibleError = error;
+        }
+      }
+      throw compatibleError || new Error("Nenhum modelo disponível respondeu nesta conexão.");
+    }
+  } catch (error) {
+    lastError = `api-compativel: ${error instanceof Error ? clean(error.message, 220) : "falha na conexão"}`;
+    providerErrors.push(lastError);
+  }
 
   for (let index = 0; index < providers.length; index += 1) {
     const provider = providers[index];

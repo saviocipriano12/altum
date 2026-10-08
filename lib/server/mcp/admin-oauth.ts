@@ -6,7 +6,6 @@ import { AGENCY_ADMIN_ROLES, type RequestUser } from "@/app/lib/server/route-aut
 import { publicOrigin, tokenHash } from "@/lib/server/mcp/oauth";
 import { CommandError, millis } from "@/lib/server/command-center/security";
 import { adminConsentSchema, strictAdminScopes, isChatGptMetadataUrl, isChatGptRedirect, ADMIN_MCP_PATH, ADMIN_MCP_ISSUER_PATH } from "@/lib/admin-mcp";
-import type { Grant } from "@/lib/mcp/contracts";
 
 const policyRef = () => adminDb.collection("platform_settings").doc("admin_mcp");
 const token = (prefix: string) => prefix + "_" + randomBytes(32).toString("base64url");
@@ -32,17 +31,15 @@ async function verifyClientMetadata(clientId: string, redirectUri: string) {
 }
 export async function createAdminAuthorizationCode(req: Request, actor: RequestUser, body: Record<string, unknown>) {
   const requested = validateAdminAuthorizationRequest(req, body);
-  const consent = adminConsentSchema.safeParse({ tenantIds: body.tenantIds, scopes: body.scopes });
+  const consent = adminConsentSchema.safeParse({ scopes: body.scopes });
   if (!consent.success || consent.data.scopes.some(scope => !requested.scopes.includes(scope))) throw new CommandError("invalid_scope", 400);
   const policy = await policyRef().get(); if (policy.data()?.enabled !== true) throw new CommandError("MCP_DISABLED", 403);
   await verifyClientMetadata(body.client_id as string, body.redirect_uri as string);
-  const companies = await Promise.all(consent.data.tenantIds.map(id => adminDb.collection("tenants").doc(id).get()));
-  if (companies.some(snap => !snap.exists)) throw new CommandError("invalid_company", 400);
   const code = token("altum_admin_code"); const now = Date.now();
   const connectionRef = adminDb.collection("admin_mcp_connections").doc(); const batch = adminDb.batch();
-  batch.set(connectionRef, { userId: actor.uid, userName: actor.name, clientId: body.client_id, clientName: "ChatGPT", audience: adminMcpResource(req), tenantIds: consent.data.tenantIds, scopes: consent.data.scopes, offline: requested.offline, createdAt: Timestamp.fromMillis(now), expiresAt: Timestamp.fromMillis(now + (requested.offline ? 60 * 86400000 : 3600000)), revokedAt: null });
+  batch.set(connectionRef, { userId: actor.uid, userName: actor.name, clientId: body.client_id, clientName: "ChatGPT", audience: adminMcpResource(req), scopes: consent.data.scopes, connectionType: "platform_admin", offline: requested.offline, createdAt: Timestamp.fromMillis(now), expiresAt: Timestamp.fromMillis(now + (requested.offline ? 60 * 86400000 : 3600000)), revokedAt: null });
   batch.set(adminDb.collection("admin_mcp_codes").doc(tokenHash(code)), { connectionId: connectionRef.id, clientId: body.client_id, redirectUri: body.redirect_uri, challenge: body.code_challenge, audience: adminMcpResource(req), expiresAt: Timestamp.fromMillis(now + 600000), consumedAt: null });
-  batch.set(adminDb.collection("audit_logs").doc(), { type: "admin_mcp_consent", actorId: actor.uid, tenantIds: consent.data.tenantIds, scopes: consent.data.scopes, connectionId: connectionRef.id, createdAt: Timestamp.fromMillis(now) });
+  batch.set(adminDb.collection("audit_logs").doc(), { type: "admin_mcp_consent", actorId: actor.uid, scopes: consent.data.scopes, connectionId: connectionRef.id, createdAt: Timestamp.fromMillis(now) });
   await batch.commit();
   const redirect = new URL(body.redirect_uri as string); redirect.searchParams.set("code", code); redirect.searchParams.set("iss", publicOrigin(req) + ADMIN_MCP_ISSUER_PATH);
   if (typeof body.state === "string") redirect.searchParams.set("state", body.state);
@@ -59,7 +56,7 @@ async function liveConnection(connectionId: string, req: Request, transaction?: 
   if (typeof data.userId !== "string" || !data.userId) throw invalid();
   const user = await read(adminDb.collection("users").doc(data.userId)); const profile = user.data();
   if (!profile || profile.status === "blocked" || !AGENCY_ADMIN_ROLES.includes(profile.role)) throw new CommandError("FORBIDDEN", 403);
-  const consent = adminConsentSchema.safeParse({ tenantIds: data.tenantIds, scopes: data.scopes });
+  const consent = adminConsentSchema.safeParse({ scopes: data.scopes });
   if (!consent.success) throw invalid();
   return { ...data, userId: data.userId as string, clientId: data.clientId as string, offline: data.offline === true, expiresAt: millis(data.expiresAt)!, ...consent.data };
 }
@@ -106,8 +103,7 @@ export async function validateAdminAccess(req: Request, raw: string) {
   const expiresAt = new Date(Math.min(millis(data.expiresAt)!, connection.expiresAt)).toISOString();
   let tokenScopes; try { tokenScopes = strictAdminScopes((data.scopes || []).join(" ")).scopes; } catch { throw new CommandError("UNAUTHENTICATED", 401); }
   if (tokenScopes.some(scope => !connection.scopes.includes(scope))) throw new CommandError("UNAUTHENTICATED", 401);
-  const grants: Grant[] = connection.tenantIds.map(tenantId => ({ userId: connection.userId, tenantId, scopes: tokenScopes, expiresAt }));
-  return { userId: connection.userId, clientId: connection.clientId, connectionId: data.connectionId as string, grants };
+  return { userId: connection.userId, clientId: connection.clientId, connectionId: data.connectionId as string, scopes: tokenScopes, expiresAt };
 }
 export async function setAdminMcpPolicy(actor: RequestUser, enabled: boolean) {
   const batch = adminDb.batch(); batch.set(policyRef(), { enabled, updatedBy: actor.uid, updatedAt: FieldValue.serverTimestamp() }, { merge: true }); batch.set(adminDb.collection("audit_logs").doc(), { type: "admin_mcp_policy_changed", enabled, actorId: actor.uid, createdAt: FieldValue.serverTimestamp() }); await batch.commit();

@@ -3,6 +3,7 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { getPlatformPlanEntitlements, PLATFORM_TRIAL_ENTITLEMENTS } from "@/lib/platform-plan-entitlements";
+import { normalizeTenantEntitlements } from "@/lib/tenant-entitlements";
 import type { TenantEntitlementsSnapshot } from "@/lib/tenant-entitlements";
 
 function timestampToMillis(value: unknown) {
@@ -42,8 +43,20 @@ export async function applyPlatformPlanEntitlements(input: {
 }) {
   const tenantId = String(input.tenantId || "").trim();
   if (!tenantId) throw new Error("Tenant obrigatorio para aplicar o plano.");
+  const entitlementRef = adminDb.collection("tenant_entitlements").doc(tenantId);
+  const currentSnap = await entitlementRef.get();
+  const current = currentSnap.exists
+    ? normalizeTenantEntitlements(tenantId, currentSnap.data() as Record<string, unknown>)
+    : null;
+
+  // A reconciliação financeira só confirma cobrança e acesso. Ela não pode
+  // apagar módulos que foram liberados manualmente para um cliente.
+  if (input.source !== "admin" && isAdminManagedAccess(current)) {
+    return current;
+  }
+
   const entitlements = getPlatformPlanEntitlements(input.planId);
-  await adminDb.collection("tenant_entitlements").doc(tenantId).set({
+  await entitlementRef.set({
     version: 1,
     tenantId,
     mode: "custom",

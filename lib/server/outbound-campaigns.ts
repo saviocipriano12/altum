@@ -613,7 +613,12 @@ async function loadCampaignContext(input: { tenantId: string; campaignId: string
 
 async function loadOutboundAudienceLeads(tenantId: string): Promise<OutboundLeadRow[]> {
   const [leadsSnap, chatsSnap] = await Promise.all([
-    adminDb.collection("leads").where("tenantId", "==", tenantId).limit(600).get(),
+    // Campanhas podem importar vários lotes consecutivos. O limite anterior de 600
+    // fazia com que uma lista válida fosse parcialmente invisível para a simulação
+    // e para a fila quando o tenant já tinha uma base maior. A interface ainda
+    // limita cada campanha a 500 destinatários; aqui precisamos apenas enxergar
+    // toda a base relevante para que os filtros de lote sejam exatos.
+    adminDb.collection("leads").where("tenantId", "==", tenantId).limit(5000).get(),
     adminDb.collection("chats").where("tenantId", "==", tenantId).limit(1200).get(),
   ]);
   const latestChatByLead = new Map<string, Record<string, unknown>>();
@@ -747,7 +752,7 @@ async function findOrCreateLeadChat(input: {
         { merge: true }
       );
     }
-    return existingChat.id;
+    return { id: existingChat.id, created: false };
   }
 
   const chatRef = await adminDb.collection("chats").add({
@@ -768,7 +773,26 @@ async function findOrCreateLeadChat(input: {
     lastMessage: "",
   });
 
-  return chatRef.id;
+  return { id: chatRef.id, created: true };
+}
+
+async function removeEmptyCampaignChat(input: { tenantId: string; chatId: string }) {
+  const chatRef = adminDb.collection("chats").doc(input.chatId);
+  const [chatSnap, messages] = await Promise.all([
+    chatRef.get(),
+    adminDb.collection("messages").where("chatId", "==", input.chatId).limit(1).get(),
+  ]);
+  const chat = chatSnap.data() as Record<string, unknown> | undefined;
+  if (
+    !chatSnap.exists ||
+    chat?.tenantId !== input.tenantId ||
+    chat?.source !== "outbound_campaign" ||
+    clean(chat?.lastMessage, 20) ||
+    !messages.empty
+  ) {
+    return;
+  }
+  await chatRef.delete();
 }
 
 export async function previewOutboundCampaign(input: { tenantId: string; campaignId: string }) {
@@ -849,6 +873,8 @@ export async function dispatchOutboundCampaign(input: {
   const errors: Array<{ leadId: string; leadName: string; message: string }> = [];
 
   for (const item of matchedLeads) {
+    let chatId = "";
+    let createdChat = false;
     try {
       const compliance = evaluateWhatsAppBulkCompliance(item.data);
       if (!compliance.allowed) {
@@ -862,7 +888,7 @@ export async function dispatchOutboundCampaign(input: {
         continue;
       }
 
-      const chatId = await findOrCreateLeadChat({
+      const chat = await findOrCreateLeadChat({
         tenantId: input.tenantId,
         leadId: item.id,
         lead: item.data,
@@ -870,10 +896,12 @@ export async function dispatchOutboundCampaign(input: {
         channelId: campaign.channelId,
       });
 
-      if (!chatId) {
+      if (!chat) {
         skipped += 1;
         continue;
       }
+      chatId = chat.id;
+      createdChat = chat.created;
 
       const renderedBodyParams = interpolateBodyParams(campaign.bodyParams, item.data);
       const renderedMessage =
@@ -1007,6 +1035,11 @@ export async function dispatchOutboundCampaign(input: {
 
       sent += 1;
     } catch (error) {
+      if (createdChat && chatId) {
+        await removeEmptyCampaignChat({ tenantId: input.tenantId, chatId }).catch((cleanupError) => {
+          console.error("Falha ao limpar conversa de campanha sem mensagem:", cleanupError);
+        });
+      }
       failed += 1;
       errors.push({
         leadId: item.id,
@@ -1299,7 +1332,7 @@ export async function processOutboundCampaignJobs(input?: { limit?: number; tena
     }
 
     try {
-      await dispatchOutboundCampaign({
+      const dispatch = await dispatchOutboundCampaign({
         tenantId,
         campaignId,
         runId,
@@ -1310,14 +1343,28 @@ export async function processOutboundCampaignJobs(input?: { limit?: number; tena
         },
         accumulate: true,
       });
-      await jobDoc.ref.set({ status: "completed", completedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      const dispatchFailed = Number(dispatch.summary.failed || 0);
+      const dispatchError = dispatch.errors[0]?.message || "Falha ao enviar uma ou mais mensagens deste lote.";
+      await jobDoc.ref.set(
+        {
+          status: dispatchFailed ? (Number(dispatch.summary.sent || 0) > 0 ? "completed_with_failures" : "failed") : "completed",
+          ...(dispatchFailed ? { error: dispatchError } : {}),
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
       await adminDb.collection("outbound_campaign_runs").doc(runId).set(
         { completedJobs: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() },
         { merge: true }
       );
 
       await finalizeRunIfDone(runId, campaignId);
-      results.push({ jobId: jobDoc.id, status: "completed" });
+      results.push({
+        jobId: jobDoc.id,
+        status: dispatchFailed ? (Number(dispatch.summary.sent || 0) > 0 ? "completed_with_failures" : "failed") : "completed",
+        ...(dispatchFailed ? { error: dispatchError } : {}),
+      });
     } catch (error) {
       const attempts = Number(claimed.attempts || 0) + 1;
       const terminal = attempts >= 3;

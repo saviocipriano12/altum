@@ -9,6 +9,7 @@ export const GROWTH_EVENT_NAMES = [
   "product_viewed",
   "checkout_started",
   "purchase_completed",
+  "purchase_refunded",
 ] as const;
 
 export type GrowthEventName = (typeof GROWTH_EVENT_NAMES)[number];
@@ -50,7 +51,7 @@ export type NormalizedGrowthEvent = {
 export type GrowthTrackingRow = { id?: string } & Record<string, unknown>;
 
 export function buildTrackingOverview(rows: GrowthTrackingRow[]) {
-  const totals = { events: 0, visitors: 0, sessions: 0, pageViews: 0, conversions: 0, sales: 0, revenue: 0 };
+  const totals = { events: 0, visitors: 0, sessions: 0, pageViews: 0, conversions: 0, sales: 0, refunds: 0, revenue: 0 };
   const visitors = new Set<string>();
   const sessions = new Set<string>();
   const funnel: Record<string, number> = Object.fromEntries(GROWTH_EVENT_NAMES.map((name) => [name, 0]));
@@ -68,6 +69,7 @@ export function buildTrackingOverview(rows: GrowthTrackingRow[]) {
     const value = finiteNumber(row.value, 0, 100_000_000);
     if (name === "page_view") totals.pageViews += 1;
     if (name === "purchase_completed") { totals.sales += 1; totals.revenue += value; }
+    if (name === "purchase_refunded") { totals.refunds += 1; totals.revenue -= value; }
     const attribution = row.attribution && typeof row.attribution === "object" ? row.attribution as Record<string, unknown> : {};
     const campaign = cleanText(attribution.campaign, 240) || "Sem campanha";
     const source = cleanText(attribution.source, 180) || "Direto";
@@ -76,6 +78,7 @@ export function buildTrackingOverview(rows: GrowthTrackingRow[]) {
     group.events += 1;
     if (["form_submitted", "whatsapp_clicked"].includes(name)) group.conversions += 1;
     if (name === "purchase_completed") { group.sales += 1; group.revenue += value; }
+    if (name === "purchase_refunded") { group.sales = Math.max(0, group.sales - 1); group.revenue -= value; }
     campaigns.set(key, group);
   }
   totals.visitors = visitors.size;

@@ -9,6 +9,7 @@ export type RevenueGraphInput = {
   proposals: RevenueGraphRow[];
   finance: RevenueGraphRow[];
   snapshots: RevenueGraphRow[];
+  ecommerceOrders?: RevenueGraphRow[];
   from: string;
   to: string;
 };
@@ -98,9 +99,24 @@ export function buildRevenueGraph(input: RevenueGraphInput) {
     const leadId = clean(proposal.leadId, 180); const group = leadGroup.get(leadId);
     if (group && !["perdido", "cancelado"].includes(clean(proposal.status, 40).toLowerCase())) group.proposals.add(leadId);
   }
+  // Shopify is the commercial source of truth for a store sale. Keep its
+  // paid orders separate from Finance so the same checkout is never counted
+  // twice when a backoffice payment entry also exists for the lead.
+  const ecommerceLeadIds = new Set<string>();
+  for (const order of input.ecommerceOrders || []) {
+    const leadId = clean(order.leadId, 180);
+    const journey = clean(order.journeyState, 80);
+    const paidOrder = ["payment_confirmed", "fulfillment_pending", "shipped", "delivered", "partially_refunded"].includes(journey);
+    const occurredAt = order.orderedAt || order.updatedAt || order.createdAt;
+    const group = leadGroup.get(leadId);
+    if (!group || !paidOrder || !inRange(occurredAt, from, to)) continue;
+    ecommerceLeadIds.add(leadId);
+    group.customers.add(leadId);
+    group.revenue += number(order.totalPrice);
+  }
   for (const entry of input.finance) {
     const leadId = clean(entry.leadId, 180); const group = leadGroup.get(leadId);
-    if (!group || !paid(entry)) continue;
+    if (!group || ecommerceLeadIds.has(leadId) || !paid(entry)) continue;
     group.customers.add(leadId); group.revenue += number(entry.valor);
   }
 

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "status": "review_queue",
+  "skills": [
+    { "id": "campaign-plan", "sourceRepo": "indranilbanerjee/digital-marketing-pro", "sourceCommit": "33439246f2a10e6d2c6ffbb211ebd672fa064d4c", "license": "MIT", "sourcePath": "skills/campaign-plan/SKILL.md", "category": "campaign" },
+    { "id": "campaign-audit", "sourceRepo": "indranilbanerjee/digital-marketing-pro", "sourceCommit": "33439246f2a10e6d2c6ffbb211ebd672fa064d4c", "license": "MIT", "sourcePath": "skills/campaign-audit/SKILL.md", "category": "campaign" },
+    { "id": "ad-creative", "sourceRepo": "indranilbanerjee/digital-marketing-pro", "sourceCommit": "33439246f2a10e6d2c6ffbb211ebd672fa064d4c", "license": "MIT", "sourcePath": "skills/ad-creative/SKILL.md", "category": "creative" },
+    { "id": "analytics-insights", "sourceRepo": "indranilbanerjee/digital-marketing-pro", "sourceCommit": "33439246f2a10e6d2c6ffbb211ebd672fa064d4c", "license": "MIT", "sourcePath": "skills/analytics-insights/SKILL.md", "category": "analytics" },
+    { "id": "audience-intelligence", "sourceRepo": "indranilbanerjee/digital-marketing-pro", "sourceCommit": "33439246f2a10e6d2c6ffbb211ebd672fa064d4c", "license": "MIT", "sourcePath": "skills/audience-intelligence/SKILL.md", "category": "research" },
+    { "id": "client-proposal", "sourceRepo": "indranilbanerjee/digital-marketing-pro", "sourceCommit": "33439246f2a10e6d2c6ffbb211ebd672fa064d4c", "license": "MIT", "sourcePath": "skills/client-proposal/SKILL.md", "category": "sales" },
+    { "id": "ai-video", "sourceRepo": "social-media-skills/skills", "sourceCommit": "6e30eeb2f6736bda8683b6bbaa674af3641d7945", "license": "MIT", "sourcePath": "skills/ai-video/SKILL.md", "category": "creative_video" },
+    { "id": "ai-voiceover", "sourceRepo": "social-media-skills/skills", "sourceCommit": "6e30eeb2f6736bda8683b6bbaa674af3641d7945", "license": "MIT", "sourcePath": "skills/ai-voiceover/SKILL.md", "category": "creative_audio" },
+    { "id": "carousel-writer", "sourceRepo": "social-media-skills/skills", "sourceCommit": "6e30eeb2f6736bda8683b6bbaa674af3641d7945", "license": "MIT", "sourcePath": "skills/carousel-writer/SKILL.md", "category": "social" },
+    { "id": "caption-writer", "sourceRepo": "social-media-skills/skills", "sourceCommit": "6e30eeb2f6736bda8683b6bbaa674af3641d7945", "license": "MIT", "sourcePath": "skills/caption-writer/SKILL.md", "category": "social" },
+    { "id": "content-calendar", "sourceRepo": "social-media-skills/skills", "sourceCommit": "6e30eeb2f6736bda8683b6bbaa674af3641d7945", "license": "MIT", "sourcePath": "skills/content-calendar/SKILL.md", "category": "social" },
+    { "id": "community-management", "sourceRepo": "social-media-skills/skills", "sourceCommit": "6e30eeb2f6736bda8683b6bbaa674af3641d7945", "license": "MIT", "sourcePath": "skills/community-management/SKILL.md", "category": "social" }
+  ]
+}

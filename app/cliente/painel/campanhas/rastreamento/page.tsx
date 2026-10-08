@@ -16,7 +16,7 @@ type TrackingPayload = {
     lastEventAt?: string | null;
     lastEventName?: string;
   };
-  summary: { total: number; pageViews: number; conversions: number; sales: number; revenue: number };
+  summary: { total: number; pageViews: number; conversions: number; sales: number; refunds: number; revenue: number };
   events: Array<{ id: string; name: string; occurredAt?: string | null; path: string; value: number; currency: string; source: string; campaign: string }>;
 };
 
@@ -38,6 +38,7 @@ const eventLabels: Record<string, string> = {
   product_viewed: "Produto visualizado",
   checkout_started: "Checkout iniciado",
   purchase_completed: "Venda concluida",
+  purchase_refunded: "Venda estornada",
 };
 
 function money(value: number) {

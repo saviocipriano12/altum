@@ -8,14 +8,25 @@ function token(req: Request) {
   return String(req.headers.get("x-outbound-jobs-token") || req.headers.get("x-cron-secret") || "").trim();
 }
 
+function configuredTokens() {
+  // The Vercel cron and the VPS worker may use distinct scoped tokens during
+  // a credential rotation. Keep both valid so a healthy worker is never
+  // interrupted while the deployment is being updated.
+  return Array.from(
+    new Set(
+      [process.env.OUTBOUND_JOBS_PROCESS_TOKEN, process.env.CRON_SECRET]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 async function handle(req: Request) {
-  const configured =
-    String(process.env.OUTBOUND_JOBS_PROCESS_TOKEN || "").trim() ||
-    String(process.env.CRON_SECRET || "").trim();
-  if (!configured) {
+  const acceptedTokens = configuredTokens();
+  if (!acceptedTokens.length) {
     return NextResponse.json({ error: "OUTBOUND_JOBS_PROCESS_TOKEN ou CRON_SECRET nao configurado." }, { status: 503 });
   }
-  if (token(req) !== configured) {
+  if (!acceptedTokens.includes(token(req))) {
     return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
   }
   const url = new URL(req.url);

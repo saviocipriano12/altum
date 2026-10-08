@@ -6,6 +6,7 @@ import { decryptSecret, encryptSecret, hasStoredSecret, maskStoredSecret } from 
 import { recordInboundLead } from "@/lib/server/lead-intake";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
+import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { commerceProviderMeta, connectionConfigFromDoc, hasCommerceCredentials, readCommerceCredentials } from "@/lib/server/commerce/registry";
 import type { CommerceSyncEvent } from "@/lib/server/commerce/types";
 import { verifyNativeCommerceWebhook } from "@/lib/server/commerce/webhook-security";
@@ -90,6 +91,8 @@ type NormalizedOrder = {
     term: string;
     landingPage: string;
     referrer: string;
+    gclid: string;
+    fbclid: string;
   };
 };
 
@@ -225,6 +228,16 @@ function dateIso(value: unknown) {
   }
   const parsed = new Date(String(value));
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function queryParam(urlValue: unknown, key: string) {
+  const raw = clean(urlValue, 1200);
+  if (!raw) return "";
+  try {
+    return clean(new URL(raw).searchParams.get(key), 300);
+  } catch {
+    return "";
+  }
 }
 
 function headerValue(headers: Headers, names: string[]) {
@@ -368,6 +381,8 @@ function normalizeOrder(payload: Record<string, unknown>, topic = ""): Normalize
   const firstVisit = safeRecord(attribution.first_visit || attribution.firstVisit);
   const visit = Object.keys(lastVisit).length ? lastVisit : Object.keys(firstVisit).length ? firstVisit : attribution;
   const utm = safeRecord(visit.utm_parameters || visit.utmParameters || attribution.utm);
+  const landingPage = clean(visit.landing_page || visit.landingPage || attribution.landing_page || attribution.landingPage, 800);
+  const referrer = clean(visit.referrer || visit.referrer_url || visit.referrerUrl || attribution.referrer, 800);
   const items = normalizeOrderItems(order.line_items || order.items || order.products);
   const externalOrderId = clean(order.id || order.order_id || order.orderId || order.number, 180);
   if (!externalOrderId && !items.length) return null;
@@ -416,8 +431,10 @@ function normalizeOrder(payload: Record<string, unknown>, topic = ""): Normalize
       campaign: clean(utm.campaign || attribution.campaign, 240),
       content: clean(utm.content || attribution.content, 240),
       term: clean(utm.term || attribution.term, 240),
-      landingPage: clean(visit.landing_page || visit.landingPage || attribution.landing_page || attribution.landingPage, 800),
-      referrer: clean(visit.referrer || visit.referrer_url || visit.referrerUrl || attribution.referrer, 800),
+      landingPage,
+      referrer,
+      gclid: clean(utm.gclid || attribution.gclid, 300) || queryParam(landingPage, "gclid") || queryParam(referrer, "gclid"),
+      fbclid: clean(utm.fbclid || attribution.fbclid, 300) || queryParam(landingPage, "fbclid") || queryParam(referrer, "fbclid"),
     },
   };
 }
@@ -523,7 +540,8 @@ function normalizeCart(payload: Record<string, unknown>, topic: string): Normali
   const items = normalizeOrderItems(cart.line_items || cart.items || cart.products);
   const externalCartId = clean(cart.id || cart.cart_id || cart.checkout_id || cart.token, 180);
   if (!externalCartId && !items.length) return null;
-  const recovered = topicHas(topic, ["recovered", "recover", "recuperado"]);
+  const recovered = Boolean(cart.completed_at || cart.completedAt) || topicHas(topic, ["recovered", "recover", "recuperado"]);
+  const abandoned = topicHas(topic, ["abandoned", "abandono", "carrinho"]);
   return {
     externalCartId: externalCartId || hashId([customer.email, cart.total_price, cart.updated_at]),
     customerName: clean(customer.name || `${clean(customer.first_name, 80)} ${clean(customer.last_name, 80)}`.trim(), 180),
@@ -531,8 +549,8 @@ function normalizeCart(payload: Record<string, unknown>, topic: string): Normali
     customerPhone: clean(customer.phone || cart.phone, 80),
     totalPrice: numberValue(cart.total_price || cart.total || cart.value || cart.amount),
     currency: clean(cart.currency || cart.currency_code, 20) || "BRL",
-    status: recovered ? "recovered" : topicHas(topic, ["abandoned", "abandono", "carrinho"]) ? "abandoned" : "open",
-    checkoutUrl: clean(cart.checkout_url || cart.recovery_url || cart.url, 800),
+    status: recovered ? "recovered" : abandoned ? "abandoned" : "open",
+    checkoutUrl: clean(cart.checkout_url || cart.abandoned_checkout_url || cart.abandonedCheckoutUrl || cart.recovery_url || cart.url, 800),
     productNames: items.map((item) => item.name).filter(Boolean).slice(0, 20),
     lastActivityAt: dateIso(cart.updated_at || cart.updatedAt || cart.created_at),
   };
@@ -716,6 +734,8 @@ async function syncOrderToCommercial(input: {
       term: order.attribution.term,
       landingPage: order.attribution.landingPage,
       referrer: order.attribution.referrer,
+      gclid: order.attribution.gclid,
+      fbclid: order.attribution.fbclid,
       sourceLabel: `${providerLabel(input.provider)} - pedido`,
       channel: "ecommerce",
       sourceType: "ecommerce_order",
@@ -723,6 +743,9 @@ async function syncOrderToCommercial(input: {
     automationActorId: "ecommerce_webhook",
     automationActorName: "Ecommerce",
     preserveExistingAttribution: true,
+    // A paid order is a purchase, not an inbound lead. Its own, order-keyed
+    // conversion is dispatched below after the commercial state is persisted.
+    skipLeadCreatedWorkflows: true,
   });
   const customerProfile = await syncEcommerceCustomerProfile({
     tenantId: input.tenantId,
@@ -755,6 +778,20 @@ async function syncOrderToCommercial(input: {
         orderId: order.externalOrderId,
         orderNumber: order.orderNumber,
       },
+      attribution: order.attribution,
+    });
+  }
+  if (journey.terminal && previouslyPaid) {
+    await recordNativeGrowthEvent({
+      tenantId: input.tenantId,
+      eventId: `ecommerce_refund:${input.connectionId}:${order.externalOrderId}`,
+      name: "purchase_refunded",
+      externalId: lead.leadId,
+      url: order.attribution.landingPage || order.checkoutUrl,
+      path: order.attribution.landingPage || order.checkoutUrl,
+      value: order.totalPrice || 0,
+      currency: order.currency,
+      properties: { provider: input.provider, orderId: order.externalOrderId, orderNumber: order.orderNumber },
       attribution: order.attribution,
     });
   }
@@ -802,6 +839,8 @@ async function syncOrderToCommercial(input: {
     adminDb.collection("leads").doc(lead.leadId).set(
       {
         priority: order.trackingCode ? "medium" : "high",
+        potentialValue: order.totalPrice ?? 0,
+        valorPotencial: order.totalPrice ?? 0,
         commercialState: {
           lastEcommerceOrderId: order.externalOrderId,
           lastEcommerceOrderNumber: order.orderNumber,
@@ -892,7 +931,23 @@ async function syncOrderToCommercial(input: {
       totalPrice: order.totalPrice,
       journeyState: journey.state,
     },
+    skipConversionDispatch: true,
   });
+
+  if (journey.paid && !journey.terminal) {
+    await dispatchLeadConversionEvents({
+      tenantId: input.tenantId,
+      leadId: lead.leadId,
+      reason: "sale_won",
+      conversionKey: `shopify:${input.connectionId}:${order.externalOrderId}`,
+      conversionValue: order.totalPrice ?? 0,
+      currency: order.currency,
+      occurredAt: order.orderedAt || undefined,
+      orderId: order.externalOrderId,
+    }).catch((error) => {
+      console.error("Falha ao enviar conversao de compra Shopify:", error);
+    });
+  }
 
   if (journey.shouldSendTracking) {
     await Promise.all([

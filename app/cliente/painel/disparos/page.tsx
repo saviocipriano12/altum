@@ -590,12 +590,7 @@ function hasAudienceHeader(line: string) {
   );
 }
 
-function normalizeAudienceFileContent(fileName: string, content: string) {
-  const extension = fileName.split(".").pop()?.toLowerCase() || "";
-  if (extension === "xls" || extension === "xlsx") {
-    throw new Error("Por enquanto envie em CSV ou TXT. No Excel, use Salvar como > CSV e suba o arquivo gerado.");
-  }
-
+function normalizeAudienceFileContent(content: string) {
   const trimmed = content.trim();
   if (!trimmed) throw new Error("Arquivo vazio.");
 
@@ -611,6 +606,29 @@ function normalizeAudienceFileContent(fileName: string, content: string) {
   });
 
   return ["telefone,nome", ...rows].join("\n");
+}
+
+async function readAudienceFileContent(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+
+  if (extension === "xlsx" || extension === "xls") {
+    const XLSX = await import("xlsx");
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false });
+    const sheetName = workbook.SheetNames.find((name) => {
+      const sheet = workbook.Sheets[name];
+      return sheet && XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false }).length > 0;
+    });
+    if (!sheetName) throw new Error("A planilha não possui uma aba com contatos.");
+
+    const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName], {
+      FS: ",",
+      RS: "\n",
+      blankrows: false,
+    });
+    return normalizeAudienceFileContent(csv);
+  }
+
+  return normalizeAudienceFileContent(await file.text());
 }
 
 function getTemplateBody(template: WhatsAppTemplate | undefined) {
@@ -899,7 +917,7 @@ export default function BulkMessagingPage() {
     setError("");
     setNotice("");
     try {
-      const content = normalizeAudienceFileContent(file.name, await file.text());
+      const content = await readAudienceFileContent(file);
       const response = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1895,8 +1913,8 @@ function AudienceStep({
         <summary className="cursor-pointer list-none text-sm font-bold text-[var(--cliente-card-text)]">Tenho uma lista pronta ou quero refinar este público <span className="ml-1 text-xs font-normal text-[var(--cliente-card-text-soft)]">opcional</span></summary>
         <div className="mt-4 rounded-[18px] border border-dashed border-emerald-300 bg-emerald-500/8 p-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div><p className="text-sm font-bold text-[var(--cliente-card-text)]">Importar uma lista de contatos</p><p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">CSV ou TXT, com um telefone por linha ou colunas de contato.</p></div>
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-bold text-white"><FileText className="h-4 w-4" />{importing ? "Importando" : "Escolher arquivo"}<input type="file" accept=".csv,.txt,text/csv,text/plain" className="sr-only" disabled={importing} onChange={(event) => { const file = event.target.files?.[0]; if (file) onImportFile(file); event.currentTarget.value = ""; }} /></label>
+            <div><p className="text-sm font-bold text-[var(--cliente-card-text)]">Importar uma lista de contatos</p><p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">Excel, CSV ou TXT. Use colunas como nome, telefone, empresa e etiquetas — ou apenas um telefone por linha.</p></div>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-bold text-white"><FileText className="h-4 w-4" />{importing ? "Lendo lista..." : "Escolher lista"}<input type="file" accept=".csv,.txt,.xls,.xlsx,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" disabled={importing} onChange={(event) => { const file = event.target.files?.[0]; if (file) onImportFile(file); event.currentTarget.value = ""; }} /></label>
           </div>
           {importSummary ? <div className="mt-3 grid gap-2 sm:grid-cols-4"><ImportStat label="Importados" value={importSummary.processed} /><ImportStat label="Novos" value={importSummary.created} /><ImportStat label="Atualizados" value={importSummary.updated} /><ImportStat label="Ignorados" value={importSummary.skipped + importSummary.errors} danger={importSummary.errors > 0} /></div> : null}
         </div>

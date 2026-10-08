@@ -499,6 +499,14 @@
   },
   {
     "source": "app/cliente/painel/configuracoes/canais/page.tsx",
+    "reference": "/api/integrations/whatsapp/embedded-signup",
+    "resolvedRoutes": [
+      "app/api/integrations/whatsapp/embedded-signup/route.ts"
+    ],
+    "status": "route_exists_static_check"
+  },
+  {
+    "source": "app/cliente/painel/configuracoes/canais/page.tsx",
     "reference": "/api/integrations/pending/${encodeURIComponent(pendingId)}",
     "resolvedRoutes": [
       "app/api/integrations/pending/[pendingId]/route.ts"

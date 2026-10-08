@@ -56,7 +56,17 @@ test("resume funil, identidade e receita por campanha", () => {
     { name: "form_submitted", anonymousId: "a", sessionId: "s", attribution: { source: "google", campaign: "Marca" } },
     { name: "purchase_completed", anonymousId: "a", sessionId: "s", value: 499.9, attribution: { source: "google", campaign: "Marca" } },
   ]);
-  assert.deepEqual(report.totals, { events: 3, visitors: 1, sessions: 1, pageViews: 1, conversions: 1, sales: 1, revenue: 499.9 });
+  assert.deepEqual(report.totals, { events: 3, visitors: 1, sessions: 1, pageViews: 1, conversions: 1, sales: 1, refunds: 0, revenue: 499.9 });
   assert.equal(report.byCampaign[0].campaign, "Marca");
   assert.equal(report.byCampaign[0].revenue, 499.9);
+});
+
+test("desconta estornos sem perder a atribuicao da campanha", () => {
+  const report = buildTrackingOverview([
+    { name: "purchase_completed", anonymousId: "a", sessionId: "s", value: 300, attribution: { source: "meta", campaign: "Remarketing" } },
+    { name: "purchase_refunded", anonymousId: "a", sessionId: "s", value: 300, attribution: { source: "meta", campaign: "Remarketing" } },
+  ]);
+  assert.equal(report.totals.revenue, 0);
+  assert.equal(report.totals.refunds, 1);
+  assert.equal(report.byCampaign[0].revenue, 0);
 });
