@@ -72,7 +72,7 @@ async function queueMedia(body: unknown, actor: { uid: string; name: string }) {
       tenantId: String(project.tenantId || ""), capability, prompt: String(output.content || project.brief || ""), preference: ["economy", "balanced", "quality", "private"].includes(String(project.mediaPreference || "")) ? String(project.mediaPreference) as "economy" | "balanced" | "quality" | "private" : undefined, preferredProviderId: preferredIdentityProvider,
       connections: connections.docs.map((doc) => {
         const data = doc.data() as CreativeConnection;
-        return { id: doc.id, providerId: String(data.providerId || ""), displayName: typeof data.displayName === "string" ? data.displayName : undefined, capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], status: String(data.status || "pending_config"), scope: data.scope === "tenant" ? "tenant" as const : "platform" as const, tenantId: typeof data.tenantId === "string" ? data.tenantId : null, creativeModel: (data as { creativeModel?: unknown }).creativeModel, health: (data as CreativeConnection).health };
+        return { id: doc.id, providerId: String(data.providerId || ""), displayName: typeof data.displayName === "string" ? data.displayName : undefined, capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], status: String(data.status || "pending_config"), credentialConfigured: Boolean(data.credential), scope: data.scope === "tenant" ? "tenant" as const : "platform" as const, tenantId: typeof data.tenantId === "string" ? data.tenantId : null, creativeModel: (data as { creativeModel?: unknown }).creativeModel, health: (data as CreativeConnection).health };
       }),
     };
     const automaticPlan = planMediaConnections(routingInput);

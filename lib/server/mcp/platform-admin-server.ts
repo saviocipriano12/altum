@@ -204,7 +204,7 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
       prompt: String(concept.get("content") || ""),
       connections: allConnections.docs.map((doc) => {
         const data = doc.data();
-        return { id: doc.id, providerId: String(data.providerId || ""), displayName: typeof data.displayName === "string" ? data.displayName : undefined, capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], status: String(data.status || "pending_config"), scope: "platform" as const, creativeModel: data.creativeModel, health: data.health };
+        return { id: doc.id, providerId: String(data.providerId || ""), displayName: typeof data.displayName === "string" ? data.displayName : undefined, capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], status: String(data.status || "pending_config"), credentialConfigured: Boolean(data.credential), scope: "platform" as const, creativeModel: data.creativeModel, health: data.health };
       }),
     });
     const connection = connectionId

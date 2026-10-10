@@ -154,7 +154,7 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
             providerId: String(data.providerId || ""),
             displayName: typeof data.displayName === "string" ? data.displayName : undefined,
             capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [],
-            status: String(data.status || "pending_config"),
+            status: String(data.status || "pending_config"), credentialConfigured: Boolean(data.credential),
             scope: data.scope === "tenant" ? "tenant" as const : "platform" as const,
             tenantId: typeof data.tenantId === "string" ? data.tenantId : null,
             creativeModel: data.creativeModel, health: data.health,

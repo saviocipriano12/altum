@@ -64,7 +64,7 @@ async function prepareLatestConversationCreative(input: { tenantId: string; conv
     prompt,
     preference: ["economy", "balanced", "quality", "private"].includes(String(projectRow.mediaPreference || "")) ? String(projectRow.mediaPreference) as "economy" | "balanced" | "quality" | "private" : undefined,
     preferredProviderId,
-    connections: connections.docs.map((doc) => { const data = doc.data(); return { id: doc.id, providerId: String(data.providerId || ""), displayName: typeof data.displayName === "string" ? data.displayName : undefined, capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], status: String(data.status || "pending_config"), scope: data.scope === "tenant" ? "tenant" as const : "platform" as const, tenantId: typeof data.tenantId === "string" ? data.tenantId : null, creativeModel: data.creativeModel, health: data.health }; }),
+    connections: connections.docs.map((doc) => { const data = doc.data(); return { id: doc.id, providerId: String(data.providerId || ""), displayName: typeof data.displayName === "string" ? data.displayName : undefined, capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], status: String(data.status || "pending_config"), credentialConfigured: Boolean(data.credential), scope: data.scope === "tenant" ? "tenant" as const : "platform" as const, tenantId: typeof data.tenantId === "string" ? data.tenantId : null, creativeModel: data.creativeModel, health: data.health }; }),
   };
   const mediaPlan = planMediaConnections(routingInput);
   const route = mediaPlan.routes[0] || null;

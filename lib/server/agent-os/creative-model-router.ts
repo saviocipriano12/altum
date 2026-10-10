@@ -13,6 +13,8 @@ export type MediaConnectionCandidate = {
   displayName?: string;
   capabilities: string[];
   status: string;
+  /** The secret stays in the server vault; routing only needs to know whether it exists. */
+  credentialConfigured?: boolean;
   scope?: "platform" | "tenant";
   tenantId?: string | null;
   creativeModel?: unknown;
@@ -37,7 +39,7 @@ export function findExplicitMediaConnectionRequest(input: {
   const message = normalized(input.message);
   if (!/\b(usar|use|via|pelo|pela|provider|conexao|conexão|modelo)\b/.test(message)) return null;
   const candidates = input.connections
-    .filter((connection) => mediaConnectionAvailability(connection).available
+    .filter((connection) => connection.credentialConfigured !== false && mediaConnectionAvailability(connection).available
       && connection.capabilities.includes(input.capability)
       && (connection.scope !== "tenant" || connection.tenantId === input.tenantId))
     .sort((left, right) => Math.max(String(right.displayName || "").length, right.providerId.length) - Math.max(String(left.displayName || "").length, left.providerId.length));
@@ -150,7 +152,8 @@ export function planMediaConnections(input: {
 }): MediaConnectionPlan {
   const preference = input.preference || inferMediaPreference(input.prompt);
   const candidates = input.connections.filter((connection) =>
-    mediaConnectionAvailability(connection).available
+    connection.credentialConfigured !== false
+    && mediaConnectionAvailability(connection).available
     && connection.capabilities.includes(input.capability)
     && (connection.scope !== "tenant" || connection.tenantId === input.tenantId),
   );

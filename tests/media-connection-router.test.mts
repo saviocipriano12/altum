@@ -35,6 +35,17 @@ test("plano preserva alternativas compatíveis para falha de quota ou disponibil
   assert.match(plan.routes[1].reason, /automaticamente/i);
 });
 
+test("roteador nunca escolhe uma conexão sem credencial salva", () => {
+  const plan = planMediaConnections({
+    tenantId: "empresa-a", capability: "GENERATE_VIDEO", prompt: "Quero um vídeo final realista.",
+    connections: [
+      { ...base, id: "fal-sem-chave", providerId: "fal", credentialConfigured: false },
+      { ...base, id: "replicate-pronto", providerId: "replicate", credentialConfigured: true },
+    ],
+  });
+  assert.deepEqual(plan.routes.map((route) => route.connection.id), ["replicate-pronto"]);
+});
+
 test("roteador remove temporariamente a rota que acabou de falhar e mantém o fallback", () => {
   const now = Date.now();
   const plan = planMediaConnections({
