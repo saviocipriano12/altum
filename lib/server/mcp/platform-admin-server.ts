@@ -11,6 +11,7 @@ import { persistCreativeAsset, signedCreativeAssetUrl } from "@/lib/server/agent
 import { classifyPlatformRender } from "@/lib/server/mcp/platform-creative-policy";
 import { registerAdminCommercialTools } from "@/lib/server/mcp/admin-commercial-tools";
 import { registerAdminAgentOsTools } from "@/lib/server/agent-os/admin-mcp-tools";
+import { checkToolConnectionHealth } from "@/lib/server/agent-os/tool-connection-health";
 import type { Grant } from "@/lib/mcp/contracts";
 
 type PlatformActor = { userId: string; connectionId: string; scopes: readonly string[]; grants?: Grant[]; origin?: string };
@@ -114,6 +115,11 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     await ref.set({ ...patch, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor!.userId }, { merge: true });
     await adminDb.collection("audit_logs").add({ type: "admin_mcp_platform_ai_connection_updated", actorId: actor!.userId, connectionId, changedFields: Object.keys(patch), createdAt: FieldValue.serverTimestamp() });
     return { ok: true, connectionId, changedFields: Object.keys(patch) };
+  });
+
+  register("altum_admin_check_ai_connection", "Executa uma validação ao vivo de uma conexão global já salva, sem revelar sua chave e sem iniciar imagem, vídeo ou automação. Atualiza o estado de saúde e, quando o provider permitir, o catálogo de modelos. Use para confirmar se uma rota está realmente disponível antes de utilizá-la.", z.object({ connectionId: id }).strict(), ["integrations:write"], async ({ connectionId }) => {
+    const result = await checkToolConnectionHealth({ connectionId, actorId: actor!.userId, platformOnly: true });
+    return { ok: true, connectionId: result.connectionId, providerId: result.providerId, healthy: result.healthy, details: result.details };
   });
 
   register("altum_admin_get_ai_runtime_summary", "Retorna apenas metricas agregadas da IA da Altum por provedor nos ultimos 30 dias; nao inclui empresas, usuarios, prompts ou execucoes individuais.", z.object({}).strict(), ["reports:read"], async () => {
