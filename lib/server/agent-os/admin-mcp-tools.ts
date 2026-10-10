@@ -216,21 +216,28 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
       if ((!refresh && job.status !== "queued") || (refresh && job.status !== "submitted")) throw new CommandError("INVALID_INPUT", 400);
       const connectionSnap = await adminDb.collection("tool_connections").doc(String(job.connectionId || "")).get();
       if (!connectionSnap.exists) throw new CommandError("NOT_FOUND", 404);
-      if (!refresh) await jobRef.set({ status: "running", startedAt: FieldValue.serverTimestamp(), startedBy: actor.userId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      if (!refresh) await adminDb.runTransaction(async (transaction) => {
+        const current = await transaction.get(jobRef);
+        if (!current.exists || current.get("status") !== "queued") throw new CommandError("INVALID_INPUT", 400);
+        transaction.set(jobRef, { status: "running", startedAt: FieldValue.serverTimestamp(), startedBy: actor.userId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      });
       const executionJob = { id: jobId, capability: String(job.capability || ""), format: String(job.format || "image"), prompt: String(job.prompt || ""), tenantId, projectId: String(job.projectId || ""), outputId: String(job.outputId || ""), creativeModel: job.creativeModel, identityReferenceId: job.identityReferenceId, connectionId: String(job.connectionId || ""), fallbackConnectionIds: Array.isArray(job.fallbackConnectionIds) ? job.fallbackConnectionIds : [] };
       const result = refresh ? await refreshCreativeJob(connectionSnap.data()!, job.providerStatusUrl) : await executeCreativeJobWithFallback({ job: executionJob, candidates: await loadCreativeExecutionCandidates(executionJob) });
       const routed = refresh ? null : result as RoutedCreativeExecutionResult;
       if (routed) await recordCreativeConnectionAttempts(routed.attempts);
+      const executedProviderId = routed?.providerId || String(job.providerId || "") || null;
       const saved = result.assetUrl ? await persistCreativeAsset({ sourceUrl: result.assetUrl, tenantId, jobId, type: String(job.format || "image") }) : null;
       const batch = adminDb.batch();
       batch.set(jobRef, { status: result.status, providerJobId: result.providerJobId, providerStatusUrl: result.providerStatusUrl, assetUrl: result.assetUrl, ...(routed ? { connectionId: routed.connectionId, providerId: routed.providerId, executionAttempts: routed.attempts } : {}), completedAt: result.status === "completed" ? FieldValue.serverTimestamp() : null, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      if (saved && result.assetUrl) batch.set(adminDb.collection("creative_assets").doc(jobId), { tenantId, projectId: job.projectId, outputId: job.outputId, creativeJobId: jobId, type: job.format, url: saved.sourceUrl, sourceUrl: saved.sourceUrl, storagePath: saved.storagePath, contentType: saved.contentType, size: saved.size, persistence: saved.persistence, qualityPreflight: assessCreativeAsset({ type: String(job.format || "image"), persistence: saved.persistence, contentType: saved.contentType, size: saved.size, identityProfileId: job.identityProfileId }), reviewStatus: "pending", providerId: job.providerId || null, createdBy: actor.userId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      if (saved && result.assetUrl) batch.set(adminDb.collection("creative_assets").doc(jobId), { tenantId, projectId: job.projectId, outputId: job.outputId, creativeJobId: jobId, type: job.format, url: saved.sourceUrl, sourceUrl: saved.sourceUrl, storagePath: saved.storagePath, contentType: saved.contentType, size: saved.size, persistence: saved.persistence, qualityPreflight: assessCreativeAsset({ type: String(job.format || "image"), persistence: saved.persistence, contentType: saved.contentType, size: saved.size, identityProfileId: job.identityProfileId }), reviewStatus: "pending", providerId: executedProviderId, createdBy: actor.userId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       await batch.commit();
       return response({ ok: true, jobId, status: result.status, providerJobId: result.providerJobId, resultUrl: result.status === "completed" ? resultUrl(actor, jobId) : null, next: result.status === "submitted" ? "A renderização está em andamento. Chame novamente com action refresh." : "Resultado pronto na Altum; apresente o link seguro ao usuário." });
     } catch (error) {
       const attempts = error && typeof error === "object" && "attempts" in error ? (error as { attempts?: unknown }).attempts : null;
       if (Array.isArray(attempts)) await recordCreativeConnectionAttempts(attempts.filter((attempt): attempt is import("@/lib/server/agent-os/creative-executor").CreativeExecutionAttempt => Boolean(attempt) && typeof attempt === "object")).catch(() => undefined);
-      await adminDb.collection("creative_jobs").doc(jobId).set({ status: "failed", failureReason: error instanceof Error ? error.message.slice(0, 500) : "media_execution_failed", updatedAt: FieldValue.serverTimestamp() }, { merge: true }).catch(() => undefined);
+      await adminDb.collection("creative_jobs").doc(jobId).set(action === "refresh"
+        ? { status: "submitted", nextPollAt: new Date(Date.now() + 30_000), lastPollError: error instanceof Error ? error.message.slice(0, 500) : "media_poll_failed", updatedAt: FieldValue.serverTimestamp() }
+        : { status: "failed", failureReason: error instanceof Error ? error.message.slice(0, 500) : "media_execution_failed", updatedAt: FieldValue.serverTimestamp() }, { merge: true }).catch(() => undefined);
       return mcpError(error);
     }
   });
