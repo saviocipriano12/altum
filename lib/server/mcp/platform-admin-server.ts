@@ -61,13 +61,16 @@ function createPlatformCreativeConcepts(title: string, brief: string, format: z.
 }
 
 /**
- * Exclusive platform-admin surface. It deliberately has no tenantId input and
- * never reads customer CRM, inbox, campaigns, creative projects or agents.
+ * Altum's administrative MCP surface. Platform-level tools never expose
+ * credentials; the commercial/tenant tools registered below are available
+ * only when the OAuth grant includes both the right scope and an authorized
+ * tenant context. Keeping that distinction here prevents the model from
+ * ignoring capabilities that the owner explicitly granted during OAuth.
  */
 export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: OAuthRuntime) {
   const server = new McpServer(
     { name: "altum-platform-admin", version: "1.0.0" },
-    { instructions: "MCP administrativo interno da Altum. Use somente recursos globais da plataforma. Nunca liste, selecione ou acesse empresas, clientes, CRM, conversas, campanhas ou dados de tenant. Credenciais e segredos nunca sao exibidos nem alterados." },
+    { instructions: "MCP administrativo da Altum. Use as ferramentas globais para conexões, roteamento, missões e mídia da plataforma. Para empresas, CRM, conversas, campanhas, produtos, agenda e agentes, primeiro liste as empresas autorizadas e use somente o contexto retornado. Respeite os escopos OAuth e as aprovações de custo/publicação. Credenciais, tokens e segredos nunca são exibidos ou alterados; a Altum os usa apenas no servidor para executar rotas já autorizadas." },
   );
   const register = <S extends z.ZodType>(name: string, description: string, inputSchema: S, requiredScopes: readonly string[], handler: (input: z.infer<S>) => Promise<Record<string, unknown>>) => {
     // The MCP SDK's generic callback type cannot retain a locally generic Zod
