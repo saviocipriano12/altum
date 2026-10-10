@@ -5,6 +5,6 @@
     { "path": "/api/internal/jobs/finance/subscriptions", "schedule": "30 8 * * *" },
     { "path": "/api/internal/jobs/commerce/actions", "schedule": "0 9 * * *" },
     { "path": "/api/internal/jobs/commercial-agent/actions", "schedule": "10 9 * * *" },
-    { "path": "/api/internal/jobs/creative-media/process?limit=20", "schedule": "*/5 * * * *" }
+    { "path": "/api/internal/jobs/creative-media/process?limit=20", "schedule": "15 10 * * *" }
   ]
 }

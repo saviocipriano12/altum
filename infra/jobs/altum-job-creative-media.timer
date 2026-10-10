@@ -1,0 +1,11 @@
+[Unit]
+Description=Recupera renderizacoes de midia da Altum a cada minuto
+
+[Timer]
+OnBootSec=50s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=altum-job@creative-media.service
+
+[Install]
+WantedBy=timers.target

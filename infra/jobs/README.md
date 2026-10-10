@@ -8,6 +8,7 @@ A VPS dispara os endpoints protegidos da Altum, preservando o processamento freq
 - `commerce`: a cada hora, para sincronizar lojas
 - `commerce-actions`: a cada cinco minutos, para executar ou recuperar a fila comercial do ecommerce
 - `commercial-agent`: a cada cinco minutos, para atualizar prazos e escaladas das decisoes comerciais
+- `creative-media`: a cada minuto, para atualizar renderizacoes de imagem, video e avatar enviadas aos provedores; a Altum faz a tentativa inicial no momento da aprovacao e este timer recupera o resultado assíncrono, retries e fallbacks
 - demais jobs: diariamente nos mesmos horarios UTC antes definidos em `vercel.json`
 - `flock` impede duas execucoes simultaneas do mesmo job
 - o segredo vive somente na Vercel e em `/opt/altum-jobs/.env` na VPS

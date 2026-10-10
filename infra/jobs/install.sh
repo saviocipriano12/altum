@@ -23,6 +23,7 @@ systemctl enable --now \
   altum-job-commerce.timer \
   altum-job-commerce-actions.timer \
   altum-job-commercial-agent.timer \
+  altum-job-creative-media.timer \
   altum-job-ai.timer \
   altum-job-automations.timer \
   altum-job-campaigns.timer \
