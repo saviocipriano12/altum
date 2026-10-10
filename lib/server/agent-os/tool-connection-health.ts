@@ -41,7 +41,7 @@ async function probeConnection(connection: ConnectionData): Promise<Record<strin
     return probeOpenAiCompatibleChat({ baseUrl, apiKey, model });
   }
   if (["comfyui", "ltx", "openmontage"].includes(providerId)) return probeCreativeExecutor(connection);
-  throw new RouteAuthError(400, "unsupported_health_check", "Este provider ainda não possui um adaptador de teste. Ele não será tratado como rota disponível até possuir um.");
+  throw new RouteAuthError(409, "unsupported_health_check", "Este provider não oferece um teste sem custo. A Altum o validará na primeira geração autorizada e registrará o resultado.");
 }
 
 /**
@@ -70,6 +70,11 @@ export async function checkToolConnectionHealth(input: { connectionId: string; a
     await adminDb.collection("audit_logs").add({ type: "agent_tool_connection_health_checked", actorId: input.actorId, actorName: input.actorName || null, connectionId: input.connectionId, providerId, healthy: true, source: "shared_health_service", createdAt: FieldValue.serverTimestamp() });
     return { connectionId: input.connectionId, providerId, healthy: true, details };
   } catch (error) {
+    // A provider without a safe, read-only probe is not broken. Media
+    // providers such as fal, Higgsfield and LTX are intentionally validated
+    // by their first approved generation; marking them degraded here would
+    // remove a configured route before it ever had a chance to run.
+    if (error instanceof RouteAuthError && error.code === "unsupported_health_check") throw error;
     const reason = error instanceof Error ? error.message.slice(0, 500) : "connection_probe_failed";
     await ref.set({
       status: "degraded",
