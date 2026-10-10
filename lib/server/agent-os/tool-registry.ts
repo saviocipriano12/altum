@@ -31,7 +31,10 @@ export const PROVIDER_CATALOG = [
   { slug: "google", name: "Google / Gemini", tier: "premium" as const, kind: "model", availability: "FREE_TIER" as const, capabilities: ["GENERATE_TEXT", "READ_DOCUMENTS", "ANALYZE_RESULTS", "GENERATE_EMBEDDINGS", "CLASSIFY"] },
   { slug: "alibaba-model-studio", name: "Alibaba Model Studio / Qwen", tier: "cheap" as const, kind: "openai-compatible", availability: "CREDIT" as const, capabilities: ["GENERATE_TEXT", "GENERATE_IMAGE", "GENERATE_VIDEO", "READ_DOCUMENTS", "ANALYZE_RESULTS", "CLASSIFY", "DECIDE_STRUCTURED"] },
   { slug: "custom-openai-compatible", name: "Outra API compatível com OpenAI", tier: "cheap" as const, kind: "openai-compatible", capabilities: ["GENERATE_TEXT", "READ_DOCUMENTS", "ANALYZE_RESULTS", "CLASSIFY", "DECIDE_STRUCTURED"] },
-  { slug: "xai", name: "xAI / Grok", tier: "premium" as const, kind: "model", capabilities: ["GENERATE_TEXT", "GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO", "READ_DOCUMENTS"] },
+  // Text, image and video have dedicated Altum adapters. Voice remains out of
+  // the catalog until its own xAI contract is implemented; this prevents a
+  // saved xAI key from being routed to a made-up generic media endpoint.
+  { slug: "xai", name: "xAI / Grok", tier: "premium" as const, kind: "model", capabilities: ["GENERATE_TEXT", "GENERATE_IMAGE", "GENERATE_VIDEO", "READ_DOCUMENTS"] },
   { slug: "huggingface", name: "Hugging Face", tier: "cheap" as const, kind: "model", availability: "FREE_TIER" as const, capabilities: ["GENERATE_TEXT", "GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO", "TRANSCRIBE_AUDIO", "GENERATE_EMBEDDINGS", "RERANK_DOCUMENTS"] },
   { slug: "fal", name: "fal (vídeo e imagem)", tier: "cheap" as const, kind: "creative-api", availability: "CREDIT" as const, capabilities: ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO", "GENERATE_AVATAR_VIDEO"] },
   { slug: "replicate", name: "Replicate (vídeo econômico)", tier: "cheap" as const, kind: "creative-api", availability: "CREDIT" as const, capabilities: ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO"] },
