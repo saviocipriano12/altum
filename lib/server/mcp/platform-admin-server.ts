@@ -289,7 +289,18 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     );
     return { items: rows.map((row) => ({ connectionId: row.id, providerId: row.providerId, displayName: row.displayName, model: row.chatModel, modelCatalog: row.modelCatalog, capabilities: row.capabilities, status: row.status, readiness: row.status === "configured_unapproved" ? "ready_for_first_approved_render" : "validated", modelSelection: row.modelCatalog.length || row.chatModel ? "configured" : "provider_default", estimatedCostUsd: null })), partial: snap.size > 200, note: "Uma conexão configurada sem catálogo ainda pode executar o primeiro render aprovado usando o adaptador padrão do provider. Preços e cotas não foram verificados." };
   });
-  if (actor?.grants) registerAdminCommercialTools(server, { ...actor, grants: actor.grants });
-  if (actor?.grants && actor.origin) registerAdminAgentOsTools(server, { ...actor, grants: actor.grants, origin: actor.origin });
+  // ChatGPT asks for tools/list before it has exchanged OAuth credentials.
+  // Register the complete schema during that discovery request as an actor
+  // with zero scopes/grants; every callback remains denied. The subsequent
+  // authenticated server instance carries the real grants and executes work.
+  const operationalActor = actor || (oauth ? {
+    userId: "unlinked",
+    connectionId: "unlinked",
+    scopes: [] as string[],
+    grants: [] as Grant[],
+    origin: new URL(oauth.resourceMetadataUrl).origin,
+  } : null);
+  if (operationalActor) registerAdminCommercialTools(server, { ...operationalActor, grants: operationalActor.grants || [] });
+  if (operationalActor?.origin) registerAdminAgentOsTools(server, { ...operationalActor, grants: operationalActor.grants || [], origin: operationalActor.origin });
   return server;
 }
