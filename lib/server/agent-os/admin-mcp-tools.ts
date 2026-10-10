@@ -18,7 +18,7 @@ import { assessCreativeAsset } from "@/lib/server/agent-os/creative-quality";
 type McpActor = { userId: string; connectionId: string; grants: Grant[]; origin: string };
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,180}$/);
 const brief = z.string().trim().min(12).max(12_000);
-const creativeFormat = z.enum(["image", "carousel", "video", "copy"]);
+const creativeFormat = z.enum(["image", "carousel", "video", "audio", "copy"]);
 
 function iso(value: unknown) {
   return value && typeof value === "object" && "toDate" in value && typeof (value as { toDate?: unknown }).toDate === "function"
@@ -45,7 +45,7 @@ function mcpError(error: unknown) {
 }
 
 function mediaCapability(format: CreativeFormat) {
-  return format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE";
+  return format === "video" ? "GENERATE_VIDEO" : format === "audio" ? "GENERATE_AUDIO" : "GENERATE_IMAGE";
 }
 
 function safeConnection(row: FirebaseFirestore.DocumentData) {

@@ -7,7 +7,10 @@ type CreativeConnection = {
 };
 
 const DIRECT_PROVIDER_CAPABILITIES: Record<string, readonly AgentCapability[]> = {
-  fal: ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AVATAR_VIDEO"],
+  // fal's Chatterbox endpoint is implemented below as a first-class TTS
+  // adapter. Do not add other providers here merely because their catalogue
+  // mentions audio: the router may only choose a provider it can execute.
+  fal: ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO", "GENERATE_AVATAR_VIDEO"],
   replicate: ["GENERATE_IMAGE", "GENERATE_VIDEO"],
   higgsfield: ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AVATAR_VIDEO"],
   "ltx-cloud": ["GENERATE_VIDEO"],
@@ -31,7 +34,7 @@ function providerId(value: unknown) {
 export function hasCreativeProviderContract(connection: CreativeConnection, capability: string) {
   const id = providerId(connection.providerId);
   if ((DIRECT_PROVIDER_CAPABILITIES[id] || []).includes(capability as AgentCapability)) return true;
-  const isMediaCapability = ["GENERATE_IMAGE", "GENERATE_VIDEO"].includes(capability);
+  const isMediaCapability = ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO"].includes(capability);
   if (LOCAL_BRIDGE_PROVIDERS.has(id)) return String(connection.connectionType || "").toLowerCase() !== "api" && isMediaCapability;
   // This is the explicitly extensible Altum Creative v1 bridge. It is not
   // enabled by any catalog provider; it is selected only when an operator

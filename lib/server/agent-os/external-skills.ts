@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 type ReviewedSkill = { id: string; sourceRepo: string; sourceCommit: string; license: string; sourcePath: string; category: string };
 type Registry = { skills: ReviewedSkill[] };
-const IDS_BY_FORMAT: Record<string, string[]> = { video: ["ai-video", "ai-voiceover", "ad-creative"], carousel: ["carousel-writer", "caption-writer", "ad-creative"], copy: ["ad-creative", "audience-intelligence", "client-proposal"], image: ["ad-creative", "audience-intelligence"] };
+const IDS_BY_FORMAT: Record<string, string[]> = { video: ["ai-video", "ai-voiceover", "ad-creative"], audio: ["ai-voiceover", "ad-creative"], carousel: ["carousel-writer", "caption-writer", "ad-creative"], copy: ["ad-creative", "audience-intelligence", "client-proposal"], image: ["ad-creative", "audience-intelligence"] };
 
 function registry() { return JSON.parse(readFileSync(join(process.cwd(), "config", "reviewed-external-skills.json"), "utf8")) as Registry; }
 function description(id: string) {
@@ -15,7 +15,7 @@ function description(id: string) {
   } catch { return "Guia externo importado para revisão."; }
 }
 
-export function creativeSkillReferences(format: "image" | "carousel" | "video" | "copy") {
+export function creativeSkillReferences(format: "image" | "carousel" | "video" | "audio" | "copy") {
   const allowed = new Set(IDS_BY_FORMAT[format] || []);
   return registry().skills.filter((skill) => allowed.has(skill.id)).map((skill) => ({ id: skill.id, sourceRepo: skill.sourceRepo, sourceCommit: skill.sourceCommit, license: skill.license, guidance: description(skill.id) }));
 }

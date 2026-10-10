@@ -1,6 +1,6 @@
 import { creativeSkillReferences } from "@/lib/server/agent-os/external-skills";
 
-export type CreativeFormat = "image" | "carousel" | "video" | "copy";
+export type CreativeFormat = "image" | "carousel" | "video" | "audio" | "copy";
 
 export function buildCreativeDrafts(input: { title: string; brief: string; format: CreativeFormat; brand: { positioning: string; audience: string; tone: string; offers: string[]; restrictions: string[] } | null }) {
   const brand = input.brand;
@@ -14,6 +14,10 @@ export function buildCreativeDrafts(input: { title: string; brief: string; forma
   if (input.format === "video") return [
     { title: "Vídeo — problema e virada", content: `${base}\n\nRoteiro (30s)\n1. Gancho: "Você ainda perde tempo com [dor do público]?"\n2. Cena: mostre a situação real em três cortes curtos.\n3. Virada: apresente ${offer} como caminho prático.\n4. Prova: inclua um dado ou demonstração aprovada.\n5. CTA: "Fale com a gente para entender o próximo passo."` },
     { title: "Vídeo — demonstração", content: `${base}\n\nRoteiro (20s)\n1. Mostre o antes.\n2. Demonstre uma transformação concreta.\n3. Feche com benefício específico, sem prometer resultado garantido.\n4. CTA curto de conversa.` },
+  ];
+  if (input.format === "audio") return [
+    { title: "Áudio — narração principal", content: `${base}\n\nNarração (até 30s):\nVocê não precisa continuar lidando com [dor principal]. Com ${offer}, fica mais simples avançar com clareza e segurança. Fale com a gente e veja qual é o próximo passo para o seu cenário.` },
+    { title: "Áudio — chamada curta", content: `${base}\n\nNarração (até 15s):\nChegou a hora de transformar [dor do público] em um próximo passo prático. Conheça ${offer}.` },
   ];
   if (input.format === "carousel") return [
     { title: "Carrossel — diagnóstico", content: `${base}\n\nCards\n1. Pergunta que expõe a dor.\n2. Por que ela acontece.\n3. Impacto de manter como está.\n4. O caminho recomendado.\n5. Como ${offer} ajuda.\n6. CTA para conversa.` },

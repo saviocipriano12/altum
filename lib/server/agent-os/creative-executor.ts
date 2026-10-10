@@ -185,8 +185,17 @@ async function executeXaiVideo(job: CreativeJob, connection: MediaConnection, cr
 
 async function executeFal(job: CreativeJob, connection: MediaConnection, credential: string): Promise<CreativeExecutionResult> {
   const baseUrl = officialCreativeEndpoint(connection, "https://queue.fal.run");
-  const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, job.format === "video" ? "bytedance/seedance-2.0/text-to-video" : "fal-ai/flux-2/klein/9b");
-  const body: Record<string, unknown> = { prompt: job.prompt };
+  const model = configuredModel(
+    { ...connection, creativeModel: job.creativeModel || connection.creativeModel },
+    job.format === "audio" ? "fal-ai/chatterbox/text-to-speech" : job.format === "video" ? "bytedance/seedance-2.0/text-to-video" : "fal-ai/flux-2/klein/9b",
+  );
+  // Chatterbox has a deliberately different schema from image/video models:
+  // it accepts text, never an image-generation prompt. Voice references are
+  // intentionally not sent here; cloning requires a separate consent-gated
+  // identity workflow rather than treating an uploaded recording as a prompt.
+  const body: Record<string, unknown> = job.format === "audio"
+    ? { text: truncateUtf8(job.prompt.trim(), 5_000) }
+    : { prompt: job.prompt };
   if (model === "higgsfield-ai/soul/v2/standard" && typeof job.identityReferenceId === "string" && /^[A-Za-z0-9-]{20,80}$/.test(job.identityReferenceId)) {
     body.custom_reference_id = job.identityReferenceId;
     body.custom_reference_strength = 1;
@@ -202,7 +211,7 @@ async function executeFal(job: CreativeJob, connection: MediaConnection, credent
     signal: AbortSignal.timeout(90_000),
   });
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
-  if (!response.ok) throw new RouteAuthError(502, "fal_generation_failed", providerError(payload, "A fal não aceitou a geração."));
+  if (!response.ok) throw new RouteAuthError(502, job.format === "audio" ? "fal_audio_generation_failed" : "fal_generation_failed", providerError(payload, job.format === "audio" ? "A fal não aceitou a geração de áudio." : "A fal não aceitou a geração."));
   const assetUrl = outputUrl(payload);
   return {
     providerJobId: typeof payload.request_id === "string" ? payload.request_id : null,

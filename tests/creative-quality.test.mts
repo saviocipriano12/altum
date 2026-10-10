@@ -14,3 +14,9 @@ test("pré-revisão sinaliza ativos externos ou formato incerto", () => {
   assert.equal(result.status, "needs_attention");
   assert.equal(result.checks.filter((check) => check.status === "warning").length >= 2, true);
 });
+
+test("pré-revisão reconhece uma entrega de áudio persistida", () => {
+  const result = assessCreativeAsset({ type: "audio", persistence: "stored", contentType: "audio/mpeg", size: 4096 });
+  assert.equal(result.status, "ready_for_review");
+  assert.match(result.checks.find((check) => check.id === "format")?.message || "", /áudio/i);
+});

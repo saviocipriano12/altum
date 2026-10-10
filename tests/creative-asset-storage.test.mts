@@ -4,6 +4,7 @@ import { isApprovedProviderAssetUrl } from "../lib/server/agent-os/creative-asse
 
 test("aceita somente URLs HTTPS dos CDNs de mídia conhecidos", () => {
   assert.equal(isApprovedProviderAssetUrl("https://v3.fal.media/files/video.mp4"), true);
+  assert.equal(isApprovedProviderAssetUrl("https://v3.fal.media/files/narration.mp3"), true);
   assert.equal(isApprovedProviderAssetUrl("https://replicate.delivery/pbxt/media.mp4"), true);
   assert.equal(isApprovedProviderAssetUrl("https://cdn.higgsfield.ai/renders/video.mp4"), true);
   assert.equal(isApprovedProviderAssetUrl("https://dashscope-result-sz.oss-cn-shenzhen.aliyuncs.com/output.png?Expires=1"), true);

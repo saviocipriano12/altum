@@ -26,9 +26,9 @@ const PROVIDERS = [
   { id: "nvidia-nim", name: "NVIDIA", help: "Modelos de texto e análise", capabilities: ["GENERATE_TEXT", "READ_DOCUMENTS", "ANALYZE_RESULTS"] },
   { id: "groq", name: "Groq", help: "Respostas rápidas", capabilities: ["GENERATE_TEXT", "CLASSIFY", "ANALYZE_RESULTS"] },
   { id: "fal", name: "fal", help: "Imagens, vídeos e avatar", capabilities: ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO", "GENERATE_AVATAR_VIDEO"] },
-  { id: "replicate", name: "Replicate", help: "Imagens e vídeos", capabilities: ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO"] },
-  { id: "higgsfield", name: "Higgsfield", help: "Vídeos realistas e identidade visual", capabilities: ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO", "GENERATE_AVATAR_VIDEO"] },
-  { id: "heygen", name: "HeyGen", help: "Avatar e apresentador", capabilities: ["GENERATE_VIDEO", "GENERATE_AUDIO", "GENERATE_AVATAR_VIDEO"] },
+  { id: "replicate", name: "Replicate", help: "Imagens e vídeos", capabilities: ["GENERATE_IMAGE", "GENERATE_VIDEO"] },
+  { id: "higgsfield", name: "Higgsfield", help: "Vídeos realistas e identidade visual", capabilities: ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AVATAR_VIDEO"] },
+  { id: "heygen", name: "HeyGen", help: "Avatar e apresentador", capabilities: ["GENERATE_VIDEO", "GENERATE_AVATAR_VIDEO"] },
 ] as const;
 
 const suggestions = ["Crie um vídeo realista para esta oferta", "Monte uma landing page para captar clientes", "Analise a planilha que vou anexar", "Guarde esta ideia para retomarmos depois"];

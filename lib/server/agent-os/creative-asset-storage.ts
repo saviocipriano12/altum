@@ -23,14 +23,14 @@ export function isApprovedProviderAssetUrl(value: unknown) {
 }
 
 function extension(contentType: string, sourceUrl: string, type: string) {
-  const fromMime: Record<string, string> = { "video/mp4": "mp4", "video/webm": "webm", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
+  const fromMime: Record<string, string> = { "video/mp4": "mp4", "video/webm": "webm", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/ogg": "ogg", "audio/webm": "webm", "audio/mp4": "m4a", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
   const normalized = contentType.split(";")[0].trim().toLowerCase();
   if (fromMime[normalized]) return fromMime[normalized];
   try {
     const match = new URL(sourceUrl).pathname.match(/\.([a-z0-9]{2,6})$/i);
     if (match) return match[1].toLowerCase();
   } catch { /* validated by caller */ }
-  return type === "video" ? "mp4" : "png";
+  return type === "video" ? "mp4" : type === "audio" ? "mp3" : "png";
 }
 
 export type StoredCreativeAsset = {
@@ -55,7 +55,7 @@ export async function persistCreativeAsset(input: { sourceUrl: string; tenantId:
   const sizeHeader = Number(response.headers.get("content-length") || 0);
   if (Number.isFinite(sizeHeader) && sizeHeader > MAX_ASSET_BYTES) return { sourceUrl: input.sourceUrl, storagePath: null, contentType: null, size: null, persistence: "external" };
   const contentType = (response.headers.get("content-type") || "application/octet-stream").split(";")[0].trim().toLowerCase();
-  if (!(contentType.startsWith("image/") || contentType.startsWith("video/"))) return { sourceUrl: input.sourceUrl, storagePath: null, contentType: null, size: null, persistence: "external" };
+  if (!(contentType.startsWith("image/") || contentType.startsWith("video/") || contentType.startsWith("audio/"))) return { sourceUrl: input.sourceUrl, storagePath: null, contentType: null, size: null, persistence: "external" };
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_ASSET_BYTES) return { sourceUrl: input.sourceUrl, storagePath: null, contentType: null, size: null, persistence: "external" };
   const ext = extension(contentType, input.sourceUrl, input.type);

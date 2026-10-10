@@ -23,7 +23,7 @@ export function planCommand(message: string): {
     ? "revenue"
     : /campanha|marketing|anuncio|anuncio|trafego|midia|social/.test(normalized)
       ? "marketing"
-      : /criativo|video|imagem|carrossel|roteiro|copy|conteudo/.test(normalized)
+      : /criativo|video|imagem|carrossel|roteiro|copy|conteudo|audio|narra[cç][aã]o|locu[cç][aã]o|voz/.test(normalized)
         ? "creative"
         : /site|landing|produto|checkout|app|sistema|pagina/.test(normalized)
           ? "product"

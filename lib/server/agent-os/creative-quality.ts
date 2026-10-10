@@ -22,14 +22,14 @@ export function assessCreativeAsset(input: {
   size: number | null;
   identityProfileId?: unknown;
 }): CreativeQualityPreflight {
-  const expected = input.type === "video" ? "video/" : "image/";
+  const expected = input.type === "video" ? "video/" : input.type === "audio" ? "audio/" : "image/";
   const formatMatches = input.contentType ? input.contentType.startsWith(expected) : null;
   const checks: CreativeQualityCheck[] = [
     input.persistence === "stored"
       ? { id: "delivery", status: "passed", message: "O arquivo foi guardado na biblioteca privada da Altum." }
       : { id: "delivery", status: "warning", message: "O provider entregou um link externo; confirme a disponibilidade antes de reutilizar." },
     formatMatches === true
-      ? { id: "format", status: "passed", message: `O arquivo recebido corresponde a ${input.type === "video" ? "vídeo" : "imagem"}.` }
+      ? { id: "format", status: "passed", message: `O arquivo recebido corresponde a ${input.type === "video" ? "vídeo" : input.type === "audio" ? "áudio" : "imagem"}.` }
       : formatMatches === false
         ? { id: "format", status: "warning", message: "O formato recebido não corresponde ao pedido; revise antes de aprovar." }
         : { id: "format", status: "warning", message: "O provider não informou o formato do arquivo; revise antes de aprovar." },

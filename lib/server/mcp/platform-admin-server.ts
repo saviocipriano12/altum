@@ -6,6 +6,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { executeCreativeJobWithFallback, refreshCreativeJob, type RoutedCreativeExecutionResult } from "@/lib/server/agent-os/creative-executor";
 import { loadCreativeExecutionCandidates } from "@/lib/server/agent-os/creative-execution-routing";
 import { mediaConnectionAvailability, planMediaConnections, routeCreativeModel } from "@/lib/server/agent-os/creative-model-router";
+import { hasCreativeProviderContract } from "@/lib/server/agent-os/creative-provider-contracts";
 import { recordCreativeConnectionAttempts } from "@/lib/server/agent-os/creative-connection-health";
 import { persistCreativeAsset, signedCreativeAssetUrl } from "@/lib/server/agent-os/creative-asset-storage";
 import { classifyPlatformRender } from "@/lib/server/mcp/platform-creative-policy";
@@ -26,7 +27,7 @@ const connectionPatch = z.object({
   capabilities: z.array(z.string().trim().min(1).max(80)).max(40).optional(),
   notes: z.string().trim().max(2000).optional(),
 }).strict();
-const creativeFormat = z.enum(["image", "carousel", "video", "copy"]);
+const creativeFormat = z.enum(["image", "carousel", "video", "audio", "copy"]);
 const missionStatus = z.enum(["planned", "running", "paused", "completed", "cancelled"]);
 const renderableConnectionStatuses = ["configured_unapproved", "healthy", "approved"] as const;
 
@@ -54,6 +55,7 @@ function oauthChallenge(runtime: OAuthRuntime, requiredScopes: readonly string[]
 
 function createPlatformCreativeConcepts(title: string, brief: string, format: z.infer<typeof creativeFormat>) {
   const labels = format === "video" ? ["Narrativa principal", "Cena de impacto", "Fechamento"]
+    : format === "audio" ? ["Narração principal", "Chamada curta", "Variação de tom"]
     : format === "carousel" ? ["Gancho", "Desenvolvimento", "Fechamento"]
       : format === "copy" ? ["Mensagem central", "Variação direta", "Chamada para ação"]
         : ["Direção principal", "Variação editorial", "Variação de conversão"];
@@ -174,9 +176,9 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     return { items: projects.docs.map((doc) => { const row = doc.data(); return { id: doc.id, title: String(row.title || ""), brief: String(row.brief || ""), format: String(row.format || ""), channel: String(row.channel || ""), status: String(row.status || "review"), concepts: byProject.get(doc.id) || [] }; }) };
   });
 
-  register("altum_admin_list_media_connections", "Lista conexões globais compatíveis com imagens e vídeos sem revelar segredos nem dados de clientes.", z.object({}).strict(), ["integrations:read"], async () => {
+  register("altum_admin_list_media_connections", "Lista conexões globais compatíveis com imagens, vídeos ou áudio sem revelar segredos nem dados de clientes.", z.object({}).strict(), ["integrations:read"], async () => {
     const snap = await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get();
-    return { items: snap.docs.map(sanitizeConnection).filter((row) => row.capabilities.some((capability) => ["GENERATE_IMAGE", "GENERATE_VIDEO"].includes(capability))), partial: snap.size > 200 };
+    return { items: snap.docs.map(sanitizeConnection).filter((row) => row.capabilities.some((capability) => ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO"].includes(capability) && hasCreativeProviderContract(row, capability))), partial: snap.size > 200 };
   });
 
   register("altum_admin_get_creative_render", "Consulta somente jobs globais da plataforma; nunca lê resultados de clientes.", z.object({ jobId: id }).strict(), ["context:read"], async ({ jobId }) => {
@@ -186,17 +188,17 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     const asset = row.assetId ? await adminDb.collection("platform_creative_assets").doc(String(row.assetId)).get() : null;
     const storagePath = asset?.exists && typeof asset.get("storagePath") === "string" ? String(asset.get("storagePath")) : "";
     const assetUrl = storagePath.startsWith("agent-media/platform/")
-      ? await signedCreativeAssetUrl(storagePath, `${jobId}.${row.format === "video" ? "mp4" : "png"}`)
+      ? await signedCreativeAssetUrl(storagePath, `${jobId}.${row.format === "video" ? "mp4" : row.format === "audio" ? "mp3" : "png"}`)
       : null;
     return { jobId, status: String(row.status || "unknown"), format: String(row.format || ""), providerId: String(row.providerId || ""), assetId: typeof row.assetId === "string" ? row.assetId : null, assetUrl, stored: Boolean(assetUrl), failureReason: typeof row.failureReason === "string" ? row.failureReason.slice(0, 300) : null };
   });
 
-  register("altum_admin_prepare_creative_render", "Prepara uma imagem ou vídeo global na Altum, sem consumir créditos. A Altum escolhe a rota saudável mais adequada e mantém alternativas automáticas; conexão ou modelo podem ser escolhidos manualmente quando necessário. Renderização efetiva requer aprovação separada.", z.object({ conceptId: id, connectionId: id.optional(), model: z.string().trim().min(3).max(180).optional() }).strict(), ["ai:draft"], async ({ conceptId, connectionId, model }) => {
+  register("altum_admin_prepare_creative_render", "Prepara uma imagem, vídeo ou áudio global na Altum, sem consumir créditos. A Altum escolhe a rota saudável mais adequada e mantém alternativas automáticas; conexão ou modelo podem ser escolhidos manualmente quando necessário. Renderização efetiva requer aprovação separada.", z.object({ conceptId: id, connectionId: id.optional(), model: z.string().trim().min(3).max(180).optional() }).strict(), ["ai:draft"], async ({ conceptId, connectionId, model }) => {
     const concept = await adminDb.collection("platform_creative_concepts").doc(conceptId).get();
     if (!concept.exists) throw new Error("NOT_FOUND");
     const format = String(concept.get("format") || "");
-    if (!["image", "video"].includes(format)) throw new Error("INVALID_INPUT");
-    const capability = format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE";
+    if (!["image", "video", "audio"].includes(format)) throw new Error("INVALID_INPUT");
+    const capability = format === "video" ? "GENERATE_VIDEO" : format === "audio" ? "GENERATE_AUDIO" : "GENERATE_IMAGE";
     const allConnections = await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get();
     const plan = planMediaConnections({
       tenantId: "platform",
@@ -213,7 +215,7 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     if (!connection) throw new Error("NOT_FOUND");
     const connectionData = connection.data();
     const capabilities = Array.isArray(connectionData.capabilities) ? connectionData.capabilities.map(String) : [];
-    if (!connectionData.credential || !capabilities.includes(capability) || !mediaConnectionAvailability({ status: String(connectionData.status || "pending_config"), health: connectionData.health }).available) throw new Error("INVALID_INPUT");
+    if (!connectionData.credential || !capabilities.includes(capability) || !hasCreativeProviderContract(connectionData, capability) || !mediaConnectionAvailability({ status: String(connectionData.status || "pending_config"), health: connectionData.health }).available) throw new Error("INVALID_INPUT");
     const catalog = Array.isArray(connectionData.modelCatalog) ? connectionData.modelCatalog.map(String) : [];
     if (model && catalog.length && !catalog.includes(model)) throw new Error("INVALID_INPUT");
     const route = routeCreativeModel({ providerId: String(connectionData.providerId || ""), format, prompt: String(concept.get("content") || ""), fallbackModel: model || connectionData.creativeModel });
@@ -257,10 +259,10 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
       if (!connection.get("credential") || !renderableConnectionStatuses.includes(String(connection.get("status") || "") as typeof renderableConnectionStatuses[number])) throw new Error("INVALID_INPUT");
       // Permissions can change after preparation. Recheck the capability just
       // before using paid credits or polling a provider response.
-      const requiredCapability = job.format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE";
+      const requiredCapability = job.format === "video" ? "GENERATE_VIDEO" : job.format === "audio" ? "GENERATE_AUDIO" : "GENERATE_IMAGE";
       const capabilities = connection.get("capabilities");
-      if (!Array.isArray(capabilities) || !capabilities.includes(requiredCapability)) throw new Error("INVALID_INPUT");
-      const executionJob = { id: jobId, tenantId: "platform", projectId: String(job.projectId || ""), outputId: String(job.conceptId || ""), capability: job.format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE", format: String(job.format), prompt: String(job.prompt), creativeModel: job.creativeModel || undefined, connectionId: String(job.connectionId || ""), fallbackConnectionIds: Array.isArray(job.fallbackConnectionIds) ? job.fallbackConnectionIds : [] };
+      if (!Array.isArray(capabilities) || !capabilities.includes(requiredCapability) || !hasCreativeProviderContract(connection.data()!, requiredCapability)) throw new Error("INVALID_INPUT");
+      const executionJob = { id: jobId, tenantId: "platform", projectId: String(job.projectId || ""), outputId: String(job.conceptId || ""), capability: job.format === "video" ? "GENERATE_VIDEO" : job.format === "audio" ? "GENERATE_AUDIO" : "GENERATE_IMAGE", format: String(job.format), prompt: String(job.prompt), creativeModel: job.creativeModel || undefined, connectionId: String(job.connectionId || ""), fallbackConnectionIds: Array.isArray(job.fallbackConnectionIds) ? job.fallbackConnectionIds : [] };
       const result = action === "start"
         ? await executeCreativeJobWithFallback({ job: executionJob, candidates: await loadCreativeExecutionCandidates(executionJob) })
         : await refreshCreativeJob(connection.data()!, job.providerStatusUrl);
@@ -305,12 +307,12 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     })), partial: snap.size === 100 };
   });
 
-  register("altum_admin_list_creative_models", "Descobre rotas globais de imagem e vídeo configuradas. Não consulta provedores pagos nem expõe credenciais.", z.object({ format: z.enum(["image", "video"]).optional() }).strict(), ["integrations:read"], async ({ format }) => {
+  register("altum_admin_list_creative_models", "Descobre rotas globais de imagem, vídeo e áudio configuradas. Não consulta provedores pagos nem expõe credenciais.", z.object({ format: z.enum(["image", "video", "audio"]).optional() }).strict(), ["integrations:read"], async ({ format }) => {
     const snap = await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get();
     const rows = snap.docs.map(sanitizeConnection).filter((row) =>
       Boolean(row.credentialConfigured) && mediaConnectionAvailability(row).available &&
-      (!format || row.capabilities.includes(format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE")) &&
-      row.capabilities.some((capability) => ["GENERATE_IMAGE", "GENERATE_VIDEO"].includes(capability))
+      (!format || (row.capabilities.includes(format === "video" ? "GENERATE_VIDEO" : format === "audio" ? "GENERATE_AUDIO" : "GENERATE_IMAGE") && hasCreativeProviderContract(row, format === "video" ? "GENERATE_VIDEO" : format === "audio" ? "GENERATE_AUDIO" : "GENERATE_IMAGE"))) &&
+      row.capabilities.some((capability) => ["GENERATE_IMAGE", "GENERATE_VIDEO", "GENERATE_AUDIO"].includes(capability) && hasCreativeProviderContract(row, capability))
     );
     return { items: rows.map((row) => ({ connectionId: row.id, providerId: row.providerId, displayName: row.displayName, model: row.chatModel, modelCatalog: row.modelCatalog, capabilities: row.capabilities, status: row.status, readiness: row.status === "configured_unapproved" ? "ready_for_first_approved_render" : "validated", modelSelection: row.modelCatalog.length || row.chatModel ? "configured" : "provider_default", estimatedCostUsd: null })), partial: snap.size > 200, note: "Uma conexão configurada sem catálogo ainda pode executar o primeiro render aprovado usando o adaptador padrão do provider. Preços e cotas não foram verificados." };
   });

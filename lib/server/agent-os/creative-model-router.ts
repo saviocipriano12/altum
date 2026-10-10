@@ -2,7 +2,7 @@ import { hasCreativeProviderContract } from "@/lib/server/agent-os/creative-prov
 
 export type CreativeRoute = {
   model: string | null;
-  purpose: "final" | "draft" | "avatar" | "image" | "provider_default";
+  purpose: "final" | "draft" | "avatar" | "image" | "audio" | "provider_default";
   reason: string;
 };
 
@@ -214,6 +214,9 @@ export function routeCreativeModel(input: { providerId: string; format: string; 
   const preference = inferMediaPreference(input.prompt);
   const wantsFinal = preference === "quality";
   const wantsDraft = preference === "economy";
+  if (input.providerId === "fal" && input.format === "audio") {
+    return { model: "fal-ai/chatterbox/text-to-speech", purpose: "audio", reason: "Narração sintetizada pelo adaptador oficial de voz da fal; a Altum guarda a entrega privada para revisão." };
+  }
   if (input.providerId === "higgsfield" && input.format !== "video") {
     return { model: "higgsfield-ai/soul/v2/standard", purpose: "image", reason: "Imagem de produção com suporte a identidade visual persistente quando uma âncora Higgsfield estiver pronta." };
   }
