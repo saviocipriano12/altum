@@ -26,6 +26,26 @@ export type MediaConnectionRoute = {
   reason: string;
 };
 
+/** Honors a provider request only when it is an actual configured and healthy
+ * connection for this capability. Natural language remains the default. */
+export function findExplicitMediaConnectionRequest(input: {
+  message: string;
+  connections: MediaConnectionCandidate[];
+  capability: string;
+  tenantId: string;
+}): MediaConnectionCandidate | null {
+  const message = normalized(input.message);
+  if (!/\b(usar|use|via|pelo|pela|provider|conexao|conexão|modelo)\b/.test(message)) return null;
+  const candidates = input.connections
+    .filter((connection) => mediaConnectionAvailability(connection).available
+      && connection.capabilities.includes(input.capability)
+      && (connection.scope !== "tenant" || connection.tenantId === input.tenantId))
+    .sort((left, right) => Math.max(String(right.displayName || "").length, right.providerId.length) - Math.max(String(left.displayName || "").length, left.providerId.length));
+  return candidates.find((connection) => [connection.displayName, connection.providerId]
+    .filter((value): value is string => Boolean(value))
+    .map(normalized).filter((value) => value.length >= 3).some((name) => message.includes(name))) || null;
+}
+
 /**
  * The execution order for one media request.  The user never has to choose a
  * provider: this is persisted with the job and consumed by the worker if a
@@ -85,7 +105,7 @@ function timestampMillis(value: unknown) {
 export function mediaConnectionAvailability(candidate: Pick<MediaConnectionCandidate, "status" | "health">, now = Date.now()) {
   if (!["configured_unapproved", "healthy", "approved"].includes(candidate.status)) return { available: false, score: -10_000 };
   const health = (candidate.health && typeof candidate.health === "object" ? candidate.health : {}) as ConnectionHealth;
-  if (["down", "unavailable", "disabled"].includes(String(health.status || "").toLowerCase())) return { available: false, score: -10_000 };
+  if (["degraded", "down", "unavailable", "disabled"].includes(String(health.status || "").toLowerCase())) return { available: false, score: -10_000 };
   const cooldownUntil = timestampMillis(health.cooldownUntil);
   if (cooldownUntil > now) return { available: false, score: -10_000 };
   const failures = Math.min(6, Math.max(0, Number(health.consecutiveFailures || 0)));

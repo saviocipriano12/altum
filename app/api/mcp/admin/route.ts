@@ -4,6 +4,8 @@ import { validateAdminAccess } from "@/lib/server/mcp/admin-oauth";
 import { publicOrigin } from "@/lib/server/mcp/oauth";
 import { assertPublicRateLimit, PublicRateLimitError } from "@/lib/server/public-abuse";
 import { createPlatformAdminServer } from "@/lib/server/mcp/platform-admin-server";
+import { adminDb } from "@/app/lib/server/firebase-admin";
+import type { Grant } from "@/lib/mcp/contracts";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS", "Access-Control-Allow-Headers": "Authorization,Content-Type,MCP-Protocol-Version,Mcp-Session-Id,Last-Event-ID", "Access-Control-Expose-Headers": "Mcp-Session-Id,MCP-Protocol-Version,WWW-Authenticate", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
@@ -37,7 +39,14 @@ async function handle(req: Request) {
       return await handleMcpRequest(req, server, { token: "[unlinked]", clientId: "unlinked", scopes: [] });
     }
     await assertPublicRateLimit(new Request(req.url), { scope: "admin_mcp", subject: token.userId, limit: 60, windowMs: 60_000 });
-    const server = createPlatformAdminServer({ userId: token.userId, connectionId: token.connectionId, scopes: token.scopes });
+    const tenants = await adminDb.collection("tenants").limit(200).get();
+    const grants: Grant[] = tenants.docs.map((tenant) => ({
+      userId: token.userId,
+      tenantId: tenant.id,
+      scopes: [...token.scopes] as Grant["scopes"],
+      expiresAt: token.expiresAt,
+    }));
+    const server = createPlatformAdminServer({ userId: token.userId, connectionId: token.connectionId, scopes: token.scopes, grants, origin: publicOrigin(req) });
     return await handleMcpRequest(req, server, { token: "[redacted]", clientId: token.clientId, scopes: token.scopes });
   } catch (error) {
     if (error instanceof PublicRateLimitError) return Response.json({ error: "RATE_LIMITED" }, { status: 429, headers: { ...cors, "Retry-After": String(error.retryAfterSeconds) } });

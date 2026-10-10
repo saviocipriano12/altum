@@ -7,8 +7,10 @@ import { CommandError } from "@/lib/server/command-center/security";
 import type { Grant } from "@/lib/mcp/contracts";
 import { buildCreativeDrafts, type CreativeFormat } from "@/lib/server/agent-os/creative-drafts";
 import { creativeSkillReferences } from "@/lib/server/agent-os/external-skills";
-import { planMediaConnections, routeCreativeModel, routeMediaConnection } from "@/lib/server/agent-os/creative-model-router";
-import { executeCreativeJob, refreshCreativeJob } from "@/lib/server/agent-os/creative-executor";
+import { mediaConnectionAvailability, planMediaConnections, routeCreativeModel, routeMediaConnection } from "@/lib/server/agent-os/creative-model-router";
+import { executeCreativeJobWithFallback, refreshCreativeJob, type RoutedCreativeExecutionResult } from "@/lib/server/agent-os/creative-executor";
+import { loadCreativeExecutionCandidates } from "@/lib/server/agent-os/creative-execution-routing";
+import { recordCreativeConnectionAttempts } from "@/lib/server/agent-os/creative-connection-health";
 import { persistCreativeAsset } from "@/lib/server/agent-os/creative-asset-storage";
 import { assessCreativeAsset } from "@/lib/server/agent-os/creative-quality";
 
@@ -74,7 +76,7 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
         adminDb.collection("tool_connections").limit(200).get(),
       ]);
       if (!tenant.exists) throw new CommandError("NOT_FOUND", 404);
-      const usableConnections = connections.docs.map((doc) => ({ ...safeConnection(doc.data()), id: doc.id })).filter((item) => ["configured_unapproved", "healthy", "approved"].includes(item.status));
+      const usableConnections = connections.docs.map((doc) => ({ ...safeConnection(doc.data()), id: doc.id })).filter((item) => mediaConnectionAvailability(item).available);
       return response({ tenant: { id: tenantId, name: String(tenant.get("name") || tenantId) }, missions: missions.docs.map((doc) => ({ id: doc.id, title: String(doc.get("title") || "Missão"), status: String(doc.get("status") || "planned") })), media: { jobs: jobs.size, readyAssets: assets.size, connections: usableConnections } });
     } catch (error) { return mcpError(error); }
   });
@@ -129,10 +131,10 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
 
   server.registerTool("altum_queue_creative_render", {
     description: "Prepara uma renderização de imagem ou vídeo a partir de um conceito da Altum. Cria uma aprovação de custo; não chama o provedor nem consome crédito ainda.",
-    inputSchema: z.object({ tenantId: id, projectId: id, conceptId: id, connectionId: id.optional() }).strict(),
+    inputSchema: z.object({ tenantId: id, projectId: id, conceptId: id, connectionId: id.optional(), model: z.string().trim().min(3).max(180).optional() }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["ai:draft"] }] },
-  }, async ({ tenantId, projectId, conceptId, connectionId }) => {
+  }, async ({ tenantId, projectId, conceptId, connectionId, model }) => {
     try {
       grantFor(actor, tenantId, "ai:draft");
       const [projectSnap, outputSnap, allConnections] = await Promise.all([adminDb.collection("creative_projects").doc(projectId).get(), adminDb.collection("creative_outputs").doc(conceptId).get(), adminDb.collection("tool_connections").limit(200).get()]);
@@ -141,7 +143,7 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
       if (format === "copy" || format === "carousel") throw new CommandError("INVALID_INPUT", 400);
       const capability = mediaCapability(format);
       const prompt = String(outputSnap.get("content") || projectSnap.get("brief") || "");
-      const automaticPlan = connectionId ? null : planMediaConnections({
+      const automaticPlan = planMediaConnections({
         tenantId,
         capability,
         prompt,
@@ -159,14 +161,17 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
           };
         }),
       });
-      const automaticRoute = automaticPlan?.routes[0] || null;
+      const automaticRoute = automaticPlan.routes[0] || null;
       const selected = connectionId ? allConnections.docs.find((doc) => doc.id === connectionId) : allConnections.docs.find((doc) => doc.id === automaticRoute?.connection.id);
       if (!selected) throw new CommandError("NOT_FOUND", 404);
       const connection = selected.data();
-      if (!Array.isArray(connection.capabilities) || !connection.capabilities.map(String).includes(capability) || !["configured_unapproved", "healthy", "approved"].includes(String(connection.status || ""))) throw new CommandError("FORBIDDEN", 403);
-      const route = routeCreativeModel({ providerId: String(connection.providerId || ""), format, prompt, fallbackModel: connection.creativeModel });
+      if (!Array.isArray(connection.capabilities) || !connection.capabilities.map(String).includes(capability) || !mediaConnectionAvailability({ status: String(connection.status || ""), health: connection.health }).available) throw new CommandError("FORBIDDEN", 403);
+      const catalog = Array.isArray(connection.modelCatalog) ? connection.modelCatalog.map(String) : [];
+      if (model && catalog.length && !catalog.includes(model)) throw new CommandError("INVALID_INPUT", 400);
+      const route = routeCreativeModel({ providerId: String(connection.providerId || ""), format, prompt, fallbackModel: model || connection.creativeModel });
+      const fallbackConnectionIds = automaticPlan.routes.map((item) => item.connection.id).filter((candidateId) => candidateId !== selected.id);
       const jobRef = adminDb.collection("creative_jobs").doc(); const approvalRef = adminDb.collection("agent_approvals").doc(); const batch = adminDb.batch();
-      batch.set(jobRef, { tenantId, projectId, outputId: conceptId, providerId: String(connection.providerId || ""), providerName: String(connection.displayName || connection.providerId || "Altum"), connectionId: selected.id, fallbackConnectionIds: automaticPlan?.routes.slice(1).map((item) => item.connection.id) || [], capability, format, prompt: prompt.slice(0, 12_000), creativeModel: route.model, routePurpose: route.purpose, routingReason: route.reason, connectionRoutingReason: automaticRoute?.reason || null, status: "pending_approval", approvalId: approvalRef.id, createdBy: actor.userId, createdByName: "ChatGPT via MCP", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+      batch.set(jobRef, { tenantId, projectId, outputId: conceptId, providerId: String(connection.providerId || ""), providerName: String(connection.displayName || connection.providerId || "Altum"), connectionId: selected.id, fallbackConnectionIds, capability, format, prompt: prompt.slice(0, 12_000), creativeModel: model || route.model, routePurpose: route.purpose, routingReason: route.reason, connectionRoutingReason: connectionId ? "Conexão escolhida manualmente; alternativas saudáveis ficam como fallback." : automaticRoute?.reason || null, status: "pending_approval", approvalId: approvalRef.id, createdBy: actor.userId, createdByName: "ChatGPT via MCP", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
       batch.set(approvalRef, { tenantId, missionId: null, creativeJobId: jobRef.id, title: `Autorizar geração de ${format === "video" ? "vídeo" : "imagem"}`, summary: `A Altum preparou esta geração pelo fluxo do ChatGPT.${automaticRoute ? ` ${automaticRoute.reason}` : ""} Pode consumir créditos.`, actionType: "creative_media_generation", risk: "medium", status: "pending", createdBy: actor.userId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
       await batch.commit();
       return response({ ok: true, jobId: jobRef.id, approvalId: approvalRef.id, status: "pending_approval", routing: automaticRoute ? { preference: automaticRoute.preference, reason: automaticRoute.reason } : { reason: "Uma conexão específica foi solicitada." }, next: "Mostre ao usuário que a geração usará créditos. Só depois de ele confirmar explicitamente, chame altum_confirm_creative_render." });
@@ -208,15 +213,20 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
       const connectionSnap = await adminDb.collection("tool_connections").doc(String(job.connectionId || "")).get();
       if (!connectionSnap.exists) throw new CommandError("NOT_FOUND", 404);
       if (!refresh) await jobRef.set({ status: "running", startedAt: FieldValue.serverTimestamp(), startedBy: actor.userId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      const result = refresh ? await refreshCreativeJob(connectionSnap.data()!, job.providerStatusUrl) : await executeCreativeJob({ id: jobId, capability: String(job.capability || ""), format: String(job.format || "image"), prompt: String(job.prompt || ""), tenantId, projectId: String(job.projectId || ""), outputId: String(job.outputId || ""), creativeModel: job.creativeModel, identityReferenceId: job.identityReferenceId }, connectionSnap.data()!);
+      const executionJob = { id: jobId, capability: String(job.capability || ""), format: String(job.format || "image"), prompt: String(job.prompt || ""), tenantId, projectId: String(job.projectId || ""), outputId: String(job.outputId || ""), creativeModel: job.creativeModel, identityReferenceId: job.identityReferenceId, connectionId: String(job.connectionId || ""), fallbackConnectionIds: Array.isArray(job.fallbackConnectionIds) ? job.fallbackConnectionIds : [] };
+      const result = refresh ? await refreshCreativeJob(connectionSnap.data()!, job.providerStatusUrl) : await executeCreativeJobWithFallback({ job: executionJob, candidates: await loadCreativeExecutionCandidates(executionJob) });
+      const routed = refresh ? null : result as RoutedCreativeExecutionResult;
+      if (routed) await recordCreativeConnectionAttempts(routed.attempts);
       const saved = result.assetUrl ? await persistCreativeAsset({ sourceUrl: result.assetUrl, tenantId, jobId, type: String(job.format || "image") }) : null;
       const batch = adminDb.batch();
-      batch.set(jobRef, { status: result.status, providerJobId: result.providerJobId, providerStatusUrl: result.providerStatusUrl, assetUrl: result.assetUrl, completedAt: result.status === "completed" ? FieldValue.serverTimestamp() : null, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      batch.set(jobRef, { status: result.status, providerJobId: result.providerJobId, providerStatusUrl: result.providerStatusUrl, assetUrl: result.assetUrl, ...(routed ? { connectionId: routed.connectionId, providerId: routed.providerId, executionAttempts: routed.attempts } : {}), completedAt: result.status === "completed" ? FieldValue.serverTimestamp() : null, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       if (saved && result.assetUrl) batch.set(adminDb.collection("creative_assets").doc(jobId), { tenantId, projectId: job.projectId, outputId: job.outputId, creativeJobId: jobId, type: job.format, url: saved.sourceUrl, sourceUrl: saved.sourceUrl, storagePath: saved.storagePath, contentType: saved.contentType, size: saved.size, persistence: saved.persistence, qualityPreflight: assessCreativeAsset({ type: String(job.format || "image"), persistence: saved.persistence, contentType: saved.contentType, size: saved.size, identityProfileId: job.identityProfileId }), reviewStatus: "pending", providerId: job.providerId || null, createdBy: actor.userId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       await batch.commit();
       return response({ ok: true, jobId, status: result.status, providerJobId: result.providerJobId, resultUrl: result.status === "completed" ? resultUrl(actor, jobId) : null, next: result.status === "submitted" ? "A renderização está em andamento. Chame novamente com action refresh." : "Resultado pronto na Altum; apresente o link seguro ao usuário." });
     } catch (error) {
-      await adminDb.collection("creative_jobs").doc(jobId).set({ status: "failed", updatedAt: FieldValue.serverTimestamp() }, { merge: true }).catch(() => undefined);
+      const attempts = error && typeof error === "object" && "attempts" in error ? (error as { attempts?: unknown }).attempts : null;
+      if (Array.isArray(attempts)) await recordCreativeConnectionAttempts(attempts.filter((attempt): attempt is import("@/lib/server/agent-os/creative-executor").CreativeExecutionAttempt => Boolean(attempt) && typeof attempt === "object")).catch(() => undefined);
+      await adminDb.collection("creative_jobs").doc(jobId).set({ status: "failed", failureReason: error instanceof Error ? error.message.slice(0, 500) : "media_execution_failed", updatedAt: FieldValue.serverTimestamp() }, { merge: true }).catch(() => undefined);
       return mcpError(error);
     }
   });

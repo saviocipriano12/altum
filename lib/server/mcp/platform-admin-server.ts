@@ -3,11 +3,17 @@ import { FieldValue } from "firebase-admin/firestore";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { executeCreativeJob, refreshCreativeJob } from "@/lib/server/agent-os/creative-executor";
+import { executeCreativeJobWithFallback, refreshCreativeJob, type RoutedCreativeExecutionResult } from "@/lib/server/agent-os/creative-executor";
+import { loadCreativeExecutionCandidates } from "@/lib/server/agent-os/creative-execution-routing";
+import { mediaConnectionAvailability, planMediaConnections } from "@/lib/server/agent-os/creative-model-router";
+import { recordCreativeConnectionAttempts } from "@/lib/server/agent-os/creative-connection-health";
 import { persistCreativeAsset, signedCreativeAssetUrl } from "@/lib/server/agent-os/creative-asset-storage";
 import { classifyPlatformRender } from "@/lib/server/mcp/platform-creative-policy";
+import { registerAdminCommercialTools } from "@/lib/server/mcp/admin-commercial-tools";
+import { registerAdminAgentOsTools } from "@/lib/server/agent-os/admin-mcp-tools";
+import type { Grant } from "@/lib/mcp/contracts";
 
-type PlatformActor = { userId: string; connectionId: string; scopes: readonly string[] };
+type PlatformActor = { userId: string; connectionId: string; scopes: readonly string[]; grants?: Grant[]; origin?: string };
 type OAuthRuntime = { grantedScopes: readonly string[]; resourceMetadataUrl: string };
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,180}$/);
@@ -21,6 +27,7 @@ const connectionPatch = z.object({
 }).strict();
 const creativeFormat = z.enum(["image", "carousel", "video", "copy"]);
 const missionStatus = z.enum(["planned", "running", "paused", "completed", "cancelled"]);
+const renderableConnectionStatuses = ["configured_unapproved", "healthy", "approved"] as const;
 
 function sanitizeConnection(doc: FirebaseFirestore.QueryDocumentSnapshot) {
   const row = doc.data();
@@ -35,6 +42,7 @@ function sanitizeConnection(doc: FirebaseFirestore.QueryDocumentSnapshot) {
     capabilities: Array.isArray(row.capabilities) ? row.capabilities.map(String).slice(0, 40) : [],
     notes: typeof row.notes === "string" ? row.notes.slice(0, 2000) : "",
     status: String(row.status || "pending_config"),
+    health: row.health && typeof row.health === "object" ? row.health : null,
     credentialConfigured: Boolean(row.credential),
   };
 }
@@ -90,7 +98,7 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
       adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get(),
     ]);
     const rows = connections.docs.map(sanitizeConnection);
-    return { adminMcpEnabled: policy.get("enabled") === true, platformConnections: { total: rows.length, partial: rows.length > 200, ready: rows.filter((row) => ["configured_unapproved", "healthy", "approved"].includes(row.status)).length }, boundaries: "Nenhum dado de tenant, cliente, CRM, inbox, campanha ou agente de empresa esta exposto neste MCP." };
+    return { adminMcpEnabled: policy.get("enabled") === true, platformConnections: { total: rows.length, partial: rows.length > 200, ready: rows.filter((row) => mediaConnectionAvailability(row).available).length }, boundaries: "Ferramentas comerciais e de mídia exigem contexto explícito da empresa e nunca exibem credenciais." };
   });
 
   register("altum_admin_list_ai_connections", "Lista apenas conexoes globais de IA da Altum, com modelos e capacidades. Nunca retorna credenciais, tokens ou conexoes de empresas.", z.object({}).strict(), ["integrations:read"], async () => {
@@ -274,5 +282,7 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     );
     return { items: rows.map((row) => ({ connectionId: row.id, providerId: row.providerId, displayName: row.displayName, model: row.chatModel, modelCatalog: row.modelCatalog, capabilities: row.capabilities, status: row.status, estimatedCostUsd: null })), partial: snap.size > 200, note: "Preços e cotas não verificados. A escolha de um modelo não autoriza consumo de créditos." };
   });
+  if (actor?.grants) registerAdminCommercialTools(server, { ...actor, grants: actor.grants });
+  if (actor?.grants && actor.origin) registerAdminAgentOsTools(server, { ...actor, grants: actor.grants, origin: actor.origin });
   return server;
 }

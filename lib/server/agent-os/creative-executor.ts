@@ -80,12 +80,17 @@ export function outputUrl(value: unknown): string | null {
   if (direct) return direct;
   if (Array.isArray(value)) return value.map(outputUrl).find((item): item is string => Boolean(item)) || null;
   if (value && typeof value === "object") {
-    for (const key of ["url", "video", "video_url", "image", "image_url", "audio", "audio_url", "output", "data", "images"]) {
+    for (const key of ["url", "video", "video_url", "output_url", "download_url", "image", "image_url", "audio", "audio_url", "output", "data", "images"]) {
       const found = outputUrl((value as Record<string, unknown>)[key]);
       if (found) return found;
     }
   }
   return null;
+}
+
+function providerEndpoint(connection: MediaConnection, fallback: string) {
+  const configured = typeof connection.baseUrl === "string" && connection.baseUrl.trim() ? connection.baseUrl.trim() : fallback;
+  return creativeExecutorEndpoint(configured.replace("https://api.ltx.video", "https://api.ltx.io")).replace(/\/$/, "");
 }
 
 export function alibabaApiRoot(value: unknown) {
@@ -130,7 +135,7 @@ async function executeFal(job: CreativeJob, connection: MediaConnection, credent
 
 async function executeReplicate(job: CreativeJob, connection: MediaConnection, credential: string): Promise<CreativeExecutionResult> {
   const baseUrl = creativeExecutorEndpoint(connection.baseUrl).replace(/\/$/, "");
-  const model = configuredModel(connection, "bytedance/seedance-1-pro").split("/");
+  const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, job.format === "video" ? "bytedance/seedance-1-pro" : "black-forest-labs/flux-schnell").split("/");
   if (model.length !== 2) throw new RouteAuthError(400, "replicate_model_invalid", "O modelo padrão da conexão Replicate é inválido.");
   const response = await fetch(`${baseUrl}/models/${model[0]}/${model[1]}/predictions`, {
     method: "POST",
@@ -266,12 +271,29 @@ async function executeAlibabaVideo(job: CreativeJob, connection: MediaConnection
   };
 }
 
+async function executeLtxCloud(job: CreativeJob, connection: MediaConnection, credential: string): Promise<CreativeExecutionResult> {
+  if (job.format !== "video") throw new RouteAuthError(409, "ltx_video_only", "A conexão LTX Cloud está configurada apenas para vídeo.");
+  const baseUrl = providerEndpoint(connection, "https://api.ltx.io");
+  const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, "ltx-2-5-pro");
+  const response = await fetch(`${baseUrl}/v2/text-to-video`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${credential}` },
+    body: JSON.stringify({ prompt: job.prompt.slice(0, 5_000), model, duration: 8, resolution: "1920x1080" }), cache: "no-store", signal: AbortSignal.timeout(30_000),
+  });
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) throw new RouteAuthError(502, "ltx_generation_failed", providerError(payload, "A LTX Cloud não aceitou a geração."));
+  const jobId = typeof payload.id === "string" ? payload.id : typeof payload.job_id === "string" ? payload.job_id : "";
+  if (!jobId) throw new RouteAuthError(502, "ltx_job_missing", "A LTX Cloud aceitou a solicitação sem devolver o identificador da tarefa.");
+  const assetUrl = outputUrl(payload);
+  return { providerJobId: jobId, providerStatusUrl: `${baseUrl}/v2/text-to-video/${encodeURIComponent(jobId)}`, assetUrl, status: assetUrl ? "completed" : "submitted" };
+}
+
 export async function executeCreativeJob(job: CreativeJob, connection: MediaConnection): Promise<CreativeExecutionResult> {
   const credential = decryptSecret(connection.credential);
   if (!credential) throw new RouteAuthError(409, "media_credential_missing", "A conexão de mídia não tem uma chave salva.");
   if (providerId(connection) === "fal") return executeFal(job, connection, credential);
   if (providerId(connection) === "replicate") return executeReplicate(job, connection, credential);
   if (providerId(connection) === "higgsfield") return executeHiggsfield(job, connection, credential);
+  if (providerId(connection) === "ltx-cloud") return executeLtxCloud(job, connection, credential);
   if (providerId(connection) === "alibaba-model-studio") return job.format === "video"
     ? executeAlibabaVideo(job, connection, credential)
     : executeAlibabaImage(job, connection, credential);
