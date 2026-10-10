@@ -186,7 +186,7 @@ export async function runBusinessCopilot(input: {
         { role: "user", content: prompt },
       ],
     });
-    void logAiUsage({ tenantId: input.tenantId, scope: "analysis", provider: "altum_rules", model: result.model, agentId: "business-insights", decision: "answer", latencyMs: Date.now() - startedAt, inputTokens: result.inputTokens || null, outputTokens: result.outputTokens || null, status: "success", metadata: { surface: "comando", externalProvider: result.provider, universalRouter: true } }).catch(() => undefined);
+    void logAiUsage({ tenantId: input.tenantId, scope: "analysis", provider: "altum_rules", model: result.model, agentId: "business-insights", decision: "answer", latencyMs: Date.now() - startedAt, inputTokens: result.inputTokens || null, outputTokens: result.outputTokens || null, status: "success", metadata: { surface: "comando", externalProvider: result.provider, connectionId: result.connectionId || null, routing: result.routing, universalRouter: true } }).catch(() => undefined);
     return { answer: result.answer, provider: result.provider, model: result.model, fallbackUsed: result.provider !== "freellmapi" };
   } catch (error) {
     lastError = `roteador-universal: ${error instanceof Error ? clean(error.message, 220) : "falha nas conexões"}`;

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { decryptSecret } from "@/app/lib/server/secret-crypto";
 import { requestFreeLlmChat, type FreeLlmApiMessage } from "@/lib/server/agent-os/freellmapi";
@@ -51,6 +52,7 @@ function promptForRouting(messages: RuntimeModelMessage[]) {
 type SavedConnection = {
   id: string;
   providerId: string;
+  displayName?: unknown;
   baseUrl: unknown;
   credential: unknown;
   chatModel: unknown;
@@ -60,6 +62,38 @@ type SavedConnection = {
   status: unknown;
   health?: unknown;
 };
+
+type RuntimeConnection = Pick<SavedConnection, "id" | "providerId" | "displayName">;
+
+function normalized(value: unknown) {
+  return typeof value === "string"
+    ? value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+    : "";
+}
+
+/** A manual request remains a preference, never a dead end: the saved
+ * connection is tried first and the healthy pool is still the fallback. */
+export function findExplicitTextConnectionRequest(input: { prompt: string; connections: RuntimeConnection[] }) {
+  const prompt = normalized(input.prompt);
+  if (!/\b(usar|use|via|pelo|pela|provider|conexao|conexão|modelo)\b/.test(prompt)) return null;
+  const choices = [...input.connections].sort((left, right) => Math.max(normalized(right.displayName).length, normalized(right.providerId).length) - Math.max(normalized(left.displayName).length, normalized(left.providerId).length));
+  return choices.find((connection) => [connection.displayName, connection.providerId]
+    .map(normalized).filter((name) => name.length >= 3).some((name) => prompt.includes(name))) || null;
+}
+
+export function orderRuntimeConnections(input: { connections: RuntimeConnection[]; prompt: string }) {
+  const explicit = findExplicitTextConnectionRequest(input);
+  if (!explicit) return { connections: input.connections, explicitConnectionId: null as string | null };
+  return { connections: [explicit, ...input.connections.filter((connection) => connection.id !== explicit.id)], explicitConnectionId: explicit.id };
+}
+
+function recordRuntimeConnectionOutcome(connection: SavedConnection, outcome: "success" | "failure", reason?: unknown) {
+  const ref = adminDb.collection("tool_connections").doc(connection.id);
+  const patch = outcome === "success"
+    ? { status: "healthy", health: { status: "healthy", lastSucceededAt: FieldValue.serverTimestamp(), cooldownUntil: null, consecutiveFailures: 0, lastExecutionStatus: "text_completed" }, lastHealthAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }
+    : { health: { status: "degraded", lastFailedAt: FieldValue.serverTimestamp(), cooldownUntil: new Date(Date.now() + 2 * 60_000), consecutiveFailures: FieldValue.increment(1), lastExecutionStatus: "text_failed", lastFailureReason: String(reason || "provider_unavailable").slice(0, 500) }, lastHealthAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
+  return ref.set(patch, { merge: true }).catch(() => undefined);
+}
 
 async function configuredPlatformConnections() {
   const snapshot = await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(200).get();
@@ -71,6 +105,8 @@ export type RuntimeModelResult = {
   answer: string;
   model: string;
   provider: string;
+  connectionId?: string;
+  routing: "automatic" | "manual";
   inputTokens: number;
   outputTokens: number;
 };
@@ -82,7 +118,10 @@ export type RuntimeModelResult = {
 export async function requestRuntimeModel(input: RuntimeModelRequest): Promise<RuntimeModelResult> {
   const messages = messagesForProvider(input.messages);
   if (!messages.length) throw new Error("runtime_model_messages_missing");
-  const connections = await configuredPlatformConnections();
+  const savedConnections = await configuredPlatformConnections();
+  const manual = orderRuntimeConnections({ connections: savedConnections, prompt: promptForRouting(input.messages) });
+  const connections = manual.connections as SavedConnection[];
+  const routing = manual.explicitConnectionId ? "manual" as const : "automatic" as const;
   const freeGateway = connections.find((connection) => connection.providerId === "freellmapi");
   const freeKey = freeGateway ? decryptSecret(typeof freeGateway.credential === "string" ? freeGateway.credential : "") : "";
 
@@ -98,10 +137,13 @@ export async function requestRuntimeModel(input: RuntimeModelRequest): Promise<R
         answer: result.answer,
         model: result.routedVia || result.model,
         provider: "freellmapi",
+        connectionId: freeGateway.id,
+        routing,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
       };
     } catch (error) {
+      void recordRuntimeConnectionOutcome(freeGateway, "failure", error instanceof Error ? error.message : "freellmapi_unavailable");
       console.warn("[openclaw-model-gateway] FreeLLMAPI unavailable; trying a compatible connection.", error instanceof Error ? error.message.slice(0, 180) : "unknown");
     }
   }
@@ -109,6 +151,8 @@ export async function requestRuntimeModel(input: RuntimeModelRequest): Promise<R
   const compatible = connections
     .filter((connection) => OPENAI_COMPATIBLE_PROVIDER_IDS.has(connection.providerId))
     .sort((left, right) => {
+      if (manual.explicitConnectionId === left.id) return -1;
+      if (manual.explicitConnectionId === right.id) return 1;
       const leftPriority = RUNTIME_PROVIDER_ORDER.indexOf(left.providerId);
       const rightPriority = RUNTIME_PROVIDER_ORDER.indexOf(right.providerId);
       return (leftPriority < 0 ? 999 : leftPriority) - (rightPriority < 0 ? 999 : rightPriority);
@@ -132,11 +176,13 @@ export async function requestRuntimeModel(input: RuntimeModelRequest): Promise<R
     for (const model of candidates) {
       try {
         const result = await requestOpenAiCompatibleChat({ baseUrl, apiKey: key, model, messages });
-        return { answer: result.answer, model: result.model, provider: connection.providerId, inputTokens: result.inputTokens, outputTokens: result.outputTokens };
+        void recordRuntimeConnectionOutcome(connection, "success");
+        return { answer: result.answer, model: result.model, provider: connection.providerId, connectionId: connection.id, routing, inputTokens: result.inputTokens, outputTokens: result.outputTokens };
       } catch (error) {
         console.warn("[openclaw-model-gateway] compatible model unavailable.", { provider: connection.providerId, model, reason: error instanceof Error ? error.message.slice(0, 180) : "unknown" });
       }
     }
+    void recordRuntimeConnectionOutcome(connection, "failure", "all_configured_models_failed");
   }
   throw new Error("runtime_model_unavailable");
 }
