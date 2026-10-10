@@ -3,6 +3,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { toolConnectionCreateSchema } from "@/lib/server/agent-os/tool-registry";
+import { hasCreativeProviderContract } from "@/lib/server/agent-os/creative-provider-contracts";
 
 const DEFAULT_PROVIDER_URLS: Record<string, string> = {
   freellmapi: "http://127.0.0.1:31415",
@@ -55,7 +56,14 @@ export async function GET(request: Request) {
   try {
     await requireRequestUser(request, { roles: ["agency_admin"] });
     const snap = await adminDb.collection("tool_connections").orderBy("__name__").limit(200).get();
-    return Response.json({ items: snap.docs.map((doc) => { const data = doc.data(); const health = safeHealth(data.health); return { id: doc.id, providerId: String(data.providerId || ""), displayName: String(data.displayName || ""), scope: data.scope === "tenant" ? "tenant" : "platform", tenantId: typeof data.tenantId === "string" ? data.tenantId : null, connectionType: String(data.connectionType || "api"), baseUrl: typeof data.baseUrl === "string" ? data.baseUrl : null, chatModel: typeof data.chatModel === "string" ? data.chatModel : null, modelCatalog: Array.isArray(data.modelCatalog) ? data.modelCatalog.map(String).slice(0, 200) : [], capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], notes: typeof data.notes === "string" ? data.notes : "", status: String(data.status || "pending_config"), healthStatus: health.status, health, credential: maskStoredSecret(data.credential), credentialConfigured: hasStoredSecret(data.credential), createdAt: timestamp(data.createdAt), lastHealthAt: timestamp(data.lastHealthAt) }; }) }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ items: snap.docs.map((doc) => {
+      const data = doc.data(); const health = safeHealth(data.health);
+      const capabilities = Array.isArray(data.capabilities) ? data.capabilities.map(String) : [];
+      // A configured capability is not automatically an executable one. The
+      // UI needs both: what was saved and what the router can safely run now.
+      const certifiedMediaCapabilities = capabilities.filter((capability) => hasCreativeProviderContract(data, capability));
+      return { id: doc.id, providerId: String(data.providerId || ""), displayName: String(data.displayName || ""), scope: data.scope === "tenant" ? "tenant" : "platform", tenantId: typeof data.tenantId === "string" ? data.tenantId : null, connectionType: String(data.connectionType || "api"), baseUrl: typeof data.baseUrl === "string" ? data.baseUrl : null, chatModel: typeof data.chatModel === "string" ? data.chatModel : null, modelCatalog: Array.isArray(data.modelCatalog) ? data.modelCatalog.map(String).slice(0, 200) : [], capabilities, certifiedMediaCapabilities, notes: typeof data.notes === "string" ? data.notes : "", status: String(data.status || "pending_config"), healthStatus: health.status, health, credential: maskStoredSecret(data.credential), credentialConfigured: hasStoredSecret(data.credential), createdAt: timestamp(data.createdAt), lastHealthAt: timestamp(data.lastHealthAt) };
+    }) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }
 
