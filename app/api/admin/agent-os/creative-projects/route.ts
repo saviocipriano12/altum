@@ -6,6 +6,7 @@ import { buildCreativeDrafts, type CreativeFormat } from "@/lib/server/agent-os/
 import { creativeSkillReferences } from "@/lib/server/agent-os/external-skills";
 import { recordAgentMemory } from "@/lib/server/agent-os/memory";
 import { mediaConnectionAvailability, planMediaConnections, routeCreativeModel, routeMediaConnection } from "@/lib/server/agent-os/creative-model-router";
+import { hasCreativeProviderContract } from "@/lib/server/agent-os/creative-provider-contracts";
 
 const createSchema = z.object({ action: z.literal("create"), tenantId: z.string().trim().min(1).max(180), title: z.string().trim().min(4).max(140), brief: z.string().trim().min(12).max(2400), format: z.enum(["image", "carousel", "video", "copy"]), channel: z.string().trim().min(2).max(80) });
 const generateSchema = z.object({ action: z.literal("generate"), projectId: z.string().trim().regex(/^[A-Za-z0-9_-]{1,180}$/) });
@@ -92,6 +93,7 @@ async function queueMedia(body: unknown, actor: { uid: string; name: string }) {
   if (!mediaConnectionAvailability({ status: String(connection.status || ""), health: connection.health }).available) throw new RouteAuthError(409, "connection_not_ready", "Esta conexão está indisponível no momento. A Altum tentará outra rota saudável automaticamente.");
   const capabilities = Array.isArray(connection.capabilities) ? connection.capabilities.map(String) : [];
   if (!capabilities.includes(capability)) throw new RouteAuthError(409, "capability_missing", `A conexão escolhida não oferece ${capability === "GENERATE_VIDEO" ? "geração de vídeo" : "geração de imagem"}.`);
+  if (!hasCreativeProviderContract(connection, capability)) throw new RouteAuthError(409, "media_adapter_unavailable", "A Altum ainda não possui um adaptador de execução certificado para esta conexão. Escolha uma rota compatível ou deixe a Altum decidir automaticamente.");
   const identityReferenceId = identityProfile && String(connection.providerId || "") === String(identityProfile.anchorProviderId || "") && typeof identityProfile.anchorReferenceId === "string" ? identityProfile.anchorReferenceId : null;
   const identityVideoChain = format === "video" && String(connection.providerId || "").toLowerCase() === "higgsfield" && Boolean(identityReferenceId);
   if (identityVideoChain && !capabilities.includes("GENERATE_IMAGE")) throw new RouteAuthError(409, "identity_frame_capability_missing", "Para criar este vídeo com identidade persistente, esta conexão também precisa permitir geração de imagem.");

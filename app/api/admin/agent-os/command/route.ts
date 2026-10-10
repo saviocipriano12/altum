@@ -10,7 +10,7 @@ import { creativeSkillReferences } from "@/lib/server/agent-os/external-skills";
 import { extractPrivateAttachmentContext } from "@/lib/server/agent-os/command-attachments";
 import { formatPrivateConversationMemory } from "@/lib/server/agent-os/conversation-memory";
 import { buildLandingDraft } from "@/lib/server/agent-os/landing-draft";
-import { inferMediaPreference, planMediaConnections, routeAvatarAnchorConnection, routeCreativeModel, routeMediaConnection } from "@/lib/server/agent-os/creative-model-router";
+import { findExplicitMediaConnectionRequest, inferMediaPreference, planMediaConnections, routeAvatarAnchorConnection, routeCreativeModel, routeMediaConnection } from "@/lib/server/agent-os/creative-model-router";
 import { selectIdentityProfile } from "@/lib/server/agent-os/identity-routing";
 import { buildCampaignPlan } from "@/lib/server/agent-os/campaign-plan";
 import { isAvatarRightsConfirmation, parseAvatarCommand } from "@/lib/server/agent-os/avatar-command";
@@ -67,11 +67,19 @@ async function prepareLatestConversationCreative(input: { tenantId: string; conv
     connections: connections.docs.map((doc) => { const data = doc.data(); return { id: doc.id, providerId: String(data.providerId || ""), displayName: typeof data.displayName === "string" ? data.displayName : undefined, capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], status: String(data.status || "pending_config"), credentialConfigured: Boolean(data.credential), scope: data.scope === "tenant" ? "tenant" as const : "platform" as const, tenantId: typeof data.tenantId === "string" ? data.tenantId : null, connectionType: typeof data.connectionType === "string" ? data.connectionType : undefined, baseUrl: typeof data.baseUrl === "string" ? data.baseUrl : undefined, creativeModel: data.creativeModel, health: data.health }; }),
   };
   const mediaPlan = planMediaConnections(routingInput);
-  const route = mediaPlan.routes[0] || null;
+  const explicitConnection = findExplicitMediaConnectionRequest({
+    message: input.message,
+    connections: routingInput.connections,
+    capability,
+    tenantId: input.tenantId,
+  });
+  const route = explicitConnection
+    ? mediaPlan.routes.find((item) => item.connection.id === explicitConnection.id) || null
+    : mediaPlan.routes[0] || null;
   if (!route) return { projectId: project.id, missionId: String(projectRow.missionId || "") || null, unavailable: true as const };
   const modelRoute = routeCreativeModel({ providerId: route.connection.providerId, format, prompt, fallbackModel: route.connection.creativeModel });
   const jobRef = adminDb.collection("creative_jobs").doc(); const approvalRef = adminDb.collection("agent_approvals").doc(); const batch = adminDb.batch();
-  batch.set(jobRef, { tenantId: input.tenantId, projectId: project.id, outputId: output.id, providerId: route.connection.providerId, providerName: route.connection.displayName || route.connection.providerId, connectionId: route.connection.id, fallbackConnectionIds: mediaPlan.routes.slice(1).map((item) => item.connection.id), capability, format, prompt: prompt.slice(0, 12_000), creativeModel: modelRoute.model, routePurpose: modelRoute.purpose, routingReason: modelRoute.reason, connectionRoutingReason: route.reason, identityProfileId: identityProfileId || null, identityReferenceId: profile?.exists && String(profile.get("anchorProviderId") || "") === route.connection.providerId ? profile.get("anchorReferenceId") || null : null, status: "pending_approval", approvalId: approvalRef.id, createdBy: input.actor.uid, createdByName: input.actor.name, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+  batch.set(jobRef, { tenantId: input.tenantId, projectId: project.id, outputId: output.id, providerId: route.connection.providerId, providerName: route.connection.displayName || route.connection.providerId, connectionId: route.connection.id, fallbackConnectionIds: mediaPlan.routes.filter((item) => item.connection.id !== route.connection.id).map((item) => item.connection.id), capability, format, prompt: prompt.slice(0, 12_000), creativeModel: modelRoute.model, routePurpose: modelRoute.purpose, routingReason: modelRoute.reason, connectionRoutingReason: explicitConnection ? `Conexão escolhida explicitamente na conversa. ${route.reason}` : route.reason, identityProfileId: identityProfileId || null, identityReferenceId: profile?.exists && String(profile.get("anchorProviderId") || "") === route.connection.providerId ? profile.get("anchorReferenceId") || null : null, status: "pending_approval", approvalId: approvalRef.id, createdBy: input.actor.uid, createdByName: input.actor.name, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   batch.set(approvalRef, { tenantId: input.tenantId, missionId: String(projectRow.missionId || "") || null, creativeJobId: jobRef.id, title: `Autorizar geração de ${format === "video" ? "vídeo" : "imagem"}`, summary: `A Altum preparou “${String(output.get("title") || "este conceito")}”. ${route.reason} A geração pode consumir créditos e ficará disponível para revisão antes de qualquer publicação.`, actionType: "creative_media_generation", risk: "medium", status: "pending", createdBy: input.actor.uid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   batch.set(adminDb.collection("audit_logs").doc(), { type: "creative_media_requested_from_conversation", actorId: input.actor.uid, actorName: input.actor.name, tenantId: input.tenantId, projectId: project.id, outputId: output.id, creativeJobId: jobRef.id, createdAt: FieldValue.serverTimestamp() });
   await batch.commit();
