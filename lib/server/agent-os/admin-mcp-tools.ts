@@ -51,7 +51,7 @@ function safeConnection(row: FirebaseFirestore.DocumentData) {
   return {
     id: String(row.id || ""), provider: String(row.providerId || "Altum"), name: String(row.displayName || row.providerId || "Altum"),
     capabilities: Array.isArray(row.capabilities) ? row.capabilities.map(String).slice(0, 20) : [],
-    status: String(row.status || "pending_config"), health: row.health,
+    status: String(row.status || "pending_config"), health: row.health, credentialConfigured: Boolean(row.credential),
   };
 }
 
@@ -76,7 +76,7 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
         adminDb.collection("tool_connections").limit(200).get(),
       ]);
       if (!tenant.exists) throw new CommandError("NOT_FOUND", 404);
-      const usableConnections = connections.docs.map((doc) => ({ ...safeConnection(doc.data()), id: doc.id })).filter((item) => mediaConnectionAvailability(item).available);
+      const usableConnections = connections.docs.map((doc) => ({ ...safeConnection(doc.data()), id: doc.id })).filter((item) => item.credentialConfigured && mediaConnectionAvailability(item).available);
       return response({ tenant: { id: tenantId, name: String(tenant.get("name") || tenantId) }, missions: missions.docs.map((doc) => ({ id: doc.id, title: String(doc.get("title") || "Missão"), status: String(doc.get("status") || "planned") })), media: { jobs: jobs.size, readyAssets: assets.size, connections: usableConnections } });
     } catch (error) { return mcpError(error); }
   });
@@ -165,6 +165,7 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
       const selected = connectionId ? allConnections.docs.find((doc) => doc.id === connectionId) : allConnections.docs.find((doc) => doc.id === automaticRoute?.connection.id);
       if (!selected) throw new CommandError("NOT_FOUND", 404);
       const connection = selected.data();
+      if (!connection.credential) throw new CommandError("FORBIDDEN", 403);
       if (!Array.isArray(connection.capabilities) || !connection.capabilities.map(String).includes(capability) || !mediaConnectionAvailability({ status: String(connection.status || ""), health: connection.health }).available) throw new CommandError("FORBIDDEN", 403);
       const catalog = Array.isArray(connection.modelCatalog) ? connection.modelCatalog.map(String) : [];
       if (model && catalog.length && !catalog.includes(model)) throw new CommandError("INVALID_INPUT", 400);
