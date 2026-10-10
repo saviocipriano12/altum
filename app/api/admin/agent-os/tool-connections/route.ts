@@ -20,6 +20,7 @@ const DEFAULT_PROVIDER_URLS: Record<string, string> = {
   higgsfield: "https://api.higgsfield.ai",
   "ltx-cloud": "https://api.ltx.video",
   heygen: "https://api.heygen.com",
+  "alibaba-model-studio": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
 };
 
 function timestamp(value: unknown) {

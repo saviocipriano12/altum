@@ -95,8 +95,21 @@ function providerEndpoint(connection: MediaConnection, fallback: string) {
   return creativeExecutorEndpoint(configured.replace("https://api.ltx.video", "https://api.ltx.io")).replace(/\/$/, "");
 }
 
+/**
+ * Official media connections are allowed to omit their base URL in storage.
+ * That is important for connections created by older Altum screens: a saved
+ * credential must remain runnable after the provider form learns its default
+ * endpoint. A custom URL still wins, which keeps private gateways intact.
+ */
+function officialCreativeEndpoint(connection: MediaConnection, fallback: string) {
+  return providerEndpoint(connection, fallback);
+}
+
 export function alibabaApiRoot(value: unknown) {
-  const baseUrl = creativeExecutorEndpoint(value);
+  const configured = typeof value === "string" && value.trim()
+    ? value
+    : "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
+  const baseUrl = creativeExecutorEndpoint(configured);
   const url = new URL(baseUrl);
   return `${url.origin}/api/v1`;
 }
@@ -170,7 +183,7 @@ async function executeXaiVideo(job: CreativeJob, connection: MediaConnection, cr
 }
 
 async function executeFal(job: CreativeJob, connection: MediaConnection, credential: string): Promise<CreativeExecutionResult> {
-  const baseUrl = creativeExecutorEndpoint(connection.baseUrl).replace(/\/$/, "");
+  const baseUrl = officialCreativeEndpoint(connection, "https://queue.fal.run");
   const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, job.format === "video" ? "bytedance/seedance-2.0/text-to-video" : "fal-ai/flux-2/klein/9b");
   const body: Record<string, unknown> = { prompt: job.prompt };
   if (model === "higgsfield-ai/soul/v2/standard" && typeof job.identityReferenceId === "string" && /^[A-Za-z0-9-]{20,80}$/.test(job.identityReferenceId)) {
@@ -199,7 +212,7 @@ async function executeFal(job: CreativeJob, connection: MediaConnection, credent
 }
 
 async function executeReplicate(job: CreativeJob, connection: MediaConnection, credential: string): Promise<CreativeExecutionResult> {
-  const baseUrl = creativeExecutorEndpoint(connection.baseUrl).replace(/\/$/, "");
+  const baseUrl = officialCreativeEndpoint(connection, "https://api.replicate.com/v1");
   const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, job.format === "video" ? "bytedance/seedance-1-pro" : "black-forest-labs/flux-schnell").split("/");
   if (model.length !== 2) throw new RouteAuthError(400, "replicate_model_invalid", "O modelo padrão da conexão Replicate é inválido.");
   const response = await fetch(`${baseUrl}/models/${model[0]}/${model[1]}/predictions`, {
@@ -230,7 +243,7 @@ async function executeReplicate(job: CreativeJob, connection: MediaConnection, c
 /** Higgsfield uses the same asynchronous request shape as fal, but authenticates
  * with `Authorization: Key <complete key>` and has its own API hostname. */
 async function executeHiggsfield(job: CreativeJob, connection: MediaConnection, credential: string): Promise<CreativeExecutionResult> {
-  const baseUrl = creativeExecutorEndpoint(connection.baseUrl).replace(/\/$/, "");
+  const baseUrl = officialCreativeEndpoint(connection, "https://api.higgsfield.ai");
   const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, job.format === "video" ? "bytedance/seedance-2.0/text-to-video" : "higgsfield-ai/soul/standard");
   const body: Record<string, unknown> = { prompt: job.prompt };
   // This is an intentionally narrow adapter for the documented Seedance image
@@ -278,7 +291,7 @@ async function executeHiggsfield(job: CreativeJob, connection: MediaConnection, 
  * than treating every OpenAI-compatible text API as a media provider.
  */
 async function executeAlibabaImage(job: CreativeJob, connection: MediaConnection, credential: string): Promise<CreativeExecutionResult> {
-  const baseUrl = creativeExecutorEndpoint(connection.baseUrl).replace(/\/$/, "");
+  const baseUrl = officialCreativeEndpoint(connection, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
   const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, "qwen-image-3.0");
   const response = await fetch(`${baseUrl}/images/generations`, {
     method: "POST",
