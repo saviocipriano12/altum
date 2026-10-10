@@ -5,7 +5,7 @@ import { z } from "zod";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { executeCreativeJobWithFallback, refreshCreativeJob, type RoutedCreativeExecutionResult } from "@/lib/server/agent-os/creative-executor";
 import { loadCreativeExecutionCandidates } from "@/lib/server/agent-os/creative-execution-routing";
-import { mediaConnectionAvailability, planMediaConnections } from "@/lib/server/agent-os/creative-model-router";
+import { mediaConnectionAvailability, planMediaConnections, routeCreativeModel } from "@/lib/server/agent-os/creative-model-router";
 import { recordCreativeConnectionAttempts } from "@/lib/server/agent-os/creative-connection-health";
 import { persistCreativeAsset, signedCreativeAssetUrl } from "@/lib/server/agent-os/creative-asset-storage";
 import { classifyPlatformRender } from "@/lib/server/mcp/platform-creative-policy";
@@ -188,23 +188,39 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     return { jobId, status: String(row.status || "unknown"), format: String(row.format || ""), providerId: String(row.providerId || ""), assetId: typeof row.assetId === "string" ? row.assetId : null, assetUrl, stored: Boolean(assetUrl), failureReason: typeof row.failureReason === "string" ? row.failureReason.slice(0, 300) : null };
   });
 
-  register("altum_admin_prepare_creative_render", "Prepara uma imagem ou vídeo global na Altum, sem consumir créditos. Renderização efetiva requer aprovação separada.", z.object({ conceptId: id, connectionId: id.optional() }).strict(), ["ai:draft"], async ({ conceptId, connectionId }) => {
+  register("altum_admin_prepare_creative_render", "Prepara uma imagem ou vídeo global na Altum, sem consumir créditos. A Altum escolhe a rota saudável mais adequada e mantém alternativas automáticas; conexão ou modelo podem ser escolhidos manualmente quando necessário. Renderização efetiva requer aprovação separada.", z.object({ conceptId: id, connectionId: id.optional(), model: z.string().trim().min(3).max(180).optional() }).strict(), ["ai:draft"], async ({ conceptId, connectionId, model }) => {
     const concept = await adminDb.collection("platform_creative_concepts").doc(conceptId).get();
     if (!concept.exists) throw new Error("NOT_FOUND");
     const format = String(concept.get("format") || "");
     if (!["image", "video"].includes(format)) throw new Error("INVALID_INPUT");
     const capability = format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE";
-    const candidateSnaps = connectionId
-      ? [await adminDb.collection("tool_connections").doc(connectionId).get()]
-      : (await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get()).docs;
-    const connection = candidateSnaps.find((item) => item.exists && item.get("scope") === "platform" && item.get("credential") && ["healthy", "approved"].includes(String(item.get("status") || "")) && Array.isArray(item.get("capabilities")) && (item.get("capabilities") as string[]).includes(capability));
+    const allConnections = await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get();
+    const plan = planMediaConnections({
+      tenantId: "platform",
+      capability,
+      prompt: String(concept.get("content") || ""),
+      connections: allConnections.docs.map((doc) => {
+        const data = doc.data();
+        return { id: doc.id, providerId: String(data.providerId || ""), displayName: typeof data.displayName === "string" ? data.displayName : undefined, capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], status: String(data.status || "pending_config"), scope: "platform" as const, creativeModel: data.creativeModel, health: data.health };
+      }),
+    });
+    const connection = connectionId
+      ? allConnections.docs.find((item) => item.id === connectionId)
+      : allConnections.docs.find((item) => item.id === plan.routes[0]?.connection.id);
     if (!connection) throw new Error("NOT_FOUND");
+    const connectionData = connection.data();
+    const capabilities = Array.isArray(connectionData.capabilities) ? connectionData.capabilities.map(String) : [];
+    if (!connectionData.credential || !capabilities.includes(capability) || !mediaConnectionAvailability({ status: String(connectionData.status || "pending_config"), health: connectionData.health }).available) throw new Error("INVALID_INPUT");
+    const catalog = Array.isArray(connectionData.modelCatalog) ? connectionData.modelCatalog.map(String) : [];
+    if (model && catalog.length && !catalog.includes(model)) throw new Error("INVALID_INPUT");
+    const route = routeCreativeModel({ providerId: String(connectionData.providerId || ""), format, prompt: String(concept.get("content") || ""), fallbackModel: model || connectionData.creativeModel });
+    const fallbackConnectionIds = plan.routes.map((entry) => entry.connection.id).filter((candidateId) => candidateId !== connection.id);
     // No provider call here. The selected route is saved for approval and
     // revalidated again at execution time.
     const ref = adminDb.collection("platform_creative_jobs").doc();
-    await ref.set({ conceptId, projectId: concept.get("projectId"), format, connectionId: connection.id, providerId: connection.get("providerId") || null, prompt: String(concept.get("content") || "").slice(0, 6000), status: "awaiting_approval", createdBy: actor!.userId, createdAt: FieldValue.serverTimestamp() });
+    await ref.set({ conceptId, projectId: concept.get("projectId"), format, capability, connectionId: connection.id, fallbackConnectionIds, providerId: connectionData.providerId || null, creativeModel: model || route.model, routePurpose: route.purpose, routingReason: route.reason, connectionRoutingReason: connectionId ? "Conexão escolhida manualmente; alternativas saudáveis continuam como fallback." : plan.routes[0]?.reason || null, prompt: String(concept.get("content") || "").slice(0, 6000), status: "awaiting_approval", createdBy: actor!.userId, createdAt: FieldValue.serverTimestamp() });
     await adminDb.collection("audit_logs").add({ type: "admin_mcp_platform_render_prepared", actorId: actor!.userId, jobId: ref.id, createdAt: FieldValue.serverTimestamp() });
-    return { jobId: ref.id, status: "awaiting_approval", estimatedCost: "unknown", next: "Exige confirmação explícita antes de chamar o provedor. Nenhum crédito foi utilizado." };
+    return { jobId: ref.id, status: "awaiting_approval", providerId: String(connectionData.providerId || ""), model: model || route.model, fallbacks: fallbackConnectionIds.length, routing: { preference: plan.preference, reason: connectionId ? "Conexão manual com fallback automático." : plan.routes[0]?.reason || route.reason }, estimatedCost: "unknown", next: "Exige confirmação explícita antes de chamar o provedor. Nenhum crédito foi utilizado." };
   });
 
   register("altum_admin_confirm_creative_render", "Confirma o gasto de um render global já preparado. Exige confirmação explícita; a confirmação não chama o provedor.", z.object({ jobId: id, confirmation: z.literal("I_CONFIRM_RENDER") }).strict(), ["ai:draft"], async ({ jobId }) => {
