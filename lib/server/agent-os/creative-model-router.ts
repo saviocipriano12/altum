@@ -75,7 +75,7 @@ function providerProfile(provider: string) {
   if (id === "replicate") return { economy: 56, quality: 84, privacy: 55, label: "produção compatível" };
   if (id === "higgsfield") return { economy: 46, quality: 95, privacy: 50, label: "produção cinematográfica e de personagem" };
   if (id === "heygen") return { economy: 36, quality: 94, privacy: 48, label: "produção especializada" };
-  if (["huggingface", "nvidia", "groq", "freellmapi"].includes(id)) return { economy: 80, quality: 68, privacy: 62, label: "capacidade conectada" };
+  if (["huggingface", "nvidia", "nvidia-nim", "groq", "freellmapi"].includes(id)) return { economy: 80, quality: 68, privacy: 62, label: "capacidade conectada" };
   return { economy: 60, quality: 70, privacy: 60, label: "capacidade conectada" };
 }
 

@@ -8,6 +8,7 @@ export const OPENAI_COMPATIBLE_PROVIDER_IDS = new Set([
   "mistral",
   "openrouter",
   "huggingface",
+  "google",
   "openai",
   "xai",
 ]);
@@ -19,6 +20,9 @@ const CANONICAL_OPENAI_BASE_URLS: Record<string, string> = {
   mistral: "https://api.mistral.ai/v1",
   openrouter: "https://openrouter.ai/api/v1",
   huggingface: "https://router.huggingface.co/v1",
+  // Official Gemini OpenAI-compatibility endpoint. It lets a saved AI Studio
+  // key participate in the same text fallback chain as the other providers.
+  google: "https://generativelanguage.googleapis.com/v1beta/openai",
   openai: "https://api.openai.com/v1",
   xai: "https://api.x.ai/v1",
 };

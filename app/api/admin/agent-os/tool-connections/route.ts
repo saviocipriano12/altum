@@ -12,6 +12,9 @@ const DEFAULT_PROVIDER_URLS: Record<string, string> = {
   mistral: "https://api.mistral.ai/v1",
   openrouter: "https://openrouter.ai/api/v1",
   huggingface: "https://router.huggingface.co/v1",
+  google: "https://generativelanguage.googleapis.com/v1beta/openai",
+  openai: "https://api.openai.com/v1",
+  xai: "https://api.x.ai/v1",
   fal: "https://queue.fal.run",
   replicate: "https://api.replicate.com/v1",
   higgsfield: "https://api.higgsfield.ai",
@@ -22,6 +25,22 @@ const DEFAULT_PROVIDER_URLS: Record<string, string> = {
 function timestamp(value: unknown) {
   return value && typeof value === "object" && "toDate" in value && typeof (value as { toDate?: unknown }).toDate === "function"
     ? (value as { toDate: () => Date }).toDate().toISOString() : null;
+}
+function safeHealth(value: unknown) {
+  const health = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const details = health.details && typeof health.details === "object" ? health.details as Record<string, unknown> : {};
+  return {
+    status: typeof health.status === "string" ? health.status : null,
+    checkedAt: timestamp(health.checkedAt),
+    lastFailedAt: timestamp(health.lastFailedAt),
+    lastSucceededAt: timestamp(health.lastSucceededAt),
+    cooldownUntil: timestamp(health.cooldownUntil),
+    consecutiveFailures: Number.isFinite(Number(health.consecutiveFailures)) ? Math.max(0, Number(health.consecutiveFailures)) : 0,
+    // A failure reason is useful to the platform owner, but credentials and
+    // arbitrary provider payloads never leave the vault.
+    lastFailureReason: typeof health.lastFailureReason === "string" ? health.lastFailureReason.slice(0, 500) : null,
+    availableModels: Array.isArray(details.availableModels) ? details.availableModels.map(String).slice(0, 200) : [],
+  };
 }
 function errorResponse(error: unknown) {
   if (error instanceof RouteAuthError) return Response.json({ error: error.message }, { status: error.status });
@@ -35,7 +54,7 @@ export async function GET(request: Request) {
   try {
     await requireRequestUser(request, { roles: ["agency_admin"] });
     const snap = await adminDb.collection("tool_connections").orderBy("__name__").limit(200).get();
-    return Response.json({ items: snap.docs.map((doc) => { const data = doc.data(); const health = data.health && typeof data.health === "object" ? data.health as Record<string, unknown> : {}; return { id: doc.id, providerId: String(data.providerId || ""), displayName: String(data.displayName || ""), scope: data.scope === "tenant" ? "tenant" : "platform", tenantId: typeof data.tenantId === "string" ? data.tenantId : null, connectionType: String(data.connectionType || "api"), baseUrl: typeof data.baseUrl === "string" ? data.baseUrl : null, chatModel: typeof data.chatModel === "string" ? data.chatModel : null, modelCatalog: Array.isArray(data.modelCatalog) ? data.modelCatalog.map(String).slice(0, 200) : [], capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], notes: typeof data.notes === "string" ? data.notes : "", status: String(data.status || "pending_config"), healthStatus: typeof health.status === "string" ? health.status : null, credential: maskStoredSecret(data.credential), credentialConfigured: hasStoredSecret(data.credential), createdAt: timestamp(data.createdAt), lastHealthAt: timestamp(data.lastHealthAt) }; }) }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ items: snap.docs.map((doc) => { const data = doc.data(); const health = safeHealth(data.health); return { id: doc.id, providerId: String(data.providerId || ""), displayName: String(data.displayName || ""), scope: data.scope === "tenant" ? "tenant" : "platform", tenantId: typeof data.tenantId === "string" ? data.tenantId : null, connectionType: String(data.connectionType || "api"), baseUrl: typeof data.baseUrl === "string" ? data.baseUrl : null, chatModel: typeof data.chatModel === "string" ? data.chatModel : null, modelCatalog: Array.isArray(data.modelCatalog) ? data.modelCatalog.map(String).slice(0, 200) : [], capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], notes: typeof data.notes === "string" ? data.notes : "", status: String(data.status || "pending_config"), healthStatus: health.status, health, credential: maskStoredSecret(data.credential), credentialConfigured: hasStoredSecret(data.credential), createdAt: timestamp(data.createdAt), lastHealthAt: timestamp(data.lastHealthAt) }; }) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }
 

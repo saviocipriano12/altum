@@ -71,9 +71,32 @@ export async function createAdminAuthorizationCode(req: Request, actor: RequestU
   // when ChatGPT's first OAuth request only names tools already discovered.
   // Tool-level confirmations still protect cost and external side effects.
   if (!consent.success) throw new CommandError("invalid_scope", 400);
-  const policy = await policyRef().get(); if (policy.data()?.enabled !== true) throw new CommandError("MCP_DISABLED", 403);
+  // `requireRequestUser` in the route has already authenticated an agency
+  // administrator before reaching this function.  If Firestore is temporarily
+  // quota-limited, do not strand that signed-in administrator on the consent
+  // screen: issue only the short-lived, PKCE-bound fallback below.  Normal
+  // persistent grants still require the policy document to be readable.
+  let statelessOnly = false;
+  try {
+    const policy = await policyRef().get();
+    if (policy.data()?.enabled !== true) throw new CommandError("MCP_DISABLED", 403);
+  } catch (error) {
+    if (!isFirestoreQuotaError(error)) throw error;
+    statelessOnly = true;
+  }
   await verifyClientMetadata(body.client_id as string, body.redirect_uri as string);
   const code = token("altum_admin_code"); const now = Date.now();
+  const createEphemeralCode = () => redirectWithCode(req, body, signedToken(STATELESS_CODE_PREFIX, {
+    type: "admin_mcp_ephemeral_code",
+    userId: actor.uid,
+    clientId: body.client_id,
+    redirectUri: body.redirect_uri,
+    challenge: body.code_challenge,
+    audience: adminMcpResource(req),
+    scopes: consent.data.scopes,
+    exp: now + EPHEMERAL_CODE_TTL_MS,
+  }));
+  if (statelessOnly) return createEphemeralCode();
   const connectionRef = adminDb.collection("admin_mcp_connections").doc(); const batch = adminDb.batch();
   batch.set(connectionRef, { userId: actor.uid, userName: actor.name, clientId: body.client_id, clientName: "ChatGPT", audience: adminMcpResource(req), scopes: consent.data.scopes, connectionType: "platform_admin", offline: requested.offline, createdAt: Timestamp.fromMillis(now), expiresAt: Timestamp.fromMillis(now + (requested.offline ? 60 * 86400000 : 3600000)), revokedAt: null });
   batch.set(adminDb.collection("admin_mcp_codes").doc(tokenHash(code)), { connectionId: connectionRef.id, clientId: body.client_id, redirectUri: body.redirect_uri, challenge: body.code_challenge, audience: adminMcpResource(req), expiresAt: Timestamp.fromMillis(now + 600000), consumedAt: null });
@@ -87,26 +110,26 @@ export async function createAdminAuthorizationCode(req: Request, actor: RequestU
     // The fallback is signed, expires quickly and remains PKCE-bound; every
     // access token still rechecks the active admin user and MCP policy below.
     if (!isFirestoreQuotaError(error)) throw error;
-    const expiresAt = now + EPHEMERAL_CODE_TTL_MS;
-    const ephemeralCode = signedToken(STATELESS_CODE_PREFIX, {
-      type: "admin_mcp_ephemeral_code",
-      userId: actor.uid,
-      clientId: body.client_id,
-      redirectUri: body.redirect_uri,
-      challenge: body.code_challenge,
-      audience: adminMcpResource(req),
-      scopes: consent.data.scopes,
-      exp: expiresAt,
-    });
-    return redirectWithCode(req, body, ephemeralCode);
+    return createEphemeralCode();
   }
 }
 
-async function assertLiveAdminUser(userId: string) {
-  const [policy, user] = await Promise.all([
-    policyRef().get(),
-    adminDb.collection("users").doc(userId).get(),
-  ]);
+async function assertLiveAdminUser(userId: string, options?: { allowQuotaFallback?: boolean }) {
+  let policy: FirebaseFirestore.DocumentSnapshot;
+  let user: FirebaseFirestore.DocumentSnapshot;
+  try {
+    [policy, user] = await Promise.all([
+      policyRef().get(),
+      adminDb.collection("users").doc(userId).get(),
+    ]);
+  } catch (error) {
+    // The signed, ten-minute authorization code was minted only after the
+    // request session authenticated an agency admin. Preserve that narrow
+    // hand-off during a Firestore quota incident; persistent tokens never use
+    // this path and are therefore still revalidated from Firestore.
+    if (options?.allowQuotaFallback && isFirestoreQuotaError(error)) return;
+    throw error;
+  }
   if (policy.data()?.enabled !== true) throw new CommandError("MCP_DISABLED", 403);
   const profile = user.data();
   if (!profile || profile.status === "blocked" || !AGENCY_ADMIN_ROLES.includes(profile.role)) throw new CommandError("FORBIDDEN", 403);
@@ -134,7 +157,7 @@ async function exchangeEphemeralCode(req: Request, body: Record<string, unknown>
   const expected = Buffer.from(tokenHash(body.code_verifier as string)); const actual = Buffer.from(data.challenge);
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw invalid();
   let scopes; try { scopes = strictAdminScopes(Array.isArray(data.scopes) ? data.scopes.join(" ") : "").scopes; } catch { throw invalid(); }
-  await assertLiveAdminUser(data.userId);
+  await assertLiveAdminUser(data.userId, { allowQuotaFallback: true });
   const now = Date.now(); const expiresAt = now + EPHEMERAL_ACCESS_TTL_MS;
   const access = signedToken(STATELESS_ACCESS_PREFIX, {
     type: "admin_mcp_ephemeral_access",
@@ -154,7 +177,7 @@ async function validateEphemeralAccess(req: Request, raw: string) {
   if (data.type !== "admin_mcp_ephemeral_access" || typeof data.userId !== "string" || typeof data.clientId !== "string" || typeof data.audience !== "string" || typeof data.exp !== "number") throw new CommandError("UNAUTHENTICATED", 401);
   if (data.audience !== adminMcpResource(req) || data.exp <= Date.now()) throw new CommandError("UNAUTHENTICATED", 401);
   let scopes; try { scopes = strictAdminScopes(Array.isArray(data.scopes) ? data.scopes.join(" ") : "").scopes; } catch { throw new CommandError("UNAUTHENTICATED", 401); }
-  try { await assertLiveAdminUser(data.userId); }
+  try { await assertLiveAdminUser(data.userId, { allowQuotaFallback: true }); }
   catch (error) { if (error instanceof CommandError && error.code === "FORBIDDEN") throw new CommandError("UNAUTHENTICATED", 401); throw error; }
   return { userId: data.userId, clientId: data.clientId, connectionId: `ephemeral-${tokenHash(raw).slice(0, 32)}`, scopes, expiresAt: new Date(data.exp).toISOString() };
 }

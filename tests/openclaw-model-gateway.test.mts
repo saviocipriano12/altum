@@ -8,6 +8,7 @@ test("runtime completa URLs OpenAI-compatíveis salvas antes do catálogo", () =
   assert.equal(runtimeCompatibleBaseUrl("openrouter", "https://openrouter.ai/api/v1"), "https://openrouter.ai/api/v1");
   assert.equal(runtimeCompatibleBaseUrl("openai", "https://api.openai.com"), "https://api.openai.com/v1");
   assert.equal(runtimeCompatibleBaseUrl("xai", "https://api.x.ai/"), "https://api.x.ai/v1");
+  assert.equal(runtimeCompatibleBaseUrl("google", "https://generativelanguage.googleapis.com/"), "https://generativelanguage.googleapis.com/v1beta/openai");
 });
 
 test("runtime preserva a URL explícita de um provider customizado", () => {

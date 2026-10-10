@@ -18,7 +18,7 @@ export type RuntimeModelRequest = {
   maxTokens: number;
 };
 
-const RUNTIME_PROVIDER_ORDER = ["groq", "nvidia-nim", "cerebras", "openrouter", "huggingface", "mistral", "alibaba-model-studio", "custom-openai-compatible", "openai", "xai"];
+const RUNTIME_PROVIDER_ORDER = ["groq", "nvidia-nim", "cerebras", "google", "openrouter", "huggingface", "mistral", "alibaba-model-studio", "custom-openai-compatible", "openai", "xai"];
 
 function clean(value: unknown, max = 24_000) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
