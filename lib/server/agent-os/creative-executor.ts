@@ -80,7 +80,9 @@ export function outputUrl(value: unknown): string | null {
   if (direct) return direct;
   if (Array.isArray(value)) return value.map(outputUrl).find((item): item is string => Boolean(item)) || null;
   if (value && typeof value === "object") {
-    for (const key of ["url", "video", "video_url", "output_url", "download_url", "image", "image_url", "audio", "audio_url", "output", "data", "images"]) {
+    // Providers do not agree on the result envelope. LTX, for example,
+    // returns { result: { video_url } } after an async job completes.
+    for (const key of ["url", "video", "video_url", "output_url", "download_url", "image", "image_url", "audio", "audio_url", "output", "result", "data", "images"]) {
       const found = outputUrl((value as Record<string, unknown>)[key]);
       if (found) return found;
     }

@@ -15,3 +15,10 @@ test("encontra a URL final de vídeo no contrato de tarefa Wan", () => {
     "https://dashscope-result-sh.oss-accelerate.aliyuncs.com/render.mp4",
   );
 });
+
+test("encontra a URL final no contrato assíncrono da LTX Cloud", () => {
+  assert.equal(
+    outputUrl({ result: { video_url: "https://storage.googleapis.com/ltx/render.mp4" } }),
+    "https://storage.googleapis.com/ltx/render.mp4",
+  );
+});

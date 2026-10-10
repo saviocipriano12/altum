@@ -102,7 +102,7 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
       adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get(),
     ]);
     const rows = connections.docs.map(sanitizeConnection);
-    return { adminMcpEnabled: policy.get("enabled") === true, platformConnections: { total: rows.length, partial: rows.length > 200, ready: rows.filter((row) => mediaConnectionAvailability(row).available).length }, boundaries: "Ferramentas comerciais e de mídia exigem contexto explícito da empresa e nunca exibem credenciais." };
+    return { adminMcpEnabled: policy.get("enabled") === true, platformConnections: { total: rows.length, partial: rows.length > 200, ready: rows.filter((row) => row.credentialConfigured && mediaConnectionAvailability(row).available).length }, boundaries: "Ferramentas comerciais e de mídia exigem contexto explícito da empresa e nunca exibem credenciais." };
   });
 
   register("altum_admin_list_ai_connections", "Lista apenas conexoes globais de IA da Altum, com modelos e capacidades. Nunca retorna credenciais, tokens ou conexoes de empresas.", z.object({}).strict(), ["integrations:read"], async () => {

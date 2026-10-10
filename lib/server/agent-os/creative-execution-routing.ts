@@ -26,7 +26,10 @@ export async function loadCreativeExecutionCandidates(job: JobRouteData) {
     const capabilities = Array.isArray(connection.capabilities) ? connection.capabilities.map(String) : [];
     const status = String(connection.status || "pending_config");
     const scoped = connection.scope !== "tenant" || String(connection.tenantId || "") === tenantId;
-    if (!scoped || !mediaConnectionAvailability({ status, health: connection.health }).available || !capabilities.includes(capability)) return [];
+    // A persisted fallback can outlive a deleted/rotated credential. Do not
+    // waste a render attempt on it: execution starts only on routes that can
+    // authenticate at this moment.
+    if (!scoped || !connection.credential || !mediaConnectionAvailability({ status, health: connection.health }).available || !capabilities.includes(capability)) return [];
     return [{ id: snapshot.id, connection }];
   });
 }
