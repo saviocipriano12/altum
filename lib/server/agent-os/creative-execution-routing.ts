@@ -2,6 +2,7 @@ import "server-only";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import type { MediaConnection } from "@/lib/server/agent-os/creative-executor";
 import { mediaConnectionAvailability } from "@/lib/server/agent-os/creative-model-router";
+import { hasCreativeProviderContract } from "@/lib/server/agent-os/creative-provider-contracts";
 
 type JobRouteData = {
   connectionId?: unknown;
@@ -29,7 +30,7 @@ export async function loadCreativeExecutionCandidates(job: JobRouteData) {
     // A persisted fallback can outlive a deleted/rotated credential. Do not
     // waste a render attempt on it: execution starts only on routes that can
     // authenticate at this moment.
-    if (!scoped || !connection.credential || !mediaConnectionAvailability({ status, health: connection.health }).available || !capabilities.includes(capability)) return [];
+    if (!scoped || !connection.credential || !mediaConnectionAvailability({ status, health: connection.health }).available || !hasCreativeProviderContract(connection, capability) || !capabilities.includes(capability)) return [];
     return [{ id: snapshot.id, connection }];
   });
 }

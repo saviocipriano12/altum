@@ -2,6 +2,7 @@ import { decryptSecret } from "@/app/lib/server/secret-crypto";
 import { RouteAuthError } from "@/app/lib/server/route-auth";
 import { signedStorageReadUrl } from "@/lib/server/firebase-storage";
 import { routeCreativeModel } from "@/lib/server/agent-os/creative-model-router";
+import { hasCreativeProviderContract, creativeProviderContractMessage } from "@/lib/server/agent-os/creative-provider-contracts";
 
 export type CreativeJob = {
   id: string;
@@ -368,6 +369,9 @@ async function executeLtxCloud(job: CreativeJob, connection: MediaConnection, cr
 export async function executeCreativeJob(job: CreativeJob, connection: MediaConnection): Promise<CreativeExecutionResult> {
   const credential = decryptSecret(connection.credential);
   if (!credential) throw new RouteAuthError(409, "media_credential_missing", "A conexão de mídia não tem uma chave salva.");
+  if (!hasCreativeProviderContract(connection, job.capability)) {
+    throw new RouteAuthError(409, "media_adapter_unavailable", creativeProviderContractMessage(connection));
+  }
   if (providerId(connection) === "fal") return executeFal(job, connection, credential);
   if (providerId(connection) === "replicate") return executeReplicate(job, connection, credential);
   if (providerId(connection) === "higgsfield") return executeHiggsfield(job, connection, credential);

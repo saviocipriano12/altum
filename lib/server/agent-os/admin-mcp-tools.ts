@@ -8,6 +8,7 @@ import type { Grant } from "@/lib/mcp/contracts";
 import { buildCreativeDrafts, type CreativeFormat } from "@/lib/server/agent-os/creative-drafts";
 import { creativeSkillReferences } from "@/lib/server/agent-os/external-skills";
 import { mediaConnectionAvailability, planMediaConnections, routeCreativeModel, routeMediaConnection } from "@/lib/server/agent-os/creative-model-router";
+import { hasCreativeProviderContract } from "@/lib/server/agent-os/creative-provider-contracts";
 import { executeCreativeJobWithFallback, refreshCreativeJob, type RoutedCreativeExecutionResult } from "@/lib/server/agent-os/creative-executor";
 import { loadCreativeExecutionCandidates } from "@/lib/server/agent-os/creative-execution-routing";
 import { recordCreativeConnectionAttempts } from "@/lib/server/agent-os/creative-connection-health";
@@ -157,6 +158,8 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
             status: String(data.status || "pending_config"), credentialConfigured: Boolean(data.credential),
             scope: data.scope === "tenant" ? "tenant" as const : "platform" as const,
             tenantId: typeof data.tenantId === "string" ? data.tenantId : null,
+            connectionType: typeof data.connectionType === "string" ? data.connectionType : undefined,
+            baseUrl: typeof data.baseUrl === "string" ? data.baseUrl : undefined,
             creativeModel: data.creativeModel, health: data.health,
           };
         }),
@@ -166,7 +169,7 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
       if (!selected) throw new CommandError("NOT_FOUND", 404);
       const connection = selected.data();
       if (!connection.credential) throw new CommandError("FORBIDDEN", 403);
-      if (!Array.isArray(connection.capabilities) || !connection.capabilities.map(String).includes(capability) || !mediaConnectionAvailability({ status: String(connection.status || ""), health: connection.health }).available) throw new CommandError("FORBIDDEN", 403);
+      if (!Array.isArray(connection.capabilities) || !connection.capabilities.map(String).includes(capability) || !hasCreativeProviderContract(connection, capability) || !mediaConnectionAvailability({ status: String(connection.status || ""), health: connection.health }).available) throw new CommandError("FORBIDDEN", 403);
       const catalog = Array.isArray(connection.modelCatalog) ? connection.modelCatalog.map(String) : [];
       if (model && catalog.length && !catalog.includes(model)) throw new CommandError("INVALID_INPUT", 400);
       const route = routeCreativeModel({ providerId: String(connection.providerId || ""), format, prompt, fallbackModel: model || connection.creativeModel });

@@ -1,3 +1,5 @@
+import { hasCreativeProviderContract } from "@/lib/server/agent-os/creative-provider-contracts";
+
 export type CreativeRoute = {
   model: string | null;
   purpose: "final" | "draft" | "avatar" | "image" | "provider_default";
@@ -17,6 +19,9 @@ export type MediaConnectionCandidate = {
   credentialConfigured?: boolean;
   scope?: "platform" | "tenant";
   tenantId?: string | null;
+  connectionType?: string;
+  /** URL is only used to recognize an explicitly configured custom bridge. */
+  baseUrl?: string;
   creativeModel?: unknown;
   /** Dados do último probe ou da última execução. Nunca incluem credenciais. */
   health?: unknown;
@@ -40,6 +45,7 @@ export function findExplicitMediaConnectionRequest(input: {
   if (!/\b(usar|use|via|pelo|pela|provider|conexao|conexão|modelo)\b/.test(message)) return null;
   const candidates = input.connections
     .filter((connection) => connection.credentialConfigured !== false && mediaConnectionAvailability(connection).available
+      && hasCreativeProviderContract(connection, input.capability)
       && connection.capabilities.includes(input.capability)
       && (connection.scope !== "tenant" || connection.tenantId === input.tenantId))
     .sort((left, right) => Math.max(String(right.displayName || "").length, right.providerId.length) - Math.max(String(left.displayName || "").length, left.providerId.length));
@@ -47,7 +53,6 @@ export function findExplicitMediaConnectionRequest(input: {
     .filter((value): value is string => Boolean(value))
     .map(normalized).filter((value) => value.length >= 3).some((name) => message.includes(name))) || null;
 }
-
 /**
  * The execution order for one media request.  The user never has to choose a
  * provider: this is persisted with the job and consumed by the worker if a
@@ -154,6 +159,7 @@ export function planMediaConnections(input: {
   const candidates = input.connections.filter((connection) =>
     connection.credentialConfigured !== false
     && mediaConnectionAvailability(connection).available
+    && hasCreativeProviderContract(connection, input.capability)
     && connection.capabilities.includes(input.capability)
     && (connection.scope !== "tenant" || connection.tenantId === input.tenantId),
   );
@@ -228,3 +234,4 @@ export function routeCreativeModel(input: { providerId: string; format: string; 
   if (wantsDraft) return { model: "xai/grok-imagine-video/text-to-video", purpose: "draft", reason: "O briefing prioriza velocidade, volume ou teste; prioriza custo e agilidade." };
   return { model: "bytedance/seedance-2.0/text-to-video", purpose: "final", reason: "Vídeo de campanha usa qualidade como padrão para a primeira entrega." };
 }
+

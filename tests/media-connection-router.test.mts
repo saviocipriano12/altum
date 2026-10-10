@@ -69,3 +69,16 @@ test("âncora de identidade só oferece providers com adaptador validado", () =>
   });
   assert.equal(route?.connection.id, "higgsfield");
 });
+
+test("roteador pula provider de catálogo sem adaptador de execução", () => {
+  const plan = planMediaConnections({
+    connections: [
+      { id: "heygen", providerId: "heygen", connectionType: "api", status: "configured_unapproved", credentialConfigured: true, capabilities: ["GENERATE_VIDEO"] },
+      { id: "fal", providerId: "fal", connectionType: "api", status: "configured_unapproved", credentialConfigured: true, capabilities: ["GENERATE_VIDEO"] },
+    ],
+    capability: "GENERATE_VIDEO",
+    tenantId: "tenant-a",
+    prompt: "crie um vídeo curto",
+  });
+  assert.deepEqual(plan.routes.map((route) => route.connection.id), ["fal"]);
+});
