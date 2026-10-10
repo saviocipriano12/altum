@@ -106,6 +106,69 @@ function providerError(payload: Record<string, unknown>, fallback: string) {
   return typeof value === "string" && value.trim() ? value.slice(0, 500) : fallback;
 }
 
+function truncateUtf8(value: string, maxBytes: number) {
+  const encoded = Buffer.from(value, "utf8");
+  return encoded.byteLength <= maxBytes ? value : encoded.subarray(0, maxBytes).toString("utf8");
+}
+
+/** xAI's Imagine endpoints are distinct from its OpenAI-compatible chat
+ * endpoint. Keep them in a dedicated adapter so an xAI media connection does
+ * not fall into the generic bridge contract. */
+async function executeXaiImage(job: CreativeJob, connection: MediaConnection, credential: string): Promise<CreativeExecutionResult> {
+  const baseUrl = providerEndpoint(connection, "https://api.x.ai/v1");
+  const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, "grok-imagine-image-2.0");
+  const response = await fetch(`${baseUrl}/images/generations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${credential}` },
+    body: JSON.stringify({ model, prompt: truncateUtf8(job.prompt, 4096), n: 1 }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(90_000),
+  });
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) throw new RouteAuthError(502, "xai_image_generation_failed", providerError(payload, "A xAI não aceitou a geração de imagem."));
+  const assetUrl = outputUrl(payload.data) || outputUrl(payload);
+  if (!assetUrl) throw new RouteAuthError(502, "xai_image_missing", "A xAI concluiu a solicitação sem retornar uma imagem utilizável.");
+  return { providerJobId: typeof payload.request_id === "string" ? payload.request_id : response.headers.get("x-request-id"), providerStatusUrl: null, assetUrl, status: "completed" };
+}
+
+async function executeXaiVideo(job: CreativeJob, connection: MediaConnection, credential: string): Promise<CreativeExecutionResult> {
+  const baseUrl = providerEndpoint(connection, "https://api.x.ai/v1");
+  const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, "grok-imagine-video-1.5-lite");
+  const body: Record<string, unknown> = {
+    model,
+    prompt: truncateUtf8(job.prompt, 4096),
+    duration: 5,
+    aspect_ratio: "9:16",
+    resolution: "720p",
+    // Altum persists its own private copy after completion. Ask xAI for a
+    // public URL only for this job's short-lived acquisition step.
+    storage_options: { filename: `${job.id}.mp4`, public_url: true },
+  };
+  const storagePath = typeof job.sourceImageStoragePath === "string" ? job.sourceImageStoragePath : "";
+  if (storagePath) {
+    const expectedPrefix = `agent-media/${job.tenantId}/`;
+    if (!storagePath.startsWith(expectedPrefix) || storagePath.includes("..")) {
+      throw new RouteAuthError(409, "video_source_missing", "A imagem-base privada necessária para animar este vídeo não está disponível.");
+    }
+    const imageUrl = await signedStorageReadUrl(storagePath);
+    if (!imageUrl) throw new RouteAuthError(409, "video_source_unavailable", "Não foi possível liberar a imagem-base para a geração do vídeo.");
+    body.image = { url: imageUrl, type: "image_url" };
+  }
+  const response = await fetch(`${baseUrl}/videos/generations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${credential}` },
+    body: JSON.stringify(body),
+    cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
+  });
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) throw new RouteAuthError(502, "xai_video_generation_failed", providerError(payload, "A xAI não aceitou a geração de vídeo."));
+  const requestId = typeof payload.request_id === "string" ? payload.request_id : "";
+  if (!requestId) throw new RouteAuthError(502, "xai_video_request_missing", "A xAI aceitou a solicitação sem devolver o identificador da tarefa.");
+  const assetUrl = outputUrl(payload.video) || outputUrl(payload);
+  return { providerJobId: requestId, providerStatusUrl: `${baseUrl}/videos/${encodeURIComponent(requestId)}`, assetUrl, status: assetUrl ? "completed" : "submitted" };
+}
+
 async function executeFal(job: CreativeJob, connection: MediaConnection, credential: string): Promise<CreativeExecutionResult> {
   const baseUrl = creativeExecutorEndpoint(connection.baseUrl).replace(/\/$/, "");
   const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, job.format === "video" ? "bytedance/seedance-2.0/text-to-video" : "fal-ai/flux-2/klein/9b");
@@ -296,6 +359,9 @@ export async function executeCreativeJob(job: CreativeJob, connection: MediaConn
   if (providerId(connection) === "replicate") return executeReplicate(job, connection, credential);
   if (providerId(connection) === "higgsfield") return executeHiggsfield(job, connection, credential);
   if (providerId(connection) === "ltx-cloud") return executeLtxCloud(job, connection, credential);
+  if (providerId(connection) === "xai") return job.format === "video"
+    ? executeXaiVideo(job, connection, credential)
+    : executeXaiImage(job, connection, credential);
   if (providerId(connection) === "alibaba-model-studio") return job.format === "video"
     ? executeAlibabaVideo(job, connection, credential)
     : executeAlibabaImage(job, connection, credential);
@@ -395,7 +461,7 @@ export async function refreshCreativeJob(connection: MediaConnection, providerSt
   const output = payload.output && typeof payload.output === "object" ? payload.output as Record<string, unknown> : {};
   const state = String(payload.status || source.status || output.task_status || "").toLowerCase();
   if (["failed", "canceled", "cancelled", "error"].includes(state)) throw new RouteAuthError(502, "media_generation_failed", providerError(payload, "A geração foi encerrada pelo provider."));
-  if (!assetUrl && ["succeeded", "successful", "completed", "success"].includes(state)) {
+  if (!assetUrl && ["succeeded", "successful", "completed", "success", "done"].includes(state)) {
     throw new RouteAuthError(502, "media_output_missing", "O provedor concluiu a geração, mas não retornou um arquivo utilizável.");
   }
   return {
