@@ -229,15 +229,18 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     try {
       const connection = await adminDb.collection("tool_connections").doc(String(job.connectionId)).get();
       if (!connection.exists || connection.get("scope") !== "platform") throw new Error("INVALID_INPUT");
-      if (!connection.get("credential") || !["healthy", "approved"].includes(String(connection.get("status") || ""))) throw new Error("INVALID_INPUT");
+      if (!connection.get("credential") || !renderableConnectionStatuses.includes(String(connection.get("status") || "") as typeof renderableConnectionStatuses[number])) throw new Error("INVALID_INPUT");
       // Permissions can change after preparation. Recheck the capability just
       // before using paid credits or polling a provider response.
       const requiredCapability = job.format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE";
       const capabilities = connection.get("capabilities");
       if (!Array.isArray(capabilities) || !capabilities.includes(requiredCapability)) throw new Error("INVALID_INPUT");
+      const executionJob = { id: jobId, tenantId: "platform", projectId: String(job.projectId || ""), outputId: String(job.conceptId || ""), capability: job.format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE", format: String(job.format), prompt: String(job.prompt), creativeModel: job.creativeModel || undefined, connectionId: String(job.connectionId || ""), fallbackConnectionIds: Array.isArray(job.fallbackConnectionIds) ? job.fallbackConnectionIds : [] };
       const result = action === "start"
-        ? await executeCreativeJob({ id: jobId, tenantId: "platform", projectId: String(job.projectId || ""), outputId: String(job.conceptId || ""), capability: job.format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE", format: String(job.format), prompt: String(job.prompt) }, connection.data()!)
+        ? await executeCreativeJobWithFallback({ job: executionJob, candidates: await loadCreativeExecutionCandidates(executionJob) })
         : await refreshCreativeJob(connection.data()!, job.providerStatusUrl);
+      const routed = action === "start" ? result as RoutedCreativeExecutionResult : null;
+      if (routed) await recordCreativeConnectionAttempts(routed.attempts);
       if (result.status === "submitted" && classifyPlatformRender(result, job.providerStatusUrl || null, false) === "needs_reconciliation") {
         // A provider may have accepted a paid request without exposing a way to
         // query it. Never resubmit blindly: preserve the receipt for review.
@@ -252,12 +255,16 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
         return { jobId, status: "needs_reconciliation", stored: false, next: "O provedor concluiu a geração, mas o arquivo não pôde ser armazenado; não execute novamente antes de recuperar o original." };
       }
       const batch = adminDb.batch();
-      batch.set(ref, { status: result.status, providerJobId: result.providerJobId || job.providerJobId || null, providerStatusUrl: result.providerStatusUrl || job.providerStatusUrl || null, assetId: asset ? jobId : null, pollLockUntil: null, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      batch.set(ref, { status: result.status, providerJobId: result.providerJobId || job.providerJobId || null, providerStatusUrl: result.providerStatusUrl || job.providerStatusUrl || null, assetId: asset ? jobId : null, pollLockUntil: null, ...(routed ? { connectionId: routed.connectionId, providerId: routed.providerId, executionAttempts: routed.attempts } : {}), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       if (asset) batch.set(adminDb.collection("platform_creative_assets").doc(jobId), { jobId, projectId: job.projectId, format: job.format, sourceUrl: asset.sourceUrl, storagePath: asset.storagePath, persistence: asset.persistence, createdBy: actor!.userId, createdAt: FieldValue.serverTimestamp() });
       batch.set(adminDb.collection("audit_logs").doc(), { type: "admin_mcp_platform_render_executed", actorId: actor!.userId, jobId, action, status: result.status, createdAt: FieldValue.serverTimestamp() });
       await batch.commit();
       return { jobId, status: result.status, assetId: asset ? jobId : null, providerJobId: result.providerJobId || null };
     } catch (error) {
+      const attempts = error && typeof error === "object" && "attempts" in error ? (error as { attempts?: unknown }).attempts : null;
+      if (action === "start" && Array.isArray(attempts)) {
+        await recordCreativeConnectionAttempts(attempts.filter((attempt): attempt is import("@/lib/server/agent-os/creative-executor").CreativeExecutionAttempt => Boolean(attempt) && typeof attempt === "object"));
+      }
       await ref.set(action === "start"
         ? { status: "needs_reconciliation", failureReason: "Provider submission outcome unknown; inspect provider before retrying.", pollLockUntil: null, updatedAt: FieldValue.serverTimestamp() }
         : { pollLockUntil: null, nextPollAt: new Date(Date.now() + 30_000), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
@@ -276,11 +283,11 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
   register("altum_admin_list_creative_models", "Descobre rotas globais de imagem e vídeo configuradas. Não consulta provedores pagos nem expõe credenciais.", z.object({ format: z.enum(["image", "video"]).optional() }).strict(), ["integrations:read"], async ({ format }) => {
     const snap = await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get();
     const rows = snap.docs.map(sanitizeConnection).filter((row) =>
-      Boolean(row.credentialConfigured) && ["healthy", "approved"].includes(row.status) &&
+      Boolean(row.credentialConfigured) && mediaConnectionAvailability(row).available &&
       (!format || row.capabilities.includes(format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE")) &&
       row.capabilities.some((capability) => ["GENERATE_IMAGE", "GENERATE_VIDEO"].includes(capability))
     );
-    return { items: rows.map((row) => ({ connectionId: row.id, providerId: row.providerId, displayName: row.displayName, model: row.chatModel, modelCatalog: row.modelCatalog, capabilities: row.capabilities, status: row.status, estimatedCostUsd: null })), partial: snap.size > 200, note: "Preços e cotas não verificados. A escolha de um modelo não autoriza consumo de créditos." };
+    return { items: rows.map((row) => ({ connectionId: row.id, providerId: row.providerId, displayName: row.displayName, model: row.chatModel, modelCatalog: row.modelCatalog, capabilities: row.capabilities, status: row.status, readiness: row.status === "configured_unapproved" ? "ready_for_first_approved_render" : "validated", modelSelection: row.modelCatalog.length || row.chatModel ? "configured" : "provider_default", estimatedCostUsd: null })), partial: snap.size > 200, note: "Uma conexão configurada sem catálogo ainda pode executar o primeiro render aprovado usando o adaptador padrão do provider. Preços e cotas não foram verificados." };
   });
   if (actor?.grants) registerAdminCommercialTools(server, { ...actor, grants: actor.grants });
   if (actor?.grants && actor.origin) registerAdminAgentOsTools(server, { ...actor, grants: actor.grants, origin: actor.origin });
