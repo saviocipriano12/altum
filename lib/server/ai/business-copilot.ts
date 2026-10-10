@@ -4,6 +4,7 @@ import { decryptSecret } from "@/app/lib/server/secret-crypto";
 import { requestFreeLlmChat } from "@/lib/server/agent-os/freellmapi";
 import { requestOpenAiCompatibleChat } from "@/lib/server/agent-os/openai-compatible";
 import { selectCompatibleModels } from "@/lib/server/agent-os/compatible-model-routing";
+import { requestRuntimeModel } from "@/lib/server/agent-os/openclaw-model-gateway";
 import {
   buildAiRuntimePolicy,
   normalizeTenantAiOperatingProfile,
@@ -17,7 +18,7 @@ export type BusinessCopilotMessage = {
 
 export type BusinessCopilotResult = {
   answer: string | null;
-  provider?: Exclude<AltumAiProvider, "altum_rules"> | "freellmapi" | "alibaba-model-studio" | "custom-openai-compatible";
+  provider?: string;
   model?: string;
   fallbackUsed: boolean;
   unavailableReason?: string;
@@ -169,6 +170,28 @@ export async function runBusinessCopilot(input: {
   const prompt = `Pergunta atual: ${clean(input.question, 700)}\n\nFatos autorizados da operacao:\n${clean(input.facts, 24_000)}\n\nLeitura calculada de apoio:\n${clean(input.deterministicAnswer, 3_000)}`;
   let lastError = providers.length ? "" : "Nenhum provedor de IA esta configurado.";
   const providerErrors: string[] = [];
+
+  // The Comando and the agent runtime must use the same connection pool. This
+  // includes FreeLLMAPI and every saved OpenAI-compatible provider (Groq,
+  // NVIDIA, Cerebras, OpenRouter, Hugging Face, Qwen, OpenAI and xAI), with
+  // per-model fallback before the legacy environment providers are considered.
+  try {
+    const startedAt = Date.now();
+    const result = await requestRuntimeModel({
+      model: "altum-agent",
+      maxTokens: 1_000,
+      messages: [
+        { role: "system", content: system },
+        ...history,
+        { role: "user", content: prompt },
+      ],
+    });
+    void logAiUsage({ tenantId: input.tenantId, scope: "analysis", provider: "altum_rules", model: result.model, agentId: "business-insights", decision: "answer", latencyMs: Date.now() - startedAt, inputTokens: result.inputTokens || null, outputTokens: result.outputTokens || null, status: "success", metadata: { surface: "comando", externalProvider: result.provider, universalRouter: true } }).catch(() => undefined);
+    return { answer: result.answer, provider: result.provider, model: result.model, fallbackUsed: result.provider !== "freellmapi" };
+  } catch (error) {
+    lastError = `roteador-universal: ${error instanceof Error ? clean(error.message, 220) : "falha nas conexões"}`;
+    providerErrors.push(lastError);
+  }
 
   // A Central é preferida quando o administrador a conectou explicitamente.
   // Ela mantém o roteamento e o fallback entre provedores fora da conversa do usuário.

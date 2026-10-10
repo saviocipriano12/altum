@@ -6,6 +6,8 @@ test("runtime completa URLs OpenAI-compatíveis salvas antes do catálogo", () =
   assert.equal(runtimeCompatibleBaseUrl("groq", "https://api.groq.com"), "https://api.groq.com/openai/v1");
   assert.equal(runtimeCompatibleBaseUrl("nvidia-nim", "https://integrate.api.nvidia.com/"), "https://integrate.api.nvidia.com/v1");
   assert.equal(runtimeCompatibleBaseUrl("openrouter", "https://openrouter.ai/api/v1"), "https://openrouter.ai/api/v1");
+  assert.equal(runtimeCompatibleBaseUrl("openai", "https://api.openai.com"), "https://api.openai.com/v1");
+  assert.equal(runtimeCompatibleBaseUrl("xai", "https://api.x.ai/"), "https://api.x.ai/v1");
 });
 
 test("runtime preserva a URL explícita de um provider customizado", () => {

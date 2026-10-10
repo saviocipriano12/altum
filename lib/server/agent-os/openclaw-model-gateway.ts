@@ -5,6 +5,7 @@ import { requestFreeLlmChat, type FreeLlmApiMessage } from "@/lib/server/agent-o
 import { listOpenAiCompatibleModels, requestOpenAiCompatibleChat } from "@/lib/server/agent-os/openai-compatible";
 import { selectCompatibleModels } from "@/lib/server/agent-os/compatible-model-routing";
 import { canonicalOpenAiCompatibleBaseUrl, OPENAI_COMPATIBLE_PROVIDER_IDS } from "@/lib/server/agent-os/provider-endpoints";
+import { mediaConnectionAvailability } from "@/lib/server/agent-os/creative-model-router";
 
 export type RuntimeModelMessage = {
   role: "system" | "user" | "assistant" | "developer";
@@ -17,7 +18,7 @@ export type RuntimeModelRequest = {
   maxTokens: number;
 };
 
-const RUNTIME_PROVIDER_ORDER = ["groq", "nvidia-nim", "cerebras", "openrouter", "huggingface", "mistral", "alibaba-model-studio", "custom-openai-compatible"];
+const RUNTIME_PROVIDER_ORDER = ["groq", "nvidia-nim", "cerebras", "openrouter", "huggingface", "mistral", "alibaba-model-studio", "custom-openai-compatible", "openai", "xai"];
 
 function clean(value: unknown, max = 24_000) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -57,12 +58,13 @@ type SavedConnection = {
   capabilities: unknown;
   scope: unknown;
   status: unknown;
+  health?: unknown;
 };
 
 async function configuredPlatformConnections() {
   const snapshot = await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(200).get();
   return snapshot.docs.map((document) => ({ id: document.id, ...document.data() } as SavedConnection))
-    .filter((connection) => connection.status !== "pending_config" && isTextCapability(connection.capabilities));
+    .filter((connection) => Boolean(connection.credential) && isTextCapability(connection.capabilities) && mediaConnectionAvailability({ status: String(connection.status || "pending_config"), health: connection.health }).available);
 }
 
 export type RuntimeModelResult = {

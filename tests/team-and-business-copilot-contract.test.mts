@@ -35,6 +35,8 @@ test("business copilot uses provider failover and authorized personal scope", ()
   assert.match(route, /scope: teamWideAccess \? "company" : "personal"/);
   assert.match(route, /runBusinessCopilot/);
   assert.match(copilot, /"openai", "gemini", "mistral", "anthropic"/);
+  assert.match(copilot, /requestRuntimeModel/);
+  assert.match(copilot, /universalRouter: true/);
   assert.match(copilot, /for \(let index = 0; index < providers\.length/);
   assert.match(copilot, /unavailableReason/);
 });
