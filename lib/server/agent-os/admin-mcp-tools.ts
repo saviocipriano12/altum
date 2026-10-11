@@ -7,7 +7,7 @@ import { CommandError } from "@/lib/server/command-center/security";
 import type { Grant } from "@/lib/mcp/contracts";
 import { buildCreativeDrafts, type CreativeFormat } from "@/lib/server/agent-os/creative-drafts";
 import { creativeSkillReferences } from "@/lib/server/agent-os/external-skills";
-import { mediaConnectionAvailability, planMediaConnections, routeCreativeModel, routeMediaConnection } from "@/lib/server/agent-os/creative-model-router";
+import { mediaConnectionAvailability, planMediaConnections, routeCreativeModel } from "@/lib/server/agent-os/creative-model-router";
 import { hasCreativeProviderContract } from "@/lib/server/agent-os/creative-provider-contracts";
 import { executeCreativeJobWithFallback, refreshCreativeJob, type RoutedCreativeExecutionResult } from "@/lib/server/agent-os/creative-executor";
 import { loadCreativeExecutionCandidates } from "@/lib/server/agent-os/creative-execution-routing";
@@ -172,7 +172,7 @@ export function registerAdminAgentOsTools(server: McpServer, actor: McpActor) {
       if (!Array.isArray(connection.capabilities) || !connection.capabilities.map(String).includes(capability) || !hasCreativeProviderContract(connection, capability) || !mediaConnectionAvailability({ status: String(connection.status || ""), health: connection.health }).available) throw new CommandError("FORBIDDEN", 403);
       const catalog = Array.isArray(connection.modelCatalog) ? connection.modelCatalog.map(String) : [];
       if (model && catalog.length && !catalog.includes(model)) throw new CommandError("INVALID_INPUT", 400);
-      const route = routeCreativeModel({ providerId: String(connection.providerId || ""), format, prompt, fallbackModel: model || connection.creativeModel });
+      const route = routeCreativeModel({ providerId: String(connection.providerId || ""), format, prompt, requestedModel: model });
       const fallbackConnectionIds = automaticPlan.routes.map((item) => item.connection.id).filter((candidateId) => candidateId !== selected.id);
       const jobRef = adminDb.collection("creative_jobs").doc(); const approvalRef = adminDb.collection("agent_approvals").doc(); const batch = adminDb.batch();
       batch.set(jobRef, { tenantId, projectId, outputId: conceptId, providerId: String(connection.providerId || ""), providerName: String(connection.displayName || connection.providerId || "Altum"), connectionId: selected.id, fallbackConnectionIds, capability, format, prompt: prompt.slice(0, 12_000), creativeModel: model || route.model, routePurpose: route.purpose, routingReason: route.reason, connectionRoutingReason: connectionId ? "Conexão escolhida manualmente; alternativas saudáveis ficam como fallback." : automaticRoute?.reason || null, status: "pending_approval", approvalId: approvalRef.id, createdBy: actor.userId, createdByName: "ChatGPT via MCP", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });

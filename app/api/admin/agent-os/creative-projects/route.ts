@@ -5,7 +5,7 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { buildCreativeDrafts, type CreativeFormat } from "@/lib/server/agent-os/creative-drafts";
 import { creativeSkillReferences } from "@/lib/server/agent-os/external-skills";
 import { recordAgentMemory } from "@/lib/server/agent-os/memory";
-import { mediaConnectionAvailability, planMediaConnections, routeCreativeModel, routeMediaConnection } from "@/lib/server/agent-os/creative-model-router";
+import { mediaConnectionAvailability, planMediaConnections, routeCreativeModel } from "@/lib/server/agent-os/creative-model-router";
 import { hasCreativeProviderContract } from "@/lib/server/agent-os/creative-provider-contracts";
 
 const createSchema = z.object({ action: z.literal("create"), tenantId: z.string().trim().min(1).max(180), title: z.string().trim().min(4).max(140), brief: z.string().trim().min(12).max(2400), format: z.enum(["image", "carousel", "video", "audio", "copy"]), channel: z.string().trim().min(2).max(80) });
@@ -102,7 +102,7 @@ async function queueMedia(body: unknown, actor: { uid: string; name: string }) {
   const identityReferenceId = identityProfile && String(connection.providerId || "") === String(identityProfile.anchorProviderId || "") && typeof identityProfile.anchorReferenceId === "string" ? identityProfile.anchorReferenceId : null;
   const identityVideoChain = format === "video" && String(connection.providerId || "").toLowerCase() === "higgsfield" && Boolean(identityReferenceId);
   if (identityVideoChain && !capabilities.includes("GENERATE_IMAGE")) throw new RouteAuthError(409, "identity_frame_capability_missing", "Para criar este vídeo com identidade persistente, esta conexão também precisa permitir geração de imagem.");
-  const route = routeCreativeModel({ providerId: String(connection.providerId || ""), format: identityVideoChain ? "image" : format, prompt: String(output.content || project.brief || ""), fallbackModel: (connection as { creativeModel?: unknown }).creativeModel });
+  const route = routeCreativeModel({ providerId: String(connection.providerId || ""), format: identityVideoChain ? "image" : format, prompt: String(output.content || project.brief || "") });
   const jobRef = adminDb.collection("creative_jobs").doc(); const approvalRef = adminDb.collection("agent_approvals").doc(); const runRef = adminDb.collection("agent_runs").doc();
   const batch = adminDb.batch();
   // An identity chain is intentionally pinned to its approved identity adapter.

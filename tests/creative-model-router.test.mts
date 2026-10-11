@@ -14,25 +14,36 @@ test("variações de vídeo priorizam a rota de teste", () => {
   assert.equal(route.purpose, "draft");
 });
 
-test("providers alternativos preservam a rota configurada", () => {
-  const route = routeCreativeModel({ providerId: "replicate", format: "video", prompt: "Vídeo de anúncio", fallbackModel: "bytedance/seedance-1-pro" });
+test("providers alternativos usam o modelo certificado para a modalidade", () => {
+  const route = routeCreativeModel({ providerId: "replicate", format: "video", prompt: "Vídeo de anúncio" });
   assert.equal(route.model, "bytedance/seedance-1-pro");
   assert.equal(route.purpose, "provider_default");
 });
 
+test("uma conexão com padrão de vídeo não vaza esse modelo para imagem", () => {
+  const route = routeCreativeModel({ providerId: "replicate", format: "image", prompt: "Imagem de produto" });
+  assert.equal(route.model, "black-forest-labs/flux-schnell");
+});
+
+test("um modelo indicado pelo operador prevalece sobre a seleção automática", () => {
+  const route = routeCreativeModel({ providerId: "replicate", format: "video", prompt: "Vídeo de produto", requestedModel: "minimax/video-01" });
+  assert.equal(route.model, "minimax/video-01");
+  assert.match(route.reason, /explicitamente/i);
+});
+
 test("Higgsfield usa Soul 2 para imagem com continuidade de identidade", () => {
-  const route = routeCreativeModel({ providerId: "higgsfield", format: "image", prompt: "Retrato com a personagem aprovada", fallbackModel: "bytedance/seedance-2.0/text-to-video" });
+  const route = routeCreativeModel({ providerId: "higgsfield", format: "image", prompt: "Retrato com a personagem aprovada" });
   assert.equal(route.model, "higgsfield-ai/soul/v2/standard");
 });
 
 test("Alibaba usa a rota Qwen Image dedicada, sem se passar por executor de vídeo", () => {
-  const route = routeCreativeModel({ providerId: "alibaba-model-studio", format: "image", prompt: "Imagem para campanha", fallbackModel: "qwen-image-3.0" });
+  const route = routeCreativeModel({ providerId: "alibaba-model-studio", format: "image", prompt: "Imagem para campanha" });
   assert.equal(route.model, "qwen-image-3.0");
   assert.equal(route.purpose, "image");
 });
 
 test("Alibaba usa Wan assíncrono para vídeo", () => {
-  const route = routeCreativeModel({ providerId: "alibaba-model-studio", format: "video", prompt: "Vídeo vertical para anúncio", fallbackModel: "qwen-image-3.0" });
+  const route = routeCreativeModel({ providerId: "alibaba-model-studio", format: "video", prompt: "Vídeo vertical para anúncio" });
   assert.equal(route.model, "wan2.7-t2v");
   assert.equal(route.purpose, "final");
 });

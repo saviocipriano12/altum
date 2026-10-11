@@ -83,11 +83,11 @@ export async function POST(request: Request) {
     const baseUrl = input.baseUrl || DEFAULT_PROVIDER_URLS[input.providerId] || null;
     const activationPolicy = "per_mission_approval";
     const batch = adminDb.batch();
-    const creativeModel = input.providerId === "fal" ? "fal-ai/wan/v2.2-a14b/text-to-video"
-      : input.providerId === "replicate" ? "bytedance/seedance-1-pro"
-        : input.providerId === "higgsfield" ? "bytedance/seedance-2.0/text-to-video"
-          : input.providerId === "alibaba-model-studio" ? "qwen-image-3.0" : null;
-    batch.set(ref, { providerId: input.providerId, displayName: input.displayName, scope: input.scope, tenantId: input.scope === "tenant" ? input.tenantId : null, connectionType: input.connectionType, baseUrl, credential, chatModel: input.chatModel || null, capabilities: input.capabilities, notes: input.notes || "", creativeModel, status, activationPolicy, createdBy: actor.uid, createdByName: actor.name, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    // Media models are selected by the router per modality at execution time.
+    // Keeping one model on the connection made a video default leak into image
+    // renders. `creativeModel` remains nullable for compatibility with old
+    // records; a deliberate model choice is attached to the individual job.
+    batch.set(ref, { providerId: input.providerId, displayName: input.displayName, scope: input.scope, tenantId: input.scope === "tenant" ? input.tenantId : null, connectionType: input.connectionType, baseUrl, credential, chatModel: input.chatModel || null, capabilities: input.capabilities, notes: input.notes || "", creativeModel: null, status, activationPolicy, createdBy: actor.uid, createdByName: actor.name, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
     batch.set(adminDb.collection("audit_logs").doc(), { type: "agent_tool_connection_created", actorId: actor.uid, actorName: actor.name, connectionId: ref.id, providerId: input.providerId, tenantId: input.scope === "tenant" ? input.tenantId : null, connectionType: input.connectionType, credentialConfigured: Boolean(credential), createdAt: FieldValue.serverTimestamp() });
     await batch.commit();
     return Response.json({ ok: true, id: ref.id, status }, { status: 201 });

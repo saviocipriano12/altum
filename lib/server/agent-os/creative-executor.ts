@@ -256,6 +256,15 @@ async function executeHiggsfield(job: CreativeJob, connection: MediaConnection, 
   const baseUrl = officialCreativeEndpoint(connection, "https://api.higgsfield.ai");
   const model = configuredModel({ ...connection, creativeModel: job.creativeModel || connection.creativeModel }, job.format === "video" ? "bytedance/seedance-2.0/text-to-video" : "higgsfield-ai/soul/standard");
   const body: Record<string, unknown> = { prompt: job.prompt };
+  // These are the documented, conservative Seedance 2.0 text-to-video
+  // inputs. Sending only `prompt` used provider defaults inconsistently and
+  // was the source of avoidable INVALID_ARGUMENT responses on some accounts.
+  if (model === "bytedance/seedance-2.0/text-to-video") {
+    body.duration = 5;
+    body.resolution = "720p";
+    body.aspect_ratio = "16:9";
+    body.generate_audio = true;
+  }
   // This is an intentionally narrow adapter for the documented Seedance image
   // to video endpoint. The source is kept private in Altum; the provider gets a
   // short-lived signed read URL only while executing this already-approved job.
@@ -272,6 +281,12 @@ async function executeHiggsfield(job: CreativeJob, connection: MediaConnection, 
     body.resolution = "720p";
     body.output_format = "mp4";
     body.generate_audio = true;
+  }
+  if (["higgsfield-ai/soul/standard", "higgsfield-ai/soul/v2/standard"].includes(model)) {
+    body.batch_size = 1;
+    body.resolution = "720p";
+    body.aspect_ratio = "4:3";
+    body.enhance_prompt = true;
   }
   if (model === "higgsfield-ai/soul/v2/standard" && typeof job.identityReferenceId === "string" && /^[A-Za-z0-9-]{20,80}$/.test(job.identityReferenceId)) {
     body.custom_reference_id = job.identityReferenceId;
@@ -448,7 +463,7 @@ export async function executeCreativeJobWithFallback(input: {
     try {
       const creativeModel = index === 0
         ? input.job.creativeModel
-        : routeCreativeModel({ providerId: candidateProvider, format: input.job.format, prompt: input.job.prompt, fallbackModel: candidate.connection.creativeModel }).model;
+        : routeCreativeModel({ providerId: candidateProvider, format: input.job.format, prompt: input.job.prompt }).model;
       const result = await executeCreativeJob({ ...input.job, creativeModel }, candidate.connection);
       attempts[attempts.length - 1] = { connectionId: candidate.id, providerId: candidateProvider, status: result.status };
       return { ...result, connectionId: candidate.id, providerId: candidateProvider, attempts };

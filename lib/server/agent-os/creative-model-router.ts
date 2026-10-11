@@ -208,7 +208,33 @@ export function routeAvatarAnchorConnection(input: {
  * stored with the job, so a later provider/configuration change cannot alter a
  * job that the user has already approved.
  */
-export function routeCreativeModel(input: { providerId: string; format: string; prompt: string; fallbackModel?: unknown }): CreativeRoute {
+/**
+ * Returns the documented, modality-specific default for a certified adapter.
+ * A connection used to have one `creativeModel` field, which meant a saved
+ * video default could accidentally be forwarded to an image request.  Keep
+ * routing defaults here, by capability, and reserve `requestedModel` for an
+ * explicit operator/MCP choice.
+ */
+export function defaultCreativeModel(providerId: string, format: string): string | null {
+  const provider = normalized(providerId);
+  if (provider === "fal") {
+    if (format === "audio") return "fal-ai/chatterbox/text-to-speech";
+    if (format === "image") return "fal-ai/flux-2/klein/9b";
+    return "bytedance/seedance-2.0/text-to-video";
+  }
+  if (provider === "replicate") return format === "video" ? "bytedance/seedance-1-pro" : "black-forest-labs/flux-schnell";
+  if (provider === "higgsfield") return format === "video" ? "bytedance/seedance-2.0/text-to-video" : "higgsfield-ai/soul/v2/standard";
+  if (provider === "ltx-cloud") return format === "video" ? "ltx-2-5-pro" : null;
+  if (provider === "alibaba-model-studio") return format === "video" ? "wan2.7-t2v" : "qwen-image-3.0";
+  if (provider === "xai") return format === "video" ? "grok-imagine-video-1.5-lite" : "grok-imagine-image-2.0";
+  return null;
+}
+
+export function routeCreativeModel(input: { providerId: string; format: string; prompt: string; requestedModel?: unknown }): CreativeRoute {
+  const requestedModel = typeof input.requestedModel === "string" && input.requestedModel.trim() ? input.requestedModel.trim() : null;
+  if (requestedModel) {
+    return { model: requestedModel, purpose: "provider_default", reason: "Modelo escolhido explicitamente para esta entrega; a Altum mantém os demais providers compatíveis como fallback." };
+  }
   const text = normalized(input.prompt);
   const wantsAvatar = /avatar|clone|apresentador|falando|talking.?head|ugc/.test(text);
   const preference = inferMediaPreference(input.prompt);
@@ -221,13 +247,13 @@ export function routeCreativeModel(input: { providerId: string; format: string; 
     return { model: "higgsfield-ai/soul/v2/standard", purpose: "image", reason: "Imagem de produção com suporte a identidade visual persistente quando uma âncora Higgsfield estiver pronta." };
   }
   if (input.providerId === "alibaba-model-studio" && input.format !== "video") {
-    return { model: typeof input.fallbackModel === "string" ? input.fallbackModel : "qwen-image-3.0", purpose: "image", reason: "Imagem Qwen da conta Alibaba conectada; a entrega seguirá para sua biblioteca privada antes de qualquer reutilização." };
+    return { model: "qwen-image-3.0", purpose: "image", reason: "Imagem Qwen da conta Alibaba conectada; a entrega seguirá para sua biblioteca privada antes de qualquer reutilização." };
   }
   if (input.providerId === "alibaba-model-studio" && input.format === "video") {
     return { model: "wan2.7-t2v", purpose: "final", reason: "Vídeo Wan assíncrono da conta Alibaba conectada; a Altum acompanha a tarefa e salva a entrega antes do link temporário expirar." };
   }
   if (input.providerId !== "fal") {
-    return { model: typeof input.fallbackModel === "string" ? input.fallbackModel : null, purpose: "provider_default", reason: "Usa a rota configurada para este provider." };
+    return { model: defaultCreativeModel(input.providerId, input.format), purpose: "provider_default", reason: "Usa o modelo padrão certificado para esta modalidade neste provider." };
   }
   if (input.format !== "video") {
     return { model: "fal-ai/flux-2/klein/9b", purpose: "image", reason: "Imagem de conceito rápida; a Altum pode elevar a qualidade em uma revisão posterior." };

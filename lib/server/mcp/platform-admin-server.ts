@@ -218,7 +218,7 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     if (!connectionData.credential || !capabilities.includes(capability) || !hasCreativeProviderContract(connectionData, capability) || !mediaConnectionAvailability({ status: String(connectionData.status || "pending_config"), health: connectionData.health }).available) throw new Error("INVALID_INPUT");
     const catalog = Array.isArray(connectionData.modelCatalog) ? connectionData.modelCatalog.map(String) : [];
     if (model && catalog.length && !catalog.includes(model)) throw new Error("INVALID_INPUT");
-    const route = routeCreativeModel({ providerId: String(connectionData.providerId || ""), format, prompt: String(concept.get("content") || ""), fallbackModel: model || connectionData.creativeModel });
+    const route = routeCreativeModel({ providerId: String(connectionData.providerId || ""), format, prompt: String(concept.get("content") || ""), requestedModel: model });
     const fallbackConnectionIds = plan.routes.map((entry) => entry.connection.id).filter((candidateId) => candidateId !== connection.id);
     // No provider call here. The selected route is saved for approval and
     // revalidated again at execution time.
