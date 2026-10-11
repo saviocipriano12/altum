@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { routeCreativeModel } from "../lib/server/agent-os/creative-model-router.ts";
+import { findExplicitCreativeModelRequest, routeCreativeModel } from "../lib/server/agent-os/creative-model-router.ts";
 
 test("vídeo final e realista prioriza a rota de qualidade", () => {
   const route = routeCreativeModel({ providerId: "fal", format: "video", prompt: "Crie o vídeo final realista para a campanha principal." });
@@ -46,4 +46,10 @@ test("Alibaba usa Wan assíncrono para vídeo", () => {
   const route = routeCreativeModel({ providerId: "alibaba-model-studio", format: "video", prompt: "Vídeo vertical para anúncio" });
   assert.equal(route.model, "wan2.7-t2v");
   assert.equal(route.purpose, "final");
+});
+
+test("modelo escrito na conversa só é aceito se pertencer à conexão escolhida", () => {
+  const connection = { id: "replicate", providerId: "replicate", capabilities: ["GENERATE_VIDEO"], status: "healthy", modelCatalog: ["minimax/video-01"] };
+  assert.equal(findExplicitCreativeModelRequest({ message: "Use Replicate, modelo minimax/video-01", connection, format: "video" }), "minimax/video-01");
+  assert.equal(findExplicitCreativeModelRequest({ message: "modelo nao-existe/video", connection, format: "video" }), null);
 });

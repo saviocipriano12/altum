@@ -22,6 +22,8 @@ export type MediaConnectionCandidate = {
   connectionType?: string;
   /** URL is only used to recognize an explicitly configured custom bridge. */
   baseUrl?: string;
+  /** Read-only catalog discovered from this exact connection. */
+  modelCatalog?: string[];
   creativeModel?: unknown;
   /** Dados do último probe ou da última execução. Nunca incluem credenciais. */
   health?: unknown;
@@ -228,6 +230,18 @@ export function defaultCreativeModel(providerId: string, format: string): string
   if (provider === "alibaba-model-studio") return format === "video" ? "wan2.7-t2v" : "qwen-image-3.0";
   if (provider === "xai") return format === "video" ? "grok-imagine-video-1.5-lite" : "grok-imagine-image-2.0";
   return null;
+}
+
+/** An optional escape hatch for an operator. The normal path remains automatic
+ * routing; a model name is honored only when it is the certified default or
+ * was actually discovered for the selected connection. */
+export function findExplicitCreativeModelRequest(input: { message: string; connection: MediaConnectionCandidate; format: string }) {
+  const match = input.message.match(/\b(?:modelo|model)\s*(?:=|:)?\s*[`"'“]?([a-z0-9][a-z0-9_.:/-]{2,180})/i);
+  if (!match) return null;
+  const requested = match[1].trim();
+  const allowed = [defaultCreativeModel(input.connection.providerId, input.format), ...(input.connection.modelCatalog || [])]
+    .filter((item): item is string => Boolean(item));
+  return allowed.find((model) => model.toLowerCase() === requested.toLowerCase()) || null;
 }
 
 export function routeCreativeModel(input: { providerId: string; format: string; prompt: string; requestedModel?: unknown }): CreativeRoute {
