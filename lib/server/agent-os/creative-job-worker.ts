@@ -6,8 +6,8 @@ import { persistCreativeAsset } from "@/lib/server/agent-os/creative-asset-stora
 import { assessCreativeAsset } from "@/lib/server/agent-os/creative-quality";
 import { recordCreativeConnectionAttempts } from "@/lib/server/agent-os/creative-connection-health";
 
-import { creativePollDelayMs } from "@/lib/server/agent-os/creative-poll-delay";
-export { creativePollDelayMs } from "@/lib/server/agent-os/creative-poll-delay";
+import { creativeJobPollExpired, creativePollDelayMs } from "@/lib/server/agent-os/creative-poll-delay";
+export { creativeJobPollExpired, creativePollDelayMs } from "@/lib/server/agent-os/creative-poll-delay";
 
 function millis(value: unknown) {
   if (value && typeof value === "object" && "toDate" in value && typeof (value as { toDate?: unknown }).toDate === "function") return (value as { toDate: () => Date }).toDate().getTime();
@@ -81,7 +81,7 @@ export async function processAutomaticCreativeContinuations(input: { limit?: num
       const outputType = String(claimed.format || "image");
       const asset = result.assetUrl ? await persistCreativeAsset({ sourceUrl: result.assetUrl, tenantId: String(claimed.tenantId || ""), jobId: item.id, type: outputType }).catch(() => ({ sourceUrl: result.assetUrl!, storagePath: null, contentType: null, size: null, persistence: "external" as const })) : null;
       const batch = adminDb.batch();
-      batch.set(item.ref, { status: result.status, providerJobId: result.providerJobId, providerStatusUrl: result.providerStatusUrl, assetUrl: result.assetUrl, connectionId: result.connectionId, providerId: result.providerId, executionAttempts: result.attempts, pollAttempts: 0, pollLockUntil: null, nextPollAt: result.status === "submitted" ? new Date(Date.now() + 15_000) : null, completedAt: result.status === "completed" ? FieldValue.serverTimestamp() : null, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      batch.set(item.ref, { status: result.status, providerJobId: result.providerJobId, providerStatusUrl: result.providerStatusUrl, assetUrl: result.assetUrl, connectionId: result.connectionId, providerId: result.providerId, executionAttempts: result.attempts, pollAttempts: 0, pollLockUntil: null, nextPollAt: result.status === "submitted" ? new Date(Date.now() + 15_000) : null, submittedAt: result.status === "submitted" ? FieldValue.serverTimestamp() : null, completedAt: result.status === "completed" ? FieldValue.serverTimestamp() : null, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       if (asset && result.assetUrl) batch.set(adminDb.collection("creative_assets").doc(item.id), { tenantId: claimed.tenantId, projectId: claimed.projectId, outputId: claimed.outputId, creativeJobId: item.id, type: outputType, url: asset.sourceUrl, sourceUrl: asset.sourceUrl, storagePath: asset.storagePath, contentType: asset.contentType, size: asset.size, persistence: asset.persistence, qualityPreflight: assessCreativeAsset({ type: outputType, persistence: asset.persistence, contentType: asset.contentType, size: asset.size, identityProfileId: claimed.identityProfileId }), reviewStatus: "pending", providerId: result.providerId, createdBy: "creative_media_worker", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       await batch.commit();
       if (result.status === "completed") await reportCreativeCompletion({ job: claimed, jobId: item.id, type: outputType }).catch(() => undefined);
@@ -119,6 +119,12 @@ export async function processCreativeMediaJobs(input?: { limit?: number }) {
     if (!claimed) continue;
 
     const jobId = item.id;
+    if (creativeJobPollExpired({ pollAttempts: Number(claimed.pollAttempts || 0), submittedAt: claimed.submittedAt, createdAt: claimed.createdAt, now })) {
+      const reason = "provider_timeout: o provedor não entregou um resultado dentro do prazo máximo de quatro horas.";
+      await item.ref.set({ status: "failed", pollLockUntil: null, nextPollAt: null, failureCode: "provider_timeout", failureReason: reason, failedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      results.push({ jobId, status: "failed", error: reason });
+      continue;
+    }
     try {
       const connection = await adminDb.collection("tool_connections").doc(String(claimed.connectionId || "")).get();
       if (!connection.exists) throw new Error("connection_missing");
@@ -127,30 +133,33 @@ export async function processCreativeMediaJobs(input?: { limit?: number }) {
         ? await persistCreativeAsset({ sourceUrl: result.assetUrl, tenantId: String(claimed.tenantId || ""), jobId, type: String(claimed.format || "image") }).catch(() => ({ sourceUrl: result.assetUrl!, storagePath: null, contentType: null, size: null, persistence: "external" as const }))
         : null;
       const attempts = Number(claimed.pollAttempts || 0) + 1;
-      const nextPollAt = result.status === "submitted" ? new Date(Date.now() + creativePollDelayMs(attempts)) : null;
+      const timedOut = result.status === "submitted" && creativeJobPollExpired({ pollAttempts: attempts, submittedAt: claimed.submittedAt, createdAt: claimed.createdAt });
+      const resolvedStatus = timedOut ? "failed" : result.status;
+      const nextPollAt = resolvedStatus === "submitted" ? new Date(Date.now() + creativePollDelayMs(attempts)) : null;
       const batch = adminDb.batch();
       batch.set(item.ref, {
-        status: result.status, providerJobId: result.providerJobId || claimed.providerJobId || null, providerStatusUrl: result.providerStatusUrl || claimed.providerStatusUrl || null,
+        status: resolvedStatus, providerJobId: result.providerJobId || claimed.providerJobId || null, providerStatusUrl: result.providerStatusUrl || claimed.providerStatusUrl || null,
         assetUrl: result.assetUrl || null, pollAttempts: attempts, pollLockUntil: null, nextPollAt,
-        completedAt: result.status === "completed" ? FieldValue.serverTimestamp() : null, updatedAt: FieldValue.serverTimestamp(),
+        failureCode: timedOut ? "provider_timeout" : null, failureReason: timedOut ? "provider_timeout: o provedor não entregou um resultado dentro do prazo máximo de quatro horas." : null,
+        failedAt: timedOut ? FieldValue.serverTimestamp() : null, completedAt: resolvedStatus === "completed" ? FieldValue.serverTimestamp() : null, updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       if (asset && result.assetUrl) batch.set(adminDb.collection("creative_assets").doc(jobId), {
         tenantId: claimed.tenantId, projectId: claimed.projectId, outputId: claimed.outputId, creativeJobId: jobId, type: claimed.format,
         url: asset.sourceUrl, sourceUrl: asset.sourceUrl, storagePath: asset.storagePath, contentType: asset.contentType, size: asset.size, persistence: asset.persistence,
         qualityPreflight: assessCreativeAsset({ type: String(claimed.format || "image"), persistence: asset.persistence, contentType: asset.contentType, size: asset.size, identityProfileId: claimed.identityProfileId }), reviewStatus: "pending", providerId: claimed.providerId || null, createdBy: "creative_media_worker", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
-      batch.set(adminDb.collection("audit_logs").doc(), { type: "creative_media_job_polled", tenantId: claimed.tenantId || null, creativeJobId: jobId, providerId: claimed.providerId || null, status: result.status, createdAt: FieldValue.serverTimestamp() });
+      batch.set(adminDb.collection("audit_logs").doc(), { type: "creative_media_job_polled", tenantId: claimed.tenantId || null, creativeJobId: jobId, providerId: claimed.providerId || null, status: resolvedStatus, createdAt: FieldValue.serverTimestamp() });
       await batch.commit();
-      if (result.status === "completed") {
+      if (resolvedStatus === "completed") {
         await queueIdentityVideoContinuation({ parent: claimed, parentJobId: jobId, storagePath: asset?.storagePath || null });
         await reportCreativeCompletion({ job: claimed, jobId, type: String(claimed.format || "image") }).catch(() => undefined);
       }
-      results.push({ jobId, status: result.status });
+      results.push({ jobId, status: resolvedStatus });
     } catch (error) {
       const attempts = Number(claimed.pollAttempts || 0) + 1;
-      const terminal = attempts >= 8;
+      const terminal = creativeJobPollExpired({ pollAttempts: attempts, submittedAt: claimed.submittedAt, createdAt: claimed.createdAt });
       const reason = error instanceof Error ? error.message.slice(0, 1000) : "creative_poll_failed";
-      await item.ref.set({ status: terminal ? "failed" : "submitted", pollAttempts: attempts, pollLockUntil: null, nextPollAt: terminal ? null : new Date(Date.now() + creativePollDelayMs(attempts)), failureReason: terminal ? reason : null, failedAt: terminal ? FieldValue.serverTimestamp() : null, lastPollError: reason, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await item.ref.set({ status: terminal ? "failed" : "submitted", pollAttempts: attempts, pollLockUntil: null, nextPollAt: terminal ? null : new Date(Date.now() + creativePollDelayMs(attempts)), failureCode: terminal ? "provider_timeout" : null, failureReason: terminal ? `provider_timeout: ${reason}` : null, failedAt: terminal ? FieldValue.serverTimestamp() : null, lastPollError: reason, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       results.push({ jobId, status: terminal ? "failed" : "submitted", error: reason });
     }
   }
