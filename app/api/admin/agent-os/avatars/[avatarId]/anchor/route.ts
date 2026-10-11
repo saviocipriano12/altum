@@ -16,10 +16,13 @@ export async function POST(request: Request, context: { params: Promise<{ avatar
     const [profileSnap, references] = await Promise.all([profileRef.get(), profileRef.collection("references").select("kind").get()]);
     if (!profileSnap.exists) throw new RouteAuthError(404, "avatar_missing", "Avatar não encontrado.");
     const profile = profileSnap.data() || {};
-    const authorized = profile.identityType === "character" ? profile.rightsConfirmed === true : profile.likenessConsent === true && profile.voiceConsent === true;
-    if (!authorized) throw new RouteAuthError(409, "consent_missing", "A identidade e a voz precisam estar autorizadas antes da âncora.");
+    // A Soul anchor is visual-only. Do not force a person to hand over a
+    // voice sample or grant voice-cloning consent before this separate visual
+    // stage; voice remains opt-in through its own adapter and approval.
+    const authorized = profile.identityType === "character" ? profile.rightsConfirmed === true : profile.likenessConsent === true;
+    if (!authorized) throw new RouteAuthError(409, "consent_missing", "A autorização de uso da imagem é necessária antes de criar a âncora visual.");
     const kinds = new Set(references.docs.map((item) => String(item.get("kind") || "")));
-    if (!kinds.has("visual") || !kinds.has("voice")) throw new RouteAuthError(409, "references_missing", "Anexe ao menos uma referência visual e uma amostra de voz.");
+    if (!kinds.has("visual")) throw new RouteAuthError(409, "references_missing", "Anexe ao menos uma referência visual para criar a âncora de identidade.");
     let connectionSnap = connectionId ? await adminDb.collection("tool_connections").doc(connectionId).get() : null;
     if (!connectionSnap) {
       const connections = await adminDb.collection("tool_connections").limit(200).get();
