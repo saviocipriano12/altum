@@ -73,14 +73,29 @@ async function prepareLatestConversationCreative(input: { tenantId: string; conv
     capability,
     tenantId: input.tenantId,
   });
+  const anchoredIdentityVideo = format === "video"
+    && profile?.exists
+    && profile.get("status") === "anchored"
+    && String(profile.get("anchorProviderId") || "").toLowerCase() === "higgsfield"
+    && typeof profile.get("anchorReferenceId") === "string";
+  const anchoredConnectionId = anchoredIdentityVideo && typeof profile?.get("anchorConnectionId") === "string" ? String(profile.get("anchorConnectionId")) : "";
+  // For an automatic request, an anchored identity wins over the generic
+  // quality score. A reference created in one Higgsfield account must be used
+  // by that same connection, otherwise the provider cannot resolve it.
+  const identityRoute = anchoredIdentityVideo
+    ? mediaPlan.routes.find((item) => (anchoredConnectionId ? item.connection.id === anchoredConnectionId : item.connection.providerId.toLowerCase() === "higgsfield")) || null
+    : null;
   const route = explicitConnection
     ? mediaPlan.routes.find((item) => item.connection.id === explicitConnection.id) || null
-    : mediaPlan.routes[0] || null;
+    : identityRoute || mediaPlan.routes[0] || null;
   if (!route) return { projectId: project.id, missionId: String(projectRow.missionId || "") || null, unavailable: true as const };
-  const modelRoute = routeCreativeModel({ providerId: route.connection.providerId, format, prompt });
+  const identityVideoChain = anchoredIdentityVideo && route.connection.id === identityRoute?.connection.id;
+  const renderCapability = identityVideoChain ? "GENERATE_IMAGE" : capability;
+  const renderFormat = identityVideoChain ? "image" : format;
+  const modelRoute = routeCreativeModel({ providerId: route.connection.providerId, format: renderFormat, prompt });
   const jobRef = adminDb.collection("creative_jobs").doc(); const approvalRef = adminDb.collection("agent_approvals").doc(); const batch = adminDb.batch();
-  batch.set(jobRef, { tenantId: input.tenantId, projectId: project.id, outputId: output.id, providerId: route.connection.providerId, providerName: route.connection.displayName || route.connection.providerId, connectionId: route.connection.id, fallbackConnectionIds: mediaPlan.routes.filter((item) => item.connection.id !== route.connection.id).map((item) => item.connection.id), capability, format, prompt: prompt.slice(0, 12_000), creativeModel: modelRoute.model, routePurpose: modelRoute.purpose, routingReason: modelRoute.reason, connectionRoutingReason: explicitConnection ? `Conexão escolhida explicitamente na conversa. ${route.reason}` : route.reason, identityProfileId: identityProfileId || null, identityReferenceId: profile?.exists && String(profile.get("anchorProviderId") || "") === route.connection.providerId ? profile.get("anchorReferenceId") || null : null, status: "pending_approval", approvalId: approvalRef.id, createdBy: input.actor.uid, createdByName: input.actor.name, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-  batch.set(approvalRef, { tenantId: input.tenantId, missionId: String(projectRow.missionId || "") || null, creativeJobId: jobRef.id, title: `Autorizar geração de ${format === "video" ? "vídeo" : format === "audio" ? "áudio" : "imagem"}`, summary: `A Altum preparou “${String(output.get("title") || "este conceito")}". ${route.reason} A geração pode consumir créditos e ficará disponível para revisão antes de qualquer publicação.`, actionType: "creative_media_generation", risk: "medium", status: "pending", createdBy: input.actor.uid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+  batch.set(jobRef, { tenantId: input.tenantId, projectId: project.id, outputId: output.id, providerId: route.connection.providerId, providerName: route.connection.displayName || route.connection.providerId, connectionId: route.connection.id, fallbackConnectionIds: identityVideoChain ? [] : mediaPlan.routes.filter((item) => item.connection.id !== route.connection.id).map((item) => item.connection.id), capability: renderCapability, format: renderFormat, prompt: prompt.slice(0, 12_000), creativeModel: modelRoute.model, routePurpose: modelRoute.purpose, routingReason: modelRoute.reason, connectionRoutingReason: identityVideoChain ? `A rota Higgsfield da sua âncora foi preservada para manter a identidade visual. ${route.reason}` : explicitConnection ? `Conexão escolhida explicitamente na conversa. ${route.reason}` : route.reason, identityProfileId: identityProfileId || null, identityReferenceId: identityVideoChain ? profile!.get("anchorReferenceId") : null, pipeline: identityVideoChain ? { kind: "identity_image_to_video", finalFormat: "video", nextModel: "bytedance/seedance-2.5/image-to-video", autoStartApproved: true } : null, status: "pending_approval", approvalId: approvalRef.id, createdBy: input.actor.uid, createdByName: input.actor.name, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+  batch.set(approvalRef, { tenantId: input.tenantId, missionId: String(projectRow.missionId || "") || null, creativeJobId: jobRef.id, title: `Autorizar geração de ${format === "video" ? "vídeo" : format === "audio" ? "áudio" : "imagem"}`, summary: `A Altum preparou “${String(output.get("title") || "este conceito")}". ${identityVideoChain ? "Ela criará primeiro uma imagem-base fiel à identidade e depois a animará em vídeo, dentro desta mesma autorização. " : ""}${route.reason} A geração pode consumir créditos e ficará disponível para revisão antes de qualquer publicação.`, actionType: "creative_media_generation", risk: "medium", status: "pending", createdBy: input.actor.uid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   batch.set(adminDb.collection("audit_logs").doc(), { type: "creative_media_requested_from_conversation", actorId: input.actor.uid, actorName: input.actor.name, tenantId: input.tenantId, projectId: project.id, outputId: output.id, creativeJobId: jobRef.id, createdAt: FieldValue.serverTimestamp() });
   await batch.commit();
   return { projectId: project.id, missionId: String(projectRow.missionId || "") || null, outputTitle: String(output.get("title") || "este conceito"), format, jobId: jobRef.id, approvalId: approvalRef.id, unavailable: false as const };

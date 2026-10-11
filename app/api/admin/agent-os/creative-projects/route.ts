@@ -68,6 +68,8 @@ async function queueMedia(body: unknown, actor: { uid: string; name: string }) {
   const identityProfileSnap = identityProfileId ? await adminDb.collection("avatar_profiles").doc(identityProfileId).get() : null;
   const identityProfile = identityProfileSnap && identityProfileSnap.exists && String(identityProfileSnap.get("tenantId") || "") === String(project.tenantId || "") ? identityProfileSnap.data()! : null;
   const preferredIdentityProvider = identityProfile?.status === "anchored" && typeof identityProfile.anchorProviderId === "string" && typeof identityProfile.anchorReferenceId === "string" ? identityProfile.anchorProviderId : null;
+  const anchoredIdentityVideo = format === "video" && preferredIdentityProvider === "higgsfield";
+  const anchoredConnectionId = anchoredIdentityVideo && typeof identityProfile?.anchorConnectionId === "string" ? identityProfile.anchorConnectionId : "";
   let connectionId = input.connectionId || "";
   let connectionRoutingReason: string | null = null;
   let fallbackConnectionIds: string[] = [];
@@ -82,7 +84,12 @@ async function queueMedia(body: unknown, actor: { uid: string; name: string }) {
       }),
     };
     const automaticPlan = planMediaConnections(routingInput);
-    const automaticRoute = automaticPlan.routes[0] || null;
+    // A person/character reference belongs to the Higgsfield connection that
+    // created it. For automatic video requests, preserve that route rather
+    // than letting a generic quality score silently discard the identity.
+    const automaticRoute = anchoredIdentityVideo
+      ? automaticPlan.routes.find((item) => anchoredConnectionId ? item.connection.id === anchoredConnectionId : item.connection.providerId.toLowerCase() === "higgsfield") || null
+      : automaticPlan.routes[0] || null;
     if (!automaticRoute) throw new RouteAuthError(409, "media_connection_missing", `Conecte uma IA que gere ${mediaLabel(format)} antes de continuar.`);
     connectionId = automaticRoute.connection.id;
     connectionRoutingReason = automaticRoute.reason;
@@ -99,8 +106,8 @@ async function queueMedia(body: unknown, actor: { uid: string; name: string }) {
   const capabilities = Array.isArray(connection.capabilities) ? connection.capabilities.map(String) : [];
   if (!capabilities.includes(capability)) throw new RouteAuthError(409, "capability_missing", `A conexão escolhida não oferece ${capability === "GENERATE_VIDEO" ? "geração de vídeo" : capability === "GENERATE_AUDIO" ? "geração de áudio" : "geração de imagem"}.`);
   if (!hasCreativeProviderContract(connection, capability)) throw new RouteAuthError(409, "media_adapter_unavailable", "A Altum ainda não possui um adaptador de execução certificado para esta conexão. Escolha uma rota compatível ou deixe a Altum decidir automaticamente.");
-  const identityReferenceId = identityProfile && String(connection.providerId || "") === String(identityProfile.anchorProviderId || "") && typeof identityProfile.anchorReferenceId === "string" ? identityProfile.anchorReferenceId : null;
-  const identityVideoChain = format === "video" && String(connection.providerId || "").toLowerCase() === "higgsfield" && Boolean(identityReferenceId);
+  const identityReferenceId = identityProfile && String(connection.providerId || "").toLowerCase() === String(identityProfile.anchorProviderId || "").toLowerCase() && (!anchoredConnectionId || connectionId === anchoredConnectionId) && typeof identityProfile.anchorReferenceId === "string" ? identityProfile.anchorReferenceId : null;
+  const identityVideoChain = anchoredIdentityVideo && String(connection.providerId || "").toLowerCase() === "higgsfield" && Boolean(identityReferenceId);
   if (identityVideoChain && !capabilities.includes("GENERATE_IMAGE")) throw new RouteAuthError(409, "identity_frame_capability_missing", "Para criar este vídeo com identidade persistente, esta conexão também precisa permitir geração de imagem.");
   const route = routeCreativeModel({ providerId: String(connection.providerId || ""), format: identityVideoChain ? "image" : format, prompt: String(output.content || project.brief || "") });
   const jobRef = adminDb.collection("creative_jobs").doc(); const approvalRef = adminDb.collection("agent_approvals").doc(); const runRef = adminDb.collection("agent_runs").doc();
