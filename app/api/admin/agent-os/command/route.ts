@@ -311,9 +311,9 @@ export async function POST(request: Request) {
         const copied = await copyCommandAttachmentsToAvatar({ avatarId: profile.id, tenantId, actorId: actor.uid, attachments: attachmentSnapshots.map((snapshot) => ({ id: snapshot.id, filename: String(snapshot.get("filename") || "Anexo"), contentType: String(snapshot.get("contentType") || "").toLowerCase(), size: Number(snapshot.get("size") || 0), storagePath: String(snapshot.get("storagePath") || "") })) });
         const name = String(profile.get("displayName") || "este avatar");
         const answer = copied.ready
-          ? `Adicionei a foto e a amostra de voz privadas a “${name}”. As referências estão completas; quando quiser, diga “prepare a âncora de ${name}”.`
+          ? `Adicionei a referência visual privada a “${name}”. Quando quiser, diga “prepare a âncora de ${name}”. A voz continua opcional e só será usada em uma etapa específica autorizada.`
           : copied.visual
-            ? `Adicionei a referência visual a “${name}”. Agora envie uma amostra de voz privada nesta conversa.`
+            ? `Adicionei a referência visual a “${name}”. Já posso preparar a âncora visual quando você pedir. Uma amostra de voz é opcional e fica para a etapa de voz autorizada.`
             : copied.voice
               ? `Adicionei a amostra de voz privada a “${name}”. Agora envie uma foto de referência nesta conversa.`
               : `Não consegui identificar uma foto ou áudio compatível para “${name}”. Envie imagem JPG, PNG ou WebP e áudio MP3, M4A, WAV, WebM ou OGG.`;
@@ -337,8 +337,8 @@ export async function POST(request: Request) {
         const row = profile.data();
         const references = await profile.ref.collection("references").select("kind").get();
         const kinds = new Set(references.docs.map((item) => String(item.get("kind") || "")));
-        if (!kinds.has("visual") || !kinds.has("voice")) {
-          answer = `Para criar a âncora de “${String(row.displayName || "este avatar")}”, ainda preciso de ${!kinds.has("visual") && !kinds.has("voice") ? "uma foto de referência e uma amostra de voz" : !kinds.has("visual") ? "uma foto de referência" : "uma amostra de voz"}. Envie os arquivos aqui na conversa e peça novamente.`;
+        if (!kinds.has("visual")) {
+          answer = `Para criar a âncora visual de “${String(row.displayName || "este avatar")}”, ainda preciso de uma foto de referência. Envie-a aqui na conversa e peça novamente. A voz é opcional e será tratada em uma etapa separada.`;
         } else {
           const existingJobs = await adminDb.collection("avatar_jobs").where("avatarId", "==", profile.id).limit(30).get();
           const activeJob = existingJobs.docs.some((item) => item.get("stage") === "anchor" && ["pending_approval", "approved_for_anchor", "running"].includes(String(item.get("status") || "")));

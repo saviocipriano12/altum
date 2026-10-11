@@ -52,7 +52,7 @@ export async function POST(request: Request, context: { params: Promise<{ avatar
     await saveFirebaseStorageFileWithFallback({ path, data: Buffer.from(await uploaded.arrayBuffer()), options: { resumable: false, metadata: { contentType, cacheControl: "private,max-age=0,no-store", metadata: { tenantId: String(profile.tenantId || ""), avatarId, uploadedBy: actor.uid, purpose: "avatar_reference", referenceKind: kind, originalName: filename } } } });
     const existing = await ref.collection("references").select("kind").get();
     const kinds = new Set(existing.docs.map((item) => String(item.get("kind") || ""))); kinds.add(kind);
-    const status = kinds.has("visual") && kinds.has("voice") ? "anchor_required" : "reference_incomplete";
+    const status = kinds.has("visual") ? "anchor_required" : "reference_incomplete";
     const referenceRef = ref.collection("references").doc();
     const batch = adminDb.batch();
     batch.set(referenceRef, { tenantId: profile.tenantId, avatarId, kind, filename, contentType, size: uploaded.size, storagePath: path, createdBy: actor.uid, createdAt: FieldValue.serverTimestamp() });
