@@ -54,11 +54,22 @@ Tornar a Altum encontrável e compreensível para quem procura operação comerc
 
 A separação inicial reduziu os scripts de entrada da home para 814.489 bytes decodificados (aproximadamente 46% a menos; estimativa Brotli de 221.759 bytes). A acessibilidade passou a 100, com SEO básico e boas práticas em 100. Porém, o primeiro ensaio móvel após a mudança marcou desempenho 61 e LCP 7,6 s. O relatório ainda mostrou autenticação Firebase na cadeia crítica. Esse resultado motivou o ajuste adicional de carregamento e prefetch; a redução do pacote inicial não foi tratada como prova de melhoria da LCP.
 
-## Próxima etapa com Search Console e Bing
+### Validação final publicada
+
+- PageSpeed móvel: desempenho **89**, acessibilidade **100**, boas práticas **100** e SEO básico **100**. FCP **2,1 s**, LCP **3,2 s**, TBT **0 ms**, CLS **0**. Relatório: https://pagespeed.web.dev/analysis/https-altumia-com-br/qejf0z5oa3?form_factor=mobile
+- Em relação ao ensaio inicial, a LCP passou de 6,9 s para 3,2 s. Ainda supera a meta de 2,5 s; a próxima otimização deve examinar CSS que bloqueia renderização e o tamanho do DOM. O resultado é de laboratório, sujeito a variação, e não confirma aprovação dos Core Web Vitals de usuários reais.
+- Scripts iniciais: 810.624 bytes decodificados, aproximadamente **46,5% a menos**, com estimativa Brotli local de 220.898 bytes. Nenhum iframe Firebase na home em navegação nova; o acesso pelo botão Entrar carregou a área do cliente com a sessão existente.
+- Build de produção e TypeScript concluídos na Vercel; lint dos arquivos alterados e quatro testes de contratos passaram. O build local não concluiu por limitação de recursos da máquina.
+- Pré-publicação validou home, preços, três soluções, novo artigo, sitemap e robots. Nenhum erro encontrado em canonical, indexabilidade ou schemas esperados nessa cobertura. A auditoria anterior ao último ajuste de prefetch também não encontrou links internos quebrados nas 83 páginas consultadas.
+- As quatro novas páginas foram conferidas em 390 px: um H1, canonical correto e sem transbordamento horizontal.
+- Google Search Console confirmou o recebimento de `https://altumia.com.br/sitemap.xml`, com 83 URLs no XML publicado. Recebimento não significa indexação das 83 páginas.
+- A publicação preservou a versão de backend que estava em produção no momento da promoção; não foram incluídas alterações locais alheias ao site público.
+
+## Continuidade com Search Console e Bing
 
 O proprietário autenticou a sessão do Google Search Console durante a revisão. Os dados de desempenho e indexação foram consultados e registrados apenas nos artefatos locais de QA; eles não são enviados ao site ou ao repositório.
 
-1. Selecionar a propriedade correta e enviar `https://altumia.com.br/sitemap.xml`.
+1. Envio do sitemap concluído na propriedade correta. Acompanhar processamento e descoberta das novas páginas, sem repetir envios diariamente.
 2. Inspecionar home, plataforma, preços e as três soluções: canonical declarado/selecionado, possibilidade de indexação e HTML renderizado.
 3. Investigar URLs excluídas, erros de rastreamento e eventuais ações manuais antes de pedir novas indexações.
 4. Exportar 28 dias e 90 dias de consultas, páginas, países e dispositivos. Registrar data do deploy como marco de comparação.
