@@ -42,6 +42,7 @@ export function PublicHeader() {
     <header ref={header} className={styles.header}>
       <div className={styles.headerInner}>
         <Link
+          prefetch={false}
           href="/"
           className={styles.brand}
           aria-label="Altum — página inicial"
@@ -54,6 +55,7 @@ export function PublicHeader() {
         <nav className={styles.desktopNav} aria-label="Navegação principal">
           {navigation.map(([label, href]) => (
             <Link
+              prefetch={false}
               key={href}
               href={href}
               aria-current={active(href) ? "page" : undefined}
@@ -63,10 +65,11 @@ export function PublicHeader() {
           ))}
         </nav>
         <div className={styles.headerActions}>
-          <Link href="/cliente/login" className={styles.login}>
+          <Link href="/cliente/login" prefetch={false} className={styles.login}>
             Entrar
           </Link>
           <Link
+            prefetch={false}
             href="/contato?interest=demonstracao"
             className={`${styles.button} ${styles.headerCta}`}
           >
@@ -116,6 +119,7 @@ export function PublicHeader() {
           <nav aria-label="Navegação móvel">
             {navigation.map(([label, href]) => (
               <Link
+                prefetch={false}
                 key={href}
                 href={href}
                 onClick={close}
@@ -125,12 +129,13 @@ export function PublicHeader() {
                 <ArrowRight size={19} />
               </Link>
             ))}
-            <Link href="/sobre" onClick={close}>
+            <Link href="/sobre" prefetch={false} onClick={close}>
               Sobre a Altum
               <ArrowRight size={19} />
             </Link>
           </nav>
           <Link
+            prefetch={false}
             href="/contato?interest=demonstracao"
             onClick={close}
             className={styles.button}
@@ -141,6 +146,7 @@ export function PublicHeader() {
             </span>
           </Link>
           <Link
+            prefetch={false}
             href="/cliente/login"
             onClick={close}
             className={styles.mobileLogin}

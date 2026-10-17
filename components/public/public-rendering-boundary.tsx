@@ -1,11 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import dynamic from "next/dynamic";
-
-const AuthProvider = dynamic(() =>
-  import("@/context/AuthContext").then((module) => module.AuthProvider),
+const AuthProvider = lazy(() =>
+  import("@/context/AuthContext").then((module) => ({
+    default: module.AuthProvider,
+  })),
 );
 
 // Marketing pages must render on the server without waiting for Firebase.
@@ -48,5 +48,11 @@ const publicRoots = new Set([
 export function PublicRenderingBoundary({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isPublic = pathname === "/" || publicRoots.has(pathname.split("/")[1]);
-  return isPublic ? children : <AuthProvider>{children}</AuthProvider>;
+  return isPublic ? (
+    children
+  ) : (
+    <Suspense fallback={null}>
+      <AuthProvider>{children}</AuthProvider>
+    </Suspense>
+  );
 }

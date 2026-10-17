@@ -182,6 +182,7 @@ export function PricingPlans({ comparison = false }: { comparison?: boolean }) {
                 : ""}
             </p>
             <Link
+              prefetch={false}
               href={
                 plan.checkoutEnabled && plan.trialEligible
                   ? `/cadastro?plan=${plan.id}`

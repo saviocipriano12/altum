@@ -115,7 +115,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
               <nav key={group.title} aria-label={group.title}>
                 <h3>{group.title}</h3>
                 {group.links.map(([label, href]) => (
-                  <Link href={href} key={href}>
+                  <Link href={href} key={href} prefetch={false}>
                     {label}
                   </Link>
                 ))}

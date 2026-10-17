@@ -43,11 +43,16 @@ Tornar a Altum encontrável e compreensível para quem procura operação comerc
 ### Desempenho e experiência
 
 - Autenticação carregada sob demanda nas rotas que a utilizam, em vez de trazer seu SDK na entrada do site público. O mecanismo da área privada permanece o mesmo.
+- Pré-carregamento automático desativado nos links de navegação pública e de acesso/cadastro. Isso evita antecipar o download e a inicialização de autenticação do painel apenas porque o link de entrada está visível.
 - Logo do cabeçalho tem prioridade de carregamento. Imagens de artigos abaixo da dobra continuam com carregamento adiado e dimensões definidas.
 - Capas SVG existentes têm cerca de 1 KiB; recomprimi-las não seria um ganho relevante. Fotos em componentes Next Image já usam tamanhos responsivos e otimização de imagem.
 - Cache explícito para capas e imagens públicas, sem alterar cache de API, service worker ou páginas privadas.
 - Corrigidos contraste do avatar de exemplo e salto inicial de títulos na demonstração.
 - A validação de código não substitui ensaio Lighthouse nem os dados reais de LCP, INP e CLS.
+
+### Medição intermediária
+
+A separação inicial reduziu os scripts de entrada da home para 814.489 bytes decodificados (aproximadamente 46% a menos; estimativa Brotli de 221.759 bytes). A acessibilidade passou a 100, com SEO básico e boas práticas em 100. Porém, o primeiro ensaio móvel após a mudança marcou desempenho 61 e LCP 7,6 s. O relatório ainda mostrou autenticação Firebase na cadeia crítica. Esse resultado motivou o ajuste adicional de carregamento e prefetch; a redução do pacote inicial não foi tratada como prova de melhoria da LCP.
 
 ## Próxima etapa com Search Console e Bing
 

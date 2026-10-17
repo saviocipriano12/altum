@@ -18,7 +18,7 @@ export function PublicSolutionPage({ solution }: { solution: PublicSolution }) {
           { name: solution.name, href: `/solucoes/${solution.slug}` },
         ]}
       />
-      <section className={styles.section}>
+      <section className={`${styles.section} ${styles.discoverySection}`}>
         <div className={styles.container}>
           <h2>Como o fluxo funciona na prática</h2>
           <div className={styles.valueGrid}>
@@ -34,7 +34,9 @@ export function PublicSolutionPage({ solution }: { solution: PublicSolution }) {
           </div>
         </div>
       </section>
-      <section className={`${styles.section} ${styles.plansSection}`}>
+      <section
+        className={`${styles.section} ${styles.plansSection} ${styles.discoverySection}`}
+      >
         <div className={styles.container}>
           <h2>O que conferir na demonstração</h2>
           <ul className={styles.checkList}>
@@ -60,7 +62,7 @@ export function PublicSolutionPage({ solution }: { solution: PublicSolution }) {
         </div>
       </section>
       <PublicFaq items={solution.questions} />
-      <section className={styles.section}>
+      <section className={`${styles.section} ${styles.discoverySection}`}>
         <div className={styles.container}>
           <h2>Outros cenários de uso</h2>
           <div className={styles.actions}>

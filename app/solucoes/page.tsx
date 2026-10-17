@@ -40,7 +40,7 @@ export default function SolucoesPage() {
           { name: "Soluções", href: "/solucoes" },
         ]}
       />
-      <section className={styles.section}>
+      <section className={`${styles.section} ${styles.discoverySection}`}>
         <div className={styles.container}>
           <h2>Escolha o seu cenário</h2>
           <div className={styles.valueGrid}>
