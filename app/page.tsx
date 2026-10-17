@@ -11,9 +11,5 @@ export const metadata: Metadata = buildMarketingMetadata({
 });
 
 export default function HomePage() {
-  return (
-    <main className="font-[family-name:var(--font-altum-public)] text-[#f9f9f9]">
-      <ProductHome />
-    </main>
-  );
+  return <ProductHome />;
 }

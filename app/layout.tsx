@@ -3,7 +3,7 @@ import "./brand.css";
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
 import { Suspense } from "react";
-import { AuthProvider } from "@/context/AuthContext";
+import { PublicRenderingBoundary } from "@/components/public/public-rendering-boundary";
 import {
   buildOrganizationSchema,
   buildSoftwareApplicationSchema,
@@ -104,7 +104,7 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <TrackingScripts />
         </Suspense>
-        <AuthProvider>{children}</AuthProvider>
+        <PublicRenderingBoundary>{children}</PublicRenderingBoundary>
       </body>
     </html>
   );

@@ -1,103 +1,134 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ArrowRight, Menu } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { PublicHeader } from "./shared/public-header";
+import { PublicMotion } from "./shared/public-motion";
+import styles from "./public-site.module.css";
+import { ALTUM_SOCIAL_PROFILES } from "@/lib/public-social";
 
-const navigation = [
-  { href: "/", label: "Início" },
-  { href: "/plataforma", label: "Plataforma" },
-  { href: "/integracoes", label: "Integrações" },
-  { href: "/precos", label: "Planos" },
-  { href: "/implantacao", label: "Implantação" },
-  { href: "/blog", label: "Conteúdos" },
-] as const;
-
-const productLinks = [
-  { href: "/crm", label: "Sistema de CRM" },
-  { href: "/pipeline", label: "Pipeline de vendas" },
-  { href: "/inbox", label: "Inbox comercial" },
-  { href: "/follow-up", label: "Follow-up de vendas" },
-  { href: "/automacoes", label: "Automações" },
-  { href: "/ia-para-vendas", label: "IA para vendas" },
-] as const;
-
-const whatsappLinks = [
-  { href: "/crm-para-whatsapp", label: "CRM para WhatsApp" },
-  { href: "/chatbot-whatsapp", label: "Chatbot WhatsApp" },
-  { href: "/ia-no-whatsapp", label: "Automação WhatsApp" },
-  { href: "/qualificacao-de-leads-com-ia", label: "Qualificação de leads com IA" },
+const footerGroups = [
+  {
+    title: "Plataforma",
+    links: [
+      ["Conversas", "/inbox"],
+      ["Clientes e oportunidades", "/crm"],
+      ["Funil de vendas", "/pipeline"],
+      ["IA e automações", "/ia-para-vendas"],
+      ["Integrações", "/integracoes"],
+    ],
+  },
+  {
+    title: "Para sua empresa",
+    links: [
+      ["Soluções", "/solucoes"],
+      ["Planos", "/precos"],
+      ["Portfólio", "/portfolio"],
+      ["Implantação", "/implantacao"],
+      ["Conteúdos", "/blog"],
+      ["Agência Altum", "/agencia"],
+    ],
+  },
+  {
+    title: "Vamos conversar",
+    links: [
+      ["Sobre a Altum", "/sobre"],
+      ["Agendar demonstração", "/contato?interest=demonstracao"],
+      ["Falar com a Altum", "/contato"],
+      ["Entrar na plataforma", "/cliente/login"],
+    ],
+  },
 ] as const;
 
 export function SiteShell({ children }: { children: ReactNode }) {
   return (
-    <div data-altum-surface="public" className="min-h-screen overflow-x-hidden text-[#f9f9f9]">
-      <header className="sticky top-0 z-50 border-b border-white/8 bg-[#07111f]/88 backdrop-blur-2xl">
-        <div className="mx-auto flex h-[72px] w-full max-w-[1280px] items-center justify-between gap-6 px-5 lg:px-8">
-          <Link href="/" className="flex items-center gap-3" aria-label="Altum — página inicial">
-            <Image src="/logo-a.png" alt="Logo Altum" width={44} height={44} className="h-11 w-11 rounded-xl" />
+    <div
+      data-altum-surface="public"
+      data-public-redesign="true"
+      className={styles.site}
+    >
+      <a className={styles.skipLink} href="#conteudo">
+        Ir para o conteúdo
+      </a>
+      <PublicHeader />
+      <PublicMotion className={styles.content}>{children}</PublicMotion>
+      <footer className={styles.footer}>
+        <div className={styles.container}>
+          <div className={styles.footerTop}>
             <div>
-              <p className="text-sm font-extrabold tracking-[0.2em] text-white">ALTUM</p>
-              <p className="hidden text-[10px] font-semibold uppercase tracking-[0.12em] text-white/34 sm:block">Operação comercial com IA</p>
+              <p className={styles.eyebrow}>O próximo passo da sua operação</p>
+              <h2>
+                Mais conexão.
+                <br />
+                Mais espaço para crescer.
+              </h2>
             </div>
-          </Link>
-
-          <nav className="hidden items-center gap-1 lg:flex" aria-label="Navegação principal">
-            {navigation.map((item) => (
-              <Link key={item.href} href={item.href} className="rounded-lg px-3 py-2 text-sm font-semibold text-white/50 transition hover:bg-white/5 hover:text-white">{item.label}</Link>
+            <Link
+              href="/contato?interest=demonstracao"
+              className={styles.button}
+            >
+              Conhecer a Altum{" "}
+              <span>
+                <ArrowRight size={18} />
+              </span>
+            </Link>
+          </div>
+          <div className={styles.footerGrid}>
+            <div>
+              <Link
+                href="/"
+                className={styles.brand}
+                aria-label="Altum — início"
+              >
+                <Image src="/logo-a.png" alt="" width={36} height={36} />
+                <span>
+                  altum<span className={styles.brandDot}>.</span>
+                </span>
+              </Link>
+              <p className={styles.footerDescription}>
+                Conversas, clientes e inteligência.
+                <br />
+                Uma operação comercial conectada.
+              </p>
+              <div
+                className={styles.footerSocials}
+                aria-label="Redes sociais da Altum"
+              >
+                {ALTUM_SOCIAL_PROFILES.map((profile) => (
+                  <a
+                    key={profile.id}
+                    href={profile.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${profile.name} da Altum — abre em nova aba`}
+                  >
+                    {profile.name} <ArrowRight size={12} aria-hidden="true" />
+                  </a>
+                ))}
+              </div>
+            </div>
+            {footerGroups.map((group) => (
+              <nav key={group.title} aria-label={group.title}>
+                <h3>{group.title}</h3>
+                {group.links.map(([label, href]) => (
+                  <Link href={href} key={href}>
+                    {label}
+                  </Link>
+                ))}
+              </nav>
             ))}
-          </nav>
-
-          <div className="hidden items-center gap-2 md:flex">
-            <Link href="/cliente/login" className="rounded-lg px-4 py-2.5 text-sm font-bold text-white/62 transition hover:text-white">Entrar</Link>
-            <Link href="/contato?interest=demonstracao" className="inline-flex items-center gap-2 rounded-xl bg-[var(--altum-primary)] px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-[var(--altum-primary-hover)]">Agendar demonstração <ArrowRight className="h-4 w-4" /></Link>
           </div>
-
-          <Link href="/cliente/login" className="ml-auto mr-2 inline-flex min-h-11 items-center rounded-xl bg-blue-600 px-4 text-sm font-bold text-white md:hidden">Entrar</Link>
-          <details className="relative md:hidden">
-            <summary className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-lg border border-white/10 text-white" aria-label="Abrir menu"><Menu className="h-5 w-5" /></summary>
-            <div className="absolute right-0 top-13 max-h-[75dvh] w-[min(18rem,calc(100vw-3rem))] overflow-y-auto rounded-2xl border border-white/10 bg-[var(--altum-public-panel)] p-3 shadow-2xl">
-              <Link href="/cliente/login" className="block rounded-lg px-3 py-3 text-sm font-bold text-white">Entrar na minha conta</Link>
-              {navigation.map((item) => <Link key={item.href} href={item.href} className="block rounded-lg px-3 py-3 text-sm font-semibold text-white/62 hover:bg-white/5 hover:text-white">{item.label}</Link>)}
-              <Link href="/sobre" className="block rounded-lg px-3 py-3 text-sm font-semibold text-white/62 hover:bg-white/5 hover:text-white">Sobre a Altum</Link>
-              <Link href="/contato?interest=demonstracao" className="mt-2 flex items-center justify-between rounded-xl bg-[var(--altum-primary)] px-4 py-3 text-sm font-bold text-white">Agendar demonstração <ArrowRight className="h-4 w-4" /></Link>
-            </div>
-          </details>
-        </div>
-      </header>
-
-      <main>{children}</main>
-
-      <footer className="border-t border-white/8 bg-[#081525] px-5 py-12 lg:px-8">
-        <div className="mx-auto grid max-w-[1280px] gap-10 sm:grid-cols-2 lg:grid-cols-[1.25fr_0.8fr_0.9fr_0.8fr]">
-          <div>
-            <div className="flex items-center gap-3"><Image src="/logo-a.png" alt="Logo Altum" width={44} height={44} className="h-11 w-11 rounded-xl" /><span className="font-extrabold tracking-[0.2em] text-white">ALTUM</span></div>
-            <p className="mt-4 max-w-md text-sm leading-6 text-white/38">Plataforma de vendas e relacionamento com IA que conecta conversas, CRM, pipeline, automações e próxima ação em uma única operação.</p>
-            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-3 text-sm font-semibold"><Link href="/sobre" className="text-white/52 hover:text-white">Sobre a Altum</Link><Link href="/integracoes" className="text-white/52 hover:text-white">Integrações</Link><Link href="/precos" className="text-white/52 hover:text-white">Planos</Link></div>
-          </div>
-
-          <div>
-            <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-white/26">Produto</p>
-            <div className="mt-4 space-y-3 text-sm font-semibold text-white/44">{productLinks.map((item) => <div key={item.href}><Link href={item.href} className="hover:text-white">{item.label}</Link></div>)}</div>
-          </div>
-
-          <div>
-            <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-white/26">WhatsApp e IA</p>
-            <div className="mt-4 space-y-3 text-sm font-semibold text-white/44">{whatsappLinks.map((item) => <div key={item.href}><Link href={item.href} className="hover:text-white">{item.label}</Link></div>)}</div>
-          </div>
-
-          <div>
-            <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-white/26">Conteúdo e contato</p>
-            <div className="mt-4 space-y-3 text-sm font-semibold text-white/44">
-              <div><Link href="/blog" className="hover:text-white">Conteúdos</Link></div>
-              <div><Link href="/blog/funil-de-vendas" className="hover:text-white">Funil de vendas</Link></div>
-              <div><Link href="/blog/pipeline-de-vendas-b2b-com-previsibilidade" className="hover:text-white">Guia de pipeline</Link></div>
-              <div><Link href="/blog/estrutura-de-follow-up-comercial" className="hover:text-white">Guia de follow-up</Link></div>
-              <div><Link href="/contato" className="hover:text-white">Falar com a Altum</Link></div>
-              <div><Link href="/politica-de-privacidade" className="hover:text-white">Privacidade</Link></div>
+          <div className={styles.footerBottom}>
+            <p>
+              © {new Date().getFullYear()} Altum. Todos os direitos reservados.
+            </p>
+            <div>
+              <Link href="/politica-de-privacidade">Privacidade</Link>
+              <Link href="/termos">Termos de uso</Link>
+              <Link href="/exclusao-de-dados">Seus dados</Link>
             </div>
           </div>
         </div>
-        <div className="mx-auto mt-10 max-w-[1280px] border-t border-white/8 pt-6 text-xs text-white/22">© 2026 Altum. Todos os direitos reservados.</div>
       </footer>
     </div>
   );

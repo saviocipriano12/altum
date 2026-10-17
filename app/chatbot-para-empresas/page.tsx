@@ -3,7 +3,11 @@ import Link from "next/link";
 import { buildFaqSchema, toJsonLdScript } from "@/lib/schema";
 import { SiteShell } from "@/components/public/site-shell";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
+const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br"
+)
+  .trim()
+  .replace(/\/+$/, "");
 
 export const metadata: Metadata = {
   title: "Chatbot para empresas: estrategia, operacao e ROI",
@@ -46,77 +50,123 @@ export default function ChatbotParaEmpresasPage() {
 
   return (
     <SiteShell>
-    <div className="px-6 py-20 text-white">
-      <article className="mx-auto w-full max-w-4xl">
-        <p className="mb-3 text-sm uppercase tracking-[0.15em] text-[#60A5FA]">Pilar 3</p>
-        <h1 className="mb-5 text-4xl font-bold leading-tight md:text-5xl">Chatbot para empresas com foco em resultado comercial</h1>
-        <p className="mb-10 text-lg text-white/75">
-          Chatbot nao e apenas atendimento automatico. Em operacoes de vendas, ele atua como camada de qualificacao, distribuicao e ganho de velocidade
-          do funil. O valor real aparece quando existe estrategia de negocio por tras.
-        </p>
-
-        <section className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
-          <h2 className="mb-4 text-2xl font-semibold">Desenho de chatbot que gera impacto</h2>
-          <h3 className="mb-2 text-xl font-semibold">Objetivo unico por fluxo</h3>
-          <p className="mb-4 text-white/80">
-            Cada fluxo deve ter uma meta: qualificar, agendar, recuperar ou nutrir. Misturar objetivos em uma conversa reduz taxa de conclusao.
+      <div className="px-6 py-20 text-[#292a2d]">
+        <article className="mx-auto w-full max-w-4xl">
+          <p className="mb-3 text-sm uppercase tracking-[0.15em] text-[#60A5FA]">
+            Pilar 3
           </p>
-          <h3 className="mb-2 text-xl font-semibold">Escalonamento inteligente para humano</h3>
-          <p className="text-white/80">
-            O chatbot precisa saber a hora de transferir para o time. Isso evita friccao quando o lead esta pronto para negociar.
+          <h1 className="mb-5 text-4xl font-bold leading-tight md:text-5xl">
+            Chatbot para empresas com foco em resultado comercial
+          </h1>
+          <p className="mb-10 text-lg text-slate-600">
+            Chatbot nao e apenas atendimento automatico. Em operacoes de vendas,
+            ele atua como camada de qualificacao, distribuicao e ganho de
+            velocidade do funil. O valor real aparece quando existe estrategia
+            de negocio por tras.
           </p>
-        </section>
 
-        <section className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
-          <h2 className="mb-4 text-2xl font-semibold">Operacao e melhoria continua</h2>
-          <h3 className="mb-2 text-xl font-semibold">Revisao semanal de conversas</h3>
-          <p className="mb-4 text-white/80">
-            A equipe analisa objecoes, pontos de abandono e padroes de resposta para ajustar roteiro e perguntas criticas.
-          </p>
-          <h3 className="mb-2 text-xl font-semibold">Ajuste por dados do funil</h3>
-          <p className="text-white/80">
-            Melhorias devem ser guiadas por taxa de qualificacao e avance de etapa. Assim o chatbot evolui com o negocio, nao por opiniao.
-          </p>
-        </section>
+          <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
+            <h2 className="mb-4 text-2xl font-semibold">
+              Desenho de chatbot que gera impacto
+            </h2>
+            <h3 className="mb-2 text-xl font-semibold">
+              Objetivo unico por fluxo
+            </h3>
+            <p className="mb-4 text-slate-600">
+              Cada fluxo deve ter uma meta: qualificar, agendar, recuperar ou
+              nutrir. Misturar objetivos em uma conversa reduz taxa de
+              conclusao.
+            </p>
+            <h3 className="mb-2 text-xl font-semibold">
+              Escalonamento inteligente para humano
+            </h3>
+            <p className="text-slate-600">
+              O chatbot precisa saber a hora de transferir para o time. Isso
+              evita friccao quando o lead esta pronto para negociar.
+            </p>
+          </section>
 
-        <section className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
-          <h2 className="mb-4 text-2xl font-semibold">Conteudos e paginas relacionadas</h2>
-          <div className="mb-4 flex flex-wrap gap-3">
-            <Link href="/solucoes/consultorias-empresariais" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#60A5FA]">
-              Solucao para consultorias
-            </Link>
-            <Link href="/solucoes/contabilidades" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#60A5FA]">
-              Solucao para contabilidades
-            </Link>
-            <Link href="/solucoes/equipamentos-industriais" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#60A5FA]">
-              Solucao para industria
-            </Link>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/blog/engenharia-de-vendas-high-ticket" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#60A5FA]">
-              Post: engenharia de vendas high-ticket
-            </Link>
-            <Link href="/blog/ia-qualificacao-leads" className="rounded-full border border-white/20 px-4 py-2 text-sm hover:border-[#60A5FA]">
-              Post: IA para qualificacao de leads
-            </Link>
-          </div>
-        </section>
+          <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
+            <h2 className="mb-4 text-2xl font-semibold">
+              Operacao e melhoria continua
+            </h2>
+            <h3 className="mb-2 text-xl font-semibold">
+              Revisao semanal de conversas
+            </h3>
+            <p className="mb-4 text-slate-600">
+              A equipe analisa objecoes, pontos de abandono e padroes de
+              resposta para ajustar roteiro e perguntas criticas.
+            </p>
+            <h3 className="mb-2 text-xl font-semibold">
+              Ajuste por dados do funil
+            </h3>
+            <p className="text-slate-600">
+              Melhorias devem ser guiadas por taxa de qualificacao e avance de
+              etapa. Assim o chatbot evolui com o negocio, nao por opiniao.
+            </p>
+          </section>
 
-        <section className="rounded-2xl border border-[#60A5FA]/30 bg-[#60A5FA]/10 p-6 md:p-8">
-          <h2 className="mb-4 text-2xl font-semibold">FAQ</h2>
-          <div className="space-y-4">
-            {faqs.map((faq) => (
-              <div key={faq.q} className="rounded-xl border border-white/15 bg-black/20 p-4">
-                <h3 className="mb-2 text-lg font-semibold">{faq.q}</h3>
-                <p className="text-white/80">{faq.a}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      </article>
+          <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
+            <h2 className="mb-4 text-2xl font-semibold">
+              Conteudos e paginas relacionadas
+            </h2>
+            <div className="mb-4 flex flex-wrap gap-3">
+              <Link
+                href="/solucoes/consultorias-empresariais"
+                className="rounded-full border border-slate-200 px-4 py-2 text-sm hover:border-[#60A5FA]"
+              >
+                Solucao para consultorias
+              </Link>
+              <Link
+                href="/solucoes/contabilidades"
+                className="rounded-full border border-slate-200 px-4 py-2 text-sm hover:border-[#60A5FA]"
+              >
+                Solucao para contabilidades
+              </Link>
+              <Link
+                href="/solucoes/equipamentos-industriais"
+                className="rounded-full border border-slate-200 px-4 py-2 text-sm hover:border-[#60A5FA]"
+              >
+                Solucao para industria
+              </Link>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/blog/engenharia-de-vendas-high-ticket"
+                className="rounded-full border border-slate-200 px-4 py-2 text-sm hover:border-[#60A5FA]"
+              >
+                Post: engenharia de vendas high-ticket
+              </Link>
+              <Link
+                href="/blog/ia-qualificacao-leads"
+                className="rounded-full border border-slate-200 px-4 py-2 text-sm hover:border-[#60A5FA]"
+              >
+                Post: IA para qualificacao de leads
+              </Link>
+            </div>
+          </section>
 
-      <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(faqSchema)} />
-    </div>
+          <section className="rounded-2xl border border-[#60A5FA]/30 bg-[#60A5FA]/10 p-6 md:p-8">
+            <h2 className="mb-4 text-2xl font-semibold">FAQ</h2>
+            <div className="space-y-4">
+              {faqs.map((faq) => (
+                <div
+                  key={faq.q}
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                >
+                  <h3 className="mb-2 text-lg font-semibold">{faq.q}</h3>
+                  <p className="text-slate-600">{faq.a}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </article>
+
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={toJsonLdScript(faqSchema)}
+        />
+      </div>
     </SiteShell>
   );
 }

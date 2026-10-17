@@ -1,10 +1,12 @@
 "use client";
+import styles from "./public-site.module.css";
 
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
 import { trackLeadGenerated } from "@/components/analytics/track-event";
+import { PUBLIC_PLATFORM_PLANS } from "@/lib/public-platform-plans";
 import {
   publicCommercialInterests,
   getCommercialInterest,
@@ -18,15 +20,23 @@ type SubmitState = {
 
 export function CommercialContactForm() {
   const searchParams = useSearchParams();
+  const requestedPlan = PUBLIC_PLATFORM_PLANS.find(
+    (plan) =>
+      plan.id === (searchParams.get("plan") || searchParams.get("interest")),
+  );
   const [interestId, setInterestId] = useState(() =>
-    normalizeCommercialInterest(searchParams.get("interest"))
+    normalizeCommercialInterest(
+      requestedPlan ? "plataforma" : searchParams.get("interest"),
+    ),
   );
   const [contact, setContact] = useState({
     nome: "",
     email: "",
     telefone: "",
     empresa: "",
-    mensagem: "",
+    mensagem: requestedPlan
+      ? `Tenho interesse no plano ${requestedPlan.name}. Gostaria de conversar sobre a proposta e a implantação.`
+      : "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -45,11 +55,20 @@ export function CommercialContactForm() {
       landingPage: typeof window !== "undefined" ? window.location.href : "",
       referrer: typeof document !== "undefined" ? document.referrer : "",
     }),
-    [searchParams]
+    [searchParams],
   );
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (
+      !contact.nome.trim() ||
+      (!contact.telefone.trim() && !contact.email.trim())
+    ) {
+      setSubmitError(
+        "Informe seu nome e um canal de retorno: WhatsApp ou e-mail.",
+      );
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
 
@@ -97,169 +116,156 @@ export function CommercialContactForm() {
   }
 
   return (
-    <section id="formulario-comercial" className="bg-black px-5 pb-24 lg:px-8 lg:pb-32">
-      <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="rounded-[32px] border border-white/10 bg-[#0b0b0b] p-6">
-          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#60a5fa]">Sua próxima etapa</p>
-          <h2 className="mt-4 text-4xl font-extrabold tracking-[-0.05em] text-white">
-            Vamos entender onde a Altum pode gerar mais avanço.
-          </h2>
-          <p className="mt-4 text-lg leading-8 text-white/68">
-            Escolha o assunto e conte brevemente como sua operação funciona. A conversa já começa com contexto para irmos direto ao que importa.
-          </p>
-
-          <div className="mt-8 space-y-3">
-            {publicCommercialInterests.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setInterestId(item.id)}
-                className={`w-full rounded-[22px] border px-4 py-4 text-left transition ${
-                  item.id === interest.id
-                    ? "border-[#2563eb]/45 bg-[#2563eb]/12"
-                    : "border-white/10 bg-white/[0.03] hover:border-white/20"
-                }`}
-              >
-                <p className="text-sm font-semibold text-white">{item.title}</p>
-                <p className="mt-2 text-sm leading-6 text-white/62">{item.description}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-[32px] border border-white/10 bg-[#0b0b0b] p-6 shadow-[0_40px_120px_-48px_rgba(37,99,235,0.34)]">
-          {!submitState ? (
-            <>
-              <div className="flex items-start justify-between gap-4">
+    <section id="formulario-comercial" className={styles.section}>
+      <div className={styles.container}>
+        <div className={styles.contactGrid}>
+          <div className={styles.contactIntro}>
+            <p className={styles.eyebrow}>Uma conversa com contexto</p>
+            <h2>Vamos entender o seu próximo passo.</h2>
+            <p>
+              Escolha o assunto e conte o que sua empresa precisa. Nossa equipe
+              recebe o contexto para conversar sobre as possibilidades.
+            </p>
+            <ol>
+              <li>
+                <span>01</span>
                 <div>
-                  <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#60a5fa]">Contato comercial</p>
-                  <h3 className="mt-4 text-3xl font-extrabold tracking-[-0.04em] text-white">{interest.title}</h3>
+                  <strong>Sua rotina primeiro</strong>
+                  <p>Canais, equipe e como a venda acontece hoje.</p>
                 </div>
-                <div className="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/62">
-                  {interest.shortLabel}
+              </li>
+              <li>
+                <span>02</span>
+                <div>
+                  <strong>Uma demonstração aplicada</strong>
+                  <p>O produto conectado ao seu cenário.</p>
                 </div>
-              </div>
-
-              <p className="mt-4 text-sm leading-7 text-white/64">{interest.description}</p>
-
-              <form onSubmit={handleSubmit} className="mt-7 grid gap-3">
-                <Field
-                  label="Nome"
-                  value={contact.nome}
-                  onChange={(value) => setContact((current) => ({ ...current, nome: value }))}
-                  placeholder="Seu nome"
-                  required
-                />
-                <Field
-                  label="WhatsApp"
-                  value={contact.telefone}
-                  onChange={(value) => setContact((current) => ({ ...current, telefone: value }))}
-                  placeholder="+55 11 99999-9999"
-                />
-                <Field
-                  label="Email"
-                  type="email"
-                  value={contact.email}
-                  onChange={(value) => setContact((current) => ({ ...current, email: value }))}
-                  placeholder="voce@empresa.com"
-                />
-                <Field
-                  label="Empresa"
-                  value={contact.empresa}
-                  onChange={(value) => setContact((current) => ({ ...current, empresa: value }))}
-                  placeholder="Nome da empresa"
-                />
-                <label className="block space-y-2">
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55">Contexto</span>
-                  <textarea
-                    value={contact.mensagem}
+              </li>
+              <li>
+                <span>03</span>
+                <div>
+                  <strong>Condições claras</strong>
+                  <p>Plano, implantação e próximos passos.</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+          <div className={styles.contactForm}>
+            {!submitState ? (
+              <>
+                <label className={styles.formField}>
+                  <span>Sobre o que vamos conversar?</span>
+                  <select
+                    value={interestId}
                     onChange={(event) =>
-                      setContact((current) => ({ ...current, mensagem: event.target.value }))
+                      setInterestId(
+                        normalizeCommercialInterest(event.target.value),
+                      )
                     }
-                    placeholder="Conte objetivo, urgencia, ticket ou onde esta travando hoje."
-                    className="min-h-[140px] w-full rounded-[20px] border border-white/12 bg-black/30 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35"
-                  />
+                  >
+                    {publicCommercialInterests.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.title}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-
-                <p className="text-xs leading-6 text-white/44">
-                  Informe pelo menos nome e um canal de retorno: WhatsApp ou email.
-                </p>
-
-                <div className="flex flex-wrap gap-3 pt-2">
+                <p className={styles.formContext}>{interest.description}</p>
+                <form onSubmit={handleSubmit} className={styles.formFields}>
+                  {(
+                    [
+                      ["nome", "Nome", "Seu nome", "text"],
+                      ["empresa", "Empresa", "Nome da empresa", "text"],
+                      ["telefone", "WhatsApp", "+55 11 99999-9999", "tel"],
+                      ["email", "E-mail", "voce@empresa.com", "email"],
+                    ] as const
+                  ).map(([key, label, placeholder, type]) => (
+                    <label className={styles.formField} key={key}>
+                      <span>
+                        {label}
+                        {key === "nome" ? " *" : ""}
+                      </span>
+                      <input
+                        name={key}
+                        type={type}
+                        value={contact[key]}
+                        autoComplete={
+                          key === "nome"
+                            ? "name"
+                            : key === "empresa"
+                              ? "organization"
+                              : key === "telefone"
+                                ? "tel"
+                                : "email"
+                        }
+                        placeholder={placeholder}
+                        required={key === "nome"}
+                        onChange={(event) =>
+                          setContact((current) => ({
+                            ...current,
+                            [key]: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                  <label
+                    className={styles.formField}
+                    style={{ gridColumn: "1 / -1" }}
+                  >
+                    <span>Como podemos ajudar?</span>
+                    <textarea
+                      name="mensagem"
+                      value={contact.mensagem}
+                      onChange={(event) =>
+                        setContact((current) => ({
+                          ...current,
+                          mensagem: event.target.value,
+                        }))
+                      }
+                      placeholder="Conte como sua empresa vende e o que gostaria de melhorar."
+                    />
+                  </label>
+                  <p className={styles.formHint}>
+                    Informe seu nome e pelo menos um canal de retorno: WhatsApp
+                    ou e-mail. Ao enviar, os dados serão usados para responder
+                    ao seu contato.{" "}
+                    <Link href="/politica-de-privacidade">
+                      Leia a política de privacidade.
+                    </Link>
+                  </p>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#2563eb] px-6 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#1d4ed8] disabled:opacity-60"
+                    className={styles.button}
                   >
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    Enviar contato
+                    {submitting ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Send size={16} />
+                    )}{" "}
+                    {submitting ? "Enviando…" : "Enviar contato"}
                   </button>
-                </div>
-              </form>
-
-              {submitError ? (
-                <div className="mt-4 rounded-[20px] border border-rose-300/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-                  {submitError}
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200">
-                <CheckCircle2 className="h-4 w-4" />
-                Lead salvo no CRM
-              </div>
-              <h3 className="mt-5 text-4xl font-semibold text-white">{interest.title}</h3>
-              <p className="mt-4 max-w-2xl text-lg leading-8 text-white/70">{submitState.message}</p>
-
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link
-                  href="/precos"
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3.5 text-sm font-semibold text-white/90 transition hover:border-white/30 hover:text-white"
-                >
-                  Ver planos
+                  {submitError && (
+                    <p className={styles.formError} role="alert">
+                      {submitError}
+                    </p>
+                  )}
+                </form>
+              </>
+            ) : (
+              <div role="status" className={styles.formSuccess}>
+                <CheckCircle2 size={36} />
+                <h2>Recebemos seu contato.</h2>
+                <p>{submitState.message}</p>
+                <Link href="/precos" className={styles.textLink}>
+                  Conhecer os planos
                 </Link>
               </div>
-
-              <p className="mt-6 text-sm text-white/52">
-                Lead ID: <span className="font-mono text-white/78">{submitState.leadId}</span>
-              </p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </section>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  required = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  type?: "text" | "email";
-  required?: boolean;
-}) {
-  return (
-    <label className="block space-y-2">
-      <span className="text-xs uppercase tracking-[0.14em] text-white/55">
-        {label}
-        {required ? " *" : ""}
-      </span>
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="w-full rounded-[20px] border border-white/12 bg-black/30 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35"
-      />
-    </label>
   );
 }

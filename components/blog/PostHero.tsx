@@ -1,5 +1,5 @@
 import Image from "next/image";
-
+import styles from "@/components/public/public-site.module.css";
 type PostHeroProps = {
   title: string;
   description: string;
@@ -9,14 +9,13 @@ type PostHeroProps = {
   readingTime: string;
   author: string;
 };
-
-const formatDate = (value: string): string =>
+const formatDate = (value: string) =>
   new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "UTC",
   }).format(new Date(value));
-
 export default function PostHero({
   title,
   description,
@@ -27,29 +26,23 @@ export default function PostHero({
   author,
 }: PostHeroProps) {
   return (
-    <header className="mx-auto mb-12 w-full max-w-5xl">
-      <div className="mb-6 overflow-hidden rounded-3xl border border-white/10">
-        <Image
-          src={coverImage}
-          alt={title}
-          width={1600}
-          height={900}
-          className="h-auto w-full object-cover"
-          priority
-        />
-      </div>
-
-      <div className="mb-4 flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.12em] text-white/70">
-        <span className="rounded-full border border-[#F56E0F]/50 bg-[#F56E0F]/10 px-3 py-1 font-semibold text-[#F56E0F]">
-          {category}
-        </span>
-        <span>{formatDate(date)}</span>
+    <header className={styles.articleHero}>
+      <p className={styles.eyebrow}>{category}</p>
+      <h1>{title}</h1>
+      <p className={styles.heroDescription}>{description}</p>
+      <div className={styles.articleMeta}>
+        <span>Por {author}</span>
+        <time dateTime={date}>{formatDate(date)}</time>
         <span>{readingTime}</span>
-        <span>por {author}</span>
       </div>
-
-      <h1 className="mb-4 text-4xl font-bold leading-tight md:text-5xl">{title}</h1>
-      <p className="max-w-3xl text-lg leading-8 text-white/80">{description}</p>
+      <Image
+        src={coverImage}
+        alt={title}
+        width={1600}
+        height={900}
+        sizes="(min-width: 1100px) 1050px, 94vw"
+        preload
+      />
     </header>
   );
 }

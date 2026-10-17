@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
-import { DEFAULT_PLATFORM_PLANS } from "@/lib/platform-plans";
+import { PUBLIC_PLATFORM_PLANS } from "@/lib/public-platform-plans";
 
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://altumia.com.br").trim().replace(/\/+$/, "");
+export const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL || "https://altumia.com.br"
+)
+  .trim()
+  .replace(/\/+$/, "");
 export const ALTUM_PHONE = "5531972545430";
 export const ALTUM_EMAIL = "contato@altum.ag";
 
@@ -29,7 +33,7 @@ export function buildMarketingMetadata(input: {
       url,
       images: [
         {
-          url: "/logo-a.png",
+          url: "/images/altum-social-card.png",
           width: 1200,
           height: 630,
           alt: "ALTUM",
@@ -40,7 +44,7 @@ export function buildMarketingMetadata(input: {
       card: "summary_large_image",
       title: `${input.title} | ALTUM`,
       description: input.description,
-      images: ["/logo-a.png"],
+      images: ["/images/altum-social-card.png"],
     },
   };
 }
@@ -54,9 +58,18 @@ export const publicNav = [
 ] as const;
 
 export const heroMetrics = [
-  { value: "1 operacao", label: "Conversas, CRM, agenda, campanhas e IA no mesmo fluxo." },
-  { value: "R$ 397", label: "Entrada mensal para organizar a operacao comercial." },
-  { value: "2 motores", label: "SaaS recorrente e servicos de implantacao ou growth." },
+  {
+    value: "1 operacao",
+    label: "Conversas, CRM, agenda, campanhas e IA no mesmo fluxo.",
+  },
+  {
+    value: "R$ 697",
+    label: "Entrada mensal para organizar a operacao comercial.",
+  },
+  {
+    value: "2 motores",
+    label: "SaaS recorrente e servicos de implantacao ou growth.",
+  },
 ] as const;
 
 export const publicPathways = [
@@ -66,7 +79,11 @@ export const publicPathways = [
     eyebrow: "SaaS",
     description:
       "Operacao comercial com IA para responder conversas, acompanhar oportunidades, organizar agenda e transformar atendimento em receita.",
-    bullets: ["Conversas e CRM integrados", "Agenda e follow-up", "IA aplicada ao dia a dia"],
+    bullets: [
+      "Conversas e CRM integrados",
+      "Agenda e follow-up",
+      "IA aplicada ao dia a dia",
+    ],
   },
   {
     title: "Altum Agencia",
@@ -74,7 +91,11 @@ export const publicPathways = [
     eyebrow: "Execucao",
     description:
       "Sites, landing pages, lojas virtuais, trafego pago e automacao para empresas que precisam estruturar demanda e posicionamento.",
-    bullets: ["Presenca digital premium", "Campanhas e captacao", "Projetos pontuais e contratos"],
+    bullets: [
+      "Presenca digital premium",
+      "Campanhas e captacao",
+      "Projetos pontuais e contratos",
+    ],
   },
   {
     title: "Estrutura Digital",
@@ -82,87 +103,111 @@ export const publicPathways = [
     eyebrow: "Oferta completa",
     description:
       "Combinacao de pagina, trafego, WhatsApp, IA, plataforma e implantacao para gerar caixa mais rapido e organizar a operacao desde o inicio.",
-    bullets: ["Maior ticket", "Maior percepcao de valor", "Ideal para cliente com urgencia"],
+    bullets: [
+      "Maior ticket",
+      "Maior percepcao de valor",
+      "Ideal para cliente com urgencia",
+    ],
   },
 ] as const;
 
 export const platformModules = [
   {
     title: "Conversas",
-    description: "WhatsApp, site e Instagram em uma fila clara para responder rapido e com contexto.",
+    description:
+      "WhatsApp, site e Instagram em uma fila clara para responder rapido e com contexto.",
   },
   {
     title: "Clientes & Oportunidades",
-    description: "Leads, pipeline, propostas e proximas acoes com visao comercial mais limpa.",
+    description:
+      "Leads, pipeline, propostas e proximas acoes com visao comercial mais limpa.",
   },
   {
     title: "Agenda",
-    description: "Reunioes, retornos, follow-ups e confirmacoes sem depender de planilha solta.",
+    description:
+      "Reunioes, retornos, follow-ups e confirmacoes sem depender de planilha solta.",
   },
   {
     title: "Campanhas",
-    description: "Midia, captacao e origem dos leads ligadas ao funil e ao resultado comercial.",
+    description:
+      "Midia, captacao e origem dos leads ligadas ao funil e ao resultado comercial.",
   },
   {
     title: "Relatorios",
-    description: "Indicadores de operacao e receita com linguagem de negocio e decisao.",
+    description:
+      "Indicadores de operacao e receita com linguagem de negocio e decisao.",
   },
   {
     title: "Assistente Altum",
-    description: "IA para responder, sugerir proximos passos, organizar contexto e apoiar o time.",
+    description:
+      "IA para responder, sugerir proximos passos, organizar contexto e apoiar o time.",
   },
 ] as const;
 
 export const agencyServices = [
   {
     title: "Landing pages",
-    description: "Paginas para conversao, diagnostico, captacao e oferta direta.",
+    description:
+      "Paginas para conversao, diagnostico, captacao e oferta direta.",
   },
   {
     title: "Sites de vendas",
-    description: "Estruturas premium para reforcar valor percebido, clareza comercial e autoridade.",
+    description:
+      "Estruturas premium para reforcar valor percebido, clareza comercial e autoridade.",
   },
   {
     title: "Lojas virtuais",
-    description: "Operacao visual e comercial para vender com mais consistencia e percepcao.",
+    description:
+      "Operacao visual e comercial para vender com mais consistencia e percepcao.",
   },
   {
     title: "Trafego pago",
-    description: "Google e Meta conectados a CRM, WhatsApp e leitura de resultado.",
+    description:
+      "Google e Meta conectados a CRM, WhatsApp e leitura de resultado.",
   },
   {
     title: "Automacao no WhatsApp",
-    description: "Fluxos de contato, triagem e follow-up para nao perder lead quente.",
+    description:
+      "Fluxos de contato, triagem e follow-up para nao perder lead quente.",
   },
   {
     title: "Consultoria e implantacao",
-    description: "Ajuste de processo, stack comercial e ativacao da operacao digital.",
+    description:
+      "Ajuste de processo, stack comercial e ativacao da operacao digital.",
   },
 ] as const;
 
 export const implementationSteps = [
   {
     title: "Quiz estrategico",
-    description: "Leitura rapida do momento atual, dos gargalos de atendimento e do objetivo de receita.",
+    description:
+      "Leitura rapida do momento atual, dos gargalos de atendimento e do objetivo de receita.",
   },
   {
     title: "Estrutura inicial",
-    description: "Configuracao de equipe, funil, produtos, agenda, canais e rotas principais.",
+    description:
+      "Configuracao de equipe, funil, produtos, agenda, canais e rotas principais.",
   },
   {
     title: "Ativacao da IA",
-    description: "Base de conhecimento, linguagem comercial, regras de handoff e proximas acoes.",
+    description:
+      "Base de conhecimento, linguagem comercial, regras de handoff e proximas acoes.",
   },
   {
     title: "Go-live acompanhado",
-    description: "Operacao assistida, revisao de primeiros leads e correcoes de ritmo.",
+    description:
+      "Operacao assistida, revisao de primeiros leads e correcoes de ritmo.",
   },
 ];
 
-export const platformPlans = DEFAULT_PLATFORM_PLANS.map((plan) => ({
+export const platformPlans = PUBLIC_PLATFORM_PLANS.map((plan) => ({
   name: plan.name,
   price: plan.monthlyPrice
-    ? plan.monthlyPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
+    ? plan.monthlyPrice.toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        maximumFractionDigits: 0,
+      })
     : "Sob consulta",
   period: plan.monthlyPrice ? "/mes" : "",
   description: plan.description,
@@ -172,7 +217,7 @@ export const platformPlans = DEFAULT_PLATFORM_PLANS.map((plan) => ({
 
 export const pricingPolicies = [
   "Plataforma com recorrencia em checkout seguro hospedado pelo Asaas.",
-  "Configuracao opcional no Essencial e implantacao assistida nos planos Operacao e Escala.",
+  "Implantacao assistida nos planos Operacao e Escala; Estrutura Assistida sob proposta.",
   "Custos oficiais de mensagens e consumos adicionais sao cobrados separadamente.",
   "Cliente de agencia pode receber acesso incluso por liberacao do admin.",
   "Condicoes promocionais sao registradas por contrato e nao alteram o catalogo publico.",
@@ -187,12 +232,12 @@ export const faqItems = [
   {
     question: "Posso contratar so a plataforma?",
     answer:
-      "Sim. O cliente pode entrar apenas no SaaS e decidir depois se quer implantacao ou algum servico de growth.",
+      "Sim. A plataforma pode ser contratada sem os servicos de growth. Nos planos Operacao e Escala, a implantacao assistida faz parte das condicoes de entrada e e apresentada separadamente da mensalidade.",
   },
   {
     question: "Preciso contratar setup?",
     answer:
-      "No Essencial, a configuracao guiada e opcional. Nos planos Operacao e Escala, a implantacao assistida e obrigatoria para configurar canais, IA e automacoes com seguranca.",
+      "Nos planos Operacao e Escala, a implantacao assistida e obrigatoria para configurar canais, IA e automacoes com seguranca. Na Estrutura Assistida, o escopo e definido em proposta.",
   },
   {
     question: "O teste libera todos os recursos?",
@@ -215,16 +260,19 @@ export const caseStudies = [
   {
     title: "Clube Farm",
     image: "/portfolio/clubefarm-1600.jpg",
-    description: "Projeto visual e comercial para uma marca que precisava vender melhor e parecer maior.",
+    description:
+      "Projeto visual e comercial para uma marca que precisava vender melhor e parecer maior.",
   },
   {
     title: "Pedraum",
     image: "/portfolio/pedraum-1600.jpg",
-    description: "Estrutura digital com foco em clareza de oferta e fluxo de operacao mais forte.",
+    description:
+      "Estrutura digital com foco em clareza de oferta e fluxo de operacao mais forte.",
   },
   {
     title: "Vitta Prime",
     image: "/portfolio/vittaprime-1600.jpg",
-    description: "Landing page orientada a captacao qualificada e narrativa mais premium.",
+    description:
+      "Landing page orientada a captacao qualificada e narrativa mais premium.",
   },
 ] as const;

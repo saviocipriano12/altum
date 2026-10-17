@@ -8,12 +8,14 @@ type QuoteProps = {
 
 export default function Quote({ children, author, role }: QuoteProps) {
   return (
-    <figure className="my-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6 md:p-8">
-      <blockquote className="mb-4 border-l-2 border-[#F56E0F] pl-4 text-xl leading-9 text-white/90">{children}</blockquote>
+    <figure className="my-10 rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
+      <blockquote className="mb-4 border-l-2 border-[#ed782f] pl-4 text-xl leading-9 text-slate-600">
+        {children}
+      </blockquote>
       {author ? (
-        <figcaption className="text-sm text-white/70">
+        <figcaption className="text-sm text-slate-600">
           {author}
-          {role ? <span className="text-white/50"> · {role}</span> : null}
+          {role ? <span className="text-slate-600"> · {role}</span> : null}
         </figcaption>
       ) : null}
     </figure>

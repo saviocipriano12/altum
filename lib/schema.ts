@@ -1,3 +1,5 @@
+import { ALTUM_SOCIAL_PROFILES } from "@/lib/public-social";
+
 export type FaqItem = {
   question: string;
   answer: string;
@@ -43,9 +45,11 @@ type ItemListSchemaOptions = {
 
 const DEFAULT_SITE_URL = "https://altumia.com.br";
 
-const normalizeSiteUrl = (value: string): string => value.trim().replace(/\/+$/, "");
+const normalizeSiteUrl = (value: string): string =>
+  value.trim().replace(/\/+$/, "");
 
-export const getSiteUrl = (): string => normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_SITE_URL);
+export const getSiteUrl = (): string =>
+  normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_SITE_URL);
 
 export const toAbsoluteUrl = (siteUrl: string, pathOrUrl: string): string => {
   if (!pathOrUrl) return siteUrl;
@@ -56,6 +60,7 @@ export const toAbsoluteUrl = (siteUrl: string, pathOrUrl: string): string => {
 export const getSocialLinksFromEnv = (): string[] => {
   const siteUrl = getSiteUrl();
   const maybeLinks = [
+    ...ALTUM_SOCIAL_PROFILES.map((profile) => profile.href),
     process.env.NEXT_PUBLIC_LINKEDIN_URL,
     process.env.NEXT_PUBLIC_INSTAGRAM_URL,
     process.env.NEXT_PUBLIC_YOUTUBE_URL,
@@ -63,10 +68,18 @@ export const getSocialLinksFromEnv = (): string[] => {
     process.env.NEXT_PUBLIC_X_URL,
   ];
 
-  return maybeLinks.filter((item): item is string => Boolean(item && /^https?:\/\//i.test(item) && item !== siteUrl));
+  return [
+    ...new Set(
+      maybeLinks.filter((item): item is string =>
+        Boolean(item && /^https?:\/\//i.test(item) && item !== siteUrl),
+      ),
+    ),
+  ];
 };
 
-export const buildOrganizationSchema = (options: OrganizationSchemaOptions = {}) => {
+export const buildOrganizationSchema = (
+  options: OrganizationSchemaOptions = {},
+) => {
   const siteUrl = normalizeSiteUrl(options.siteUrl ?? getSiteUrl());
   const socialLinks = options.socialLinks ?? [];
   const logoPath = options.logoPath?.trim();
@@ -108,7 +121,9 @@ export const buildWebSiteSchema = (options: WebSiteSchemaOptions = {}) => {
   };
 };
 
-export const buildSoftwareApplicationSchema = (options: SoftwareApplicationSchemaOptions = {}) => {
+export const buildSoftwareApplicationSchema = (
+  options: SoftwareApplicationSchemaOptions = {},
+) => {
   const siteUrl = normalizeSiteUrl(options.siteUrl ?? getSiteUrl());
   return {
     "@context": "https://schema.org",
