@@ -21,6 +21,7 @@ import {
   getRelatedPosts,
 } from "@/lib/blog";
 import { buildArticleSchema, toJsonLdScript } from "@/lib/schema";
+import { PublicBreadcrumbs } from "@/components/public/shared/public-breadcrumbs";
 
 type PageProps = {
   params: Promise<{
@@ -63,6 +64,7 @@ export async function generateMetadata({
       description: post.meta.description,
       url: canonical,
       publishedTime: post.meta.date,
+      modifiedTime: post.meta.updatedAt || post.meta.date,
       authors: [post.meta.author],
       tags: post.meta.tags,
       images: [
@@ -199,6 +201,8 @@ export default async function BlogPostPage({ params }: PageProps) {
     description: post.meta.description,
     url: canonical,
     datePublished: post.meta.date,
+    dateModified: post.meta.updatedAt || post.meta.date,
+    imageUrl: `${SITE_URL}/blog/${post.meta.slug}/opengraph-image`,
     authorName: post.meta.author,
     publisherName: "ALTUM",
     publisherUrl: SITE_URL,
@@ -208,6 +212,13 @@ export default async function BlogPostPage({ params }: PageProps) {
   return (
     <SiteShell>
       <div className="min-h-screen bg-[#faf9f7] px-6 py-16 text-[#292a2d]">
+        <PublicBreadcrumbs
+          items={[
+            { name: "Início", href: "/" },
+            { name: "Guias e conteúdos", href: "/blog" },
+            { name: post.meta.title, href: `/blog/${post.meta.slug}` },
+          ]}
+        />
         <PostHero
           title={post.meta.title}
           description={post.meta.description}

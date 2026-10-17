@@ -46,7 +46,7 @@ export function PublicHeader() {
           className={styles.brand}
           aria-label="Altum — página inicial"
         >
-          <Image src="/logo-a.png" alt="" width={34} height={34} />
+          <Image src="/logo-a.png" alt="" width={34} height={34} preload />
           <span>
             altum<span className={styles.brandDot}>.</span>
           </span>

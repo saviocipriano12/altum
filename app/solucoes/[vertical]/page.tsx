@@ -4,6 +4,9 @@ import { SiteShell } from "@/components/public/site-shell";
 import { notFound } from "next/navigation";
 import { buildFaqSchema, toJsonLdScript } from "@/lib/schema";
 import { getVerticalBySlug, verticals } from "@/lib/verticals";
+import { getPublicSolution, publicSolutions } from "@/lib/public-solutions";
+import { PublicSolutionPage } from "@/components/public/public-solution";
+import { buildMarketingMetadata } from "@/lib/public-site";
 
 type PageProps = {
   params: Promise<{
@@ -26,13 +29,25 @@ const PILLAR_LINKS = [
 export const dynamicParams = false;
 
 export async function generateStaticParams() {
-  return verticals.map((vertical) => ({ vertical: vertical.slug }));
+  return [
+    ...new Set([
+      ...verticals.map((item) => item.slug),
+      ...publicSolutions.map((item) => item.slug),
+    ]),
+  ].map((vertical) => ({ vertical }));
 }
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { vertical } = await params;
+  const solution = getPublicSolution(vertical);
+  if (solution)
+    return buildMarketingMetadata({
+      title: solution.title,
+      description: solution.description,
+      path: `/solucoes/${solution.slug}`,
+    });
   const page = getVerticalBySlug(vertical);
   if (!page) return {};
 
@@ -63,6 +78,8 @@ export async function generateMetadata({
 
 export default async function VerticalPage({ params }: PageProps) {
   const { vertical } = await params;
+  const solution = getPublicSolution(vertical);
+  if (solution) return <PublicSolutionPage solution={solution} />;
   const page = getVerticalBySlug(vertical);
   if (!page) notFound();
 

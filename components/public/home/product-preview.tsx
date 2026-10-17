@@ -154,8 +154,10 @@ export function ProductPreview({
   const stage = scene >= 2 ? "Proposta" : "Qualificação";
   return (
     <div ref={root} className={styles.faithfulDemo}>
+      <h2 className="sr-only">Demonstração ilustrativa da plataforma Altum</h2>
       <div
         className={styles.preview}
+        data-nosnippet
         data-product-view={view}
         role="img"
         aria-label={`Demonstração ilustrativa: ${titles[view]}, baseada na interface da Altum, com dados fictícios`}

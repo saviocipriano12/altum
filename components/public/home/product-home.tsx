@@ -60,9 +60,9 @@ export async function ProductHome() {
             <em>Vendas que avançam.</em>
           </h1>
           <p className={styles.heroDescription}>
-            Reúna atendimento, clientes e oportunidades em uma plataforma. Com
-            inteligência artificial para sua equipe responder melhor e saber o
-            próximo passo.
+            CRM com IA para reunir WhatsApp, Instagram, clientes e
+            oportunidades. Sua equipe atende com contexto, acompanha as vendas e
+            organiza o próximo passo em uma só plataforma.
           </p>
           <div className={styles.actions}>
             <Link

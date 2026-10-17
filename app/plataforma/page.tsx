@@ -22,7 +22,7 @@ import { ProductPreview } from "@/components/public/home/product-preview";
 import { buildMarketingMetadata } from "@/lib/public-site";
 import styles from "@/components/public/public-site.module.css";
 export const metadata: Metadata = buildMarketingMetadata({
-  title: "Plataforma",
+  title: "Plataforma de atendimento, CRM e vendas com IA",
   description:
     "Conheça a Altum: conversas, clientes, oportunidades, agenda, campanhas, e-commerce, relatórios e IA em uma operação comercial conectada.",
   path: "/plataforma",
@@ -69,6 +69,10 @@ export default function PlataformaPage() {
   return (
     <SiteShell>
       <PublicHero
+        breadcrumbs={[
+          { name: "Início", href: "/" },
+          { name: "Plataforma", href: "/plataforma" },
+        ]}
         eyebrow="Altum Plataforma"
         title={
           <>

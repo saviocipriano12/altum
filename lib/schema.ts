@@ -34,6 +34,7 @@ type ArticleSchemaOptions = {
   publisherName?: string;
   publisherUrl?: string;
   publisherLogoPath?: string;
+  imageUrl?: string;
 };
 
 type ItemListSchemaOptions = {
@@ -89,6 +90,7 @@ export const buildOrganizationSchema = (
     "@type": "Organization",
     "@id": `${siteUrl}/#organization`,
     name: options.name ?? "ALTUM",
+    alternateName: "Altum — operação comercial com IA",
     url: siteUrl,
   };
 
@@ -135,6 +137,15 @@ export const buildSoftwareApplicationSchema = (
       options.description ??
       "Plataforma de vendas e relacionamento com CRM, inbox, pipeline, automacoes, follow-up e inteligencia artificial.",
     applicationCategory: "BusinessApplication",
+    applicationSubCategory: "CRM e atendimento com inteligência artificial",
+    featureList: [
+      "Atendimento por canais conectados",
+      "Clientes e oportunidades",
+      "Funil de vendas",
+      "Agenda e follow-up",
+      "Assistente de inteligência artificial",
+    ],
+    image: `${siteUrl}/images/altum-social-card.png`,
     operatingSystem: "Web",
     inLanguage: "pt-BR",
     publisher: {
@@ -154,15 +165,27 @@ export const buildArticleSchema = (options: ArticleSchemaOptions) => {
     dateModified: options.dateModified ?? options.datePublished,
     mainEntityOfPage: options.url,
     author: {
-      "@type": "Person",
+      "@type": /^(?:(?:time|equipe)\s+)?altum$/i.test(
+        options.authorName ?? "Time ALTUM",
+      )
+        ? "Organization"
+        : "Person",
       name: options.authorName ?? "Time ALTUM",
+      ...(/^(?:(?:time|equipe)\s+)?altum$/i.test(options.authorName ?? "Time ALTUM")
+        ? { url: `${publisherUrl}/sobre` }
+        : {}),
     },
     publisher: {
       "@type": "Organization",
+      "@id": `${publisherUrl}/#organization`,
       name: options.publisherName ?? "ALTUM",
       url: publisherUrl,
     },
   };
+
+  if (options.imageUrl)
+    schema.image = toAbsoluteUrl(publisherUrl, options.imageUrl);
+  schema.inLanguage = "pt-BR";
 
   if (options.publisherLogoPath) {
     const publisher = schema.publisher as Record<string, unknown>;
@@ -204,5 +227,18 @@ export const buildFaqSchema = (items: FaqItem[]) => ({
 });
 
 export const toJsonLdScript = (schema: unknown): { __html: string } => ({
-  __html: JSON.stringify(schema),
+  __html: JSON.stringify(schema).replace(/</g, "\\u003c"),
+});
+
+export const buildBreadcrumbSchema = (
+  items: readonly { name: string; href: string }[],
+) => ({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: items.map((item, index) => ({
+    "@type": "ListItem",
+    position: index + 1,
+    name: item.name,
+    item: toAbsoluteUrl(getSiteUrl(), item.href),
+  })),
 });

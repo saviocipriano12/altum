@@ -22,6 +22,9 @@ const footerGroups = [
     title: "Para sua empresa",
     links: [
       ["Soluções", "/solucoes"],
+      ["Vendas por WhatsApp e Instagram", "/solucoes/whatsapp-e-instagram"],
+      ["Clínicas e serviços", "/solucoes/clinicas-e-servicos"],
+      ["E-commerce", "/solucoes/ecommerce"],
       ["Planos", "/precos"],
       ["Portfólio", "/portfolio"],
       ["Implantação", "/implantacao"],
@@ -33,6 +36,7 @@ const footerGroups = [
     title: "Vamos conversar",
     links: [
       ["Sobre a Altum", "/sobre"],
+      ["Como escolher um CRM com IA", "/blog/como-escolher-crm-com-ia"],
       ["Agendar demonstração", "/contato?interest=demonstracao"],
       ["Falar com a Altum", "/contato"],
       ["Entrar na plataforma", "/cliente/login"],

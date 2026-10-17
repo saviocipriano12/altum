@@ -7,7 +7,7 @@ import { buildItemListSchema, toJsonLdScript } from "@/lib/schema";
 import { buildMarketingMetadata, SITE_URL } from "@/lib/public-site";
 export const metadata: Metadata = {
   ...buildMarketingMetadata({
-    title: "Conteúdos",
+    title: "Guias de CRM, WhatsApp e vendas com IA",
     description:
       "Ideias e guias sobre atendimento, vendas, WhatsApp, automação e inteligência artificial para uma operação comercial melhor.",
     path: "/blog",
@@ -22,6 +22,10 @@ export default async function BlogPage() {
   return (
     <SiteShell>
       <PublicHero
+        breadcrumbs={[
+          { name: "Início", href: "/" },
+          { name: "Guias e conteúdos", href: "/blog" },
+        ]}
         eyebrow="Conteúdos Altum"
         title={
           <>

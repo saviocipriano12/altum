@@ -1,3 +1,27 @@
+.breadcrumbs {
+  max-width: 1050px;
+  margin: 0 auto 28px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #414145;
+}
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 12px;
+  padding: 0;
+  list-style: none;
+}
+.breadcrumbs li + li::before {
+  content: "/";
+  margin-right: 12px;
+  color: #68686c;
+}
+.breadcrumbs a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .site {
   --public-ink: #1b1b1e;
   --public-muted: #414145;
@@ -806,7 +830,7 @@
   height: 32px;
   border-radius: 50%;
   background: #e7f6ee;
-  color: #23805c;
+  color: #146044;
   font-weight: 600;
 }
 .sampleHeader small {

@@ -43,7 +43,7 @@ export function PublicPortfolio() {
           >
             <Image
               src={project.image}
-              alt={project.name}
+              alt={`Página do projeto ${project.name}, com identidade visual e apresentação da oferta`}
               width={1000}
               height={700}
               sizes="(min-width: 768px) 600px, 94vw"

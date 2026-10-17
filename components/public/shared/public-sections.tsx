@@ -2,20 +2,25 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ArrowRight, Plus, Sparkles } from "lucide-react";
 import styles from "../public-site.module.css";
+import { buildFaqSchema, toJsonLdScript } from "@/lib/schema";
+import { PublicBreadcrumbs, type PublicCrumb } from "./public-breadcrumbs";
 export function PublicHero({
   eyebrow,
   title,
   description,
   children,
+  breadcrumbs,
 }: {
   eyebrow: string;
   title: ReactNode;
   description: string;
   children?: ReactNode;
+  breadcrumbs?: readonly PublicCrumb[];
 }) {
   return (
     <section className={styles.pageHero}>
       <div className={styles.container}>
+        {breadcrumbs && <PublicBreadcrumbs items={breadcrumbs} />}
         <p className={styles.eyebrow}>
           <span />
           {eyebrow}
@@ -53,6 +58,14 @@ export function PublicFaq({
 }) {
   return (
     <section className={styles.section}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={toJsonLdScript(
+          buildFaqSchema(
+            items.map(([question, answer]) => ({ question, answer })),
+          ),
+        )}
+      />
       <div className={`${styles.container} ${styles.faqGrid}`}>
         <div data-reveal>
           <p className={styles.eyebrow}>Perguntas frequentes</p>

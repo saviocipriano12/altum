@@ -9,6 +9,7 @@ export type BlogPostMeta = {
   title: string;
   description: string;
   date: string;
+  updatedAt?: string;
   tags: string[];
   coverImage: string;
   author: string;
@@ -61,7 +62,10 @@ const estimateReadingTime = (content: string): string => {
 };
 
 const getCategory = (frontmatter: Frontmatter): string => {
-  if (typeof frontmatter.category === "string" && frontmatter.category.trim().length > 0) {
+  if (
+    typeof frontmatter.category === "string" &&
+    frontmatter.category.trim().length > 0
+  ) {
     return frontmatter.category.trim();
   }
 
@@ -83,17 +87,26 @@ const parsePost = (slug: string, source: string): BlogPost => {
       title: frontmatter.title ?? slug,
       description: frontmatter.description ?? "",
       date: frontmatter.date ?? "1970-01-01",
+      updatedAt:
+        typeof frontmatter.updatedAt === "string" &&
+        Number.isFinite(Date.parse(frontmatter.updatedAt))
+          ? frontmatter.updatedAt
+          : undefined,
       tags: isStringArray(frontmatter.tags) ? frontmatter.tags : [],
       coverImage: resolveBlogCoverImage(
-        typeof frontmatter.coverImage === "string" ? frontmatter.coverImage : undefined,
+        typeof frontmatter.coverImage === "string"
+          ? frontmatter.coverImage
+          : undefined,
         category,
       ),
       author:
-        typeof frontmatter.author === "string" && frontmatter.author.trim().length > 0
+        typeof frontmatter.author === "string" &&
+        frontmatter.author.trim().length > 0
           ? frontmatter.author
           : "Time ALTUM",
       readingTime:
-        typeof frontmatter.readingTime === "string" && frontmatter.readingTime.trim().length > 0
+        typeof frontmatter.readingTime === "string" &&
+        frontmatter.readingTime.trim().length > 0
           ? frontmatter.readingTime
           : estimateReadingTime(content),
       category,
@@ -123,15 +136,18 @@ export const getBlogPostSlugs = cache(async (): Promise<string[]> => {
   }
 });
 
-export const getBlogPostBySlug = cache(async (slug: string): Promise<BlogPost | null> => {
-  const mdxPath = path.join(BLOG_DIR, `${slug}.mdx`);
-  const mdPath = path.join(BLOG_DIR, `${slug}.md`);
-  const source = (await readFileSafe(mdxPath)) ?? (await readFileSafe(mdPath));
+export const getBlogPostBySlug = cache(
+  async (slug: string): Promise<BlogPost | null> => {
+    const mdxPath = path.join(BLOG_DIR, `${slug}.mdx`);
+    const mdPath = path.join(BLOG_DIR, `${slug}.md`);
+    const source =
+      (await readFileSafe(mdxPath)) ?? (await readFileSafe(mdPath));
 
-  if (!source) return null;
+    if (!source) return null;
 
-  return parsePost(slug, source);
-});
+    return parsePost(slug, source);
+  },
+);
 
 export const getAllBlogPosts = cache(async (): Promise<BlogPostMeta[]> => {
   const slugs = await getBlogPostSlugs();
@@ -171,7 +187,9 @@ export const getRelatedPosts = (
   currentPost: BlogPostMeta,
   limit = 3,
 ): BlogPostMeta[] => {
-  const currentTagSet = new Set(currentPost.tags.map((tag) => tag.toLowerCase()));
+  const currentTagSet = new Set(
+    currentPost.tags.map((tag) => tag.toLowerCase()),
+  );
 
   const scored = allPosts
     .filter((post) => post.slug !== currentPost.slug)
@@ -182,7 +200,10 @@ export const getRelatedPosts = (
       );
       return { post, score };
     })
-    .sort((a, b) => b.score - a.score || parseDate(b.post.date) - parseDate(a.post.date))
+    .sort(
+      (a, b) =>
+        b.score - a.score || parseDate(b.post.date) - parseDate(a.post.date),
+    )
     .map((item) => item.post);
 
   return scored.slice(0, limit);

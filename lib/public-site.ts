@@ -23,10 +23,23 @@ export function buildMarketingMetadata(input: {
   return {
     title: input.title,
     description: input.description,
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1,
+      },
+    },
     alternates: {
       canonical: url,
     },
     openGraph: {
+      siteName: "Altum",
+      locale: "pt_BR",
       type: "website",
       title: `${input.title} | ALTUM`,
       description: input.description,

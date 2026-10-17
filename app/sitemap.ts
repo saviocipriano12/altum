@@ -1,11 +1,18 @@
 import type { MetadataRoute } from "next";
 import { segmentPages } from "@/data/segment-pages";
 import { getAllBlogPosts } from "@/lib/blog";
+import { publicSolutions } from "@/lib/public-solutions";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://altumia.com.br").trim().replace(/\/+$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://altumia.com.br")
+  .trim()
+  .replace(/\/+$/, "");
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const siteUpdatedAt = new Date(process.env.NEXT_PUBLIC_SITE_UPDATED_AT || "2026-09-08T00:00:00-03:00");
+  const configuredDate = process.env.NEXT_PUBLIC_SITE_UPDATED_AT;
+  const siteUpdatedAt =
+    configuredDate && Number.isFinite(Date.parse(configuredDate))
+      ? new Date(configuredDate)
+      : undefined;
   const posts = await getAllBlogPosts();
   const staticRoutes = [
     "",
@@ -19,7 +26,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/integracoes",
     "/politica-de-privacidade",
     "/termos",
-    "/rss.xml",
+    "/agencia",
+    "/portfolio",
+    "/estrutura-digital",
+    "/exclusao-de-dados",
     "/solucoes",
     "/segmentos",
     "/crm",
@@ -45,7 +55,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const blogEntries: MetadataRoute.Sitemap = posts.map((post) => ({
     url: `${SITE_URL}/blog/${post.slug}`,
-    lastModified: new Date(post.date),
+    lastModified: new Date(post.updatedAt || post.date),
     changeFrequency: "monthly",
     priority: 0.8,
   }));
@@ -57,5 +67,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.72,
   }));
 
-  return [...staticEntries, ...blogEntries, ...segmentEntries];
+  const solutionEntries: MetadataRoute.Sitemap = publicSolutions.map(
+    (solution) => ({
+      url: `${SITE_URL}/solucoes/${solution.slug}`,
+      lastModified: siteUpdatedAt,
+      changeFrequency: "monthly",
+      priority: 0.9,
+    }),
+  );
+  return [
+    ...staticEntries,
+    ...blogEntries,
+    ...segmentEntries,
+    ...solutionEntries,
+  ];
 }

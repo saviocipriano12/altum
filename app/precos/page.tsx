@@ -9,7 +9,7 @@ import {
 import { buildMarketingMetadata } from "@/lib/public-site";
 import styles from "@/components/public/public-site.module.css";
 export const metadata: Metadata = buildMarketingMetadata({
-  title: "Planos",
+  title: "Planos e preços do CRM com IA",
   description:
     "Compare os planos Altum para atendimento, CRM, agenda e inteligência artificial. Confira limites, teste gratuito e implantação.",
   path: "/precos",
@@ -41,6 +41,10 @@ export default function PrecosPage() {
     <SiteShell>
       <PublicHero
         eyebrow="Planos Altum"
+        breadcrumbs={[
+          { name: "Início", href: "/" },
+          { name: "Planos e preços", href: "/precos" },
+        ]}
         title={
           <>
             Uma estrutura para começar.
